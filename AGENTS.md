@@ -4,7 +4,7 @@ These instructions apply to the entire repository.
 
 ## Mission
 
-Build the application described in `Lastenheft_Fotobox-Verwaltung_MVP.md` incrementally. The working title is **AuftragsDock**. It starts as a locally operated system for one Fotobox business and must remain structurally capable of serving other event and service businesses later.
+Build the application described in `Lastenheft_Fotobox-Verwaltung_MVP.md` incrementally. The project name is **AuftragsKompass**. It starts as a locally operated system for one Fotobox business and must remain structurally capable of serving other event and service businesses later.
 
 The authoritative implementation sequence is `IMPLEMENTATION_PLAN.md`. The complete competitive research in `Bookitup_Funktionsinventar_vollstaendig.md` is reference material, not automatic scope.
 

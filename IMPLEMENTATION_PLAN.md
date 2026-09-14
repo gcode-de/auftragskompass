@@ -1,4 +1,4 @@
-# AuftragsDock – commitgenauer Implementierungsplan
+# AuftragsKompass – commitgenauer Implementierungsplan
 
 **Status:** initialer Bauplan
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
