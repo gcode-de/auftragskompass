@@ -1,0 +1,56 @@
+# This repository lives beside private customer and print-layout material.
+# Keep the root allow-listed so `git add .` cannot publish unrelated data.
+/*
+
+# Repository metadata and documentation
+!/.gitignore
+!/AGENTS.md
+!/IMPLEMENTATION_PLAN.md
+!/README.md
+!/LICENSE
+!/Bookitup_Funktionsinventar_vollstaendig.md
+!/Lastenheft_Fotobox-Verwaltung_MVP.md
+
+# Application-owned directories and root configuration
+!/.github/
+!/apps/
+!/packages/
+!/infrastructure/
+!/tests/
+!/docs/
+!/scripts/
+!/package.json
+!/pnpm-lock.yaml
+!/pnpm-workspace.yaml
+!/tsconfig.json
+!/eslint.config.*
+!/prettier.config.*
+!/.prettierignore
+!/.editorconfig
+!/.env.example
+!/compose.yaml
+!/compose.*.yaml
+
+# Never commit secrets or local runtime state, even inside allowed directories.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/secrets/
+**/node_modules/
+**/dist/
+**/build/
+**/.next/
+**/coverage/
+**/test-results/
+**/playwright-report/
+**/.DS_Store
+**/*.log
+**/.cache/
+**/tmp/
+**/uploads/
+**/storage/
+**/backups/
