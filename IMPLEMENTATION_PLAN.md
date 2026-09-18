@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C002 abgeschlossen, C003–C085 offen
+**Status:** geprüfter Bauplan; C001–C003 abgeschlossen, C004–C085 offen
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -14,7 +14,8 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 
 - [x] C001: Planungsunterlagen und überprüfbare Anforderungszuordnung
 - [x] C002: privater TypeScript-Workspace mit Build und Typecheck
-- [ ] C003–C085: noch nicht implementiert oder abgenommen
+- [x] C003: Format-, Lint- und Commitprüfungen mit Negativtests
+- [ ] C004–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 

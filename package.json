@@ -4,16 +4,28 @@
   "type": "module",
   "packageManager": "pnpm@10.2.0",
   "engines": {
-    "node": ">=22.12.0 <26",
+    "node": "^22.13.0 || ^24.0.0 || ^25.0.0",
     "pnpm": "10.2.0"
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "test:workspace": "node --test tests/workspace/*.test.mjs",
-    "test:docs": "python3 -B scripts/check_docs.py && python3 -B -m unittest discover -s tests/docs -v"
+    "test:docs": "python3 -B scripts/check_docs.py && python3 -B -m unittest discover -s tests/docs -v",
+    "format": "prettier --write \"{apps,packages,scripts,tests}/**/*.{ts,tsx,mjs,json,html}\" \"*.{json,mjs,yaml}\"",
+    "format:check": "prettier --check \"{apps,packages,scripts,tests}/**/*.{ts,tsx,mjs,json,html}\" \"*.{json,mjs,yaml}\"",
+    "lint": "eslint apps packages scripts tests eslint.config.mjs prettier.config.mjs",
+    "commit:check": "commitlint --config scripts/commitlint.config.mjs",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:workspace && pnpm test:docs && pnpm build"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.10.0",
+    "globals": "17.12.0",
+    "prettier": "3.9.8",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.0"
   }
 }

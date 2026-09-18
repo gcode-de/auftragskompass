@@ -1,1 +1,1 @@
-export const applicationName: string = "AuftragsKompass";
+export const applicationName: string = 'AuftragsKompass';
