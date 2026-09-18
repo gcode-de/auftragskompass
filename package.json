@@ -1,0 +1,19 @@
+{
+  "name": "auftragskompass",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.2.0",
+  "engines": {
+    "node": ">=22.12.0 <26",
+    "pnpm": "10.2.0"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "test:workspace": "node --test tests/workspace/*.test.mjs",
+    "test:docs": "python3 -B scripts/check_docs.py && python3 -B -m unittest discover -s tests/docs -v"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

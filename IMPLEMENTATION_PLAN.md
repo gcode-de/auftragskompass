@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001 abgeschlossen, C002–C085 offen
+**Status:** geprüfter Bauplan; C001–C002 abgeschlossen, C003–C085 offen
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -13,7 +13,8 @@ Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertik
 C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementierungsschritt vorgezogen. Prüfungen: `python3 -B scripts/check_docs.py` und `python3 -B -m unittest discover -s tests/docs -v`. Die Zuordnung aller Anforderungen steht in [docs/requirements.md](docs/requirements.md), die fachlichen Präzisierungen in [docs/decisions.md](docs/decisions.md).
 
 - [x] C001: Planungsunterlagen und überprüfbare Anforderungszuordnung
-- [ ] C002–C085: noch nicht implementiert oder abgenommen
+- [x] C002: privater TypeScript-Workspace mit Build und Typecheck
+- [ ] C003–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 
