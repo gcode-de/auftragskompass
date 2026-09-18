@@ -22,7 +22,7 @@ test(
     });
     await writeFile(
       envFile,
-      `AK_DB_PASSWORD_FILE=${passwordFile}\nAK_ADMIN_PORT=0\nAK_API_PORT=0\n`,
+      `AK_DB_PASSWORD_FILE=${passwordFile}\nAK_ADMIN_PORT=0\nAK_API_PORT=0\nAK_UID=${process.getuid()}\nAK_GID=${process.getgid()}\n`,
       { mode: 0o600 },
     );
     const run = async (program, args) =>
@@ -70,6 +70,13 @@ test(
       const services = Array.isArray(state) ? state : [state];
       assert.equal(services.length, 4);
       for (const service of services) assert.equal(service.Health, 'healthy');
+      const address = (await compose(project, ['port', 'api', '3000'])).trim();
+      await compose(project, ['stop', 'worker']);
+      const unavailable = await fetch(`http://${address}/health/ready`);
+      assert.equal(unavailable.status, 503);
+      assert.equal((await unavailable.json()).dependencies.worker, 'down');
+      assert.equal((await fetch(`http://${address}/health/live`)).status, 200);
+      await compose(project, ['up', '-d', '--wait']);
       await sql(
         project,
         "CREATE TABLE synthetic_example (label text); INSERT INTO synthetic_example VALUES ('Synthetic backup record')",

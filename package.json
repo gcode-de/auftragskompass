@@ -8,7 +8,7 @@
     "pnpm": "10.2.0"
   },
   "scripts": {
-    "typecheck": "pnpm -r typecheck && tsc -p tests/tsconfig.json",
+    "typecheck": "pnpm --filter @auftragskompass/core build && pnpm -r typecheck && tsc -p tests/tsconfig.json",
     "build": "pnpm -r build",
     "test:workspace": "node --test tests/workspace/*.test.mjs",
     "test:docs": "python3 -B scripts/check_docs.py && python3 -B -m unittest discover -s tests/docs -v",

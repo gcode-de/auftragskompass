@@ -20,6 +20,18 @@ services:
       dockerfile: infrastructure/Dockerfile
       target: runtime
     command: [node, apps/api/dist/main.js]
+    user: '${AK_UID:-1000}:${AK_GID:-1000}'
+    secrets: [db_password]
+    environment:
+      AK_DB_HOST: database
+      AK_DB_NAME: auftragskompass
+      AK_DB_USER: ak
+      AK_DB_PASSWORD_FILE: /run/secrets/db_password
+      AK_LOG_LEVEL: ${AK_LOG_LEVEL:-info}
+      AK_TIMEZONE: ${AK_TIMEZONE:-Europe/Berlin}
+      AK_BUILD_REVISION: ${AK_BUILD_REVISION:-development}
+      AK_HOST: 0.0.0.0
+      AK_PORT: 3000
     depends_on:
       database: { condition: service_healthy }
     ports: ['127.0.0.1:${AK_API_PORT:-3100}:3000']
@@ -29,7 +41,7 @@ services:
           CMD,
           node,
           -e,
-          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 2s
       timeout: 3s
@@ -42,6 +54,18 @@ services:
       dockerfile: infrastructure/Dockerfile
       target: runtime
     command: [node, apps/worker/dist/main.js]
+    user: '${AK_UID:-1000}:${AK_GID:-1000}'
+    secrets: [db_password]
+    environment:
+      AK_DB_HOST: database
+      AK_DB_NAME: auftragskompass
+      AK_DB_USER: ak
+      AK_DB_PASSWORD_FILE: /run/secrets/db_password
+      AK_LOG_LEVEL: ${AK_LOG_LEVEL:-info}
+      AK_TIMEZONE: ${AK_TIMEZONE:-Europe/Berlin}
+      AK_BUILD_REVISION: ${AK_BUILD_REVISION:-development}
+      AK_HOST: 0.0.0.0
+      AK_PORT: 3001
     depends_on:
       database: { condition: service_healthy }
     healthcheck:
@@ -50,7 +74,7 @@ services:
           CMD,
           node,
           -e,
-          "process.exit(Date.now()-Number(require('fs').readFileSync('/tmp/ak-worker-heartbeat','utf8'))<5000?0:1)",
+          "fetch('http://127.0.0.1:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 2s
       timeout: 3s

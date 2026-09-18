@@ -1,10 +1,35 @@
-import { writeFileSync } from 'node:fs';
-// Process heartbeat only; no jobs or business schema before the relevant slices.
-const heartbeat = () =>
-  writeFileSync('/tmp/ak-worker-heartbeat', String(Date.now()));
-heartbeat();
-const timer = setInterval(heartbeat, 1000);
-for (const signal of ['SIGINT', 'SIGTERM'])
-  process.on(signal, () => {
-    clearInterval(timer);
+import { readFileSync } from 'node:fs';
+import { Pool } from 'pg';
+import { createHealthServer, loadRuntimeConfig } from '@auftragskompass/core';
+try {
+  const config = loadRuntimeConfig(process.env, (path) =>
+    readFileSync(path, 'utf8'),
+  );
+  const pool = new Pool({
+    host: config.host,
+    port: config.dbPort,
+    user: config.user,
+    password: config.password,
+    database: config.database,
+    connectionTimeoutMillis: 800,
+    statement_timeout: 800,
+    max: 5,
   });
+  pool.on('error', () => {});
+  const app = createHealthServer(config, {
+    database: async () => {
+      await pool.query('SELECT 1');
+      return true;
+    },
+    worker: async () => true,
+  });
+  app.addHook('onClose', async () => {
+    await pool.end();
+  });
+  await app.listen({ host: config.listenHost, port: config.port });
+  for (const signal of ['SIGINT', 'SIGTERM'])
+    process.on(signal, () => void app.close());
+} catch {
+  console.error(JSON.stringify({ level: 'error', event: 'startup_failed' }));
+  process.exitCode = 1;
+}

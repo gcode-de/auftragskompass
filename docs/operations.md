@@ -34,3 +34,11 @@ Loopback-HTTP dient ausschließlich lokaler Entwicklung. Für Zugriff über weit
 `pnpm test:ops` erstellt isolierte Projekte mit Zufallsnamen, zufälligem Testpasswort und dynamischen Loopback-Ports. Testvolumes werden danach entfernt. `pnpm check` enthält diesen Test zusätzlich zu allen bisherigen Gates.
 
 Referenz: [Compose-Startreihenfolge und Healthchecks](https://docs.docker.com/compose/how-tos/startup-order/).
+
+## Laufzeit und Health (C007)
+
+`/health/live` bestätigt nur den laufenden Prozess und nennt die Build-Revision. `/health/ready` liefert 200 bei erreichbarer Datenbank und Worker, sonst 503 mit getrennten Zuständen; der Worker prüft seine Datenbank selbst. Prüfungen sind zeitlich begrenzt. Ein späteres Job-System ist damit noch nicht implementiert.
+
+Direkter Node-Start benötigt die AK-Konfigurationswerte aus `.env.example`; Compose setzt interne Hosts/Ports selbst. Fehlende Konfiguration, ungültige Ports, Zeitzonen oder nicht lesbare/zu kurze Passphrassen beenden den Start mit einer neutralen JSON-Fehlermeldung. Request-Logs enthalten weder URL/Query, Header, Body noch Fehlermeldungen von Abhängigkeiten.
+
+Unter Linux müssen AK_UID/AK_GID zur Eigentümerschaft der externen Secret-Datei passen (`id -u`, `id -g`); Compose-Dateisecrets behalten Host-Dateirechte. Die Prozesse bleiben unprivilegiert. Der Smoke-Test konfiguriert hierfür seine eigene UID/GID und prüft zusätzlich den Worker-Ausfall.

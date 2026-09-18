@@ -86,17 +86,37 @@ importers:
 
   apps/api:
     dependencies:
+      '@auftragskompass/core':
+        specifier: workspace:^
+        version: link:../../packages/core
       fastify:
         specifier: 5.12.5
         version: 5.12.5
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
 
   apps/gateway: {}
 
   apps/widget: {}
 
-  apps/worker: {}
+  apps/worker:
+    dependencies:
+      '@auftragskompass/core':
+        specifier: workspace:^
+        version: link:../../packages/core
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      fastify:
+        specifier: 5.12.5
+        version: 5.12.5
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
 
 packages:
 
