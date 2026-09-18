@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C005 abgeschlossen, C006–C085 offen
+**Status:** geprüfter Bauplan; C001–C006 implementiert; C006-CI-Abnahme nach Push, C007–C085 offen
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -17,7 +17,8 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] C003: Format-, Lint- und Commitprüfungen mit Negativtests
 - [x] C004: Vitest, React-Komponenten, PostgreSQL-Testcontainer und Chromium-E2E
 - [x] C005: Compose-Clean-start, persistente Daten, Backup/Restore geprüft
-- [ ] C006–C085: noch nicht implementiert oder abgenommen
+- [x] C006: Qualitätsworkflow und Changed-Code-Coverage (CI-Abnahme am gepushten Commit)
+- [ ] C007–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 
