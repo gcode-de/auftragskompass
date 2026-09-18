@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** initialer Bauplan
+**Status:** geprüfter Bauplan; C001 abgeschlossen, C002–C085 offen
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -9,6 +9,11 @@
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
+
+C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementierungsschritt vorgezogen. Prüfungen: `python3 -B scripts/check_docs.py` und `python3 -B -m unittest discover -s tests/docs -v`. Die Zuordnung aller Anforderungen steht in [docs/requirements.md](docs/requirements.md), die fachlichen Präzisierungen in [docs/decisions.md](docs/decisions.md).
+
+- [x] C001: Planungsunterlagen und überprüfbare Anforderungszuordnung
+- [ ] C002–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 
@@ -41,77 +46,77 @@ Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertik
 | C002 | `chore: initialize typescript workspace` | pnpm-Workspace, gemeinsame TypeScript-Konfiguration, Verzeichnisstruktur für Admin, API, Worker, Gateway, Widget und Pakete | Typecheck eines Minimalmoduls; Workspace-Install reproduzierbar |
 | C003 | `chore: add formatting linting and commit checks` | Prettier, ESLint, Commit-Konvention und lokale Prüfskripte | Absichtlich fehlerhafte Fixture wird von jedem Gate erkannt |
 | C004 | `test: establish unit integration and e2e harnesses` | Vitest, disposable PostgreSQL-Testdatenbank, React-Komponententests und Playwright-Grundlage | Je ein grüner Beispieltest pro Ebene |
-| C005 | `chore: add local docker compose environment` | PostgreSQL, API, Worker und Admin; persistente Volumes, Healthchecks sowie grundlegende Backup-/Restore-Skripte | Clean-start-Test; Container werden healthy; gesicherte Testdaten lassen sich in eine frische Umgebung zurückspielen |
+| C005 | `chore: add local docker compose environment` | PostgreSQL, API, Worker und Admin; persistente Volumes, Healthchecks sowie automatisierbare tägliche Backup-/Restore-Skripte, Loopback-Bindung der Administration und dokumentierte TLS-Terminierung | Clean-start-Test; Container werden healthy; gesicherte Testdaten lassen sich in eine frische Umgebung zurückspielen |
 | C006 | `ci: run quality gates on every push` | GitHub Actions für Format, Lint, Typen, Tests, Build und Coverage-Artefakte | CI läuft auf Repository-Branch vollständig grün |
-| C007 | `feat: add runtime configuration and health endpoints` | Validierte Umgebungsvariablen, strukturierte Logs, Readiness/Liveness und Build-Info | Fehlende Konfiguration stoppt sicher; Healthchecks unterscheiden DB/Worker-Zustand |
+| C007 | `feat: add runtime configuration and health endpoints` | Validierte Umgebungsvariablen, strukturierte, von personenbezogenen Daten und Tokens bereinigte Logs, Readiness/Liveness und Build-Info | Fehlende Konfiguration stoppt sicher; Healthchecks unterscheiden DB/Worker-Zustand |
 
 ### M1 – Minimaler interner MVP
 
 | ID | Commit | Inhalt | Tests/Abnahme |
 |---|---|---|---|
-| C008 | `feat: add tenant and user persistence` | Mandant, Benutzer, Membership und Grundschema mit `tenant_id` | Migrationstest, Eindeutigkeit, tenant-gefilterte Repositories |
-| C009 | `feat: authenticate administrators with google oidc` | Authorization-Code-Flow, sichere Session-Cookies, Logout und Callback | OIDC-Adaptertest, State/Nonce/Redirect-Angriffe, Sessionablauf |
-| C010 | `feat: restrict login with an administrator allowlist` | Oberfläche und Regel für freigegebene Google-Konten; deaktivierter Notfallzugang vorbereitet | Nicht erlaubtes Konto abgewiesen; Änderung auditiert |
+| C008 | `feat: add tenant and user persistence` | Mandant, Benutzer, Membership und Grundschema mit `tenant_id` und mandantengebundenen Fremdschlüsseln | Migrationstest, Eindeutigkeit, tenant-gefilterte Repositories |
+| C009 | `feat: authenticate administrators with google oidc` | Authorization-Code-Flow, sichere Session-Cookies, Logout und Callback, PKCE, CSRF-/Origin-Schutz für schreibende Admin-Routen | OIDC-Adaptertest, State/Nonce/Redirect-Angriffe, Sessionablauf |
+| C010 | `feat: restrict login with an administrator allowlist` | Oberfläche und Regel für freigegebene Google-Konten; sicherer Erstkonto-Bootstrap über lokale Konfiguration; Sitzungswiderruf bei Sperre; letzter Admin vor Aussperrung geschützt; deaktivierter Notfallzugang vorbereitet | Nicht erlaubtes Konto abgewiesen; Erstkonto ohne offene Registrierung; Sperre widerruft Sitzungen; Änderung auditiert |
 | C011 | `feat: record append-only audit events` | Auditlog für Anmeldung und spätere Fachaktionen | Einträge unveränderbar; Tenantzugriff geprüft |
 | C012 | `feat: manage event types packages and statuses` | Konfigurationsoberflächen für sieben Eventarten, Paketwerte und feste Status | CRUD-/Archivtests; historische Referenzen bleiben gültig |
 | C013 | `feat: manage cancellation reasons` | Konfigurierbare Absagegründe als Stammdaten | Archivierung statt Löschung; tenant-isolierte API/UI |
 | C014 | `feat: manage resource master data` | FB1, FB2, Glamour- und Schwarzwald-Paket; Bestand, Kategorien, Sperrstatus und Puffer | CRUD, Bestand ≥ 0, Archivregeln, synthetische Seeds |
 | C015 | `feat: manage product catalog` | Produkte, Preise, Steuer, Einheit, Aktivierung und Sortierung | Exakte Geldwerte, Archivierung und Validierung |
-| C016 | `feat: manage private and company contacts` | Kontakt-CRUD, Firmen/Ansprechpartner, Suche und Archiv | Normalisierung, Dublettenvorschlag, Tenantgrenzen, UI-Komponenten |
+| C016 | `feat: manage private and company contacts` | Kontakt-CRUD, Firmen/Ansprechpartner, Suche, Eventbezüge, Archiv und offener Datenexport | Normalisierung, Dublettenvorschlag, Tenantgrenzen, UI-Komponenten |
 | C017 | `feat: manage reusable event locations` | Location-CRUD und Suche | Validierung, Archivierung, Eventreferenz bleibt bestehen |
-| C018 | `feat: create and edit events` | Eventmodell, Status, Art, Termin, Ort, Paket, Hauptkontakt und Notizen | Zustands- und Validierungstests; vollständiger API/UI-Pfad |
-| C019 | `feat: add event list search and filters` | Chronologische Liste, Suchtext, Zeitraum, Status, Art und Events ohne Datum | Filterkombinationen, URL-Zustand, leere/fehlerhafte Ansichten |
+| C018 | `feat: create and edit events` | Eventmodell, Status, Art, Termin, Ort, Paket, Anfragequelle, Haupt-/weitere Kontakte und sanitizierte formatierte Notizen; Versionsprüfung gegen verlorene Änderungen | Zustands- und Validierungstests; vollständiger API/UI-Pfad |
+| C019 | `feat: add event list search and filters` | Chronologische Liste, Suchtext, Zeitraum, Status, Art und Events ohne Datum; gemeinsame Suchnavigation zu Kontakten und Events | Filterkombinationen, URL-Zustand, leere/fehlerhafte Ansichten |
 | C020 | `feat: add event details and activity log` | Gebündelte Eventakte und fachliches Logbuch | Änderungen erzeugen korrekte unveränderbare Aktivitäten |
-| C021 | `feat: model resource holds and bookings` | Reservierungszeitraum getrennt vom Event, Status Vormerkung/Gebucht/Blockiert, Pufferberechnung | Randgrenzen, Zeitzonen, Zwei-Tage-Puffer, Storno-Freigabe |
-| C022 | `feat: prevent overlapping confirmed reservations` | PostgreSQL-Zeitbereiche und Exclusion Constraint pro Ressource/Mandant | Gleichzeitige Transaktionen; gleiche Box blockiert, FB1/FB2 parallel erlaubt |
-| C023 | `feat: show availability and assign resources` | Event-UI für Verfügbarkeit, Konflikte, Wechsel und Zubehör | Komponenten- und API-Tests; atomare Zuweisung; Auditlog |
+| C021 | `feat: model resource holds and bookings` | Reservierungszeitraum getrennt vom Event, Status Vormerkung/Gebucht/Blockiert, Pufferberechnung, Ablauf temporärer Vormerkungen und konsistente Statusübergänge gemäß docs/decisions.md | Randgrenzen, beide DST-Wechsel, Zwei-Tage-Puffer, Storno-Freigabe und Ablauf bei ausgefallenem Worker |
+| C022 | `feat: prevent overlapping confirmed reservations` | PostgreSQL-Zeitbereiche und Exclusion Constraint pro physischer Ressourceneinheit/Mandant; Sperren nehmen am selben Konfliktschutz teil | Gleichzeitige Transaktionen; gleiche Box blockiert, FB1/FB2 parallel erlaubt |
+| C023 | `feat: show availability and assign resources` | Event-UI für Verfügbarkeit, Konflikte, Wechsel und Zubehör; manuelles Buchen ohne Vertrag; Terminverschiebung mit atomarer Neuprüfung | Komponenten- und API-Tests; atomare Zuweisung; alte Buchung bleibt bei Konflikt erhalten; konkurrierende Änderungen; Auditlog |
 | C024 | `feat: add resource blocks for maintenance` | Interne Sperren ohne Kundenauftrag | Sperre kollidiert mit Buchung; Freigabe und Historie geprüft |
-| C025 | `feat: add internal event and resource calendar` | Monats-/Wochenansicht und Ressourcen-Zeitleiste | Parallele Boxen, Puffer, Optionen und Konfliktfarben visuell/E2E geprüft |
-| C026 | `feat: publish revocable ics calendar feeds` | Gesamtfeed und Feeds pro Ressource; Tokenverwaltung | RFC-nahe Parser-Tests, Update/Storno, keine ungewollten Datenfelder |
-| C027 | `release: mark minimal internal mvp` | Version, Betriebsanleitung und M1-Abnahmetest | Frische Installation; kompletter Kontakt→Event→FB1/FB2→Kalender→ICS-Pfad |
+| C025 | `feat: add internal event and resource calendar` | Tages-/Wochen-/Monatsansicht und Ressourcen-Zeitleiste | Parallele Boxen, Puffer, Optionen und Konfliktfarben visuell/E2E geprüft |
+| C026 | `feat: publish revocable ics calendar feeds` | Gesamtfeed und Feeds pro Ressource; Tokenverwaltung, geschützter TLS-Zugriff aus Kalenderclients ohne Freigabe der Admin-API; optionaler ausgehender Feed-Abgleich zu einem getrennten Token-Endpunkt | RFC-nahe Parser-Tests, Update/Storno, keine ungewollten Datenfelder |
+| C027 | `release: mark minimal internal mvp` | Version, Betriebsanleitung und M1-Abnahmetest; tägliche Sicherung und Restore geprüft; reale Nutzung erst nach Ressourcenabgleich, Zugriffsschutz und dokumentierter Datenübernahme | Frische Installation; kompletter Kontakt→Event→FB1/FB2→Kalender→ICS-Pfad |
 
 ### M2 – Öffentliche Verfügbarkeit und Anfragen
 
 | ID | Commit | Inhalt | Tests/Abnahme |
 |---|---|---|---|
-| C028 | `feat: define versioned public gateway protocol` | Signierte Sync-Nachrichten, Idempotenzschlüssel und minimale öffentliche Datenverträge | Contract-Tests beider Seiten; alte/ungültige Signaturen abgewiesen |
+| C028 | `feat: define versioned public gateway protocol` | Signierte Sync-Nachrichten, Idempotenzschlüssel und minimale öffentliche Datenverträge, Schlüsselrotation, Replay-Schutz, Payload-Limits und getrennte Endpunkte für anonymisierte und token-geschützte Daten | Contract-Tests beider Seiten; alte/ungültige Signaturen abgewiesen |
 | C029 | `feat: project anonymized availability snapshots` | Lokale Projektion von Ressourcenständen ohne Kundendaten | Datenschutztest; Status-/Pufferänderungen erzeugen korrekte Deltas |
-| C030 | `feat: synchronize availability through the outbox` | Ausgehende, wiederholbare Übertragung mit Quittierung | Netzfehler, Retry, Duplikat und Reihenfolge getestet |
+| C030 | `feat: synchronize availability through the outbox` | Ausgehende, wiederholbare Übertragung mit Quittierung; Job-Leases, Crash-Recovery, Backoff und sichtbare endgültige Fehler | Netzfehler, Retry, Duplikat und Reihenfolge getestet |
 | C031 | `feat: render the embeddable availability widget` | Responsiver Monatskalender als Web Component | Browser-/Theme-Isolation, Tastatur, Mobilansicht und visuelle Snapshots |
-| C032 | `feat: configure widget branding and labels` | Farben, Schrift, Rundungen, Legende und öffentliche Statusregeln | Konfiguration wirkt ohne Neubuild; unsichere CSS-/HTML-Werte abgewehrt |
+| C032 | `feat: configure widget branding and labels` | Farben, Schrift, Rundungen, Legende und öffentliche Statusregeln, erlaubte Einbettungsdomains sowie widerrufbare Widget-Kennungen (keine Geheimnisse) | Konfiguration wirkt ohne Neubuild; unsichere CSS-/HTML-Werte abgewehrt |
 | C033 | `feat: add wordpress shortcode integration` | Minimales WordPress-Plugin, Script-Laden und Shortcode | WordPress-Integrationsfixture; Mehrfacheinbindung; Cache-Versionierung |
-| C034 | `feat: collect public availability inquiries` | Datum, Paket, Zubehör, Kontakt, Einwilligung und Spam-Schutz | Schema-, Rate-limit-, Honeypot- und Consent-Tests |
-| C035 | `feat: import inquiries and create temporary holds` | Ausgehendes Abholen, Dublettenschutz, Eventanlage und lokale Vormerkung | At-least-once-Zustellung, doppelte Anfrage, inzwischen belegte Ressource |
-| C036 | `feat: degrade safely when availability is stale` | Aktualitätsanzeige, keine Zusage bei Störung, verständliche Alternativen | Gateway offline, verspätete Snapshots und Race-Condition E2E |
+| C034 | `feat: collect public availability inquiries` | Datum, Paket, Zubehör, Kontakt, konfigurierbare Formularquellen/Feldzuordnung, Einwilligung und Spam-Schutz; serverseitige Prüfung der Snapshot-Aktualität; getrennte Eingangs- und Übernahmebestätigung | Schema-, Rate-limit-, Honeypot- und Consent-Tests |
+| C035 | `feat: import inquiries and create temporary holds` | Ausgehendes Abholen, Dublettenschutz, Eventanlage und lokale Vormerkung mit Ablauf; verschlüsselte Zwischenablage im Gateway, Quittierung und befristete Löschung | At-least-once-Zustellung, doppelte Anfrage, inzwischen belegte Ressource |
+| C036 | `feat: degrade safely when availability is stale` | Aktualitätsanzeige, keine Zusage bei Störung, verständliche Alternativen; Versionen verhindern Rücksprünge, Aktualisierung binnen 60 Sekunden im Normalbetrieb | Gateway offline, verspätete Snapshots und Race-Condition E2E |
 | C037 | `release: mark public inquiry milestone` | M2-Dokumentation und vollständiger WordPress→lokales Event-Abnahmetest | Öffentlicher Test enthält keinerlei Bestandskundendaten |
 
 ### M3 – E-Mail und Kommunikation
 
 | ID | Commit | Inhalt | Tests/Abnahme |
 |---|---|---|---|
-| C038 | `feat: send email through configurable smtp` | SMTP-Konfiguration, Signatur, Anhänge und Outbox | Fake-SMTP, TLS-Fehler, Retry und idempotenter Versand |
-| C039 | `feat: synchronize mailbox messages through imap` | IMAP-Polling/Idle, Ordner und Cursor | Fake-IMAP, Reconnect, Duplikate, gelöschte/verschobene Nachrichten |
-| C040 | `feat: associate messages with contacts and events` | Automatische Vorschläge und manuelle Korrektur | Absender-/Thread-/Referenzfälle und falsche Zuordnung |
-| C041 | `feat: add inbox and event conversation views` | Posteingang, unerledigt, gesendet, Entwürfe, geplant, Fehler, Papierkorb | Listen-/Statusaktionen, Tenant- und Berechtigungstests |
-| C042 | `feat: manage email templates and placeholders` | Vorlagen, elf Ausgangstypen, Platzhalter und Standardanhänge | Fehlende Werte, Escaping, Vorschau und Archivierung |
-| C043 | `feat: compose drafts replies and attachments` | Editor, Antworten, Weiterleiten und Dateibibliothek | Header/Threading, Uploadgrenzen, XSS und Entwurfserhalt |
-| C044 | `feat: schedule email delivery and follow ups` | Geplanter Versand und zwei feste Nachfassregeln | Uhrzeit/Zeitzone, Antwort stoppt Follow-up, Retry ohne Doppelversand |
-| C045 | `release: mark communication milestone` | M3-Abnahme und Betriebsdokumentation | Anfrage→Antwort→Zuordnung→Follow-up vollständig E2E |
+| C038 | `feat: add secure local file storage` | Storage-Adapter, Metadaten, Limits, MIME-Prüfung, verpflichtende Quarantäne und Scan-Freigabe, unveränderbare Dateiversionen | Traversal, falscher MIME-Typ, Größe, Tenantzugriff, Ersetzen und Scanner-Ausfall ohne Dateifreigabe |
+| C039 | `feat: send email through configurable smtp` | SMTP-Konfiguration, Signatur, Anhänge und Outbox | Fake-SMTP, TLS-Fehler und Retry vor Übergabe; unklarer SMTP-Ausgang wird sichtbar angehalten statt blind erneut gesendet |
+| C040 | `feat: synchronize mailbox messages through imap` | IMAP-Polling/Idle, Ordner, UIDVALIDITY/UID-Cursor und Umschaltgrenze ohne historische Nachrichtenimporte | Fake-IMAP, Reconnect, Duplikate, gelöschte/verschobene Nachrichten |
+| C041 | `feat: associate messages with contacts and events` | Automatische Vorschläge und manuelle Korrektur | Absender-/Thread-/Referenzfälle und falsche Zuordnung |
+| C042 | `feat: add inbox and event conversation views` | Posteingang, unerledigt, gesendet, Entwürfe, geplant, Fehler, Papierkorb | Listen-/Statusaktionen, Tenant- und Berechtigungstests |
+| C043 | `feat: manage email templates and placeholders` | Vorlagen, elf Ausgangstypen, Platzhalter und Standardanhänge | Fehlende Werte, Escaping, Vorschau und Archivierung |
+| C044 | `feat: compose drafts replies and attachments` | Editor, Antworten, Weiterleiten und Dateibibliothek | Header/Threading, Uploadgrenzen, XSS und Entwurfserhalt |
+| C045 | `feat: schedule email delivery and follow ups` | Geplanter Versand und zwei feste Regeln für interne Erinnerungen (offen/erledigt/verworfen); Kunden-Nachfassmails nur ausdrücklich geplant | Uhrzeit/Zeitzone, Reaktion stoppt Erinnerung; keine doppelten Jobs; unklarer Versand wird angehalten |
+| C046 | `release: mark communication milestone` | M3-Abnahme und Betriebsdokumentation | Anfrage→Antwort→Zuordnung→Follow-up vollständig E2E |
 
 ### M4 – Angebote, Rechnungen und Zahlungen
 
 | ID | Commit | Inhalt | Tests/Abnahme |
 |---|---|---|---|
-| C046 | `feat: add secure local file storage` | Storage-Adapter, Metadaten, Limits, MIME-Prüfung und Scan-Hook | Traversal, falscher MIME-Typ, Größe, Tenantzugriff und Ersetzen |
 | C047 | `feat: manage document templates` | Vorlagentexte, Produktpositionen, Platzhalter und Versionen | Rendering, Archivierung, alte Version unverändert |
 | C048 | `feat: configure branded document layouts` | Logo, Farben, Schrift, Absender, Seitenzahlen und Vorschau | Deterministischer HTML-/Visual-Snapshot |
 | C049 | `feat: render immutable pdf documents` | Chromium-PDF, Inhalts-Hash und dauerhafte Artefakte | PDF parsebar, Fonts stabil, Hash ändert sich nur bei Inhalt |
-| C050 | `feat: allocate atomic document numbers` | Getrennte Nummernkreise mit Jahr/Monat/Sequenz | Parallelität, Rollback, führende Nullen und keine Wiederverwendung |
-| C051 | `feat: create and finalize offers` | Positionen, Rabatt, Steuer, 14-Tage-Gültigkeit und Status | Geld-/Steuerbranches, Ablauf, finale Version unveränderbar |
+| C050 | `feat: allocate atomic document numbers` | Getrennte Nummernkreise mit Jahr/Monat/Tag/Sequenz und unverbindlicher Nummernvorschau | Parallelität, Rollback, führende Nullen und keine Wiederverwendung |
+| C051 | `feat: create and finalize offers` | Positionen, Rabatt, Steuer, konfigurierbare Gültigkeit (Standard 14 Tage) und Status | Geld-/Steuerbranches, Ablauf, finale Version unveränderbar |
 | C052 | `feat: record offer acceptance by channel` | E-Mail, Telefon, PDF oder Sonstiges mit Zeitpunkt/Notiz | Zustandsübergänge und optionaler Anhang |
 | C053 | `feat: convert offers to order confirmations` | Übernahme ohne Neueingabe | Positions-/Summengleichheit und unabhängige Finalisierung |
 | C054 | `feat: create invoices deposits and corrections` | Rechnung, Anzahlung, Schlussrechnung und Korrektur | Pflichtangaben, Steuer, Verrechnung, Storno und Unveränderbarkeit |
-| C055 | `feat: record payments and outstanding balances` | Zahlungen, Teilzahlung, bezahlt/überfällig und CSV-Export | Über-/Teilzahlung, Datum, Korrektur und exakte Salden |
+| C055 | `feat: record payments and outstanding balances` | Zahlungen, Teilzahlung, bezahlt/überfällig und CSV-Export inklusive Dokumentmetadaten; Schutz vor Tabellenformeln in allen CSV-Exporten | Über-/Teilzahlung, Datum, Korrektur und exakte Salden |
 | C056 | `release: mark commercial documents milestone` | M4-Abnahme und Dokumentationsstand | Angebot→Annahme→Anzahlung→Schlussrechnung→Zahlung E2E |
 
 ### M5 – Online-Verträge und Fragebögen
@@ -119,10 +124,10 @@ Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertik
 | ID | Commit | Inhalt | Tests/Abnahme |
 |---|---|---|---|
 | C057 | `feat: manage versioned contract templates` | Vertragsbausteine, Felder, Bestätigungen, Sichtbarkeit und Sperrregeln | Schema-/Versions-/Archivtests; Rich-Text-Sanitizing |
-| C058 | `feat: issue secure public contract links` | Gehashte Tokens, Ablauf, Widerruf, Prefill und Autosave | Token-Raten, fremder Tenant, Ablauf, Replay und Zwischenspeichern |
+| C058 | `feat: issue secure public contract links` | Gehashte Tokens, Ablauf, Widerruf, Prefill und Autosave; ausgehender Abgleich persönlicher Vertragsinstanzen, befristete Gateway-Aufbewahrung und sichere Offline-Zustände | Token-Raten, fremder Tenant, Ablauf, Replay und Zwischenspeichern |
 | C059 | `feat: validate and capture contract signatures` | Pflichtfelder, Einwilligungen und Unterschrift | Fehlende/gefälschte Felder, mobile Eingabe und Abschluss nur einmal |
-| C060 | `feat: finalize signed contracts and evidence` | Unveränderbares PDF, Dokumenthash, Nachweisprotokoll und Versand | Manipulationserkennung, Vorlagenversion und deterministische Artefakte |
-| C061 | `feat: confirm resources after contract signing` | Atomarer Abschluss, erneute Ressourcenprüfung, Status Gebucht | Zwei parallele Signaturen auf letzte Box; sicherer Abbruch ohne Widerspruch |
+| C060 | `feat: finalize signed contracts and evidence` | Unveränderbares PDF, Dokumenthash, Nachweisprotokoll und Versand erst nach verbindlichem Abschluss; wiederanlaufbare PDF-Bereitstellung gemäß docs/decisions.md | Manipulationserkennung, Vorlagenversion und deterministische Artefakte |
+| C061 | `feat: confirm resources after contract signing` | Lokaler atomarer Abschluss nach ausgehend abgeholtem Signaturauftrag; Gateway meldet bis zur Quittierung nur ausstehend, erneute Ressourcenprüfung, Status Gebucht | Zwei parallele Signaturen auf letzte Box; Offline, Crash, verlorene Quittierung und Replay; sicherer Abbruch ohne Widerspruch |
 | C062 | `feat: remind customers about unsigned contracts` | Konfigurierbare Erinnerung und Stop nach Abschluss/Widerruf | Zeitsteuerung, Retry und kein Versand nach Abschluss |
 | C063 | `feat: manage questionnaire templates` | Feldtypen, Sortierung, Uploadregeln und Feldmapping | Schema, Archivierung, sichere Konfiguration |
 | C064 | `feat: collect fotobox questionnaire responses` | Sicherer Link, Prefill, Autosave, Abgabe und Eventanzeige | Mobil-E2E, Uploadschutz, Tenanttrennung und Logbuch |
@@ -145,17 +150,17 @@ Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertik
 
 | ID | Commit | Inhalt | Tests/Abnahme |
 |---|---|---|---|
-| C074 | `feat: import contacts with duplicate reporting` | Bookitup-Import, Dry-run und Fehlerbericht | Zeichensätze, Firmen, Dubletten, Wiederholung und Rollback |
-| C075 | `feat: import events and master data` | Aktive/zukünftige Events, Arten, Pakete, Produkte, Locations und Notizen | Referenzintegrität, Statusmapping und Wiederanlauf |
+| C074 | `feat: import contacts with duplicate reporting` | Bookitup-Import, Dry-run und Fehlerbericht; Auskunftsexport und dokumentierte Lösch-/Anonymisierungsvorgänge mit Aufbewahrungssperren | Zeichensätze, Firmen, Dubletten, Wiederholung und Rollback |
+| C075 | `feat: import events and master data` | Aktive/zukünftige Events, Arten, Pakete, Produkte, Locations und Notizen; Export von Events/Produkten; Übernahme von E-Mail-/Dokumentvorlagen, Logo, Gestaltung, Signatur und acht Standarddateien über die vorhandenen Module | Referenzintegrität, Statusmapping und Wiederanlauf |
 | C076 | `feat: reconcile resource assignments before cutover` | Manuelle Prüfliste für FB1/FB2 und Zubehör | Jeder gebuchte Zukunftstermin konfliktfrei oder explizit blockiert |
-| C077 | `feat: import open commercial balances and counters` | Offene Vorgänge und nächste Nummern; keine Altarchive/E-Mails | Summenkontrolle, Nummernüberschneidung und Dry-run-Bericht |
+| C077 | `feat: import open commercial balances and counters` | Offene Vorgänge und nächste Nummern; keine Altarchive/E-Mails; Originalnummern und unveränderbare Originalbelege offener Vorgänge erhalten, keine Neuausstellung | Summenkontrolle, Nummernüberschneidung und Dry-run-Bericht |
 | C078 | `ops: automate encrypted backup and restore` | PostgreSQL- und Dateisicherung, Rotation und Restore-Befehl | Vollständiger Restore in frische Umgebung mit Prüfsummen |
-| C079 | `security: harden public and administrative endpoints` | Security Header, CSRF, Rate-Limits, Uploadscan, Tokenrotation und Dependency Audit | Automatisierte Missbrauchs-/Autorisierungsfälle und Security-Scan |
+| C079 | `security: harden public and administrative endpoints` | Modulübergreifende Nachprüfung der bereits bei Einführung verpflichtenden Security Header, CSRF, Rate-Limits, Uploadscan, Tokenrotation und Dependency Audits | Automatisierte Missbrauchs-/Autorisierungsfälle und Security-Scan |
 | C080 | `test: verify tenant isolation across all modules` | Systematische Negativsuite für späteren Mehrmandantenbetrieb | Kein Zugriff über IDs, Suche, Dateien, Jobs, Exporte oder öffentliche Tokens |
 | C081 | `perf: validate production data volumes and concurrency` | Lasttests für Listen, Mail, Widget und gleichzeitige Reservierung | Definierte Antwortzeiten und keine Doppelbuchung unter Last |
 | C082 | `a11y: audit administrative and public workflows` | Tastatur, Fokus, Kontrast, Labels und Screenreader-Grundlagen | Automatisierte axe-Prüfung plus dokumentierte manuelle Checks |
-| C083 | `ops: document update rollback and incident procedures` | Betriebshandbuch, Updates, Rollback, OAuth-/Mail-/Gateway-Ausfall | Dry-run der Verfahren auf Testinstallation |
-| C084 | `test: rehearse migration and production cutover` | Vollständiger Probelauf mit anonymisiertem Export und Delta-Verfahren | Mengen-/Summen-/Ressourcenabgleich vollständig grün |
+| C083 | `ops: document update rollback and incident procedures` | Betriebshandbuch, Updates, Rollback nur bei kompatiblem Schema, sonst getestete Wiederherstellung; OAuth-/Mail-/Gateway-Ausfall | Dry-run der Verfahren auf Testinstallation |
+| C084 | `test: rehearse migration and production cutover` | Vollständiger Probelauf mit synthetischem Export und Delta-Verfahren; echte Exporte ausschließlich lokal und ignoriert | Mengen-/Summen-/Ressourcenabgleich vollständig grün |
 | C085 | `release: publish the first production-ready version` | Changelog, versionierte Images, Prüfsummen und finale Abnahme | Gesamte Suite, Clean install, Restore und Kernprozess vollständig grün |
 
 ## 5. Definition des minimalen MVP nach C027
@@ -178,4 +183,4 @@ Dieser Stand ersetzt noch nicht bookitup vollständig, ist aber bereits als verl
 - Nach jedem Commit: vollständige relevante Tests, explizite Staging-Prüfung, Commit und sofortiger Push.
 - Nach jedem Milestone: komplette Testsuite, E2E-Abnahme, aktualisierte Dokumentation und ein versionierter Tag.
 - Kein Milestone wird durch Überspringen eines fehlgeschlagenen Tests abgeschlossen.
-- Der GitHub-Remote wird nach Bestätigung von Repository-Name und Sichtbarkeit eingerichtet.
+- Der konfigurierte Remote ist `https://github.com/gcode-de/auftragskompass.git`; Sichtbarkeit und Repository-Einstellungen werden nicht beiläufig geändert.

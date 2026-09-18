@@ -1,7 +1,7 @@
 # Lastenheft: Eigene Fotobox-Verwaltung – fokussierter MVP
 
-**Dokumentstatus:** Arbeitsentwurf v0.5
-**Stand:** 14.09.2026
+**Dokumentstatus:** Arbeitsentwurf v0.6
+**Stand:** 18.09.2026
 **Grundlage:** öffentliche Dokumentation von bookitup und kreativ.management plus rein lesender Abgleich des angemeldeten bookitup-Kontos
 **Leitlinie:** In den MVP kommen die heute genutzten Funktionen sowie die ausdrücklich gewünschten Erweiterungen für Ressourcen, Online-Verträge, Kundenfragebögen, öffentliche Verfügbarkeit, To-dos und Absagegründe.
 
@@ -9,7 +9,9 @@
 
 Es soll eine schnelle, übersichtliche Webanwendung entstehen, mit der ein einzelner Fotobox-Anbieter Anfragen, Kunden, Aufträge, E-Mails, Angebote und Rechnungen ohne parallele Listen verwalten kann.
 
-Der erste produktive Stand soll den heute tatsächlich gelebten Ablauf ersetzen:
+Der vollständige MVP nach M7 soll den heute tatsächlich gelebten Ablauf ersetzen. M1 ist zuvor nur eine interne Dispositionsstufe und ersetzt bookitup noch nicht. Die verbindliche Lieferreihenfolge steht im [Implementierungsplan](IMPLEMENTATION_PLAN.md); fachliche Präzisierungen stehen in [docs/decisions.md](docs/decisions.md).
+
+Der vollständige Zielablauf:
 
 1. Eine Anfrage kommt über die Website oder wird manuell erfasst.
 2. Das System legt Kontakt und Event an.
@@ -491,7 +493,7 @@ Vor Umschaltung müssen Stichproben und Summenkontrollen bestätigen:
 **NF-01 Performance:** Event-, Kontakt- und Postfachlisten müssen im Normalfall innerhalb von zwei Sekunden bedienbar sein.
 **NF-02 Datenschutz:** Verarbeitung nach DSGVO mit dokumentiertem Lösch-, Auskunfts- und Exportprozess.
 **NF-03 Betrieb:** Der MVP wird lokal auf eigener Infrastruktur betrieben. Installation, Updates, Backup und Wiederherstellung müssen dokumentiert und ohne Cloud-Plattformzwang möglich sein.
-**NF-04 Sicherheit:** TLS, sichere Passwortspeicherung, Schutz vor Brute Force und optional Zwei-Faktor-Authentifizierung.
+**NF-04 Sicherheit:** TLS, sichere OIDC-Sitzungen, CSRF-Schutz und Schutz vor Brute Force ab Einführung des jeweiligen Endpunkts; keine lokalen Passwörter im MVP. Zusätzliche Faktoren werden beim Google-Konto verwaltet. Ein später aktivierter Notfallzugang benötigt ein separat geprüftes Sicherheitskonzept.
 **NF-05 Backup:** Tägliche automatische Sicherung; Wiederherstellung muss regelmäßig getestet werden.
 **NF-06 Nachvollziehbarkeit:** Geschäftsdokumente, Nummernvergabe und automatische Änderungen müssen protokolliert werden.
 **NF-07 Datenintegrität:** Finale Dokumente, Nummernkreise, Zahlungen, Formularanlage und Ressourcenreservierungen benötigen Transaktionen und Eindeutigkeitsregeln. Gleichzeitige Bearbeitung darf keine Doppelbuchung ermöglichen.
@@ -536,6 +538,8 @@ Zusätzlich müssen zwei Gegenfälle abgenommen werden:
 - Ist das lokale System oder der öffentliche Verfügbarkeitsstand nicht aktuell erreichbar, zeigt WordPress keine verbindliche Zusage an.
 
 ## 10. Empfohlene Umsetzungsreihenfolge
+
+Die folgenden Gruppen beschreiben fachliche Bereiche, keine abweichende Commitreihenfolge. Maßgeblich ist `IMPLEMENTATION_PLAN.md`.
 
 ### Ausbaustufe A – Datenkern
 
