@@ -4,7 +4,7 @@ Stand: 18.09.2026. Ergänzung zum [Lastenheft](../Lastenheft_Fotobox-Verwaltung_
 
 ## Lieferumfang und Abhängigkeiten
 
-Der geprüfte Stand enthält nur Dokumentation. C001 ist abgeschlossen; C002 ist der nächste Implementierungsschritt. M1 ermöglicht interne Disposition, M7 erst die vollständige Ablösung. Vor echten Geschäftsdaten sind Zugriffsschutz, tägliche Sicherung mit geprüftem Restore und kontrollierte Übernahme der betreffenden Bestandsdaten erforderlich. Insbesondere darf ein leerer Kalender nicht als freie Kapazität veröffentlicht werden, solange zukünftige Bestandsbuchungen noch fehlen (C027, C037, C076).
+Die Planprüfung bezog sich auf den damaligen reinen Dokumentationsstand nach C001. Den aktuellen Umsetzungsstand führt der Implementierungsplan. M1 ermöglicht interne Disposition, M7 erst die vollständige Ablösung. Vor echten Geschäftsdaten sind Zugriffsschutz, tägliche Sicherung mit geprüftem Restore und kontrollierte Übernahme der betreffenden Bestandsdaten erforderlich. Insbesondere darf ein leerer Kalender nicht als freie Kapazität veröffentlicht werden, solange zukünftige Bestandsbuchungen noch fehlen (C027, C037, C076).
 
 Die bisherige Dateispeicherung C046 wird C038, die bisherigen C038–C045 werden C039–C046. Damit stehen Storage, Quarantäne und unveränderbare Dateiversionen vor SMTP-Anhängen, Vorlagen und Editor bereit. Diese Änderung betrifft ausschließlich noch nicht implementierte Schritte. Signaturabschluss und automatische Buchung werden erst gemeinsam mit C061 freigegeben; C060 allein schaltet diesen Weg nicht produktiv frei.
 

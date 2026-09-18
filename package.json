@@ -4,11 +4,11 @@
   "type": "module",
   "packageManager": "pnpm@10.2.0",
   "engines": {
-    "node": "^22.13.0 || ^24.0.0 || ^25.0.0",
+    "node": "^22.22.2 || ^24.15.0 || ^26.0.0",
     "pnpm": "10.2.0"
   },
   "scripts": {
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r typecheck && tsc -p tests/tsconfig.json",
     "build": "pnpm -r build",
     "test:workspace": "node --test tests/workspace/*.test.mjs",
     "test:docs": "python3 -B scripts/check_docs.py && python3 -B -m unittest discover -s tests/docs -v",
@@ -16,16 +16,35 @@
     "format:check": "prettier --check \"{apps,packages,scripts,tests}/**/*.{ts,tsx,mjs,json,html}\" \"*.{json,mjs,yaml}\"",
     "lint": "eslint apps packages scripts tests eslint.config.mjs prettier.config.mjs",
     "commit:check": "commitlint --config scripts/commitlint.config.mjs",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:workspace && pnpm test:docs && pnpm build"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:workspace && pnpm test:docs && pnpm test:unit && pnpm test:component && pnpm test:integration && pnpm test:coverage && pnpm test:e2e && pnpm build",
+    "test:unit": "vitest run --config tests/vitest.config.ts --project unit",
+    "test:component": "vitest run --config tests/vitest.config.ts --project component",
+    "test:integration": "vitest run --config tests/vitest.config.ts --project integration",
+    "test:coverage": "vitest run --config tests/vitest.config.ts --project unit --project component --coverage",
+    "test:e2e": "playwright test --config tests/playwright.config.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
     "@commitlint/config-conventional": "21.2.2",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@testcontainers/postgresql": "12.1.0",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "22.20.3",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitest/coverage-v8": "5.0.1",
     "eslint": "10.10.0",
     "globals": "17.12.0",
+    "jsdom": "30.1.0",
+    "pg": "8.23.0",
     "prettier": "3.9.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.70.0"
+    "typescript-eslint": "8.70.0",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
   }
 }
