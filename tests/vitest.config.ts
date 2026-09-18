@@ -6,8 +6,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['packages/*/src/**/*.ts', 'apps/*/src/**/*.{ts,tsx}'],
-      // DOM mounting is exercised against the built application by Playwright.
-      exclude: ['apps/admin/src/main.tsx'],
+      // Process wiring is exercised by Chromium and the real Compose smoke test.
+      exclude: [
+        'apps/admin/src/main.tsx',
+        'apps/api/src/main.ts',
+        'apps/worker/src/main.ts',
+      ],
       reporter: ['text', 'json-summary', 'lcov'],
       thresholds: { lines: 90, branches: 85, functions: 90, statements: 90 },
     },

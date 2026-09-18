@@ -16,12 +16,13 @@
     "format:check": "prettier --check \"{apps,packages,scripts,tests}/**/*.{ts,tsx,mjs,json,html}\" \"*.{json,mjs,yaml}\"",
     "lint": "eslint apps packages scripts tests eslint.config.mjs prettier.config.mjs",
     "commit:check": "commitlint --config scripts/commitlint.config.mjs",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:workspace && pnpm test:docs && pnpm test:unit && pnpm test:component && pnpm test:integration && pnpm test:coverage && pnpm test:e2e && pnpm build",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:workspace && pnpm test:docs && pnpm test:unit && pnpm test:component && pnpm test:integration && pnpm test:coverage && pnpm test:e2e && pnpm build && pnpm test:ops",
     "test:unit": "vitest run --config tests/vitest.config.ts --project unit",
     "test:component": "vitest run --config tests/vitest.config.ts --project component",
     "test:integration": "vitest run --config tests/vitest.config.ts --project integration",
     "test:coverage": "vitest run --config tests/vitest.config.ts --project unit --project component --coverage",
-    "test:e2e": "playwright test --config tests/playwright.config.ts"
+    "test:e2e": "playwright test --config tests/playwright.config.ts",
+    "test:ops": "node --test tests/ops/*.test.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",

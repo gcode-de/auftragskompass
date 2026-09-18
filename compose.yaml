@@ -1,0 +1,76 @@
+name: auftragskompass
+services:
+  database:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: ak
+      POSTGRES_DB: auftragskompass
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes: [database:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U ak -d auftragskompass']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      target: runtime
+    command: [node, apps/api/dist/main.js]
+    depends_on:
+      database: { condition: service_healthy }
+    ports: ['127.0.0.1:${AK_API_PORT:-3100}:3000']
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    init: true
+    restart: unless-stopped
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      target: runtime
+    command: [node, apps/worker/dist/main.js]
+    depends_on:
+      database: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "process.exit(Date.now()-Number(require('fs').readFileSync('/tmp/ak-worker-heartbeat','utf8'))<5000?0:1)",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    init: true
+    restart: unless-stopped
+  admin:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      target: admin
+    ports: ['127.0.0.1:${AK_ADMIN_PORT:-8080}:8080']
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+volumes:
+  database:
+secrets:
+  db_password:
+    file: ${AK_DB_PASSWORD_FILE:?Set absolute path to an external password file}

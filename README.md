@@ -44,3 +44,5 @@ pnpm build
 Commit-Nachrichten verwenden Conventional Commits, zum Beispiel `chore: add tooling`. Prüfung vor dem Commit: `echo 'chore: add tooling' | pnpm commit:check`. Es werden keine bestehenden Git-Hooks überschrieben. Die Negativtests in `pnpm test:workspace` prüfen Format-, Lint- und Commit-Ablehnungen.
 
 Die Testgrundlage und ihre Voraussetzungen stehen in [docs/testing.md](docs/testing.md). Für alle Gates werden Docker und der Playwright-Chromium benötigt. Lokal starten: `pnpm --filter @auftragskompass/admin dev`. Der Entwicklungsserver bindet ausschließlich an Loopback und begrenzt Dateizugriffe auf die Admin-App und ihre Abhängigkeiten.
+
+Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Stand C005: Compose ist verfügbar; Konfiguration und differenzierte Health-Endpunkte folgen in C007.
