@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import type { Writable } from 'node:stream';
 
 export function loadRuntimeConfig(
@@ -98,7 +98,11 @@ export function createHealthServer(
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: 'not_found' }),
   );
-  app.setErrorHandler((_error, _request, reply) => {
+  app.setErrorHandler<FastifyError>((error, _request, reply) => {
+    if (error.statusCode === 429)
+      return reply.code(429).send({ error: 'rate_limited' });
+    if (error.validation)
+      return reply.code(400).send({ error: 'invalid_request' });
     app.log.error('request_failed');
     void reply.code(500).send({ error: 'internal_error' });
   });

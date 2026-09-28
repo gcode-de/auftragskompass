@@ -82,6 +82,8 @@ services:
     init: true
     restart: unless-stopped
   admin:
+    depends_on:
+      api: { condition: service_healthy }
     build:
       context: .
       dockerfile: infrastructure/Dockerfile

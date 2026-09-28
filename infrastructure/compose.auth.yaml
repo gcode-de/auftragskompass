@@ -1,0 +1,13 @@
+# Use together with compose.yaml. External configuration only; no credentials here.
+services:
+  api:
+    secrets: [google_secret]
+    environment:
+      AK_AUTH_ENABLED: 'true'
+      AK_AUTH_ORIGIN: ${AK_AUTH_ORIGIN:?Set HTTPS administrative origin}
+      AK_TENANT_ID: ${AK_TENANT_ID:?Set tenant UUID}
+      AK_GOOGLE_CLIENT_ID: ${AK_GOOGLE_CLIENT_ID:?Set Google client ID}
+      AK_GOOGLE_SECRET_FILE: /run/secrets/google_secret
+secrets:
+  google_secret:
+    file: ${AK_GOOGLE_SECRET_FILE:?Set external Google secret file}

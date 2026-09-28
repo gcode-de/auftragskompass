@@ -55,3 +55,7 @@ Mandanten, Benutzer und Administrator-Memberships sind persistent. Benutzer und
 Memberships besitzen zusammengesetzte Mandantenschlüssel; Fremdschlüssel verhindern
 mandantenfremde Zuordnungen. Repositories benötigen immer einen expliziten Mandanten.
 Es werden keine echten Konten oder Standardmandanten automatisch angelegt.
+
+Die optionale Google-Anmeldung, TLS-Voraussetzungen und Endpunkte sind in
+[authentication.md](authentication.md) beschrieben. Die Standard-Compose-Umgebung
+bleibt ohne Google-Secrets startbar; administrative Fachendpunkte sind dann gesperrt.

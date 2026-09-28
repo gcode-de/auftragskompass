@@ -4,6 +4,9 @@ import {
   createHealthServer,
   loadRuntimeConfig,
   migrate,
+  loadAuthConfig,
+  googleProvider,
+  registerAuth,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -20,7 +23,10 @@ try {
     max: 5,
   });
   pool.on('error', () => {});
-  await migrate(pool);
+  await migrate(pool).catch(async (error: unknown) => {
+    await pool.end();
+    throw error;
+  });
   const app = createHealthServer(config, {
     database: async () => {
       await pool.query('SELECT 1');
@@ -33,6 +39,15 @@ try {
         })
       ).ok,
   });
+  const auth = loadAuthConfig(process.env, (path) =>
+    readFileSync(path, 'utf8'),
+  );
+  await registerAuth(
+    app,
+    pool,
+    auth,
+    auth ? await googleProvider(auth) : undefined,
+  );
   app.addHook('onClose', async () => {
     await pool.end();
   });
@@ -41,5 +56,5 @@ try {
     process.on(signal, () => void app.close());
 } catch {
   console.error(JSON.stringify({ level: 'error', event: 'startup_failed' }));
-  process.exitCode = 1;
+  process.exit(1);
 }

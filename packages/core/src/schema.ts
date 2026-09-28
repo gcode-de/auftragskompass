@@ -6,6 +6,7 @@ import {
   text,
   unique,
   uuid,
+  timestamp,
 } from 'drizzle-orm/pg-core';
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey(),
@@ -46,3 +47,18 @@ export const memberships = pgTable(
     }),
   ],
 );
+
+export const loginAttempts = pgTable('login_attempts', {
+  tenantId: uuid('tenant_id').notNull(),
+  stateHash: text('state_hash').notNull(),
+  bindingHash: text('binding_hash').notNull(),
+  verifier: text('verifier').notNull(),
+  nonce: text('nonce').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+export const sessions = pgTable('sessions', {
+  tenantId: uuid('tenant_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  userId: uuid('user_id').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
