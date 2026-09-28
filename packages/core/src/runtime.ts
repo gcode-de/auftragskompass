@@ -101,7 +101,11 @@ export function createHealthServer(
   app.setErrorHandler<FastifyError>((error, _request, reply) => {
     if (error.statusCode === 429)
       return reply.code(429).send({ error: 'rate_limited' });
-    if (error.validation)
+    if (error.statusCode === 415)
+      return reply.code(415).send({ error: 'unsupported_media_type' });
+    if (error.statusCode === 413)
+      return reply.code(413).send({ error: 'request_too_large' });
+    if (error.statusCode === 400 || error.validation)
       return reply.code(400).send({ error: 'invalid_request' });
     app.log.error('request_failed');
     void reply.code(500).send({ error: 'internal_error' });

@@ -6,6 +6,8 @@ services:
       AK_AUTH_ENABLED: 'true'
       AK_AUTH_ORIGIN: ${AK_AUTH_ORIGIN:?Set HTTPS administrative origin}
       AK_TENANT_ID: ${AK_TENANT_ID:?Set tenant UUID}
+      AK_BOOTSTRAP_EMAIL: ${AK_BOOTSTRAP_EMAIL:-}
+      AK_TENANT_NAME: ${AK_TENANT_NAME:-AuftragsKompass}
       AK_GOOGLE_CLIENT_ID: ${AK_GOOGLE_CLIENT_ID:?Set Google client ID}
       AK_GOOGLE_SECRET_FILE: /run/secrets/google_secret
 secrets:

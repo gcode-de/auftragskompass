@@ -1,3 +1,4 @@
+import { AccessPanel } from './AccessPanel.js';
 import { useEffect, useState } from 'react';
 export type CurrentUser = { email: string; csrfToken: string };
 export function AuthPanel() {
@@ -53,6 +54,14 @@ export function AuthPanel() {
       {user ? (
         <>
           <p>{user.email}</p>
+          <AccessPanel
+            csrfToken={user.csrfToken}
+            onSessionEnded={() => {
+              setUser(null);
+              setReady(true);
+              setStatus('Sitzung beendet. Bitte erneut anmelden.');
+            }}
+          />
           <button onClick={() => void logout()}>Abmelden</button>
         </>
       ) : ready ? (

@@ -62,3 +62,19 @@ export const sessions = pgTable('sessions', {
   userId: uuid('user_id').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
+export const allowedAccounts = pgTable('allowed_accounts', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  email: text('email').notNull(),
+  active: boolean('active').notNull().default(true),
+  userId: uuid('user_id'),
+});
+export const accessBootstrap = pgTable('access_bootstrap', {
+  tenantId: uuid('tenant_id').primaryKey(),
+});
+export const accessAudit = pgTable('access_audit', {
+  tenantId: uuid('tenant_id').notNull(),
+  actorId: uuid('actor_id'),
+  targetId: uuid('target_id').notNull(),
+  action: text('action').notNull(),
+});

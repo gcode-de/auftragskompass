@@ -2,7 +2,11 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** TypeScript-Workspace mit Qualitätsprüfungen und Testgrundlagen (C004). Eine minimale React-Hülle startet lokal; Fachfunktionen, Datenbankmigrationen und CI folgen. Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf; die vollständige Ablösung ist Ziel von M7.
+**Stand:** C001–C010 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
+Mandanten, Google-OIDC und Verwaltung freigegebener Administrator-Konten.
+Fachfunktionen wie Events, Reservierungen und Rechnungen folgen im Implementierungsplan.
+Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
+die vollständige Ablösung ist Ziel von M7.
 
 - [Fokussiertes Lastenheft](Lastenheft_Fotobox-Verwaltung_MVP.md)
 - [Commitgenauer Implementierungsplan](IMPLEMENTATION_PLAN.md)
@@ -21,7 +25,7 @@ python3 -B -m unittest discover -s tests/docs -v
 git diff --check
 ```
 
-Die Prüfungen kontrollieren lokale Markdown-Dateilinks, eindeutige Anforderungs-/Slice-IDs und vollständige Zuordnung der Anforderungen. Sie ersetzen keine fachliche Abnahme, Anwendungstests oder Prüfung externer Links. Die späteren pnpm-Gates werden gemäß Implementierungsplan eingerichtet.
+Die Prüfungen kontrollieren lokale Markdown-Dateilinks, eindeutige Anforderungs-/Slice-IDs und vollständige Zuordnung der Anforderungen. Sie ersetzen keine fachliche Abnahme, Anwendungstests oder Prüfung externer Links. Die ausführbaren pnpm-Gates sind unten beschrieben.
 
 Dieses Git-Verzeichnis liegt neben privatem Kundenmaterial. Ausschließlich explizite Anwendungspfade stagen; niemals `git add .` verwenden. Die bestehende Git-Allowlist bleibt erhalten. Im Repository und in Tests dürfen nur synthetische Daten stehen.
 
@@ -37,7 +41,7 @@ pnpm test:docs
 pnpm build
 ```
 
-`apps/admin` und `apps/widget` sind die künftigen React/Vite-Oberflächen; `apps/api`, `apps/worker` und `apps/gateway` bilden getrennte Einstiegspunkte. `packages/core` enthält den gemeinsamen Anwendungskern. Die Admin-App enthält eine minimale React-Hülle; die übrigen Einstiegspunkte sind noch leere TypeScript-Module ohne Fachfunktionen.
+`apps/admin` und `apps/widget` sind die künftigen React/Vite-Oberflächen; `apps/api`, `apps/worker` und `apps/gateway` bilden getrennte Einstiegspunkte. `packages/core` enthält den gemeinsamen Anwendungskern. Die Admin-App enthält Anmeldung und Kontofreigaben; API und Worker besitzen Healthchecks. Gateway und Widget bleiben für spätere öffentliche Funktionen getrennt.
 
 `pnpm check` führt alle bisher verfügbaren Gates aus. `pnpm format` formatiert ausschließlich die explizit angegebenen Anwendungspfade und Root-Konfigurationen; private Nachbardateien werden nicht durchsucht. Markdown und Python werden separat durch die Dokumentationsprüfungen geprüft.
 
@@ -45,4 +49,4 @@ Commit-Nachrichten verwenden Conventional Commits, zum Beispiel `chore: add tool
 
 Die Testgrundlage und ihre Voraussetzungen stehen in [docs/testing.md](docs/testing.md). Für alle Gates werden Docker und der Playwright-Chromium benötigt. Lokal starten: `pnpm --filter @auftragskompass/admin dev`. Der Entwicklungsserver bindet ausschließlich an Loopback und begrenzt Dateizugriffe auf die Admin-App und ihre Abhängigkeiten.
 
-Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Stand C005: Compose ist verfügbar; Konfiguration und differenzierte Health-Endpunkte folgen in C007.
+Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Google-Anmeldung und sicherer Erstkonto-Bootstrap: [Einrichtung](docs/authentication.md). Ohne OIDC-Konfiguration startet das Grundsystem, geschützte Verwaltungsendpunkte bleiben gesperrt.

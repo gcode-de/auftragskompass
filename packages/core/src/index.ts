@@ -4,3 +4,5 @@ export { migrate, identityRepository } from './identity.js';
 export { loadAuthConfig } from './auth-config.js';
 export { googleProvider } from './oidc.js';
 export { registerAuth } from './auth.js';
+export { bootstrapAccess } from './access.js';
+export { registerAccessRoutes } from './access-routes.js';

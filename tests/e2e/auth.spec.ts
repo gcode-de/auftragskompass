@@ -9,10 +9,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import Fastify from 'fastify';
-import {
-  migrate,
-  identityRepository,
-} from '../../packages/core/src/identity.js';
+import { migrate } from '../../packages/core/src/identity.js';
+import { bootstrapAccess } from '../../packages/core/src/access.js';
+import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out', async ({
@@ -100,11 +99,12 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       clientSecret: 'synthetic-secret',
     };
     await migrate(pool);
-    const identities = identityRepository(pool, config.tenantId);
-    await identities.createTenant('Synthetic browser', 'Europe/Berlin');
-    await identities.addAdministrator(
-      'synthetic-subject',
+    await bootstrapAccess(
+      pool,
+      config.tenantId,
       'synthetic@example.invalid',
+      'Synthetic auth',
+      'Europe/Berlin',
     );
     const google = await syntheticGoogle(config);
     callbackFor = google.code;
@@ -115,17 +115,49 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
         return origin + '/synthetic-google' + url.search;
       },
     });
+    registerAccessRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
     await page.goto(origin);
     await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
-    await expect(page.getByText('synthetic@example.invalid')).toBeVisible();
+    await expect(
+      page.getByText('synthetic@example.invalid', { exact: true }),
+    ).toBeVisible();
     expect(
       (await context.cookies()).find((c) => c.name === '__Host-ak-session'),
     ).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });
     expect(await page.evaluate(() => document.cookie)).not.toContain(
       'ak-session',
     );
-    await page.getByRole('button', { name: 'Abmelden' }).click();
+    await page
+      .getByLabel('Google-E-Mail-Adresse')
+      .fill('pending-browser@example.invalid');
+    await page.getByRole('button', { name: 'Konto freigeben' }).click();
+    await expect(
+      page.getByText(
+        'pending-browser@example.invalid – Erste Anmeldung ausstehend',
+      ),
+    ).toBeVisible();
+    await page
+      .getByRole('button', {
+        name: 'Sperren: synthetic@example.invalid',
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByText(
+        'Der letzte aktive Administrator darf nicht gesperrt werden.',
+      ),
+    ).toBeVisible();
+    await page
+      .getByRole('button', {
+        name: 'Sperren: pending-browser@example.invalid',
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByText('pending-browser@example.invalid – Gesperrt'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);
   } finally {

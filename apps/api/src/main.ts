@@ -7,6 +7,8 @@ import {
   loadAuthConfig,
   googleProvider,
   registerAuth,
+  bootstrapAccess,
+  registerAccessRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -42,12 +44,21 @@ try {
   const auth = loadAuthConfig(process.env, (path) =>
     readFileSync(path, 'utf8'),
   );
+  if (auth)
+    await bootstrapAccess(
+      pool,
+      auth.tenantId,
+      process.env.AK_BOOTSTRAP_EMAIL,
+      process.env.AK_TENANT_NAME ?? 'AuftragsKompass',
+      config.timezone,
+    );
   await registerAuth(
     app,
     pool,
     auth,
     auth ? await googleProvider(auth) : undefined,
   );
+  if (auth) registerAccessRoutes(app, pool, auth.tenantId);
   app.addHook('onClose', async () => {
     await pool.end();
   });

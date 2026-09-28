@@ -31,24 +31,45 @@ test('handles unavailable configuration and transport failure', async () => {
   expect(await screen.findByText(/nicht geprüft/)).toBeTruthy();
 });
 test('authenticated logout carries CSRF protection and supports retry', async () => {
-  const fetcher = vi
-    .fn()
-    .mockResolvedValueOnce(
-      Response.json({
+  let logoutCalls = 0;
+  const fetcher = vi.fn(async (url: string) => {
+    if (url === '/api/v1/access') return Response.json([]);
+    if (url === '/auth/me')
+      return Response.json({
         email: 'synthetic@example.invalid',
         csrfToken: 'synthetic-csrf',
-      }),
-    )
-    .mockResolvedValueOnce(new Response(null, { status: 500 }))
-    .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      });
+    return new Response(null, { status: ++logoutCalls === 1 ? 500 : 204 });
+  });
   vi.stubGlobal('fetch', fetcher);
   render(<AuthPanel />);
   fireEvent.click(await screen.findByRole('button', { name: 'Abmelden' }));
   expect(await screen.findByText(/Abmelden fehlgeschlagen/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button'));
+  fireEvent.click(screen.getByRole('button', { name: 'Abmelden' }));
   expect(await screen.findByText('Abgemeldet')).toBeTruthy();
   expect(fetcher).toHaveBeenLastCalledWith('/auth/logout', {
     method: 'POST',
     headers: { 'x-csrf-token': 'synthetic-csrf' },
   });
+});
+
+test('returns to login when a session expires or own access is blocked', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/auth/me'
+        ? Response.json({
+            email: 'synthetic@example.invalid',
+            csrfToken: 'synthetic-csrf',
+          })
+        : new Response(null, { status: 401 }),
+    ),
+  );
+  render(<AuthPanel />);
+  expect(
+    await screen.findByText('Sitzung beendet. Bitte erneut anmelden.'),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('link', { name: 'Mit Google anmelden' }),
+  ).toBeTruthy();
 });

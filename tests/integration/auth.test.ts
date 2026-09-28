@@ -10,10 +10,9 @@ import {
   loadRuntimeConfig,
 } from '../../packages/core/src/runtime.js';
 import { randomUUID } from 'node:crypto';
-import {
-  migrate,
-  identityRepository,
-} from '../../packages/core/src/identity.js';
+import { migrate } from '../../packages/core/src/identity.js';
+import { bootstrapAccess } from '../../packages/core/src/access.js';
+import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 let container: StartedPostgreSqlContainer;
@@ -30,11 +29,12 @@ beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17.6-alpine').start();
   pool = new Pool({ connectionString: container.getConnectionUri() });
   await migrate(pool);
-  const identities = identityRepository(pool, config.tenantId);
-  await identities.createTenant('Synthetic auth', 'Europe/Berlin');
-  await identities.addAdministrator(
-    'synthetic-subject',
+  await bootstrapAccess(
+    pool,
+    config.tenantId,
     'synthetic@example.invalid',
+    'Synthetic auth',
+    'Europe/Berlin',
   );
   google = await syntheticGoogle(config);
 });
@@ -64,6 +64,7 @@ async function server(enabled = true, tenantId = config.tenantId) {
     enabled ? { ...config, tenantId } : undefined,
     enabled ? google.provider : undefined,
   );
+  if (enabled) registerAccessRoutes(app, pool, tenantId);
   app.post(
     '/api/test',
     {
@@ -238,4 +239,115 @@ test('rate limit and unconfigured authentication fail closed', async () => {
   expect(
     (await app.inject({ method: 'POST', url: '/api/test' })).statusCode,
   ).toBe(503);
+});
+
+test('access API validates input, prevents lockout and revokes blocked sessions', async () => {
+  await server();
+  expect((await app.inject('/api/v1/access')).statusCode).toBe(401);
+  const login = await app.inject(await start());
+  const cookies = {
+    '__Host-ak-session': login.cookies.find(
+      (c) => c.name === '__Host-ak-session',
+    )!.value,
+  };
+  const me = await app.inject({ url: '/auth/me', cookies });
+  const headers = {
+    origin: config.origin,
+    'x-csrf-token': me.json().csrfToken,
+  };
+  const change = (id: string, active: boolean) =>
+    app.inject({
+      method: 'PATCH',
+      url: '/api/v1/access/' + id,
+      headers,
+      cookies,
+      payload: { active },
+    });
+  const grant = (email: string) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/access',
+      headers,
+      cookies,
+      payload: { email },
+    });
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/access',
+        cookies,
+        payload: { email: 'bad' },
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect((await grant('bad')).statusCode).toBe(400);
+  for (const [payload, contentType, expected] of [
+    ['{', 'application/json', 400],
+    ['unknown', 'application/octet-stream', 415],
+    ['x'.repeat(1024 * 1024 + 1), 'text/plain', 413],
+  ] as const) {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/access',
+          cookies,
+          headers: { ...headers, 'content-type': contentType },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(expected);
+  }
+  const first = (
+    await app.inject({ url: '/api/v1/access', cookies })
+  ).json()[0];
+  expect((await change(first.id, false)).json()).toEqual({
+    error: 'last_administrator',
+  });
+  expect((await change('bad', false)).statusCode).toBe(400);
+  expect((await change(randomUUID(), false)).statusCode).toBe(404);
+  expect((await grant('synthetic@example.invalid')).statusCode).toBe(409);
+  expect((await grant('api-second@example.invalid')).statusCode).toBe(201);
+  const secondLogin = await app.inject(
+    await start({ sub: 'api-second', email: 'api-second@example.invalid' }),
+  );
+  const secondCookies = {
+    '__Host-ak-session': secondLogin.cookies.find(
+      (c) => c.name === '__Host-ak-session',
+    )!.value,
+  };
+  const second = (await app.inject({ url: '/api/v1/access', cookies }))
+    .json()
+    .find((a: { email: string }) => a.email === 'api-second@example.invalid');
+  expect((await change(second.id, false)).statusCode).toBe(204);
+  expect(
+    (await app.inject({ url: '/auth/me', cookies: secondCookies })).statusCode,
+  ).toBe(401);
+  expect(
+    (
+      await app.inject(
+        await start({ sub: 'api-second', email: 'api-second@example.invalid' }),
+      )
+    ).statusCode,
+  ).toBe(403);
+  expect((await change(second.id, true)).statusCode).toBe(204);
+  expect(
+    (await app.inject({ url: '/auth/me', cookies: secondCookies })).statusCode,
+  ).toBe(401);
+  await pool.query(
+    'ALTER TABLE access_audit RENAME TO temporarily_unavailable_audit',
+  );
+  try {
+    expect((await grant('rollback@example.invalid')).statusCode).toBe(500);
+  } finally {
+    await pool.query(
+      'ALTER TABLE temporarily_unavailable_audit RENAME TO access_audit',
+    );
+  }
+  expect(
+    (await app.inject({ url: '/api/v1/access', cookies }))
+      .json()
+      .find((a: { email: string }) => a.email === 'rollback@example.invalid'),
+  ).toBeUndefined();
 });

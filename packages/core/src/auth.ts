@@ -5,10 +5,16 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, eq, gt, sql } from 'drizzle-orm';
-import { sessions, loginAttempts, memberships, users } from './schema.js';
-import { identityRepository } from './identity.js';
+import {
+  sessions,
+  loginAttempts,
+  memberships,
+  users,
+  allowedAccounts,
+} from './schema.js';
+import { accessRepository } from './access.js';
 import type { AuthConfig } from './auth-config.js';
-import type { IdentityProvider, GoogleIdentity } from './oidc.js';
+import type { IdentityProvider } from './oidc.js';
 export const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 const random = () => randomBytes(32).toString('base64url');
@@ -21,16 +27,11 @@ const cookieOptions = {
   sameSite: 'lax' as const,
 };
 export type Session = { userId: string; email: string };
-export type Authorize = (
-  identity: GoogleIdentity,
-) => Promise<{ id: string } | undefined>;
-
 export async function registerAuth(
   app: FastifyInstance,
   pool: Pool,
   config?: AuthConfig,
   provider?: IdentityProvider,
-  authorize?: Authorize,
 ) {
   await app.register(cookie);
   await app.register(rateLimit, {
@@ -67,6 +68,14 @@ export async function registerAuth(
         and(
           eq(users.tenantId, sessions.tenantId),
           eq(users.id, sessions.userId),
+        ),
+      )
+      .innerJoin(
+        allowedAccounts,
+        and(
+          eq(allowedAccounts.tenantId, sessions.tenantId),
+          eq(allowedAccounts.userId, sessions.userId),
+          eq(allowedAccounts.active, true),
         ),
       )
       .where(
@@ -145,19 +154,14 @@ export async function registerAuth(
           verifier: attempt.verifier,
           nonce: attempt.nonce,
         });
-        const user = authorize
-          ? await authorize(identity)
-          : await identityRepository(pool, config!.tenantId).findAdministrator(
-              identity.subject,
-            );
-        if (!user) return reply.code(403).send({ error: 'login_denied' });
         const token = random();
-        await db.insert(sessions).values({
-          tenantId: config!.tenantId,
-          tokenHash: digest(token),
-          userId: user.id,
-          expiresAt: new Date(Date.now() + 8 * 60 * 60_000),
-        });
+        if (
+          !(await accessRepository(pool, config!.tenantId).issueSession(
+            identity,
+            digest(token),
+          ))
+        )
+          return reply.code(403).send({ error: 'login_denied' });
         return reply
           .setCookie(sessionCookie, token, {
             ...cookieOptions,
