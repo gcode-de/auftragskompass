@@ -20,3 +20,5 @@ Coverage umfasst alle TypeScript-Anwendungsquellen; allein die DOM-Montage in `a
 Referenzen: [Vitest-Projekte](https://vitest.dev/guide/projects), [PostgreSQL-Testcontainers](https://node.testcontainers.org/modules/postgresql/).
 
 GitHub Actions führt `pnpm check` auf jedem Push und Pull Request unter Ubuntu und Node 24 aus, ohne Produktionssecrets und mit nur lesendem Repository-Token. Coverage-Artefakte werden sieben Tage gespeichert. Actions sind auf Commit-SHAs fixiert. Branch Protection wird durch den Workflow nicht verändert.
+
+Ab C008 bezieht der Coverage-Lauf auch die echten PostgreSQL-Integrationstests ein. Nur die drei Prozess-Einstiegspunkte (Admin-Mount, API und Worker) sind ausgenommen; ihr Start wird durch Chromium und Compose geprüft.

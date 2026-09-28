@@ -17,6 +17,8 @@
 !packages/*/tsconfig.json
 !packages/*/src/
 !packages/*/src/**
+!packages/*/migrations/
+!packages/*/migrations/*.sql
 !infrastructure/
 !infrastructure/nginx.conf
 **/.env*

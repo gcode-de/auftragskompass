@@ -1,0 +1,26 @@
+import { expect, test } from 'vitest';
+import { getTableConfig } from 'drizzle-orm/pg-core';
+import { tenants, users, memberships } from '../../packages/core/src/schema.js';
+test('typed schema declares tenant-bound identity keys matching SQL', () => {
+  expect(getTableConfig(tenants).columns.map((c) => c.name)).toEqual([
+    'id',
+    'name',
+    'timezone',
+  ]);
+  const user = getTableConfig(users);
+  expect(user.primaryKeys[0]!.columns.map((c) => c.name)).toEqual([
+    'tenant_id',
+    'id',
+  ]);
+  expect(user.uniqueConstraints).toHaveLength(2);
+  const member = getTableConfig(memberships);
+  expect(member.primaryKeys[0]!.columns.map((c) => c.name)).toEqual([
+    'tenant_id',
+    'user_id',
+  ]);
+  expect(
+    [...user.foreignKeys, ...member.foreignKeys].map((f) =>
+      f.reference().columns.map((c) => c.name),
+    ),
+  ).toEqual([['tenant_id'], ['tenant_id'], ['tenant_id', 'user_id']]);
+});

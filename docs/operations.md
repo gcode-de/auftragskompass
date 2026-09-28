@@ -42,3 +42,16 @@ Referenz: [Compose-Startreihenfolge und Healthchecks](https://docs.docker.com/co
 Direkter Node-Start benötigt die AK-Konfigurationswerte aus `.env.example`; Compose setzt interne Hosts/Ports selbst. Fehlende Konfiguration, ungültige Ports, Zeitzonen oder nicht lesbare/zu kurze Passphrassen beenden den Start mit einer neutralen JSON-Fehlermeldung. Request-Logs enthalten weder URL/Query, Header, Body noch Fehlermeldungen von Abhängigkeiten.
 
 Unter Linux müssen AK_UID/AK_GID zur Eigentümerschaft der externen Secret-Datei passen (`id -u`, `id -g`); Compose-Dateisecrets behalten Host-Dateirechte. Die Prozesse bleiben unprivilegiert. Der Smoke-Test konfiguriert hierfür seine eigene UID/GID und prüft zusätzlich den Worker-Ausfall.
+
+### Identitätsschema (C008)
+
+Die API führt beim Start die SQL-Dateien aus `packages/core/migrations` in einer
+Transaktion aus. Eine PostgreSQL-Advisory-Sperre serialisiert parallele Starts;
+SHA-256-Prüfsummen verhindern unbemerkte Änderungen bereits angewandter Migrationen.
+Fehler rollen die gesamte Migration zurück. Vor einem Update eine Sicherung erstellen;
+gepushte Migrationen werden ausschließlich durch neue Dateien ergänzt.
+
+Mandanten, Benutzer und Administrator-Memberships sind persistent. Benutzer und
+Memberships besitzen zusammengesetzte Mandantenschlüssel; Fremdschlüssel verhindern
+mandantenfremde Zuordnungen. Repositories benötigen immer einen expliziten Mandanten.
+Es werden keine echten Konten oder Standardmandanten automatisch angelegt.

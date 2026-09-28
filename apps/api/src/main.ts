@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
-import { createHealthServer, loadRuntimeConfig } from '@auftragskompass/core';
+import {
+  createHealthServer,
+  loadRuntimeConfig,
+  migrate,
+} from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
     readFileSync(path, 'utf8'),
@@ -16,6 +20,7 @@ try {
     max: 5,
   });
   pool.on('error', () => {});
+  await migrate(pool);
   const app = createHealthServer(config, {
     database: async () => {
       await pool.query('SELECT 1');

@@ -20,7 +20,7 @@
     "test:unit": "vitest run --config tests/vitest.config.ts --project unit",
     "test:component": "vitest run --config tests/vitest.config.ts --project component",
     "test:integration": "vitest run --config tests/vitest.config.ts --project integration",
-    "test:coverage": "vitest run --config tests/vitest.config.ts --project unit --project component --coverage",
+    "test:coverage": "vitest run --config tests/vitest.config.ts --project unit --project component --project integration --coverage",
     "test:e2e": "playwright test --config tests/playwright.config.ts",
     "test:ops": "node --test tests/ops/*.test.mjs"
   },
@@ -36,6 +36,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitest/coverage-v8": "5.0.1",
+    "drizzle-orm": "0.45.2",
     "eslint": "10.10.0",
     "globals": "17.12.0",
     "jsdom": "30.1.0",
