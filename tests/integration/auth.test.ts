@@ -116,7 +116,7 @@ test('full signed OIDC flow, cookies, authenticated writes, CSRF, logout and rep
   const me = await app.inject({ url: '/auth/me', cookies });
   expect(me.statusCode).toBe(200);
   expect(
-    (await app.inject({ url: '/api/v1/audit', cookies })).json(),
+    (await app.inject({ url: '/api/v1/audit', cookies })).json().slice(0, 2),
   ).toMatchObject([{ action: 'login.failed' }, { action: 'login.succeeded' }]);
   expect(me.headers['cache-control']).toBe('no-store');
   await server(true, randomUUID());

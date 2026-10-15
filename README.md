@@ -2,8 +2,8 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C011 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
-Mandanten, Google-OIDC, Kontofreigaben und unveränderbares Auditlog.
+**Stand:** C001–C012 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
+Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten und Paketwerte.
 Fachfunktionen wie Events, Reservierungen und Rechnungen folgen im Implementierungsplan.
 Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
 die vollständige Ablösung ist Ziel von M7.
@@ -50,3 +50,5 @@ Commit-Nachrichten verwenden Conventional Commits, zum Beispiel `chore: add tool
 Die Testgrundlage und ihre Voraussetzungen stehen in [docs/testing.md](docs/testing.md). Für alle Gates werden Docker und der Playwright-Chromium benötigt. Lokal starten: `pnpm --filter @auftragskompass/admin dev`. Der Entwicklungsserver bindet ausschließlich an Loopback und begrenzt Dateizugriffe auf die Admin-App und ihre Abhängigkeiten.
 
 Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Google-Anmeldung und sicherer Erstkonto-Bootstrap: [Einrichtung](docs/authentication.md). Ohne OIDC-Konfiguration startet das Grundsystem, geschützte Verwaltungsendpunkte bleiben gesperrt.
+
+Stammdaten verwalten und bestehende Werte übernehmen: [Stammdaten](docs/master-data.md).

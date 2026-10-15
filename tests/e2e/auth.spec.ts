@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
+import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out', async ({
@@ -116,6 +117,7 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       },
     });
     registerAccessRoutes(app, pool, config.tenantId);
+    registerMasterDataRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
     await page.goto(origin);
     await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
@@ -156,6 +158,33 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       .click();
     await expect(
       page.getByText('pending-browser@example.invalid – Gesperrt'),
+    ).toBeVisible();
+    const packages = page.getByRole('region', { name: 'Paketwerte' });
+    await packages
+      .getByLabel('Bezeichnung', { exact: true })
+      .fill('Synthetic browser package');
+    await packages
+      .getByRole('button', { name: 'Speichern', exact: true })
+      .click();
+    await packages
+      .getByRole('button', {
+        name: 'Bearbeiten: Synthetic browser package',
+        exact: true,
+      })
+      .click();
+    await packages
+      .getByLabel('Zustand', { exact: true })
+      .selectOption('archived');
+    await packages
+      .getByRole('button', { name: 'Speichern', exact: true })
+      .click();
+    await expect(
+      packages.getByText('Synthetic browser package – Archiviert'),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Auftragsstatus' })
+        .getByText('Gebucht', { exact: true }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();

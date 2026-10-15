@@ -33,7 +33,7 @@ test('handles unavailable configuration and transport failure', async () => {
 test('authenticated logout carries CSRF protection and supports retry', async () => {
   let logoutCalls = 0;
   const fetcher = vi.fn(async (url: string) => {
-    if (url === '/api/v1/access') return Response.json([]);
+    if (url.startsWith('/api/')) return Response.json([]);
     if (url === '/auth/me')
       return Response.json({
         email: 'synthetic@example.invalid',

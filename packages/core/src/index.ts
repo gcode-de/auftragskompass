@@ -7,3 +7,4 @@ export { registerAuth } from './auth.js';
 export { bootstrapAccess } from './access.js';
 export { registerAccessRoutes } from './access-routes.js';
 export { registerAuditRoutes } from './audit.js';
+export { registerMasterDataRoutes } from './master-data.js';

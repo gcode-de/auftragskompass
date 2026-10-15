@@ -55,3 +55,12 @@ C016/C075/C055 liefern offene Exporte für Kontakte, Events, Produkte, Dokumentm
 C075 umfasst auch bisher im Plan nicht ausdrücklich zugeordnete Vorlagen, Logo, Dokumentgestaltung, Signatur und Standarddateien. C077 erhält Originalnummern und Originalbelege offener Vorgänge sowie die dazugehörigen Summen und Zahlungen. Historische Archive und E-Mails bleiben ausgeschlossen; offene Originalbelege werden nicht neu ausgestellt. Schnittstellen, Pflichtfelder und verfügbare Exportformate werden vor dem Import anhand lokal gehaltener Daten geprüft.
 
 Vor vollständiger Produktivfreigabe bleiben Entscheidungen mit dem Betreiber erforderlich: endgültige Boxnamen, tatsächliche Importformate, öffentliche Gateway-/TLS-Adresse, Fristen für Vormerkungen und persönliche Gateway-Daten, Aufbewahrungskonzept sowie rechtliche Prüfung von Rechnungsvorgaben, Vertragstexten und Signaturverfahren. Diese Prüfung hat keine Rechtskonformität oder Funktionsfähigkeit einer noch nicht vorhandenen Anwendung nachgewiesen.
+
+## Konkretisierung der Eventarten (15.10.2026)
+
+Der Inhaber hat Hochzeit, Geburtstag, Firmenfeier, Weihnachtsfeier und sonstiges
+als Startwerte benannt. C012 legt genau diese fünf aktiven Werte pro Mandant an.
+Die frühere pauschale Anzahl sieben im Lastenheft ist keine Obergrenze und kein
+Anlass, zwei Namen zu erfinden. Weitere Werte werden in der Oberfläche ergänzt;
+Paketwerte wurden noch nicht benannt und beginnen leer. Die spätere Bestandsübernahme
+prüft und ergänzt die fachlich tatsächlich verwendeten Werte.

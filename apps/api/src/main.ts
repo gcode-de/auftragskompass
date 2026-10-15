@@ -10,6 +10,7 @@ import {
   bootstrapAccess,
   registerAccessRoutes,
   registerAuditRoutes,
+  registerMasterDataRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -62,6 +63,7 @@ try {
   if (auth) {
     registerAccessRoutes(app, pool, auth.tenantId);
     registerAuditRoutes(app, pool, auth.tenantId);
+    registerMasterDataRoutes(app, pool, auth.tenantId);
   }
   app.addHook('onClose', async () => {
     await pool.end();

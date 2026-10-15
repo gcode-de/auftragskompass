@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C011 implementiert; C012–C085 offen. Die CI prüft jeden Push.
+**Status:** geprüfter Bauplan; C001–C012 implementiert; C013–C085 offen. Die CI prüft jeden Push.
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -23,7 +23,8 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] C009: Google-OIDC, PKCE, sichere Sitzungen, CSRF und Logout
 - [x] C010: einmaliger Bootstrap, Kontofreigaben, Sitzungswiderruf, Aussperrschutz und Änderungsnachweis
 - [x] C011: unveränderbares Auditlog, atomare Sitzungsereignisse und mandantenbegrenzter Lesezugriff
-- [ ] C012–C085: noch nicht implementiert oder abgenommen
+- [x] C012: Eventarten und Paketwerte mit Archivierung/Versionsschutz; fünf bestätigte Startwerte und feste Status
+- [ ] C013–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 
@@ -68,7 +69,7 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 | C009 | `feat: authenticate administrators with google oidc` | Authorization-Code-Flow, sichere Session-Cookies, Logout und Callback, PKCE, CSRF-/Origin-Schutz für schreibende Admin-Routen | OIDC-Adaptertest, State/Nonce/Redirect-Angriffe, Sessionablauf |
 | C010 | `feat: restrict login with an administrator allowlist` | Oberfläche und Regel für freigegebene Google-Konten; sicherer Erstkonto-Bootstrap über lokale Konfiguration; Sitzungswiderruf bei Sperre; letzter Admin vor Aussperrung geschützt; deaktivierter Notfallzugang vorbereitet | Nicht erlaubtes Konto abgewiesen; Erstkonto ohne offene Registrierung; Sperre widerruft Sitzungen; Änderung auditiert |
 | C011 | `feat: record append-only audit events` | Auditlog für Anmeldung und spätere Fachaktionen | Einträge unveränderbar; Tenantzugriff geprüft |
-| C012 | `feat: manage event types packages and statuses` | Konfigurationsoberflächen für sieben Eventarten, Paketwerte und feste Status | CRUD-/Archivtests; historische Referenzen bleiben gültig |
+| C012 | `feat: manage event types packages and statuses` | Konfigurationsoberflächen für Eventarten (fünf bestätigte Startwerte), Paketwerte und feste Status | CRUD-/Archivtests; historische Referenzen bleiben gültig |
 | C013 | `feat: manage cancellation reasons` | Konfigurierbare Absagegründe als Stammdaten | Archivierung statt Löschung; tenant-isolierte API/UI |
 | C014 | `feat: manage resource master data` | FB1, FB2, Glamour- und Schwarzwald-Paket; Bestand, Kategorien, Sperrstatus und Puffer | CRUD, Bestand ≥ 0, Archivregeln, synthetische Seeds |
 | C015 | `feat: manage product catalog` | Produkte, Preise, Steuer, Einheit, Aktivierung und Sortierung | Exakte Geldwerte, Archivierung und Validierung |

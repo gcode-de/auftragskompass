@@ -13,8 +13,10 @@ import {
 } from './schema.js';
 import { appendAudit } from './audit.js';
 import type { GoogleIdentity } from './oidc.js';
-type Transaction = Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0];
-async function lockTenant(tx: Transaction, tenantId: string) {
+export type Transaction = Parameters<
+  Parameters<NodePgDatabase['transaction']>[0]
+>[0];
+export async function lockTenant(tx: Transaction, tenantId: string) {
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}, 814022))`,
   );
@@ -55,30 +57,35 @@ export async function bootstrapAccess(
     await tx.insert(accessBootstrap).values({ tenantId });
   });
 }
+export async function requireAdministrator(
+  tx: Transaction,
+  tenantId: string,
+  actorId: string,
+) {
+  const [actor] = await tx
+    .select()
+    .from(allowedAccounts)
+    .innerJoin(
+      memberships,
+      and(
+        eq(memberships.tenantId, allowedAccounts.tenantId),
+        eq(memberships.userId, allowedAccounts.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(allowedAccounts.tenantId, tenantId),
+        eq(allowedAccounts.userId, actorId),
+        eq(allowedAccounts.active, true),
+        eq(memberships.active, true),
+      ),
+    );
+  if (!actor) throw new AccessError('forbidden');
+}
+
 export function accessRepository(pool: Pool, tenantId: string) {
   const db = drizzle(pool);
   const scoped = eq(allowedAccounts.tenantId, tenantId);
-  async function requireActor(tx: Transaction, actorId: string) {
-    const [actor] = await tx
-      .select()
-      .from(allowedAccounts)
-      .innerJoin(
-        memberships,
-        and(
-          eq(memberships.tenantId, allowedAccounts.tenantId),
-          eq(memberships.userId, allowedAccounts.userId),
-        ),
-      )
-      .where(
-        and(
-          scoped,
-          eq(allowedAccounts.userId, actorId),
-          eq(allowedAccounts.active, true),
-          eq(memberships.active, true),
-        ),
-      );
-    if (!actor) throw new AccessError('forbidden');
-  }
   return {
     async list() {
       return db
@@ -178,7 +185,7 @@ export function accessRepository(pool: Pool, tenantId: string) {
       const email = normalizeEmail(value);
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
-        await requireActor(tx, actorId);
+        await requireAdministrator(tx, tenantId, actorId);
         const [existing] = await tx
           .select()
           .from(allowedAccounts)
@@ -200,7 +207,7 @@ export function accessRepository(pool: Pool, tenantId: string) {
     async change(actorId: string, id: string, active: boolean) {
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
-        await requireActor(tx, actorId);
+        await requireAdministrator(tx, tenantId, actorId);
         const [account] = await tx
           .select()
           .from(allowedAccounts)

@@ -1,3 +1,4 @@
+import { MasterDataSettings } from './MasterDataPanel.js';
 import { AccessPanel } from './AccessPanel.js';
 import { useEffect, useState } from 'react';
 export type CurrentUser = { email: string; csrfToken: string };
@@ -54,6 +55,7 @@ export function AuthPanel() {
       {user ? (
         <>
           <p>{user.email}</p>
+          <MasterDataSettings csrfToken={user.csrfToken} />
           <AccessPanel
             csrfToken={user.csrfToken}
             onSessionEnded={() => {
