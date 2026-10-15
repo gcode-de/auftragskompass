@@ -12,3 +12,5 @@ export { registerResourceRoutes } from './resources.js';
 export { registerProductRoutes } from './products.js';
 
 export { contactRepository, registerContactRoutes } from './contacts.js';
+
+export { registerLocationRoutes } from './locations.js';

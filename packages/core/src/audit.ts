@@ -15,7 +15,9 @@ export type AuditAction =
   | 'product.created'
   | 'product.updated'
   | 'contact.created'
-  | 'contact.updated';
+  | 'contact.updated'
+  | 'location.created'
+  | 'location.updated';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

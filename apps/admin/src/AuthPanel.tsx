@@ -1,3 +1,4 @@
+import { LocationPanel } from './LocationPanel.js';
 import { ContactPanel } from './ContactPanel.js';
 import { ProductPanel } from './ProductPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
@@ -58,6 +59,7 @@ export function AuthPanel() {
       {user ? (
         <>
           <p>{user.email}</p>
+          <LocationPanel csrfToken={user.csrfToken} />
           <ContactPanel csrfToken={user.csrfToken} />
           <ProductPanel csrfToken={user.csrfToken} />
           <ResourcePanel csrfToken={user.csrfToken} />

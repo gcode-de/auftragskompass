@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
+import { registerLocationRoutes } from '../../packages/core/src/locations.js';
 import { registerContactRoutes } from '../../packages/core/src/contacts.js';
 import { registerProductRoutes } from '../../packages/core/src/products.js';
 import { registerResourceRoutes } from '../../packages/core/src/resources.js';
@@ -124,6 +125,7 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     registerResourceRoutes(app, pool, config.tenantId);
     registerProductRoutes(app, pool, config.tenantId);
     registerContactRoutes(app, pool, config.tenantId);
+    registerLocationRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
     await page.goto(origin);
     await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
@@ -252,6 +254,23 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       .getByRole('link', { name: 'Kontakte als CSV exportieren' })
       .click();
     expect((await download).suggestedFilename()).toBe('contacts.csv');
+    const locations = page.getByRole('region', { name: 'Locations' });
+    await locations.getByLabel('Locationname').fill('Synthetic browser venue');
+    await locations.getByLabel('Locationort').fill('Fictional city');
+    await locations.getByRole('button', { name: 'Location speichern' }).click();
+    await expect(
+      locations.getByText('Synthetic browser venue', { exact: true }),
+    ).toBeVisible();
+    await locations
+      .getByRole('button', {
+        name: 'Location bearbeiten: Synthetic browser venue',
+      })
+      .click();
+    await locations.getByLabel('Locationzustand').selectOption('archived');
+    await locations.getByRole('button', { name: 'Location speichern' }).click();
+    await expect(
+      locations.getByText('Synthetic browser venue – Archiviert'),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

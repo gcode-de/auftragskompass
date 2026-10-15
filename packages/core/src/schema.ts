@@ -146,3 +146,15 @@ export const contacts = pgTable('contacts', {
   state: text('state').notNull(),
   version: integer('version').notNull().default(1),
 });
+
+export const locations = pgTable('locations', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  name: text('name').notNull(),
+  street: text('street').notNull(),
+  postalCode: text('postal_code').notNull(),
+  city: text('city').notNull(),
+  country: text('country').notNull(),
+  state: text('state').notNull(),
+  version: integer('version').notNull().default(1),
+});
