@@ -199,3 +199,31 @@ export const eventActivities = pgTable('event_activities', {
     .notNull()
     .defaultNow(),
 });
+
+export const resourceUnits = pgTable('resource_units', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  resourceId: uuid('resource_id').notNull(),
+  ordinal: integer('ordinal').notNull(),
+  enabled: boolean('enabled').notNull(),
+});
+export const reservations = pgTable('reservations', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  requestHash: text('request_hash').notNull(),
+  eventId: uuid('event_id'),
+  unitId: uuid('unit_id').notNull(),
+  state: text('state', {
+    enum: ['hold', 'booked', 'blocked', 'released', 'expired'],
+  }).notNull(),
+  periodSource: text('period_source').notNull(),
+  baseStart: timestamp('base_start', { withTimezone: true }).notNull(),
+  baseEnd: timestamp('base_end', { withTimezone: true }).notNull(),
+  timeZone: text('time_zone').notNull(),
+  beforeDays: integer('before_days').notNull(),
+  afterDays: integer('after_days').notNull(),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+});

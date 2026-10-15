@@ -1,3 +1,4 @@
+import { transitionEventReservations } from './reservations.js';
 import { appendEventActivity, readEventActivities } from './event-activity.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
@@ -365,6 +366,27 @@ export function eventRepository(pool: Pool, tenantId: string) {
           input.endsAt,
           timeZone,
         );
+        if (old) {
+          const remaining = await transitionEventReservations(
+            tx,
+            tenantId,
+            old.id,
+            actorId,
+            old.status,
+            input.status,
+          );
+          if (
+            remaining &&
+            (old.eventDate !== input.eventDate ||
+              old.startsAt !==
+                (input.startsAt
+                  ? new Date(input.startsAt).toISOString()
+                  : null) ||
+              old.endsAt !==
+                (input.endsAt ? new Date(input.endsAt).toISOString() : null))
+          )
+            throw new EventError('reservations_need_review');
+        }
         for (const [key, kind] of [
           ['eventTypeId', 'event_type'],
           ['packageId', 'package'],
@@ -554,7 +576,11 @@ export function registerEventRoutes(
         .code(
           error.message === 'not_found'
             ? 404
-            : ['conflict', 'booking_required'].includes(error.message)
+            : [
+                  'conflict',
+                  'booking_required',
+                  'reservations_need_review',
+                ].includes(error.message)
               ? 409
               : 400,
         )

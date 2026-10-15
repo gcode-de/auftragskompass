@@ -110,6 +110,12 @@ export function registerResourceRoutes(
   function failure(error: unknown, reply: FastifyReply) {
     if (error instanceof AccessError)
       return reply.code(403).send({ error: 'forbidden' });
+    if (
+      error instanceof Error &&
+      (error.cause as { constraint?: string } | undefined)?.constraint ===
+        'resource_units_in_use'
+    )
+      return reply.code(409).send({ error: 'resource_in_use' });
     if (error instanceof ResourceError)
       return reply
         .code(error.message === 'not_found' ? 404 : 409)

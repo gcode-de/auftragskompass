@@ -61,7 +61,7 @@ test('resource create/edit, archive, cancel and loading failures', async () => {
   );
 });
 test('resource failures preserve edits and permit reload', async () => {
-  const errors = ['conflict', 'invalid'];
+  const errors = ['conflict', 'invalid', 'resource_in_use'];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: string, options?: RequestInit) => {
@@ -77,6 +77,7 @@ test('resource failures preserve edits and permit reload', async () => {
   for (const text of [
     /Inzwischen geändert/,
     /Speichern fehlgeschlagen/,
+    /künftig reserviert/,
     /Verbindung fehlgeschlagen/,
   ]) {
     fireEvent.submit(

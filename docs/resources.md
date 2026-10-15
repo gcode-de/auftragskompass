@@ -30,3 +30,5 @@ Die Oberfläche hält Eingaben bei Fehlern vor und meldet Versionskonflikte.
 Dies ist der Ressourcenstamm. Reservierungen, Doppelbuchungsschutz und zeitlich
 begrenzte Wartungsblockierungen folgen in C021–C024. Das Sperrkennzeichen erfasst
 den Stammdatenzustand; C014 prüft noch keine tatsächlichen Buchungsüberschneidungen.
+
+Ab C021 erhalten Bestände stabile physische Einheiten. Künftige aktive Belegungen schützen betroffene Einheiten vor Bestandsreduktion und Archivierung; siehe [Reservierungsmodell](reservations.md).

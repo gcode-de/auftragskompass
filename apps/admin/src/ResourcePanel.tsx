@@ -58,7 +58,9 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
         setMessage(
           result.error === 'conflict'
             ? 'Inzwischen geändert. Liste aktualisieren und erneut bearbeiten.'
-            : 'Speichern fehlgeschlagen. Code, Eingabe und Anmeldung prüfen.',
+            : result.error === 'resource_in_use'
+              ? 'Die Ressource ist künftig reserviert. Bestand oder Archiv erst nach Prüfung ändern.'
+              : 'Speichern fehlgeschlagen. Code, Eingabe und Anmeldung prüfen.',
         );
         return;
       }

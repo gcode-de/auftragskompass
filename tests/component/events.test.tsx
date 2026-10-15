@@ -101,7 +101,11 @@ test('events create without date, retain formatted notes and edit/cancel with ve
   );
 });
 test('events show invalid dates, conflicts, server and transport failures while retaining draft', async () => {
-  const fetcher = mocker(['conflict', 'invalid_reference']);
+  const fetcher = mocker([
+    'conflict',
+    'invalid_reference',
+    'reservations_need_review',
+  ]);
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
@@ -115,7 +119,11 @@ test('events show invalid dates, conflicts, server and transport failures while 
   fireEvent.change(screen.getByLabelText('Eventbeginn'), {
     target: { value: '' },
   });
-  for (const message of [/Inzwischen geändert/, /Speichern fehlgeschlagen/]) {
+  for (const message of [
+    /Inzwischen geändert/,
+    /Speichern fehlgeschlagen/,
+    /gemeinsam geprüft/,
+  ]) {
     fireEvent.submit(
       screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
     );

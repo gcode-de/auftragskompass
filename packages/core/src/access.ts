@@ -18,7 +18,7 @@ export type Transaction = Parameters<
 >[0];
 export async function lockTenant(tx: Transaction, tenantId: string) {
   await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}, 814022))`,
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}::uuid::text, 814022))`,
   );
 }
 export class AccessError extends Error {}
