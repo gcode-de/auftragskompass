@@ -1,3 +1,4 @@
+import { EventDetails } from './EventDetails.js';
 import {
   useUrlSearch,
   updateUrlSearch,
@@ -7,7 +8,7 @@ import {
 import { useEffect, useState, useRef } from 'react';
 import { toInstant, fromInstant } from './event-time.js';
 type Choice = { id: string; name: string; state: string };
-type EventRow = {
+export type EventRow = {
   id: string;
   version: number;
   name: string;
@@ -33,6 +34,7 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
   const [rows, setRows] = useState<EventRow[]>([]),
     [draft, setDraft] = useState<EventRow | null>(null),
     [editing, setEditing] = useState(false),
+    [detailId, setDetailId] = useState<string | null>(null),
     [timeZone, setTimeZone] = useState(''),
     [types, setTypes] = useState<Choice[]>([]),
     [packages, setPackages] = useState<Choice[]>([]),
@@ -97,8 +99,19 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
     );
   }, [urlSearch]);
   useEffect(() => {
-    const id = window.location.hash.slice(1);
-    if (id.startsWith('event-')) document.getElementById(id)?.scrollIntoView();
+    const changed = () => {
+      const id = window.location.hash.slice(1);
+      if (
+        id.startsWith('event-') &&
+        rows.some((row) => 'event-' + row.id === id)
+      ) {
+        setDetailId(id.slice(6));
+        document.getElementById(id)?.scrollIntoView();
+      }
+    };
+    changed();
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
   }, [rows]);
   async function save(form: HTMLFormElement) {
     setBusy(true);
@@ -278,6 +291,7 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
         Events aktualisieren
       </button>
       <form
+        id="event-editor"
         key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
         onSubmit={(event) => {
           event.preventDefault();
@@ -477,10 +491,37 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
               {locations.find((l) => l.id === row.locationId)?.name}
             </span>
             <p>Keine Fotobox zugewiesen.</p>
-            <div
-              aria-label={`Notizen: ${row.name}`}
-              dangerouslySetInnerHTML={{ __html: row.notesHtml }}
-            />
+            <button
+              aria-label={`Eventakte öffnen: ${row.name}`}
+              aria-expanded={detailId === row.id}
+              onClick={() => {
+                setDetailId(row.id);
+                window.history.replaceState(null, '', '#event-' + row.id);
+              }}
+            >
+              Eventakte öffnen
+            </button>
+            {detailId === row.id && (
+              <EventDetails
+                key={`${row.id}:${row.version}`}
+                id={row.id}
+                csrfToken={csrfToken}
+                statuses={statuses}
+                onChanged={async () => {
+                  await refresh();
+                  setMessage('Eventstatus gespeichert.');
+                }}
+                onEdit={(event) => {
+                  setDraft(event);
+                  setEditing(true);
+                  document.getElementById('event-editor')?.scrollIntoView();
+                }}
+                onClose={() => {
+                  setDetailId(null);
+                  window.history.replaceState(null, '', '#events');
+                }}
+              />
+            )}
             <button
               disabled={busy}
               aria-label={`Event duplizieren: ${row.name}`}

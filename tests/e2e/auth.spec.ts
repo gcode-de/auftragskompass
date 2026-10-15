@@ -312,12 +312,31 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Anfrage'),
     ).toBeVisible();
+    await events
+      .getByRole('button', {
+        name: 'Eventakte öffnen: Synthetic browser event',
+      })
+      .click();
     await expect(
       events.getByLabel('Notizen: Synthetic browser event').locator('strong'),
     ).toHaveText('Fictional browser note');
     expect(
       await page.evaluate(() => Object.hasOwn(window, 'syntheticBad')),
     ).toBe(false);
+    const record = events.getByRole('region', {
+      name: 'Eventakte',
+      exact: true,
+    });
+    await record
+      .getByRole('combobox', { name: 'Status in der Eventakte', exact: true })
+      .selectOption('option');
+    await record.getByRole('button', { name: 'Status speichern' }).click();
+    await expect(
+      events.getByText('Eventstatus gespeichert.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      record.getByText(/Status von Anfrage auf Option geändert/),
+    ).toBeVisible();
     await contacts
       .getByRole('button', {
         name: 'Events anzeigen: Synthetic browser contact',

@@ -183,3 +183,19 @@ export const eventContacts = pgTable('event_contacts', {
   contactId: uuid('contact_id').notNull(),
   role: text('role').notNull(),
 });
+
+export const eventActivities = pgTable('event_activities', {
+  id: bigint('id', { mode: 'bigint' }).primaryKey().generatedAlwaysAsIdentity(),
+  tenantId: uuid('tenant_id').notNull(),
+  eventId: uuid('event_id').notNull(),
+  actorId: uuid('actor_id'),
+  eventVersion: integer('event_version'),
+  kind: text('kind', {
+    enum: ['created', 'updated', 'status_changed'],
+  }).notNull(),
+  previousStatus: text('previous_status'),
+  nextStatus: text('next_status'),
+  occurredAt: timestamp('occurred_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

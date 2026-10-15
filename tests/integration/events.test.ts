@@ -109,6 +109,14 @@ test('events link only tenant-owned active records, preserve archived references
     endsAt: '2026-10-17T01:00:00Z',
   });
   const row = await repo.save(actorId, input);
+  const detail = await repo.detail(row.id);
+  expect(detail.contacts.map((row) => row.role).sort()).toEqual([
+    'additional',
+    'primary',
+  ]);
+  expect(detail.location!.id).toBe(venue.id);
+  expect(detail.eventType!.id).toBe(type.id);
+  expect(detail.package!.id).toBe(pack.id);
   expect(row.primaryContactId).toBe(primary.id);
   expect(row.additionalContactIds).toEqual([additional.id]);
   expect(row.startsAt).toBe('2026-10-16T18:00:00.000Z');
@@ -282,6 +290,20 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     const listed = await app.inject({ url: '/api/v1/events', cookies });
     expect(listed.json().timeZone).toBe('Europe/Berlin');
     expect(listed.json().events).toHaveLength(2);
+    const linked = (
+      await eventRepository(pool, tenantId).list(input.primaryContactId!)
+    )[0]!;
+    const rich = (
+      await app.inject({ url: '/api/v1/events/' + linked.id, cookies })
+    ).json();
+    expect(rich.contacts).toHaveLength(2);
+    for (const record of [
+      ...rich.contacts,
+      rich.location,
+      rich.eventType,
+      rich.package,
+    ])
+      expect(record).not.toHaveProperty('tenantId');
     expect(
       (
         await app.inject({

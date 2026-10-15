@@ -2,7 +2,7 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C019 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
+**Stand:** C001–C020 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
 Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
 Events können angelegt und bearbeitet werden; Reservierungen und Rechnungen folgen im Implementierungsplan.
 Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
@@ -63,3 +63,5 @@ Veranstaltungsorte: [Locations](docs/locations.md).
 Anfragen und Aufträge erfassen: [Events](docs/events.md).
 
 Events und Kontakte finden: [Suche und Filter](docs/event-search.md).
+
+Eventdaten und Änderungshistorie: [Eventakte und Logbuch](docs/event-details.md).

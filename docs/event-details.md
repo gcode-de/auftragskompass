@@ -1,0 +1,19 @@
+# Eventakte und Logbuch
+
+C020 öffnet aus der Eventliste eine Eventakte mit Termin, Status, Eventart, Paket, Quelle, Beschreibung, Haupt-/weiteren Kontakten, Kommunikationslinks, Location, bereinigten Notizen und Logbuch. Der Status kann hier direkt geändert werden. „Stammdaten bearbeiten“ übernimmt den frisch geladenen Stand in das bestehende Bearbeitungsformular. Buchungen bleiben bis zur Ressourcenzuweisung C023 gesperrt.
+
+Die Akte bündelt die bereits verfügbaren Fachmodelle. Ressourcen, E-Mails, Dokumente, Dateien und Erinnerungen kommen mit ihren jeweiligen Implementierungsschritten hinzu. Es werden keine noch nicht vorhandenen Inhalte oder Links vorgetäuscht.
+
+## API und Konsistenz
+
+`GET /api/v1/events/:id` benötigt eine Admin-Sitzung und liefert `{event, contacts, location, eventType, package, activities}`. Einzelne noch offene Zuordnungen sind `null`. Kontakte enthalten Name/Ansprechpartner, Rolle, E-Mail und Telefonnummern; Location enthält die Anschrift. Mandantenfelder werden auch aus verschachtelten Objekten entfernt. Ungültige UUIDs ergeben 400, fehlende oder fremde Events 404.
+
+Event, Zuordnungen und Logbuch werden aus demselben konsistenten Datenbank-Snapshot gelesen. Ein Statuswechsel verwendet das bestehende `PUT /api/v1/events/:id` mit aktuellem vollständigem Eventdatensatz, Version, Origin und CSRF-Token. Veraltete Versionen ergeben 409; die Oberfläche erhält ihre Eingabe und verlangt eine erneute Prüfung. Änderungen, Audit und fachlicher Logeintrag werden in einer Transaktion gespeichert. Beim Fehlschlag bleibt der bisherige Stand erhalten.
+
+## Unveränderbare Aktivitäten
+
+Migration `0012_event_activity.sql` ergänzt `event_activities`. Ein Eintrag speichert interne Mandanten-, Event- und Akteurreferenz, Eventversion, Typ, UTC-Zeitpunkt und gegebenenfalls vorherigen/neuen Status. Die Oberfläche zeigt die Zeit in der Eventzeitzone. Die Beschreibungen werden aus festen Typen/Statusbezeichnungen erzeugt. Freitextnotizen, Adressen, E-Mails, Eventnamen oder Beschreibungsinhalte werden nicht in das unveränderbare Log kopiert.
+
+Eine Anlage erzeugt `created`, eine Änderung mit gleichem Status `updated`, ein Statuswechsel `status_changed`. Pro gespeichertem Eventstand entsteht ein fachlicher Eintrag. Statuswechsel geben beide Statuswerte an. Die Datenbank verbietet UPDATE, DELETE und TRUNCATE; zusammengesetzte Fremdschlüssel sichern die Mandantenzuordnung. Das Logbuch hat keine Änderungs- oder Löschroute.
+
+Vorhandene Event-Auditaktionen werden einmalig mit ursprünglichem Zeitpunkt/Akteur übernommen. Da frühere Versionen und Statuswerte dort nicht gespeichert wurden, bleiben diese Felder bei übernommenen Einträgen `null`; die Akte kennzeichnet sie als historische Einträge mit unbekannten Details. Migration und Neustarttests prüfen, dass keine Doppelübernahme erfolgt. Spätere Formular-, E-Mail- und Dokumentaktionen erweitern das Log mit den betreffenden Fachmodellen.

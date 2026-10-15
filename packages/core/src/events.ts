@@ -1,3 +1,4 @@
+import { appendEventActivity, readEventActivities } from './event-activity.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -252,6 +253,85 @@ export function eventRepository(pool: Pool, tenantId: string) {
         },
       );
     },
+    async detail(id: string) {
+      return db.transaction(
+        async (tx) => {
+          const event = (await readRows(tx, tenantId, undefined, id))[0];
+          if (!event) throw new EventError('not_found');
+          const ids = [
+            ...(event.primaryContactId ? [event.primaryContactId] : []),
+            ...event.additionalContactIds,
+          ];
+          const people = ids.length
+            ? await tx
+                .select({
+                  id: contacts.id,
+                  name: contacts.name,
+                  contactPerson: contacts.contactPerson,
+                  email: contacts.email,
+                  phone: contacts.phone,
+                  mobile: contacts.mobile,
+                })
+                .from(contacts)
+                .where(
+                  and(
+                    eq(contacts.tenantId, tenantId),
+                    inArray(contacts.id, ids),
+                  ),
+                )
+                .orderBy(asc(contacts.name))
+            : [];
+          const venue = event.locationId
+            ? (
+                await tx
+                  .select({
+                    id: locations.id,
+                    name: locations.name,
+                    street: locations.street,
+                    postalCode: locations.postalCode,
+                    city: locations.city,
+                    country: locations.country,
+                  })
+                  .from(locations)
+                  .where(
+                    and(
+                      eq(locations.tenantId, tenantId),
+                      eq(locations.id, event.locationId),
+                    ),
+                  )
+              )[0]!
+            : null;
+          const masters = await tx
+            .select({ id: masterData.id, name: masterData.name })
+            .from(masterData)
+            .where(
+              and(
+                eq(masterData.tenantId, tenantId),
+                inArray(
+                  masterData.id,
+                  [event.eventTypeId, event.packageId].filter(
+                    (id): id is string => id !== null,
+                  ),
+                ),
+              ),
+            );
+          return {
+            event,
+            contacts: people.map((person) => ({
+              ...person,
+              role:
+                person.id === event.primaryContactId ? 'primary' : 'additional',
+            })),
+            location: venue,
+            eventType:
+              masters.find((row) => row.id === event.eventTypeId) ?? null,
+            package: masters.find((row) => row.id === event.packageId) ?? null,
+            activities: await readEventActivities(tx, tenantId, id),
+          };
+        },
+        { isolationLevel: 'repeatable read', accessMode: 'read only' },
+      );
+    },
     async timeZone() {
       const [tenant] = await db
         .select()
@@ -389,6 +469,15 @@ export function eventRepository(pool: Pool, tenantId: string) {
           actorId,
           eventId,
         );
+        await appendEventActivity(
+          tx,
+          tenantId,
+          eventId,
+          actorId,
+          values.version,
+          input.status,
+          old?.status,
+        );
         return (await readRows(tx, tenantId, undefined, eventId))[0]!;
       });
     },
@@ -507,6 +596,114 @@ export function registerEventRoutes(
           timeZone: await repo.timeZone(),
           events: await repo.list(undefined, request.query as EventFilters),
         };
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  const named = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'name'],
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      name: { type: 'string' },
+    },
+  };
+  const contact = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'id',
+      'name',
+      'contactPerson',
+      'email',
+      'phone',
+      'mobile',
+      'role',
+    ],
+    properties: {
+      ...named.properties,
+      contactPerson: { type: 'string' },
+      email: { type: 'string' },
+      phone: { type: 'string' },
+      mobile: { type: 'string' },
+      role: { type: 'string', enum: ['primary', 'additional'] },
+    },
+  };
+  const venue = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'name', 'street', 'postalCode', 'city', 'country'],
+    properties: {
+      ...named.properties,
+      street: { type: 'string' },
+      postalCode: { type: 'string' },
+      city: { type: 'string' },
+      country: { type: 'string' },
+    },
+  };
+  const nullableStatus = { anyOf: [fields.status, { type: 'null' }] };
+  const activity = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'id',
+      'actorId',
+      'eventVersion',
+      'kind',
+      'previousStatus',
+      'nextStatus',
+      'occurredAt',
+      'description',
+    ],
+    properties: {
+      id: { type: 'string' },
+      actorId: nullableId,
+      eventVersion: { anyOf: [version, { type: 'null' }] },
+      kind: { type: 'string', enum: ['created', 'updated', 'status_changed'] },
+      previousStatus: nullableStatus,
+      nextStatus: nullableStatus,
+      occurredAt: { type: 'string', format: 'date-time' },
+      description: { type: 'string' },
+    },
+  };
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/events/:id',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'event',
+              'contacts',
+              'location',
+              'eventType',
+              'package',
+              'activities',
+            ],
+            properties: {
+              event: row,
+              contacts: { type: 'array', items: contact },
+              location: { anyOf: [venue, { type: 'null' }] },
+              eventType: { anyOf: [named, { type: 'null' }] },
+              package: { anyOf: [named, { type: 'null' }] },
+              activities: { type: 'array', items: activity },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.detail(request.params.id);
       } catch (error) {
         return failure(error, reply);
       }
