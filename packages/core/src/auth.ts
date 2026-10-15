@@ -12,6 +12,7 @@ import {
   users,
   allowedAccounts,
 } from './schema.js';
+import { appendAudit } from './audit.js';
 import { accessRepository } from './access.js';
 import type { AuthConfig } from './auth-config.js';
 import type { IdentityProvider } from './oidc.js';
@@ -169,6 +170,7 @@ export async function registerAuth(
           })
           .redirect('/');
       } catch {
+        await appendAudit(db, config!.tenantId, 'login.failed');
         return reply.code(400).send({ error: 'login_failed' });
       }
     },
@@ -196,14 +198,22 @@ export async function registerAuth(
     }),
   );
   app.post('/auth/logout', async (request, reply) => {
-    await db
-      .delete(sessions)
-      .where(
-        and(
-          eq(sessions.tenantId, config!.tenantId),
-          eq(sessions.tokenHash, digest(request.cookies[sessionCookie]!)),
-        ),
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(sessions)
+        .where(
+          and(
+            eq(sessions.tenantId, config!.tenantId),
+            eq(sessions.tokenHash, digest(request.cookies[sessionCookie]!)),
+          ),
+        );
+      await appendAudit(
+        tx,
+        config!.tenantId,
+        'logout',
+        request.authSession!.userId,
       );
+    });
     return reply.clearCookie(sessionCookie, cookieOptions).code(204).send();
   });
 }

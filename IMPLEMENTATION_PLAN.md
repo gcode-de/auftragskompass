@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C010 implementiert; C011–C085 offen. Die CI prüft jeden Push.
+**Status:** geprüfter Bauplan; C001–C011 implementiert; C012–C085 offen. Die CI prüft jeden Push.
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -22,7 +22,8 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] C008: transaktionale Migrationen, Mandanten und isolierte Benutzer-Repositories
 - [x] C009: Google-OIDC, PKCE, sichere Sitzungen, CSRF und Logout
 - [x] C010: einmaliger Bootstrap, Kontofreigaben, Sitzungswiderruf, Aussperrschutz und Änderungsnachweis
-- [ ] C011–C085: noch nicht implementiert oder abgenommen
+- [x] C011: unveränderbares Auditlog, atomare Sitzungsereignisse und mandantenbegrenzter Lesezugriff
+- [ ] C012–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 

@@ -9,6 +9,7 @@ import {
   registerAuth,
   bootstrapAccess,
   registerAccessRoutes,
+  registerAuditRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -58,7 +59,10 @@ try {
     auth,
     auth ? await googleProvider(auth) : undefined,
   );
-  if (auth) registerAccessRoutes(app, pool, auth.tenantId);
+  if (auth) {
+    registerAccessRoutes(app, pool, auth.tenantId);
+    registerAuditRoutes(app, pool, auth.tenantId);
+  }
   app.addHook('onClose', async () => {
     await pool.end();
   });

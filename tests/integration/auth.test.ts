@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
+import { registerAuditRoutes } from '../../packages/core/src/audit.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 let container: StartedPostgreSqlContainer;
@@ -64,7 +65,10 @@ async function server(enabled = true, tenantId = config.tenantId) {
     enabled ? { ...config, tenantId } : undefined,
     enabled ? google.provider : undefined,
   );
-  if (enabled) registerAccessRoutes(app, pool, tenantId);
+  if (enabled) {
+    registerAccessRoutes(app, pool, tenantId);
+    registerAuditRoutes(app, pool, tenantId);
+  }
   app.post(
     '/api/test',
     {
@@ -111,6 +115,9 @@ test('full signed OIDC flow, cookies, authenticated writes, CSRF, logout and rep
   const cookies = { '__Host-ak-session': session.value };
   const me = await app.inject({ url: '/auth/me', cookies });
   expect(me.statusCode).toBe(200);
+  expect(
+    (await app.inject({ url: '/api/v1/audit', cookies })).json(),
+  ).toMatchObject([{ action: 'login.failed' }, { action: 'login.succeeded' }]);
   expect(me.headers['cache-control']).toBe('no-store');
   await server(true, randomUUID());
   expect((await app.inject({ url: '/auth/me', cookies })).statusCode).toBe(401);
@@ -167,6 +174,10 @@ test('full signed OIDC flow, cookies, authenticated writes, CSRF, logout and rep
   ).toBe(204);
   expect((await app.inject({ url: '/auth/me', cookies })).statusCode).toBe(401);
   expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);
+  const audit = await pool.query(
+    'SELECT action FROM audit_events ORDER BY id DESC LIMIT 1',
+  );
+  expect(audit.rows).toEqual([{ action: 'logout' }]);
 });
 test('rejects forged claims, nonce, signature, subject, state, binding, expiry and duplicates', async () => {
   for (const overrides of [
@@ -244,6 +255,7 @@ test('rate limit and unconfigured authentication fail closed', async () => {
 test('access API validates input, prevents lockout and revokes blocked sessions', async () => {
   await server();
   expect((await app.inject('/api/v1/access')).statusCode).toBe(401);
+  expect((await app.inject('/api/v1/audit')).statusCode).toBe(401);
   const login = await app.inject(await start());
   const cookies = {
     '__Host-ak-session': login.cookies.find(
@@ -350,4 +362,49 @@ test('access API validates input, prevents lockout and revokes blocked sessions'
       .json()
       .find((a: { email: string }) => a.email === 'rollback@example.invalid'),
   ).toBeUndefined();
+});
+
+test('audit failure prevents a new session and logout rolls back safely', async () => {
+  await server();
+  const flow = await start();
+  await pool.query(
+    'ALTER TABLE audit_events RENAME TO temporarily_missing_audit',
+  );
+  try {
+    expect((await app.inject(flow)).statusCode).toBe(500);
+  } finally {
+    await pool.query(
+      'ALTER TABLE temporarily_missing_audit RENAME TO audit_events',
+    );
+  }
+  const login = await app.inject(await start());
+  const cookies = {
+    '__Host-ak-session': login.cookies.find(
+      (c) => c.name === '__Host-ak-session',
+    )!.value,
+  };
+  const me = await app.inject({ url: '/auth/me', cookies });
+  await pool.query(
+    'ALTER TABLE audit_events RENAME TO temporarily_missing_audit',
+  );
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/auth/logout',
+          cookies,
+          headers: {
+            origin: config.origin,
+            'x-csrf-token': me.json().csrfToken,
+          },
+        })
+      ).statusCode,
+    ).toBe(500);
+  } finally {
+    await pool.query(
+      'ALTER TABLE temporarily_missing_audit RENAME TO audit_events',
+    );
+  }
+  expect((await app.inject({ url: '/auth/me', cookies })).statusCode).toBe(200);
 });

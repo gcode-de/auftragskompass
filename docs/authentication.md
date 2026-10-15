@@ -113,3 +113,21 @@ Der Notfallzugang bleibt vollständig deaktiviert: kein Passwort, kein geheimes
 Fallback-Konto und kein Aktivierungsschalter. Bei Verlust des letzten Google-Kontos
 ist eine lokal geprüfte Wiederherstellung erforderlich; die Bootstrap-Konfiguration
 ist ausdrücklich kein nachträglicher Zugang zum System.
+
+## Allgemeines Auditlog (C011)
+
+Migration `0004_audit.sql` ergänzt `audit_events`. Erfolgreiche Anmeldung und
+Abmeldung werden in derselben Transaktion wie die Sitzungsänderung protokolliert.
+Abgewiesene Google-Identitäten und ungültige Rückrufe erzeugen neutrale Ereignisse.
+Es werden weder E-Mail, IP, User-Agent, Querystrings noch Tokens gespeichert;
+Einträge enthalten ausschließlich Mandant, interne Akteur-ID (falls bekannt),
+Aktion und UTC-Zeit. `access_audit` bleibt für Freigabeänderungen erhalten.
+
+`GET /api/v1/audit` liefert für angemeldete Administratoren die letzten 100 Ereignisse
+des konfigurierten Mandanten, neueste zuerst. IDs werden als dezimale Strings
+übertragen, Zeitpunkte als ISO-8601 mit UTC-Kennung. Es gibt keinen öffentlichen
+Schreib-, Änderungs- oder Löschendpunkt. PostgreSQL weist UPDATE, DELETE und
+TRUNCATE ab; Fremdschlüssel verhindern mandantenfremde Akteurzuordnungen.
+Eine fehlgeschlagene Audit-Schreiboperation verhindert eine neue Sitzung bzw.
+rollt die Abmeldung zurück. Datenbankadministratoren mit Superuser-Rechten können
+Trigger technisch abschalten; das Log ist kein Schutz vor kompromittierten DB-Administratoren.

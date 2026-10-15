@@ -11,6 +11,7 @@ import {
   accessBootstrap,
   accessAudit,
 } from './schema.js';
+import { appendAudit } from './audit.js';
 import type { GoogleIdentity } from './oidc.js';
 type Transaction = Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0];
 async function lockTenant(tx: Transaction, tenantId: string) {
@@ -104,7 +105,10 @@ export function accessRepository(pool: Pool, tenantId: string) {
               eq(allowedAccounts.active, true),
             ),
           );
-        if (!account) return false;
+        if (!account) {
+          await appendAudit(tx, tenantId, 'login.denied');
+          return false;
+        }
         let userId = account.userId;
         if (userId) {
           const [user] = await tx
@@ -125,7 +129,10 @@ export function accessRepository(pool: Pool, tenantId: string) {
                 eq(memberships.active, true),
               ),
             );
-          if (!user) return false;
+          if (!user) {
+            await appendAudit(tx, tenantId, 'login.denied');
+            return false;
+          }
         } else {
           // A Google subject already bound elsewhere may not claim another email.
           const [existing] = await tx
@@ -137,7 +144,10 @@ export function accessRepository(pool: Pool, tenantId: string) {
                 eq(users.googleSubject, identity.subject),
               ),
             );
-          if (existing) return false;
+          if (existing) {
+            await appendAudit(tx, tenantId, 'login.denied');
+            return false;
+          }
           userId = randomUUID();
           await tx.insert(users).values({
             tenantId,
@@ -154,6 +164,7 @@ export function accessRepository(pool: Pool, tenantId: string) {
             .insert(accessAudit)
             .values({ tenantId, targetId: account.id, action: 'claim' });
         }
+        await appendAudit(tx, tenantId, 'login.succeeded', userId);
         await tx.insert(sessions).values({
           tenantId,
           tokenHash,

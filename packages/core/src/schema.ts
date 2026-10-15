@@ -1,5 +1,6 @@
 import {
   boolean,
+  bigint,
   foreignKey,
   pgTable,
   primaryKey,
@@ -77,4 +78,13 @@ export const accessAudit = pgTable('access_audit', {
   actorId: uuid('actor_id'),
   targetId: uuid('target_id').notNull(),
   action: text('action').notNull(),
+});
+export const auditEvents = pgTable('audit_events', {
+  id: bigint('id', { mode: 'bigint' }).primaryKey().generatedAlwaysAsIdentity(),
+  tenantId: uuid('tenant_id').notNull(),
+  actorId: uuid('actor_id'),
+  action: text('action').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
