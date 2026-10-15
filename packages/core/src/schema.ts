@@ -99,3 +99,18 @@ export const masterData = pgTable('master_data', {
   state: text('state').notNull(),
   version: integer('version').notNull().default(1),
 });
+export const resources = pgTable('resources', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  name: text('name').notNull(),
+  code: text('code').notNull(),
+  category: text('category').notNull(),
+  description: text('description').notNull(),
+  quantity: integer('quantity').notNull(),
+  beforeDays: integer('before_days').notNull(),
+  afterDays: integer('after_days').notNull(),
+  blocked: boolean('blocked').notNull(),
+  state: text('state').notNull(),
+  position: integer('position').notNull(),
+  version: integer('version').notNull().default(1),
+});

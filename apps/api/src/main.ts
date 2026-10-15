@@ -11,6 +11,7 @@ import {
   registerAccessRoutes,
   registerAuditRoutes,
   registerMasterDataRoutes,
+  registerResourceRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -64,6 +65,7 @@ try {
     registerAccessRoutes(app, pool, auth.tenantId);
     registerAuditRoutes(app, pool, auth.tenantId);
     registerMasterDataRoutes(app, pool, auth.tenantId);
+    registerResourceRoutes(app, pool, auth.tenantId);
   }
   app.addHook('onClose', async () => {
     await pool.end();

@@ -2,7 +2,7 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C013 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
+**Stand:** C001–C014 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
 Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
 Fachfunktionen wie Events, Reservierungen und Rechnungen folgen im Implementierungsplan.
 Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
@@ -52,3 +52,5 @@ Die Testgrundlage und ihre Voraussetzungen stehen in [docs/testing.md](docs/test
 Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Google-Anmeldung und sicherer Erstkonto-Bootstrap: [Einrichtung](docs/authentication.md). Ohne OIDC-Konfiguration startet das Grundsystem, geschützte Verwaltungsendpunkte bleiben gesperrt.
 
 Stammdaten verwalten und bestehende Werte übernehmen: [Stammdaten](docs/master-data.md).
+
+Ressourcen und Standardpuffer: [Ressourcenstamm](docs/resources.md).

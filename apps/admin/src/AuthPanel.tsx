@@ -1,3 +1,4 @@
+import { ResourcePanel } from './ResourcePanel.js';
 import { MasterDataSettings } from './MasterDataPanel.js';
 import { AccessPanel } from './AccessPanel.js';
 import { useEffect, useState } from 'react';
@@ -55,6 +56,7 @@ export function AuthPanel() {
       {user ? (
         <>
           <p>{user.email}</p>
+          <ResourcePanel csrfToken={user.csrfToken} />
           <MasterDataSettings csrfToken={user.csrfToken} />
           <AccessPanel
             csrfToken={user.csrfToken}

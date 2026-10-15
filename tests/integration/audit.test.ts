@@ -44,13 +44,13 @@ test('audit is append-only, tenant-bound and part of its transaction', async () 
     }),
   ).rejects.toThrow('rollback');
   expect(
-    (await auditRepository(pool, other).list()).every(
-      (e) => e.action === 'master_data.created',
+    (await auditRepository(pool, other).list()).every((e) =>
+      ['master_data.created', 'resource.created'].includes(e.action),
     ),
   ).toBe(true);
   expect(
     (await auditRepository(pool, tenantId).list()).filter(
-      (e) => e.action !== 'master_data.created',
+      (e) => !['master_data.created', 'resource.created'].includes(e.action),
     ),
   ).toMatchObject([{ action: 'login.succeeded', actorId: actor!.id }]);
   await expect(

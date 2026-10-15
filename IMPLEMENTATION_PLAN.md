@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C013 implementiert; C014–C085 offen. Die CI prüft jeden Push.
+**Status:** geprüfter Bauplan; C001–C014 implementiert; C015–C085 offen. Die CI prüft jeden Push.
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -25,7 +25,8 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] C011: unveränderbares Auditlog, atomare Sitzungsereignisse und mandantenbegrenzter Lesezugriff
 - [x] C012: Eventarten und Paketwerte mit Archivierung/Versionsschutz; fünf bestätigte Startwerte und feste Status
 - [x] C013: konfigurierbare Absagegründe mit acht Startwerten und Erhalt historischer Zuordnungen
-- [ ] C014–C085: noch nicht implementiert oder abgenommen
+- [x] C014: Ressourcenstamm mit getrennten Boxen/Zubehör, Bestand, Puffern, Sperre und Archivierung
+- [ ] C015–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 

@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
+import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
@@ -118,6 +119,7 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     });
     registerAccessRoutes(app, pool, config.tenantId);
     registerMasterDataRoutes(app, pool, config.tenantId);
+    registerResourceRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
     await page.goto(origin);
     await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
@@ -197,6 +199,17 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       .getByRole('button', { name: 'Speichern', exact: true })
       .click();
     await expect(reasons.getByText('Termin belegt – Archiviert')).toBeVisible();
+    const resources = page.getByRole('region', { name: 'Ressourcen' });
+    await resources
+      .getByRole('button', { name: 'Ressource bearbeiten: FB1', exact: true })
+      .click();
+    await resources.getByLabel('Gesperrt', { exact: true }).check();
+    await resources
+      .getByRole('button', { name: 'Ressource speichern' })
+      .click();
+    await expect(
+      resources.getByRole('listitem').filter({ hasText: /^FB1 –/ }),
+    ).toContainText('FB1 – 1 Stück – Gesperrt');
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

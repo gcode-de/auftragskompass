@@ -9,7 +9,9 @@ export type AuditAction =
   | 'login.failed'
   | 'logout'
   | 'master_data.created'
-  | 'master_data.updated';
+  | 'master_data.updated'
+  | 'resource.created'
+  | 'resource.updated';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,
