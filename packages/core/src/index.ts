@@ -10,3 +10,5 @@ export { registerAuditRoutes } from './audit.js';
 export { registerMasterDataRoutes } from './master-data.js';
 export { registerResourceRoutes } from './resources.js';
 export { registerProductRoutes } from './products.js';
+
+export { contactRepository, registerContactRoutes } from './contacts.js';

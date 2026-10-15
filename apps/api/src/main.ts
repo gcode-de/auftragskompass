@@ -13,6 +13,7 @@ import {
   registerMasterDataRoutes,
   registerResourceRoutes,
   registerProductRoutes,
+  registerContactRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -68,6 +69,7 @@ try {
     registerMasterDataRoutes(app, pool, auth.tenantId);
     registerResourceRoutes(app, pool, auth.tenantId);
     registerProductRoutes(app, pool, auth.tenantId);
+    registerContactRoutes(app, pool, auth.tenantId);
   }
   app.addHook('onClose', async () => {
     await pool.end();

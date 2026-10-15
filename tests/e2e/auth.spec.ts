@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
+import { registerContactRoutes } from '../../packages/core/src/contacts.js';
 import { registerProductRoutes } from '../../packages/core/src/products.js';
 import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
@@ -122,6 +123,7 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     registerMasterDataRoutes(app, pool, config.tenantId);
     registerResourceRoutes(app, pool, config.tenantId);
     registerProductRoutes(app, pool, config.tenantId);
+    registerContactRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
     await page.goto(origin);
     await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
@@ -223,6 +225,33 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
         exact: true,
       }),
     ).toBeVisible();
+    const contacts = page.getByRole('region', { name: 'Kontakte' });
+    await contacts.getByLabel('Name / Firma').fill('Synthetic browser contact');
+    await contacts.getByLabel('Kontaktart').selectOption('company');
+    await contacts.getByLabel('E-Mail-Adresse').fill('browser@example.invalid');
+    await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
+    await expect(
+      contacts.getByText('Synthetic browser contact', { exact: true }),
+    ).toBeVisible();
+    await contacts
+      .getByRole('button', {
+        name: 'Kontakt bearbeiten: Synthetic browser contact',
+      })
+      .click();
+    await contacts.getByRole('button', { name: 'Dubletten prüfen' }).click();
+    await expect(
+      contacts.getByText('Keine möglichen Dubletten gefunden.'),
+    ).toBeVisible();
+    await contacts.getByLabel('Kontaktzustand').selectOption('archived');
+    await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
+    await expect(
+      contacts.getByText('Synthetic browser contact – Archiviert'),
+    ).toBeVisible();
+    const download = page.waitForEvent('download');
+    await contacts
+      .getByRole('link', { name: 'Kontakte als CSV exportieren' })
+      .click();
+    expect((await download).suggestedFilename()).toBe('contacts.csv');
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

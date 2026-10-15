@@ -127,3 +127,22 @@ export const products = pgTable('products', {
   position: integer('position').notNull(),
   version: integer('version').notNull().default(1),
 });
+
+export const contacts = pgTable('contacts', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  kind: text('kind').notNull(),
+  name: text('name').notNull(),
+  contactPerson: text('contact_person').notNull(),
+  street: text('street').notNull(),
+  postalCode: text('postal_code').notNull(),
+  city: text('city').notNull(),
+  country: text('country').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone').notNull(),
+  mobile: text('mobile').notNull(),
+  phoneKey: text('phone_key').notNull(),
+  mobileKey: text('mobile_key').notNull(),
+  state: text('state').notNull(),
+  version: integer('version').notNull().default(1),
+});

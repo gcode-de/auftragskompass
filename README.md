@@ -2,7 +2,7 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C015 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
+**Stand:** C001–C016 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
 Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
 Fachfunktionen wie Events, Reservierungen und Rechnungen folgen im Implementierungsplan.
 Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
@@ -56,3 +56,4 @@ Stammdaten verwalten und bestehende Werte übernehmen: [Stammdaten](docs/master-
 Ressourcen und Standardpuffer: [Ressourcenstamm](docs/resources.md).
 
 Produkte, Preise und Steuersätze: [Produktkatalog](docs/products.md).
+Privat- und Firmenkontakte: [Kontaktverwaltung und Export](docs/contacts.md).
