@@ -1,3 +1,4 @@
+import { EventPanel } from './EventPanel.js';
 import { LocationPanel } from './LocationPanel.js';
 import { ContactPanel } from './ContactPanel.js';
 import { ProductPanel } from './ProductPanel.js';
@@ -59,6 +60,7 @@ export function AuthPanel() {
       {user ? (
         <>
           <p>{user.email}</p>
+          <EventPanel csrfToken={user.csrfToken} />
           <LocationPanel csrfToken={user.csrfToken} />
           <ContactPanel csrfToken={user.csrfToken} />
           <ProductPanel csrfToken={user.csrfToken} />

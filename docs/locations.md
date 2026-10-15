@@ -1,6 +1,6 @@
 # Wiederverwendbare Locations
 
-C017 verwaltet Veranstaltungsorte mit Name, Straße, Postleitzahl, Ort und zweistelligem Ländercode. Name und Ländercode sind Pflichtfelder; eine noch unvollständige Anschrift ist erlaubt. Die Datenbank startet ohne erfundene Locations. Die Zuordnung zu echten Events folgt in C018.
+C017 verwaltet Veranstaltungsorte mit Name, Straße, Postleitzahl, Ort und zweistelligem Ländercode. Name und Ländercode sind Pflichtfelder; eine noch unvollständige Anschrift ist erlaubt. Die Datenbank startet ohne erfundene Locations. Locations können ab C018 einem Event zugeordnet werden.
 
 ## API v1
 

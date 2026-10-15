@@ -2,9 +2,9 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C017 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
+**Stand:** C001–C018 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
 Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
-Fachfunktionen wie Events, Reservierungen und Rechnungen folgen im Implementierungsplan.
+Events können angelegt und bearbeitet werden; Reservierungen und Rechnungen folgen im Implementierungsplan.
 Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
 die vollständige Ablösung ist Ziel von M7.
 
@@ -59,3 +59,5 @@ Produkte, Preise und Steuersätze: [Produktkatalog](docs/products.md).
 Privat- und Firmenkontakte: [Kontaktverwaltung und Export](docs/contacts.md).
 
 Veranstaltungsorte: [Locations](docs/locations.md).
+
+Anfragen und Aufträge erfassen: [Events](docs/events.md).

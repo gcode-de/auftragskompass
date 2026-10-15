@@ -10,11 +10,16 @@
   "dependencies": {
     "@fastify/cookie": "11.1.2",
     "@fastify/rate-limit": "11.2.0",
+    "@js-temporal/polyfill": "0.5.1",
     "drizzle-orm": "0.45.2",
     "fastify": "5.12.5",
     "openid-client": "6.8.8",
-    "pg": "8.23.0"
+    "pg": "8.23.0",
+    "sanitize-html": "2.18.1"
   },
   "exports": "./dist/index.js",
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "devDependencies": {
+    "@types/sanitize-html": "2.16.2"
+  }
 }

@@ -31,7 +31,10 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
     [search, setSearch] = useState(''),
     [message, setMessage] = useState(''),
     [duplicates, setDuplicates] = useState<string[]>([]),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [linkedEvents, setLinkedEvents] = useState<{ id: string; name: string }[]>(
+      [],
+    );
   async function refresh(query = '') {
     const response = await fetch(
       '/api/v1/contacts' + (query ? '?q=' + encodeURIComponent(query) : ''),
@@ -107,6 +110,19 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
       );
     } finally {
       setBusy(false);
+    }
+  }
+  async function showEvents(id: string) {
+    setLinkedEvents([]);
+    setMessage('');
+    try {
+      const response = await fetch('/api/v1/contacts/' + id + '/events');
+      if (!response.ok) throw Error('load');
+      const rows = (await response.json()) as { id: string; name: string }[];
+      setLinkedEvents(rows);
+      if (!rows.length) setMessage('Keine zugeordneten Events.');
+    } catch {
+      setMessage('Zugeordnete Events konnten nicht geladen werden.');
     }
   }
   return (
@@ -191,6 +207,15 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
       {duplicates.length > 0 && (
         <p role="status">Mögliche Dubletten: {duplicates.join(', ')}</p>
       )}
+      {linkedEvents.length > 0 && (
+        <nav aria-label="Zugeordnete Events">
+          {linkedEvents.map((event) => (
+            <a key={event.id} href={'#event-' + event.id}>
+              {event.name}
+            </a>
+          ))}
+        </nav>
+      )}
       <ul>
         {rows.map((row) => (
           <li key={row.id}>
@@ -217,6 +242,13 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
                 Anrufen
               </a>
             )}{' '}
+            <button
+              disabled={busy}
+              onClick={() => void showEvents(row.id)}
+              aria-label={`Events anzeigen: ${row.name}`}
+            >
+              Events anzeigen
+            </button>
             <button
               disabled={busy}
               aria-label={`Kontakt bearbeiten: ${row.name}`}

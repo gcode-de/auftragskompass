@@ -1,4 +1,5 @@
 import {
+  date,
   boolean,
   bigint,
   integer,
@@ -157,4 +158,28 @@ export const locations = pgTable('locations', {
   country: text('country').notNull(),
   state: text('state').notNull(),
   version: integer('version').notNull().default(1),
+});
+
+export const events = pgTable('events', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  name: text('name').notNull(),
+  status: text('status').notNull(),
+  eventTypeId: uuid('event_type_id'),
+  packageId: uuid('package_id'),
+  locationId: uuid('location_id'),
+  source: text('source').notNull(),
+  eventDate: date('event_date', { mode: 'string' }),
+  startsAt: timestamp('starts_at', { withTimezone: true }),
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  timeZone: text('time_zone').notNull(),
+  description: text('description').notNull(),
+  notesHtml: text('notes_html').notNull(),
+  version: integer('version').notNull().default(1),
+});
+export const eventContacts = pgTable('event_contacts', {
+  tenantId: uuid('tenant_id').notNull(),
+  eventId: uuid('event_id').notNull(),
+  contactId: uuid('contact_id').notNull(),
+  role: text('role').notNull(),
 });

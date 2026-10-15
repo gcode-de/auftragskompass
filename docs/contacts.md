@@ -1,6 +1,6 @@
 # Kontakte
 
-C016 unterstützt Privatpersonen und Firmen mit Ansprechpartner, Anschrift, E-Mail, Festnetz und Mobilnummer. Kontakte werden archiviert, nicht gelöscht; IDs bleiben für spätere Event- und E-Mail-Verknüpfungen erhalten. Diese Verknüpfungen folgen mit den entsprechenden Fachmodellen ab C018 beziehungsweise C042. Es werden keine vorhandenen Kundendaten automatisch importiert.
+C016 unterstützt Privatpersonen und Firmen mit Ansprechpartner, Anschrift, E-Mail, Festnetz und Mobilnummer. Kontakte werden archiviert, nicht gelöscht; IDs bleiben für spätere Event- und E-Mail-Verknüpfungen erhalten. Zugeordnete Events sind ab C018 über „Events anzeigen“ verfügbar; E-Mail-Verknüpfungen folgen mit C042. Es werden keine vorhandenen Kundendaten automatisch importiert.
 
 ## API v1
 

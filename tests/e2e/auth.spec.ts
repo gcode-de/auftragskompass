@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
+import { registerEventRoutes } from '../../packages/core/src/events.js';
 import { registerLocationRoutes } from '../../packages/core/src/locations.js';
 import { registerContactRoutes } from '../../packages/core/src/contacts.js';
 import { registerProductRoutes } from '../../packages/core/src/products.js';
@@ -126,7 +127,9 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     registerProductRoutes(app, pool, config.tenantId);
     registerContactRoutes(app, pool, config.tenantId);
     registerLocationRoutes(app, pool, config.tenantId);
+    registerEventRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
+    page.setDefaultTimeout(10000);
     await page.goto(origin);
     await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
     await expect(
@@ -270,6 +273,68 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await locations.getByRole('button', { name: 'Location speichern' }).click();
     await expect(
       locations.getByText('Synthetic browser venue – Archiviert'),
+    ).toBeVisible();
+    await contacts
+      .getByRole('button', {
+        name: 'Kontakt bearbeiten: Synthetic browser contact',
+      })
+      .click();
+    await contacts.getByLabel('Kontaktzustand').selectOption('active');
+    await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
+    await expect(
+      contacts.getByText('Synthetic browser contact', { exact: true }),
+    ).toBeVisible();
+    const events = page.getByRole('region', { name: 'Events' });
+    await events.getByRole('button', { name: 'Events aktualisieren' }).click();
+    await expect(
+      events
+        .getByLabel('Hauptkontakt')
+        .getByRole('option', { name: 'Synthetic browser contact' }),
+    ).toBeEnabled();
+    await events
+      .getByLabel('Eventname', { exact: true })
+      .fill('Synthetic browser event');
+    await events
+      .getByLabel('Hauptkontakt')
+      .selectOption({ label: 'Synthetic browser contact' });
+    await events
+      .getByRole('combobox', { name: 'Eventart', exact: true })
+      .selectOption({ label: 'Hochzeit' });
+    await events.getByLabel('Eventdatum').fill('2026-10-16');
+    await events.getByLabel('Eventbeginn').fill('2026-10-16T18:00');
+    await events.getByLabel('Eventende').fill('2026-10-17T01:00');
+    await events
+      .getByLabel('Interne Notizen')
+      .fill(
+        '<strong>Fictional browser note</strong><script>window.syntheticBad=true</script>',
+      );
+    await events.getByRole('button', { name: 'Event speichern' }).click();
+    await expect(
+      events.getByText('Synthetic browser event – 2026-10-16 – Anfrage'),
+    ).toBeVisible();
+    await expect(
+      events.getByLabel('Notizen: Synthetic browser event').locator('strong'),
+    ).toHaveText('Fictional browser note');
+    expect(
+      await page.evaluate(() => Object.hasOwn(window, 'syntheticBad')),
+    ).toBe(false);
+    await contacts
+      .getByRole('button', {
+        name: 'Events anzeigen: Synthetic browser contact',
+      })
+      .click();
+    await expect(
+      contacts.getByRole('link', { name: 'Synthetic browser event' }),
+    ).toBeVisible();
+    await events
+      .getByRole('button', {
+        name: 'Event bearbeiten: Synthetic browser event',
+      })
+      .click();
+    await events.getByLabel('Eventstatus').selectOption('cancelled');
+    await events.getByRole('button', { name: 'Event speichern' }).click();
+    await expect(
+      events.getByText('Synthetic browser event – 2026-10-16 – Annulliert'),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();

@@ -116,3 +116,33 @@ test('contacts retain input after validation, conflict, load and connection erro
   );
   await screen.findByText(/Kontakte konnten nicht geladen/);
 });
+
+test('contacts reveal related events and handle empty or unavailable relations', async () => {
+  let calls = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (!url.endsWith('/events')) return Response.json([row]);
+      if (calls++ === 0)
+        return Response.json([
+          { id: 'synthetic-event', name: 'Fictional linked event' },
+        ]);
+      if (calls === 2) return Response.json([]);
+      return new Response(null, { status: 500 });
+    }),
+  );
+  render(<ContactPanel csrfToken="csrf" />);
+  const button = await screen.findByRole('button', {
+    name: 'Events anzeigen: Synthetic Company',
+  });
+  fireEvent.click(button);
+  expect(
+    (
+      await screen.findByRole('link', { name: 'Fictional linked event' })
+    ).getAttribute('href'),
+  ).toBe('#event-synthetic-event');
+  fireEvent.click(button);
+  await screen.findByText('Keine zugeordneten Events.');
+  fireEvent.click(button);
+  await screen.findByText(/Zugeordnete Events konnten nicht geladen/);
+});
