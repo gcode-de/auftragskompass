@@ -6,7 +6,11 @@ import { and, asc, eq } from 'drizzle-orm';
 import { masterData } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
-export const masterKinds = ['event_type', 'package'] as const;
+export const masterKinds = [
+  'event_type',
+  'package',
+  'cancellation_reason',
+] as const;
 export type MasterKind = (typeof masterKinds)[number];
 export type MasterInput = {
   name: string;

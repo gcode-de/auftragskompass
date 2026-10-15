@@ -15,7 +15,7 @@ werden über die Oberfläche eingetragen. Es gibt keine Obergrenze von fünf ode
 Eventarten. Details der Mengenklärung stehen in [decisions.md](decisions.md).
 
 Die geschützten Routen liegen unter `/api/v1/master-data/:kind`, mit `kind` gleich
-`event_type` oder `package`:
+`event_type`, `package` oder (ab C013) `cancellation_reason`:
 
 - GET listet alle Einträge in Sortierreihenfolge, einschließlich archivierter Werte.
 - POST erwartet `{ "name": "Beispiel", "position": 0, "state": "active" }` und liefert 201.
@@ -36,3 +36,14 @@ Scheitert das Audit, wird die Stammdatenänderung zurückgerollt.
 Die Prüfung der sieben synthetischen, zusätzlich angelegten Eventarten sowie
 historischer Verweise erfolgt in PostgreSQL. Chromium prüft Paket anlegen und
 archivieren nach echtem Browser-Login mit synthetischem OIDC-Provider.
+
+
+## Absagegründe (C013)
+
+Die gemeinsame Stammdatenoberfläche verwaltet auch Absagegründe mit denselben
+Versions-, Berechtigungs- und Archivierungsregeln. Migration `0006_cancellation_reasons.sql`
+ergänzt pro vorhandenem und künftigem Mandanten acht aktive Startwerte: Termin belegt,
+Zubehör nicht verfügbar, Preis, keine Rückmeldung, anderer Anbieter, Kunde abgesagt,
+Termin verschoben und Sonstiges. Änderungen in der Oberfläche bleiben bei Neustarts
+bestehen. Archivierte Gründe erhalten ihre ID; vorhandene Referenzen bleiben lesbar.
+Die Zuordnung zu Events und die Auswertung folgen in den dafür vorgesehenen Slices.

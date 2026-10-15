@@ -2,8 +2,8 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C012 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
-Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten und Paketwerte.
+**Stand:** C001–C013 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
+Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
 Fachfunktionen wie Events, Reservierungen und Rechnungen folgen im Implementierungsplan.
 Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
 die vollständige Ablösung ist Ziel von M7.

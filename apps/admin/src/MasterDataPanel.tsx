@@ -195,6 +195,11 @@ export function MasterDataSettings({ csrfToken }: { csrfToken: string }) {
         title="Paketwerte"
         csrfToken={csrfToken}
       />
+      <MasterDataPanel
+        kind="cancellation_reason"
+        title="Absagegründe"
+        csrfToken={csrfToken}
+      />
       <section aria-label="Auftragsstatus">
         <h2>Auftragsstatus</h2>
         {error ? (

@@ -186,6 +186,17 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
         .getByRole('region', { name: 'Auftragsstatus' })
         .getByText('Gebucht', { exact: true }),
     ).toBeVisible();
+    const reasons = page.getByRole('region', { name: 'Absagegründe' });
+    await reasons
+      .getByRole('button', { name: 'Bearbeiten: Termin belegt', exact: true })
+      .click();
+    await reasons
+      .getByLabel('Zustand', { exact: true })
+      .selectOption('archived');
+    await reasons
+      .getByRole('button', { name: 'Speichern', exact: true })
+      .click();
+    await expect(reasons.getByText('Termin belegt – Archiviert')).toBeVisible();
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

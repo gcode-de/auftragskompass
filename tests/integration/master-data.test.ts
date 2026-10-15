@@ -184,6 +184,30 @@ test('authenticated API validates, isolates and exposes fixed statuses', async (
         payload: { name, position: 0, state: 'active' },
       });
     expect((await create('')).statusCode).toBe(400);
+    const cancellation = await app.inject({
+      url: '/api/v1/master-data/cancellation_reason',
+      cookies,
+    });
+    expect(cancellation.statusCode).toBe(200);
+    expect(cancellation.json()).toHaveLength(8);
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url:
+            '/api/v1/master-data/cancellation_reason/' +
+            cancellation.json()[0].id,
+          cookies,
+          payload: {
+            name: 'No CSRF',
+            position: 0,
+            state: 'active',
+            version: 1,
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+
     const created = await create('API synthetic');
     expect(created.statusCode).toBe(201);
     expect(created.json()).not.toHaveProperty('tenantId');
@@ -248,4 +272,50 @@ test('authenticated API validates, isolates and exposes fixed statuses', async (
   } finally {
     await app.close();
   }
+});
+
+test('cancellation reasons keep historical links when archived and remain tenant isolated', async () => {
+  const repo = masterDataRepository(pool, tenantId);
+  const reasons = await repo.list('cancellation_reason');
+  expect(reasons.map((r) => r.name)).toEqual([
+    'Termin belegt',
+    'Zubehör nicht verfügbar',
+    'Preis',
+    'keine Rückmeldung',
+    'anderer Anbieter',
+    'Kunde abgesagt',
+    'Termin verschoben',
+    'Sonstiges',
+  ]);
+  const reason = reasons[0]!;
+  await pool.query('INSERT INTO synthetic_history VALUES ($1,$2)', [
+    tenantId,
+    reason.id,
+  ]);
+  const archived = await repo.update(userId, 'cancellation_reason', reason.id, {
+    name: reason.name,
+    position: 9,
+    state: 'archived',
+    version: reason.version,
+  });
+  expect(archived.state).toBe('archived');
+  expect(
+    (
+      await pool.query(
+        'SELECT m.name FROM synthetic_history h JOIN master_data m ON m.tenant_id=h.tenant_id AND m.id=h.master_id WHERE h.master_id=$1',
+        [reason.id],
+      )
+    ).rows,
+  ).toEqual([{ name: 'Termin belegt' }]);
+  expect(
+    await masterDataRepository(pool, randomUUID()).list('cancellation_reason'),
+  ).toEqual([]);
+  await expect(
+    repo.update(userId, 'package', reason.id, {
+      name: 'Wrong category',
+      position: 0,
+      state: 'active',
+      version: archived.version,
+    }),
+  ).rejects.toThrow('not_found');
 });

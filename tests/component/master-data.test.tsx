@@ -128,6 +128,7 @@ test('settings show fixed statuses and loading errors allow retry', async () => 
   );
   render(<MasterDataSettings csrfToken="csrf" />);
   expect(await screen.findByText('Anfrage')).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Absagegründe' })).toBeTruthy();
   const packages = within(screen.getByRole('region', { name: 'Paketwerte' }));
   await packages.findByText(/Liste konnte/);
   fireEvent.click(
