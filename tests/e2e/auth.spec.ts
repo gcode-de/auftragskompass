@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
+import { registerProductRoutes } from '../../packages/core/src/products.js';
 import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
@@ -120,6 +121,7 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     registerAccessRoutes(app, pool, config.tenantId);
     registerMasterDataRoutes(app, pool, config.tenantId);
     registerResourceRoutes(app, pool, config.tenantId);
+    registerProductRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
     await page.goto(origin);
     await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
@@ -210,6 +212,17 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await expect(
       resources.getByRole('listitem').filter({ hasText: /^FB1 –/ }),
     ).toContainText('FB1 – 1 Stück – Gesperrt');
+    const products = page.getByRole('region', { name: 'Produkte' });
+    await products
+      .getByLabel('Produktname', { exact: true })
+      .fill('Synthetic browser product');
+    await products.getByLabel('Preis in Euro').fill('19,99');
+    await products.getByRole('button', { name: 'Produkt speichern' }).click();
+    await expect(
+      products.getByText('Synthetic browser product – 19,99 € Brutto', {
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

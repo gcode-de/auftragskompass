@@ -21,7 +21,7 @@ afterAll(async () => {
 });
 test('migrations serialize, restart safely and detect changed history', async () => {
   await Promise.all([migrate(pool), migrate(pool)]);
-  expect((await pool.query('SELECT * FROM ak_migrations')).rowCount).toBe(7);
+  expect((await pool.query('SELECT * FROM ak_migrations')).rowCount).toBe(8);
   await pool.query("UPDATE ak_migrations SET checksum = 'tampered'");
   await expect(migrate(pool)).rejects.toThrow('Migration checksum mismatch');
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');

@@ -114,3 +114,16 @@ export const resources = pgTable('resources', {
   position: integer('position').notNull(),
   version: integer('version').notNull().default(1),
 });
+export const products = pgTable('products', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  unit: text('unit').notNull(),
+  priceMinor: bigint('price_minor', { mode: 'number' }).notNull(),
+  priceBasis: text('price_basis').notNull(),
+  taxBasisPoints: integer('tax_basis_points').notNull(),
+  state: text('state').notNull(),
+  position: integer('position').notNull(),
+  version: integer('version').notNull().default(1),
+});
