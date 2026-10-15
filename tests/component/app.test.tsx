@@ -8,5 +8,5 @@ test('renders the accessible application shell', () => {
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
     'AuftragsKompass',
   );
-  expect(screen.getByText(/Grundgerüst/)).toBeTruthy();
+  expect(screen.getByText(/Anfragen, Kontakte und Stammdaten/)).toBeTruthy();
 });

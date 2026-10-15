@@ -1,9 +1,17 @@
+import { updateUrlSearch } from '../../apps/admin/src/url-state.js';
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.history.replaceState(null, '', '/');
 });
 const row = {
   id: 'synthetic',
@@ -32,7 +40,7 @@ function mocker(errors: string[] = [], supplied: Record<string, unknown> = {}) {
       rows = [{ ...row, ...JSON.parse(String(options.body)) }];
       return Response.json(rows[0]);
     }
-    if (url === '/api/v1/events')
+    if (url.startsWith('/api/v1/events'))
       return Response.json({ timeZone: 'Europe/Berlin', events: rows });
     if (url === '/api/v1/statuses')
       return Response.json([
@@ -83,7 +91,7 @@ test('events create without date, retain formatted notes and edit/cancel with ve
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText('Synthetic new event – 2026-07-01 – Annulliert');
+  await screen.findByText('Synthetic new event – 01.07.2026 – Annulliert');
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events/synthetic',
     expect.objectContaining({
@@ -187,7 +195,7 @@ test('event copies retain active references and require new choices for archived
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText('Synthetic event (Kopie) – 2026-07-01 – Anfrage');
+  await screen.findByText('Synthetic event (Kopie) – 01.07.2026 – Anfrage');
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events',
     expect.objectContaining({
@@ -195,4 +203,86 @@ test('event copies retain active references and require new choices for archived
       body: expect.stringContaining('2026-07-01T16:00:00.123Z'),
     }),
   );
+});
+
+test('event filters restore URL values, combine and clear filters, and show empty results', async () => {
+  window.history.replaceState(
+    null,
+    '',
+    '/?q=Synthetic&status=inquiry&other=keep',
+  );
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  expect(
+    (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
+  ).toBe('Synthetic');
+  fireEvent.change(screen.getByLabelText('Filter von'), {
+    target: { value: '2026-07-01' },
+  });
+  fireEvent.change(screen.getByLabelText('Filter bis'), {
+    target: { value: '2026-07-31' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Events filtern' }).closest('form')!,
+  );
+  expect(window.location.search).toContain('from=2026-07-01');
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/events?q=Synthetic&from=2026-07-01&to=2026-07-31&status=inquiry',
+  );
+  fireEvent.click(screen.getByLabelText('Nur Events ohne Datum'));
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Events filtern' }).closest('form')!,
+  );
+  expect(window.location.search).toContain('undated=true');
+  expect(window.location.search).not.toContain('from=');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventfilter zurücksetzen' }),
+  );
+  expect(window.location.search).toBe('?other=keep');
+  fetcher.mockImplementation(async (url: string) =>
+    url.startsWith('/api/v1/events')
+      ? Response.json({ timeZone: 'Europe/Berlin', events: [] })
+      : Response.json([]),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Events aktualisieren' }));
+  await screen.findByText('Keine Events gefunden.');
+});
+
+test('older event search responses and failures cannot overwrite a newer result', async () => {
+  for (const fail of [false, true]) {
+    let resolveOld!: (response: Response) => void,
+      rejectOld!: (error: Error) => void;
+    const old = new Promise<Response>((resolve, reject) => {
+      resolveOld = resolve;
+      rejectOld = reject;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/v1/events') return old;
+        if (url.startsWith('/api/v1/events?'))
+          return Response.json({
+            timeZone: 'Europe/Berlin',
+            events: [{ ...row, name: 'Synthetic fresh' }],
+          });
+        return Response.json([]);
+      }),
+    );
+    render(<EventPanel csrfToken="csrf" />);
+    act(() => updateUrlSearch({ q: 'fresh' }));
+    await screen.findByText('Synthetic fresh – Ohne Datum – inquiry');
+    await act(async () => {
+      if (fail) rejectOld(Error('stale offline'));
+      else
+        resolveOld(Response.json({ timeZone: 'Europe/Berlin', events: [row] }));
+    });
+    expect(
+      screen.queryByText('Synthetic event – Ohne Datum – inquiry'),
+    ).toBeNull();
+    expect(screen.queryByText(/Events konnten nicht geladen/)).toBeNull();
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  }
 });

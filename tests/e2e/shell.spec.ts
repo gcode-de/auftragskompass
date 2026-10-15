@@ -8,6 +8,8 @@ test('built React shell loads in Chromium without runtime errors', async ({
   await expect(
     page.getByRole('heading', { name: 'AuftragsKompass' }),
   ).toBeVisible();
-  await expect(page.getByText(/Grundgerüst/)).toContainText('Grundgerüst');
+  await expect(
+    page.getByText(/Anfragen, Kontakte und Stammdaten/),
+  ).toContainText('verwalten');
   expect(errors).toEqual([]);
 });

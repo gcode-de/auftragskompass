@@ -1,3 +1,4 @@
+import { Navigation } from './Navigation.js';
 import { EventPanel } from './EventPanel.js';
 import { LocationPanel } from './LocationPanel.js';
 import { ContactPanel } from './ContactPanel.js';
@@ -60,20 +61,24 @@ export function AuthPanel() {
       {user ? (
         <>
           <p>{user.email}</p>
+          <Navigation />
           <EventPanel csrfToken={user.csrfToken} />
           <LocationPanel csrfToken={user.csrfToken} />
           <ContactPanel csrfToken={user.csrfToken} />
           <ProductPanel csrfToken={user.csrfToken} />
           <ResourcePanel csrfToken={user.csrfToken} />
-          <MasterDataSettings csrfToken={user.csrfToken} />
-          <AccessPanel
-            csrfToken={user.csrfToken}
-            onSessionEnded={() => {
-              setUser(null);
-              setReady(true);
-              setStatus('Sitzung beendet. Bitte erneut anmelden.');
-            }}
-          />
+          <section id="settings" aria-label="Einstellungen">
+            <h2>Einstellungen</h2>
+            <MasterDataSettings csrfToken={user.csrfToken} />
+            <AccessPanel
+              csrfToken={user.csrfToken}
+              onSessionEnded={() => {
+                setUser(null);
+                setReady(true);
+                setStatus('Sitzung beendet. Bitte erneut anmelden.');
+              }}
+            />
+          </section>
           <button onClick={() => void logout()}>Abmelden</button>
         </>
       ) : ready ? (

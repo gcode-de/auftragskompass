@@ -310,7 +310,7 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       );
     await events.getByRole('button', { name: 'Event speichern' }).click();
     await expect(
-      events.getByText('Synthetic browser event – 2026-10-16 – Anfrage'),
+      events.getByText('Synthetic browser event – 16.10.2026 – Anfrage'),
     ).toBeVisible();
     await expect(
       events.getByLabel('Notizen: Synthetic browser event').locator('strong'),
@@ -334,8 +334,58 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await events.getByLabel('Eventstatus').selectOption('cancelled');
     await events.getByRole('button', { name: 'Event speichern' }).click();
     await expect(
-      events.getByText('Synthetic browser event – 2026-10-16 – Annulliert'),
+      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeVisible();
+    await events.getByLabel('Events suchen', { exact: true }).fill('browser');
+    await events.getByLabel('Filter von').fill('2026-10-16');
+    await events.getByLabel('Filter bis').fill('2026-10-16');
+    await events
+      .getByRole('combobox', { name: 'Filterstatus', exact: true })
+      .selectOption('cancelled');
+    await events.getByRole('button', { name: 'Events filtern' }).click();
+    await expect(page).toHaveURL(/status=cancelled/);
+    await expect(
+      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+    ).toBeVisible();
+    await events.getByLabel('Nur Events ohne Datum').check();
+    await events.getByRole('button', { name: 'Events filtern' }).click();
+    await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
+    await page.goBack();
+    await expect(
+      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+    ).toBeVisible();
+    await page.reload();
+    await expect(events.getByLabel('Filter von')).toHaveValue('2026-10-16');
+    await expect(
+      events.getByRole('combobox', { name: 'Filterstatus', exact: true }),
+    ).toHaveValue('cancelled');
+    await page.getByLabel('Globale Suche').fill('Synthetic missing search');
+    await page
+      .getByRole('button', { name: 'Events und Kontakte suchen' })
+      .click();
+    await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
+    await expect(contacts.getByText('Keine Kontakte gefunden.')).toBeVisible();
+    await page.getByLabel('Globale Suche').fill('browser');
+    await page
+      .getByRole('button', { name: 'Events und Kontakte suchen' })
+      .click();
+    await expect(
+      contacts.getByText('Synthetic browser contact', { exact: true }),
+    ).toBeVisible();
+    await events.getByLabel('Nur Events ohne Datum').check();
+    await events.getByRole('button', { name: 'Events filtern' }).click();
+    await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
+    await contacts
+      .getByRole('button', {
+        name: 'Events anzeigen: Synthetic browser contact',
+      })
+      .click();
+    await contacts
+      .getByRole('link', { name: 'Synthetic browser event' })
+      .click();
+    await expect(
+      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+    ).toBeInViewport();
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

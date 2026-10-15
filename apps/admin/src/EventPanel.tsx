@@ -1,4 +1,10 @@
-import { useEffect, useState } from 'react';
+import {
+  useUrlSearch,
+  updateUrlSearch,
+  eventQuery,
+  emptyEventFilters,
+} from './url-state.js';
+import { useEffect, useState, useRef } from 'react';
 import { toInstant, fromInstant } from './event-time.js';
 type Choice = { id: string; name: string; state: string };
 type EventRow = {
@@ -21,6 +27,9 @@ type EventRow = {
 };
 type Status = { code: string; label: string };
 export function EventPanel({ csrfToken }: { csrfToken: string }) {
+  const urlSearch = useUrlSearch(),
+    filters = new URLSearchParams(urlSearch),
+    sequence = useRef(0);
   const [rows, setRows] = useState<EventRow[]>([]),
     [draft, setDraft] = useState<EventRow | null>(null),
     [editing, setEditing] = useState(false),
@@ -31,41 +40,66 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
     [contacts, setContacts] = useState<Choice[]>([]),
     [statuses, setStatuses] = useState<Status[]>([]),
     [message, setMessage] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true),
+    [loadFailed, setLoadFailed] = useState(false);
   async function refresh() {
-    const responses = await Promise.all(
-      [
-        '/events',
-        '/statuses',
-        '/master-data/event_type',
-        '/master-data/package',
-        '/locations',
-        '/contacts',
-      ].map((path) => fetch('/api/v1' + path)),
-    );
-    if (responses.some((response) => !response.ok)) throw Error('load');
-    const [events, statuses, types, packages, locations, contacts] =
-      (await Promise.all(responses.map((response) => response.json()))) as [
-        { timeZone: string; events: EventRow[] },
-        Status[],
-        Choice[],
-        Choice[],
-        Choice[],
-        Choice[],
-      ];
-    setRows(events.events);
-    setTimeZone(events.timeZone);
-    setStatuses(statuses);
-    setTypes(types);
-    setPackages(packages);
-    setLocations(locations);
-    setContacts(contacts);
+    const current = ++sequence.current;
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      const responses = await Promise.all(
+        [
+          '/events',
+          '/statuses',
+          '/master-data/event_type',
+          '/master-data/package',
+          '/locations',
+          '/contacts',
+        ].map((path) =>
+          fetch(
+            '/api/v1' +
+              path +
+              (path === '/events' ? eventQuery(urlSearch) : ''),
+          ),
+        ),
+      );
+      if (responses.some((response) => !response.ok)) throw Error('load');
+      const [events, statuses, types, packages, locations, contacts] =
+        (await Promise.all(responses.map((response) => response.json()))) as [
+          { timeZone: string; events: EventRow[] },
+          Status[],
+          Choice[],
+          Choice[],
+          Choice[],
+          Choice[],
+        ];
+      if (current !== sequence.current) return;
+      setRows(events.events);
+      setTimeZone(events.timeZone);
+      setStatuses(statuses);
+      setTypes(types);
+      setPackages(packages);
+      setLocations(locations);
+      setContacts(contacts);
+    } catch (error) {
+      if (current === sequence.current) {
+        setLoadFailed(true);
+        throw error;
+      }
+    } finally {
+      if (current === sequence.current) setLoading(false);
+    }
   }
   useEffect(() => {
     void refresh().catch(() =>
       setMessage('Events konnten nicht geladen werden.'),
     );
-  }, []);
+  }, [urlSearch]);
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (id.startsWith('event-')) document.getElementById(id)?.scrollIntoView();
+  }, [rows]);
   async function save(form: HTMLFormElement) {
     setBusy(true);
     setMessage('');
@@ -145,8 +179,93 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
     start = fromInstant(draft?.startsAt ?? null, zone),
     end = fromInstant(draft?.endsAt ?? null, zone);
   return (
-    <section aria-label="Events">
+    <section id="events" aria-label="Events" aria-busy={loading}>
       <h2>Events</h2>
+      <form
+        key={urlSearch + ':' + timeZone}
+        onSubmit={(event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget),
+            undated = data.get('undated') === 'on';
+          updateUrlSearch({
+            q: String(data.get('q') ?? ''),
+            status: String(data.get('status') ?? ''),
+            eventTypeId: String(data.get('eventTypeId') ?? ''),
+            from: undated ? '' : String(data.get('from') ?? ''),
+            to: undated ? '' : String(data.get('to') ?? ''),
+            undated: undated ? 'true' : '',
+          });
+        }}
+      >
+        <fieldset disabled={busy || !timeZone}>
+          <legend>Eventfilter</legend>
+          <label>
+            Events suchen
+            <input
+              name="q"
+              maxLength={200}
+              defaultValue={filters.get('q') ?? ''}
+            />
+          </label>
+          <label>
+            Filter von
+            <input
+              name="from"
+              type="date"
+              defaultValue={filters.get('from') ?? ''}
+            />
+          </label>
+          <label>
+            Filter bis
+            <input
+              name="to"
+              type="date"
+              defaultValue={filters.get('to') ?? ''}
+            />
+          </label>
+          <label>
+            Filterstatus
+            <select name="status" defaultValue={filters.get('status') ?? ''}>
+              <option value="">Alle Status</option>
+              {statuses.map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Filtereventart
+            <select
+              name="eventTypeId"
+              defaultValue={filters.get('eventTypeId') ?? ''}
+            >
+              <option value="">Alle Eventarten</option>
+              {types.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Nur Events ohne Datum
+            <input
+              name="undated"
+              type="checkbox"
+              defaultChecked={filters.get('undated') === 'true'}
+            />
+          </label>
+          <p>Ohne Datum setzt die Datumsgrenzen zurück.</p>
+          <button>Events filtern</button>
+          <button
+            type="button"
+            onClick={() => updateUrlSearch(emptyEventFilters)}
+          >
+            Eventfilter zurücksetzen
+          </button>
+        </fieldset>
+      </form>
       <p>Zeitzone: {zone || 'Wird geladen'}</p>
       <button
         disabled={busy}
@@ -338,17 +457,26 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
         </fieldset>
       </form>
       <p role="status">{message}</p>
+      {loading && <p role="status">Events werden geladen …</p>}
+      {!loading && !loadFailed && !rows.length && <p>Keine Events gefunden.</p>}
       <ul>
         {rows.map((row) => (
           <li key={row.id} id={'event-' + row.id}>
             <span>
-              {row.name} – {row.eventDate ?? 'Ohne Datum'} –{' '}
+              {row.name} –{' '}
+              {row.eventDate
+                ? row.eventDate.split('-').reverse().join('.')
+                : 'Ohne Datum'}{' '}
+              –{' '}
               {statuses.find((s) => s.code === row.status)?.label ?? row.status}
             </span>{' '}
             <span>
+              {types.find((type) => type.id === row.eventTypeId)?.name ??
+                'Eventart offen'}{' '}
               {contacts.find((c) => c.id === row.primaryContactId)?.name}{' '}
               {locations.find((l) => l.id === row.locationId)?.name}
             </span>
+            <p>Keine Fotobox zugewiesen.</p>
             <div
               aria-label={`Notizen: ${row.name}`}
               dangerouslySetInnerHTML={{ __html: row.notesHtml }}

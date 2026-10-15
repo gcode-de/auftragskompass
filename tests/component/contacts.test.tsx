@@ -1,9 +1,17 @@
+import { updateUrlSearch } from '../../apps/admin/src/url-state.js';
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { ContactPanel } from '../../apps/admin/src/ContactPanel.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.history.replaceState(null, '', '/');
 });
 const row = {
   id: 'synthetic',
@@ -145,4 +153,48 @@ test('contacts reveal related events and handle empty or unavailable relations',
   await screen.findByText('Keine zugeordneten Events.');
   fireEvent.click(button);
   await screen.findByText(/Zugeordnete Events konnten nicht geladen/);
+});
+
+test('contact search keeps the newest result when an older request finishes later', async () => {
+  let resolveOld!: (response: Response) => void;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) =>
+      url === '/api/v1/contacts'
+        ? new Promise<Response>((resolve) => {
+            resolveOld = resolve;
+          })
+        : Promise.resolve(
+            Response.json([{ ...row, name: 'Synthetic fresh contact' }]),
+          ),
+    ),
+  );
+  render(<ContactPanel csrfToken="csrf" />);
+  fireEvent.change(screen.getByLabelText('Kontakte suchen'), {
+    target: { value: 'fresh' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Suchen' }).closest('form')!,
+  );
+  await screen.findByText('Synthetic fresh contact');
+  await act(async () => resolveOld(Response.json([row])));
+  expect(screen.queryByText('Synthetic Company')).toBeNull();
+});
+
+test('reapplying the global query resets a local contact search even when the URL is unchanged', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic');
+  const fetcher = vi.fn().mockImplementation(async () => Response.json([row]));
+  vi.stubGlobal('fetch', fetcher);
+  render(<ContactPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic Company');
+  fireEvent.change(screen.getByLabelText('Kontakte suchen'), {
+    target: { value: 'local' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Suchen' }).closest('form')!,
+  );
+  act(() => updateUrlSearch({ q: 'Synthetic' }));
+  expect(
+    (screen.getByLabelText('Kontakte suchen') as HTMLInputElement).value,
+  ).toBe('Synthetic');
 });

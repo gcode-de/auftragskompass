@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { updateUrlSearch, emptyEventFilters } from './url-state.js';
+import { useEffect, useState, useRef } from 'react';
 type Contact = {
   id: string;
   version: number;
@@ -26,26 +27,50 @@ const fields = [
   ['mobile', 'Mobilnummer', 60],
 ] as const;
 export function ContactPanel({ csrfToken }: { csrfToken: string }) {
+  const sequence = useRef(0);
+  const query = new URLSearchParams(window.location.search).get('q') ?? '';
   const [rows, setRows] = useState<Contact[]>([]),
     [draft, setDraft] = useState<Contact | null>(null),
-    [search, setSearch] = useState(''),
+    [search, setSearch] = useState(query),
     [message, setMessage] = useState(''),
     [duplicates, setDuplicates] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true),
+    [loadFailed, setLoadFailed] = useState(false),
     [linkedEvents, setLinkedEvents] = useState<{ id: string; name: string }[]>(
       [],
     );
   async function refresh(query = '') {
-    const response = await fetch(
-      '/api/v1/contacts' + (query ? '?q=' + encodeURIComponent(query) : ''),
-    );
-    if (!response.ok) throw Error('load');
-    setRows((await response.json()) as Contact[]);
+    const current = ++sequence.current;
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      const response = await fetch(
+        '/api/v1/contacts' + (query ? '?q=' + encodeURIComponent(query) : ''),
+      );
+      if (!response.ok) throw Error('load');
+      const rows = (await response.json()) as Contact[];
+      if (current === sequence.current) setRows(rows);
+    } catch (error) {
+      if (current === sequence.current) {
+        setLoadFailed(true);
+        throw error;
+      }
+    } finally {
+      if (current === sequence.current) setLoading(false);
+    }
   }
   useEffect(() => {
-    void refresh().catch(() =>
-      setMessage('Kontakte konnten nicht geladen werden.'),
-    );
+    const changed = () => {
+      const value = new URLSearchParams(window.location.search).get('q') ?? '';
+      setSearch(value);
+      void refresh(value).catch(() =>
+        setMessage('Kontakte konnten nicht geladen werden.'),
+      );
+    };
+    changed();
+    window.addEventListener('popstate', changed);
+    return () => window.removeEventListener('popstate', changed);
   }, []);
   async function submit(form: HTMLFormElement, check = false) {
     setBusy(true);
@@ -126,7 +151,7 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
     }
   }
   return (
-    <section aria-label="Kontakte">
+    <section id="contacts" aria-label="Kontakte" aria-busy={loading}>
       <h2>Kontakte</h2>
       <form
         onSubmit={(event) => {
@@ -210,11 +235,19 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
       {linkedEvents.length > 0 && (
         <nav aria-label="Zugeordnete Events">
           {linkedEvents.map((event) => (
-            <a key={event.id} href={'#event-' + event.id}>
+            <a
+              key={event.id}
+              href={'#event-' + event.id}
+              onClick={() => updateUrlSearch(emptyEventFilters)}
+            >
               {event.name}
             </a>
           ))}
         </nav>
+      )}
+      {loading && <p role="status">Kontakte werden geladen …</p>}
+      {!loading && !loadFailed && !rows.length && (
+        <p>Keine Kontakte gefunden.</p>
       )}
       <ul>
         {rows.map((row) => (

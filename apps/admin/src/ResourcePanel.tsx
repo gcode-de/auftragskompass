@@ -73,7 +73,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
     }
   }
   return (
-    <section aria-label="Ressourcen">
+    <section id="resources" aria-label="Ressourcen">
       <h2>Ressourcen</h2>
       <form
         key={editing ? `${editing.id}:${editing.version}` : 'new'}

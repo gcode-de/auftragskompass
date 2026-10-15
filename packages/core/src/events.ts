@@ -2,7 +2,18 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { and, eq, inArray, asc } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  inArray,
+  asc,
+  or,
+  ilike,
+  gte,
+  lte,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import { Temporal } from '@js-temporal/polyfill';
 import sanitizeHtml from 'sanitize-html';
 import {
@@ -31,6 +42,27 @@ export type EventInput = {
   description: string;
   notesHtml: string;
 };
+export type EventFilters = {
+  q?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+  eventTypeId?: string;
+  undated?: boolean;
+};
+function validateFilters(filters: EventFilters) {
+  try {
+    for (const date of [filters.from, filters.to])
+      if (date) validateSchedule(date, null, null, 'UTC');
+    if (
+      (filters.from && filters.to && filters.from > filters.to) ||
+      (filters.undated && (filters.from || filters.to))
+    )
+      throw Error();
+  } catch {
+    throw new EventError('invalid_filters');
+  }
+}
 class EventError extends Error {}
 export function sanitizeNotes(value: string) {
   const clean = sanitizeHtml(value, {
@@ -83,13 +115,82 @@ async function readRows(
   tenantId: string,
   contactId?: string,
   id?: string,
+  filters: EventFilters = {},
 ) {
+  validateFilters(filters);
+  const pattern = '%' + (filters.q ?? '').replace(/[\\%_]/g, '\\$&') + '%';
   const rows = await db
     .select()
     .from(events)
     .where(
       and(
         eq(events.tenantId, tenantId),
+        filters.status ? eq(events.status, filters.status) : undefined,
+        filters.eventTypeId
+          ? eq(events.eventTypeId, filters.eventTypeId)
+          : undefined,
+        filters.undated ? isNull(events.eventDate) : undefined,
+        filters.from
+          ? gte(
+              sql<string>`coalesce(((${events.endsAt} - interval '1 millisecond') AT TIME ZONE ${events.timeZone})::date,${events.eventDate})`,
+              filters.from,
+            )
+          : undefined,
+        filters.to ? lte(events.eventDate, filters.to) : undefined,
+        filters.q
+          ? or(
+              ...[events.name, events.description, events.source].map((field) =>
+                ilike(field, pattern),
+              ),
+              inArray(
+                events.locationId,
+                db
+                  .select({ id: locations.id })
+                  .from(locations)
+                  .where(
+                    and(
+                      eq(locations.tenantId, tenantId),
+                      or(
+                        ...[
+                          locations.name,
+                          locations.street,
+                          locations.city,
+                          locations.postalCode,
+                        ].map((field) => ilike(field, pattern)),
+                      ),
+                    ),
+                  ),
+              ),
+              inArray(
+                events.id,
+                db
+                  .select({ id: eventContacts.eventId })
+                  .from(eventContacts)
+                  .innerJoin(
+                    contacts,
+                    and(
+                      eq(eventContacts.tenantId, contacts.tenantId),
+                      eq(eventContacts.contactId, contacts.id),
+                    ),
+                  )
+                  .where(
+                    and(
+                      eq(eventContacts.tenantId, tenantId),
+                      or(
+                        ...[
+                          contacts.name,
+                          contacts.contactPerson,
+                          contacts.email,
+                          contacts.phone,
+                          contacts.mobile,
+                        ].map((field) => ilike(field, pattern)),
+                      ),
+                    ),
+                  ),
+              ),
+            )
+          : undefined,
+
         id ? eq(events.id, id) : undefined,
         contactId
           ? inArray(
@@ -107,11 +208,25 @@ async function readRows(
           : undefined,
       ),
     )
-    .orderBy(asc(events.name), asc(events.id));
+    .orderBy(
+      asc(events.eventDate),
+      asc(events.startsAt),
+      asc(events.name),
+      asc(events.id),
+    );
+  if (!rows.length) return [];
   const links = await db
     .select()
     .from(eventContacts)
-    .where(eq(eventContacts.tenantId, tenantId));
+    .where(
+      and(
+        eq(eventContacts.tenantId, tenantId),
+        inArray(
+          eventContacts.eventId,
+          rows.map((row) => row.id),
+        ),
+      ),
+    );
   return rows.map((row) => ({
     ...row,
     startsAt: row.startsAt?.toISOString() ?? null,
@@ -128,11 +243,14 @@ async function readRows(
 export function eventRepository(pool: Pool, tenantId: string) {
   const db = drizzle(pool);
   return {
-    async list(contactId?: string) {
-      return db.transaction((tx) => readRows(tx, tenantId, contactId), {
-        isolationLevel: 'repeatable read',
-        accessMode: 'read only',
-      });
+    async list(contactId?: string, filters: EventFilters = {}) {
+      return db.transaction(
+        (tx) => readRows(tx, tenantId, contactId, undefined, filters),
+        {
+          isolationLevel: 'repeatable read',
+          accessMode: 'read only',
+        },
+      );
     },
     async timeZone() {
       const [tenant] = await db
@@ -358,6 +476,18 @@ export function registerEventRoutes(
     '/api/v1/events',
     {
       schema: {
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            q: { type: 'string', maxLength: 200 },
+            from: { type: 'string', format: 'date' },
+            to: { type: 'string', format: 'date' },
+            status: fields.status,
+            eventTypeId: { type: 'string', format: 'uuid' },
+            undated: { type: 'boolean' },
+          },
+        },
         response: {
           200: {
             type: 'object',
@@ -371,10 +501,16 @@ export function registerEventRoutes(
         },
       },
     },
-    async () => ({
-      timeZone: await repo.timeZone(),
-      events: await repo.list(),
-    }),
+    async (request, reply) => {
+      try {
+        return {
+          timeZone: await repo.timeZone(),
+          events: await repo.list(undefined, request.query as EventFilters),
+        };
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
   );
   app.get<{ Params: { id: string } }>(
     '/api/v1/contacts/:id/events',

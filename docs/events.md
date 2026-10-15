@@ -8,7 +8,7 @@ Ein Datum ohne Uhrzeiten ist erlaubt. Werden Uhrzeiten angegeben, müssen Beginn
 
 Nicht existierende Uhrzeiten bei der Frühjahrsumstellung werden abgewiesen. Für doppelte Herbst-Uhrzeiten muss der UTC-Versatz ausdrücklich angegeben werden, beispielsweise `+02:00` oder `+01:00` für Europe/Berlin. Beim Bearbeiten wird der gespeicherte Versatz übernommen; eine Änderung der Uhrzeit setzt ihn auf automatisch zurück. Sekunden und Millisekunden bleiben erhalten.
 
-Anfrage, Option, Nicht verfügbar und Annulliert sind bearbeitbar. Annullieren erhält den Datensatz. **Gebucht bleibt bis C023 gesperrt**, weil ein bestätigter Auftrag eine geprüfte konkrete Ressourcenzuweisung benötigt. C018 erzeugt noch keine Reservierung und ist keine Kapazitätszusage. Kalender, Filter und gebündelte Eventakte folgen ab C019.
+Anfrage, Option, Nicht verfügbar und Annulliert sind bearbeitbar. Annullieren erhält den Datensatz. **Gebucht bleibt bis C023 gesperrt**, weil ein bestätigter Auftrag eine geprüfte konkrete Ressourcenzuweisung benötigt. C018 erzeugt noch keine Reservierung und ist keine Kapazitätszusage. Suche und Filter stehen ab C019 bereit; die gebündelte Eventakte und der Kalender folgen ab C020.
 
 ## API v1
 

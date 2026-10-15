@@ -80,7 +80,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
     }
   }
   return (
-    <section aria-label="Produkte">
+    <section id="products" aria-label="Produkte">
       <h2>Produkte</h2>
       <form
         key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
