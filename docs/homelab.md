@@ -197,3 +197,17 @@ Auftragsdaten wurden nicht importiert. Verschlüsselte automatische Sicherungen,
 Passwortwechsel, Wiederherstellung und die vollständige Betriebsabnahme E005
 bleiben vor Produktivbetrieb offen. Der Teststand startet noch nicht automatisch
 nach einem Host-Neustart; dafür `systemctl start ak-test-admin.service` ausführen.
+
+## Grundgestaltung für Nutzer-Tests (H007)
+
+Die Admin-App erhält eine lokale responsive Gestaltung ohne zusätzliche UI-Pakete
+oder externe Schrift-/Bilddienste. Formulare werden in lesbare Bereiche gegliedert,
+Eingaben und Schaltflächen bleiben mindestens 44 px hoch und Tastaturfokus sichtbar.
+Bei 390 px Breite bleibt die Seite innerhalb des Viewports; breite Kalender und
+Tabellen können innerhalb ihrer Bereiche gescrollt werden. Die Abmeldung steht direkt beim Konto am Seitenanfang. Die vorhandenen
+Formularbeschriftungen und Geschäftsabläufe bleiben erhalten.
+
+Die Chromium-Abnahme durchläuft beide Anmeldeverfahren und den vollständigen
+synthetischen Geschäftsablauf. Zusätzlich prüft sie Eingabegröße, mobilen
+Seitenüberlauf und Tastaturfokus und erstellt Desktop-/Mobilbilder. Dies ist eine
+Grundgestaltung für die Testphase; ein fachliches Nutzerfeedback steht noch aus.

@@ -149,6 +149,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     page.setDefaultTimeout(10000);
     await page.goto(origin);
     if (mode === 'password') {
+      const identifierBox = await page
+        .getByLabel('E-Mail oder Benutzername')
+        .boundingBox();
+      expect(identifierBox!.height).toBeGreaterThanOrEqual(44);
       await page.getByLabel('E-Mail oder Benutzername').fill('FICTIONAL.OWNER');
       await page.getByLabel('Passwort', { exact: true }).fill('incorrect');
       await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
@@ -162,6 +166,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       page.getByText('synthetic@example.invalid', { exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Abmelden', exact: true }),
+    ).toBeInViewport();
     expect(
       (await context.cookies()).find((c) => c.name === '__Host-ak-session'),
     ).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });
@@ -741,6 +748,25 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         }),
     ).toBeVisible();
 
+    if (mode === 'password') {
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(391);
+      const search = page.getByLabel('Globale Suche');
+      await search.focus();
+      expect(
+        await search.evaluate((el) =>
+          parseFloat(getComputedStyle(el).outlineWidth),
+        ),
+      ).toBeGreaterThanOrEqual(2);
+      await page
+        .getByRole('heading', { name: 'AuftragsKompass', exact: true })
+        .scrollIntoViewIfNeeded();
+      await page.screenshot({ path: 'tests/test-results/admin-mobile.png' });
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.screenshot({ path: 'tests/test-results/admin-desktop.png' });
+    }
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

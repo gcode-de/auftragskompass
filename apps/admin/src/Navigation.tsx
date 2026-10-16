@@ -24,6 +24,7 @@ export function Navigation() {
         ))}
       </nav>
       <form
+        className="global-search"
         key={q}
         onSubmit={(event) => {
           event.preventDefault();

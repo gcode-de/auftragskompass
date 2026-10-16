@@ -92,11 +92,17 @@ export function AuthPanel() {
     }
   }
   return (
-    <section aria-label="Anmeldung">
+    <section
+      aria-label="Anmeldung"
+      className={user ? 'workspace' : 'login-card'}
+    >
       <p role="status">{status}</p>
       {user ? (
         <>
-          <p>{user.email}</p>
+          <div className="account-bar">
+            <p>{user.email}</p>
+            <button onClick={() => void logout()}>Abmelden</button>
+          </div>
           <Navigation />
           <EventPanel csrfToken={user.csrfToken} revision={importRevision} />
           <CalendarPanel key={importRevision} />
@@ -121,7 +127,6 @@ export function AuthPanel() {
               }}
             />
           </section>
-          <button onClick={() => void logout()}>Abmelden</button>
         </>
       ) : ready && mode === 'password' ? (
         <form
