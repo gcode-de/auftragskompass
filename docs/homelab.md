@@ -5,29 +5,26 @@ Sie ist keine Produktivfreigabe und übernimmt keine echten Bookitup-Daten.
 
 ## Images über Docker Hub
 
-Ein bestehendes Docker-Hub-Repository mit der gewünschten Sichtbarkeit verwenden.
-Der Workflow legt keine Sichtbarkeit fest; Docker Hub kann bei einem Push auf einen
-noch nicht existierenden Namen ein Repository anlegen. Deshalb zuerst den Namen
-und die Sichtbarkeit auf Docker Hub prüfen.
-
-Unter GitHub **Settings → Secrets and variables → Actions** hinterlegen:
+Der Image-Name ist fest `<Docker-Hub-User>/auftragskompass`. Der Workflow verwendet
+hierfür die beiden bereits hinterlegten Repository-Secrets unter GitHub
+**Settings → Secrets and variables → Actions**:
 
 | Art | Name | Inhalt |
 |---|---|---|
-| Repository-Secret | `DOCKERHUB_TOKEN` | Zugriffstoken mit Schreibrecht für das gewählte Repository |
-| Repository-Variable | `DOCKERHUB_USERNAME` | Docker-Hub-Benutzername |
-| Repository-Variable | `DOCKERHUB_IMAGE` | Bereits angelegtes `namespace/auftragskompass` ohne Registry, Tag oder Digest |
+| Repository-Secret | `DOCKERHUB_TOKEN` | Zugriffstoken mit Schreib- und Repository-Anlegerecht |
+| Repository-Secret | `DOCKERHUB_USER` | Docker-Hub-Benutzername |
 
-Keine dieser Einstellungen in eine versionierte Datei schreiben. Den Token nicht
-in Chatnachrichten oder Kommandozeilenargumenten übergeben. Auf dem Home-Lab-Host
-genügt für private Images ein separater Token mit Leserecht, außerhalb von Git.
+`DOCKERHUB_IMAGE` und `DOCKERHUB_USERNAME` werden nicht mehr benötigt.
+Vor dem Build prüft der Workflow das Repository über die Docker-Hub-API. Nur bei
+404 wird es wie gewünscht öffentlich angelegt; bei fehlenden Berechtigungen, ausgeschöpftem Kontingent oder
+abweichender Sichtbarkeit eines bestehenden Repositories bricht der Ablauf ab.
+Es gibt keinen automatischen Wechsel zu öffentlicher Sichtbarkeit.
 
-Die Veröffentlichung läuft nur nach erfolgreichen Qualitätsprüfungen bei einem
-Push auf `main` oder `codex/local-runtime-ci`. Pull Requests veröffentlichen nichts.
-Ohne `DOCKERHUB_IMAGE` wird der Veröffentlichungsjob übersprungen; mit gesetztem
-Image müssen auch Benutzername und Token vorhanden sein. Nach dem Eintragen der
-Einstellungen den vollständigen Quality-Lauf des gewünschten Commits erneut
-ausführen oder den nächsten geprüften Commit pushen.
+Keine Zugangsdaten in versionierte Dateien oder Chatnachrichten schreiben. Auf dem
+Home-Lab-Host genügt für private Images ein separater Token mit Leserecht außerhalb
+von Git. Die Veröffentlichung läuft nur nach erfolgreichen Qualitätsprüfungen bei
+einem Push auf `main` oder `codex/local-runtime-ci`. Pull Requests veröffentlichen
+nichts. Fehler der Registry-Einrichtung verhindern jeden Image-Push.
 
 Es entstehen zwei Tags im selben Repository:
 
