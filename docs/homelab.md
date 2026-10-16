@@ -100,8 +100,11 @@ Vor einer späteren Installation:
 Nur die Oberfläche wird auf `127.0.0.1:4177` veröffentlicht. API, Worker und Datenbank
 haben keine Hostports. Der separate Caddy-Host kann diesen Loopback-Port noch nicht
 erreichen: Die spätere LAN-Bindung und Firewallfreigabe ausschließlich für den Proxy
-gehören zur ausstehenden Zugriffsabnahme. Noch keine Cloudflare-Route auf eine
-ungeschützte Oberfläche anlegen.
+gehören zur ausstehenden Zugriffsabnahme. Die bereits eingerichtete Adresse
+`https://auftragskompass.samuelgesang.de` zeigt am Caddy-Proxy ausschließlich eine
+Einrichtungsnachricht mit HTTP 503. Sie leitet noch nicht auf die App weiter.
+Die Route und beide Homer-Einträge sind im
+[Infrastruktur-Repository dokumentiert](https://github.com/gcode-de/proxmox-automation/blob/main/docs/auftragskompass-routing.md).
 
 Quadlet-Dienste mit systemd verwalten; Portainer kann die Container anzeigen, ist
 aber nicht die Quelle ihrer Konfiguration. Kein paralleles Anlegen derselben
@@ -109,8 +112,10 @@ Container als Portainer-Stack. Für ein Update zuerst eine konsistente Sicherung
 erstellen, dann Admin/API/Worker stoppen und die beiden Image-Tags gemeinsam ändern.
 Anschließend die Einheiten neu laden und Admin starten. Das Datenvolume nicht
 löschen; ein früheres Image allein ist nach Migrationen kein sicherer Rollback.
-Backup/Restore für diesen Podman-Teststand ist vor echter Datennutzung separat
-abzunehmen; das vorhandene Python-Werkzeug verwendet Docker Compose.
+Das vorhandene Python-Werkzeug unterstützt mit `--runtime podman` jetzt auch diese
+benannten Container. [Befehle und isolierter Probelauf](operations.md#podman-h004)
+sind dokumentiert. Die vollständige Betriebsabnahme vor echter Datennutzung,
+Verschlüsselung, tägliche Ausführung und unabhängige Kopie bleiben offen.
 
 Referenz: [Quadlet für Podman 5.4.2](https://docs.podman.io/en/v5.4.2/markdown/podman-systemd.unit.5.html).
 

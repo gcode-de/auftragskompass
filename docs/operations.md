@@ -25,6 +25,59 @@ Das Zielverzeichnis muss existieren und außerhalb des Repositories liegen. Back
 
 Restore benötigt ein separates Compose-Projekt mit ausschließlich gestarteter, leerer Datenbank. API/Worker müssen gestoppt sein. Das Werkzeug löscht keine vorhandenen Tabellen und spielt den Dump in einer Transaktion ein. Nur vertrauenswürdige eigene Backups verwenden. Der Smoke-Test prüft Neustart mit persistentem Volume, Backup, Restore in eine frische Instanz sowie Ablehnung eines zweiten Restores und des Überschreibens einer Sicherung. C078 ergänzt Verschlüsselung, Rotation und Dateisicherung; derzeit gibt es noch keine Anwendungsuploads.
 
+### Podman (H004)
+
+Dasselbe Werkzeug unterstützt die benannten Container aus den
+[Home-Lab-Vorlagen](homelab.md). Auf dem Linux-Host mit demselben Podman-Benutzer
+wie die Container ausführen (bei den systemweiten Quadlets: root):
+
+```sh
+python3 scripts/backup_restore.py backup --runtime podman --project ak-test --file /absolute/external/path/backups/unique-date.dump
+python3 scripts/backup_restore.py restore --runtime podman --project ak-restore --file /absolute/external/path/backups/unique-date.dump
+```
+
+`--project` ist hier der Container-Namenspräfix: Die Datenbank heißt beispielsweise
+`ak-test-database`, API und Worker `ak-test-api` und `ak-test-worker`.
+`--env-file` wird bei Podman abgewiesen; es werden die bereits konfigurierten
+Container und deren lokaler Datenbankzugang verwendet. Es gibt keine Verbindung
+zu einer externen Datenbank und kein automatisches Anlegen von Containern.
+
+Für Restore muss eine eigene leere Zieldatenbank unter dem gewählten Präfix laufen.
+API und Worker dieses Zielpräfixes dürfen nicht laufen. Beide Schutzprüfungen
+müssen erfolgreich sein; Fehler beim Ermitteln der laufenden Container oder beim
+Prüfen der Datenbank verhindern die Wiederherstellung. Andere Namenspräfixe werden
+nicht gestoppt oder verändert. Sicherungsdateien werden auch bei einem Fehler oder
+gleichzeitigem Backup nicht überschrieben. Ein fehlgeschlagener Dump wird nicht
+als fertige Sicherung veröffentlicht.
+
+Ein Datenbank-Dump ersetzt keine separate Sicherung von OIDC-/Podman-Secrets und
+Betriebskonfiguration. Verschlüsselung, tägliche Ausführung mit Fehlerüberwachung
+und unabhängige Zweitkopie bleiben vor echten Daten erforderlich.
+
+### Nativer Podman-Probelauf
+
+Auf einem Linux-Host mit Podman und einer Kopie der Anwendung kann der Probelauf
+mit veröffentlichten, per Digest festgelegten Runtime-/Admin-Images laufen:
+
+```sh
+python3 -B tests/ops/check_podman.py \
+  --runtime-image docker.io/synthetic/auftragskompass@sha256:REPLACE_RUNTIME_DIGEST \
+  --admin-image docker.io/synthetic/auftragskompass@sha256:REPLACE_ADMIN_DIGEST \
+  --revision REPLACE_FULL_COMMIT_HASH
+```
+
+Namespace, beide Digests und den vollständigen Commit-Hash ersetzen. Der Probelauf
+legt ausschließlich eigene zufällig benannte Testcontainer, Volumes, ein Netzwerk
+und ein Secret an. Er prüft Start und Migrationen, unprivilegierte Prozesse,
+Loopback-Oberfläche, gesperrte Fachendpunkte ohne Login, Dateirechte, Überschreib-
+und Restore-Sperren, Wiederherstellung und Datenhaltung nach Neustart. Seine
+Testressourcen werden auch bei Fehlern entfernt; heruntergeladene Images bleiben
+im lokalen Cache. Vorhandene Container und Volumes werden nicht übernommen.
+
+Diese Prüfung ist eine manuelle Linux-Abnahme; `pnpm test:ops` führt in der CI die
+Adapter-/Sicherheitstests und den vorhandenen realen Compose-Probelauf aus.
+Der Podman-Probelauf ist keine App-Login- oder Produktivabnahme.
+
 ## TLS und Zugriff
 
 Loopback-HTTP dient ausschließlich lokaler Entwicklung. Für Zugriff über weitere Geräte ist ein lokaler TLS-Reverse-Proxy mit vertrauenswürdigem Zertifikat vor die Loopback-Ports zu schalten; er terminiert HTTPS und leitet nur Admin/API weiter. Datenbank und Worker bleiben intern. Keine Router-Portfreigabe zur Administration einrichten. Vor echter Nutzung müssen Google-Redirect-URI, Proxy-URL, Zugriffsschutz und Backup-Abnahme zusammen geprüft werden. Diese Compose-Datei stellt weder öffentliche TLS-Zertifikate noch DNS automatisch bereit.

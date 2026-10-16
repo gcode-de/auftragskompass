@@ -22,7 +22,7 @@
     "test:integration": "vitest run --config tests/vitest.config.ts --project integration",
     "test:coverage": "vitest run --config tests/vitest.config.ts --project unit --project component --project integration --coverage",
     "test:e2e": "playwright test --config tests/playwright.config.ts",
-    "test:ops": "node --test tests/ops/*.test.mjs"
+    "test:ops": "python3 -B -m unittest discover -s tests/ops -p 'test_*.py' -v && node --test tests/ops/*.test.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
