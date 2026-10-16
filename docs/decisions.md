@@ -79,5 +79,6 @@ Der Nutzer hat E-Mail oder Benutzername plus Passwort gewählt. Dies ersetzt die
 frühere Google-Pflicht und das Verbot lokaler Passwörter. H005 verwendet vorhandene
 Sitzungen und Kontosperren, scrypt aus Node und einen einmaligen externen Bootstrap;
 keine offene Registrierung und kein zusätzlicher Maildienst. Google bleibt als
-alternativer Modus erhalten. Vor Produktivbetrieb folgen Passwortwechsel,
-Wiederherstellung und kontrollierte Einrichtung weiterer Passwortkonten.
+alternativer Modus erhalten. H008 ergänzt den eigenen Passwortwechsel mit Widerruf
+aller Sitzungen. Vor Produktivbetrieb folgen Wiederherstellung und die kontrollierte
+Einrichtung weiterer Passwortkonten.

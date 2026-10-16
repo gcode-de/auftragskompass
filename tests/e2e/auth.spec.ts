@@ -767,6 +767,39 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await page.setViewportSize({ width: 1280, height: 720 });
       await page.screenshot({ path: 'tests/test-results/admin-desktop.png' });
     }
+    if (mode === 'password') {
+      const change = page.getByRole('region', {
+        name: 'Eigenes Passwort',
+        exact: true,
+      });
+      const next = 'Fictional browser replacement password';
+      await change
+        .getByLabel('Aktuelles Passwort', { exact: true })
+        .fill('Fictional password 123!');
+      await change.getByLabel('Neues Passwort', { exact: true }).fill(next);
+      await change
+        .getByLabel('Neues Passwort wiederholen', { exact: true })
+        .fill(next);
+      await change
+        .getByRole('button', { name: 'Passwort ändern', exact: true })
+        .click();
+      await expect(
+        page.getByText('Passwort geändert. Bitte erneut anmelden.', {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.getByLabel('E-Mail oder Benutzername').fill('fictional.owner');
+      await page
+        .getByLabel('Passwort', { exact: true })
+        .fill('Fictional password 123!');
+      await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
+      await expect(page.getByText(/Zugangsdaten prüfen/)).toBeVisible();
+      await page.getByLabel('Passwort', { exact: true }).fill(next);
+      await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
+      await expect(
+        page.getByRole('button', { name: 'Abmelden', exact: true }),
+      ).toBeVisible();
+    }
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

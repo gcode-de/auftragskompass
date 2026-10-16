@@ -167,9 +167,9 @@ weiterhin keinen Hostport. Die Caddy-Route erst nach erfolgreicher Anmeldung,
 Abmeldung und einem Neustart ohne Bootstrap-Secret umschalten. Keine vorhandenen
 Proxy-Routen oder Cloudflare-Einträge ersetzen.
 
-## Geprüfter Teststand vom 16.10.2026
+## Geprüfter Teststand vom 16.10.2026 (H006)
 
-Die isolierte Installation läuft mit App-Revision
+Die erste isolierte Installation verwendete App-Revision
 `9d26a5da5645711de58ce2ead7ed812ad4fbecf4`, nach vollständig grüner GitHub-CI.
 Die installierten Images sind über Digests festgelegt:
 
@@ -194,7 +194,7 @@ tragen den Zusatz „Testbetrieb“. Eine erste Datenbanksicherung liegt mit Mod
 auf dem Host und mit verifiziertem Hash auf dem Betreiberrechner, außerhalb von Git.
 Kontodaten und Passwörter liegen ausschließlich privat; echte Kunden- und
 Auftragsdaten wurden nicht importiert. Verschlüsselte automatische Sicherungen,
-Passwortwechsel, Wiederherstellung und die vollständige Betriebsabnahme E005
+Wiederherstellung und die vollständige Betriebsabnahme E005
 bleiben vor Produktivbetrieb offen. Der Teststand startet noch nicht automatisch
 nach einem Host-Neustart; dafür `systemctl start ak-test-admin.service` ausführen.
 
@@ -211,3 +211,12 @@ Die Chromium-Abnahme durchläuft beide Anmeldeverfahren und den vollständigen
 synthetischen Geschäftsablauf. Zusätzlich prüft sie Eingabegröße, mobilen
 Seitenüberlauf und Tastaturfokus und erstellt Desktop-/Mobilbilder. Dies ist eine
 Grundgestaltung für die Testphase; ein fachliches Nutzerfeedback steht noch aus.
+
+## Passwortwechsel im Testkonto (H008)
+
+Die eigene Passwortänderung ist unter Einstellungen verfügbar und beendet alle
+Sitzungen des Kontos. Die vorhandene Startpasswort-Datei wird dabei nicht automatisch
+aktualisiert; das selbst gewählte neue Passwort im eigenen Passwortmanager sichern.
+Die [Anmelde-Dokumentation](authentication.md#eigenes-passwort-ändern-h008) beschreibt
+Prüfungen, Fehlversuchssperre und Audit. Wiederherstellung ohne aktuelles Passwort
+und zusätzliche lokale Konten sind weiterhin nicht freigegeben.

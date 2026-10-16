@@ -153,6 +153,45 @@ export async function registerAuth(
       }
     },
   );
+  app.post<{ Body: { currentPassword: string; newPassword: string } }>(
+    '/auth/password',
+    {
+      bodyLimit: 2048,
+      config: { rateLimit: {} },
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['currentPassword', 'newPassword'],
+          properties: {
+            currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
+            newPassword: { type: 'string', minLength: 15, maxLength: 128 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      if (config!.mode !== 'password')
+        return reply.code(404).send({ error: 'not_found' });
+      if (request.body.newPassword.length > 128)
+        return reply.code(400).send({ error: 'invalid_password' });
+      if (passwordBusy) return reply.code(429).send({ error: 'rate_limited' });
+      passwordBusy = true;
+      try {
+        if (
+          !(await passwordAccess(pool, config!.tenantId).changePassword(
+            request.authSession!.userId,
+            request.body.currentPassword,
+            request.body.newPassword,
+          ))
+        )
+          return reply.code(403).send({ error: 'password_change_denied' });
+        return reply.clearCookie(sessionCookie, cookieOptions).code(204).send();
+      } finally {
+        passwordBusy = false;
+      }
+    },
+  );
   app.get(
     '/auth/login',
     { config: { rateLimit: {} } },

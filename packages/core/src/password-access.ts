@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { and, eq, or, sql } from 'drizzle-orm';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import {
   allowedAccounts,
   memberships,
@@ -89,6 +89,78 @@ export async function bootstrapPassword(
     await tx.insert(passwordBootstrap).values({ tenantId });
   });
 }
+async function findPasswordAccount(
+  tx: Pick<NodePgDatabase, 'select'>,
+  tenantId: string,
+  condition: SQL,
+) {
+  const [account] = await tx
+    .select({
+      credential: passwordCredentials,
+      allowed: allowedAccounts.active,
+      member: memberships.active,
+      locked: sql<boolean>`coalesce(${passwordCredentials.lockedUntil} > now(), false)`,
+    })
+    .from(passwordCredentials)
+    .innerJoin(
+      users,
+      and(
+        eq(users.tenantId, passwordCredentials.tenantId),
+        eq(users.id, passwordCredentials.userId),
+      ),
+    )
+    .innerJoin(
+      allowedAccounts,
+      and(
+        eq(allowedAccounts.tenantId, users.tenantId),
+        eq(allowedAccounts.userId, users.id),
+      ),
+    )
+    .innerJoin(
+      memberships,
+      and(
+        eq(memberships.tenantId, users.tenantId),
+        eq(memberships.userId, users.id),
+      ),
+    )
+    .where(and(eq(passwordCredentials.tenantId, tenantId), condition));
+  return account;
+}
+async function checkPassword(
+  tx: Pick<NodePgDatabase, 'update'>,
+  tenantId: string,
+  account: Awaited<ReturnType<typeof findPasswordAccount>>,
+  password: string,
+) {
+  const matches = await verifyPassword(
+    password,
+    account?.credential.passwordHash,
+  );
+  const valid = Boolean(
+    matches && account?.allowed && account.member && !account.locked,
+  );
+  if (account && !account.locked) {
+    const failures = valid
+      ? 0
+      : account.credential.lockedUntil
+        ? 1
+        : account.credential.failures + 1;
+    await tx
+      .update(passwordCredentials)
+      .set({
+        failures,
+        lockedUntil: failures >= 5 ? sql`now() + interval '15 minutes'` : null,
+      })
+      .where(
+        and(
+          eq(passwordCredentials.tenantId, tenantId),
+          eq(passwordCredentials.userId, account.credential.userId),
+        ),
+      );
+  }
+  return valid;
+}
+
 export function passwordAccess(pool: Pool, tenantId: string) {
   return {
     async issueSession(
@@ -102,71 +174,15 @@ export function passwordAccess(pool: Pool, tenantId: string) {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}::text, 814022))`,
         );
-        const [account] = await tx
-          .select({
-            credential: passwordCredentials,
-            allowed: allowedAccounts.active,
-            member: memberships.active,
-            locked: sql<boolean>`coalesce(${passwordCredentials.lockedUntil} > now(), false)`,
-          })
-          .from(passwordCredentials)
-          .innerJoin(
-            users,
-            and(
-              eq(users.tenantId, passwordCredentials.tenantId),
-              eq(users.id, passwordCredentials.userId),
-            ),
-          )
-          .innerJoin(
-            allowedAccounts,
-            and(
-              eq(allowedAccounts.tenantId, users.tenantId),
-              eq(allowedAccounts.userId, users.id),
-            ),
-          )
-          .innerJoin(
-            memberships,
-            and(
-              eq(memberships.tenantId, users.tenantId),
-              eq(memberships.userId, users.id),
-            ),
-          )
-          .where(
-            and(
-              eq(passwordCredentials.tenantId, tenantId),
-              or(
-                eq(passwordCredentials.username, normalized),
-                eq(users.email, normalized),
-              ),
-            ),
-          );
-        const matches = await verifyPassword(
-          password,
-          account?.credential.passwordHash,
+        const account = await findPasswordAccount(
+          tx,
+          tenantId,
+          or(
+            eq(passwordCredentials.username, normalized),
+            eq(users.email, normalized),
+          )!,
         );
-        const valid = Boolean(
-          matches && account?.allowed && account.member && !account.locked,
-        );
-        if (account && !account.locked) {
-          const failures = valid
-            ? 0
-            : account.credential.lockedUntil
-              ? 1
-              : account.credential.failures + 1;
-          await tx
-            .update(passwordCredentials)
-            .set({
-              failures,
-              lockedUntil:
-                failures >= 5 ? sql`now() + interval '15 minutes'` : null,
-            })
-            .where(
-              and(
-                eq(passwordCredentials.tenantId, tenantId),
-                eq(passwordCredentials.userId, account.credential.userId),
-              ),
-            );
-        }
+        const valid = await checkPassword(tx, tenantId, account, password);
         if (!valid) {
           await appendAudit(tx, tenantId, 'login.denied');
           return false;
@@ -184,6 +200,48 @@ export function passwordAccess(pool: Pool, tenantId: string) {
           'login.succeeded',
           account!.credential.userId,
         );
+        return true;
+      });
+    },
+    async changePassword(
+      userId: string,
+      currentPassword: string,
+      newPassword: string,
+    ) {
+      return drizzle(pool).transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}::text, 814022))`,
+        );
+        const account = await findPasswordAccount(
+          tx,
+          tenantId,
+          eq(users.id, userId),
+        );
+        if (!(await checkPassword(tx, tenantId, account, currentPassword))) {
+          await appendAudit(
+            tx,
+            tenantId,
+            'password.change_denied',
+            account?.credential.userId ?? null,
+          );
+          return false;
+        }
+        const passwordHash = await hashPassword(newPassword);
+        await tx
+          .update(passwordCredentials)
+          .set({ passwordHash })
+          .where(
+            and(
+              eq(passwordCredentials.tenantId, tenantId),
+              eq(passwordCredentials.userId, userId),
+            ),
+          );
+        await tx
+          .delete(sessions)
+          .where(
+            and(eq(sessions.tenantId, tenantId), eq(sessions.userId, userId)),
+          );
+        await appendAudit(tx, tenantId, 'password.changed', userId);
         return true;
       });
     },

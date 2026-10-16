@@ -164,3 +164,45 @@ test('successful password submission still requires a working session', async ()
     await screen.findByText(/Anmeldung fehlgeschlagen. Bitte erneut versuchen/),
   ).toBeTruthy();
 });
+
+test.each([204, 401])(
+  'native password result %s returns the parent to login',
+  async (status) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/auth/me'
+          ? Response.json(
+              {
+                email: 'fictional.owner@example.invalid',
+                csrfToken: 'fictional-csrf',
+              },
+              { headers: { 'x-auth-mode': 'password' } },
+            )
+          : url === '/auth/password'
+            ? new Response(null, { status })
+            : url === '/api/v1/events'
+              ? Response.json({ timeZone: 'Europe/Berlin', events: [] })
+              : Response.json([]),
+      ),
+    );
+    render(<AuthPanel />);
+    fireEvent.change(
+      await screen.findByLabelText('Aktuelles Passwort', { exact: true }),
+      { target: { value: 'Fictional old password' } },
+    );
+    for (const label of ['Neues Passwort', 'Neues Passwort wiederholen'])
+      fireEvent.change(screen.getByLabelText(label, { exact: true }), {
+        target: { value: 'Fictional new password' },
+      });
+    fireEvent.submit(
+      screen.getByRole('button', { name: 'Passwort ändern' }).closest('form')!,
+    );
+    expect(
+      await screen.findByLabelText('E-Mail oder Benutzername'),
+    ).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain(
+      status === 204 ? 'Passwort geändert' : 'Sitzung beendet',
+    );
+  },
+);

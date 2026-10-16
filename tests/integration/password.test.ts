@@ -369,3 +369,244 @@ test('database rejects malformed credentials, duplicate usernames and foreign te
       ),
     ).rejects.toMatchObject({ code });
 });
+
+test('password changes verify the current secret and revoke every session atomically', async () => {
+  await server();
+  const first = await login();
+  const second = await login();
+  const cookie = (response: typeof first) => ({
+    cookie: `${response.cookies[0]!.name}=${response.cookies[0]!.value}`,
+  });
+  const headers = cookie(first);
+  const me = (await app.inject({ url: '/auth/me', headers })).json();
+  const auth = {
+    ...headers,
+    origin: config.origin,
+    'x-csrf-token': me.csrfToken,
+  };
+  const next = 'Fictional replacement password 456!';
+  const change = (currentPassword: string, newPassword = next, extra = auth) =>
+    app.inject({
+      method: 'POST',
+      url: '/auth/password',
+      headers: extra,
+      payload: { currentPassword, newPassword },
+    });
+  expect((await change('incorrect')).statusCode).toBe(403);
+  expect((await change(password, 'short')).statusCode).toBe(400);
+  expect(
+    (
+      await change(password, next, {
+        ...auth,
+        origin: 'https://attacker.invalid',
+      })
+    ).statusCode,
+  ).toBe(403);
+  const result = await change(password);
+  expect(result.statusCode).toBe(204);
+  expect(result.cookies[0]!.value).toBe('');
+  for (const h of [headers, cookie(second)])
+    expect((await app.inject({ url: '/auth/me', headers: h })).statusCode).toBe(
+      401,
+    );
+  expect((await login()).statusCode).toBe(401);
+  const loggedIn = await login(undefined, next);
+  expect(loggedIn.statusCode).toBe(204);
+  const currentHeaders = cookie(loggedIn);
+  const csrf = (
+    await app.inject({ url: '/auth/me', headers: currentHeaders })
+  ).json().csrfToken;
+  const row = (
+    await pool.query(
+      'SELECT password_hash,user_id FROM password_credentials WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows[0];
+  expect(row.password_hash).not.toContain(next);
+  await pool.query('ALTER TABLE audit_events RENAME TO unavailable_audit');
+  try {
+    expect(
+      (
+        await change(next, password, {
+          ...currentHeaders,
+          origin: config.origin,
+          'x-csrf-token': csrf,
+        })
+      ).statusCode,
+    ).toBe(500);
+  } finally {
+    await pool.query('ALTER TABLE unavailable_audit RENAME TO audit_events');
+  }
+  expect(
+    (await app.inject({ url: '/auth/me', headers: currentHeaders })).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await pool.query(
+        'SELECT password_hash FROM password_credentials WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0].password_hash,
+  ).toBe(row.password_hash);
+  expect(
+    (
+      await change(next, password, {
+        ...currentHeaders,
+        origin: config.origin,
+        'x-csrf-token': csrf,
+      })
+    ).statusCode,
+  ).toBe(204);
+});
+
+test('password changes share persistent locks, reject foreign identities and serialize revocation', async () => {
+  await server();
+  const user = (
+    await pool.query(
+      'SELECT user_id FROM password_credentials WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows[0].user_id;
+  const repo = passwordAccess(pool, tenantId);
+  expect(
+    await repo.changePassword(
+      randomUUID(),
+      password,
+      'Fictional next password',
+    ),
+  ).toBe(false);
+  const other = (
+    await pool.query(
+      'SELECT tenant_id FROM password_credentials WHERE tenant_id<>$1',
+      [tenantId],
+    )
+  ).rows[0].tenant_id;
+  expect(
+    await passwordAccess(pool, other).changePassword(
+      user,
+      password,
+      'Fictional next password',
+    ),
+  ).toBe(false);
+  const session = await login();
+  const headers = {
+    cookie: `${session.cookies[0]!.name}=${session.cookies[0]!.value}`,
+  };
+  const csrf = (await app.inject({ url: '/auth/me', headers })).json()
+    .csrfToken;
+  const auth = { ...headers, origin: config.origin, 'x-csrf-token': csrf };
+  const next = 'Fictional next password';
+  const change = (currentPassword: string, newPassword = next) =>
+    app.inject({
+      method: 'POST',
+      url: '/auth/password',
+      headers: auth,
+      payload: { currentPassword, newPassword },
+    });
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/password',
+        payload: { currentPassword: password, newPassword: next },
+      })
+    ).statusCode,
+  ).toBe(401);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/password',
+        headers,
+        payload: { currentPassword: password, newPassword: next },
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect((await change(password, '🔐'.repeat(70))).statusCode).toBe(400);
+  expect((await change('x'.repeat(129))).statusCode).toBe(400);
+  for (let i = 0; i < 5; i++)
+    expect((await change('incorrect')).statusCode).toBe(403);
+  await server();
+  expect((await change(password)).statusCode).toBe(403);
+  await pool.query(
+    "UPDATE password_credentials SET locked_until=now()-interval '1 second' WHERE tenant_id=$1",
+    [tenantId],
+  );
+  const concurrent = await Promise.all([change(password), change(password)]);
+  expect(concurrent.map((r) => r.statusCode).sort()).toEqual([204, 429]);
+  const second = (
+    await pool.query('SELECT id FROM users WHERE tenant_id=$1 AND email=$2', [
+      tenantId,
+      'fictional.second@example.invalid',
+    ])
+  ).rows[0].id;
+  const access = accessRepository(pool, tenantId),
+    account = (await access.list()).find((a) => a.email === email)!;
+  const third = 'Fictional third password';
+  const [changed] = await Promise.all([
+    repo.changePassword(user, next, third),
+    access.change(second, account.id, false),
+  ]);
+  expect((await access.list()).find((a) => a.id === account.id)!.active).toBe(
+    false,
+  );
+  expect(
+    await repo.changePassword(user, changed ? third : next, password),
+  ).toBe(false);
+  expect(
+    (
+      await pool.query(
+        'SELECT * FROM sessions WHERE tenant_id=$1 AND user_id=$2',
+        [tenantId, user],
+      )
+    ).rowCount,
+  ).toBe(0);
+  await access.change(second, account.id, true);
+  expect(
+    await repo.changePassword(user, changed ? third : next, password),
+  ).toBe(true);
+  const audit = (
+    await pool.query(
+      "SELECT action FROM audit_events WHERE tenant_id=$1 AND action LIKE 'password.%'",
+      [tenantId],
+    )
+  ).rows;
+  expect(audit.some((a) => a.action === 'password.changed')).toBe(true);
+  expect(audit.some((a) => a.action === 'password.change_denied')).toBe(true);
+});
+
+test('password-change validation and throttling run before any credential mutation', async () => {
+  await server();
+  const session = await login();
+  const headers = {
+    cookie: `${session.cookies[0]!.name}=${session.cookies[0]!.value}`,
+  };
+  const csrf = (await app.inject({ url: '/auth/me', headers })).json()
+    .csrfToken;
+  for (let i = 0; i < 20; i++)
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/auth/password',
+          headers: { ...headers, origin: config.origin, 'x-csrf-token': csrf },
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(400);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/password',
+        headers: { ...headers, origin: config.origin, 'x-csrf-token': csrf },
+        payload: {
+          currentPassword: password,
+          newPassword: 'Fictional ignored password',
+        },
+      })
+    ).statusCode,
+  ).toBe(429);
+  await server();
+  expect((await login()).statusCode).toBe(204);
+});

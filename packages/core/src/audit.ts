@@ -8,6 +8,8 @@ export type AuditAction =
   | 'login.denied'
   | 'login.failed'
   | 'logout'
+  | 'password.changed'
+  | 'password.change_denied'
   | 'master_data.created'
   | 'master_data.updated'
   | 'resource.created'

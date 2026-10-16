@@ -170,7 +170,33 @@ Sperrversuche verlängern die Sperre nicht. Änderungen, Sperrprüfungen, Sitzun
 und Audit erfolgen unter derselben Mandantensperre wie Kontowiderrufe.
 
 Der Testbetrieb richtet genau ein Inhaberkonto ein. Die Google-Freigabeform wird im
-Passwortmodus ausgeblendet und der entsprechende POST-Endpunkt liefert 409; zusätzliche Passwortkonten, Passwortwechsel und sichere
-Wiederherstellung sind noch offen. Vor Produktivbetrieb müssen sie nachgerüstet
+Passwortmodus ausgeblendet und der entsprechende POST-Endpunkt liefert 409; zusätzliche Passwortkonten und sichere Wiederherstellung sind noch offen. Vor Produktivbetrieb müssen sie nachgerüstet
 und geprüft werden. Ein Datenbank-Backup enthält Passwort-Hashes und muss deshalb
 wie die übrigen vertraulichen Daten geschützt werden.
+
+## Eigenes Passwort ändern (H008)
+
+Lokale Konten können unter Einstellungen ihr Passwort ändern. Das aktuelle Passwort
+und zwei übereinstimmende Eingaben des neuen Passworts sind erforderlich. Die
+Oberfläche speichert keine Passwörter dauerhaft und löscht ihre Eingaben nach der
+Serverantwort oder einem Verbindungsfehler. Nach Erfolg erscheint wieder die
+Anmeldung. Alle anderen Sitzungen desselben Kontos sind ebenfalls beendet.
+
+`POST /auth/password` verlangt eine gültige Sitzung, exakten Origin und den
+CSRF-Token sowie JSON `{ "currentPassword": "…", "newPassword": "…" }`, maximal 2 KiB.
+Das neue Passwort benötigt dieselben 15–128 Zeichen wie beim Bootstrap. Nur der
+Sitzungsinhaber wird geändert; es gibt keine wählbare Benutzer- oder Mandanten-ID.
+Ohne Sitzung: 401, bei ungültigen Eingaben: 400, bei falschem aktuellem Passwort,
+Fehlversuchssperre oder inzwischen entzogenem Zugriff: neutral 403. Erfolg: 204 mit
+entferntem Sitzungscookie. Im Google-Modus ist dieser Endpunkt nicht verfügbar (404).
+
+Die Prüfung verwendet dieselbe persistente Fehlversuchssperre wie die Anmeldung.
+Auch hier gelten höchstens 20 Anfragen pro IP/Minute und nur eine gleichzeitige
+scrypt-Prüfung pro API-Prozess. Kontoberechtigung und Passwort werden innerhalb
+derselben Mandantentransaktion geprüft. Neuer Hash, Widerruf aller Kontositzungen
+und Audit `password.changed` sind atomar; ein Auditfehler rollt alles zurück.
+Ablehnungen werden ohne Passwörter als `password.change_denied` protokolliert.
+Migration `0020_password_change.sql` erweitert dafür nur die Audit-Aktionen.
+
+Dies ist ein eigener Passwortwechsel, keine Wiederherstellung ohne Kenntnis des
+aktuellen Passworts. Ein gesperrtes Konto wird dadurch nicht reaktiviert.

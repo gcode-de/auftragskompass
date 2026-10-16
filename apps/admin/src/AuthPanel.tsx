@@ -7,6 +7,7 @@ import { ContactPanel } from './ContactPanel.js';
 import { ProductPanel } from './ProductPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
 import { MasterDataSettings } from './MasterDataPanel.js';
+import { PasswordPanel } from './PasswordPanel.js';
 import { AccessPanel } from './AccessPanel.js';
 import { useEffect, useState } from 'react';
 export type CurrentUser = { email: string; csrfToken: string };
@@ -117,6 +118,21 @@ export function AuthPanel() {
               csrfToken={user.csrfToken}
               onImported={() => setImportRevision((value) => value + 1)}
             />
+            {mode === 'password' && (
+              <PasswordPanel
+                csrfToken={user.csrfToken}
+                onChanged={() => {
+                  setUser(null);
+                  setReady(true);
+                  setStatus('Passwort geändert. Bitte erneut anmelden.');
+                }}
+                onSessionEnded={() => {
+                  setUser(null);
+                  setReady(true);
+                  setStatus('Sitzung beendet. Bitte erneut anmelden.');
+                }}
+              />
+            )}
             <AccessPanel
               passwordMode={mode === 'password'}
               csrfToken={user.csrfToken}

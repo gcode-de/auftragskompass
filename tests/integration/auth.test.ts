@@ -127,6 +127,21 @@ test('full signed OIDC flow, cookies, authenticated writes, CSRF, logout and rep
     'x-csrf-token': me.json().csrfToken,
   };
   expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/password',
+        cookies,
+        headers,
+        payload: {
+          currentPassword: 'Fictional current password',
+          newPassword: 'Fictional new password',
+        },
+      })
+    ).statusCode,
+  ).toBe(404);
+
+  expect(
     (await app.inject({ method: 'POST', url: '/api/test', cookies }))
       .statusCode,
   ).toBe(403);

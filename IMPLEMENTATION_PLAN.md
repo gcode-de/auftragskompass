@@ -24,13 +24,15 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 - [x] H003: fester Docker-Hub-Name `auftragskompass` aus den vorhandenen USER-/TOKEN-Secrets; Repository vor Veröffentlichung wie ausdrücklich gewählt öffentlich anlegen, vorhandene Sichtbarkeit erhalten; API- und Workflowtests.
 - [x] H004: vorhandenes Backup-/Restore-Werkzeug auf benannte Podman-Container erweitern; atomare Sicherung, Dateirechte, getrenntes leeres Restore-Ziel und Schreibsperre beibehalten. Abnahme: Adapter-/Negativtests, bisheriger Compose-Probelauf und isolierter Podman-Probelauf mit veröffentlichten Images; keine Freigabe realer Daten oder der App-Anmeldung.
 
-- [x] H005: eigener Login per E-Mail oder Benutzername und Passwort gemäß Nutzerentscheidung; einmaliger externer Inhaber-Bootstrap, scrypt, persistente Fehlversuchssperre, sichere bestehende Sitzungen und Loginformular. Abnahme: Mandantentrennung, Neustart/Sperre, CSRF, Fehlerfälle und vollständiger Chromium-Geschäftsablauf; bestehendes Google-OIDC unverändert nutzbar. Zusätzliche Passwortkonten, Passwortwechsel und Wiederherstellung folgen separat vor Produktivbetrieb.
+- [x] H005: eigener Login per E-Mail oder Benutzername und Passwort gemäß Nutzerentscheidung; einmaliger externer Inhaber-Bootstrap, scrypt, persistente Fehlversuchssperre, sichere bestehende Sitzungen und Loginformular. Abnahme: Mandantentrennung, Neustart/Sperre, CSRF, Fehlerfälle und vollständiger Chromium-Geschäftsablauf; bestehendes Google-OIDC unverändert nutzbar. Der eigene Passwortwechsel folgt in H008; zusätzliche Passwortkonten und Wiederherstellung bleiben vor Produktivbetrieb offen.
 
 - [x] H004.1: CI-Wartebedingung im Import-Oberflächentest korrigiert; erst nach vollständig geladener Ressourcenprüfung bestätigen. Abnahme: betroffener Test und komplette Komponenten-Suite grün.
 
 - [x] H006: Podman-Testinstallation mit eigenem Inhaberkonto, externer einmaliger Passwortdatei und gepinnten veröffentlichten Images. Node-Healthchecks als Exec-Array statt fehleranfälliger Shell-Quotes; optionaler LAN-Port nur für Caddy durch eigene Firewall vor DNAT; bestehende Dienste unverändert. Abnahme: nativer Quadlet-/Firewall-Check, erlaubte/verbotene Zugriffe, Login/Logout, Neustart ohne Bootstrap-Secret und Sicherung; anschließend Caddy und Homer auf Testbetrieb umstellen.
 
 - [x] H007: lesbare responsive Grundgestaltung der vorhandenen Testoberfläche ohne neue UI-Abhängigkeit. Abnahme: bedienbare Eingabegrößen, sichtbarer Tastaturfokus und kein Seitenüberlauf bei 390 px; vorhandene Anmelde- und Geschäftsabläufe bleiben grün.
+
+- [x] H008: eigener Passwortwechsel mit Prüfung des aktuellen Passworts, gemeinsamer persistenter Fehlversuchssperre und atomarem Widerruf aller Sitzungen; nur für lokale Konten, CSRF und Audit unverändert verpflichtend. Abnahme: schwache/falsche Passwörter, gesperrte/fremde Konten, paralleler Widerruf, Audit-Rollback und erneute Anmeldung mit dem neuen Passwort in Chromium.
 
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
