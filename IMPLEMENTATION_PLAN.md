@@ -14,7 +14,7 @@ Betriebssicherheit aus M7 werden vorgezogen. Die C-Slices unten bleiben der
 vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E001: Sicherungsmatrix und verkürzte Lieferfolge dokumentiert
-- [ ] E002: tatsächliche Bookitup-Sicherung und Prüfung; derzeit Anmeldung erforderlich
+- [ ] E002: Teilsicherung privat abgelegt; weitere Downloads auf Wunsch beendet, relevante Belege laut Inhaber im E-Mail-Archiv; keine Vollabnahme
 
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 

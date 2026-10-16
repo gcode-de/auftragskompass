@@ -18,11 +18,30 @@ Angebote, Rechnungen, Zahlungen, Kundentermine und bestehende Zusagen benötigen
 vor der Umschaltung jeweils einen geprüften Ersatz. Die unten genannten
 Übergangslösungen sind Vorschläge; ihre tatsächliche Verfügbarkeit ist noch offen.
 
-**Aktuell kein kündigungssicherer Datenstand:** Chrome zeigt die Bookitup-Anmeldung.
-Es wurden für diesen Auftrag noch keine Kontodaten oder Originalbelege exportiert.
-Zugriffsende und Exportumfang sind unbekannt. Ein vorbereiteter Sicherungsordner
-ist keine Datensicherung. Kündigung, Kontolöschung und Nachrichtenversand sind
-nicht Bestandteil dieses Auftrags.
+**Aktueller Sicherungsstand:** Nach der Anmeldung wurden Kontakt- und
+Jahres-Eventauszüge, ein Teil der Beleg-PDFs sowie ergänzende Offlineansichten
+außerhalb des Repositories abgelegt. Prüfsummen, Dateiumfang und bekannte Lücken
+stehen ausschließlich im privaten Sicherungsordner. Weitere Downloads wurden
+auf Wunsch des Inhabers beendet: Relevante Angebote und Rechnungen sind laut
+seiner Bestätigung bereits per E-Mail versandt und dort vorhanden. Das
+Mailarchiv wurde nicht unabhängig geprüft oder zusätzlich gesichert. Die
+Teilsicherung ist keine Vollabnahme des Kontobestands oder Produktivfreigabe.
+Zugriffsende bleibt unbekannt. Kündigung, Kontolöschung und Nachrichtenversand
+sind nicht Bestandteil dieses Auftrags.
+
+Auf ergänzenden Wunsch wurden die Auftragsübersichten 2023–2027 und die
+undatierte Ansicht mit allen fünf Statusarten separat gesichert. Statische
+HTML-Dateien erhalten die Darstellung einschließlich Statusfarben; CSV/JSON
+enthalten zusätzlich die Anzeigetexte und Quellen für eine spätere Übernahme.
+Diese Daten bleiben privat außerhalb des Repositories. Die Übersicht ersetzt
+keine vollständigen Eventakten; Datum, Status, Kontakte und Dubletten sind vor
+Import abzugleichen. Es wurde kein Import ausgelöst. Frühere Historie und
+Agenturmodus sind nicht als vollständig abgeglichen bestätigt.
+
+Die Event-CSV ist ein begrenzter Kalenderauszug ohne vollständige Eventakten.
+Im Originalexport eines Jahres wurde eine Zeile mit abweichender Spaltenzahl
+festgestellt und unverändert erhalten; vor einem Import ist sie zu prüfen.
+Fehlerhafte Offlineansichten wurden getrennt und nicht als Datenbestand gewertet.
 
 ## Sofort: Daten sichern, danach gezielt importieren
 
@@ -31,6 +50,9 @@ Für den Ausstieg gilt stattdessen: Alle noch benötigten historischen, laufende
 und zukünftigen Geschäftsdaten werden unabhängig von späteren App-Modulen
 gesichert. Nur der operative Teil muss für den ersten Livegang in die Datenbank.
 Ein offline lesbares Archiv darf daher umfangreicher sein als der Erstimport.
+Bereits vorhandene relevante Belegkopien im eigenen E-Mail-Archiv werden nach
+der jüngsten Betreiberentscheidung als vorhandener Bestand berücksichtigt;
+weitere redundante Belegdownloads sind aktuell nicht gewünscht.
 
 Reihenfolge bei knappem Zugang: laufende/zukünftige Zusagen und offene Finanzen,
 Originalbelege, vollständiger Bestand, Vorlagen/Einstellungen. Dabei den
