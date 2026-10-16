@@ -3,7 +3,7 @@
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
 **Stand:** C001–C021 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
-Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
+Mandanten, eigener Passwortlogin oder Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
 Events können angelegt und bearbeitet werden. Das Reservierungsmodell mit Ablaufbereinigung ist vorbereitet; Buchungsoberfläche und Rechnungen folgen im Implementierungsplan.
 Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf.
 Für einen früheren Bookitup-Ausstieg werden Sicherung, Mindestmigration und
@@ -52,7 +52,7 @@ Commit-Nachrichten verwenden Conventional Commits, zum Beispiel `chore: add tool
 
 Die Testgrundlage und ihre Voraussetzungen stehen in [docs/testing.md](docs/testing.md). Für alle Gates werden Docker und der Playwright-Chromium benötigt. Lokal starten: `pnpm --filter @auftragskompass/admin dev`. Der Entwicklungsserver bindet ausschließlich an Loopback und begrenzt Dateizugriffe auf die Admin-App und ihre Abhängigkeiten.
 
-Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Google-Anmeldung und sicherer Erstkonto-Bootstrap: [Einrichtung](docs/authentication.md). Ohne OIDC-Konfiguration startet das Grundsystem, geschützte Verwaltungsendpunkte bleiben gesperrt.
+Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Anmeldung und sicherer Erstkonto-Bootstrap: [Einrichtung](docs/authentication.md). Ohne Authentifizierungskonfiguration startet das Grundsystem, geschützte Verwaltungsendpunkte bleiben gesperrt.
 
 Docker-Hub-Veröffentlichung für erste Home-Lab-Tests: [Testbetrieb](docs/homelab.md).
 

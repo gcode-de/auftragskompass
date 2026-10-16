@@ -1,7 +1,20 @@
+export type GoogleAuthConfig = {
+  mode?: 'google';
+  origin: string;
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+};
+export type PasswordAuthConfig = {
+  mode: 'password';
+  origin: string;
+  tenantId: string;
+};
+export type AuthConfig = GoogleAuthConfig | PasswordAuthConfig;
 export function loadAuthConfig(
   env: NodeJS.ProcessEnv,
   readSecret: (path: string) => string,
-) {
+): AuthConfig | undefined {
   if (!env.AK_AUTH_ENABLED || env.AK_AUTH_ENABLED === 'false') return undefined;
   if (env.AK_AUTH_ENABLED !== 'true')
     throw new Error('Invalid AK_AUTH_ENABLED');
@@ -22,6 +35,10 @@ export function loadAuthConfig(
     )
   )
     throw new Error('Invalid AK_TENANT_ID');
+  if (env.AK_AUTH_MODE === 'password')
+    return { mode: 'password', origin: origin.origin, tenantId };
+  if (env.AK_AUTH_MODE && env.AK_AUTH_MODE !== 'google')
+    throw new Error('Invalid AK_AUTH_MODE');
   const clientId = env.AK_GOOGLE_CLIENT_ID;
   const secretFile = env.AK_GOOGLE_SECRET_FILE;
   if (!clientId?.trim() || !secretFile?.trim())
@@ -35,4 +52,3 @@ export function loadAuthConfig(
   if (!clientSecret) throw new Error('Empty Google secret');
   return { origin: origin.origin, tenantId, clientId, clientSecret };
 }
-export type AuthConfig = NonNullable<ReturnType<typeof loadAuthConfig>>;

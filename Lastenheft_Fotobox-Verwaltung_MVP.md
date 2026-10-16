@@ -96,7 +96,7 @@ Die Architektur soll eine spätere Ergänzung erlauben, diese Module werden aber
 
 ### 3.1 Primärer Nutzer
 
-Der MVP ist ein **Solo-System für den Inhaber**. Der Zugriff erfolgt über Google-SSO; nur ausdrücklich freigegebene Google-Konten dürfen sich anmelden. Ein späteres Team- und Rechtemodell wird nicht vorweggenommen.
+Der MVP ist ein **Solo-System für den Inhaber**. Gemäß Nutzerentscheidung vom 16.10.2026 erfolgt der Zugriff zunächst über E-Mail oder Benutzername und Passwort; nur ausdrücklich eingerichtete Konten dürfen sich anmelden. Google-SSO bleibt optional verfügbar. Ein späteres Team- und Rechtemodell wird nicht vorweggenommen.
 
 ### 3.2 Systemgrenzen
 
@@ -165,12 +165,12 @@ Prioritäten:
 
 ### 6.1 Anmeldung und Grundsystem
 
-**SYS-01 MUSS:** Das System muss die Anmeldung über Google-SSO auf Basis von OAuth 2.0/OpenID Connect unterstützen.
+**SYS-01 MUSS:** Das System muss gemäß Nutzerentscheidung vom 16.10.2026 einen eigenen Login mit E-Mail oder Benutzername und Passwort anbieten. Die vorhandene Google-Anmeldung auf Basis von OAuth 2.0/OpenID Connect bleibt optional.
 **SYS-02 MUSS:** Es muss eine zentrale, schnelle Navigation zu Events, Ressourcen, Postfach, Kontakten, Dokumenten, Produkten, Dateien und Einstellungen geben.
 **SYS-03 MUSS:** Globale Suche und Listen dürfen bei mehreren hundert Kontakten und Events nicht spürbar stocken.
 **SYS-04 MUSS:** Datum, Uhrzeit, Währung und Zahlenformat müssen für Deutschland konfiguriert sein.
 **SYS-05 SOLL:** Die Anwendung soll auf Desktop, Tablet und Smartphone benutzbar sein.
-**SYS-06 MUSS:** Eine Administrationsoberfläche muss festlegen, welche Google-Konten zugriffsberechtigt sind.
+**SYS-06 MUSS:** Eine Administrationsoberfläche muss festlegen, welche Konten zugriffsberechtigt sind. Lokale Passwortkonten werden kontrolliert eingerichtet; es gibt keine offene Registrierung.
 **SYS-07 MUSS:** Geschäftsdaten, Eventarten, Produkte, Ressourcen, Bezeichnungen und Pufferzeiten dürfen nicht im Programmcode festgeschrieben sein.
 **SYS-08 MUSS:** Der lokale Betrieb muss mit dokumentierter Installation, Aktualisierung, Sicherung und Wiederherstellung möglich sein.
 
@@ -500,7 +500,7 @@ Vor Umschaltung müssen Stichproben und Summenkontrollen bestätigen:
 **NF-01 Performance:** Event-, Kontakt- und Postfachlisten müssen im Normalfall innerhalb von zwei Sekunden bedienbar sein.
 **NF-02 Datenschutz:** Verarbeitung nach DSGVO mit dokumentiertem Lösch-, Auskunfts- und Exportprozess.
 **NF-03 Betrieb:** Der MVP wird lokal auf eigener Infrastruktur betrieben. Installation, Updates, Backup und Wiederherstellung müssen dokumentiert und ohne Cloud-Plattformzwang möglich sein.
-**NF-04 Sicherheit:** TLS, sichere OIDC-Sitzungen, CSRF-Schutz und Schutz vor Brute Force ab Einführung des jeweiligen Endpunkts; keine lokalen Passwörter im MVP. Zusätzliche Faktoren werden beim Google-Konto verwaltet. Ein später aktivierter Notfallzugang benötigt ein separat geprüftes Sicherheitskonzept.
+**NF-04 Sicherheit:** TLS, sichere serverseitige Sitzungen, CSRF-Schutz und Schutz vor Brute Force ab Einführung des jeweiligen Endpunkts. Lokale Passwörter werden mit gesalzenem scrypt gehasht; Fehlversuchssperren überdauern Neustarts. Bei optionaler Google-Anmeldung werden zusätzliche Faktoren beim Google-Konto verwaltet. Ein später aktivierter Notfallzugang benötigt ein separat geprüftes Sicherheitskonzept.
 **NF-05 Backup:** Tägliche automatische Sicherung; Wiederherstellung muss regelmäßig getestet werden.
 **NF-06 Nachvollziehbarkeit:** Geschäftsdokumente, Nummernvergabe und automatische Änderungen müssen protokolliert werden.
 **NF-07 Datenintegrität:** Finale Dokumente, Nummernkreise, Zahlungen, Formularanlage und Ressourcenreservierungen benötigen Transaktionen und Eindeutigkeitsregeln. Gleichzeitige Bearbeitung darf keine Doppelbuchung ermöglichen.
@@ -599,7 +599,7 @@ Die folgenden Gruppen beschreiben fachliche Bereiche, keine abweichende Commitre
 - Der verbindliche Buchungsstatus heißt „Gebucht“.
 - Angebotsannahmen können über unterschiedliche Kanäle erfolgen und werden intern protokolliert.
 - Historische Geschäftsdokumente wurden bereits extern archiviert und müssen nicht migriert werden.
-- Der MVP wird lokal mit Google-SSO betrieben; eine spätere gehostete Mehrmandantenversion bleibt möglich.
+- Der MVP wird lokal mit eigenem Passwortlogin und optionalem Google-SSO betrieben; eine spätere gehostete Mehrmandantenversion bleibt möglich.
 - Die Standardpuffer betragen zwei Tage vor und zwei Tage nach dem Event und sind konfigurierbar.
 - Glamour-Paket und Schwarzwald-Paket sind jeweils einmal vorhandene, konfliktgeprüfte Ressourcen.
 - Online-Verträge sind ein optionaler Buchungsweg und können direkt vom Kunden ausgefüllt und unterschrieben werden.

@@ -1,8 +1,8 @@
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 import type { CustomFetch } from 'openid-client';
 import { googleProvider } from '../../packages/core/src/oidc.js';
-import type { AuthConfig } from '../../packages/core/src/auth-config.js';
-export async function syntheticGoogle(config: AuthConfig) {
+import type { GoogleAuthConfig } from '../../packages/core/src/auth-config.js';
+export async function syntheticGoogle(config: GoogleAuthConfig) {
   const key = await generateKeyPair('RS256');
   const wrongKey = await generateKeyPair('RS256');
   const jwk = {

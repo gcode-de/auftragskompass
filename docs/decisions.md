@@ -72,3 +72,12 @@ Die frühere pauschale Anzahl sieben im Lastenheft ist keine Obergrenze und kein
 Anlass, zwei Namen zu erfinden. Weitere Werte werden in der Oberfläche ergänzt;
 Paketwerte wurden noch nicht benannt und beginnen leer. Die spätere Bestandsübernahme
 prüft und ergänzt die fachlich tatsächlich verwendeten Werte.
+
+## Eigener Login für den Testbetrieb (16.10.2026)
+
+Der Nutzer hat E-Mail oder Benutzername plus Passwort gewählt. Dies ersetzt die
+frühere Google-Pflicht und das Verbot lokaler Passwörter. H005 verwendet vorhandene
+Sitzungen und Kontosperren, scrypt aus Node und einen einmaligen externen Bootstrap;
+keine offene Registrierung und kein zusätzlicher Maildienst. Google bleibt als
+alternativer Modus erhalten. Vor Produktivbetrieb folgen Passwortwechsel,
+Wiederherstellung und kontrollierte Einrichtung weiterer Passwortkonten.

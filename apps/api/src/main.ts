@@ -8,6 +8,7 @@ import {
   googleProvider,
   registerAuth,
   bootstrapAccess,
+  bootstrapPassword,
   registerAccessRoutes,
   registerAuditRoutes,
   registerMasterDataRoutes,
@@ -60,14 +61,29 @@ try {
       process.env.AK_TENANT_NAME ?? 'AuftragsKompass',
       config.timezone,
     );
+  if (auth?.mode === 'password')
+    await bootstrapPassword(
+      pool,
+      auth.tenantId,
+      process.env.AK_BOOTSTRAP_EMAIL,
+      process.env.AK_BOOTSTRAP_USERNAME,
+      () => {
+        if (!process.env.AK_BOOTSTRAP_PASSWORD_FILE)
+          throw new Error('Missing password file');
+        return readFileSync(
+          process.env.AK_BOOTSTRAP_PASSWORD_FILE,
+          'utf8',
+        ).replace(/\r?\n$/, '');
+      },
+    );
   await registerAuth(
     app,
     pool,
     auth,
-    auth ? await googleProvider(auth) : undefined,
+    auth && auth.mode !== 'password' ? await googleProvider(auth) : undefined,
   );
   if (auth) {
-    registerAccessRoutes(app, pool, auth.tenantId);
+    registerAccessRoutes(app, pool, auth.tenantId, auth.mode ?? 'google');
     registerAuditRoutes(app, pool, auth.tenantId);
     registerMasterDataRoutes(app, pool, auth.tenantId);
     registerResourceRoutes(app, pool, auth.tenantId);

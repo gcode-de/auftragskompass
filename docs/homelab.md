@@ -68,11 +68,10 @@ Vor einer späteren Installation:
 
    API und Worker lesen das Secret als UID/GID 1000; die Datenbank erhält dasselbe
    Secret für ihren eigenen Start. Es wird kein Passwort als Umgebungswert übergeben.
-4. Die Login-Entscheidung treffen. Die API-Vorlage bildet ausschließlich den
-   **bereits implementierten Google-Login** ab; das ist keine Vorentscheidung für
-   die spätere Anmeldung. Bei einer anderen Wahl muss die Vorlage gemeinsam mit
-   der getesteten App-Anmeldung angepasst werden. Ein Deaktivieren von Authentifizierung
-   macht die Fachoberfläche nicht nutzbar.
+4. Der Nutzer hat den eigenen Passwortlogin gewählt (H005). Die Umstellung der
+   Podman-Vorlage und Installation ist der nächste separate Schritt. Bis dahin
+   bildet die API-Vorlage noch den Google-Login ab. Ein Deaktivieren von
+   Authentifizierung macht die Fachoberfläche nicht nutzbar.
 
    Nur falls Google gewählt wird: Secret `ak-test-google` aus der externen
    Client-Secret-Datei anlegen und `/etc/auftragskompass-test/auth.env` mit Modus 600
@@ -125,15 +124,16 @@ Die vorhandene Infrastruktur verwendet Podman mit systemd/Quadlet, Portainer,
 Caddy und einen Cloudflare Tunnel. Neue App-Dienste erhalten eigene Namen,
 Netzwerke und Datenvolumes. Bestehende Apps werden nicht verändert.
 
-Die Entscheidung über den App-Login ist offen. Aktuell ist nur Google-OIDC
-implementiert. Ohne dessen Konfiguration bleiben Verwaltungs-APIs gesperrt;
-Passwort- oder Magic-Link-Login sind nicht vorhanden. Vor einer Veröffentlichung
+Der Nutzer hat den eigenen Login mit E-Mail oder Benutzername und Passwort
+gewählt. H005 implementiert diesen alternativ zu Google-OIDC. Die bisherige
+Podman-Vorlage verwendet noch Google und wird vor der Installation umgestellt;
+ohne passende Anmeldung bleiben Verwaltungs-APIs gesperrt. Vor einer Veröffentlichung
 unter einer neuen Subdomain muss der gewählte Login eingerichtet und mit erlaubtem
 sowie unerlaubtem Benutzer geprüft werden. Eine vorgeschaltete SSO-Seite ersetzt
 keine Anmeldung innerhalb der Anwendung.
 
 Installation, Sicherung und Wiederherstellung: [Betriebsanleitung](operations.md).
-Derzeitiger Login: [Google-OIDC](authentication.md).
+Anmeldeverfahren: [Passwortlogin und optionales Google-OIDC](authentication.md).
 Die vollständige Betriebsabnahme E005 bleibt offen.
 
 Referenzen: [Docker-Builds in GitHub Actions](https://docs.docker.com/build/ci/github-actions/)

@@ -13,6 +13,7 @@ import {
   allowedAccounts,
 } from './schema.js';
 import { appendAudit } from './audit.js';
+import { passwordAccess } from './password-access.js';
 import { accessRepository } from './access.js';
 import type { AuthConfig } from './auth-config.js';
 import type { IdentityProvider } from './oidc.js';
@@ -42,6 +43,7 @@ export async function registerAuth(
     errorResponseBuilder: () => ({ statusCode: 429, error: 'rate_limited' }),
   });
   const db = drizzle(pool);
+  let passwordBusy = false;
   app.decorateRequest('authSession', null);
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0]!;
@@ -49,9 +51,17 @@ export async function registerAuth(
     reply
       .header('Cache-Control', 'no-store')
       .header('Referrer-Policy', 'no-referrer');
-    if (!config || !provider)
+    if (!config || (config.mode !== 'password' && !provider))
       return reply.code(503).send({ error: 'auth_not_configured' });
-    if (path === '/auth/login' || path === '/auth/callback') return;
+    reply.header('X-Auth-Mode', config.mode ?? 'google');
+    if (path === '/auth/login' || path === '/auth/callback') {
+      if (
+        config.mode === 'password' &&
+        (path !== '/auth/login' || request.method !== 'POST')
+      )
+        return reply.code(404).send({ error: 'not_found' });
+      return;
+    }
     const token = request.cookies[sessionCookie];
     if (!token) return reply.code(401).send({ error: 'unauthorized' });
     const [session] = await db
@@ -96,6 +106,53 @@ export async function registerAuth(
     )
       return reply.code(403).send({ error: 'csrf_rejected' });
   });
+  app.post<{ Body: { identifier: string; password: string } }>(
+    '/auth/login',
+    {
+      bodyLimit: 2048,
+      config: { rateLimit: {} },
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['identifier', 'password'],
+          properties: {
+            identifier: { type: 'string', minLength: 1, maxLength: 254 },
+            password: { type: 'string', minLength: 1, maxLength: 128 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      if (config!.mode !== 'password')
+        return reply.code(404).send({ error: 'not_found' });
+      if (request.headers.origin !== config!.origin)
+        return reply.code(403).send({ error: 'csrf_rejected' });
+      // Bound scrypt memory to one verification per process on the small Home Lab host.
+      if (passwordBusy) return reply.code(429).send({ error: 'rate_limited' });
+      passwordBusy = true;
+      try {
+        const token = random();
+        if (
+          !(await passwordAccess(pool, config!.tenantId).issueSession(
+            request.body.identifier,
+            request.body.password,
+            digest(token),
+          ))
+        )
+          return reply.code(401).send({ error: 'login_denied' });
+        return reply
+          .setCookie(sessionCookie, token, {
+            ...cookieOptions,
+            maxAge: 8 * 60 * 60,
+          })
+          .code(204)
+          .send();
+      } finally {
+        passwordBusy = false;
+      }
+    },
+  );
   app.get(
     '/auth/login',
     { config: { rateLimit: {} } },

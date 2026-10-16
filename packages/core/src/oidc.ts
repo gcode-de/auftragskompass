@@ -1,5 +1,5 @@
 import * as oidc from 'openid-client';
-import type { AuthConfig } from './auth-config.js';
+import type { GoogleAuthConfig } from './auth-config.js';
 export type LoginAttempt = { state: string; verifier: string; nonce: string };
 export type GoogleIdentity = { subject: string; email: string };
 export interface IdentityProvider {
@@ -7,7 +7,7 @@ export interface IdentityProvider {
   redeem(url: URL, attempt: LoginAttempt): Promise<GoogleIdentity>;
 }
 export async function googleProvider(
-  config: AuthConfig,
+  config: GoogleAuthConfig,
   transport?: oidc.CustomFetch,
 ): Promise<IdentityProvider> {
   const client = await oidc.discovery(

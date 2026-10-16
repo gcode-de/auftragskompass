@@ -5,6 +5,7 @@ export function registerAccessRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
+  mode: 'google' | 'password' = 'google',
 ) {
   const repo = accessRepository(pool, tenantId);
   const account = {
@@ -54,6 +55,10 @@ export function registerAccessRoutes(
       },
     },
     async (request, reply) => {
+      if (mode === 'password')
+        return reply
+          .code(409)
+          .send({ error: 'password_accounts_not_available' });
       const error = await mutate(() =>
         repo.grant(request.authSession!.userId, request.body.email),
       );

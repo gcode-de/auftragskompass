@@ -75,3 +75,92 @@ test('returns to login when a session expires or own access is blocked', async (
     screen.getByRole('link', { name: 'Mit Google anmelden' }),
   ).toBeTruthy();
 });
+
+test('password login supports retries, clears secrets and sends no CSRF token before login', async () => {
+  let attempts = 0;
+  let loggedIn = false;
+  const fetcher = vi.fn(async (url: string) => {
+    if (url.startsWith('/api/'))
+      return url === '/api/v1/events'
+        ? Response.json({ timeZone: 'Europe/Berlin', events: [] })
+        : Response.json([]);
+    if (url === '/auth/me')
+      return loggedIn
+        ? Response.json(
+            {
+              email: 'fictional.owner@example.invalid',
+              csrfToken: 'fictional-csrf',
+            },
+            { headers: { 'x-auth-mode': 'password' } },
+          )
+        : new Response(null, {
+            status: 401,
+            headers: { 'x-auth-mode': 'password' },
+          });
+    attempts++;
+    if (attempts === 1) return new Response(null, { status: 429 });
+    if (attempts === 2) return new Response(null, { status: 401 });
+    if (attempts === 3) throw new Error('offline');
+    loggedIn = true;
+    return new Response(null, { status: 204 });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<AuthPanel />);
+  const identifier = await screen.findByLabelText('E-Mail oder Benutzername');
+  const password = screen.getByLabelText('Passwort') as HTMLInputElement;
+  expect(password.type).toBe('password');
+  expect(screen.queryByText('Mit Google anmelden')).toBeNull();
+  fireEvent.change(identifier, { target: { value: 'fictional.owner' } });
+  for (const message of [
+    /Zu viele Anfragen/,
+    /Zugangsdaten prüfen/,
+    /Bitte erneut versuchen/,
+    /^Angemeldet$/,
+  ]) {
+    fireEvent.change(password, {
+      target: { value: 'Fictional password 123!' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Anmelden$/ }));
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(
+      (screen.queryByLabelText('Passwort') as HTMLInputElement | null)?.value ??
+        '',
+    ).toBe('');
+  }
+  expect(fetcher).toHaveBeenCalledWith('/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      identifier: 'fictional.owner',
+      password: 'Fictional password 123!',
+    }),
+  });
+  expect(await screen.findByText(/Weitere Passwortkonten/)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Konto freigeben' })).toBeNull();
+});
+
+test('successful password submission still requires a working session', async () => {
+  let reads = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/auth/login'
+        ? new Response(null, { status: 204 })
+        : new Response(null, {
+            status: ++reads === 1 ? 401 : 500,
+            headers: { 'x-auth-mode': 'password' },
+          }),
+    ),
+  );
+  render(<AuthPanel />);
+  fireEvent.change(await screen.findByLabelText('E-Mail oder Benutzername'), {
+    target: { value: 'fictional.owner' },
+  });
+  fireEvent.change(screen.getByLabelText('Passwort'), {
+    target: { value: 'Fictional password 123!' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /^Anmelden$/ }));
+  expect(
+    await screen.findByText(/Anmeldung fehlgeschlagen. Bitte erneut versuchen/),
+  ).toBeTruthy();
+});

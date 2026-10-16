@@ -13,12 +13,17 @@ export type CurrentUser = { email: string; csrfToken: string };
 export function AuthPanel() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState('Anmeldung wird geprüft …');
+  const [mode, setMode] = useState('google');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [importRevision, setImportRevision] = useState(0);
   useEffect(() => {
     let active = true;
     void fetch('/auth/me')
       .then(async (response) => {
+        if (active) setMode(response.headers.get('x-auth-mode') ?? 'google');
         if (response.ok) {
           const current = (await response.json()) as CurrentUser;
           if (active) {
@@ -30,7 +35,7 @@ export function AuthPanel() {
           setStatus(
             response.status === 401
               ? 'Bitte anmelden.'
-              : 'Google-Anmeldung ist noch nicht eingerichtet.',
+              : 'Anmeldung ist noch nicht eingerichtet.',
           );
         }
       })
@@ -44,6 +49,34 @@ export function AuthPanel() {
       active = false;
     };
   }, []);
+  async function login() {
+    setBusy(true);
+    try {
+      const response = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      });
+      setPassword('');
+      if (!response.ok) {
+        setStatus(
+          response.status === 429
+            ? 'Zu viele Anfragen. Bitte später erneut versuchen.'
+            : 'Anmeldung fehlgeschlagen. Zugangsdaten prüfen oder nach 15 Minuten erneut versuchen.',
+        );
+        return;
+      }
+      const current = await fetch('/auth/me');
+      if (!current.ok) throw new Error('session');
+      setUser((await current.json()) as CurrentUser);
+      setStatus('Angemeldet');
+    } catch {
+      setPassword('');
+      setStatus('Anmeldung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      setBusy(false);
+    }
+  }
   async function logout() {
     try {
       const response = await fetch('/auth/logout', {
@@ -79,6 +112,7 @@ export function AuthPanel() {
               onImported={() => setImportRevision((value) => value + 1)}
             />
             <AccessPanel
+              passwordMode={mode === 'password'}
               csrfToken={user.csrfToken}
               onSessionEnded={() => {
                 setUser(null);
@@ -89,6 +123,34 @@ export function AuthPanel() {
           </section>
           <button onClick={() => void logout()}>Abmelden</button>
         </>
+      ) : ready && mode === 'password' ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void login();
+          }}
+        >
+          <label htmlFor="login-identifier">E-Mail oder Benutzername</label>
+          <input
+            id="login-identifier"
+            autoComplete="username"
+            required
+            maxLength={254}
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+          />
+          <label htmlFor="login-password">Passwort</label>
+          <input
+            id="login-password"
+            type="password"
+            autoComplete="current-password"
+            required
+            maxLength={128}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <button disabled={busy}>Anmelden</button>
+        </form>
       ) : ready ? (
         <a href="/auth/login">Mit Google anmelden</a>
       ) : null}

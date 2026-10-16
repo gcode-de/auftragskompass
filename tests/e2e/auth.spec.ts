@@ -1,6 +1,6 @@
 import { registerImportRoutes } from '../../packages/core/src/import-routes.js';
 import { fictionalImport } from '../fixtures/minimal-import.js';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Browser } from '@playwright/test';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
+import { bootstrapPassword } from '../../packages/core/src/password-access.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
 import { registerEventRoutes } from '../../packages/core/src/events.js';
@@ -22,9 +23,7 @@ import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
-test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out', async ({
-  browser,
-}) => {
+async function signInScenario(browser: Browser, mode: 'google' | 'password') {
   test.setTimeout(120000);
   const dir = await mkdtemp(join(tmpdir(), 'ak-tls-'));
   const container = await new PostgreSqlContainer(
@@ -114,16 +113,31 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       'Synthetic auth',
       'Europe/Berlin',
     );
-    const google = await syntheticGoogle(config);
-    callbackFor = google.code;
-    await registerAuth(app, pool, config, {
-      ...google.provider,
-      async authorization(attempt) {
-        const url = new URL(await google.provider.authorization(attempt));
-        return origin + '/synthetic-google' + url.search;
-      },
-    });
-    registerAccessRoutes(app, pool, config.tenantId);
+    if (mode === 'password') {
+      await bootstrapPassword(
+        pool,
+        config.tenantId,
+        'synthetic@example.invalid',
+        'fictional.owner',
+        () => 'Fictional password 123!',
+      );
+      await registerAuth(app, pool, {
+        mode,
+        origin,
+        tenantId: config.tenantId,
+      });
+    } else {
+      const google = await syntheticGoogle(config);
+      callbackFor = google.code;
+      await registerAuth(app, pool, config, {
+        ...google.provider,
+        async authorization(attempt) {
+          const url = new URL(await google.provider.authorization(attempt));
+          return origin + '/synthetic-google' + url.search;
+        },
+      });
+    }
+    registerAccessRoutes(app, pool, config.tenantId, mode);
     registerMasterDataRoutes(app, pool, config.tenantId);
     registerResourceRoutes(app, pool, config.tenantId);
     registerProductRoutes(app, pool, config.tenantId);
@@ -134,7 +148,17 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     await page.goto(origin);
-    await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
+    if (mode === 'password') {
+      await page.getByLabel('E-Mail oder Benutzername').fill('FICTIONAL.OWNER');
+      await page.getByLabel('Passwort', { exact: true }).fill('incorrect');
+      await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
+      await expect(page.getByText(/Zugangsdaten prüfen/)).toBeVisible();
+      await page
+        .getByLabel('Passwort', { exact: true })
+        .fill('Fictional password 123!');
+      await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
+    } else
+      await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
     await expect(
       page.getByText('synthetic@example.invalid', { exact: true }),
     ).toBeVisible();
@@ -144,35 +168,37 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     expect(await page.evaluate(() => document.cookie)).not.toContain(
       'ak-session',
     );
-    await page
-      .getByLabel('Google-E-Mail-Adresse')
-      .fill('pending-browser@example.invalid');
-    await page.getByRole('button', { name: 'Konto freigeben' }).click();
-    await expect(
-      page.getByText(
-        'pending-browser@example.invalid – Erste Anmeldung ausstehend',
-      ),
-    ).toBeVisible();
-    await page
-      .getByRole('button', {
-        name: 'Sperren: synthetic@example.invalid',
-        exact: true,
-      })
-      .click();
-    await expect(
-      page.getByText(
-        'Der letzte aktive Administrator darf nicht gesperrt werden.',
-      ),
-    ).toBeVisible();
-    await page
-      .getByRole('button', {
-        name: 'Sperren: pending-browser@example.invalid',
-        exact: true,
-      })
-      .click();
-    await expect(
-      page.getByText('pending-browser@example.invalid – Gesperrt'),
-    ).toBeVisible();
+    if (mode === 'google') {
+      await page
+        .getByLabel('Google-E-Mail-Adresse')
+        .fill('pending-browser@example.invalid');
+      await page.getByRole('button', { name: 'Konto freigeben' }).click();
+      await expect(
+        page.getByText(
+          'pending-browser@example.invalid – Erste Anmeldung ausstehend',
+        ),
+      ).toBeVisible();
+      await page
+        .getByRole('button', {
+          name: 'Sperren: synthetic@example.invalid',
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByText(
+          'Der letzte aktive Administrator darf nicht gesperrt werden.',
+        ),
+      ).toBeVisible();
+      await page
+        .getByRole('button', {
+          name: 'Sperren: pending-browser@example.invalid',
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByText('pending-browser@example.invalid – Gesperrt'),
+      ).toBeVisible();
+    } else await expect(page.getByText(/Weitere Passwortkonten/)).toBeVisible();
     const importPreview = page.getByRole('region', {
       name: 'Bookitup-Importvorschau',
     });
@@ -448,7 +474,10 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
       assignment.getByLabel('FB2 · Einheit 1 zuweisen', { exact: true }),
     ).toBeChecked();
     await expect(
-      assignment.getByRole('combobox', { name: 'Buchungsstatus', exact: true }),
+      assignment.getByRole('combobox', {
+        name: 'Buchungsstatus',
+        exact: true,
+      }),
     ).toHaveValue('booked');
     await assignment.getByLabel('Buchungsdatum').fill('2030-10-20');
     await assignment
@@ -494,7 +523,9 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
         .getByRole('link', { name: 'Fictional resource booking' })
         .first(),
     ).toBeVisible();
-    await calendar.screenshot({ path: 'tests/test-results/calendar-day.png' });
+    await calendar.screenshot({
+      path: 'tests/test-results/calendar-day.png',
+    });
     await calendar
       .getByRole('combobox', { name: 'Kalenderansicht', exact: true })
       .selectOption('week');
@@ -721,4 +752,9 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await container.stop();
     await rm(dir, { recursive: true, force: true });
   }
-});
+}
+for (const mode of ['google', 'password'] as const) {
+  test(`HTTPS browser signs in with ${mode}, receives HttpOnly cookie and signs out`, async ({
+    browser,
+  }) => signInScenario(browser, mode));
+}

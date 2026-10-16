@@ -1,13 +1,13 @@
-# Google-Anmeldung
+# Anmeldung
 
 C009 führt Google OpenID Connect für die lokale Administration ein. Ohne explizite
 Aktivierung bleiben `/auth/*` und `/api/*` gesperrt (503). Es gibt keine offene
-Registrierung und keinen Passwort- oder Notfall-Login. C010 erlaubt ausschließlich
+Registrierung und keinen Notfall-Login. H005 ergänzt gemäß Nutzerentscheidung einen eigenen Passwortlogin für die Testinstallation. C010 erlaubt ausschließlich
 explizit freigegebene Google-Konten. Das erste Konto
 wird über lokale Konfiguration festgelegt; weitere Freigaben erfolgen nach Anmeldung
 in der Oberfläche.
 
-## Konfiguration
+## Google-Konfiguration
 
 1. Einen Google OAuth-Client vom Typ Webanwendung konfigurieren. Als Redirect exakt
    `https://<administrativer-host>/auth/callback` eintragen; keine Wildcards.
@@ -131,3 +131,46 @@ TRUNCATE ab; Fremdschlüssel verhindern mandantenfremde Akteurzuordnungen.
 Eine fehlgeschlagene Audit-Schreiboperation verhindert eine neue Sitzung bzw.
 rollt die Abmeldung zurück. Datenbankadministratoren mit Superuser-Rechten können
 Trigger technisch abschalten; das Log ist kein Schutz vor kompromittierten DB-Administratoren.
+
+## Eigener Passwortlogin (H005, Testbetrieb)
+
+`AK_AUTH_ENABLED=true`, `AK_AUTH_MODE=password`, HTTPS-`AK_AUTH_ORIGIN` und
+`AK_TENANT_ID` aktivieren den lokalen Login ohne Google-Zugangsdaten. Beide Modi
+sind alternativ, nicht parallel aktiv. Der erste Start benötigt zusätzlich
+`AK_BOOTSTRAP_EMAIL`, `AK_BOOTSTRAP_USERNAME` (3–64 ASCII-Zeichen, Buchstaben,
+Ziffern, Punkt, Unterstrich, Bindestrich) und `AK_BOOTSTRAP_PASSWORD_FILE`.
+Die E-Mail gehört zum Konto; angemeldet werden kann mit E-Mail **oder** Benutzername,
+unabhängig von Groß-/Kleinschreibung. Kennwörter werden weder getrimmt noch verkürzt.
+Mindestens 15 Unicode-Zeichen, maximal 128 UTF-16-Codeeinheiten; zufällig erzeugte
+lange Passwörter verwenden. Keine Zugangsdaten in Git, Shell-Argumenten oder Logs.
+
+Die Passwortdatei liegt außerhalb des Repositories mit restriktiven Rechten; unter
+Podman als Secret für UID 1000 einbinden. Ein abschließender Dateizeilenumbruch wird
+beim Bootstrap entfernt. Nach erfolgreichem Start Bootstrap-Konfiguration und
+Passwortdatei entfernen: der dauerhafte `password_bootstrap`-Marker verhindert
+Zurücksetzen oder Entsperren durch Neustarts. Ein bestehender Mandant mit bereits angelegten Identitäten wird nicht automatisch
+umgestellt; der initiale Passwort-Bootstrap verlangt einen frischen Mandanten. Migration `0019` ergänzt
+mandantengebundene Kennwörter/Marker und erlaubt lokale Identitäten ohne Google-ID;
+bestehende Google-Zuordnungen bleiben erhalten.
+
+`POST /auth/login` akzeptiert JSON `{ "identifier": "fictional.owner", "password": "…" }`
+nur vom exakten konfigurierten Origin (sonst 403), maximal 2 KiB, und liefert 204
+mit dem bestehenden sicheren Sitzungscookie. Fehlende, gesperrte, unbekannte oder
+falsche Zugangsdaten ergeben einheitlich 401, niemals einen Existenzhinweis. Das
+Frontend erkennt den Modus am `X-Auth-Mode`-Header von `/auth/me`; es speichert kein
+Passwort. Sitzung, CSRF und Logout gelten wie bei Google.
+
+Hashes: Node-scrypt, N=131072, r=8, p=1, 16 zufällige Salt-Bytes, 64 Hash-Bytes;
+[OWASP-Referenz](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
+Auch unbekannte Konten durchlaufen scrypt; Parameter sind fest begrenzt.
+Je Prozess wird höchstens ein Passwort gleichzeitig geprüft (sonst 429). Zusätzlich
+gelten 20 Versuche pro Verbindungs-IP/Minute und nach fünf Fehlversuchen eine
+15-minütige Kontosperre in PostgreSQL, gemeinsam für E-Mail und Benutzername.
+Sperrversuche verlängern die Sperre nicht. Änderungen, Sperrprüfungen, Sitzungen
+und Audit erfolgen unter derselben Mandantensperre wie Kontowiderrufe.
+
+Der Testbetrieb richtet genau ein Inhaberkonto ein. Die Google-Freigabeform wird im
+Passwortmodus ausgeblendet und der entsprechende POST-Endpunkt liefert 409; zusätzliche Passwortkonten, Passwortwechsel und sichere
+Wiederherstellung sind noch offen. Vor Produktivbetrieb müssen sie nachgerüstet
+und geprüft werden. Ein Datenbank-Backup enthält Passwort-Hashes und muss deshalb
+wie die übrigen vertraulichen Daten geschützt werden.

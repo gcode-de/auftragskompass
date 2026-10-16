@@ -7,9 +7,11 @@ export type Account = {
 };
 export function AccessPanel({
   csrfToken,
+  passwordMode = false,
   onSessionEnded,
 }: {
   csrfToken: string;
+  passwordMode?: boolean;
   onSessionEnded?: () => void;
 }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -65,29 +67,36 @@ export function AccessPanel({
   }
   return (
     <section aria-label="Kontofreigaben">
-      <h2>Google-Konten freigeben</h2>
+      <h2>{passwordMode ? 'Kontozugriff' : 'Google-Konten freigeben'}</h2>
       <p>
         Freigegebene Konten erhalten Administratorzugriff. Sperren beendet alle
         Sitzungen des Kontos. Ein neu freigegebenes Konto muss sich erst
         anmelden, bevor es den letzten Administrator ersetzen kann.
       </p>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-      >
-        <label htmlFor="access-email">Google-E-Mail-Adresse</label>
-        <input
-          id="access-email"
-          type="email"
-          maxLength={254}
-          required
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-        <button disabled={busy}>Konto freigeben</button>
-      </form>
+      {passwordMode ? (
+        <p>
+          Das lokale Inhaberkonto wird beim ersten Start eingerichtet. Weitere
+          Passwortkonten sind noch nicht verfügbar.
+        </p>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <label htmlFor="access-email">Google-E-Mail-Adresse</label>
+          <input
+            id="access-email"
+            type="email"
+            maxLength={254}
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <button disabled={busy}>Konto freigeben</button>
+        </form>
+      )}
       <p role="status">{message}</p>
       <ul>
         {accounts.map((account) => (

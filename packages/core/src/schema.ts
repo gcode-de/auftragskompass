@@ -25,7 +25,7 @@ export const users = pgTable(
       .notNull()
       .references(() => tenants.id),
     id: uuid('id').notNull(),
-    googleSubject: text('google_subject').notNull(),
+    googleSubject: text('google_subject'),
     email: text('email').notNull(),
   },
   (t) => [
@@ -53,6 +53,17 @@ export const memberships = pgTable(
   ],
 );
 
+export const passwordCredentials = pgTable('password_credentials', {
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  username: text('username').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  failures: integer('failures').notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+});
+export const passwordBootstrap = pgTable('password_bootstrap', {
+  tenantId: uuid('tenant_id').primaryKey(),
+});
 export const loginAttempts = pgTable('login_attempts', {
   tenantId: uuid('tenant_id').notNull(),
   stateHash: text('state_hash').notNull(),

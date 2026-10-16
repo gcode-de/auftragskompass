@@ -39,3 +39,23 @@ test('authentication is disabled unless explicitly configured, and fails closed'
     }),
   ).toThrow('Cannot read Google secret');
 });
+test('password mode requires HTTPS and a tenant but no Google credentials', () => {
+  const env = {
+    AK_AUTH_ENABLED: 'true',
+    AK_AUTH_MODE: 'password',
+    AK_AUTH_ORIGIN: 'https://admin.example.invalid',
+    AK_TENANT_ID: '11111111-1111-4111-8111-111111111111',
+  };
+  expect(
+    loadAuthConfig(env, () => {
+      throw new Error('must not read');
+    }),
+  ).toEqual({
+    mode: 'password',
+    origin: env.AK_AUTH_ORIGIN,
+    tenantId: env.AK_TENANT_ID,
+  });
+  expect(() =>
+    loadAuthConfig({ ...env, AK_AUTH_MODE: 'unknown' }, () => ''),
+  ).toThrow('Invalid AK_AUTH_MODE');
+});
