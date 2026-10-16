@@ -2,6 +2,14 @@
 
 Stand: 18.09.2026. Ergänzung zum [Lastenheft](../Lastenheft_Fotobox-Verwaltung_MVP.md) und zum [Implementierungsplan](../IMPLEMENTATION_PLAN.md). Dies sind umzusetzende Regeln, keine Behauptung bereits bestandener Produkttests.
 
+**Übersteuerung am 16.10.2026:** Der [Ausstiegsplan](bookitup-exit.md) erlaubt
+einen früheren Erststart mit geprüften externen Mail-/Dokumentprozessen und
+vorgezogenen Migrations-/Betriebsabnahmen. Frühere Aussagen unten über M7 als
+einzigen Ablösezeitpunkt und den Ausschluss historischer Archive/E-Mails gelten
+nicht mehr für die Datensicherung. Benötigte Historie muss unabhängig von
+Bookitup erhalten bleiben; der operative Erstimport bleibt klein. Die übrigen
+fachlichen Sicherheitsregeln gelten weiterhin.
+
 ## Lieferumfang und Abhängigkeiten
 
 Die Planprüfung bezog sich auf den damaligen reinen Dokumentationsstand nach C001. Den aktuellen Umsetzungsstand führt der Implementierungsplan. M1 ermöglicht interne Disposition, M7 erst die vollständige Ablösung. Vor echten Geschäftsdaten sind Zugriffsschutz, tägliche Sicherung mit geprüftem Restore und kontrollierte Übernahme der betreffenden Bestandsdaten erforderlich. Insbesondere darf ein leerer Kalender nicht als freie Kapazität veröffentlicht werden, solange zukünftige Bestandsbuchungen noch fehlen (C027, C037, C076).

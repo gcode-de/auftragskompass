@@ -5,9 +5,12 @@ Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer spä
 **Stand:** C001–C021 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
 Mandanten, Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
 Events können angelegt und bearbeitet werden. Das Reservierungsmodell mit Ablaufbereinigung ist vorbereitet; Buchungsoberfläche und Rechnungen folgen im Implementierungsplan.
-Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf;
-die vollständige Ablösung ist Ziel von M7.
+Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf.
+Für einen früheren Bookitup-Ausstieg werden Sicherung, Mindestmigration und
+Betriebsabnahme vorgezogen; Mail und Geschäftsdokumente benötigen dann geprüfte
+externe Ersatzprozesse. M5/M6 folgen später.
 
+- [Bookitup-Sicherung und verkürzter Livegang](docs/bookitup-exit.md)
 - [Fokussiertes Lastenheft](Lastenheft_Fotobox-Verwaltung_MVP.md)
 - [Commitgenauer Implementierungsplan](IMPLEMENTATION_PLAN.md)
 - [Entwicklungs- und Datenschutzregeln](AGENTS.md)

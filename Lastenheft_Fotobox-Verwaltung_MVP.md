@@ -5,6 +5,13 @@
 **Grundlage:** öffentliche Dokumentation von bookitup und kreativ.management plus rein lesender Abgleich des angemeldeten bookitup-Kontos
 **Leitlinie:** In den MVP kommen die heute genutzten Funktionen sowie die ausdrücklich gewünschten Erweiterungen für Ressourcen, Online-Verträge, Kundenfragebögen, öffentliche Verfügbarkeit, To-dos und Absagegründe.
 
+**Vorrangige Lieferentscheidung vom 16.10.2026:** Der
+[Bookitup-Ausstiegsplan](docs/bookitup-exit.md) definiert einen kleineren Erststart
+mit vorgezogener Sicherung/Migration/Betriebsabnahme. M5/M6 und bei geprüften
+Ersatzprozessen M2/M3/M4 folgen später. Der Vollumfang unten bleibt Ausbauziel.
+Historische Daten dürfen für diesen Ausstieg nicht mehr ausschließlich im
+Altsystem verbleiben; Sicherung und operativer Datenbankimport sind getrennt.
+
 ## 1. Ziel
 
 Es soll eine schnelle, übersichtliche Webanwendung entstehen, mit der ein einzelner Fotobox-Anbieter Anfragen, Kunden, Aufträge, E-Mails, Angebote und Rechnungen ohne parallele Listen verwalten kann.
@@ -458,8 +465,8 @@ Prioritäten:
 **MIG-05 MUSS:** E-Mail- und Dokumentvorlagen.
 **MIG-06 MUSS:** Logo, Dokumentgestaltung, Signatur und Standarddateien.
 **MIG-07 MUSS:** Aktuelle Nummernkreisstände.
-**MIG-08 MUSS:** Nur zum Umschaltzeitpunkt noch offene Angebote, Rechnungen, Anzahlungen, Korrekturen und Zahlungsstände; historische Dokumentarchive werden nicht übernommen.
-**MIG-09 MUSS:** Historische E-Mails werden nicht übernommen.
+**MIG-08 MUSS:** Zum Umschaltzeitpunkt offene Angebote, Rechnungen, Anzahlungen, Korrekturen und Zahlungsstände operativ übernehmen oder im geprüften externen Ersatzprozess führen. Zusätzlich alle noch benötigten historischen Originalbelege mit Metadaten und Nachweisen unabhängig von Bookitup sichern; kein vollständiger Altarchiv-Import in die Anwendung für den Erststart erforderlich.
+**MIG-09 MUSS:** Benötigte historische E-Mails und Anhänge unabhängig von Bookitup sichern; bereits vollständig im eigenen gesicherten Postfach vorhandene Bestände abgleichen. Bookitup-exklusive Inhalte und Zuordnungen separat sichern. Kein integriertes Postfach oder historischer Mailimport in die Anwendung für den verkürzten Erststart erforderlich.
 **MIG-10 SOLL:** Logbucheinträge aktiver und zukünftiger Events, sofern bookitup sie in brauchbarer Form exportieren kann.
 **MIG-11 MUSS:** FB1 und FB2 sowie Glamour-Paket und Schwarzwald-Paket werden als neue Ressourcenstammdaten angelegt; bestehende aktive und zukünftige Events erhalten vor Produktivstart eine manuell geprüfte Ressourcenzuordnung.
 **MIG-12 SOLL:** Falls die konkrete Box aus vorhandenen Notizen oder Paketangaben eindeutig hervorgeht, darf der Import eine Zuordnung vorschlagen, aber nicht ungeprüft festschreiben.
@@ -485,7 +492,7 @@ Vor Umschaltung müssen Stichproben und Summenkontrollen bestätigen:
 - Stichproben mit parallelen Events bestätigen, dass beide Boxen unabhängig buchbar sind und eine dritte gleichzeitige Buchung blockiert wird.
 - Offene Angebote und Rechnungen sind vollständig und mit korrekter Nummer vorhanden.
 - Nächste Dokumentnummern überschneiden sich nicht mit bookitup.
-- Ab dem vereinbarten Umschaltzeitpunkt werden neue Nachrichten zuverlässig im neuen System empfangen; historische E-Mails bleiben bewusst im Altsystem.
+- Ab dem vereinbarten Umschaltzeitpunkt werden neue Nachrichten zuverlässig im Zielpostfach empfangen; beim verkürzten Erststart darf dies ein geprüfter unabhängiger Mailclient sein. Benötigte historische E-Mails und Originalbelege sind ohne Bookitup zugänglich.
 - PDFs und Standardanhänge lassen sich öffnen.
 
 ## 8. Nichtfunktionale Anforderungen

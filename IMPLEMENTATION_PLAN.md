@@ -6,6 +6,16 @@
 
 ## 1. Lieferstrategie
 
+**Neue Priorität vom 16.10.2026:** Für einen früheren Bookitup-Ausstieg gilt die
+[verkürzte Lieferfolge mit Sicherungs- und Umschaltplan](docs/bookitup-exit.md).
+M5/M6 werden verschoben; M2/M3/M4 ebenfalls, sofern die dort beschriebenen
+externen Ersatzprozesse vor Umschaltung geprüft sind. Notwendige Migration und
+Betriebssicherheit aus M7 werden vorgezogen. Die C-Slices unten bleiben der
+vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
+
+- [x] E001: Sicherungsmatrix und verkürzte Lieferfolge dokumentiert
+- [ ] E002: tatsächliche Bookitup-Sicherung und Prüfung; derzeit Anmeldung erforderlich
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
@@ -196,7 +206,7 @@ Der erste bewusst minimale Nutzwert ist erreicht, wenn:
 7. ein widerrufbarer ICS-Feed auf dem Smartphone funktioniert,
 8. Auditlog, Backup-Grundlage und automatisierte Tests vorhanden sind.
 
-Dieser Stand ersetzt noch nicht bookitup vollständig, ist aber bereits als verlässliche interne Disposition nutzbar. Jede folgende Phase fügt genau einen fachlichen Bereich hinzu.
+Dieser Stand ersetzt noch nicht bookitup vollständig, ist aber bereits als verlässliche interne Disposition nutzbar. Für die frühere Ablösung sind zusätzlich die vorgezogenen Archiv-, Migrations-, Ersatzprozess- und Betriebsabnahmen aus dem [Ausstiegsplan](docs/bookitup-exit.md) erforderlich. Jede spätere Phase fügt einen fachlichen Bereich hinzu.
 
 ## 6. Release- und Push-Regel
 
