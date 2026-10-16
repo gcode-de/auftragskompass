@@ -126,6 +126,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@fastify/ajv-compiler':
+        specifier: 4.0.6
+        version: 4.0.6
       '@fastify/cookie':
         specifier: 11.1.2
         version: 11.1.2

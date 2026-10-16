@@ -18,3 +18,5 @@ export { registerLocationRoutes } from './locations.js';
 export { registerEventRoutes } from './events.js';
 
 export { startReservationExpiry } from './reservation-worker.js';
+
+export { registerImportRoutes } from './import-routes.js';

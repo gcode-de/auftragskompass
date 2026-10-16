@@ -8,6 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@fastify/ajv-compiler": "4.0.6",
     "@fastify/cookie": "11.1.2",
     "@fastify/rate-limit": "11.2.0",
     "@js-temporal/polyfill": "0.5.1",

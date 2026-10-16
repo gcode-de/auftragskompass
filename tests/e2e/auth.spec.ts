@@ -1,3 +1,5 @@
+import { registerImportRoutes } from '../../packages/core/src/import-routes.js';
+import { fictionalImport } from '../fixtures/minimal-import.js';
 import { expect, test } from '@playwright/test';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
@@ -128,6 +130,7 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     registerContactRoutes(app, pool, config.tenantId);
     registerLocationRoutes(app, pool, config.tenantId);
     registerEventRoutes(app, pool, config.tenantId);
+    registerImportRoutes(app, pool, config.tenantId);
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     await page.goto(origin);
@@ -170,6 +173,29 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await expect(
       page.getByText('pending-browser@example.invalid – Gesperrt'),
     ).toBeVisible();
+    const importPreview = page.getByRole('region', {
+      name: 'Bookitup-Importvorschau',
+    });
+    await importPreview
+      .getByLabel('Normalisierte Importdaten')
+      .fill(JSON.stringify(fictionalImport()));
+    await importPreview
+      .getByRole('button', { name: 'Importvorschau prüfen' })
+      .click();
+    await expect(
+      importPreview.getByText(
+        'Vorschau geprüft. Es wurden keine Daten übernommen.',
+      ),
+    ).toBeVisible();
+    await expect(
+      importPreview.getByText('Ungeprüfte Bestandszusage', { exact: true }),
+    ).toBeVisible();
+    expect(
+      (await pool.query('SELECT count(*) FROM events')).rows[0].count,
+    ).toBe('0');
+    await importPreview.screenshot({
+      path: 'tests/test-results/import-preview.png',
+    });
     const packages = page.getByRole('region', { name: 'Paketwerte' });
     await packages
       .getByLabel('Bezeichnung', { exact: true })

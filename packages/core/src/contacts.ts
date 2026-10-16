@@ -161,30 +161,31 @@ export function contactRepository(pool: Pool, tenantId: string) {
     },
   };
 }
+const phone = { type: 'string', maxLength: 60, pattern: '^[+0-9() .\\/-]*$' };
+export const contactFields = {
+  kind: { type: 'string', enum: ['private', 'company'] },
+  name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
+  contactPerson: { type: 'string', maxLength: 200 },
+  street: { type: 'string', maxLength: 200 },
+  postalCode: { type: 'string', maxLength: 20 },
+  city: { type: 'string', maxLength: 120 },
+  country: { type: 'string', pattern: '^[A-Z]{2}$' },
+  email: {
+    type: 'string',
+    maxLength: 254,
+    pattern: '^\\s*$|^\\s*[^\\s@]+@[^\\s@]+\\.[^\\s@]+\\s*$',
+  },
+  phone,
+  mobile: phone,
+  state: { type: 'string', enum: ['active', 'archived'] },
+};
 export function registerContactRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
 ) {
   const repo = contactRepository(pool, tenantId);
-  const phone = { type: 'string', maxLength: 60, pattern: '^[+0-9() .\\/-]*$' };
-  const fields = {
-    kind: { type: 'string', enum: ['private', 'company'] },
-    name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
-    contactPerson: { type: 'string', maxLength: 200 },
-    street: { type: 'string', maxLength: 200 },
-    postalCode: { type: 'string', maxLength: 20 },
-    city: { type: 'string', maxLength: 120 },
-    country: { type: 'string', pattern: '^[A-Z]{2}$' },
-    email: {
-      type: 'string',
-      maxLength: 254,
-      pattern: '^\\s*$|^\\s*[^\\s@]+@[^\\s@]+\\.[^\\s@]+\\s*$',
-    },
-    phone,
-    mobile: phone,
-    state: { type: 'string', enum: ['active', 'archived'] },
-  };
+  const fields = contactFields;
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',

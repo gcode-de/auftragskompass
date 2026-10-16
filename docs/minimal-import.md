@@ -109,3 +109,82 @@ Die Abschlusskontrolle vergleicht Mengen pro Entitätsart, unveränderte,
 geänderte, ausgeschlossene und fehlerhafte Zeilen sowie offene Zusagen. Der
 echte Bericht bleibt privat. Synthetische Fixtures müssen sichtbar fiktiv sein;
 Produktionsdateien und daraus abgeleitete Beispiele gehören niemals in Git.
+
+## Vorschau bedienen (E003.1)
+
+Unter **Einstellungen → Bookitup-Importvorschau** normalisiertes JSON einfügen
+und **Importvorschau prüfen** wählen. Die Vorschau benötigt eine gültige
+Administratorsitzung. Sie zeigt Mengen, Fehler und Hinweise mit Abschnitt und
+1-basierter Zeilennummer sowie den Originalstatus zukünftiger Events. Zeile 0
+bezeichnet einen Fehler des Gesamtformats. Eine Änderung der Eingabe entfernt
+den alten Bericht. Die Eingabe wird nicht im Browser dauerhaft gespeichert.
+
+`POST /api/v1/imports/bookitup/preview` ist Teil der lokalen Admin-API und
+benötigt dieselben Sitzungs-, Origin- und CSRF-Prüfungen wie andere Schreibmethoden.
+Der Endpunkt selbst läuft in einer **nur lesenden Datenbanktransaktion**; es
+entstehen keine Kontakte, Events, Reservierungen oder Audit-Einträge. Er ist auf
+4 MiB JSON und 10 Vorschauen je Minute begrenzt. Jeder Abschnitt enthält höchstens
+10.000 Einträge. Fehlerhafte Feldwerte werden weder zurückgespiegelt noch geloggt.
+Bei syntaktisch gültigem JSON liefert der Endpunkt einen Bericht mit `valid`,
+`checkedAt`, `timeZone`, `counts`, `errors`, `warnings`, `events` und
+`pendingPromises`. Ein ungültiges Gesamtformat ergibt `invalid_format` mit leeren
+Mengen, einzelne ungültige Zeilen ergeben `invalid_fields`. Das ist noch kein
+transaktionaler Dry-run der Übernahme aus E003.2 und kein Abgleich mit vorhandenen
+Zieldaten auf Dubletten.
+
+### Eingabeformat Version 1
+
+Alle sieben Wurzelfelder sind erforderlich; leere Listen sind erlaubt:
+
+```json
+{
+  "formatVersion": 1,
+  "source": "bookitup",
+  "contacts": [],
+  "locations": [],
+  "eventTypes": [],
+  "packages": [],
+  "events": []
+}
+```
+
+Jede Liste enthält Objekte der Form `{ "externalId": "stabile-quell-id", "data": { ... } }`.
+Die Quell-ID ist 1–200 Zeichen lang, ohne führende oder nachgestellte Leerzeichen.
+Alle folgenden `data`-Felder müssen vorhanden sein, auch wenn ihr Wert leer oder
+`null` ist. Unbekannte Felder werden abgewiesen, Zahlen oder andere Typen nicht
+stillschweigend in Text umgewandelt. Die Feldgrenzen entsprechen den normalen
+Admin-Eingaben; die Vorschau verwendet deren gemeinsame Schemas.
+
+| Abschnitt | `data`-Felder |
+|---|---|
+| `contacts` | `kind` (`private`/`company`), `name`, `contactPerson`, `street`, `postalCode`, `city`, `country`, `email`, `phone`, `mobile`, `state` (`active`/`archived`) |
+| `locations` | `name`, `street`, `postalCode`, `city`, `country`, `state` (`active`/`archived`) |
+| `eventTypes`, `packages` | `name`, `position` (Ganzzahl 0–9999), `state` (`active`/`inactive`/`archived`) |
+| `events` | `name`, `status`, `eventTypeId`, `packageId`, `locationId`, `primaryContactId`, `additionalContactIds`, `source`, `eventDate`, `startsAt`, `endsAt`, `description`, `notesHtml` |
+
+`country` ist ein zweistelliger Großbuchstabencode. Kontaktdaten und sonstige
+Textfelder dürfen soweit von den normalen Masken erlaubt leer bleiben; ein Name
+ist immer erforderlich. Referenzen in Events sind Quell-IDs im jeweiligen
+Abschnitt oder `null`, weitere Kontakte sind eine Liste von Quell-IDs. Jede
+verwendete Referenz muss auf einen aktiven, gültigen, eindeutigen Eintrag zeigen.
+Der Hauptkontakt darf nicht zugleich weiterer Kontakt sein.
+
+`status` ist exakt einer der fünf Quelltexte: `Anfrage`, `Option`, `Gebucht`,
+`Nicht verfügbar`, `Annulliert`. Der Bericht zeigt den zugehörigen Zielcode und
+kennzeichnet `Gebucht` als ungeprüfte Bestandszusage. Damit wird noch kein
+Zielevent im Status `booked` angelegt.
+
+`eventDate` ist `YYYY-MM-DD`. `startsAt` und `endsAt` sind beide `null` oder
+vollständige ISO-Zeitpunkte mit Sekunden, explizitem Offset/`Z` und höchstens drei
+Nachkommastellen. Beide Zeitpunkte benötigen ein Datum, einen positiven Zeitraum
+und einen Beginn am angegebenen Tag in der Mandantenzeitzone. Undatierte Events
+und widersprüchliche Daten sind Fehler. Bei Zeitpunkten entscheidet das Ende
+streng nach dem Prüfzeitpunkt über den Zukunftsumfang; damit bleiben laufende
+mehrtägige Events enthalten. Bei reinen Datumsangaben zählen heute und spätere
+Tage in der Mandantenzeitzone. Vergangene Events zählen als ausgeschlossen,
+nicht als übernommen. Unsichere Notizinhalte ergeben `notes_sanitized`; eine
+Übernahme muss dieselbe Bereinigung anwenden.
+
+Ein vollständiges, ausschließlich fiktives Beispiel wird durch
+[`fictionalImport()`](../tests/fixtures/minimal-import.ts) erzeugt. Es dient den
+Unit-, API- und Chromium-Tests und ist keine Vorlage aus dem echten Sicherungsbestand.

@@ -98,17 +98,18 @@ export function masterDataRepository(pool: Pool, tenantId: string) {
     },
   };
 }
+export const masterFields = {
+  name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' },
+  position: { type: 'integer', minimum: 0, maximum: 9999 },
+  state: { type: 'string', enum: ['active', 'inactive', 'archived'] },
+};
 export function registerMasterDataRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
 ) {
   const repo = masterDataRepository(pool, tenantId);
-  const fields = {
-    name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' },
-    position: { type: 'integer', minimum: 0, maximum: 9999 },
-    state: { type: 'string', enum: ['active', 'inactive', 'archived'] },
-  };
+  const fields = masterFields;
   const row = {
     type: 'object',
     required: ['id', 'kind', 'name', 'position', 'state', 'version'],

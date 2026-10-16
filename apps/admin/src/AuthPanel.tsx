@@ -1,3 +1,4 @@
+import { ImportPanel } from './ImportPanel.js';
 import { CalendarPanel } from './CalendarPanel.js';
 import { Navigation } from './Navigation.js';
 import { EventPanel } from './EventPanel.js';
@@ -72,6 +73,7 @@ export function AuthPanel() {
           <section id="settings" aria-label="Einstellungen">
             <h2>Einstellungen</h2>
             <MasterDataSettings csrfToken={user.csrfToken} />
+            <ImportPanel csrfToken={user.csrfToken} />
             <AccessPanel
               csrfToken={user.csrfToken}
               onSessionEnded={() => {

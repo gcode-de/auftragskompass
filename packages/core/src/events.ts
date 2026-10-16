@@ -548,58 +548,59 @@ export function eventRepository(pool: Pool, tenantId: string) {
     },
   };
 }
+const nullableId = {
+  anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
+};
+export const eventFields = {
+  name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
+  status: { type: 'string', enum: eventStatuses.map((s) => s.code) },
+  eventTypeId: nullableId,
+  packageId: nullableId,
+  locationId: nullableId,
+  primaryContactId: nullableId,
+  additionalContactIds: {
+    type: 'array',
+    maxItems: 50,
+    uniqueItems: true,
+    items: { type: 'string', format: 'uuid' },
+  },
+  source: { type: 'string', maxLength: 200 },
+  eventDate: {
+    anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }],
+  },
+  startsAt: {
+    anyOf: [
+      {
+        type: 'string',
+        format: 'date-time',
+        pattern:
+          '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$',
+      },
+      { type: 'null' },
+    ],
+  },
+  endsAt: {
+    anyOf: [
+      {
+        type: 'string',
+        format: 'date-time',
+        pattern:
+          '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$',
+      },
+      { type: 'null' },
+    ],
+  },
+  description: { type: 'string', maxLength: 4000 },
+  notesHtml: { type: 'string', maxLength: 20000 },
+};
 export function registerEventRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
 ) {
   registerCalendarRoutes(app, pool, tenantId);
-  const repo = eventRepository(pool, tenantId),
-    nullableId = {
-      anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
-    };
-  const fields = {
-    name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
-    status: { type: 'string', enum: eventStatuses.map((s) => s.code) },
-    eventTypeId: nullableId,
-    packageId: nullableId,
-    locationId: nullableId,
-    primaryContactId: nullableId,
-    additionalContactIds: {
-      type: 'array',
-      maxItems: 50,
-      uniqueItems: true,
-      items: { type: 'string', format: 'uuid' },
-    },
-    source: { type: 'string', maxLength: 200 },
-    eventDate: {
-      anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }],
-    },
-    startsAt: {
-      anyOf: [
-        {
-          type: 'string',
-          format: 'date-time',
-          pattern:
-            '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$',
-        },
-        { type: 'null' },
-      ],
-    },
-    endsAt: {
-      anyOf: [
-        {
-          type: 'string',
-          format: 'date-time',
-          pattern:
-            '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$',
-        },
-        { type: 'null' },
-      ],
-    },
-    description: { type: 'string', maxLength: 4000 },
-    notesHtml: { type: 'string', maxLength: 20000 },
-  };
+  const repo = eventRepository(pool, tenantId);
+  const fields = eventFields;
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',

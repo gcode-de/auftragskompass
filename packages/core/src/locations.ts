@@ -88,20 +88,21 @@ export function locationRepository(pool: Pool, tenantId: string) {
     },
   };
 }
+export const locationFields = {
+  name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
+  street: { type: 'string', maxLength: 200 },
+  postalCode: { type: 'string', maxLength: 20 },
+  city: { type: 'string', maxLength: 120 },
+  country: { type: 'string', pattern: '^[A-Z]{2}$' },
+  state: { type: 'string', enum: ['active', 'archived'] },
+};
 export function registerLocationRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
 ) {
   const repo = locationRepository(pool, tenantId);
-  const fields = {
-    name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
-    street: { type: 'string', maxLength: 200 },
-    postalCode: { type: 'string', maxLength: 20 },
-    city: { type: 'string', maxLength: 120 },
-    country: { type: 'string', pattern: '^[A-Z]{2}$' },
-    state: { type: 'string', enum: ['active', 'archived'] },
-  };
+  const fields = locationFields;
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',
