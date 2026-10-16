@@ -20,6 +20,7 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 - [x] E003.2: atomare Übernahme mit Alt-ID-Mapping, Delta-Versionsschutz, expliziten Dublettenentscheidungen und transaktionalem Dry-run; ungeprüfte Zusagen separat
 - [x] E003.3: sichtbare Herkunft, Ressourcen-Prüfliste, Mengen-/Versionsabgleich und privater Bericht; synthetischer Gesamtprobelauf; Buchungssperre bei ungeprüften Altzusagen
 - [x] H001 (Testbetrieb vorgezogen): Docker-Hub-Images nach grüner CI, getrennte Runtime-/Admin-Tags je Commit für den geprüften amd64-Host; keine Produktivfreigabe. Abnahme: Registry-Konfiguration, Branch-/PR-Schranken und gepinnte Actions geprüft; bestehende Docker-Builds und Qualitätssuite grün. [Einrichtung](docs/homelab.md)
+- [x] H002 (Testbetrieb vorgezogen): isolierte Podman-Quadlets für Datenbank, Worker, API und Admin; Loopback-Zugriff, Startfolge und externe Secrets. Abnahme: Schutzregeln getestet und Quadlet-Generator des Zielhosts akzeptiert alle Einheiten. Installation und Browserabnahme bleiben bis zur Login-Entscheidung offen.
 
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 

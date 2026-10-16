@@ -1,0 +1,21 @@
+[Unit]
+Description=AuftragsKompass test administration
+Requires=ak-test-api.service
+After=ak-test-api.service
+
+[Container]
+Image=docker.io/REPLACE_IMAGE:admin-REPLACE_REVISION
+ContainerName=ak-test-admin
+Network=ak-test.network
+PublishPort=127.0.0.1:4177:8080
+HealthCmd=wget -q --spider http://127.0.0.1:8080/
+HealthInterval=5s
+HealthTimeout=3s
+HealthRetries=12
+Notify=healthy
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=300

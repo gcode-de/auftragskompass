@@ -1,0 +1,24 @@
+[Unit]
+Description=AuftragsKompass test database
+
+[Container]
+Image=docker.io/library/postgres:17.6-alpine
+ContainerName=ak-test-database
+Network=ak-test.network
+NetworkAlias=database
+Environment=POSTGRES_USER=ak
+Environment=POSTGRES_DB=auftragskompass
+Environment=POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+Secret=ak-test-db,type=mount,target=db_password,mode=0400
+Volume=ak-test-data.volume:/var/lib/postgresql/data
+HealthCmd=pg_isready -U ak -d auftragskompass
+HealthInterval=5s
+HealthTimeout=3s
+HealthRetries=12
+HealthStartPeriod=30s
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=300

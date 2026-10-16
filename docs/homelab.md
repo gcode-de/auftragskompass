@@ -46,6 +46,77 @@ Das Zielsystem wurde per SSH als `x86_64` geprüft. Deshalb veröffentlicht dies
 erste Build ausschließlich `linux/amd64`; ARM-Unterstützung ist nicht abgenommen.
 Der Build verwendet weiterhin die private Dateien ausschließende Docker-Allowlist.
 
+## Podman-Vorbereitung (H002)
+
+Die sechs [Quadlet-Vorlagen](../infrastructure/podman) passen zum auf dem Zielhost
+vorhandenen Podman 5.4.2. Ihr Generator wurde dort isoliert im Dry-run geprüft;
+es wurden keine Einheiten installiert oder gestartet. Die Vorlagen verwenden
+eigene `ak-test-*`-Namen, ein eigenes Netzwerk und ein persistentes Datenvolume.
+
+Vor einer späteren Installation:
+
+1. Die Vorlagen außerhalb von Git kopieren. In allen `.container`-Dateien
+   `REPLACE_IMAGE` durch das vorhandene `namespace/auftragskompass` und
+   `REPLACE_REVISION` durch denselben vollständigen Commit-Hash ersetzen.
+   Beide zugehörigen Images müssen bereits veröffentlicht sein.
+2. Für private Images Podman auf diesem Host mit einem separaten Lese-Token
+   anmelden (`podman login docker.io`, interaktive Eingabe). Keine Registry-Credentials
+   in Quadlets oder Git speichern. Beide Images vorab mit `podman pull` laden.
+3. Einen eigenen Test-Datenbank-Schlüssel mit mindestens 16 Zeichen in einer
+   externen Datei mit Modus 600 erzeugen und als Podman-Secret registrieren:
+
+   ```sh
+   podman secret create ak-test-db /absolute/external/path/test-db-password
+   ```
+
+   API und Worker lesen das Secret als UID/GID 1000; die Datenbank erhält dasselbe
+   Secret für ihren eigenen Start. Es wird kein Passwort als Umgebungswert übergeben.
+4. Die Login-Entscheidung treffen. Die API-Vorlage bildet ausschließlich den
+   **bereits implementierten Google-Login** ab; das ist keine Vorentscheidung für
+   die spätere Anmeldung. Bei einer anderen Wahl muss die Vorlage gemeinsam mit
+   der getesteten App-Anmeldung angepasst werden. Ein Deaktivieren von Authentifizierung
+   macht die Fachoberfläche nicht nutzbar.
+
+   Nur falls Google gewählt wird: Secret `ak-test-google` aus der externen
+   Client-Secret-Datei anlegen und `/etc/auftragskompass-test/auth.env` mit Modus 600
+   und diesen nicht geheimen Konfigurationsschlüsseln erstellen:
+
+   ```text
+   AK_AUTH_ORIGIN=https://admin.example.invalid
+   AK_TENANT_ID=11111111-1111-4111-8111-111111111111
+   AK_GOOGLE_CLIENT_ID=replace-with-client-id
+   AK_BOOTSTRAP_EMAIL=synthetic-owner@example.invalid
+   AK_TENANT_NAME=Synthetic test business
+   ```
+
+   Alle Platzhalter durch die eigenen Testwerte ersetzen; für die Testumgebung
+   eine eigene Mandanten-UUID erzeugen. Nach erfolgreichem Bootstrap die E-Mail
+   aus der externen Datei entfernen. Das eigentliche Client-Secret gehört nur in
+   das Podman-Secret, nicht in diese Datei.
+5. Erst nach Einrichtung des Logins die sechs Quadlet-Dateien nach
+   `/etc/containers/systemd/` kopieren und `systemctl daemon-reload` ausführen.
+   `systemctl start ak-test-admin.service` startet die Abhängigkeiten in der
+   Reihenfolge Datenbank → Worker → API → Admin. `Notify=healthy` wartet jeweils
+   auf erfolgreiche Healthchecks. Fehlender Login oder fehlende Secrets verhindern
+   den Start. Der Teststand wird bewusst nicht automatisch beim Booten gestartet.
+
+Nur die Oberfläche wird auf `127.0.0.1:4177` veröffentlicht. API, Worker und Datenbank
+haben keine Hostports. Der separate Caddy-Host kann diesen Loopback-Port noch nicht
+erreichen: Die spätere LAN-Bindung und Firewallfreigabe ausschließlich für den Proxy
+gehören zur ausstehenden Zugriffsabnahme. Noch keine Cloudflare-Route auf eine
+ungeschützte Oberfläche anlegen.
+
+Quadlet-Dienste mit systemd verwalten; Portainer kann die Container anzeigen, ist
+aber nicht die Quelle ihrer Konfiguration. Kein paralleles Anlegen derselben
+Container als Portainer-Stack. Für ein Update zuerst eine konsistente Sicherung
+erstellen, dann Admin/API/Worker stoppen und die beiden Image-Tags gemeinsam ändern.
+Anschließend die Einheiten neu laden und Admin starten. Das Datenvolume nicht
+löschen; ein früheres Image allein ist nach Migrationen kein sicherer Rollback.
+Backup/Restore für diesen Podman-Teststand ist vor echter Datennutzung separat
+abzunehmen; das vorhandene Python-Werkzeug verwendet Docker Compose.
+
+Referenz: [Quadlet für Podman 5.4.2](https://docs.podman.io/en/v5.4.2/markdown/podman-systemd.unit.5.html).
+
 ## Noch vor Zugriff auf die Anwendung
 
 Die vorhandene Infrastruktur verwendet Podman mit systemd/Quadlet, Portainer,

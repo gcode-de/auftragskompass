@@ -1,0 +1,34 @@
+[Unit]
+Description=AuftragsKompass test worker
+Requires=ak-test-database.service
+After=ak-test-database.service
+
+[Container]
+Image=docker.io/REPLACE_IMAGE:runtime-REPLACE_REVISION
+ContainerName=ak-test-worker
+Network=ak-test.network
+NetworkAlias=worker
+User=1000:1000
+Secret=ak-test-db,type=mount,target=db_password,uid=1000,gid=1000,mode=0400
+Environment=AK_DB_HOST=database
+Environment=AK_DB_NAME=auftragskompass
+Environment=AK_DB_USER=ak
+Environment=AK_DB_PASSWORD_FILE=/run/secrets/db_password
+Environment=AK_HOST=0.0.0.0
+Environment=AK_PORT=3001
+Environment=AK_TIMEZONE=Europe/Berlin
+Environment=AK_BUILD_REVISION=REPLACE_REVISION
+Exec=node apps/worker/dist/main.js
+RunInit=true
+NoNewPrivileges=true
+HealthCmd=node -e "fetch('http://127.0.0.1:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HealthInterval=5s
+HealthTimeout=3s
+HealthRetries=12
+HealthStartPeriod=30s
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=300
