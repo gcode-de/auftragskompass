@@ -178,8 +178,9 @@ nur bei vollständiger Erfüllung ihrer eigenen Abnahme abgehakt.
 | E006 – Umschaltprobe/Release | Vorgezogener kleiner Umfang aus C027/C084/C085 mit Deltaimport und Betreiberabnahme | Gesamte Suite für enthaltene Module grün; Ablauf unten erfolgreich; dokumentierte Version und Rückfallpunkt |
 
 C022–C025 und der [Minimalimport E003.1–E003.3](minimal-import.md) sind technisch
-umgesetzt und synthetisch geprüft. Als Nächstes folgt C076: die ausdrücklich
-geprüfte Übernahme der Ressourcen für Bestandszusagen. Echte Daten sind noch
+umgesetzt und synthetisch geprüft. Auch der vorgezogene [Ressourcenabgleich
+C076](import-resource-review.md) ist implementiert. Als Nächstes sind die externen
+Ersatzprozesse E004 und die konkrete Betriebsabnahme E005 zu klären. Echte Daten sind noch
 nicht übernommen; vor deren Nutzung bleiben Normalisierung, fachlicher Mengenabgleich
 und Ressourcenprüfung erforderlich.
 E002 bleibt für die fachliche Sicherungsabnahme und unabhängige Zweitkopie offen;

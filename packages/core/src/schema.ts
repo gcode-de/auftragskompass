@@ -235,6 +235,11 @@ export const importPromises = pgTable('import_promises', {
   tenantId: uuid('tenant_id').notNull(),
   id: uuid('id').notNull(),
   data: jsonb('data').$type<EventInput>().notNull(),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: uuid('reviewed_by'),
+  reviewHash: text('review_hash'),
+  reviewAction: text('review_action'),
+  reviewedEventId: uuid('reviewed_event_id'),
   timeZone: text('time_zone').notNull(),
   version: integer('version').notNull().default(1),
 });

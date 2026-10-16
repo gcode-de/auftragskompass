@@ -34,6 +34,14 @@ const statuses = [
   ['cancelled', 'Annulliert'],
 ];
 const errors: Record<string, string> = {
+  incomplete_import:
+    'Kontakt, Paket und Datum im Quelldatensatz vor der Bestätigung vervollständigen.',
+  already_reviewed:
+    'Diese Bestandszusage wurde bereits geprüft. Prüfliste aktualisieren.',
+  mapping_missing:
+    'Die Quellzuordnung fehlt. Übernahmebestand vor der Bestätigung klären.',
+  timezone_changed:
+    'Die Mandantenzeitzone wurde geändert. Termin vor der Übernahme fachlich klären.',
   import_review_required:
     'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.',
   conflict: 'Inzwischen geändert. Eventakte aktualisieren und erneut prüfen.',
@@ -53,11 +61,16 @@ export function ResourceAssignments({
   event,
   csrfToken,
   onChanged,
+  importReview = false,
 }: {
   event: EventRow;
   csrfToken: string;
   onChanged: () => Promise<void>;
+  importReview?: boolean;
 }) {
+  const path =
+    (importReview ? '/api/v1/imports/bookitup/promises/' : '/api/v1/events/') +
+    event.id;
   const form = useRef<HTMLFormElement>(null),
     request = useRef(0);
   const [units, setUnits] = useState<Unit[]>([]),
@@ -69,7 +82,7 @@ export function ResourceAssignments({
     [loaded, setLoaded] = useState(false);
   useEffect(() => {
     let active = true;
-    void fetch('/api/v1/events/' + event.id + '/availability')
+    void fetch(path + '/availability')
       .then(async (response) => {
         if (!response.ok) throw Error('load');
         const data = (await response.json()) as Unit[];
@@ -92,7 +105,7 @@ export function ResourceAssignments({
     return () => {
       active = false;
     };
-  }, [event.id]);
+  }, [path]);
   function value(data: FormData, name: string) {
     return String(data.get(name) ?? '');
   }
@@ -137,9 +150,7 @@ export function ResourceAssignments({
         baseStart,
         baseEnd,
       });
-      const response = await fetch(
-        '/api/v1/events/' + event.id + '/availability?' + query,
-      );
+      const response = await fetch(path + '/availability?' + query);
       if (!response.ok) throw Error('preview');
       const [result] = (await response.json()) as Unit[];
       if (!result) throw Error('preview');
@@ -186,13 +197,21 @@ export function ResourceAssignments({
           .filter((unit) => data.has('unit-' + unit.unitId))
           .map((unit) => assignment(data, unit)),
       };
-      const response = await fetch('/api/v1/events/' + event.id, {
+      const response = await fetch(path, {
         method: 'PUT',
         headers: {
           'content-type': 'application/json',
           'x-csrf-token': csrfToken,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(
+          importReview
+            ? Object.fromEntries(
+                Object.entries(payload).filter(
+                  ([key]) => key !== 'id' && key !== 'timeZone',
+                ),
+              )
+            : payload,
+        ),
       });
       if (!response.ok) {
         const error = (await response.json()) as { error: string };
@@ -386,7 +405,11 @@ export function ResourceAssignments({
               </fieldset>
             );
           })}
-          <button>Zuweisung und Termin speichern</button>
+          <button>
+            {importReview
+              ? 'Geprüfte Bestandszusage übernehmen'
+              : 'Zuweisung und Termin speichern'}
+          </button>
         </fieldset>
       </form>
     </section>

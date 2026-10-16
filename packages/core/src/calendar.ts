@@ -2,7 +2,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import type { Pool } from 'pg';
 import type { FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { and, asc, eq, gte, lte, lt, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, lt, gt, sql, isNull } from 'drizzle-orm';
 import {
   tenants,
   importPromises,
@@ -198,7 +198,12 @@ export function calendarRepository(pool: Pool, tenantId: string) {
           const [pending] = await tx
             .select({ count: sql<number>`count(*)::int` })
             .from(importPromises)
-            .where(eq(importPromises.tenantId, tenantId));
+            .where(
+              and(
+                eq(importPromises.tenantId, tenantId),
+                isNull(importPromises.reviewedAt),
+              ),
+            );
           return {
             ...window,
             pendingPromises: pending!.count,

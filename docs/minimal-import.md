@@ -18,7 +18,8 @@ Code und ihren Datenbanktests ausgeliefert.
 | E003.2 | Atomare Übernahme von Kontakten, Locations, Eventarten, Paketen und operativen Events mit mandantengebundenem Alt-ID-Mapping; gleiche Prüfungen im transaktionalen Dry-run | Wiederholung ohne Dubletten, Versionsschutz bei Delta, kompletter Rollback einschließlich Mapping/Audit, Rechte-/Tenant- und Parallelitätstests |
 | E003.3 | Sichtbare Übernahmeherkunft und Ressourcen-Prüfliste für bereits zugesagte Aufträge; Mengenabgleich und privater Abschlussbericht | Keine unbemerkte Buchungszusage oder freie Kapazität bei ungeprüften Altzusagen; synthetischer Probelauf von Vorschau bis Ressourcenabgleich |
 
-Die tatsächliche Übernahme und Bestätigung physischer Boxen folgt mit C076.
+Die ausdrückliche Übernahme und Bestätigung physischer Boxen ist mit
+[C076](import-resource-review.md) implementiert; die echte Ressourcenabnahme bleibt offen.
 E003.3 macht offene Fälle sichtbar; es bestätigt selbst keine Ressourcen.
 Produkte, Vorlagen, Originaldateien, Finanzen und Nummernkreise bleiben im
 privaten Archiv beziehungsweise im geprüften externen Ersatzprozess, bis der
@@ -327,8 +328,8 @@ Buchungsbestätigungen beziehungsweise Änderungen im Zielstatus Gebucht werden 
 HTTP 409 `import_review_required` blockiert. Die Prüfung teilt sich den Tenant-Lock
 und die Transaktion mit dem Speichern; ein paralleler Import kann die Sperre nicht
 zwischen Prüfung und Commit umgehen. Die Anwendung weist auf den gesonderten
-Ressourcenabgleich hin. Der nächste Schritt C076 bestätigt geprüfte Bestandszusagen
-über einen eigenen expliziten Vorgang, bevor reguläre Buchungen freigegeben werden.
+Ressourcenabgleich hin. C076 bestätigt geprüfte Bestandszusagen über einen eigenen expliziten Vorgang,
+bevor reguläre Buchungen freigegeben werden.
 
 Der synthetische Chromium-Probelauf prüft Vorschau, echten transaktionalen
 Dry-run ohne verbleibende Zeilen, bewusste Übernahme, Herkunft und Mengen,

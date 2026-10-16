@@ -595,6 +595,80 @@ export const eventFields = {
   description: { type: 'string', maxLength: 4000 },
   notesHtml: { type: 'string', maxLength: 20000 },
 };
+export const resourceAssignmentSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['unitId', 'periodSource'],
+  properties: {
+    unitId: { type: 'string', format: 'uuid' },
+    periodSource: { type: 'string', enum: ['event', 'manual'] },
+    baseStart: { type: 'string', format: 'date-time' },
+    baseEnd: { type: 'string', format: 'date-time' },
+  },
+  allOf: [
+    {
+      if: { properties: { periodSource: { const: 'manual' } } },
+      then: { required: ['baseStart', 'baseEnd'] },
+    },
+  ],
+};
+const timestampOrNull = { type: ['string', 'null'] };
+export const resourceAvailabilitySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'unitId',
+    'resourceId',
+    'name',
+    'code',
+    'category',
+    'ordinal',
+    'selected',
+    'periodSource',
+    'baseStart',
+    'baseEnd',
+    'beforeDays',
+    'afterDays',
+    'startsAt',
+    'endsAt',
+    'reason',
+    'conflicts',
+    'available',
+  ],
+  properties: {
+    unitId: { type: 'string' },
+    resourceId: { type: 'string' },
+    name: { type: 'string' },
+    code: { type: 'string' },
+    category: { type: 'string' },
+    ordinal: { type: 'integer' },
+    selected: { type: 'boolean' },
+    periodSource: { type: 'string' },
+    baseStart: timestampOrNull,
+    baseEnd: timestampOrNull,
+    beforeDays: { type: 'integer' },
+    afterDays: { type: 'integer' },
+    startsAt: timestampOrNull,
+    endsAt: timestampOrNull,
+    reason: timestampOrNull,
+    available: { type: 'boolean' },
+    conflicts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'eventId', 'state', 'startsAt', 'endsAt'],
+        properties: {
+          id: { type: 'string' },
+          eventId: timestampOrNull,
+          state: { type: 'string' },
+          startsAt: { type: 'string' },
+          endsAt: { type: 'string' },
+        },
+      },
+    },
+  },
+};
 export function registerEventRoutes(
   app: FastifyInstance,
   pool: Pool,
@@ -637,80 +711,8 @@ export function registerEventRoutes(
         .send({ error: error.message });
     throw error;
   }
-  const assignmentSchema = {
-    type: 'object',
-    additionalProperties: false,
-    required: ['unitId', 'periodSource'],
-    properties: {
-      unitId: { type: 'string', format: 'uuid' },
-      periodSource: { type: 'string', enum: ['event', 'manual'] },
-      baseStart: { type: 'string', format: 'date-time' },
-      baseEnd: { type: 'string', format: 'date-time' },
-    },
-    allOf: [
-      {
-        if: { properties: { periodSource: { const: 'manual' } } },
-        then: { required: ['baseStart', 'baseEnd'] },
-      },
-    ],
-  };
-  const timestampOrNull = { type: ['string', 'null'] };
-  const availabilityRow = {
-    type: 'object',
-    additionalProperties: false,
-    required: [
-      'unitId',
-      'resourceId',
-      'name',
-      'code',
-      'category',
-      'ordinal',
-      'selected',
-      'periodSource',
-      'baseStart',
-      'baseEnd',
-      'beforeDays',
-      'afterDays',
-      'startsAt',
-      'endsAt',
-      'reason',
-      'conflicts',
-      'available',
-    ],
-    properties: {
-      unitId: { type: 'string' },
-      resourceId: { type: 'string' },
-      name: { type: 'string' },
-      code: { type: 'string' },
-      category: { type: 'string' },
-      ordinal: { type: 'integer' },
-      selected: { type: 'boolean' },
-      periodSource: { type: 'string' },
-      baseStart: timestampOrNull,
-      baseEnd: timestampOrNull,
-      beforeDays: { type: 'integer' },
-      afterDays: { type: 'integer' },
-      startsAt: timestampOrNull,
-      endsAt: timestampOrNull,
-      reason: timestampOrNull,
-      available: { type: 'boolean' },
-      conflicts: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['id', 'eventId', 'state', 'startsAt', 'endsAt'],
-          properties: {
-            id: { type: 'string' },
-            eventId: timestampOrNull,
-            state: { type: 'string' },
-            startsAt: { type: 'string' },
-            endsAt: { type: 'string' },
-          },
-        },
-      },
-    },
-  };
+  const assignmentSchema = resourceAssignmentSchema,
+    availabilityRow = resourceAvailabilitySchema;
   app.get<{
     Params: { id: string };
     Querystring: { unitId?: string; baseStart?: string; baseEnd?: string };
@@ -767,7 +769,12 @@ export function registerEventRoutes(
         const [pending] = await drizzle(pool)
           .select({ id: importPromises.id })
           .from(importPromises)
-          .where(eq(importPromises.tenantId, tenantId))
+          .where(
+            and(
+              eq(importPromises.tenantId, tenantId),
+              isNull(importPromises.reviewedAt),
+            ),
+          )
           .limit(1);
         if (pending)
           for (const row of rows) {
@@ -1008,7 +1015,12 @@ export function registerEventRoutes(
             const [pending] = await tx
               .select({ id: importPromises.id })
               .from(importPromises)
-              .where(eq(importPromises.tenantId, tenantId))
+              .where(
+                and(
+                  eq(importPromises.tenantId, tenantId),
+                  isNull(importPromises.reviewedAt),
+                ),
+              )
               .limit(1);
             if (pending) throw new ResourcePlanError('import_review_required');
           }

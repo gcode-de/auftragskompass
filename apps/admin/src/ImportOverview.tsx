@@ -1,3 +1,4 @@
+import { ImportPromiseReview } from './ImportPromiseReview.js';
 import { useEffect, useState } from 'react';
 export const sectionLabels: Record<string, string> = {
   contacts: 'Kontakte',
@@ -21,6 +22,7 @@ type Overview = {
     currentVersion: number;
     locallyChanged: boolean;
     pendingResourceReview: boolean;
+    reviewAction: string | null;
   }[];
   promises: {
     id: string;
@@ -45,10 +47,19 @@ function localTime(value: string, timeZone: string) {
     timeZone,
   }).format(new Date(value));
 }
-export function ImportOverview({ revision }: { revision: number }) {
+export function ImportOverview({
+  revision,
+  csrfToken,
+  onReconciled,
+}: {
+  revision: number;
+  csrfToken?: string;
+  onReconciled?: () => void;
+}) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [message, setMessage] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     setOverview(null);
@@ -151,6 +162,11 @@ export function ImportOverview({ revision }: { revision: number }) {
                   {promise.location ?? 'Ort offen'} ·{' '}
                   {promise.package ?? 'Paket offen'}
                 </p>
+                {csrfToken && (
+                  <button onClick={() => setSelected(promise.id)}>
+                    Ressourcen prüfen: {promise.name}
+                  </button>
+                )}
                 {promise.description && <p>{promise.description}</p>}
                 {promise.notesHtml && (
                   <details>
@@ -163,6 +179,19 @@ export function ImportOverview({ revision }: { revision: number }) {
               </li>
             ))}
           </ul>
+          {selected && csrfToken && (
+            <ImportPromiseReview
+              key={selected}
+              id={selected}
+              csrfToken={csrfToken}
+              onClose={() => setSelected(null)}
+              onReviewed={async () => {
+                setSelected(null);
+                setRefresh((value) => value + 1);
+                onReconciled?.();
+              }}
+            />
+          )}
           <h4>Übernahmeherkunft</h4>
           {!overview.mappings.length ? (
             <p>Noch keine Daten übernommen.</p>
@@ -185,9 +214,11 @@ export function ImportOverview({ revision }: { revision: number }) {
                     <td>Bookitup · {row.externalId}</td>
                     <td>{row.sourceStatus || '–'}</td>
                     <td>
-                      {row.pendingResourceReview
-                        ? 'Ressourcenprüfung offen · '
-                        : ''}
+                      {row.reviewAction === 'excluded_past'
+                        ? 'Nach Zeitablauf ausgeschlossen · '
+                        : row.pendingResourceReview
+                          ? 'Ressourcenprüfung offen · '
+                          : ''}
                       {row.locallyChanged
                         ? 'Lokal geändert'
                         : 'Unverändert seit Übernahme'}{' '}

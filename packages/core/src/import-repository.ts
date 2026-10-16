@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, isNull } from 'drizzle-orm';
 import {
   AccessError,
   lockTenant,
@@ -210,7 +210,8 @@ export function importRepository(pool: Pool, tenantId: string) {
             id ? (targets.get(section)!.get(id)?.name ?? null) : null;
           return {
             checkedAt: new Date().toISOString(),
-            pendingPromises: promises.length,
+            pendingPromises: promises.filter((promise) => !promise.reviewedAt)
+              .length,
             counts: Object.fromEntries(
               importSections.map((section) => [
                 section,
@@ -235,26 +236,36 @@ export function importRepository(pool: Pool, tenantId: string) {
                 targetVersion: row.targetVersion,
                 currentVersion: target.version,
                 locallyChanged: row.targetVersion !== target.version,
-                pendingResourceReview: Boolean(row.promiseId),
+                pendingResourceReview: Boolean(
+                  row.promiseId && 'reviewedAt' in target && !target.reviewedAt,
+                ),
+                reviewAction:
+                  row.promiseId && 'reviewAction' in target
+                    ? target.reviewAction
+                    : (promises.find(
+                        (promise) => promise.reviewedEventId === targetId,
+                      )?.reviewAction ?? null),
               };
             }),
-            promises: promises.map((promise) => ({
-              id: promise.id,
-              version: promise.version,
-              externalId:
-                records.find((row) => row.promiseId === promise.id)
-                  ?.externalId ?? null,
-              name: promise.data.name,
-              eventDate: promise.data.eventDate,
-              startsAt: promise.data.startsAt,
-              endsAt: promise.data.endsAt,
-              timeZone: promise.timeZone,
-              contact: name('contacts', promise.data.primaryContactId),
-              location: name('locations', promise.data.locationId),
-              package: name('packages', promise.data.packageId),
-              description: promise.data.description,
-              notesHtml: promise.data.notesHtml,
-            })),
+            promises: promises
+              .filter((promise) => !promise.reviewedAt)
+              .map((promise) => ({
+                id: promise.id,
+                version: promise.version,
+                externalId:
+                  records.find((row) => row.promiseId === promise.id)
+                    ?.externalId ?? null,
+                name: promise.data.name,
+                eventDate: promise.data.eventDate,
+                startsAt: promise.data.startsAt,
+                endsAt: promise.data.endsAt,
+                timeZone: promise.timeZone,
+                contact: name('contacts', promise.data.primaryContactId),
+                location: name('locations', promise.data.locationId),
+                package: name('packages', promise.data.packageId),
+                description: promise.data.description,
+                notesHtml: promise.data.notesHtml,
+              })),
           };
         },
         { accessMode: 'read only', isolationLevel: 'repeatable read' },
@@ -377,6 +388,8 @@ export function importRepository(pool: Pool, tenantId: string) {
                     )[0]
                   : undefined
                 : targets.find((row) => row.id === targetId);
+              if (target && 'reviewedAt' in target && target.reviewedAt)
+                fail('review_closed');
               const version =
                 old?.targetVersion ??
                 (decision?.action === 'bind' ? decision.version : undefined);
@@ -586,7 +599,12 @@ export function importRepository(pool: Pool, tenantId: string) {
             await tx
               .select()
               .from(importPromises)
-              .where(eq(importPromises.tenantId, tenantId))
+              .where(
+                and(
+                  eq(importPromises.tenantId, tenantId),
+                  isNull(importPromises.reviewedAt),
+                ),
+              )
           ).length;
           await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
           if (request.mode === 'dry_run') {

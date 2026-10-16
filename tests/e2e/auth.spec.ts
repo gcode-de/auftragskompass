@@ -632,6 +632,83 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await imported.screenshot({
       path: 'tests/test-results/import-reconciliation.png',
     });
+    await imported
+      .getByRole('button', {
+        name: 'Ressourcen prüfen: Fictional Future Event',
+      })
+      .click();
+    const review = imported.getByRole('region', {
+      name: 'Bestandszusage prüfen',
+      exact: true,
+    });
+    await review
+      .getByLabel('Eventbeginn für die Disposition', { exact: true })
+      .fill('2030-10-27T18:00');
+    await review
+      .getByLabel('Eventende für die Disposition', { exact: true })
+      .fill('2030-10-27T20:00');
+    await review
+      .getByLabel('FB2 · Einheit 1 zuweisen', { exact: true })
+      .check();
+    await review
+      .getByLabel('Glamour-Paket · Einheit 1 zuweisen', { exact: true })
+      .check();
+    await review
+      .getByRole('button', {
+        name: 'Verfügbarkeit prüfen: FB2 · Einheit 1',
+        exact: true,
+      })
+      .click();
+    await expect(
+      review.getByText('Verfügbarkeit aktualisiert.', { exact: true }),
+    ).toBeVisible();
+    await review.screenshot({
+      path: 'tests/test-results/import-resource-review.png',
+    });
+    await review
+      .getByRole('button', {
+        name: 'Geprüfte Bestandszusage übernehmen',
+        exact: true,
+      })
+      .click();
+    await expect(
+      imported.getByText(/Keine ungeprüften Bestandszusagen vorhanden/),
+    ).toBeVisible();
+    await expect(calendar.getByRole('alert')).toHaveCount(0);
+    const importedEvent = (
+      await pool.query(
+        "SELECT id,status FROM events WHERE tenant_id=$1 AND name='Fictional Future Event'",
+        [config.tenantId],
+      )
+    ).rows[0];
+    expect(importedEvent.status).toBe('booked');
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*) FROM reservations WHERE tenant_id=$1 AND event_id=$2 AND state='booked'",
+          [config.tenantId, importedEvent.id],
+        )
+      ).rows[0].count,
+    ).toBe('2');
+    await calendar.getByLabel('Kalenderdatum').fill('2030-10-27');
+    await expect(
+      calendar.getByRole('link', { name: 'Fictional Future Event' }).first(),
+    ).toBeVisible();
+    await calendar
+      .getByRole('link', { name: 'Fictional Future Event' })
+      .first()
+      .click();
+    await expect(
+      events.getByRole('region', { name: 'Eventakte', exact: true }),
+    ).toBeVisible();
+    await expect(
+      events
+        .getByRole('region', { name: 'Eventakte', exact: true })
+        .getByRole('heading', {
+          name: 'Eventakte: Fictional Future Event',
+          exact: true,
+        }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();

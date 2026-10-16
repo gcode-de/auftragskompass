@@ -287,3 +287,49 @@ test('preview failures and invalid or ambiguous time input do not claim availabi
   submit();
   await screen.findByText('Zeitraum und UTC-Versatz prüfen.');
 });
+
+test('import review reuses assignment controls through its own protected endpoint and strips read-only metadata', async () => {
+  const changed = vi.fn().mockResolvedValue(undefined),
+    fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+      options
+        ? Response.json({ eventId: 'fictional-target', excluded: false })
+        : Response.json([resource]),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <ResourceAssignments
+      event={event}
+      csrfToken="fictional-csrf"
+      onChanged={changed}
+      importReview
+    />,
+  );
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Verfügbarkeit prüfen: Fictional box · Einheit 1',
+    }),
+  );
+  await screen.findByText('Verfügbarkeit aktualisiert.');
+  fireEvent.click(screen.getByLabelText('Fictional box · Einheit 1 zuweisen'));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Geprüfte Bestandszusage übernehmen' }),
+  );
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  const [url, options] = fetcher.mock.calls.find(
+    ([, options]) => options?.method === 'PUT',
+  )!;
+  expect(url).toBe('/api/v1/imports/bookitup/promises/synthetic-event');
+  const body = JSON.parse(options!.body as string);
+  expect(body.version).toBe(1);
+  expect(body).not.toHaveProperty('id');
+  expect(body).not.toHaveProperty('timeZone');
+  expect(
+    fetcher.mock.calls.some(([url]) =>
+      url.startsWith(
+        '/api/v1/imports/bookitup/promises/synthetic-event/availability?',
+      ),
+    ),
+  ).toBe(true);
+  expect(changed).toHaveBeenCalledOnce();
+});

@@ -149,3 +149,126 @@ test('private report download is explicit and source notes are escaped text', as
   expect(revoke).toHaveBeenCalledWith('blob:fictional');
   click.mockRestore();
 });
+
+test('operator opens and closes the review and a completed reconciliation refreshes the list and calendar callback', async () => {
+  let reviewed = false;
+  const onReconciled = vi.fn();
+  const event = {
+    id: 'fictional-promise',
+    name: 'Fictional workflow',
+    version: 1,
+    status: 'booked',
+    eventDate: '2030-10-27',
+    startsAt: null,
+    endsAt: null,
+    timeZone: 'Europe/Berlin',
+    primaryContactId: 'fictional-contact',
+    additionalContactIds: [],
+    eventTypeId: null,
+    packageId: 'fictional-package',
+    locationId: null,
+    source: 'Fictional',
+    description: '',
+    notesHtml: '',
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        reviewed = true;
+        return Response.json({ eventId: 'fictional-target', excluded: false });
+      }
+      if (url.endsWith('/availability')) return Response.json([]);
+      if (url.endsWith('/fictional-promise'))
+        return Response.json({
+          event,
+          reviewAction: null,
+          reviewedEventId: null,
+          canExcludePast: false,
+        });
+      return Response.json({
+        checkedAt: '2030-01-01T00:00:00Z',
+        counts: { events: 1 },
+        pendingPromises: reviewed ? 0 : 1,
+        mappings: [],
+        promises: reviewed
+          ? []
+          : [
+              {
+                ...event,
+                externalId: 'fictional-source',
+                contact: 'Fictional contact',
+                location: null,
+                package: 'Fictional package',
+              },
+            ],
+      });
+    }),
+  );
+  render(
+    <ImportOverview
+      revision={0}
+      csrfToken="fictional-csrf"
+      onReconciled={onReconciled}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Ressourcen prüfen: Fictional workflow',
+    }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Prüfung schließen' }),
+  );
+  expect(
+    screen.queryByRole('region', {
+      name: 'Bestandszusage prüfen',
+    }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Ressourcen prüfen: Fictional workflow',
+    }),
+  );
+  await screen.findByRole('button', {
+    name: 'Geprüfte Bestandszusage übernehmen',
+  });
+  fireEvent.change(screen.getByLabelText('Buchungsstatus'), {
+    target: { value: 'cancelled' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Geprüfte Bestandszusage übernehmen' }),
+  );
+  await screen.findByText(/Keine ungeprüften Bestandszusagen vorhanden/);
+  expect(onReconciled).toHaveBeenCalledOnce();
+});
+
+test('an excluded past source remains visibly distinct from an operational imported event', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        checkedAt: '2030-01-01T00:00:00Z',
+        counts: { events: 1 },
+        pendingPromises: 0,
+        promises: [],
+        mappings: [
+          {
+            section: 'events',
+            externalId: 'fictional-past',
+            targetId: 'fictional-proof',
+            name: 'Fictional past',
+            sourceStatus: 'Gebucht',
+            targetVersion: 2,
+            currentVersion: 2,
+            locallyChanged: false,
+            pendingResourceReview: false,
+            reviewAction: 'excluded_past',
+          },
+        ],
+      }),
+    ),
+  );
+  render(<ImportOverview revision={0} />);
+  await screen.findByText(/Nach Zeitablauf ausgeschlossen/);
+});

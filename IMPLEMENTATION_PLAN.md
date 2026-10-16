@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C025 implementiert; C026–C085 offen. Die CI prüft jeden Push.
+**Status:** geprüfter Bauplan; C001–C025 und vorgezogen C076 implementiert; übrige C026–C085 offen. Die CI prüft jeden Push.
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -51,7 +51,8 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] C023: Verfügbarkeit und atomare Box-/Zubehörzuweisung in der Eventakte, manuelle Buchung, geprüfte Termin-/Boxwechsel und Logbuch
 - [x] C024: zeitweise Sperren ohne Kundenauftrag, genaue Zeiträume und Gründe, idempotente Anlage und Freigabe mit Historie
 - [x] C025: interner Tages-/Wochen-/Monatskalender mit physischer Ressourcen-Zeitleiste, Puffern, Sperren und textlich/farblich sichtbaren Vormerkungskonflikten
-- [ ] C026–C085: noch nicht implementiert oder abgenommen
+- [x] C076 (vorgezogen): [manueller Ressourcenabgleich](docs/import-resource-review.md), atomare Übernahme, Wiederholschutz und Ausschluss inzwischen vergangener Zusagen; synthetisch geprüft, echte Ressourcenabnahme offen
+- [ ] C026–C075 und C077–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 

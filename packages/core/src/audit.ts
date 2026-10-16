@@ -24,7 +24,8 @@ export type AuditAction =
   | 'reservation.updated'
   | 'reservation.expired'
   | 'import.created'
-  | 'import.updated';
+  | 'import.updated'
+  | 'import.reviewed';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

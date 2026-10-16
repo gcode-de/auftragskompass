@@ -27,7 +27,13 @@ export type EventRow = {
   notesHtml: string;
 };
 type Status = { code: string; label: string };
-export function EventPanel({ csrfToken }: { csrfToken: string }) {
+export function EventPanel({
+  csrfToken,
+  revision = 0,
+}: {
+  csrfToken: string;
+  revision?: number;
+}) {
   const urlSearch = useUrlSearch(),
     filters = new URLSearchParams(urlSearch),
     sequence = useRef(0);
@@ -97,7 +103,7 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
     void refresh().catch(() =>
       setMessage('Events konnten nicht geladen werden.'),
     );
-  }, [urlSearch]);
+  }, [urlSearch, revision]);
   useEffect(() => {
     const changed = () => {
       const id = window.location.hash.slice(1);

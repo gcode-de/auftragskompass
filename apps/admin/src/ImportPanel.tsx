@@ -38,6 +38,8 @@ const codes: Record<string, string> = {
     'Altzusagen können hier nicht mit vorhandenen Events verbunden werden',
   database_conflict:
     'Eine Datenbankregel verhindert die Übernahme. Keine Daten übernommen',
+  review_closed:
+    'Dieser Quellstand wurde bereits geprüft. Änderungen gesondert abgleichen',
   invalid_decision: 'Zuordnungsentscheidung ungültig oder mehrfach angegeben',
   invalid_request: 'Übernahmeanfrage ungültig',
   invalid_reference: 'Eine Verknüpfung im Ziel ist nicht mehr gültig',
@@ -476,7 +478,11 @@ export function ImportPanel({
           )}
         </>
       )}
-      <ImportOverview revision={revision} />
+      <ImportOverview
+        revision={revision}
+        csrfToken={csrfToken}
+        {...(onImported ? { onReconciled: onImported } : {})}
+      />
     </section>
   );
 }

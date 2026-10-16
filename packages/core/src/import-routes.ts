@@ -1,3 +1,4 @@
+import { registerImportReviewRoutes } from './import-review-routes.js';
 import { ImportError, importRepository } from './import-repository.js';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
@@ -80,6 +81,7 @@ export function registerImportRoutes(
   pool: Pool,
   tenantId: string,
 ) {
+  registerImportReviewRoutes(app, pool, tenantId);
   const repo = importRepository(pool, tenantId);
   const string = { type: 'string' },
     nullable = { type: ['string', 'null'] },
@@ -115,6 +117,7 @@ export function registerImportRoutes(
                 currentVersion: integer,
                 locallyChanged: boolean,
                 pendingResourceReview: boolean,
+                reviewAction: { type: ['string', 'null'] },
               }),
             },
             promises: {

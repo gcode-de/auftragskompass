@@ -296,3 +296,26 @@ test('older event search responses and failures cannot overwrite a newer result'
     window.history.replaceState(null, '', '/');
   }
 });
+
+test('a completed import refreshes visible events without discarding an unfinished draft', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(<EventPanel csrfToken="fictional" revision={0} />);
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname', { exact: true }), {
+    target: { value: 'Fictional retained draft' },
+  });
+  const count = fetcher.mock.calls.filter(
+    ([url]) => url === '/api/v1/events',
+  ).length;
+  view.rerender(<EventPanel csrfToken="fictional" revision={1} />);
+  await vi.waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) => url === '/api/v1/events').length,
+    ).toBe(count + 1),
+  );
+  expect(
+    (screen.getByLabelText('Eventname', { exact: true }) as HTMLInputElement)
+      .value,
+  ).toBe('Fictional retained draft');
+});

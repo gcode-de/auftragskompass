@@ -65,7 +65,7 @@ export function AuthPanel() {
         <>
           <p>{user.email}</p>
           <Navigation />
-          <EventPanel csrfToken={user.csrfToken} />
+          <EventPanel csrfToken={user.csrfToken} revision={importRevision} />
           <CalendarPanel key={importRevision} />
           <LocationPanel csrfToken={user.csrfToken} />
           <ContactPanel csrfToken={user.csrfToken} />
