@@ -2,10 +2,14 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C021 umgesetzt: lokaler Containerbetrieb, CI, Datenbankmigrationen,
-Mandanten, eigener Passwortlogin oder Google-OIDC, Kontofreigaben, Auditlog sowie Eventarten, Paketwerte und Absagegründe.
-Events können angelegt und bearbeitet werden. Das Reservierungsmodell mit Ablaufbereinigung ist vorbereitet; Buchungsoberfläche und Rechnungen folgen im Implementierungsplan.
-Der interne Dispositionsstand M1 ersetzt noch nicht den vollständigen Ablauf.
+**Stand:** C001–C025 sowie vorgezogen C076 sind umgesetzt: lokaler Containerbetrieb,
+CI, Datenbankmigrationen, Mandanten, eigener Passwortlogin oder Google-OIDC,
+Kontofreigaben und Auditlog. Kontakte, Veranstaltungsorte, Produkte, Ressourcen und
+Events sind verwaltbar. Ressourcen werden konfliktgeprüft disponiert und im Tages-,
+Wochen- und Monatskalender angezeigt. Der Minimalimport bietet Vorschau, Probelauf
+und eine gesonderte Ressourcenprüfung für Bestandszusagen.
+Dieser interne Dispositionsstand ersetzt noch nicht den vollständigen Ablauf;
+insbesondere ICS-Feed, Mailversand und Geschäftsdokumente folgen separat.
 Für einen früheren Bookitup-Ausstieg werden Sicherung, Mindestmigration und
 Betriebsabnahme vorgezogen; Mail und Geschäftsdokumente benötigen dann geprüfte
 externe Ersatzprozesse. M5/M6 folgen später.

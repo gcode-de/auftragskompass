@@ -46,8 +46,8 @@ Der Build verwendet weiterhin die private Dateien ausschließende Docker-Allowli
 ## Podman-Vorbereitung (H002)
 
 Die sechs [Quadlet-Vorlagen](../infrastructure/podman) passen zum auf dem Zielhost
-vorhandenen Podman 5.4.2. Ihr Generator wurde dort isoliert im Dry-run geprüft;
-es wurden keine Einheiten installiert oder gestartet. Die Vorlagen verwenden
+vorhandenen Podman 5.4.2. H002 prüfte den Generator zunächst isoliert im Dry-run;
+H006 hat die Einheiten anschließend mit dem eigenen Login installiert und gestartet. Die Vorlagen verwenden
 eigene `ak-test-*`-Namen, ein eigenes Netzwerk und ein persistentes Datenvolume.
 
 Vor einer späteren Installation:
@@ -68,27 +68,33 @@ Vor einer späteren Installation:
 
    API und Worker lesen das Secret als UID/GID 1000; die Datenbank erhält dasselbe
    Secret für ihren eigenen Start. Es wird kein Passwort als Umgebungswert übergeben.
-4. Der Nutzer hat den eigenen Passwortlogin gewählt (H005). Die Umstellung der
-   Podman-Vorlage und Installation ist der nächste separate Schritt. Bis dahin
-   bildet die API-Vorlage noch den Google-Login ab. Ein Deaktivieren von
-   Authentifizierung macht die Fachoberfläche nicht nutzbar.
+4. Der Nutzer hat den eigenen Passwortlogin gewählt. Ein zufälliges Startpasswort
+   mit mindestens 24 Zeichen in einer externen Datei (Modus 600) erzeugen, niemals
+   als Shell-Argument. Als Secret einbinden:
 
-   Nur falls Google gewählt wird: Secret `ak-test-google` aus der externen
-   Client-Secret-Datei anlegen und `/etc/auftragskompass-test/auth.env` mit Modus 600
-   und diesen nicht geheimen Konfigurationsschlüsseln erstellen:
+   ```sh
+   podman secret create ak-test-bootstrap /absolute/external/path/initial-password
+   ```
+
+   `/etc/auftragskompass-test/auth.env` mit Modus 600 anlegen. Alle folgenden Werte
+   sind Platzhalter, keine realen Kontodaten:
 
    ```text
    AK_AUTH_ORIGIN=https://admin.example.invalid
    AK_TENANT_ID=11111111-1111-4111-8111-111111111111
-   AK_GOOGLE_CLIENT_ID=replace-with-client-id
    AK_BOOTSTRAP_EMAIL=synthetic-owner@example.invalid
+   AK_BOOTSTRAP_USERNAME=fictional.owner
    AK_TENANT_NAME=Synthetic test business
    ```
 
-   Alle Platzhalter durch die eigenen Testwerte ersetzen; für die Testumgebung
-   eine eigene Mandanten-UUID erzeugen. Nach erfolgreichem Bootstrap die E-Mail
-   aus der externen Datei entfernen. Das eigentliche Client-Secret gehört nur in
-   das Podman-Secret, nicht in diese Datei.
+   Eine eigene Mandanten-UUID verwenden. Nach erfolgreichem ersten Login die
+   Bootstrap-E-Mail und den Benutzernamen aus `auth.env` sowie die beiden
+   Bootstrap-Zeilen (`Secret=ak-test-bootstrap,…` und
+   `Environment=AK_BOOTSTRAP_PASSWORD_FILE=…`) aus der installierten API-Quadlet
+   entfernen. Neu laden, API und Admin neu starten und Anmeldung erneut prüfen;
+   anschließend `podman secret rm ak-test-bootstrap`. Das Startpasswort privat
+   an den Inhaber übergeben; eine davon getrennte Passwortmanager-Kopie wird
+   durch das Entfernen des Bootstrap-Secrets nicht ersetzt.
 5. Erst nach Einrichtung des Logins die sechs Quadlet-Dateien nach
    `/etc/containers/systemd/` kopieren und `systemctl daemon-reload` ausführen.
    `systemctl start ak-test-admin.service` startet die Abhängigkeiten in der
@@ -97,11 +103,10 @@ Vor einer späteren Installation:
    den Start. Der Teststand wird bewusst nicht automatisch beim Booten gestartet.
 
 Nur die Oberfläche wird auf `127.0.0.1:4177` veröffentlicht. API, Worker und Datenbank
-haben keine Hostports. Der separate Caddy-Host kann diesen Loopback-Port noch nicht
-erreichen: Die spätere LAN-Bindung und Firewallfreigabe ausschließlich für den Proxy
-gehören zur ausstehenden Zugriffsabnahme. Die bereits eingerichtete Adresse
-`https://auftragskompass.samuelgesang.de` zeigt am Caddy-Proxy ausschließlich eine
-Einrichtungsnachricht mit HTTP 503. Sie leitet noch nicht auf die App weiter.
+haben keine Hostports. Ein separater Caddy-Host benötigt die unten beschriebene
+LAN-Bindung und Firewallfreigabe ausschließlich für den Proxy. Im abgenommenen
+Teststand wurde dies eingerichtet;
+`https://auftragskompass.samuelgesang.de` führt über Caddy auf die App.
 Die Route und beide Homer-Einträge sind im
 [Infrastruktur-Repository dokumentiert](https://github.com/gcode-de/proxmox-automation/blob/main/docs/auftragskompass-routing.md).
 
@@ -124,13 +129,10 @@ Die vorhandene Infrastruktur verwendet Podman mit systemd/Quadlet, Portainer,
 Caddy und einen Cloudflare Tunnel. Neue App-Dienste erhalten eigene Namen,
 Netzwerke und Datenvolumes. Bestehende Apps werden nicht verändert.
 
-Der Nutzer hat den eigenen Login mit E-Mail oder Benutzername und Passwort
-gewählt. H005 implementiert diesen alternativ zu Google-OIDC. Die bisherige
-Podman-Vorlage verwendet noch Google und wird vor der Installation umgestellt;
-ohne passende Anmeldung bleiben Verwaltungs-APIs gesperrt. Vor einer Veröffentlichung
-unter einer neuen Subdomain muss der gewählte Login eingerichtet und mit erlaubtem
-sowie unerlaubtem Benutzer geprüft werden. Eine vorgeschaltete SSO-Seite ersetzt
-keine Anmeldung innerhalb der Anwendung.
+Der eigene Login mit E-Mail oder Benutzername und Passwort ist implementiert und
+in der Podman-Vorlage aktiviert. Vor der Veröffentlichung muss der Zugang mit
+erlaubten und unerlaubten Anmeldungen geprüft werden. Eine vorgeschaltete SSO-Seite
+ersetzt keine Anmeldung innerhalb der Anwendung.
 
 Installation, Sicherung und Wiederherstellung: [Betriebsanleitung](operations.md).
 Anmeldeverfahren: [Passwortlogin und optionales Google-OIDC](authentication.md).
@@ -138,3 +140,60 @@ Die vollständige Betriebsabnahme E005 bleibt offen.
 
 Referenzen: [Docker-Builds in GitHub Actions](https://docs.docker.com/build/ci/github-actions/)
 und [GitHub-Secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets).
+
+## Optionaler LAN-Zugang ausschließlich für den Proxy (H006)
+
+Loopback bleibt die sichere Voreinstellung. Für Caddy auf einem anderen Host zuerst
+`proxy-access.nft.example` außerhalb von Git nach
+`/etc/auftragskompass-test/proxy-access.nft` kopieren und die beiden Dokumentations-IPs
+ersetzen. Vor Installation sicherstellen, dass die Tabelle `inet ak_test_access`
+noch nicht anderweitig genutzt wird. Mit `nft --check --file …` prüfen; anschließend
+`ak-test-proxy-access.service` unter `/etc/systemd/system/` installieren und aktivieren.
+Die Regeln wirken vor Podmans DNAT und betreffen ausschließlich die App-Zieladresse
+und TCP-Port 4177. IPv6 wird für diesen Port nicht veröffentlicht. Andere
+Firewalltabellen werden nicht verändert.
+
+Erst danach in der installierten Admin-Quadlet `127.0.0.1` durch die eigene IPv4-Adresse
+ersetzen und unter `[Unit]` ergänzen:
+
+```ini
+Requires=ak-test-proxy-access.service
+After=ak-test-proxy-access.service
+```
+
+Neu laden und Admin starten. Vom Proxy muss die Oberfläche erreichbar sein, von
+einem anderen LAN-Host muss derselbe Port gesperrt sein. Datenbank und API erhalten
+weiterhin keinen Hostport. Die Caddy-Route erst nach erfolgreicher Anmeldung,
+Abmeldung und einem Neustart ohne Bootstrap-Secret umschalten. Keine vorhandenen
+Proxy-Routen oder Cloudflare-Einträge ersetzen.
+
+## Geprüfter Teststand vom 16.10.2026
+
+Die isolierte Installation läuft mit App-Revision
+`9d26a5da5645711de58ce2ead7ed812ad4fbecf4`, nach vollständig grüner GitHub-CI.
+Die installierten Images sind über Digests festgelegt:
+
+- runtime: `docker.io/sgesang/auftragskompass@sha256:a3346bb116bc73679c13991d16aad9b884a9cb116a3962cfa76d4f8815508926`
+- admin: `docker.io/sgesang/auftragskompass@sha256:bee87ca30df00a65d7df7c751809fe2ab76f4d7831363e4ed49b807cabb1d0fa`
+
+Alle vier Dienste wurden über die tatsächlichen Quadlets gestartet und sind gesund.
+Bei dieser Abnahme wurde ein Shell-Quote-Fehler der früheren Node-Healthchecks
+gefunden und behoben: API und Worker verwenden jetzt JSON-Exec-Arrays. Nur eine
+Generator-Prüfung hätte diesen Laufzeitfehler nicht erkannt.
+
+Geprüft sind Anmeldung mit beiden Kennungen, Ablehnung unbefugter API-Zugriffe,
+CSRF, Logout und ein Neustart nach Entfernen aller Bootstrap-Werte, der Datei und
+des Podman-Secrets. Der tatsächliche TLS-Proxy und die öffentliche Browser-Anmeldung
+funktionieren; die Oberfläche lädt ohne Browserfehler. Die LAN-Firewall wurde mit
+einem temporären Server vor und nach Aktivierung getestet: Proxy erlaubt, anderer
+LAN-Client gesperrt, wiederholtes Laden ergibt genau eine Regel. Temporäre
+Testressourcen wurden entfernt; andere Anwendungen bleiben aktiv.
+
+Caddy leitet die öffentliche Adresse auf die App weiter. Beide Homer-Quellen
+tragen den Zusatz „Testbetrieb“. Eine erste Datenbanksicherung liegt mit Modus 600
+auf dem Host und mit verifiziertem Hash auf dem Betreiberrechner, außerhalb von Git.
+Kontodaten und Passwörter liegen ausschließlich privat; echte Kunden- und
+Auftragsdaten wurden nicht importiert. Verschlüsselte automatische Sicherungen,
+Passwortwechsel, Wiederherstellung und die vollständige Betriebsabnahme E005
+bleiben vor Produktivbetrieb offen. Der Teststand startet noch nicht automatisch
+nach einem Host-Neustart; dafür `systemctl start ak-test-admin.service` ausführen.

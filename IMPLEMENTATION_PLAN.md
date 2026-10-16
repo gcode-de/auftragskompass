@@ -28,6 +28,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] H004.1: CI-Wartebedingung im Import-Oberflächentest korrigiert; erst nach vollständig geladener Ressourcenprüfung bestätigen. Abnahme: betroffener Test und komplette Komponenten-Suite grün.
 
+- [x] H006: Podman-Testinstallation mit eigenem Inhaberkonto, externer einmaliger Passwortdatei und gepinnten veröffentlichten Images. Node-Healthchecks als Exec-Array statt fehleranfälliger Shell-Quotes; optionaler LAN-Port nur für Caddy durch eigene Firewall vor DNAT; bestehende Dienste unverändert. Abnahme: nativer Quadlet-/Firewall-Check, erlaubte/verbotene Zugriffe, Login/Logout, Neustart ohne Bootstrap-Secret und Sicherung; anschließend Caddy und Homer auf Testbetrieb umstellen.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

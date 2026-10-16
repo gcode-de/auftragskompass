@@ -1,0 +1,11 @@
+# Optional LAN access: replace both documentation IPs with app/proxy IPv4 addresses.
+# Run nft --check --file before installation. Only this application's table is flushed.
+add table inet ak_test_access
+flush table inet ak_test_access
+table inet ak_test_access {
+  chain ingress {
+    type filter hook prerouting priority -110; policy accept;
+    # Rootful Podman rewrites the destination port at priority -100 (DNAT).
+    ip daddr 192.0.2.10 tcp dport 4177 ip saddr != 192.0.2.20 drop
+  }
+}

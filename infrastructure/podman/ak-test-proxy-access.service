@@ -1,0 +1,11 @@
+[Unit]
+Description=AuftragsKompass test proxy access restriction
+Before=ak-test-admin.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /etc/auftragskompass-test/proxy-access.nft
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

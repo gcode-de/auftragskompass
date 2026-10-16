@@ -34,3 +34,47 @@ test('Podman test services keep data and secrets isolated and publish only the l
   assert.ok(read('ak-test-data.volume').includes('VolumeName=ak-test-data'));
   assert.ok(read('ak-test.network').includes('NetworkName=ak-test'));
 });
+
+test('native login uses an external bootstrap secret and LAN access is restricted before port forwarding', () => {
+  const api = read('ak-test-api.container');
+  assert.ok(api.includes('Environment=AK_AUTH_MODE=password'));
+  assert.ok(
+    api.includes(
+      'Secret=ak-test-bootstrap,type=mount,target=initial_password,uid=1000,gid=1000,mode=0400',
+    ),
+  );
+  assert.ok(
+    api.includes(
+      'Environment=AK_BOOTSTRAP_PASSWORD_FILE=/run/secrets/initial_password',
+    ),
+  );
+  assert.ok(!api.includes('ak-test-google'));
+  const rules = read('proxy-access.nft.example');
+  assert.ok(rules.includes('flush table inet ak_test_access'));
+  assert.ok(rules.includes('hook prerouting priority -110'));
+  assert.ok(
+    rules.includes(
+      'ip daddr 192.0.2.10 tcp dport 4177 ip saddr != 192.0.2.20 drop',
+    ),
+  );
+  const service = read('ak-test-proxy-access.service');
+  assert.ok(
+    service.includes(
+      'ExecStart=/usr/sbin/nft -f /etc/auftragskompass-test/proxy-access.nft',
+    ),
+  );
+  assert.ok(service.includes('Before=ak-test-admin.service'));
+});
+
+test('Node healthchecks use an exec array so Quadlet cannot strip shell quotes', () => {
+  for (const service of ['api', 'worker']) {
+    const line = read(`ak-test-${service}.container`)
+      .split('\n')
+      .find((line) => line.startsWith('HealthCmd='));
+    const command = JSON.parse(line.slice('HealthCmd='.length));
+    assert.deepEqual(command.slice(0, 2), ['node', '-e']);
+    assert.equal(command.length, 3);
+    assert.ok(command[2].includes('/health/ready'));
+    assert.ok(command[2].endsWith('.catch(()=>process.exit(1))'));
+  }
+});

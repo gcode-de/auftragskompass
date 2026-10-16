@@ -10,10 +10,12 @@ Network=ak-test.network
 NetworkAlias=api
 User=1000:1000
 Secret=ak-test-db,type=mount,target=db_password,uid=1000,gid=1000,mode=0400
-Secret=ak-test-google,type=mount,target=google_secret,uid=1000,gid=1000,mode=0400
+# First start only: remove this Secret and AK_BOOTSTRAP_PASSWORD_FILE after bootstrap.
+Secret=ak-test-bootstrap,type=mount,target=initial_password,uid=1000,gid=1000,mode=0400
 EnvironmentFile=/etc/auftragskompass-test/auth.env
 Environment=AK_AUTH_ENABLED=true
-Environment=AK_GOOGLE_SECRET_FILE=/run/secrets/google_secret
+Environment=AK_AUTH_MODE=password
+Environment=AK_BOOTSTRAP_PASSWORD_FILE=/run/secrets/initial_password
 Environment=AK_DB_HOST=database
 Environment=AK_DB_NAME=auftragskompass
 Environment=AK_DB_USER=ak
@@ -25,7 +27,7 @@ Environment=AK_BUILD_REVISION=REPLACE_REVISION
 Exec=node apps/api/dist/main.js
 RunInit=true
 NoNewPrivileges=true
-HealthCmd=node -e "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HealthCmd=["node","-e","fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 HealthInterval=5s
 HealthTimeout=3s
 HealthRetries=12
