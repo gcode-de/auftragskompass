@@ -459,7 +459,7 @@ Prioritäten:
 ### 7.1 Zu migrierende Daten
 
 **MIG-01 MUSS:** Kontakte einschließlich Firmen-/Ansprechpartnerbezug und Kontaktdaten.
-**MIG-02 MUSS:** Aktive, zukünftige und noch fachlich relevante Events einschließlich Status, Art, Termin, Ort, Paket, Notizen und Kontaktzuordnung.
+**MIG-02 MUSS:** Für den beschleunigten Erststart nach Betreiberentscheidung vom 16.10.2026 ausschließlich zukünftige Aufträge mit Status, Art, Termin, Ort, Paket, Notizen und Kontaktzuordnung übernehmen. Historische Aufträge bleiben zunächst als gesicherte Übersicht erhalten; kein zusätzlicher Import historischer Detailakten.
 **MIG-03 MUSS:** Alle sieben Eventarten und alle Werte der Fotobox-Paketauswahl.
 **MIG-04 MUSS:** Vollständiger Produktkatalog.
 **MIG-05 MUSS:** E-Mail- und Dokumentvorlagen.

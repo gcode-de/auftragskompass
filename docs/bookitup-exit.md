@@ -29,6 +29,29 @@ Teilsicherung ist keine Vollabnahme des Kontobestands oder Produktivfreigabe.
 Zugriffsende bleibt unbekannt. Kündigung, Kontolöschung und Nachrichtenversand
 sind nicht Bestandteil dieses Auftrags.
 
+**Präzisierter Umfang nach Betreiberentscheidung vom 16.10.2026:** Keine weitere
+Sicherung oder Übernahme historischer Auftragsdetails. Dafür genügen die bereits
+gespeicherten Übersichten. Detaildaten werden ausschließlich für zukünftige
+Aufträge gesichert. Zusätzlich wurden die vorhandenen Dokument-/Mailvorlagen,
+Signatur, Dokumentgestaltung, Standarddateien, Produkte, Paketwerte, Eventarten,
+Status, Steuer- und Nummernkreiseinstellungen sowie das Unternehmensprofil
+erfasst. Leere Vorlagenbereiche und nicht aktivierte Module sind dokumentiert;
+es wurde kein Modul aktiviert.
+
+Zukunftsaufträge enthalten auch die erreichbaren Datei-/Dokumentzuordnungen;
+ein zusätzlicher Auftragsupload wurde als Original gesichert. Finanzdaten liegen
+als Rechnungsmetadaten, Rechnungskorrekturen, Zahlungsfilter und vorhandene
+Zahlungsdetails vor. Der Filter „keine Zahlung“ ist kein geprüfter Forderungssaldo.
+Ein Abgleich mit Bankkonto oder externer Buchhaltung wurde nicht vorgenommen.
+Für die Original-Standarddateien wurden die direkten Bookitup-Downloads verwendet;
+die zwischenzeitlich angefragte manuelle Dateisicherung ist nicht mehr nötig.
+
+Die privaten Daten sind über eine lokale HTML-Startseite mit JSON-Fassungen und
+den unveränderten Quellansichten zugänglich. Mengen, eindeutige Vorlagen-/
+Auftragsquellen, UTF-8-Dekodierung und Datei-Prüfsummen wurden geprüft. Es gibt
+noch keinen Import und keine zweite unabhängige Sicherungskopie. Vor Umschaltung
+bleiben der fachliche Abgleich und der letzte Delta-Abzug erforderlich.
+
 Auf ergänzenden Wunsch wurden die Auftragsübersichten 2023–2027 und die
 undatierte Ansicht mit allen fünf Statusarten separat gesichert. Statische
 HTML-Dateien erhalten die Darstellung einschließlich Statusfarben; CSV/JSON
@@ -50,6 +73,9 @@ Für den Ausstieg gilt stattdessen: Alle noch benötigten historischen, laufende
 und zukünftigen Geschäftsdaten werden unabhängig von späteren App-Modulen
 gesichert. Nur der operative Teil muss für den ersten Livegang in die Datenbank.
 Ein offline lesbares Archiv darf daher umfangreicher sein als der Erstimport.
+Für Aufträge begrenzt die jüngste Betreiberentscheidung dieses Archiv auf
+historische Übersichten und zukünftige Detailakten. Die folgende Matrix ist
+eine Bereichsreferenz; sie beauftragt keinen erneuten historischen Detailabzug.
 Bereits vorhandene relevante Belegkopien im eigenen E-Mail-Archiv werden nach
 der jüngsten Betreiberentscheidung als vorhandener Bestand berücksichtigt;
 weitere redundante Belegdownloads sind aktuell nicht gewünscht.
