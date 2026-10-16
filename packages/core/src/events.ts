@@ -1,3 +1,4 @@
+import { registerCalendarRoutes } from './calendar.js';
 import {
   assignEventResources,
   hasBookedBox,
@@ -552,6 +553,7 @@ export function registerEventRoutes(
   pool: Pool,
   tenantId: string,
 ) {
+  registerCalendarRoutes(app, pool, tenantId);
   const repo = eventRepository(pool, tenantId),
     nullableId = {
       anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],

@@ -1,3 +1,4 @@
+import { CalendarPanel } from './CalendarPanel.js';
 import { Navigation } from './Navigation.js';
 import { EventPanel } from './EventPanel.js';
 import { LocationPanel } from './LocationPanel.js';
@@ -63,6 +64,7 @@ export function AuthPanel() {
           <p>{user.email}</p>
           <Navigation />
           <EventPanel csrfToken={user.csrfToken} />
+          <CalendarPanel />
           <LocationPanel csrfToken={user.csrfToken} />
           <ContactPanel csrfToken={user.csrfToken} />
           <ProductPanel csrfToken={user.csrfToken} />

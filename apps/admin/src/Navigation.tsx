@@ -11,6 +11,7 @@ export function Navigation() {
       <nav aria-label="Hauptnavigation">
         {[
           ['events', 'Events'],
+          ['calendar', 'Kalender'],
           ['contacts', 'Kontakte'],
           ['locations', 'Locations'],
           ['products', 'Produkte'],

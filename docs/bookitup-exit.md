@@ -140,7 +140,7 @@ Bestandswerte werden beim Abgleich erhalten.
 
 | Bereich | Entscheidung | Ersatz bzw. Freigabebedingung |
 |---|---|---|
-| M1 Datenkern/Disposition | Behalten; derzeit bis C024 umgesetzt | C022/C023: DB-Konfliktschutz und echte Buchung/Zubehör/Terminwechsel umgesetzt; C024: Wartungssperren umgesetzt; C025: nutzbarer Kalender fehlt |
+| M1 Datenkern/Disposition | Behalten; derzeit bis C025 umgesetzt | C022/C023: DB-Konfliktschutz und echte Buchung/Zubehör/Terminwechsel umgesetzt; C024/C025: Wartungssperren und interner Kalender umgesetzt; Datenübernahme und Betriebsabnahme bleiben offen |
 | Smartphone-Kalender | C026 behalten, wenn bestehendes Abo weiter benötigt wird | TLS/Tokenzugriff testen; andernfalls ausdrücklich vereinbarter, gepflegter Übergangskalender; keine ungeschützte Admin-API |
 | M2 Website/Widget | Später | Bestehende WordPress-Formulare direkt an eigenes Postfach liefern lassen; alle vier Pfade testen, manuelle Eventanlage; keine automatische Verfügbarkeitszusage |
 | M3 Kommunikation | Für schnellen Ausstieg später | Vorhandener unabhängiger Mailclient samt Originalpostfach; lokale Vorlagentexte/Signatur, manuelle Zuordnung und tägliche Wiedervorlage |

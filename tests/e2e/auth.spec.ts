@@ -452,6 +452,43 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await assignment.screenshot({
       path: 'tests/test-results/resource-assignment.png',
     });
+    const calendar = page.getByRole('region', {
+      name: 'Kalender',
+      exact: true,
+    });
+    await calendar.getByLabel('Kalenderdatum').fill('2030-10-20');
+    await calendar
+      .getByRole('combobox', { name: 'Kalenderansicht', exact: true })
+      .selectOption('day');
+    await expect(
+      calendar.getByRole('table', { name: 'Ressourcen-Zeitleiste' }),
+    ).toBeVisible();
+    await expect(
+      calendar
+        .getByRole('link', { name: 'Fictional resource booking' })
+        .first(),
+    ).toBeVisible();
+    await calendar.screenshot({ path: 'tests/test-results/calendar-day.png' });
+    await calendar
+      .getByRole('combobox', { name: 'Kalenderansicht', exact: true })
+      .selectOption('week');
+    await expect(
+      calendar
+        .getByRole('table', { name: 'Ressourcen-Zeitleiste' })
+        .getByRole('columnheader'),
+    ).toHaveCount(8);
+    await calendar
+      .getByRole('combobox', { name: 'Kalenderansicht', exact: true })
+      .selectOption('month');
+    await expect(
+      calendar
+        .getByRole('table', { name: 'Ressourcen-Zeitleiste' })
+        .getByRole('columnheader'),
+    ).toHaveCount(32);
+    await calendar.screenshot({
+      path: 'tests/test-results/calendar-month.png',
+    });
+
     await record.getByRole('button', { name: 'Eventakte schließen' }).click();
     await events.getByLabel('Events suchen', { exact: true }).fill('browser');
     await events.getByLabel('Filter von').fill('2026-10-16');
