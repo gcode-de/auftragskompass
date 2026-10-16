@@ -1,5 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { ImportOverview } from '../../apps/admin/src/ImportOverview.js';
 afterEach(() => {
   cleanup();
@@ -230,9 +236,12 @@ test('operator opens and closes the review and a completed reconciliation refres
       name: 'Ressourcen prüfen: Fictional workflow',
     }),
   );
-  await screen.findByRole('button', {
+  const confirm = await screen.findByRole('button', {
     name: 'Geprüfte Bestandszusage übernehmen',
   });
+  await waitFor(() =>
+    expect((confirm as HTMLButtonElement).disabled).toBe(false),
+  );
   fireEvent.change(screen.getByLabelText('Buchungsstatus'), {
     target: { value: 'cancelled' },
   });
