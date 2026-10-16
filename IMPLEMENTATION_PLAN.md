@@ -15,6 +15,7 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E001: Sicherungsmatrix und verkürzte Lieferfolge dokumentiert
 - [ ] E002: gewünschter Exportumfang privat gesichert: historische Übersichten, Zukunftsdetails, Vorlagen, Standarddateien, Stammdaten und erreichbare Finanzstände; fachliche Abnahme und unabhängige Zweitkopie offen
+- [ ] E003: Minimalimport; [abgegrenzte Schritte E003.1–E003.3 und Sicherheitsvertrag](docs/minimal-import.md) festgelegt, Umsetzung und Abnahme offen
 
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 

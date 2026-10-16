@@ -177,10 +177,11 @@ nur bei vollständiger Erfüllung ihrer eigenen Abnahme abgehakt.
 | E005 – Betrieb | Auf kleinen Umfang begrenzte Vorziehung aus C078–C083: echte OIDC-Anmeldung/TLS, Benutzerfreigaben, Backup/Restore, Updates, Ausfallverfahren und Prüfung aller tatsächlich aktiven Endpunkte | Frische Umgebung aus Sicherung wiederhergestellt; fremder Mandant/unerlaubter Benutzer abgewiesen; täglicher Lauf mit Fehlerüberwachung und unabhängiger Kopie |
 | E006 – Umschaltprobe/Release | Vorgezogener kleiner Umfang aus C027/C084/C085 mit Deltaimport und Betreiberabnahme | Gesamte Suite für enthaltene Module grün; Ablauf unten erfolgreich; dokumentierte Version und Rückfallpunkt |
 
-E002 kann während der Dispositionsentwicklung weiterlaufen; es werden trotzdem
-keine zwei Implementierungs-Slices vermischt. Als Nächstes: zuerst sichern,
-dann C022, dann C023. Nach der Anmeldung und Sichtung der tatsächlichen Exporte
-wird der Importumfang präzisiert. Ohne Zugang, Zugriffsende, Exportformate und
+C022–C025 sind inzwischen umgesetzt. Als Nächstes folgt E003 nach dem
+[Minimalimport-Vertrag mit den eigenständigen Schritten E003.1–E003.3](minimal-import.md).
+E002 bleibt für die fachliche Sicherungsabnahme und unabhängige Zweitkopie offen;
+es werden weiterhin keine zwei Implementierungs-Slices vermischt. Die tatsächlichen
+Exportformate müssen vor einer echten Übernahme privat normalisiert und geprüft werden. Ohne Zugang, Zugriffsende, Exportformate und
 Rechnungsersatz ist ein belastbarer Live-Termin noch nicht ableitbar.
 
 ## Umschaltprobe und Freigabe
