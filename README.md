@@ -54,6 +54,8 @@ Die Testgrundlage und ihre Voraussetzungen stehen in [docs/testing.md](docs/test
 
 Lokale Container und Backup/Restore: [Betriebsanleitung](docs/operations.md). Google-Anmeldung und sicherer Erstkonto-Bootstrap: [Einrichtung](docs/authentication.md). Ohne OIDC-Konfiguration startet das Grundsystem, geschützte Verwaltungsendpunkte bleiben gesperrt.
 
+Docker-Hub-Veröffentlichung für erste Home-Lab-Tests: [Testbetrieb](docs/homelab.md).
+
 Stammdaten verwalten und bestehende Werte übernehmen: [Stammdaten](docs/master-data.md).
 
 Ressourcen und Standardpuffer: [Ressourcenstamm](docs/resources.md).
