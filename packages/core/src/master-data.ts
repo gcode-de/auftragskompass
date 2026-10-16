@@ -1,7 +1,7 @@
+import { database, type Connection } from './database.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, asc, eq } from 'drizzle-orm';
 import { masterData } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
@@ -25,8 +25,8 @@ export const eventStatuses = [
   { code: 'unavailable', label: 'Nicht verfügbar' },
   { code: 'cancelled', label: 'Annulliert' },
 ] as const;
-export function masterDataRepository(pool: Pool, tenantId: string) {
-  const db = drizzle(pool);
+export function masterDataRepository(pool: Connection, tenantId: string) {
+  const db = database(pool);
   const scope = eq(masterData.tenantId, tenantId);
   return {
     async list(kind: MasterKind) {

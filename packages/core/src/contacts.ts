@@ -1,7 +1,7 @@
+import { database, type Connection } from './database.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, asc, eq, or, ilike, inArray, ne } from 'drizzle-orm';
 import { contacts } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
@@ -56,8 +56,8 @@ export function csv(rows: string[][]) {
   );
 }
 class ContactError extends Error {}
-export function contactRepository(pool: Pool, tenantId: string) {
-  const db = drizzle(pool),
+export function contactRepository(pool: Connection, tenantId: string) {
+  const db = database(pool),
     scope = eq(contacts.tenantId, tenantId);
   return {
     async list(search = '') {

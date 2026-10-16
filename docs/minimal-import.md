@@ -188,3 +188,99 @@ nicht als übernommen. Unsichere Notizinhalte ergeben `notes_sanitized`; eine
 Ein vollständiges, ausschließlich fiktives Beispiel wird durch
 [`fictionalImport()`](../tests/fixtures/minimal-import.ts) erzeugt. Es dient den
 Unit-, API- und Chromium-Tests und ist keine Vorlage aus dem echten Sicherungsbestand.
+
+## Atomare Übernahme und Dry-run (E003.2)
+
+`POST /api/v1/imports/bookitup` nimmt im geschützten lokalen Admin-Kontext genau
+folgendes Objekt entgegen:
+
+```json
+{
+  "manifest": {},
+  "mode": "dry_run",
+  "allowUpdates": false,
+  "decisions": []
+}
+```
+
+`manifest` enthält das vollständige oben beschriebene Version-1-Format; `{}` ist
+hier nur ein Platzhalter. `mode` ist `dry_run` oder `apply`. Der Standardablauf
+ist zuerst ein Dry-run, dann die bewusste Übernahme derselben geprüften Eingabe.
+Der Endpunkt erzeugt keine Kundennachricht, Ressourcenzuweisung oder Datei.
+Für echte Bestände ist weiterhin eine fachlich freigegebene Normalisierung nötig.
+Die Oberfläche dieses Schritts bietet weiterhin nur die Vorschau; Bedienung der
+Übernahme und Prüfliste werden mit E003.3 ergänzt.
+
+Die Migration `0017_minimal_import.sql` ergänzt mandantengebundene
+`import_records` mit Quell-ID, normalisiertem Inhalts-Hash, letzter Zielversion,
+Originalstatus und typgebundenem Fremdschlüssel. Ein Ziel darf je Art nur einer
+Quell-ID zugeordnet werden. Die Datenbank erzwingt Mandanten- und Eventart-/Paketbindung.
+`import_promises` bewahrt ausdrücklich ungeprüfte Quellzusagen samt bereinigten
+Eventdaten und Zeitzone auf. Diese Datensätze sind noch keine bestätigten Events
+im operativen Kalender. Sie werden nicht als Anfrage oder Option umbenannt.
+Die gesonderte, sichtbare Prüfliste und der Hinweis auf den unvollständigen
+Kalender folgen mit E003.3; Produktivfreigabe bleibt bis zum Abgleich gesperrt.
+C076 muss vor endgültiger Übernahme Zeitangaben und Verknüpfungen erneut durch
+den Event-Fachservice prüfen und eine konfliktfreie physische Box zuweisen.
+
+Ein Tenant-Lock serialisiert Wiederholungen und parallele Importe mit normalen
+Fachänderungen. Die vorhandenen Repositories laufen innerhalb der äußeren
+Importtransaktion mit Savepoints. Der Dry-run durchläuft dieselben Schreib- und
+Versionsprüfungen wie `apply`, führt auch verzögerte Datenbank-Constraints aus
+und rollt anschließend einschließlich Mapping, Prüfliste und Audit zurück.
+Er liefert `applied: false`; eine erfolgreiche echte Übernahme `applied: true`.
+`counts` enthält je Abschnitt `created`, `bound`, `updated`, `unchanged` und
+`excluded`. `pendingPromises` zählt alle noch ungeprüften Zusagen des Mandanten.
+`bound` zählt bewusste Zuordnungen zu vorhandenen Zielen, keine neu angelegten
+Fachdatensätze. Identische Wiederholungen erzeugen weder neue Datensätze noch
+weitere Audit-Einträge. Ausgelassene Exportzeilen löschen nichts.
+
+Bei geändertem normalisiertem Inhalt ist `allowUpdates: true` erforderlich;
+der Dry-run muss diese Änderung zuvor prüfen. Die gespeicherte Zielversion darf
+sich seit dem letzten Import nicht verändert haben. Identische Exporte lassen
+lokale Bearbeitungen unangetastet. Namens- und E-Mail-Normalisierung sowie
+Notizbereinigung erfolgen vor dem Hash-Vergleich, Zeitpunkte werden in UTC
+normalisiert. Eine geänderte Quellzusage, die zwischen ungeprüfter Zusage und
+operativem Event wechseln würde, erfordert eine gesonderte fachliche Klärung
+(`status_review_required`); der Import entscheidet das nicht automatisch.
+
+### Dublettenentscheidungen
+
+Unzugeordnete Kontakte werden über vorhandene E-Mail-/Telefonregeln und exakten
+normalisierten Namen geprüft; Locations, Eventarten, Pakete und operative Events
+über den exakten normalisierten Namen. Das sind Vorschläge, keine automatische
+Zusammenführung. Ein Konflikt liefert `duplicate_review_required`, Abschnitt,
+Zeile und eine Liste mandantengebundener Kandidaten-IDs mit Versionen. Es werden
+keine Eingabewerte in den technischen Fehler zurückgeschrieben.
+
+Eine nach fachlicher Prüfung bewusst eigenständige Anlage wird so angegeben:
+
+```json
+{ "section": "contacts", "externalId": "stabile-quell-id", "action": "create" }
+```
+
+Eine bestehende Entität kann mit expliziter Ziel-ID und deren aktueller Version
+gebunden und anhand der geprüften Quelldaten aktualisiert werden:
+
+```json
+{
+  "section": "eventTypes",
+  "externalId": "stabile-quell-id",
+  "action": "bind",
+  "targetId": "00000000-0000-4000-8000-000000000001",
+  "version": 1
+}
+```
+
+Diese Objekte stehen in `decisions`. Eine Bindung benötigt zusätzlich
+`allowUpdates: true`. Eine falsche Version, ein fremder Mandant, eine falsche
+Stammdatenart, ein bereits anderweitig gebundenes Ziel oder eine abweichende
+bestehende Quellzuordnung wird abgewiesen. Ungeprüfte Zusagen werden nicht an
+bestehende Events gebunden. Auch eine bewusste Neuanlage darf bestehende
+Datenbankregeln wie eindeutige Stammdatennamen nicht umgehen.
+
+Erwartete Format-/Feldfehler ergeben HTTP 400, Dubletten-, Delta-, Versions- und
+Datenbankkonflikte HTTP 409; fehlende Sitzungen oder Rechte HTTP 401/403. Der
+Fehlervertrag enthält `error`, `section`, `row` und `candidates` für fachliche
+Importfehler. Unerwartete Fehler verwenden den allgemeinen, inhaltsfreien
+HTTP-500-Vertrag. Jeder Fehler verwirft die gesamte Übernahme.

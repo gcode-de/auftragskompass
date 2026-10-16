@@ -56,7 +56,9 @@ export type ImportPreview = {
   }[];
 };
 // Reuse Fastify's installed validator with mutation/coercion disabled for imports.
-const compile = AjvCompiler()(
+export const compileImportSchema: (definition: {
+  schema: object;
+}) => (input: unknown) => unknown = AjvCompiler()(
   {},
   {
     customOptions: {
@@ -106,11 +108,11 @@ export const importManifestSchema = {
     ),
   },
 };
-const validManifest = compile({ schema: importManifestSchema });
+const validManifest = compileImportSchema({ schema: importManifestSchema });
 const validators = Object.fromEntries(
   importSections.map((section) => [
     section,
-    compile({
+    compileImportSchema({
       schema: {
         type: 'object',
         additionalProperties: false,

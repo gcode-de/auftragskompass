@@ -1,5 +1,7 @@
+import type { EventInput } from './events.js';
 import {
   date,
+  jsonb,
   boolean,
   bigint,
   integer,
@@ -227,4 +229,26 @@ export const reservations = pgTable('reservations', {
   startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
   endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
+});
+
+export const importPromises = pgTable('import_promises', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  data: jsonb('data').$type<EventInput>().notNull(),
+  timeZone: text('time_zone').notNull(),
+  version: integer('version').notNull().default(1),
+});
+export const importRecords = pgTable('import_records', {
+  tenantId: uuid('tenant_id').notNull(),
+  source: text('source').notNull().default('bookitup'),
+  section: text('section').notNull(),
+  externalId: text('external_id').notNull(),
+  contentHash: text('content_hash').notNull(),
+  targetVersion: integer('target_version').notNull(),
+  sourceStatus: text('source_status').notNull().default(''),
+  contactId: uuid('contact_id'),
+  locationId: uuid('location_id'),
+  masterId: uuid('master_id'),
+  eventId: uuid('event_id'),
+  promiseId: uuid('promise_id'),
 });

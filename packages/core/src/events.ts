@@ -1,3 +1,4 @@
+import { database, type Connection } from './database.js';
 import { registerCalendarRoutes } from './calendar.js';
 import {
   assignEventResources,
@@ -250,8 +251,8 @@ async function readRows(
       .sort(),
   }));
 }
-export function eventRepository(pool: Pool, tenantId: string) {
-  const db = drizzle(pool);
+export function eventRepository(pool: Connection, tenantId: string) {
+  const db = database(pool);
   return {
     async list(contactId?: string, filters: EventFilters = {}) {
       return db.transaction(

@@ -1,3 +1,4 @@
+import { ImportError, importRepository } from './import-repository.js';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -79,6 +80,89 @@ export function registerImportRoutes(
   pool: Pool,
   tenantId: string,
 ) {
+  const repo = importRepository(pool, tenantId);
+  app.post<{ Body: unknown }>(
+    '/api/v1/imports/bookitup',
+    {
+      bodyLimit: 4 * 1024 * 1024,
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['applied', 'pendingPromises', 'counts'],
+            properties: {
+              applied: { type: 'boolean' },
+              pendingPromises: integer,
+              counts: {
+                type: 'object',
+                additionalProperties: false,
+                required: importSections,
+                properties: Object.fromEntries(
+                  importSections.map((section) => [
+                    section,
+                    {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: [
+                        'created',
+                        'bound',
+                        'updated',
+                        'unchanged',
+                        'excluded',
+                      ],
+                      properties: {
+                        created: integer,
+                        bound: integer,
+                        updated: integer,
+                        unchanged: integer,
+                        excluded: integer,
+                      },
+                    },
+                  ]),
+                ),
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.run(request.authSession!.userId, request.body);
+      } catch (error) {
+        if (error instanceof AccessError)
+          return reply.code(403).send({ error: 'forbidden' });
+        if (error instanceof ImportError)
+          return reply
+            .code(
+              [
+                'invalid_request',
+                'invalid_format',
+                'invalid_fields',
+                'duplicate_external_id',
+                'missing_reference',
+                'inactive_reference',
+                'duplicate_contact',
+                'invalid_schedule',
+                'missing_date',
+                'invalid_notes',
+                'invalid_decision',
+              ].includes(error.message)
+                ? 400
+                : 409,
+            )
+            .send({
+              error: error.message,
+              section: error.section,
+              row: error.row,
+              candidates: error.candidates,
+            });
+        throw error;
+      }
+    },
+  );
   app.post<{ Body: unknown }>(
     '/api/v1/imports/bookitup/preview',
     {
