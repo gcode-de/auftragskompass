@@ -170,9 +170,10 @@ Sperrversuche verlängern die Sperre nicht. Änderungen, Sperrprüfungen, Sitzun
 und Audit erfolgen unter derselben Mandantensperre wie Kontowiderrufe.
 
 Der Testbetrieb richtet genau ein Inhaberkonto ein. Die Google-Freigabeform wird im
-Passwortmodus ausgeblendet und der entsprechende POST-Endpunkt liefert 409; zusätzliche Passwortkonten und sichere Wiederherstellung sind noch offen. Vor Produktivbetrieb müssen sie nachgerüstet
-und geprüft werden. Ein Datenbank-Backup enthält Passwort-Hashes und muss deshalb
-wie die übrigen vertraulichen Daten geschützt werden.
+Passwortmodus ausgeblendet und der entsprechende POST-Endpunkt liefert 409.
+Weitere Passwortkonten werden bei konkretem Bedarf ergänzt; der Solo-Betrieb nutzt
+das eingerichtete Inhaberkonto. Ein Datenbank-Backup enthält Passwort-Hashes und
+muss deshalb wie die übrigen vertraulichen Daten geschützt werden.
 
 ## Eigenes Passwort ändern (H008)
 
@@ -198,5 +199,69 @@ und Audit `password.changed` sind atomar; ein Auditfehler rollt alles zurück.
 Ablehnungen werden ohne Passwörter als `password.change_denied` protokolliert.
 Migration `0020_password_change.sql` erweitert dafür nur die Audit-Aktionen.
 
-Dies ist ein eigener Passwortwechsel, keine Wiederherstellung ohne Kenntnis des
-aktuellen Passworts. Ein gesperrtes Konto wird dadurch nicht reaktiviert.
+Dies ist ein eigener Passwortwechsel. Die davon getrennte Wiederherstellung ohne
+aktuelles Passwort ist ausschließlich dem Betreiber zugänglich (H009). Ein gesperrtes
+Konto wird durch den Passwortwechsel nicht reaktiviert.
+
+## Betreiber-Wiederherstellung (H009)
+
+Wenn das aktuelle Passwort verloren ist, kann der vertrauenswürdige Betreiber ein
+bestehendes aktives lokales Konto über seinen vorhandenen SSH-/Podman-Zugriff
+zurücksetzen. Dies ist kein weiterer Login und kein HTTP-Endpunkt. Die neue
+Zugangsinformation wird ausschließlich aus einer privaten UTF-8-Datei gelesen;
+niemals ein Passwort als Argument oder Umgebungsvariable übergeben.
+
+### Ablauf auf dem Podman-Host
+
+1. Einen neuen starken Wert im eigenen Passwortmanager erzeugen und in einer
+   externen Datei mit Modus 600 ablegen. Sie muss dem ausführenden Betreiber
+   gehören, außerhalb jedes Git-Repositories liegen und höchstens 512 Bytes
+   enthalten. Ein einzelner abschließender Zeilenumbruch wird entfernt.
+2. Mit dem geprüften Skript und einem laufenden API-Image ab H009 ausführen.
+   Benutzername und Dateipfad unten sind Platzhalter:
+
+   ```sh
+   python3 /etc/auftragskompass-test/reset_password.py --project ak-test --username fictional.owner --password-file /root/private/new-password
+   ```
+
+3. Mit dem neuen Passwort anmelden und es im eigenen Passwortmanager sichern.
+   Erst danach die vorübergehende Passwortdatei auf dem Server entfernen.
+   Alle bisherigen Sitzungen desselben Kontos sind beendet.
+
+Der Befehl benötigt Python und Podman auf dem Host. Er führt einen kurzlebigen
+Node-Prozess als bestehender Containerbenutzer im API-Container aus; ein eigener
+Node- oder Datenbankclient auf dem Host ist nicht nötig. Die Datenbankverbindung
+verwendet die bereits vorhandene Containerkonfiguration und das gemountete
+DB-Secret. Das neue Passwort geht über stdin, nicht über Prozessargumente oder
+Logs. Der Befehl gibt nur einen festen Erfolgsstatus aus; fremde Prozessdiagnosen
+werden nicht durchgereicht. Bei „Result not confirmed“ zuerst den Zustand prüfen,
+bevor ein weiterer Reset versucht wird: Die Änderung könnte bereits erfolgt sein.
+
+### Sicherheitsgrenze und Abnahme
+
+- Der Betreiber besitzt bereits Zugriff auf den Podman-Host und damit auf die
+  lokale Datenbank. Das Werkzeug setzt diesen Zugriff voraus und erweitert ihn
+  nicht um eine öffentliche Wiederherstellungsfunktion.
+- Zurückgesetzt wird nur ein bestehender nativer Credential-Datensatz im fest
+  konfigurierten Mandanten. Unbekannte Konten, Google-Konten ohne lokales Passwort
+  sowie deaktivierte Freigaben oder Memberships werden nicht angelegt oder aktiviert.
+- Eine zeitliche Fehlversuchssperre wird beim Setzen des neuen Passworts aufgehoben.
+  Passwortregeln und scrypt entsprechen Bootstrap und eigenem Passwortwechsel.
+- Dateiinhalt und Dateirechte werden über denselben geöffneten Dateideskriptor
+  geprüft; Spezialdateien und Symlink-Austausch werden abgewiesen. Die Eingabe ist
+  größenbegrenzt; zu offene Rechte und Dateien in Git sind nicht erlaubt.
+- Neuer Hash, Widerruf sämtlicher Kontositzungen und `password.reset` sind unter
+  der bestehenden Mandantensperre atomar. Das Audit kennzeichnet den Betreiber
+  durch einen leeren Akteur und die Ziel-Benutzer-ID als Datensatzbezug. Ein
+  Auditfehler rollt die Änderung zurück; andere Mandanten bleiben unverändert.
+- Migration `0021_password_recovery.sql` erweitert nur die Audit-Aktionen. Die
+  Berechtigung eines Datenbank-Superusers kann das Audit weiterhin technisch
+  umgehen; der Befehl ist kein Schutz gegen einen kompromittierten Betreiber.
+
+Geprüft sind der Dateivertrag und neutrale Ausgaben im Adaptertest sowie aktive,
+gesperrte und fremde Konten, Audit-Rollback und gleichnamige Benutzer-IDs in zwei
+Mandanten mit PostgreSQL. Zusätzlich wurde das echte Skript auf Podman 5.4.2 gegen
+einen frisch gebauten amd64-Teststand ausgeführt: neue Anmeldung, aufgehobene
+Fehlversuchssperre, widerrufene alte Sitzung und Betreiber-Audit bestanden. Netzwerk,
+Volume, Secret und Container dieses isolierten Probelaufs wurden danach entfernt.
+Das echte Inhaberkonto wurde bei dieser Abnahme nicht zurückgesetzt.

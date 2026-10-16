@@ -80,5 +80,6 @@ frühere Google-Pflicht und das Verbot lokaler Passwörter. H005 verwendet vorha
 Sitzungen und Kontosperren, scrypt aus Node und einen einmaligen externen Bootstrap;
 keine offene Registrierung und kein zusätzlicher Maildienst. Google bleibt als
 alternativer Modus erhalten. H008 ergänzt den eigenen Passwortwechsel mit Widerruf
-aller Sitzungen. Vor Produktivbetrieb folgen Wiederherstellung und die kontrollierte
-Einrichtung weiterer Passwortkonten.
+aller Sitzungen. H009 ergänzt eine kontrollierte Wiederherstellung ausschließlich
+über bestehenden SSH-/Podman-Betreiberzugriff, ohne HTTP-Endpunkt. Weitere lokale
+Konten werden für den Solo-Betrieb nicht vorgezogen und folgen bei Bedarf.

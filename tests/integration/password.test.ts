@@ -610,3 +610,153 @@ test('password-change validation and throttling run before any credential mutati
   await server();
   expect((await login()).statusCode).toBe(204);
 });
+
+test('operator recovery only resets active native accounts and preserves foreign sessions with matching user IDs', async () => {
+  await server();
+  const own = (
+    await pool.query('SELECT * FROM password_credentials WHERE tenant_id=$1', [
+      tenantId,
+    ])
+  ).rows[0];
+  const other = (
+    await pool.query(
+      'SELECT tenant_id FROM password_credentials WHERE tenant_id<>$1',
+      [tenantId],
+    )
+  ).rows[0].tenant_id;
+  const foreignToken = digest('fictional-foreign-sentinel');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'INSERT INTO users(tenant_id,id,email) VALUES($1,$2,$3)',
+      [other, own.user_id, 'fictional.mirror@example.invalid'],
+    );
+    await client.query(
+      'INSERT INTO memberships(tenant_id,user_id) VALUES($1,$2)',
+      [other, own.user_id],
+    );
+    await client.query(
+      'INSERT INTO allowed_accounts(tenant_id,id,email,user_id) VALUES($1,$2,$3,$4)',
+      [other, randomUUID(), 'fictional.mirror@example.invalid', own.user_id],
+    );
+    await client.query(
+      'INSERT INTO password_credentials(tenant_id,user_id,username,password_hash) VALUES($1,$2,$3,$4)',
+      [other, own.user_id, 'fictional.mirror', own.password_hash],
+    );
+    await client.query(
+      "INSERT INTO sessions(tenant_id,user_id,token_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",
+      [other, own.user_id, foreignToken],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  const repo = passwordAccess(pool, tenantId),
+    next = 'Fictional operator recovery password';
+  expect(await repo.resetPasswordAsOperator('fictional.mirror', next)).toBe(
+    false,
+  );
+  await expect(
+    repo.resetPasswordAsOperator('bad@username', next),
+  ).rejects.toThrow();
+  await expect(
+    repo.resetPasswordAsOperator('fictional.owner', 'short'),
+  ).rejects.toThrow();
+  const old = await login();
+  await pool.query(
+    "UPDATE password_credentials SET failures=5,locked_until=now()+interval '15 minutes' WHERE tenant_id=$1",
+    [tenantId],
+  );
+  expect(await repo.resetPasswordAsOperator(' FICTIONAL.OWNER ', next)).toBe(
+    true,
+  );
+  expect(
+    (
+      await app.inject({
+        url: '/auth/me',
+        headers: { cookie: `${old.cookies[0]!.name}=${old.cookies[0]!.value}` },
+      })
+    ).statusCode,
+  ).toBe(401);
+  const current = await login(undefined, next);
+  expect(current.statusCode).toBe(204);
+  const hash = (
+    await pool.query(
+      'SELECT password_hash FROM password_credentials WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows[0].password_hash;
+  await pool.query('ALTER TABLE audit_events RENAME TO unavailable_audit');
+  try {
+    await expect(
+      repo.resetPasswordAsOperator('fictional.owner', password),
+    ).rejects.toThrow();
+  } finally {
+    await pool.query('ALTER TABLE unavailable_audit RENAME TO audit_events');
+  }
+  expect(
+    (
+      await pool.query(
+        'SELECT password_hash FROM password_credentials WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0].password_hash,
+  ).toBe(hash);
+  expect(
+    (
+      await app.inject({
+        url: '/auth/me',
+        headers: {
+          cookie: `${current.cookies[0]!.name}=${current.cookies[0]!.value}`,
+        },
+      })
+    ).statusCode,
+  ).toBe(200);
+  const second = (
+    await pool.query('SELECT id FROM users WHERE tenant_id=$1 AND email=$2', [
+      tenantId,
+      'fictional.second@example.invalid',
+    ])
+  ).rows[0].id;
+  const access = accessRepository(pool, tenantId),
+    account = (await access.list()).find((a) => a.email === email)!;
+  await access.change(second, account.id, false);
+  expect(await repo.resetPasswordAsOperator('fictional.owner', password)).toBe(
+    false,
+  );
+  expect((await access.list()).find((a) => a.id === account.id)!.active).toBe(
+    false,
+  );
+  await access.change(second, account.id, true);
+  expect(await repo.resetPasswordAsOperator('fictional.owner', password)).toBe(
+    true,
+  );
+  expect(
+    (
+      await pool.query(
+        'SELECT password_hash FROM password_credentials WHERE tenant_id=$1 AND user_id=$2',
+        [other, own.user_id],
+      )
+    ).rows[0].password_hash,
+  ).toBe(own.password_hash);
+  expect(
+    (
+      await pool.query(
+        'SELECT * FROM sessions WHERE tenant_id=$1 AND token_hash=$2',
+        [other, foreignToken],
+      )
+    ).rowCount,
+  ).toBe(1);
+  expect(
+    (
+      await pool.query(
+        "SELECT actor_id,record_id FROM audit_events WHERE tenant_id=$1 AND action='password.reset' ORDER BY id DESC LIMIT 1",
+        [tenantId],
+      )
+    ).rows[0],
+  ).toEqual({ actor_id: null, record_id: own.user_id });
+});

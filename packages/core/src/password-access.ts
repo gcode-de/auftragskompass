@@ -161,6 +161,35 @@ async function checkPassword(
   return valid;
 }
 
+async function replacePassword(
+  tx: Pick<NodePgDatabase, 'update' | 'delete' | 'insert'>,
+  tenantId: string,
+  userId: string,
+  newPassword: string,
+  operator = false,
+) {
+  const passwordHash = await hashPassword(newPassword);
+  await tx
+    .update(passwordCredentials)
+    .set({ passwordHash, failures: 0, lockedUntil: null })
+    .where(
+      and(
+        eq(passwordCredentials.tenantId, tenantId),
+        eq(passwordCredentials.userId, userId),
+      ),
+    );
+  await tx
+    .delete(sessions)
+    .where(and(eq(sessions.tenantId, tenantId), eq(sessions.userId, userId)));
+  await appendAudit(
+    tx,
+    tenantId,
+    operator ? 'password.reset' : 'password.changed',
+    operator ? null : userId,
+    operator ? userId : null,
+  );
+}
+
 export function passwordAccess(pool: Pool, tenantId: string) {
   return {
     async issueSession(
@@ -226,22 +255,30 @@ export function passwordAccess(pool: Pool, tenantId: string) {
           );
           return false;
         }
-        const passwordHash = await hashPassword(newPassword);
-        await tx
-          .update(passwordCredentials)
-          .set({ passwordHash })
-          .where(
-            and(
-              eq(passwordCredentials.tenantId, tenantId),
-              eq(passwordCredentials.userId, userId),
-            ),
-          );
-        await tx
-          .delete(sessions)
-          .where(
-            and(eq(sessions.tenantId, tenantId), eq(sessions.userId, userId)),
-          );
-        await appendAudit(tx, tenantId, 'password.changed', userId);
+        await replacePassword(tx, tenantId, userId, newPassword);
+        return true;
+      });
+    },
+    // Operator-only: reachable through the SSH/Podman command, never an HTTP route.
+    async resetPasswordAsOperator(username: string, newPassword: string) {
+      const normalized = normalizeUsername(username);
+      return drizzle(pool).transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}::text, 814022))`,
+        );
+        const account = await findPasswordAccount(
+          tx,
+          tenantId,
+          eq(passwordCredentials.username, normalized),
+        );
+        if (!account?.allowed || !account.member) return false;
+        await replacePassword(
+          tx,
+          tenantId,
+          account.credential.userId,
+          newPassword,
+          true,
+        );
         return true;
       });
     },

@@ -193,8 +193,7 @@ Caddy leitet die öffentliche Adresse auf die App weiter. Beide Homer-Quellen
 tragen den Zusatz „Testbetrieb“. Eine erste Datenbanksicherung liegt mit Modus 600
 auf dem Host und mit verifiziertem Hash auf dem Betreiberrechner, außerhalb von Git.
 Kontodaten und Passwörter liegen ausschließlich privat; echte Kunden- und
-Auftragsdaten wurden nicht importiert. Verschlüsselte automatische Sicherungen,
-Wiederherstellung und die vollständige Betriebsabnahme E005
+Auftragsdaten wurden nicht importiert. Verschlüsselte automatische Sicherungen und die vollständige Betriebsabnahme E005
 bleiben vor Produktivbetrieb offen. Der Teststand startet noch nicht automatisch
 nach einem Host-Neustart; dafür `systemctl start ak-test-admin.service` ausführen.
 
@@ -218,5 +217,18 @@ Die eigene Passwortänderung ist unter Einstellungen verfügbar und beendet alle
 Sitzungen des Kontos. Die vorhandene Startpasswort-Datei wird dabei nicht automatisch
 aktualisiert; das selbst gewählte neue Passwort im eigenen Passwortmanager sichern.
 Die [Anmelde-Dokumentation](authentication.md#eigenes-passwort-ändern-h008) beschreibt
-Prüfungen, Fehlversuchssperre und Audit. Wiederherstellung ohne aktuelles Passwort
-und zusätzliche lokale Konten sind weiterhin nicht freigegeben.
+Prüfungen, Fehlversuchssperre und Audit. Die getrennte Betreiber-Wiederherstellung
+ist in H009 beschrieben; zusätzliche lokale Konten folgen bei Bedarf.
+
+## Betreiber-Wiederherstellung installieren (H009)
+
+Nach einem grünen Image-Update ab H009 `scripts/reset_password.py` als private
+Datei mit Modus 600 nach `/etc/auftragskompass-test/reset_password.py` auf den
+Podman-Host kopieren. Der Ordner hat bereits Modus 700. Das Werkzeug wird bei Bedarf
+über den bestehenden SSH-Zugang aufgerufen; es ist kein Dienst und kein weiterer
+veröffentlichter Port. [Dateivertrag, Ablauf und Sicherheitsgrenze](authentication.md#betreiber-wiederherstellung-h009)
+sind dokumentiert. Der normale Betrieb benötigt keine zusätzliche Passwortdatei.
+
+Der isolierte native Probelauf hat das echte Inhaberkonto und seine Startdatei
+unverändert gelassen. Verschlüsselte tägliche Sicherungen und die übrige
+Betriebsabnahme E005 bleiben vor einer Produktivfreigabe erforderlich.

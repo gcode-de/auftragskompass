@@ -9,6 +9,7 @@ export type AuditAction =
   | 'login.failed'
   | 'logout'
   | 'password.changed'
+  | 'password.reset'
   | 'password.change_denied'
   | 'master_data.created'
   | 'master_data.updated'
