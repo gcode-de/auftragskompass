@@ -10,6 +10,7 @@ export async function appendEventActivity(
   version: number,
   status: string,
   previousStatus?: string,
+  resourcesChanged = false,
 ) {
   await db.insert(eventActivities).values({
     tenantId,
@@ -20,7 +21,9 @@ export async function appendEventActivity(
       previousStatus === undefined
         ? 'created'
         : previousStatus === status
-          ? 'updated'
+          ? resourcesChanged
+            ? 'resources_changed'
+            : 'updated'
           : 'status_changed',
     previousStatus: previousStatus ?? null,
     nextStatus: status,
@@ -52,8 +55,10 @@ export async function readEventActivities(
     description:
       row.kind === 'created'
         ? 'Event angelegt.'
-        : row.kind === 'updated'
-          ? 'Event geändert.'
-          : `Status von ${eventStatuses.find((s) => s.code === row.previousStatus)!.label} auf ${eventStatuses.find((s) => s.code === row.nextStatus)!.label} geändert.`,
+        : row.kind === 'resources_changed'
+          ? 'Ressourcenzuordnung und Dispositionszeitraum geändert.'
+          : row.kind === 'updated'
+            ? 'Event geändert.'
+            : `Status von ${eventStatuses.find((s) => s.code === row.previousStatus)!.label} auf ${eventStatuses.find((s) => s.code === row.nextStatus)!.label} geändert.`,
   }));
 }

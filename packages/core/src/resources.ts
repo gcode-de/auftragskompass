@@ -112,8 +112,9 @@ export function registerResourceRoutes(
       return reply.code(403).send({ error: 'forbidden' });
     if (
       error instanceof Error &&
-      (error.cause as { constraint?: string } | undefined)?.constraint ===
-        'resource_units_in_use'
+      ['resource_units_in_use', 'booked_event_requires_box'].includes(
+        (error.cause as { constraint?: string } | undefined)?.constraint ?? '',
+      )
     )
       return reply.code(409).send({ error: 'resource_in_use' });
     if (error instanceof ResourceError)

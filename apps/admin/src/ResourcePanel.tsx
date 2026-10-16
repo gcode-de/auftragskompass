@@ -59,7 +59,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           result.error === 'conflict'
             ? 'Inzwischen geändert. Liste aktualisieren und erneut bearbeiten.'
             : result.error === 'resource_in_use'
-              ? 'Die Ressource ist künftig reserviert. Bestand oder Archiv erst nach Prüfung ändern.'
+              ? 'Die Ressource ist künftig reserviert oder als Fotobox fest zugewiesen. Bestand, Kategorie und Archiv erst nach Prüfung ändern.'
               : 'Speichern fehlgeschlagen. Code, Eingabe und Anmeldung prüfen.',
         );
         return;
@@ -77,6 +77,10 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   return (
     <section id="resources" aria-label="Ressourcen">
       <h2>Ressourcen</h2>
+      <p>
+        Fotoboxen erhalten die Kategorie „Fotobox“. Nur mit einer festen
+        Fotobox-Zuweisung kann ein Event gebucht werden.
+      </p>
       <form
         key={editing ? `${editing.id}:${editing.version}` : 'new'}
         onSubmit={(event) => {

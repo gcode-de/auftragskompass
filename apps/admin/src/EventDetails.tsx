@@ -1,3 +1,4 @@
+import { ResourceAssignments } from './ResourceAssignments.js';
 import { useEffect, useState } from 'react';
 import type { EventRow } from './EventPanel.js';
 type Detail = {
@@ -40,7 +41,7 @@ export function EventDetails({
   id: string;
   csrfToken: string;
   statuses: { code: string; label: string }[];
-  onChanged: () => Promise<void>;
+  onChanged: (message?: string) => Promise<void>;
   onEdit: (event: EventRow) => void;
   onClose: () => void;
 }) {
@@ -177,6 +178,15 @@ export function EventDetails({
           <button disabled={busy || loading} onClick={() => onEdit(data.event)}>
             Stammdaten bearbeiten
           </button>
+          <ResourceAssignments
+            key={data.event.id + ':' + data.event.version}
+            event={data.event}
+            csrfToken={csrfToken}
+            onChanged={async () => {
+              await load();
+              await onChanged('Ressourcen und Termin gespeichert.');
+            }}
+          />
           <h4>Kontakte</h4>
           {!data.contacts.length && <p>Noch keine Kontakte zugeordnet.</p>}
           <ul>

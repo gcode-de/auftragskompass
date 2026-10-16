@@ -1,3 +1,10 @@
+import {
+  assignEventResources,
+  hasBookedBox,
+  resourcePlan,
+  ResourcePlanError,
+  type ResourceAssignment,
+} from './event-reservations.js';
 import { transitionEventReservations } from './reservations.js';
 import { appendEventActivity, readEventActivities } from './event-activity.js';
 import { randomUUID } from 'node:crypto';
@@ -345,163 +352,198 @@ export function eventRepository(pool: Pool, tenantId: string) {
       input: EventInput,
       id?: string,
       version?: number,
+      assignments?: ResourceAssignment[],
     ) {
-      return db.transaction(async (tx) => {
-        await lockTenant(tx, tenantId);
-        await requireAdministrator(tx, tenantId, actorId);
-        const old = id
-          ? (await readRows(tx, tenantId, undefined, id))[0]
-          : undefined;
-        if (id && !old) throw new EventError('not_found');
-        if (old && old.version !== version) throw new EventError('conflict');
-        if (input.status === 'booked') throw new EventError('booking_required');
-        const [tenant] = await tx
-          .select()
-          .from(tenants)
-          .where(eq(tenants.id, tenantId));
-        const timeZone = old?.timeZone ?? tenant!.timezone;
-        validateSchedule(
-          input.eventDate,
-          input.startsAt,
-          input.endsAt,
-          timeZone,
-        );
-        if (old) {
-          const remaining = await transitionEventReservations(
+      return db
+        .transaction(async (tx) => {
+          await lockTenant(tx, tenantId);
+          await requireAdministrator(tx, tenantId, actorId);
+          const old = id
+            ? (await readRows(tx, tenantId, undefined, id))[0]
+            : undefined;
+          if (id && !old) throw new EventError('not_found');
+          if (old && old.version !== version) throw new EventError('conflict');
+          if (
+            input.status === 'booked' &&
+            !assignments &&
+            (!old ||
+              old.status !== 'booked' ||
+              !(await hasBookedBox(tx, tenantId, old.id)))
+          )
+            throw new EventError('booking_required');
+          const [tenant] = await tx
+            .select()
+            .from(tenants)
+            .where(eq(tenants.id, tenantId));
+          const timeZone = old?.timeZone ?? tenant!.timezone;
+          validateSchedule(
+            input.eventDate,
+            input.startsAt,
+            input.endsAt,
+            timeZone,
+          );
+          if (old) {
+            const remaining = await transitionEventReservations(
+              tx,
+              tenantId,
+              old.id,
+              actorId,
+              old.status,
+              input.status,
+            );
+            if (
+              remaining &&
+              !assignments &&
+              (old.eventDate !== input.eventDate ||
+                old.startsAt !==
+                  (input.startsAt
+                    ? new Date(input.startsAt).toISOString()
+                    : null) ||
+                old.endsAt !==
+                  (input.endsAt ? new Date(input.endsAt).toISOString() : null))
+            )
+              throw new EventError('reservations_need_review');
+          }
+          for (const [key, kind] of [
+            ['eventTypeId', 'event_type'],
+            ['packageId', 'package'],
+          ] as const) {
+            if (!input[key]) continue;
+            const [row] = await tx
+              .select()
+              .from(masterData)
+              .where(
+                and(
+                  eq(masterData.tenantId, tenantId),
+                  eq(masterData.id, input[key]!),
+                ),
+              );
+            if (
+              !row ||
+              row.kind !== kind ||
+              (row.state !== 'active' && old?.[key] !== row.id)
+            )
+              throw new EventError('invalid_reference');
+          }
+          if (input.locationId) {
+            const [row] = await tx
+              .select()
+              .from(locations)
+              .where(
+                and(
+                  eq(locations.tenantId, tenantId),
+                  eq(locations.id, input.locationId),
+                ),
+              );
+            if (!row || (row.state !== 'active' && old?.locationId !== row.id))
+              throw new EventError('invalid_reference');
+          }
+          const { primaryContactId, additionalContactIds, ...fields } = input;
+          const contactIds = [
+            ...(primaryContactId ? [primaryContactId] : []),
+            ...additionalContactIds,
+          ];
+          if (new Set(contactIds).size !== contactIds.length)
+            throw new EventError('invalid_reference');
+          if (contactIds.length) {
+            const people = await tx
+              .select()
+              .from(contacts)
+              .where(
+                and(
+                  eq(contacts.tenantId, tenantId),
+                  inArray(contacts.id, contactIds),
+                ),
+              );
+            if (
+              people.length !== contactIds.length ||
+              people.some(
+                (person) =>
+                  person.state !== 'active' &&
+                  old?.primaryContactId !== person.id &&
+                  !old?.additionalContactIds.includes(person.id),
+              )
+            )
+              throw new EventError('invalid_reference');
+          }
+
+          const eventId = id ?? randomUUID(),
+            values = {
+              ...fields,
+              name: input.name.trim(),
+              timeZone,
+              notesHtml: sanitizeNotes(input.notesHtml),
+              startsAt: input.startsAt ? new Date(input.startsAt) : null,
+              endsAt: input.endsAt ? new Date(input.endsAt) : null,
+              version: (old?.version ?? 0) + 1,
+            };
+          if (id)
+            await tx
+              .update(events)
+              .set(values)
+              .where(and(eq(events.tenantId, tenantId), eq(events.id, id)));
+          else
+            await tx
+              .insert(events)
+              .values({ ...values, tenantId, id: eventId });
+          await tx
+            .delete(eventContacts)
+            .where(
+              and(
+                eq(eventContacts.tenantId, tenantId),
+                eq(eventContacts.eventId, eventId),
+              ),
+            );
+          if (contactIds.length)
+            await tx.insert(eventContacts).values(
+              contactIds.map((contactId) => ({
+                tenantId,
+                eventId,
+                contactId,
+                role: contactId === primaryContactId ? 'primary' : 'additional',
+              })),
+            );
+          if (assignments)
+            await assignEventResources(
+              tx,
+              tenantId,
+              actorId,
+              { id: eventId, ...values },
+              assignments,
+            );
+          await appendAudit(
             tx,
             tenantId,
-            old.id,
+            id ? 'event.updated' : 'event.created',
             actorId,
-            old.status,
+            eventId,
+          );
+          await appendEventActivity(
+            tx,
+            tenantId,
+            eventId,
+            actorId,
+            values.version,
             input.status,
+            old?.status,
+            assignments !== undefined,
           );
-          if (
-            remaining &&
-            (old.eventDate !== input.eventDate ||
-              old.startsAt !==
-                (input.startsAt
-                  ? new Date(input.startsAt).toISOString()
-                  : null) ||
-              old.endsAt !==
-                (input.endsAt ? new Date(input.endsAt).toISOString() : null))
-          )
-            throw new EventError('reservations_need_review');
-        }
-        for (const [key, kind] of [
-          ['eventTypeId', 'event_type'],
-          ['packageId', 'package'],
-        ] as const) {
-          if (!input[key]) continue;
-          const [row] = await tx
-            .select()
-            .from(masterData)
-            .where(
-              and(
-                eq(masterData.tenantId, tenantId),
-                eq(masterData.id, input[key]!),
-              ),
-            );
-          if (
-            !row ||
-            row.kind !== kind ||
-            (row.state !== 'active' && old?.[key] !== row.id)
-          )
-            throw new EventError('invalid_reference');
-        }
-        if (input.locationId) {
-          const [row] = await tx
-            .select()
-            .from(locations)
-            .where(
-              and(
-                eq(locations.tenantId, tenantId),
-                eq(locations.id, input.locationId),
-              ),
-            );
-          if (!row || (row.state !== 'active' && old?.locationId !== row.id))
-            throw new EventError('invalid_reference');
-        }
-        const { primaryContactId, additionalContactIds, ...fields } = input;
-        const contactIds = [
-          ...(primaryContactId ? [primaryContactId] : []),
-          ...additionalContactIds,
-        ];
-        if (new Set(contactIds).size !== contactIds.length)
-          throw new EventError('invalid_reference');
-        if (contactIds.length) {
-          const people = await tx
-            .select()
-            .from(contacts)
-            .where(
-              and(
-                eq(contacts.tenantId, tenantId),
-                inArray(contacts.id, contactIds),
-              ),
-            );
-          if (
-            people.length !== contactIds.length ||
-            people.some(
-              (person) =>
-                person.state !== 'active' &&
-                old?.primaryContactId !== person.id &&
-                !old?.additionalContactIds.includes(person.id),
-            )
-          )
-            throw new EventError('invalid_reference');
-        }
-
-        const eventId = id ?? randomUUID(),
-          values = {
-            ...fields,
-            name: input.name.trim(),
-            timeZone,
-            notesHtml: sanitizeNotes(input.notesHtml),
-            startsAt: input.startsAt ? new Date(input.startsAt) : null,
-            endsAt: input.endsAt ? new Date(input.endsAt) : null,
-            version: (old?.version ?? 0) + 1,
-          };
-        if (id)
-          await tx
-            .update(events)
-            .set(values)
-            .where(and(eq(events.tenantId, tenantId), eq(events.id, id)));
-        else
-          await tx.insert(events).values({ ...values, tenantId, id: eventId });
-        await tx
-          .delete(eventContacts)
-          .where(
-            and(
-              eq(eventContacts.tenantId, tenantId),
-              eq(eventContacts.eventId, eventId),
-            ),
-          );
-        if (contactIds.length)
-          await tx.insert(eventContacts).values(
-            contactIds.map((contactId) => ({
-              tenantId,
-              eventId,
-              contactId,
-              role: contactId === primaryContactId ? 'primary' : 'additional',
-            })),
-          );
-        await appendAudit(
-          tx,
-          tenantId,
-          id ? 'event.updated' : 'event.created',
-          actorId,
-          eventId,
-        );
-        await appendEventActivity(
-          tx,
-          tenantId,
-          eventId,
-          actorId,
-          values.version,
-          input.status,
-          old?.status,
-        );
-        return (await readRows(tx, tenantId, undefined, eventId))[0]!;
-      });
+          return (await readRows(tx, tenantId, undefined, eventId))[0]!;
+        })
+        .catch((error: unknown) => {
+          const cause =
+            error instanceof Error
+              ? ((error.cause ?? error) as
+                  { code?: string; constraint?: string } | undefined)
+              : undefined;
+          if (cause?.constraint === 'reservations_event_unit_live_idx')
+            throw new ResourcePlanError('reservations_need_review');
+          if (cause?.code === '23P01')
+            throw new ResourcePlanError('resource_conflict');
+          if (cause?.constraint === 'booked_event_requires_box')
+            throw new ResourcePlanError('booking_required');
+          throw error;
+        });
     },
   };
 }
@@ -571,7 +613,7 @@ export function registerEventRoutes(
   function failure(error: unknown, reply: FastifyReply) {
     if (error instanceof AccessError)
       return reply.code(403).send({ error: 'forbidden' });
-    if (error instanceof EventError)
+    if (error instanceof EventError || error instanceof ResourcePlanError)
       return reply
         .code(
           error.message === 'not_found'
@@ -580,6 +622,8 @@ export function registerEventRoutes(
                   'conflict',
                   'booking_required',
                   'reservations_need_review',
+                  'resource_conflict',
+                  'unit_unavailable',
                 ].includes(error.message)
               ? 409
               : 400,
@@ -587,6 +631,141 @@ export function registerEventRoutes(
         .send({ error: error.message });
     throw error;
   }
+  const assignmentSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['unitId', 'periodSource'],
+    properties: {
+      unitId: { type: 'string', format: 'uuid' },
+      periodSource: { type: 'string', enum: ['event', 'manual'] },
+      baseStart: { type: 'string', format: 'date-time' },
+      baseEnd: { type: 'string', format: 'date-time' },
+    },
+    allOf: [
+      {
+        if: { properties: { periodSource: { const: 'manual' } } },
+        then: { required: ['baseStart', 'baseEnd'] },
+      },
+    ],
+  };
+  const timestampOrNull = { type: ['string', 'null'] };
+  const availabilityRow = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'unitId',
+      'resourceId',
+      'name',
+      'code',
+      'category',
+      'ordinal',
+      'selected',
+      'periodSource',
+      'baseStart',
+      'baseEnd',
+      'beforeDays',
+      'afterDays',
+      'startsAt',
+      'endsAt',
+      'reason',
+      'conflicts',
+      'available',
+    ],
+    properties: {
+      unitId: { type: 'string' },
+      resourceId: { type: 'string' },
+      name: { type: 'string' },
+      code: { type: 'string' },
+      category: { type: 'string' },
+      ordinal: { type: 'integer' },
+      selected: { type: 'boolean' },
+      periodSource: { type: 'string' },
+      baseStart: timestampOrNull,
+      baseEnd: timestampOrNull,
+      beforeDays: { type: 'integer' },
+      afterDays: { type: 'integer' },
+      startsAt: timestampOrNull,
+      endsAt: timestampOrNull,
+      reason: timestampOrNull,
+      available: { type: 'boolean' },
+      conflicts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['id', 'eventId', 'state', 'startsAt', 'endsAt'],
+          properties: {
+            id: { type: 'string' },
+            eventId: timestampOrNull,
+            state: { type: 'string' },
+            startsAt: { type: 'string' },
+            endsAt: { type: 'string' },
+          },
+        },
+      },
+    },
+  };
+  app.get<{
+    Params: { id: string };
+    Querystring: { unitId?: string; baseStart?: string; baseEnd?: string };
+  }>(
+    '/api/v1/events/:id/availability',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            unitId: assignmentSchema.properties.unitId,
+            baseStart: assignmentSchema.properties.baseStart,
+            baseEnd: assignmentSchema.properties.baseEnd,
+          },
+        },
+        response: { 200: { type: 'array', items: availabilityRow } },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const detail = await repo.detail(request.params.id),
+          query = request.query;
+        if (
+          (query.unitId && (!query.baseStart || !query.baseEnd)) ||
+          (!query.unitId && (query.baseStart || query.baseEnd))
+        )
+          throw new ResourcePlanError('invalid_period');
+        const event = detail.event;
+        const rows = await resourcePlan(
+          drizzle(pool),
+          tenantId,
+          {
+            ...event,
+            startsAt: event.startsAt ? new Date(event.startsAt) : null,
+            endsAt: event.endsAt ? new Date(event.endsAt) : null,
+          },
+          query.unitId
+            ? [
+                {
+                  unitId: query.unitId,
+                  periodSource: 'manual',
+                  baseStart: query.baseStart!,
+                  baseEnd: query.baseEnd!,
+                },
+              ]
+            : undefined,
+        );
+        return query.unitId
+          ? rows.filter((row) => row.unitId === query.unitId?.toLowerCase())
+          : rows;
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   app.get(
     '/api/v1/events',
     {
@@ -687,7 +866,10 @@ export function registerEventRoutes(
       id: { type: 'string' },
       actorId: nullableId,
       eventVersion: { anyOf: [version, { type: 'null' }] },
-      kind: { type: 'string', enum: ['created', 'updated', 'status_changed'] },
+      kind: {
+        type: 'string',
+        enum: ['created', 'updated', 'status_changed', 'resources_changed'],
+      },
       previousStatus: nullableStatus,
       nextStatus: nullableStatus,
       occurredAt: { type: 'string', format: 'date-time' },
@@ -772,7 +954,10 @@ export function registerEventRoutes(
       }
     },
   );
-  app.put<{ Params: { id: string }; Body: EventInput & { version: number } }>(
+  app.put<{
+    Params: { id: string };
+    Body: EventInput & { version: number; assignments?: ResourceAssignment[] };
+  }>(
     '/api/v1/events/:id',
     {
       schema: {
@@ -785,7 +970,15 @@ export function registerEventRoutes(
           type: 'object',
           additionalProperties: false,
           required: [...Object.keys(fields), 'version'],
-          properties: { ...fields, version },
+          properties: {
+            ...fields,
+            version,
+            assignments: {
+              type: 'array',
+              maxItems: 50,
+              items: assignmentSchema,
+            },
+          },
         },
         response: { 200: row },
       },
@@ -797,6 +990,7 @@ export function registerEventRoutes(
           request.body,
           request.params.id,
           request.body.version,
+          request.body.assignments,
         );
       } catch (error) {
         return failure(error, reply);

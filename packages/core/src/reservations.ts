@@ -26,7 +26,7 @@ type HoldInput = {
 };
 const active = () =>
   sql<boolean>`reservation_is_active(${reservations.state},${reservations.expiresAt},statement_timestamp())`;
-async function expireTenant(tx: Transaction, tenantId: string) {
+export async function expireTenant(tx: Transaction, tenantId: string) {
   const expired = await tx
     .update(reservations)
     .set({ state: 'expired' })

@@ -355,6 +355,77 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeVisible();
+    await events
+      .getByLabel('Eventname', { exact: true })
+      .fill('Fictional resource booking');
+    await events.getByLabel('Eventdatum').fill('2030-10-16');
+    await events
+      .getByLabel('Eventbeginn', { exact: true })
+      .fill('2030-10-16T18:00');
+    await events
+      .getByLabel('Eventende', { exact: true })
+      .fill('2030-10-16T20:00');
+    await events
+      .getByRole('button', { name: 'Event speichern', exact: true })
+      .click();
+    await events
+      .getByRole('button', {
+        name: 'Eventakte öffnen: Fictional resource booking',
+      })
+      .click();
+    const assignment = record.getByRole('region', {
+      name: 'Ressourcenzuweisung',
+    });
+    await assignment
+      .getByLabel('FB2 · Einheit 1 zuweisen', { exact: true })
+      .check();
+    await assignment
+      .getByLabel('Glamour-Paket · Einheit 1 zuweisen', { exact: true })
+      .check();
+    await assignment
+      .getByRole('combobox', { name: 'Buchungsstatus', exact: true })
+      .selectOption('booked');
+    await assignment
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .click();
+    await expect(
+      events.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      assignment.getByLabel('FB2 · Einheit 1 zuweisen', { exact: true }),
+    ).toBeChecked();
+    await expect(
+      assignment.getByRole('combobox', { name: 'Buchungsstatus', exact: true }),
+    ).toHaveValue('booked');
+    await assignment.getByLabel('Buchungsdatum').fill('2030-10-20');
+    await assignment
+      .getByLabel('Eventbeginn für die Disposition', { exact: true })
+      .fill('2030-10-20T18:00');
+    await assignment
+      .getByLabel('Eventende für die Disposition', { exact: true })
+      .fill('2030-10-20T20:00');
+    await assignment
+      .getByRole('button', {
+        name: 'Verfügbarkeit prüfen: FB2 · Einheit 1',
+        exact: true,
+      })
+      .click();
+    await expect(
+      assignment.getByText('Verfügbarkeit aktualisiert.', { exact: true }),
+    ).toBeVisible();
+    await assignment
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .click();
+    await expect(
+      events.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      record.getByText(/Ressourcenzuordnung und Dispositionszeitraum geändert/),
+    ).toBeVisible();
+    await assignment.screenshot({
+      path: 'tests/test-results/resource-assignment.png',
+    });
+    await record.getByRole('button', { name: 'Eventakte schließen' }).click();
     await events.getByLabel('Events suchen', { exact: true }).fill('browser');
     await events.getByLabel('Filter von').fill('2026-10-16');
     await events.getByLabel('Filter bis').fill('2026-10-16');

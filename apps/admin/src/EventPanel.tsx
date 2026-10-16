@@ -509,9 +509,9 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
                 id={row.id}
                 csrfToken={csrfToken}
                 statuses={statuses}
-                onChanged={async () => {
+                onChanged={async (message = 'Eventstatus gespeichert.') => {
                   await refresh();
-                  setMessage('Eventstatus gespeichert.');
+                  setMessage(message);
                 }}
                 onEdit={(event) => {
                   setDraft(event);

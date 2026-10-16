@@ -191,7 +191,7 @@ export const eventActivities = pgTable('event_activities', {
   actorId: uuid('actor_id'),
   eventVersion: integer('event_version'),
   kind: text('kind', {
-    enum: ['created', 'updated', 'status_changed'],
+    enum: ['created', 'updated', 'status_changed', 'resources_changed'],
   }).notNull(),
   previousStatus: text('previous_status'),
   nextStatus: text('next_status'),
