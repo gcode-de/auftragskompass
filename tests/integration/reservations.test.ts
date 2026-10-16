@@ -454,3 +454,237 @@ test('application and SQL triggers lock the same tenant even with uppercase UUID
     }
   });
 });
+
+async function conflictFixture() {
+  const resource = await resourceRepository(pool, tenantId).save(actorId, {
+    ...resourceInput,
+    code: 'SYNTH-' + randomUUID().slice(0, 8).toUpperCase(),
+  });
+  const units = await reservationRepository(pool, tenantId).units(resource.id);
+  const event = await eventRepository(pool, tenantId).save(actorId, eventInput);
+  return { units, event };
+}
+
+async function insertReservation(
+  client: Pick<Pool, 'query'>,
+  unit: string,
+  event: string | null,
+  state = 'booked',
+  from = start,
+  to = end,
+  ownerTenant = tenantId,
+) {
+  const id = randomUUID();
+  await client.query(
+    `INSERT INTO reservations(tenant_id,id,request_id,request_hash,event_id,unit_id,state,
+      period_source,base_start,base_end,time_zone,before_days,after_days,starts_at,ends_at)
+     VALUES($1,$2,$2,$3,$4,$5,$6,'manual',$7,$8,'Europe/Berlin',0,0,$7,$8)`,
+    [ownerTenant, id, 'a'.repeat(64), event, unit, state, from, to],
+  );
+  return id;
+}
+
+test('confirmed bookings and maintenance blocks exclude overlap, including buffered time and historical periods', async () => {
+  const { units, event } = await conflictFixture();
+  const unit = units[0]!.id;
+  await insertReservation(pool, unit, event.id);
+  await expect(
+    insertReservation(pool, unit, null, 'blocked'),
+  ).rejects.toMatchObject({
+    code: '23P01',
+    constraint: 'reservations_no_overlap',
+  });
+  const otherEvent = await eventRepository(pool, tenantId).save(
+    actorId,
+    eventInput,
+  );
+  await expect(
+    insertReservation(pool, unit, otherEvent.id),
+  ).rejects.toMatchObject({
+    code: '23P01',
+  });
+  // Exact half-open boundaries permit the next reservation at the previous end.
+  await insertReservation(
+    pool,
+    unit,
+    null,
+    'blocked',
+    end,
+    new Date(end.getTime() + 3600000),
+  );
+  const held = await insertReservation(pool, unit, otherEvent.id, 'hold');
+  await expect(
+    pool.query("UPDATE reservations SET state='booked' WHERE id=$1", [held]),
+  ).rejects.toMatchObject({ code: '23P01' });
+  expect(
+    (await pool.query('SELECT state FROM reservations WHERE id=$1', [held]))
+      .rows[0].state,
+  ).toBe('hold');
+  for (const state of ['released', 'expired']) {
+    await insertReservation(pool, unit, otherEvent.id, state);
+  }
+  const buffered = await insertReservation(pool, units[1]!.id, null, 'blocked');
+  await pool.query(
+    "UPDATE reservations SET starts_at=base_start-interval '2 days',before_days=2 WHERE id=$1",
+    [buffered],
+  );
+  await expect(
+    insertReservation(
+      pool,
+      units[1]!.id,
+      otherEvent.id,
+      'booked',
+      new Date(start.getTime() - 86400000),
+      start,
+    ),
+  ).rejects.toMatchObject({ code: '23P01' });
+  const past = new Date('2000-01-01T12:00:00Z'),
+    pastEnd = new Date('2000-01-01T14:00:00Z');
+  await insertReservation(pool, unit, null, 'blocked', past, pastEnd);
+  await expect(
+    insertReservation(pool, unit, null, 'blocked', past, pastEnd),
+  ).rejects.toMatchObject({ code: '23P01' });
+});
+
+test('concurrent transactions serialize the same box and retain the winner after a failed booking', async () => {
+  const { units, event } = await conflictFixture();
+  const otherEvent = await eventRepository(pool, tenantId).save(
+    actorId,
+    eventInput,
+  );
+  const first = await pool.connect(),
+    second = await pool.connect();
+  try {
+    await first.query('BEGIN');
+    await second.query('BEGIN');
+    const winner = await insertReservation(first, units[0]!.id, event.id);
+    const pid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0]
+      .pid;
+    const contender = insertReservation(
+      second,
+      units[0]!.id,
+      otherEvent.id,
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await expect
+      .poll(
+        async () =>
+          (
+            await pool.query(
+              'SELECT cardinality(pg_blocking_pids($1)) > 0 AS waiting',
+              [pid],
+            )
+          ).rows[0].waiting,
+      )
+      .toBe(true);
+    await first.query('COMMIT');
+    expect(await contender).toMatchObject({ code: '23P01' });
+    await second.query('ROLLBACK');
+    expect(
+      (
+        await pool.query('SELECT id FROM reservations WHERE unit_id=$1', [
+          units[0]!.id,
+        ])
+      ).rows,
+    ).toEqual([{ id: winner }]);
+    // A lost transaction does not poison the connection or the other physical box.
+    await insertReservation(second, units[1]!.id, otherEvent.id);
+  } finally {
+    await first.query('ROLLBACK');
+    await second.query('ROLLBACK');
+    first.release();
+    second.release();
+  }
+});
+
+test('rollback frees the time slot and migration restart preserves the exclusion constraint', async () => {
+  const { units, event } = await conflictFixture();
+  const first = await pool.connect(),
+    second = await pool.connect();
+  try {
+    await first.query('BEGIN');
+    await second.query('BEGIN');
+    await insertReservation(first, units[0]!.id, null, 'blocked');
+    const pid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0]
+      .pid;
+    const pending = insertReservation(second, units[0]!.id, event.id);
+    await expect
+      .poll(
+        async () =>
+          (
+            await pool.query(
+              'SELECT cardinality(pg_blocking_pids($1)) > 0 AS waiting',
+              [pid],
+            )
+          ).rows[0].waiting,
+      )
+      .toBe(true);
+    await first.query('ROLLBACK');
+    await pending;
+    await second.query('COMMIT');
+  } finally {
+    await first.query('ROLLBACK');
+    await second.query('ROLLBACK');
+    first.release();
+    second.release();
+  }
+  await migrate(pool);
+  await expect(
+    insertReservation(pool, units[0]!.id, null, 'blocked'),
+  ).rejects.toMatchObject({ code: '23P01' });
+});
+
+test('independent boxes and tenants can reserve identical periods; releasing a block frees the slot', async () => {
+  const { units, event } = await conflictFixture();
+  const first = await pool.connect(),
+    second = await pool.connect();
+  let block: string;
+  try {
+    await first.query('BEGIN');
+    await second.query('BEGIN');
+    block = await insertReservation(first, units[0]!.id, null, 'blocked');
+    const pending = insertReservation(second, units[1]!.id, event.id);
+    await first.query('COMMIT');
+    await pending;
+    await second.query('COMMIT');
+  } finally {
+    await first.query('ROLLBACK');
+    await second.query('ROLLBACK');
+    first.release();
+    second.release();
+  }
+  await expect(
+    insertReservation(pool, units[0]!.id, event.id),
+  ).rejects.toMatchObject({ code: '23P01' });
+  await pool.query("UPDATE reservations SET state='released' WHERE id=$1", [
+    block,
+  ]);
+  await insertReservation(pool, units[0]!.id, event.id);
+  const foreign = randomUUID();
+  await pool.query(
+    "INSERT INTO tenants VALUES($1,'Fictional concurrent tenant','Europe/Berlin')",
+    [foreign],
+  );
+  const foreignUnit = (
+    await pool.query(
+      'SELECT id FROM resource_units WHERE tenant_id=$1 LIMIT 1',
+      [foreign],
+    )
+  ).rows[0].id;
+  // The same physical-unit identifier in another tenant must not collide.
+  await pool.query(
+    'UPDATE resource_units SET id=$1 WHERE tenant_id=$2 AND id=$3',
+    [units[0]!.id, foreign, foreignUnit],
+  );
+  await insertReservation(
+    pool,
+    units[0]!.id,
+    null,
+    'blocked',
+    start,
+    end,
+    foreign,
+  );
+});
