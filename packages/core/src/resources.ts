@@ -1,3 +1,4 @@
+import { registerResourceBlockRoutes } from './resource-blocks.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -83,6 +84,7 @@ export function registerResourceRoutes(
   pool: Pool,
   tenantId: string,
 ) {
+  registerResourceBlockRoutes(app, pool, tenantId);
   const repo = resourceRepository(pool, tenantId);
   const fields = {
     name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' },

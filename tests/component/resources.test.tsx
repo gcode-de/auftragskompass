@@ -93,9 +93,9 @@ test('resource failures preserve edits and permit reload', async () => {
     vi.fn().mockResolvedValue(new Response(null, { status: 500 })),
   );
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText(/konnten nicht geladen/);
+  await screen.findByText(/Ressourcen konnten nicht geladen/);
   fireEvent.click(
     screen.getByRole('button', { name: 'Ressourcen aktualisieren' }),
   );
-  await screen.findByText(/konnten nicht geladen/);
+  await screen.findByText(/Ressourcen konnten nicht geladen/);
 });

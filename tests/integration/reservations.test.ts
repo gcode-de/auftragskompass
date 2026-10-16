@@ -1,3 +1,4 @@
+import { resourceBlockRepository } from '../../packages/core/src/resource-blocks.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import {
@@ -1274,4 +1275,283 @@ test('competing options remain visible and two simultaneous confirmations yield 
     (await repo.list(winner.eventId!)).find((row) => row.state === 'booked')!
       .id,
   ).toBe(manual.id);
+});
+
+test('maintenance blocks are idempotent, conflict with bookings, and release without deleting history', async () => {
+  const repo = resourceBlockRepository(pool, tenantId),
+    { units, event } = await conflictFixture();
+  const input = {
+    requestId: randomUUID(),
+    unitId: units[0]!.id,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    reason: 'Fictional maintenance',
+  };
+  const block = await repo.create(actorId, input);
+  expect(block.state).toBe('blocked');
+  expect(block.reason).toBe('Fictional maintenance');
+  expect((await repo.create(actorId, input)).id).toBe(block.id);
+  await expect(
+    repo.create(actorId, { ...input, reason: 'Fictional different reason' }),
+  ).rejects.toThrow('idempotency_conflict');
+  await expect(
+    insertReservation(pool, units[0]!.id, event.id),
+  ).rejects.toMatchObject({ code: '23P01' });
+  await expect(
+    repo.create(actorId, { ...input, requestId: randomUUID() }),
+  ).rejects.toThrow('resource_conflict');
+  const released = await repo.release(actorId, block.id);
+  expect(released.state).toBe('released');
+  await repo.release(actorId, block.id);
+  expect((await repo.create(actorId, input)).state).toBe('released');
+  await insertReservation(pool, units[0]!.id, event.id);
+  expect(
+    (await repo.overview()).blocks.find((row) => row.id === block.id),
+  ).toMatchObject({ reason: 'Fictional maintenance', state: 'released' });
+  expect(
+    (
+      await pool.query(
+        "SELECT * FROM audit_events WHERE record_id=$1 AND action='reservation.updated'",
+        [block.id],
+      )
+    ).rowCount,
+  ).toBe(1);
+});
+
+test('maintenance validation, simultaneous creation, tenant boundaries and audit remain safe', async () => {
+  const repo = resourceBlockRepository(pool, tenantId),
+    resources = resourceRepository(pool, tenantId);
+  const { units, event } = await conflictFixture();
+  const input = {
+    requestId: randomUUID(),
+    unitId: units[0]!.id,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    reason: 'Fictional repair',
+  };
+  for (const values of [
+    { ...input, startsAt: 'invalid' },
+    { ...input, endsAt: input.startsAt },
+    { ...input, reason: ' ' },
+    { ...input, reason: 'x'.repeat(201) },
+    {
+      ...input,
+      startsAt: '2000-01-01T00:00:00Z',
+      endsAt: '2000-01-02T00:00:00Z',
+    },
+  ])
+    await expect(repo.create(actorId, values)).rejects.toThrow(
+      /invalid_period|invalid_reason/,
+    );
+  await expect(repo.create(randomUUID(), input)).rejects.toThrow('forbidden');
+  await expect(repo.release(randomUUID(), randomUUID())).rejects.toThrow(
+    'forbidden',
+  );
+  await expect(
+    repo.create(actorId, { ...input, unitId: randomUUID() }),
+  ).rejects.toThrow('unit_unavailable');
+  await expect(repo.release(actorId, randomUUID())).rejects.toThrow(
+    'not_found',
+  );
+  const booked = await insertReservation(pool, units[0]!.id, event.id);
+  await expect(repo.release(actorId, booked)).rejects.toThrow('not_found');
+  await expect(repo.create(actorId, input)).rejects.toThrow(
+    'resource_conflict',
+  );
+  const race = await Promise.allSettled(
+    [randomUUID(), randomUUID()].map((requestId) =>
+      repo.create(actorId, { ...input, unitId: units[1]!.id, requestId }),
+    ),
+  );
+  expect(race.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
+  expect(
+    (race.find((row) => row.status === 'rejected') as PromiseRejectedResult)
+      .reason.message,
+  ).toBe('resource_conflict');
+  const block = (
+    race.find((row) => row.status === 'fulfilled') as PromiseFulfilledResult<
+      Awaited<ReturnType<typeof repo.create>>
+    >
+  ).value;
+  const foreign = randomUUID();
+  await bootstrapAccess(
+    pool,
+    foreign,
+    'blocks@example.invalid',
+    'Fictional block tenant',
+    'Europe/Berlin',
+  );
+  await accessRepository(pool, foreign).issueSession(
+    { subject: 'blocks', email: 'blocks@example.invalid' },
+    digest('synthetic-block-session'),
+  );
+  const foreignActor = (await accessRepository(pool, foreign).list())[0]!
+    .userId!;
+  await expect(
+    resourceBlockRepository(pool, foreign).release(foreignActor, block.id),
+  ).rejects.toThrow('not_found');
+  const foreignUnit = (
+    await pool.query(
+      'SELECT id FROM resource_units WHERE tenant_id=$1 LIMIT 1',
+      [foreign],
+    )
+  ).rows[0].id;
+  await expect(
+    repo.create(actorId, { ...input, unitId: foreignUnit }),
+  ).rejects.toThrow('unit_unavailable');
+  expect(
+    (await resourceBlockRepository(pool, foreign).overview()).blocks,
+  ).toEqual([]);
+  const disabled = await resources.save(actorId, {
+    ...resourceInput,
+    code: 'SYNTH-BLOCK-DISABLED',
+    state: 'inactive',
+  });
+  await expect(
+    repo.create(actorId, {
+      ...input,
+      unitId: (
+        await reservationRepository(pool, tenantId).units(disabled.id)
+      )[0]!.id,
+    }),
+  ).rejects.toThrow('unit_unavailable');
+  const globallyBlocked = await resources.save(actorId, {
+    ...resourceInput,
+    code: 'SYNTH-BLOCK-GLOBAL',
+    blocked: true,
+  });
+  await repo.create(actorId, {
+    ...input,
+    unitId: (
+      await reservationRepository(pool, tenantId).units(globallyBlocked.id)
+    )[0]!.id,
+  });
+  // Reasons remain plain text and cannot be attached to customer reservations.
+  await expect(
+    pool.query(
+      "UPDATE reservations SET block_reason='Fictional forbidden reason' WHERE id=$1",
+      [booked],
+    ),
+  ).rejects.toMatchObject({ code: '23514' });
+});
+
+test('resource block HTTP contract requires authorization, validates fields, and retains released history', async () => {
+  const config = {
+    origin: 'https://admin.example.invalid',
+    tenantId,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerResourceRoutes(app, pool, tenantId);
+  const cookies = { '__Host-ak-session': 'synthetic-events' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-events'),
+    };
+  const { units } = await conflictFixture();
+  const input = {
+    requestId: randomUUID(),
+    unitId: units[0]!.id,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    reason: 'Fictional HTTP maintenance',
+  };
+  const create = (payload: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/resource-blocks',
+      cookies,
+      headers,
+      payload,
+    });
+  try {
+    expect(
+      (await app.inject({ url: '/api/v1/resource-blocks' })).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/resource-blocks',
+          cookies,
+          payload: input,
+        })
+      ).statusCode,
+    ).toBe(403);
+    for (const values of [
+      { ...input, unitId: 'invalid' },
+      { ...input, reason: '' },
+      { ...input, startsAt: 'invalid' },
+      { ...input, reason: ' '.repeat(3) },
+    ])
+      expect((await create(values)).statusCode).toBe(400);
+    const created = await create(input);
+    expect(created.statusCode).toBe(201);
+    const block = created.json();
+    expect(block.reason).toBe(input.reason);
+    expect(block.tenantId).toBeUndefined();
+    expect(block.requestHash).toBeUndefined();
+    expect(
+      (await create({ ...input, reason: 'Fictional changed' })).json().error,
+    ).toBe('idempotency_conflict');
+    expect(
+      (await create({ ...input, requestId: randomUUID() })).json().error,
+    ).toBe('resource_conflict');
+    expect(
+      (
+        await create({
+          ...input,
+          requestId: randomUUID(),
+          unitId: randomUUID(),
+        })
+      ).statusCode,
+    ).toBe(409);
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/api/v1/resource-blocks/' + randomUUID() + '/release',
+      cookies,
+      headers,
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/resource-blocks/' + block.id + '/release',
+          cookies,
+          headers,
+        })
+      ).json().state,
+    ).toBe('released');
+    const listing = await app.inject({
+      url: '/api/v1/resource-blocks',
+      cookies,
+    });
+    expect(listing.statusCode).toBe(200);
+    expect(
+      listing.json().blocks.find((row: { id: string }) => row.id === block.id)
+        .state,
+    ).toBe('released');
+  } finally {
+    await app.close();
+  }
 });

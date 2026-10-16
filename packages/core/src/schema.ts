@@ -212,6 +212,7 @@ export const reservations = pgTable('reservations', {
   id: uuid('id').notNull(),
   requestId: uuid('request_id').notNull(),
   requestHash: text('request_hash').notNull(),
+  blockReason: text('block_reason').notNull().default(''),
   eventId: uuid('event_id'),
   unitId: uuid('unit_id').notNull(),
   state: text('state', {

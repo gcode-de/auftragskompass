@@ -219,6 +219,33 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await expect(
       resources.getByRole('listitem').filter({ hasText: /^FB1 –/ }),
     ).toContainText('FB1 – 1 Stück – Gesperrt');
+    const blocks = resources.getByRole('region', {
+      name: 'Zeitweise Ressourcensperren',
+    });
+    await blocks
+      .getByRole('combobox', { name: 'Zu sperrende Einheit', exact: true })
+      .selectOption({ label: 'FB2 · Einheit 1 (FB2)' });
+    await blocks.getByLabel('Sperrgrund').fill('Fictional browser maintenance');
+    await blocks
+      .getByLabel('Sperrbeginn', { exact: true })
+      .fill('2030-11-10T10:00');
+    await blocks
+      .getByLabel('Sperrende', { exact: true })
+      .fill('2030-11-11T18:00');
+    await blocks
+      .getByRole('button', { name: 'Zeitraum sperren', exact: true })
+      .click();
+    await expect(
+      blocks.getByText('Zeitraum gesperrt.', { exact: true }),
+    ).toBeVisible();
+    await blocks
+      .getByRole('button', {
+        name: 'Sperre freigeben: Fictional browser maintenance',
+      })
+      .click();
+    await expect(
+      blocks.getByText(/Fictional browser maintenance.*Freigegeben/),
+    ).toBeVisible();
     const products = page.getByRole('region', { name: 'Produkte' });
     await products
       .getByLabel('Produktname', { exact: true })

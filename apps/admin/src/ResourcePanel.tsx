@@ -1,3 +1,4 @@
+import { ResourceBlocks } from './ResourceBlocks.js';
 import { useEffect, useState } from 'react';
 type Row = { id: string; version: number; name: string } & Record<
   string,
@@ -168,6 +169,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           </li>
         ))}
       </ul>
+      <ResourceBlocks csrfToken={csrfToken} />
     </section>
   );
 }

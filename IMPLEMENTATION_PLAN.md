@@ -1,6 +1,6 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C023 implementiert; C024–C085 offen. Die CI prüft jeden Push.
+**Status:** geprüfter Bauplan; C001–C024 implementiert; C025–C085 offen. Die CI prüft jeden Push.
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
@@ -45,7 +45,8 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] C021: physische Einheiten, getrennte Reservierungszeiträume, Kalenderpuffer, idempotente Vormerkungen und Ablaufbereinigung; feste Buchungen bleiben gesperrt
 - [x] C022: PostgreSQL-Konfliktschutz für feste Buchungen und Sperren einschließlich Parallelität und Rollback
 - [x] C023: Verfügbarkeit und atomare Box-/Zubehörzuweisung in der Eventakte, manuelle Buchung, geprüfte Termin-/Boxwechsel und Logbuch
-- [ ] C024–C085: noch nicht implementiert oder abgenommen
+- [x] C024: zeitweise Sperren ohne Kundenauftrag, genaue Zeiträume und Gründe, idempotente Anlage und Freigabe mit Historie
+- [ ] C025–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
 
