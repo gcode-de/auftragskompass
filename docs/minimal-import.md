@@ -1,8 +1,8 @@
 # Minimalimport für den Bookitup-Ausstieg (E003)
 
 Stand: 16.10.2026. Dies ist der verbindliche Arbeitsvertrag für die nächsten
-Import-Slices, keine bereits vorhandene Importfunktion und keine Freigabe echter
-Daten. Der aktuelle Anwendungsstand ist C025. Private Quellbestände bleiben im
+Import-Slices. E003.1–E003.3 sind inzwischen implementiert und synthetisch geprüft;
+dies ist keine Freigabe echter Daten. Der reguläre Anwendungsstand ist C025. Private Quellbestände bleiben im
 Sicherungsordner außerhalb von Git.
 
 ## Umfang und eigenständige Schritte
@@ -208,8 +208,7 @@ hier nur ein Platzhalter. `mode` ist `dry_run` oder `apply`. Der Standardablauf
 ist zuerst ein Dry-run, dann die bewusste Übernahme derselben geprüften Eingabe.
 Der Endpunkt erzeugt keine Kundennachricht, Ressourcenzuweisung oder Datei.
 Für echte Bestände ist weiterhin eine fachlich freigegebene Normalisierung nötig.
-Die Oberfläche dieses Schritts bietet weiterhin nur die Vorschau; Bedienung der
-Übernahme und Prüfliste werden mit E003.3 ergänzt.
+Die Bedienung von Übernahme und Prüfliste ist im folgenden Abschnitt E003.3 beschrieben.
 
 Die Migration `0017_minimal_import.sql` ergänzt mandantengebundene
 `import_records` mit Quell-ID, normalisiertem Inhalts-Hash, letzter Zielversion,
@@ -218,8 +217,8 @@ Quell-ID zugeordnet werden. Die Datenbank erzwingt Mandanten- und Eventart-/Pake
 `import_promises` bewahrt ausdrücklich ungeprüfte Quellzusagen samt bereinigten
 Eventdaten und Zeitzone auf. Diese Datensätze sind noch keine bestätigten Events
 im operativen Kalender. Sie werden nicht als Anfrage oder Option umbenannt.
-Die gesonderte, sichtbare Prüfliste und der Hinweis auf den unvollständigen
-Kalender folgen mit E003.3; Produktivfreigabe bleibt bis zum Abgleich gesperrt.
+E003.3 zeigt die gesonderte Prüfliste und kennzeichnet den unvollständigen
+Kalender; die Produktivfreigabe bleibt bis zum Abgleich gesperrt.
 C076 muss vor endgültiger Übernahme Zeitangaben und Verknüpfungen erneut durch
 den Event-Fachservice prüfen und eine konfliktfreie physische Box zuweisen.
 
@@ -284,3 +283,56 @@ Datenbankkonflikte HTTP 409; fehlende Sitzungen oder Rechte HTTP 401/403. Der
 Fehlervertrag enthält `error`, `section`, `row` und `candidates` für fachliche
 Importfehler. Unerwartete Fehler verwenden den allgemeinen, inhaltsfreien
 HTTP-500-Vertrag. Jeder Fehler verwirft die gesamte Übernahme.
+
+
+## Abgleich und Bedienfolge (E003.3)
+
+1. Normalisierte Daten privat prüfen, einfügen und **Importvorschau prüfen** wählen.
+2. **Transaktionalen Probelauf starten**. Bei Dublettenvorschlägen einen vorhandenen
+   Datensatz mit angezeigter Version bewusst verknüpfen oder eine eigenständige
+   Anlage wählen. Eine Verknüpfung aktualisiert dessen Felder und benötigt die
+   ausdrücklich aktivierte Erlaubnis für geprüfte Aktualisierungen. Danach den
+   Probelauf wiederholen; bei mehreren Konflikten einzeln fortfahren.
+3. Mengen für neue, verknüpfte, aktualisierte, unveränderte und ausgeschlossene
+   Einträge prüfen. Erst ein erfolgreicher Probelauf ermöglicht die ausdrückliche
+   Bestätigung und anschließend **Geprüfte Daten übernehmen**. Änderungen an Daten,
+   Zuordnungen, Aktualisierungserlaubnis oder eine neue Vorschau verwerfen diese
+   Freigabe. Die API prüft beim Übernehmen alle Regeln erneut.
+4. Unter **Importbestand und Ressourcen-Prüfliste** die zugeordneten Quell-IDs je
+   Abschnitt, Originalstatus und Zielversion abgleichen. Lokal geänderte Ziele
+   werden markiert. Ungeprüfte Zusagen zeigen Termin, Zeitzone, Kontakt, Ort, Paket
+   und Notizen als Text. Ein fehlender Zeitpunkt oder eine fehlende Zuordnung wird
+   sichtbar belassen. Noch keine Box oder Zubehörteil wird automatisch bestätigt.
+5. **Privaten Prüfbericht herunterladen** erzeugt auf ausdrücklichen Klick einen
+   JSON-Bericht des aktuellen Abgleichs. Er enthält personenbezogene Inhalte und
+   gehört in den privaten Sicherungsbestand außerhalb von Git. Der transaktionale
+   Ergebnisbericht zeigt die Änderungen der aktuellen Ausführung; der herunterladbare
+   Bestandsbericht zeigt Herkunft, Mengen, aktuelle Versionen und offene Zusagen.
+
+`GET /api/v1/imports/bookitup` liefert diesen Bestandsabgleich in einer
+mandantengebundenen, nur lesenden Snapshot-Transaktion mit `checkedAt`, `counts`,
+`mappings`, `promises` und `pendingPromises`. Er enthält keine Hashes oder
+Zugangsdaten. Die Rechte werden auch nach der Sitzungsprüfung erneut geprüft.
+Bei Ladefehlern verschwindet der alte Bericht. Nach jedem Übernahmeversuch,
+auch bei unklarer Verbindung, werden Bestandsbericht und Kalender neu geladen;
+so wird ein möglicherweise bereits erfolgreicher Commit nicht als leerer Bestand
+weiter angezeigt. Die Eingabedaten werden bei einem Seitenneuladen bewusst nicht
+wiederhergestellt.
+
+Solange irgendeine ungeprüfte Zusage des Mandanten besteht, zeigt der Kalender
+`Bestand ungeprüft` anstelle einer freien Kapazität. Die normale
+Event-Verfügbarkeitsabfrage liefert für alle Einheiten
+`available: false, reason: import_review_required`. Gewöhnliche
+Buchungsbestätigungen beziehungsweise Änderungen im Zielstatus Gebucht werden mit
+HTTP 409 `import_review_required` blockiert. Die Prüfung teilt sich den Tenant-Lock
+und die Transaktion mit dem Speichern; ein paralleler Import kann die Sperre nicht
+zwischen Prüfung und Commit umgehen. Die Anwendung weist auf den gesonderten
+Ressourcenabgleich hin. Der nächste Schritt C076 bestätigt geprüfte Bestandszusagen
+über einen eigenen expliziten Vorgang, bevor reguläre Buchungen freigegeben werden.
+
+Der synthetische Chromium-Probelauf prüft Vorschau, echten transaktionalen
+Dry-run ohne verbleibende Zeilen, bewusste Übernahme, Herkunft und Mengen,
+ungeprüfte Zusage, Kalenderhinweis und den heruntergeladenen privaten Bericht.
+Integrationstests prüfen zusätzlich Quell-/Zielversionen, Mandantenisolation und
+die Buchungssperre. Das ersetzt weder den Abgleich des echten Exports noch die
+fachliche Freigabe von Boxen und Zubehör.

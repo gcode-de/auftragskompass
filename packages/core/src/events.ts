@@ -29,6 +29,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import sanitizeHtml from 'sanitize-html';
 import {
   events,
+  importPromises,
   eventContacts,
   tenants,
   contacts,
@@ -624,6 +625,7 @@ export function registerEventRoutes(
             ? 404
             : [
                   'conflict',
+                  'import_review_required',
                   'booking_required',
                   'reservations_need_review',
                   'resource_conflict',
@@ -762,6 +764,16 @@ export function registerEventRoutes(
               ]
             : undefined,
         );
+        const [pending] = await drizzle(pool)
+          .select({ id: importPromises.id })
+          .from(importPromises)
+          .where(eq(importPromises.tenantId, tenantId))
+          .limit(1);
+        if (pending)
+          for (const row of rows) {
+            row.available = false;
+            row.reason = 'import_review_required';
+          }
         return query.unitId
           ? rows.filter((row) => row.unitId === query.unitId?.toLowerCase())
           : rows;
@@ -989,13 +1001,25 @@ export function registerEventRoutes(
     },
     async (request, reply) => {
       try {
-        return await repo.save(
-          request.authSession!.userId,
-          request.body,
-          request.params.id,
-          request.body.version,
-          request.body.assignments,
-        );
+        return await drizzle(pool).transaction(async (tx) => {
+          await lockTenant(tx, tenantId);
+          await requireAdministrator(tx, tenantId, request.authSession!.userId);
+          if (request.body.status === 'booked') {
+            const [pending] = await tx
+              .select({ id: importPromises.id })
+              .from(importPromises)
+              .where(eq(importPromises.tenantId, tenantId))
+              .limit(1);
+            if (pending) throw new ResourcePlanError('import_review_required');
+          }
+          return await eventRepository(tx, tenantId).save(
+            request.authSession!.userId,
+            request.body,
+            request.params.id,
+            request.body.version,
+            request.body.assignments,
+          );
+        });
       } catch (error) {
         return failure(error, reply);
       }

@@ -14,6 +14,7 @@ export function AuthPanel() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState('Anmeldung wird geprüft …');
   const [ready, setReady] = useState(false);
+  const [importRevision, setImportRevision] = useState(0);
   useEffect(() => {
     let active = true;
     void fetch('/auth/me')
@@ -65,7 +66,7 @@ export function AuthPanel() {
           <p>{user.email}</p>
           <Navigation />
           <EventPanel csrfToken={user.csrfToken} />
-          <CalendarPanel />
+          <CalendarPanel key={importRevision} />
           <LocationPanel csrfToken={user.csrfToken} />
           <ContactPanel csrfToken={user.csrfToken} />
           <ProductPanel csrfToken={user.csrfToken} />
@@ -73,7 +74,10 @@ export function AuthPanel() {
           <section id="settings" aria-label="Einstellungen">
             <h2>Einstellungen</h2>
             <MasterDataSettings csrfToken={user.csrfToken} />
-            <ImportPanel csrfToken={user.csrfToken} />
+            <ImportPanel
+              csrfToken={user.csrfToken}
+              onImported={() => setImportRevision((value) => value + 1)}
+            />
             <AccessPanel
               csrfToken={user.csrfToken}
               onSessionEnded={() => {

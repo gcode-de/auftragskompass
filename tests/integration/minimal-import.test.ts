@@ -1,3 +1,4 @@
+import { registerEventRoutes } from '../../packages/core/src/events.js';
 import { importRepository } from '../../packages/core/src/import-repository.js';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, expect, test } from 'vitest';
@@ -102,6 +103,7 @@ beforeAll(async () => {
       );
   });
   registerImportRoutes(app, pool, tenantId);
+  registerEventRoutes(app, pool, tenantId);
 });
 afterAll(async () => {
   await app.close();
@@ -922,4 +924,108 @@ test('unexpected database errors fail atomically without leaking source values',
       'DROP TRIGGER fictional_import_failure ON import_records; DROP FUNCTION fictional_import_failure()',
     );
   }
+});
+
+test('pending source promises stop normal availability and booking confirmation', async () => {
+  const id = (
+    await pool.query(
+      "SELECT event_id FROM import_records WHERE tenant_id=$1 AND external_id='fictional-event-operative'",
+      [tenantId],
+    )
+  ).rows[0].event_id as string;
+  const available = await app.inject({
+    url: '/api/v1/events/' + id + '/availability',
+    cookies,
+  });
+  expect(available.statusCode).toBe(200);
+  expect(
+    available
+      .json()
+      .every(
+        (unit: { available: boolean; reason: string }) =>
+          !unit.available && unit.reason === 'import_review_required',
+      ),
+  ).toBe(true);
+  const detail = (
+    await app.inject({ url: '/api/v1/events/' + id, cookies })
+  ).json().event;
+  const unit = (
+    await pool.query(
+      "SELECT u.id FROM resource_units u JOIN resources r ON r.tenant_id=u.tenant_id AND r.id=u.resource_id WHERE u.tenant_id=$1 AND r.code='FB1'",
+      [tenantId],
+    )
+  ).rows[0].id;
+  const before = await snapshot();
+  const response = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/events/' + id,
+    cookies,
+    headers,
+    payload: {
+      ...detail,
+      status: 'booked',
+      assignments: [{ unitId: unit, periodSource: 'event' }],
+    },
+  });
+  expect(response.statusCode).toBe(409);
+  expect(response.json().error).toBe('import_review_required');
+  expect(await snapshot()).toEqual(before);
+});
+
+test('overview reconciles private source counts and versions without exposing another tenant', async () => {
+  const before = await snapshot();
+  const response = await app.inject({ url: importUrl, cookies });
+  expect(response.statusCode).toBe(200);
+  expect(response.headers['cache-control']).toBe('no-store');
+  const data = response.json();
+  expect(data.pendingPromises).toBeGreaterThan(0);
+  expect(data.promises.length).toBe(data.pendingPromises);
+  expect(
+    data.mappings.find(
+      (row: { externalId: string; section: string }) =>
+        row.externalId === 'fictional-contact' && row.section === 'contacts',
+    ).locallyChanged,
+  ).toBe(true);
+  for (const [section, count] of Object.entries(data.counts))
+    expect(
+      data.mappings.filter(
+        (row: { section: string }) => row.section === section,
+      ),
+    ).toHaveLength(count as number);
+  expect(response.body).not.toContain('contentHash');
+  expect(response.body).not.toContain('tenantId');
+  const other = await importRepository(pool, foreign).overview(
+    await actor(foreign),
+  );
+  expect(other.pendingPromises).toBe(0);
+  expect(other.mappings).toHaveLength(5);
+  await expect(
+    importRepository(pool, foreign).overview(await actor()),
+  ).rejects.toMatchObject({ message: 'forbidden' });
+  expect((await app.inject({ url: importUrl })).statusCode).toBe(401);
+  expect(
+    (
+      await app.inject({
+        url: importUrl,
+        cookies: { '__Host-ak-session': 'fictional-foreign-session' },
+      })
+    ).statusCode,
+  ).toBe(401);
+  const calendar = await app.inject({
+    url: '/api/v1/calendar?date=2030-10-27&view=day',
+    cookies,
+  });
+  expect(calendar.json().pendingPromises).toBe(data.pendingPromises);
+  revokeBeforePreview = true;
+  try {
+    expect((await app.inject({ url: importUrl, cookies })).statusCode).toBe(
+      403,
+    );
+  } finally {
+    revokeBeforePreview = false;
+    await pool.query('UPDATE memberships SET active=true WHERE tenant_id=$1', [
+      tenantId,
+    ]);
+  }
+  expect(await snapshot()).toEqual(before);
 });

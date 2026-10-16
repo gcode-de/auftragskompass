@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { emptyEventFilters, updateUrlSearch } from './url-state.js';
 type Day = { date: string; startsAt: string; endsAt: string };
 type Calendar = {
+  pendingPromises: number;
   date: string;
   view: string;
   timeZone: string;
@@ -87,6 +88,8 @@ export function CalendarPanel() {
         if (!response.ok) throw Error('load');
         const result = (await response.json()) as Calendar;
         if (
+          !Number.isInteger(result.pendingPromises) ||
+          result.pendingPromises < 0 ||
           !Array.isArray(result.days) ||
           !Array.isArray(result.events) ||
           !Array.isArray(result.reservations) ||
@@ -190,16 +193,27 @@ export function CalendarPanel() {
             Verfügbarkeiten werden beim Buchen erneut geprüft. Events ohne Datum
             stehen in der Eventliste.
           </p>
+          {data.pendingPromises > 0 && (
+            <p role="alert">
+              {data.pendingPromises} ungeprüfte Bestandszusagen: Der
+              Kalenderbestand ist unvollständig. Keine freie Kapazität zusagen;
+              zuerst Box und Zubehör in der{' '}
+              <a href="#import-review">Import-Prüfliste</a> abgleichen.
+            </p>
+          )}
           <p aria-label="Kalenderlegende">
             {[
-              ['free', 'Frei'],
+              [
+                data.pendingPromises ? 'hold' : 'free',
+                data.pendingPromises ? 'Bestand ungeprüft' : 'Frei',
+              ],
               ['hold', 'Vormerkung'],
               ['booked', 'Gebucht'],
               ['blocked', 'Sperre'],
               ['conflict', 'Konflikt mit Vormerkung'],
             ].map(([key, label]) => (
               <span
-                key={key}
+                key={label}
                 style={{
                   display: 'inline-block',
                   padding: '0.25rem',
@@ -339,7 +353,9 @@ export function CalendarPanel() {
                               ? 'blocked'
                               : slots.length
                                 ? 'hold'
-                                : 'free';
+                                : data.pendingPromises
+                                  ? 'hold'
+                                  : 'free';
                       return (
                         <td
                           key={day.date}
@@ -359,7 +375,13 @@ export function CalendarPanel() {
                                 : 'Inaktive Einheit'}
                             </p>
                           )}
-                          {!slots.length && !unavailable && <p>Frei</p>}
+                          {!slots.length && !unavailable && (
+                            <p>
+                              {data.pendingPromises
+                                ? 'Bestand ungeprüft'
+                                : 'Frei'}
+                            </p>
+                          )}
                           {slots.map((slot) => (
                             <div key={slot.id}>
                               <strong>

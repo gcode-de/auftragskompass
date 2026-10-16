@@ -105,6 +105,7 @@ test('events show invalid dates, conflicts, server and transport failures while 
     'conflict',
     'invalid_reference',
     'reservations_need_review',
+    'import_review_required',
   ]);
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
@@ -123,6 +124,7 @@ test('events show invalid dates, conflicts, server and transport failures while 
     /Inzwischen geändert/,
     /Speichern fehlgeschlagen/,
     /gemeinsam geprüft/,
+    /Ungeprüfte Bestandszusagen zuerst/,
   ]) {
     fireEvent.submit(
       screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,

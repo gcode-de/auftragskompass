@@ -82,7 +82,9 @@ export function EventDetails({
         setMessage(
           error.error === 'conflict'
             ? 'Inzwischen geändert. Eventakte aktualisieren und erneut prüfen.'
-            : 'Status konnte nicht gespeichert werden. Eingaben und Anmeldung prüfen.',
+            : error.error === 'import_review_required'
+              ? 'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.'
+              : 'Status konnte nicht gespeichert werden. Eingaben und Anmeldung prüfen.',
         );
         return;
       }

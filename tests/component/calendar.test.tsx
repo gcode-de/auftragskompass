@@ -6,6 +6,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 const data = {
+  pendingPromises: 0,
   date: '2030-10-27',
   view: 'day',
   timeZone: 'Europe/Berlin',
@@ -193,3 +194,18 @@ test.each(['booked', 'hold', 'blocked'])(
     );
   },
 );
+
+test('unreviewed imported promises prevent any unqualified free-capacity display', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ ...data, pendingPromises: 2, reservations: [] }),
+      ),
+  );
+  render(<CalendarPanel />);
+  await screen.findByText(/2 ungeprüfte Bestandszusagen/);
+  expect(screen.queryByText('Frei', { exact: true })).toBeNull();
+  expect(screen.getAllByText('Bestand ungeprüft').length).toBeGreaterThan(0);
+});

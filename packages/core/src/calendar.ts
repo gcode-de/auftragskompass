@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, asc, eq, gte, lte, lt, gt, sql } from 'drizzle-orm';
 import {
   tenants,
+  importPromises,
   events,
   masterData,
   contacts,
@@ -194,8 +195,13 @@ export function calendarRepository(pool: Pool, tenantId: string) {
               asc(resources.code),
               asc(resourceUnits.ordinal),
             );
+          const [pending] = await tx
+            .select({ count: sql<number>`count(*)::int` })
+            .from(importPromises)
+            .where(eq(importPromises.tenantId, tenantId));
           return {
             ...window,
+            pendingPromises: pending!.count,
             events: rows.map((row) => ({
               ...row,
               startsAt: row.startsAt?.toISOString() ?? null,
@@ -272,6 +278,7 @@ export function registerCalendarRoutes(
     properties,
   });
   const response = object({
+    pendingPromises: { type: 'integer', minimum: 0 },
     date: string,
     view: { type: 'string', enum: ['day', 'week', 'month'] },
     timeZone: string,

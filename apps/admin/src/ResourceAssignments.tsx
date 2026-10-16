@@ -34,6 +34,8 @@ const statuses = [
   ['cancelled', 'Annulliert'],
 ];
 const errors: Record<string, string> = {
+  import_review_required:
+    'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.',
   conflict: 'Inzwischen geändert. Eventakte aktualisieren und erneut prüfen.',
   resource_conflict:
     'Belegungskonflikt. Die bisherige Buchung bleibt erhalten.',
@@ -324,15 +326,17 @@ export function ResourceAssignments({
                 <p>
                   {!verified.has(unit.unitId)
                     ? 'Geändert; Verfügbarkeit erneut prüfen.'
-                    : unit.reason === 'unit_unavailable'
-                      ? 'Einheit nicht verfügbar.'
-                      : unit.reason
-                        ? 'Zeitraum noch offen oder ungültig.'
-                        : !unit.available
-                          ? 'Belegt oder zeitweise gesperrt.'
-                          : unit.conflicts.length
-                            ? 'Konkurrierende Vormerkungen vorhanden.'
-                            : 'Kein Belegungskonflikt.'}
+                    : unit.reason === 'import_review_required'
+                      ? errors.import_review_required
+                      : unit.reason === 'unit_unavailable'
+                        ? 'Einheit nicht verfügbar.'
+                        : unit.reason
+                          ? 'Zeitraum noch offen oder ungültig.'
+                          : !unit.available
+                            ? 'Belegt oder zeitweise gesperrt.'
+                            : unit.conflicts.length
+                              ? 'Konkurrierende Vormerkungen vorhanden.'
+                              : 'Kein Belegungskonflikt.'}
                 </p>
                 <ul>
                   {unit.conflicts.map((conflict) => (

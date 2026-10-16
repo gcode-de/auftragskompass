@@ -566,6 +566,73 @@ test('HTTPS browser signs in with OIDC, receives HttpOnly cookie and signs out',
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeInViewport();
+    await importPreview
+      .getByLabel('Normalisierte Importdaten')
+      .fill(JSON.stringify(fictionalImport()));
+    await importPreview
+      .getByRole('button', { name: 'Importvorschau prüfen' })
+      .click();
+    await expect(
+      importPreview.getByText(
+        'Vorschau geprüft. Es wurden keine Daten übernommen.',
+      ),
+    ).toBeVisible();
+    await importPreview
+      .getByRole('button', { name: 'Transaktionalen Probelauf starten' })
+      .click();
+    await expect(
+      importPreview.getByText(
+        'Transaktionaler Probelauf bestanden. Alle Änderungen wurden zurückgenommen.',
+      ),
+    ).toBeVisible();
+    expect(
+      (await pool.query('SELECT count(*) FROM import_records')).rows[0].count,
+    ).toBe('0');
+    await importPreview
+      .getByLabel(
+        'Mengen, Zuordnungen und Änderungen geprüft; diese Daten jetzt übernehmen',
+      )
+      .check();
+    await importPreview
+      .getByRole('button', { name: 'Geprüfte Daten übernehmen', exact: true })
+      .click();
+    await expect(
+      importPreview.getByText(
+        'Daten übernommen. Altzusagen benötigen weiterhin Ressourcenprüfung.',
+      ),
+    ).toBeVisible();
+    const imported = page.getByRole('region', {
+      name: 'Importbestand und Ressourcen-Prüfliste',
+    });
+    await expect(
+      imported.getByText('Fictional Future Event', { exact: true }).first(),
+    ).toBeVisible();
+    await expect(calendar.getByRole('alert')).toContainText(
+      '1 ungeprüfte Bestandszusagen',
+    );
+    await expect(calendar.getByText('Frei', { exact: true })).toHaveCount(0);
+    await expect(calendar.getByText('Bestand ungeprüft').first()).toBeVisible();
+    const reportDownload = page.waitForEvent('download');
+    await imported
+      .getByRole('button', { name: 'Privaten Prüfbericht herunterladen' })
+      .click();
+    const reportFile = await reportDownload;
+    expect(reportFile.suggestedFilename()).toBe(
+      'auftragskompass-importbericht.json',
+    );
+    const reconciliation = JSON.parse(
+      await readFile((await reportFile.path())!, 'utf8'),
+    );
+    expect(reconciliation.pendingPromises).toBe(1);
+    expect(reconciliation.counts.events).toBe(1);
+    expect(reconciliation.mappings).toHaveLength(5);
+    expect(
+      (await pool.query('SELECT count(*) FROM import_promises')).rows[0].count,
+    ).toBe('1');
+    await imported.screenshot({
+      path: 'tests/test-results/import-reconciliation.png',
+    });
+
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

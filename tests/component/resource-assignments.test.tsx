@@ -116,6 +116,7 @@ test('manual resource times use the tenant timezone and preserve per-unit period
 });
 test.each([
   ['conflict', /Inzwischen geändert/],
+  ['import_review_required', /Ungeprüfte Bestandszusagen zuerst/],
   ['resource_conflict', /Belegungskonflikt/],
   ['booking_required', /Mindestens eine verfügbare/],
   ['unit_unavailable', /Eine gewählte Einheit/],
@@ -148,6 +149,10 @@ test.each([
   },
 );
 test.each([
+  [
+    { reason: 'import_review_required' },
+    'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.',
+  ],
   [{ reason: 'unit_unavailable' }, 'Einheit nicht verfügbar.'],
   [{ reason: 'invalid_period' }, 'Zeitraum noch offen oder ungültig.'],
   [

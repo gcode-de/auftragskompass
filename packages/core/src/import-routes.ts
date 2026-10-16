@@ -81,6 +81,75 @@ export function registerImportRoutes(
   tenantId: string,
 ) {
   const repo = importRepository(pool, tenantId);
+  const string = { type: 'string' },
+    nullable = { type: ['string', 'null'] },
+    boolean = { type: 'boolean' };
+  const object = (properties: Record<string, unknown>) => ({
+    type: 'object',
+    additionalProperties: false,
+    required: Object.keys(properties),
+    properties,
+  });
+  app.get<{ Querystring: unknown }>(
+    '/api/v1/imports/bookitup',
+    {
+      schema: {
+        response: {
+          200: object({
+            checkedAt: { type: 'string', format: 'date-time' },
+            pendingPromises: integer,
+            counts: object(
+              Object.fromEntries(
+                importSections.map((section) => [section, integer]),
+              ),
+            ),
+            mappings: {
+              type: 'array',
+              items: object({
+                section: { type: 'string', enum: importSections },
+                externalId: string,
+                targetId: string,
+                name: string,
+                sourceStatus: string,
+                targetVersion: integer,
+                currentVersion: integer,
+                locallyChanged: boolean,
+                pendingResourceReview: boolean,
+              }),
+            },
+            promises: {
+              type: 'array',
+              items: object({
+                id: string,
+                version: integer,
+                externalId: nullable,
+                name: string,
+                eventDate: nullable,
+                startsAt: nullable,
+                endsAt: nullable,
+                timeZone: string,
+                contact: nullable,
+                location: nullable,
+                package: nullable,
+                description: string,
+                notesHtml: string,
+              }),
+            },
+          }),
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.overview(request.authSession!.userId);
+      } catch (error) {
+        if (error instanceof AccessError)
+          return reply.code(403).send({ error: 'forbidden' });
+        throw error;
+      }
+    },
+  );
+
   app.post<{ Body: unknown }>(
     '/api/v1/imports/bookitup',
     {

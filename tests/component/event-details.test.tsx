@@ -148,10 +148,12 @@ test('event detail errors preserve loaded data and allow retries', async () => {
   );
   await screen.findByText('Ohne Datum');
   await screen.findByText('Noch keine Aktivitäten.');
-  for (const text of [
-    /Inzwischen geändert/,
-    /Status konnte nicht gespeichert/,
-  ]) {
+  for (const [code, text] of [
+    ['conflict', /Inzwischen geändert/],
+    ['invalid', /Status konnte nicht gespeichert/],
+    ['import_review_required', /Ungeprüfte Bestandszusagen zuerst/],
+  ] as const) {
+    error = code;
     fireEvent.submit(
       screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
     );

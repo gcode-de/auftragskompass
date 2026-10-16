@@ -152,9 +152,11 @@ export function EventPanel({ csrfToken }: { csrfToken: string }) {
         setMessage(
           error.error === 'conflict'
             ? 'Inzwischen geändert. Events aktualisieren und erneut bearbeiten.'
-            : error.error === 'reservations_need_review'
-              ? 'Für diesen Termin gibt es Reservierungen. Änderungen müssen gemeinsam geprüft werden.'
-              : 'Speichern fehlgeschlagen. Termin, Zuordnungen und Anmeldung prüfen.',
+            : error.error === 'import_review_required'
+              ? 'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.'
+              : error.error === 'reservations_need_review'
+                ? 'Für diesen Termin gibt es Reservierungen. Änderungen müssen gemeinsam geprüft werden.'
+                : 'Speichern fehlgeschlagen. Termin, Zuordnungen und Anmeldung prüfen.',
         );
         return;
       }

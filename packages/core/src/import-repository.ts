@@ -178,6 +178,88 @@ async function targetRows(tx: Transaction, tenantId: string, section: Section) {
 }
 export function importRepository(pool: Pool, tenantId: string) {
   return {
+    async overview(actorId: string) {
+      return drizzle(pool).transaction(
+        async (tx) => {
+          await requireAdministrator(tx, tenantId, actorId);
+          const records = await tx
+            .select()
+            .from(importRecords)
+            .where(eq(importRecords.tenantId, tenantId))
+            .orderBy(importRecords.section, importRecords.externalId);
+          const promises = await tx
+            .select()
+            .from(importPromises)
+            .where(eq(importPromises.tenantId, tenantId))
+            .orderBy(importPromises.id);
+          const targets = new Map<
+            Section,
+            Map<string, { name: string; version: number }>
+          >();
+          for (const section of importSections)
+            targets.set(
+              section,
+              new Map(
+                (await targetRows(tx, tenantId, section)).map((row) => [
+                  row.id,
+                  row,
+                ]),
+              ),
+            );
+          const name = (section: Section, id: string | null) =>
+            id ? (targets.get(section)!.get(id)?.name ?? null) : null;
+          return {
+            checkedAt: new Date().toISOString(),
+            pendingPromises: promises.length,
+            counts: Object.fromEntries(
+              importSections.map((section) => [
+                section,
+                records.filter((row) => row.section === section).length,
+              ]),
+            ),
+            mappings: records.map((row) => {
+              const targetId = (row.contactId ??
+                row.locationId ??
+                row.masterId ??
+                row.eventId ??
+                row.promiseId)!;
+              const target = row.promiseId
+                ? promises.find((promise) => promise.id === row.promiseId)!
+                : targets.get(row.section as Section)!.get(targetId)!;
+              return {
+                section: row.section,
+                externalId: row.externalId,
+                targetId,
+                name: 'data' in target ? target.data.name : target.name,
+                sourceStatus: row.sourceStatus,
+                targetVersion: row.targetVersion,
+                currentVersion: target.version,
+                locallyChanged: row.targetVersion !== target.version,
+                pendingResourceReview: Boolean(row.promiseId),
+              };
+            }),
+            promises: promises.map((promise) => ({
+              id: promise.id,
+              version: promise.version,
+              externalId:
+                records.find((row) => row.promiseId === promise.id)
+                  ?.externalId ?? null,
+              name: promise.data.name,
+              eventDate: promise.data.eventDate,
+              startsAt: promise.data.startsAt,
+              endsAt: promise.data.endsAt,
+              timeZone: promise.timeZone,
+              contact: name('contacts', promise.data.primaryContactId),
+              location: name('locations', promise.data.locationId),
+              package: name('packages', promise.data.packageId),
+              description: promise.data.description,
+              notesHtml: promise.data.notesHtml,
+            })),
+          };
+        },
+        { accessMode: 'read only', isolationLevel: 'repeatable read' },
+      );
+    },
     async run(actorId: string, input: unknown): Promise<ImportResult> {
       if (!validRequest(input)) throw new ImportError('invalid_request');
       const request = input as Request;
