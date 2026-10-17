@@ -124,3 +124,16 @@ ausgebliebene Aufrufe melden. Dieses Werkzeug installiert weder Monitoring noch
 einen Timer und sendet keine Nachricht. Seine Erfolgsmeldung belegt keine
 unabhängige Kopie, Entschlüsselbarkeit, Aufbewahrung oder frische Wiederherstellung.
 Diese Prüfungen und die bislang offene Betriebsfreigabe bleiben erforderlich.
+
+### Nativer Zusatznachweis E005.11
+
+Der isolierte Probelauf `tests/ops/check_scheduled_backup.py` prüft den neuen
+Zustandsbefehl zusätzlich mit einem tatsächlichen Podman-PostgreSQL-Dump. Am
+17.10.2026 bestanden auf dem nativen Testhost: frischer Erfolg, erkannte
+Chiffretext-Manipulation, erneuter Erfolg nach Wiederherstellung der fiktiven
+Datei und erkannter fehlgeschlagener Folgelauf. Entschlüsselung und Restore in
+eine eigene frische Zieldatenbank bestanden ebenfalls. Temporäre Schlüssel,
+Transferdateien, Container, Volumes und Netzwerk wurden entfernt; bestehende
+Anwendungen blieben unverändert. Reale Geschäftsdaten waren nicht beteiligt.
+Dies aktiviert keine regelmäßige Sicherung und ersetzt nicht deren offene
+Ziel-/Aufbewahrungs- und Überwachungsentscheidung.

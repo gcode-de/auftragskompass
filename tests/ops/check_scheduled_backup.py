@@ -65,6 +65,18 @@ def main():
             receipt = json.loads((backups / 'last-success.json').read_text())
             sealed = backups / receipt['file']
             assert receipt['ciphertextSha256'] == hashlib.sha256(sealed.read_bytes()).hexdigest()
+            health = [sys.executable, '-B', str(ROOT / 'scripts/check_backup.py'), '--project', prefix, '--directory', str(backups)]
+            assert json.loads(run(health)) == {'status': 'ok'}
+            original = sealed.read_bytes()
+            try:
+                sealed.write_bytes(original + b'Fictional corruption')
+                damaged = subprocess.run(health, capture_output=True)
+                assert damaged.returncode == 1
+                assert json.loads(damaged.stdout) == {'status': 'failed', 'reason': 'integrity_failed'}
+            finally:
+                sealed.write_bytes(original)
+            assert json.loads(run(health)) == {'status': 'ok'}
+
             verified = directory / 'verified.dump'
             run([sys.executable, '-B', str(ROOT / 'scripts/seal_backup.py'), 'decrypt', '--input', str(sealed), '--output', str(verified),
                  '--private-key', str(key), '--key-password-file', str(recovery)])
@@ -92,6 +104,10 @@ def main():
             assert subprocess.run(job, capture_output=True).returncode != 0
             assert (backups / 'last-success.json').read_bytes() == previous
             assert json.loads((backups / 'last-attempt.json').read_text())['status'] == 'failed'
+            failed_health = subprocess.run(health, capture_output=True)
+            assert failed_health.returncode == 1
+            assert json.loads(failed_health.stdout) == {'status': 'failed', 'reason': 'last_attempt_failed'}
+
             assert not any(path.is_dir() for path in backups.iterdir())
         finally:
             cleanup = [['podman','rm','-f',name] for name in reversed(containers)]
@@ -101,7 +117,7 @@ def main():
             failures = [command[-1] for command in cleanup if subprocess.run(command,capture_output=True).returncode]
             if failures: raise RuntimeError('Scratch cleanup failed: ' + ', '.join(failures))
     assert set(run(['podman', 'ps', '--format', '{{.Names}}']).decode().splitlines()) == before
-    print(json.dumps({'native_scheduled_backup': 'passed', 'restored_fictional_row': True, 'failed_retry_preserved_success': True, 'file_limit_enforced': True,
+    print(json.dumps({'native_scheduled_backup': 'passed', 'backup_health_check': 'passed', 'corruption_detected': True, 'restored_fictional_row': True, 'failed_retry_preserved_success': True, 'file_limit_enforced': True,
                       'scratch_resources': 'removed', 'existing_applications_changed': False}))
 
 
