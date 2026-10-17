@@ -39,6 +39,28 @@ und kein automatisches Update auf dem Testhost: Die getestete Revision wird bewu
 ausgewählt. Docker-Hub-Tags sind veränderbar; für eine spätere Produktivfreigabe
 sind zusätzlich die tatsächlich veröffentlichten Image-Digests festzuhalten.
 
+### Veröffentlichten und laufenden Stand abgleichen (E005.9)
+
+Beide Images tragen die standardisierten OCI-Angaben
+`org.opencontainers.image.source` und `org.opencontainers.image.revision`.
+Die Quelle ist das GitHub-Repository, die Revision der vollständige SHA des
+geprüften Pushes. Die Angaben folgen der
+[OCI-Annotationspezifikation](https://github.com/opencontainers/image-spec/blob/main/annotations.md).
+Tags und gepinnte Digests bleiben zusätzlich maßgeblich; ein Label ersetzt weder
+einen erfolgreichen CI-Lauf noch eine Signatur oder den Digest-Abgleich.
+
+Nach einem Update auf dem Podman-Host nur die Revisionsangabe auslesen, keine
+vollständigen Container-Umgebungen mit Secrets ausgeben:
+
+```sh
+podman inspect --type container --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' ak-test-api ak-test-worker ak-test-admin
+```
+
+Alle drei Ausgaben müssen dem erwarteten vollständigen Commit-Hash entsprechen.
+Ältere Images ohne diese Angabe gelten damit nicht als verifiziert. Dienstgesundheit,
+Sicherung vor dem Update und Anmeldung/Abmeldung werden weiterhin separat geprüft.
+Diese Ergänzung schaltet kein automatisches Update ein.
+
 Das Zielsystem wurde per SSH als `x86_64` geprüft. Deshalb veröffentlicht dieser
 erste Build ausschließlich `linux/amd64`; ARM-Unterstützung ist nicht abgenommen.
 Der Build verwendet weiterhin die private Dateien ausschließende Docker-Allowlist.
