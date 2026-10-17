@@ -517,6 +517,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       record.getByText(/Ressourcenzuordnung und Dispositionszeitraum geändert/),
     ).toBeVisible();
+    await expect(
+      events.getByText('Fictional resource booking – 20.10.2030 – Gebucht', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(assignment).toHaveAttribute('aria-busy', 'false');
     await assignment.screenshot({
       path: 'tests/test-results/resource-assignment.png',
     });

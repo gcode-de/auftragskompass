@@ -36,6 +36,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] H009: kontrollierte Passwortwiederherstellung ausschließlich über den bestehenden SSH-/Podman-Betreiberzugriff; externe geschützte Passwortdatei per stdin, bestehendes aktives Konto, keine Reaktivierung und kein HTTP-Endpunkt. Abnahme: Dateirechte/Git-Grenze, neutrale Ausgaben, Mandantentrennung, Sitzungswiderruf, Audit-Rollback und isolierter nativer CLI-Probelauf ohne Änderung des echten Inhaberkontos.
 
+- [x] C026.1: CI-Screenshot nach dem zweiten Ressourcen-/Terminwechsel erst nach der neu geladenen Eventliste und fertigen Zuweisung aufnehmen; keine pauschale Wartezeit oder Retry. Abnahme: kompletter Chromium-Geschäftsablauf mit einem Worker wiederholt grün.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
