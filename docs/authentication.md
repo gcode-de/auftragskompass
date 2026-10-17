@@ -265,3 +265,15 @@ einen frisch gebauten amd64-Teststand ausgeführt: neue Anmeldung, aufgehobene
 Fehlversuchssperre, widerrufene alte Sitzung und Betreiber-Audit bestanden. Netzwerk,
 Volume, Secret und Container dieses isolierten Probelaufs wurden danach entfernt.
 Das echte Inhaberkonto wurde bei dieser Abnahme nicht zurückgesetzt.
+
+
+## Kodierte Routen und Zugriffsschutz (E005.14)
+
+Die gemeinsame Anmeldung prüft das vom Fastify-Router aufgelöste Routenmuster,
+nicht allein den unverarbeiteten URL-Text. Deshalb gelten Sitzungs-, Mandanten-,
+CSRF- und Cache-Regeln auch für kodierte statische Pfadsegmente wie `/%61pi/`.
+Nicht aufgelöste Pfade behalten die bisherige geschlossene Präfixprüfung.
+Die Regression verwendet ausschließlich fiktive Daten und prüft fehlende,
+ungültige, fremde sowie gültige Sitzungen und Schreibzugriffe mit und ohne CSRF.
+Die vorhandenen anonymen Healthchecks und tokengebundenen Kalenderfeeds behalten
+ihre eigenen Zugriffsverträge.

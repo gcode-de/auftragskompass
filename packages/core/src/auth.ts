@@ -46,7 +46,8 @@ export async function registerAuth(
   let passwordBusy = false;
   app.decorateRequest('authSession', null);
   app.addHook('onRequest', async (request, reply) => {
-    const path = request.url.split('?')[0]!;
+    // Match the router's decoded route, including percent-encoded static prefixes.
+    const path = request.routeOptions.url ?? request.url.split('?')[0]!;
     if (!path.startsWith('/auth/') && !path.startsWith('/api/')) return;
     reply
       .header('Cache-Control', 'no-store')

@@ -11,10 +11,13 @@ import {
 } from '../../packages/core/src/runtime.js';
 import { randomUUID } from 'node:crypto';
 import { migrate } from '../../packages/core/src/identity.js';
-import { bootstrapAccess } from '../../packages/core/src/access.js';
+import {
+  accessRepository,
+  bootstrapAccess,
+} from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
 import { registerAuditRoutes } from '../../packages/core/src/audit.js';
-import { registerAuth } from '../../packages/core/src/auth.js';
+import { digest, registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 let container: StartedPostgreSqlContainer;
 let pool: Pool;
@@ -422,4 +425,75 @@ test('audit failure prevents a new session and logout rolls back safely', async 
     );
   }
   expect((await app.inject({ url: '/auth/me', cookies })).statusCode).toBe(200);
+});
+
+test('encoded route prefixes cannot bypass authentication or CSRF', async () => {
+  await server();
+  const routes = [
+    '/%61pi/v1/access',
+    '/a%70i/v1/access',
+    '/ap%69/v1/access',
+    '/%61%70%69/v1/access?fictional=1',
+    '/%61uth/me',
+  ];
+  for (const url of routes) {
+    for (const cookies of [{}, { '__Host-ak-session': 'fictional-invalid' }]) {
+      const response = await app.inject({ url, cookies });
+      expect(response.statusCode, url).toBe(401);
+      expect(response.json()).toEqual({ error: 'unauthorized' });
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).not.toContain('synthetic@example.invalid');
+    }
+  }
+  expect((await app.inject('/api/v1/fictional-not-found')).statusCode).toBe(
+    401,
+  );
+  expect((await app.inject('/%61pi/v1/fictional-not-found')).statusCode).toBe(
+    404,
+  );
+  const token = 'fictional-encoded-route-owner';
+  expect(
+    await accessRepository(pool, config.tenantId).issueSession(
+      { subject: 'synthetic-subject', email: 'synthetic@example.invalid' },
+      digest(token),
+    ),
+  ).toBe(true);
+  const cookies = { '__Host-ak-session': token };
+  for (const url of routes)
+    expect((await app.inject({ url, cookies })).statusCode, url).toBe(200);
+  const me = await app.inject({ url: '/%61uth/me', cookies });
+  const write = {
+    method: 'POST' as const,
+    url: '/%61pi/test',
+    cookies,
+    payload: {},
+  };
+  expect((await app.inject(write)).statusCode).toBe(403);
+  expect(
+    (
+      await app.inject({
+        ...write,
+        headers: {
+          origin: 'https://foreign.example.invalid',
+          'x-csrf-token': me.json().csrfToken,
+        },
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect(
+    (
+      await app.inject({
+        ...write,
+        headers: { origin: config.origin, 'x-csrf-token': me.json().csrfToken },
+      })
+    ).statusCode,
+  ).toBe(200);
+  await server(true, randomUUID());
+  for (const url of routes)
+    expect((await app.inject({ url, cookies })).statusCode, url).toBe(401);
+  await server(false);
+  expect(
+    (await app.inject({ method: 'POST', url: '/%61pi/test', payload: {} }))
+      .statusCode,
+  ).toBe(503);
 });
