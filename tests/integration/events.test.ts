@@ -255,7 +255,8 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     locationId: null,
   };
   try {
-    expect((await app.inject('/api/v1/events')).statusCode).toBe(401);
+    for (const url of ['/api/v1/events', '/api/v1/events/export.csv'])
+      expect((await app.inject(url)).statusCode).toBe(401);
     expect(
       (
         await app.inject({
@@ -290,6 +291,66 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     const listed = await app.inject({ url: '/api/v1/events', cookies });
     expect(listed.json().timeZone).toBe('Europe/Berlin');
     expect(listed.json().events).toHaveLength(2);
+    const foreignTenant = randomUUID();
+    await bootstrapAccess(
+      pool,
+      foreignTenant,
+      'foreign-export@example.invalid',
+      'Fictional foreign tenant',
+      'UTC',
+    );
+    const foreignAccess = accessRepository(pool, foreignTenant);
+    await foreignAccess.issueSession(
+      { subject: 'foreign-export', email: 'foreign-export@example.invalid' },
+      digest('synthetic-foreign-export'),
+    );
+    const foreignActor = (await foreignAccess.list())[0]!.userId!;
+    await eventRepository(pool, foreignTenant).save(foreignActor, {
+      ...simple,
+      name: 'Fictional foreign export event',
+    });
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/events/export.csv',
+          cookies: { '__Host-ak-session': 'synthetic-foreign-export' },
+        })
+      ).statusCode,
+    ).toBe(401);
+    const exported = await app.inject({
+      url: '/api/v1/events/export.csv',
+      cookies,
+    });
+    expect(exported.statusCode).toBe(200);
+    expect(exported.headers['content-type']).toContain('text/csv');
+    expect(exported.headers['cache-control']).toBe('no-store');
+    expect(exported.headers['content-disposition']).toContain('events.csv');
+    expect(exported.body).toContain('"additionalContactIds"');
+    expect(exported.body).toContain('"Europe/Berlin"');
+    expect(exported.body).toContain('"2026-10-16T18:00:00.000Z"');
+    expect(exported.body).toContain('"<p>Safe</p>"');
+    expect(exported.body).toContain(input.primaryContactId!);
+    expect(exported.body).not.toContain(tenantId);
+    expect(exported.body).not.toContain('Fictional foreign export event');
+    expect(exported.body).toMatch(/^\uFEFF"id","version"/);
+    const formula = await create({
+      ...simple,
+      name: '=Fictional,"quoted"',
+      status: 'cancelled',
+      eventDate: null,
+      startsAt: null,
+      endsAt: null,
+      source: 'line one\nline two',
+    });
+    expect(formula.statusCode).toBe(201);
+    const complete = await app.inject({
+      url: '/api/v1/events/export.csv?q=ignored',
+      cookies,
+    });
+    expect(complete.body).toContain('"\'=Fictional,""quoted"""');
+    expect(complete.body).toContain('"line one\nline two"');
+    expect(complete.body).toContain(created.json().id);
+    expect(complete.body).toContain('"cancelled","","",""');
     const linked = (
       await eventRepository(pool, tenantId).list(input.primaryContactId!)
     )[0]!;

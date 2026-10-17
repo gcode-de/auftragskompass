@@ -1,5 +1,6 @@
 import { database, type Connection } from './database.js';
 import { registerCalendarRoutes } from './calendar.js';
+import { csv } from './contacts.js';
 import {
   assignEventResources,
   hasBookedBox,
@@ -789,6 +790,43 @@ export function registerEventRoutes(
       }
     },
   );
+  app.get('/api/v1/events/export.csv', async (_request, reply) => {
+    const rows = await repo.list();
+    const columns = [
+      'id',
+      'version',
+      'name',
+      'status',
+      'eventDate',
+      'startsAt',
+      'endsAt',
+      'timeZone',
+      'eventTypeId',
+      'packageId',
+      'locationId',
+      'primaryContactId',
+      'additionalContactIds',
+      'source',
+      'description',
+      'notesHtml',
+    ] as const;
+    return reply
+      .type('text/csv; charset=utf-8')
+      .header('content-disposition', 'attachment; filename="events.csv"')
+      .header('cache-control', 'no-store')
+      .send(
+        csv([
+          columns.slice(),
+          ...rows.map((row) =>
+            columns.map((key) =>
+              key === 'additionalContactIds'
+                ? JSON.stringify(row[key])
+                : String(row[key] ?? ''),
+            ),
+          ),
+        ]),
+      );
+  });
   app.get(
     '/api/v1/events',
     {

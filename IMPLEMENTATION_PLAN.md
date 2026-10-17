@@ -60,6 +60,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] H015: mobile Menüleiste verdichten, Konto/Abmeldung ins Menü verschieben und kontrastreiche Kalenderlinks in beiden Farbmodi sichern. Abnahme: Abmeldung erreichbar, Menüfokus unverändert, mobile Überlagerung/Überlauf ausgeschlossen und gemessener Kalenderlink-Kontrast mindestens 4,5:1.
 
+- [x] E005.3: geschützter vollständiger Event-CSV-Export als offenes Betriebsformat gemäß NF-10; UTF-8, UTC-Zeitpunkte/Zeitzone, Referenzen und Notizen, Formelschutz und no-store. Abnahme: anonymer/fremder Zugriff abgewiesen, alle eigenen Events einschließlich undatierter und annullierter Datensätze enthalten; kein Ersatz für Reservierungsbackup.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

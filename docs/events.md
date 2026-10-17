@@ -26,3 +26,26 @@ Admin-Sitzung ist erforderlich, Änderungen brauchen Origin und CSRF-Token. Fehl
 Migration `0011_events.sql` erzwingt Mandantengrenzen in zusammengesetzten Fremdschlüsseln, die richtige Stammdatenart für Eventart und Paket, höchstens einen Hauptkontakt und gültige Zeitintervalle. Neue Zuordnungen müssen aktiv sein. Bereits zugeordnete, inzwischen archivierte Daten bleiben am bestehenden Event bearbeitbar. Gleichzeitige Änderungen werden über Mandantensperre und Versionsprüfung serialisiert; Event, Kontaktzuordnungen und Audit-Eintrag werden gemeinsam gespeichert. Die Migration erweitert die erlaubten Audit-Aktionen; fachliche Aktivitätstexte folgen in C020.
 
 Notizen unterstützen Absätze, Umbrüche, Fett/Kursiv/Unterstreichen, Listen und Links. Im MVP werden diese im Textfeld als einfaches HTML eingegeben, die gespeicherte Vorschau wird am Event angezeigt. Der Server bereinigt sie mit `sanitize-html`: nur die genannten Elemente und Linkattribute `href`/`title`, nur HTTP(S)/mailto, keine Skripte, Bilder, Frames, Styles oder Eventhandler. Ein visueller Editor ist noch nicht Bestandteil dieses Schritts. Sicherheitsregeln folgen der [Bibliotheksdokumentation](https://github.com/apostrophecms/apostrophe/tree/main/packages/sanitize-html); Zeitumrechnung nutzt [Temporal](https://github.com/js-temporal/temporal-polyfill).
+
+## Eventexport (E005.3)
+
+`GET /api/v1/events/export.csv` lädt alle Events des angemeldeten Mandanten herunter,
+auch undatierte und annullierte Events. Filterparameter werden absichtlich nicht
+angewendet: Dies ist ein vollständiger Bestandsexport. Die bestehende
+Administratorsitzung ist erforderlich; fremde Sitzungen werden abgewiesen.
+Antworten sind `text/csv; charset=utf-8`, Downloadname `events.csv`, `no-store`.
+
+Die erste Zeile enthält Feldnamen. UTF-8-BOM und CRLF unterstützen Tabellenprogramme;
+Kommas, Anführungszeichen und Zeilenumbrüche werden gemäß CSV maskiert.
+Führende Formelzeichen werden mit einem Apostroph entschärft. Der Export ist
+zur offenen Weiterverwendung bestimmt, nicht als verlustfreier Rückimportvertrag.
+
+Enthalten sind ID, Version, Name, Statuscode, Datum, Beginn/Ende in UTC,
+Eventzeitzone, IDs der Eventart, des Pakets, Orts und Hauptkontakts, zusätzliche
+Kontakt-IDs als JSON-Array, Anfragequelle, Beschreibung und bereinigte HTML-Notizen.
+Leere Einzelwerte bleiben leer. Referenzen sind interne IDs, keine Namen; die
+Datei enthält keine tenant_id oder Zugangsdaten. Stammdaten, Reservierungen,
+Logbuch und Importherkunft sind nicht Bestandteil dieses Exports. Für eine
+Wiederherstellung bleibt die vollständige verschlüsselte Datenbanksicherung
+maßgeblich. Downloads enthalten personenbezogene Inhalte und gehören in den
+privaten Sicherungsbestand außerhalb von Git.
