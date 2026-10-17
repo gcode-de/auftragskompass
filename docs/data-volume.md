@@ -47,7 +47,8 @@ zwei Animation-Frames liegt die seit Navigationsbeginn verstrichene Zeit unter
 2.000 ms. Zusätzlich darf kein horizontaler Seitenüberlauf entstehen.
 
 Die vier gemessenen Zeiten werden im Playwright-Anhang
-`fictional-browser-volume` abgelegt. Es gibt keinen Retry und keine gelockerte
+`fictional-browser-volume` abgelegt; die CI erhält diese Datei im Artefakt
+`chromium-evidence` sieben Tage lang. Es gibt keinen Retry und keine gelockerte
 Zeitgrenze für einen langsamen Durchlauf. Das ist eine lokale Desktop-Chromium-
 Probe mit emulierten Breiten; weder physische Smartphone-Leistung noch die
 Home-Lab-/Cloudflare-Latenz oder ein vollständiger C081-Lasttest sind damit

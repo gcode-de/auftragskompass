@@ -93,3 +93,15 @@ Geschäftsabläufe und die weiterhin aktive CSP bestehen ebenfalls.
 Die Hinweise zu geschlossenem Dialog und teilweise verdeckten Kalenderzellen
 bleiben als manuell bewertete Unvollständigkeiten erhalten; sie werden nicht als
 vollständig automatisiert geprüfte Fälle ausgegeben.
+
+## CI-Belege (E005.19)
+
+GitHub Actions bewahrt `tests/test-results/` als Artefakt `chromium-evidence`
+sieben Tage auf, auch wenn der Testlauf fehlschlägt. Es enthält ausschließlich
+synthetische Browser-Screenshots, Axe-Berichte, Mengenmesswerte und gegebenenfalls
+Fehler-Traces aus den wegwerfbaren lokalen Testdiensten. Tests verwenden weder
+echte Kundenbestände noch den Betreiber-Login oder die öffentliche Testinstallation.
+Die Ausgabegrenze umfasst keine Sicherungen, Exporte oder privaten Verzeichnisse.
+Vor dem Browserstart fehlgeschlagene Läufe können ohne dieses Artefakt enden.
+Die Image-Veröffentlichung setzt weiterhin die gesamte erfolgreiche Qualitätssuite
+voraus; der Artefakt-Upload hebt keine Schranke auf.

@@ -94,6 +94,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.18: veraltete Fastify-Requestlog-Option durch den dokumentierten LogController ersetzen, vorhandene Datensparsamkeit erhalten. Abnahme: frischer Node-Prozess startet ohne FSTDEP023; erfolgreiche, fehlgeschlagene und unbekannte Requests protokollieren weiterhin keine URLs, Header, Inhalte oder internen Fehlermeldungen.
 
+- [x] E005.19: synthetische Chromium-Belege in der CI sieben Tage als eigenes Artefakt erhalten, auch bei Testfehlern. Abnahme: gepinnte Upload-Action, enges Testausgabeverzeichnis, keine erweiterten Berechtigungen oder Veröffentlichung trotz roter Gates; Artefakt am grünen Lauf prüfen.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

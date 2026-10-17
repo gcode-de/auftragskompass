@@ -35,6 +35,14 @@ jobs:
           path: coverage/
           retention-days: 7
           if-no-files-found: error
+      - name: Chromium evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: chromium-evidence
+          path: tests/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
   images:
     needs: quality
     if: >-
