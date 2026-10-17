@@ -92,3 +92,35 @@ Verschlüsselung → Entschlüsselung → frische leere Zieldatenbank, beide Pr�
 Dateigrößengrenze sowie einen fehlgeschlagenen Wiederholungslauf bei gestoppter Quelle.
 Die letzte erfolgreiche Sicherung bleibt lesbar; Testressourcen werden danach entfernt.
 Vorhandene Anwendungen werden nicht gestoppt oder übernommen.
+
+## Sicherungszustand lesend prüfen (E005.8)
+
+```sh
+python3 -B scripts/check_backup.py --project ak-test --directory /private/dedicated-backups --max-age-hours 26
+```
+
+Das Werkzeug liest einen vorhandenen E005.2-Sicherungsordner. Es benötigt weder
+einen privaten Schlüssel noch Datenbankzugriff. Der Ordner muss weiterhin dem
+aufrufenden Betreiber gehören, Modus 700 haben und außerhalb von Git liegen;
+Lock, Belege und Chiffretext sind reguläre private Dateien. Symlinks für diese
+Dateien werden abgewiesen.
+
+Nur ein konsistenter Erfolg der Version 1 für das angegebene Projekt, ein
+identischer letzter Versuch und Dateibeleg, ein ausreichend frischer UTC-Zeitpunkt
+sowie passende Dateigröße und Chiffretext-SHA-256 ergeben Exitcode 0 mit
+`{"status":"ok"}`. Der Standard liegt bei 26 Stunden; eine positive Stundenzahl
+kann bewusst abweichend angegeben werden. Bis zu fünf Minuten Uhrabweichung in
+die Zukunft werden toleriert. Es wird der gesamte Chiffretext blockweise gelesen.
+
+Bei Fehler wird Exitcode 1 mit `{"status":"failed","reason":"…"}` ausgegeben.
+Feste Gründe sind `busy`, `last_attempt_failed`, `future_timestamp`, `stale`,
+`integrity_failed` und `missing_or_invalid`. Ein geteiltes Leselock verhindert eine
+Erfolgsmeldung während eines exklusiven Sicherungslaufs; bei `busy` später erneut
+prüfen. Beleginhalte, Diagnosephasen, Dateinamen und Pfade erscheinen nicht in der
+Ausgabe. Es werden keine Sicherungen, Statusdateien oder Schlüssel geschrieben.
+
+Ein vorhandenes Monitoring kann den Exitcode prüfen und fehlgeschlagene oder
+ausgebliebene Aufrufe melden. Dieses Werkzeug installiert weder Monitoring noch
+einen Timer und sendet keine Nachricht. Seine Erfolgsmeldung belegt keine
+unabhängige Kopie, Entschlüsselbarkeit, Aufbewahrung oder frische Wiederherstellung.
+Diese Prüfungen und die bislang offene Betriebsfreigabe bleiben erforderlich.

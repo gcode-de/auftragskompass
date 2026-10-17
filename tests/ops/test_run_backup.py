@@ -14,6 +14,7 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
 import run_backup as MODULE
+import check_backup
 
 class RunBackupTests(unittest.TestCase):
     @classmethod
@@ -47,6 +48,7 @@ class RunBackupTests(unittest.TestCase):
             self.assertEqual(json.loads((root/'last-attempt.json').read_text()),manifest)
             for file in root.iterdir():self.assertEqual(file.stat().st_mode&0o777,0o600)
             self.assertFalse(any(path.is_dir() for path in root.iterdir()));self.assertNotIn('PGDMP',out)
+            self.assertIsNone(check_backup.check(root, 'fictional-job', 26))
     def test_dump_and_encryption_failures_preserve_success_and_remove_workfiles(self):
         for phase in ['dump','encryption']:
             with self.subTest(phase=phase),tempfile.TemporaryDirectory() as directory:

@@ -70,6 +70,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.7: CI vor Image-Veröffentlichung auf hohe/kritische Laufzeit-Abhängigkeitsbefunde prüfen; Fehler der Audit-Abfrage stoppen ebenfalls. Abnahme: Workflowvertrag zunächst rot, Prüfung nach eingefrorener Installation und vor Qualitätssuite, keine Fehlertoleranz und Images weiter an quality gebunden.
 
+- [x] E005.8: rein lesende Betreiberprüfung für verschlüsselte Sicherungsbelege, Alter, letzten Versuch, Dateirechte und Chiffretext-Prüfsumme. Abnahme: aktuelle konsistente Sicherung gesund; fehlende/veraltete/manipulierte, fremde, unvollständige und parallel geschriebene Bestände scheitern ohne sensible Ausgabe; keine Timeraktivierung oder externe Übertragung.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
