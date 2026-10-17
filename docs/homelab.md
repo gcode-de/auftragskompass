@@ -254,3 +254,42 @@ sind dokumentiert. Der normale Betrieb benötigt keine zusätzliche Passwortdate
 Der isolierte native Probelauf hat das echte Inhaberkonto und seine Startdatei
 unverändert gelassen. Verschlüsselte tägliche Sicherungen und die übrige
 Betriebsabnahme E005 bleiben vor einer Produktivfreigabe erforderlich.
+
+
+## Schreibfreier Update-Stand (E005.13)
+
+Vor einem manuellen Imagewechsel müssen Admin, API und Worker pausieren, bevor
+`pg_dump` beginnt. Andernfalls fehlen spätere Änderungen im Vorabstand. Die
+Datenbank bleibt für den Dump aktiv. Genau einen Updatevorgang zur Zeit ausführen;
+während der Pause sind Oberfläche und Hintergrundverarbeitung nicht verfügbar.
+
+`scripts/update_checkpoint.py` zusammen mit `scripts/backup_restore.py` im privaten
+Betreiberverzeichnis auf dem Podman-Host installieren (Ordner 700, Dateien 600).
+Nach erfolgreicher CI und Imageprüfung die bisherigen Quadlets privat sichern,
+dann vor jeder Image-/Konfigurationsänderung aufrufen:
+
+```sh
+python3 /etc/auftragskompass-test/update_checkpoint.py \
+  --project ak-test \
+  --file /var/backups/auftragskompass-test/preupdate-EINDEUTIGER-ZEITPUNKT.dump
+```
+
+Der Zielordner muss dem aufrufenden Betreiber gehören, Modus 700 haben und außerhalb
+von Git liegen; vorhandene Dateien werden nicht überschrieben. Das Werkzeug prüft,
+dass alle drei App-Dienste aktiv sind, stoppt sie und ruft den bestehenden atomaren
+Dump auf. Bei Erfolg bleiben sie für das anschließende Update gestoppt. Erst jetzt
+Images/Quadlets ändern, gegebenenfalls die Datenbank neu starten und die Anwendung
+starten. Danach Gesundheit und OCI-Revision aller drei App-Container prüfen und die
+Sicherung auf den Betreiberrechner kopieren und per SHA-256 abgleichen.
+
+Scheitert das Stoppen oder der Dump, startet das Werkzeug die alten App-Dienste
+wieder und meldet den Fehler. Scheitert auch dieser Wiederanlauf, bleibt eine klare
+Betreibermeldung; lokale Dienste gezielt prüfen. In beiden Fällen kein Imagewechsel.
+Diese Wiederaufnahme gilt ausschließlich vor Änderungen an Images, Konfiguration
+oder Schema. Nach einer Migration niemals automatisch alte Images gegen die neue
+Datenbank starten oder die Sicherung über vorhandene Daten zurückspielen: erst in
+einem isolierten leeren Ziel wiederherstellen und den weiteren Ablauf prüfen.
+
+Die Kommandotests prüfen Reihenfolge und Fehlerwiederaufnahme ohne echte Dienste;
+der vorhandene native Podman-Probelauf prüft den realen Dump/Restore separat.
+Das Werkzeug aktiviert weder Updates noch einen Sicherungstimer.
