@@ -30,3 +30,17 @@ pnpm audit --prod
 
 Neue Befunde und fehlgeschlagene Registry-Abfragen sind zu prüfen; diese Notiz
 führt keine Ignore-Liste und schwächt keine vorhandenen Prüfungen ab.
+
+## E005.7 – Veröffentlichungsschranke
+
+Der GitHub-Qualitätsjob führt nach `pnpm install --frozen-lockfile` und vor
+`pnpm check` zusätzlich `pnpm audit --prod --audit-level=high` aus. Hohe und
+kritische Laufzeitbefunde blockieren den Job; auch Registry-/Netzwerkfehler
+werden nicht übergangen. Es gibt keine Ausnahmeliste und kein
+`continue-on-error`. Der Images-Job benötigt weiterhin einen erfolgreichen
+Qualitätsjob. Niedrigere Befunde bleiben prüfbar in der Audit-Ausgabe.
+
+Die lokale vollständige Qualitätssuite bleibt ohne zusätzliche Registry-Abfrage
+nutzbar. Audit bei Sicherheitsprüfungen separat wiederholen. Diese Schranke ist
+kein vollständiger Security-Scan und deckt weder Container-Basisimages noch eine
+fachliche Sicherheitsabnahme ab.

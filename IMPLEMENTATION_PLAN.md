@@ -68,6 +68,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.6: indirektes source-map-js auf den behobenen Patchstand für CVE-2026-93749 aktualisieren, ohne weitere Versionssprünge. Abnahme: Regression für übergroße Source-Map-Offsets zunächst rot, gültige Maps unverändert, Laufzeit-Audit ohne Befunde und vollständige Suite grün.
 
+- [x] E005.7: CI vor Image-Veröffentlichung auf hohe/kritische Laufzeit-Abhängigkeitsbefunde prüfen; Fehler der Audit-Abfrage stoppen ebenfalls. Abnahme: Workflowvertrag zunächst rot, Prüfung nach eingefrorener Installation und vor Qualitätssuite, keine Fehlertoleranz und Images weiter an quality gebunden.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
