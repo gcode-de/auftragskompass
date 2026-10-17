@@ -265,6 +265,41 @@ export function eventRepository(pool: Connection, tenantId: string) {
         },
       );
     },
+    async exportRows() {
+      return db.transaction(
+        async (tx) => {
+          const rows = await readRows(tx, tenantId);
+          if (!rows.length) return [];
+          const kinds = await tx
+            .select({ id: masterData.id, name: masterData.name })
+            .from(masterData)
+            .where(eq(masterData.tenantId, tenantId));
+          const venues = await tx
+            .select({ id: locations.id, name: locations.name })
+            .from(locations)
+            .where(eq(locations.tenantId, tenantId));
+          const people = await tx
+            .select({ id: contacts.id, name: contacts.name })
+            .from(contacts)
+            .where(eq(contacts.tenantId, tenantId));
+          const kindNames = new Map(kinds.map((row) => [row.id, row.name]));
+          const venueNames = new Map(venues.map((row) => [row.id, row.name]));
+          const contactNames = new Map(people.map((row) => [row.id, row.name]));
+          return rows.map((row) => ({
+            ...row,
+            eventTypeName: kindNames.get(row.eventTypeId ?? '') ?? '',
+            packageName: kindNames.get(row.packageId ?? '') ?? '',
+            locationName: venueNames.get(row.locationId ?? '') ?? '',
+            primaryContactName:
+              contactNames.get(row.primaryContactId ?? '') ?? '',
+            additionalContactNames: row.additionalContactIds.map((id) =>
+              contactNames.get(id)!,
+            ),
+          }));
+        },
+        { isolationLevel: 'repeatable read', accessMode: 'read only' },
+      );
+    },
     async detail(id: string) {
       return db.transaction(
         async (tx) => {
@@ -791,7 +826,7 @@ export function registerEventRoutes(
     },
   );
   app.get('/api/v1/events/export.csv', async (_request, reply) => {
-    const rows = await repo.list();
+    const rows = await repo.exportRows();
     const columns = [
       'id',
       'version',
@@ -809,6 +844,11 @@ export function registerEventRoutes(
       'source',
       'description',
       'notesHtml',
+      'eventTypeName',
+      'packageName',
+      'locationName',
+      'primaryContactName',
+      'additionalContactNames',
     ] as const;
     return reply
       .type('text/csv; charset=utf-8')
@@ -819,7 +859,7 @@ export function registerEventRoutes(
           columns.slice(),
           ...rows.map((row) =>
             columns.map((key) =>
-              key === 'additionalContactIds'
+              key === 'additionalContactIds' || key === 'additionalContactNames'
                 ? JSON.stringify(row[key])
                 : String(row[key] ?? ''),
             ),

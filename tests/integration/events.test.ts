@@ -68,7 +68,7 @@ test('events link only tenant-owned active records, preserve archived references
     masters = masterDataRepository(pool, tenantId);
   const person = {
     kind: 'private' as const,
-    name: 'Fictional event contact',
+    name: '=Fictional event contact',
     contactPerson: '',
     street: '',
     postalCode: '',
@@ -330,6 +330,15 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     expect(exported.body).toContain('"2026-10-16T18:00:00.000Z"');
     expect(exported.body).toContain('"<p>Safe</p>"');
     expect(exported.body).toContain(input.primaryContactId!);
+    expect(exported.body).toContain(
+      '"eventTypeName","packageName","locationName","primaryContactName","additionalContactNames"',
+    );
+    expect(exported.body).toContain('"\'=Fictional event contact"');
+    expect(exported.body).toContain('Fictional additional contact');
+    expect(exported.body).toContain('Synthetic event package');
+    expect(exported.body).toContain('Synthetic event venue');
+    expect(await eventRepository(pool, randomUUID()).exportRows()).toEqual([]);
+
     expect(exported.body).not.toContain(tenantId);
     expect(exported.body).not.toContain('Fictional foreign export event');
     expect(exported.body).toMatch(/^\uFEFF"id","version"/);
@@ -351,6 +360,7 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     expect(complete.body).toContain('"line one\nline two"');
     expect(complete.body).toContain(created.json().id);
     expect(complete.body).toContain('"cancelled","","",""');
+    expect(complete.body).toContain('"","","","","[]"\r\n');
     const linked = (
       await eventRepository(pool, tenantId).list(input.primaryContactId!)
     )[0]!;

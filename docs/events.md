@@ -43,8 +43,15 @@ zur offenen Weiterverwendung bestimmt, nicht als verlustfreier Rückimportvertra
 Enthalten sind ID, Version, Name, Statuscode, Datum, Beginn/Ende in UTC,
 Eventzeitzone, IDs der Eventart, des Pakets, Orts und Hauptkontakts, zusätzliche
 Kontakt-IDs als JSON-Array, Anfragequelle, Beschreibung und bereinigte HTML-Notizen.
-Leere Einzelwerte bleiben leer. Referenzen sind interne IDs, keine Namen; die
-Datei enthält keine tenant_id oder Zugangsdaten. Stammdaten, Reservierungen,
+Leere Einzelwerte bleiben leer. Die Referenz-IDs bleiben erhalten; zusätzlich
+folgen seit E005.10 `eventTypeName`, `packageName`, `locationName`,
+`primaryContactName` und `additionalContactNames`. Weitere Kontaktnamen sind ein
+JSON-Array in derselben Reihenfolge wie `additionalContactIds`. Namen stammen aus
+dem aktuellen, gegebenenfalls archivierten Stammdatensatz; sie sind keine
+historischen Dokumentbezeichnungen. Events und Namen werden in einem gemeinsamen
+schreibgeschützten Repeatable-Read-Snapshot gelesen, mit gebündelten Abfragen
+statt einzelner Abfragen je Event. Die Datei enthält keine tenant_id oder
+Zugangsdaten. Vollständige Stammdaten, Reservierungen,
 Logbuch und Importherkunft sind nicht Bestandteil dieses Exports. Für eine
 Wiederherstellung bleibt die vollständige verschlüsselte Datenbanksicherung
 maßgeblich. Downloads enthalten personenbezogene Inhalte und gehören in den

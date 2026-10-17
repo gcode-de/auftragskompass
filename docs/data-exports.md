@@ -9,7 +9,7 @@ Die Filter der Event- oder Kontaktliste schränken diese Downloads nicht ein.
 | Datei | Inhalt | Formatdetails |
 |---|---|---|
 | `contacts.csv` | Namen, Anschriften, Kommunikationsdaten und Archivzustand | [Kontaktvertrag](contacts.md) |
-| `events.csv` | Termine, Status, Referenz-IDs, Beschreibung und Notizen | [Eventvertrag](events.md#eventexport-e0053) |
+| `events.csv` | Termine, Status, Referenz-IDs und Namen, Beschreibung und Notizen | [Eventvertrag](events.md#eventexport-e0053) |
 | `products.csv` | Produktstamm mit exakten Preis-/Steuereinheiten und Zustand | [Produktvertrag](products.md#offener-export-e0054) |
 
 CSV-Dateien verwenden UTF-8 mit BOM, CRLF und maskierten Sonderzeichen. Der
