@@ -413,6 +413,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     const events = page.getByRole('region', { name: 'Events' });
     await events.getByRole('button', { name: 'Events aktualisieren' }).click();
     await expect(
+      events.getByLabel('Eventname', { exact: true }),
+    ).not.toBeVisible();
+    await events.getByText('Event anlegen', { exact: true }).click();
+    await expect(
       events
         .getByLabel('Hauptkontakt')
         .getByRole('option', { name: 'Synthetic browser contact' }),
@@ -483,6 +487,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeVisible();
+    await events.getByText('Event anlegen', { exact: true }).click();
     await events
       .getByLabel('Eventname', { exact: true })
       .fill('Fictional resource booking');
@@ -604,6 +609,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
 
     await navigate('Events');
     await record.getByRole('button', { name: 'Eventakte schließen' }).click();
+    await events.getByText('Filter', { exact: true }).click();
     await events.getByLabel('Events suchen', { exact: true }).fill('browser');
     await events.getByLabel('Filter von').fill('2026-10-16');
     await events.getByLabel('Filter bis').fill('2026-10-16');
@@ -876,6 +882,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await menuButton.click();
       await menu.getByRole('link', { name: 'Events', exact: true }).click();
       await expect(events).toBeVisible();
+      const filters = events.locator('.event-filters');
+      if ((await filters.getAttribute('open')) !== null)
+        await filters.locator('summary').click();
+      await page
+        .getByRole('heading', { name: 'AuftragsKompass', exact: true })
+        .scrollIntoViewIfNeeded();
       await expect(contacts).not.toBeVisible();
       await expect(calendar).not.toBeVisible();
       await page.screenshot({

@@ -50,6 +50,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] H012: Hell-/Dunkelmodus mit sichtbarem Umschalter, Systemeinstellung beim ersten Aufruf und lokaler Speicherung gemäß Nutzerwunsch. Abnahme: Neuladen, Systemwechsel, andere Tabs und gesperrter Browserspeicher; vollständige Farbpalette einschließlich Formularen, Tabellen, Meldungen und mobiler Navigation in Chromium prüfen.
 
+- [x] H013: Eventliste nach Monaten gliedern; Filter und Eventformular nur bei Bedarf öffnen, Bearbeiten/Duplizieren automatisch zum Formular führen und Eingaben beim Einklappen erhalten. Abnahme: Monat/Ohne-Datum-Gruppen, aktive Filter, Entwürfe, Speichern/Abbrechen und direkte Eventlinks im mobilen Chromium-Geschäftsablauf.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

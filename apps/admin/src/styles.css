@@ -703,3 +703,85 @@ time {
 .menu-close:hover:not(:disabled) {
   background: #294c3e;
 }
+
+.event-filters,
+.event-editor {
+  border-block: 1px solid var(--border);
+  margin: 1rem 0;
+}
+summary {
+  min-height: 48px;
+  padding: 0.75rem 0.25rem;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+}
+.event-timezone {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.event-month {
+  margin-top: 2rem;
+}
+.event-month > h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 1.1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
+}
+.event-month > h3 span {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.event-list {
+  list-style: none;
+  padding: 0;
+}
+.event-list > li {
+  padding: 1.25rem 0;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+}
+.event-list > li > span {
+  display: block;
+}
+.event-list > li > span:first-child {
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+.event-list > li > span:nth-child(2),
+.event-resource-hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.event-list > li > button {
+  margin: 0.5rem 0.5rem 0 0;
+}
+.section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.section-heading h2 {
+  margin: 0;
+}
+.secondary-action,
+.event-list > li > button:not(:first-of-type) {
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--border);
+}
+.secondary-action:hover:not(:disabled),
+.event-list > li > button:not(:first-of-type):hover:not(:disabled) {
+  background: var(--hover-surface);
+}
+#event-editor {
+  scroll-margin-top: 5rem;
+}

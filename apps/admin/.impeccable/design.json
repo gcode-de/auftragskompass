@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-17T14:14:56.578945Z",
+  "generatedAt": "2026-10-17T14:20:23.746450Z",
   "title": "Design System: AuftragsKompass",
   "extensions": {
     "colorMeta": {
@@ -193,7 +193,27 @@
         "name": "mobile-navigation",
         "value": "900px"
       }
-    ]
+    ],
+    "typographyMeta": {
+      "event-month-heading": {
+        "displayName": "Monatsüberschrift",
+        "purpose": "Monat und Jahr über der Eventgruppe."
+      },
+      "event-row-title": {
+        "displayName": "Eventtitelzeile",
+        "purpose": "Name, Datum und Status in der flachen Eventzeile."
+      },
+      "event-count": {
+        "displayName": "Eventanzahl",
+        "purpose": "Anzahl neben der Monatsüberschrift."
+      }
+    },
+    "eventListing": {
+      "disclosure": "Native details/summary; Summary mindestens 48px, Filter bei URL-Eventfiltern anfänglich offen, Editor anfänglich geschlossen.",
+      "editorBehavior": "Bearbeiten oder Duplizieren öffnet den Editor, scrollt zum Formular und fokussiert den Namen. Erfolgreiches Speichern oder ausdrückliches Abbrechen schließt ihn und fokussiert die Summary. Einklappen erhält den Entwurf; Fehler erhalten Eingaben.",
+      "grouping": "Monat und Jahr nach Eventdatum; ohne Datum: Ohne Datum. Anzahl an der Monatsüberschrift.",
+      "rows": "Flache Zeilen mit 1.25rem vertikalem Innenabstand und unterem border-Trenner; keine eigenen Kartenflächen oder Schatten."
+    }
   },
   "components": [
     {

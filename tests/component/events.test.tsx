@@ -53,10 +53,15 @@ function mocker(errors: string[] = [], supplied: Record<string, unknown> = {}) {
     ]);
   });
 }
+function showForms() {
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  screen.getByText(/^Filter(?: · aktiv)?$/).closest('details')!.open = true;
+}
 test('events create without date, retain formatted notes and edit/cancel with version checks', async () => {
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
+  showForms();
   await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic new event' },
@@ -109,6 +114,7 @@ test('events show invalid dates, conflicts, server and transport failures while 
   ]);
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
+  showForms();
   await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
   fireEvent.change(screen.getByLabelText('Eventbeginn'), {
     target: { value: '2026-03-29T02:30' },
@@ -144,12 +150,14 @@ test('events show invalid dates, conflicts, server and transport failures while 
     vi.fn().mockResolvedValue(new Response(null, { status: 500 })),
   );
   render(<EventPanel csrfToken="csrf" />);
+  showForms();
   await screen.findByText(/Events konnten nicht geladen/);
 });
 test('duplicating an event creates a new inquiry and does not update its source', async () => {
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
+  showForms();
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event duplizieren: Synthetic event',
@@ -185,6 +193,7 @@ test('event copies retain active references and require new choices for archived
   });
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
+  showForms();
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event duplizieren: Synthetic event',
@@ -224,6 +233,7 @@ test('event filters restore URL values, combine and clear filters, and show empt
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
+  showForms();
   await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
   expect(
     (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
@@ -281,6 +291,11 @@ test('older event search responses and failures cannot overwrite a newer result'
       }),
     );
     render(<EventPanel csrfToken="csrf" />);
+    fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+    const filter = screen
+      .getByText(/^Filter(?: · aktiv)?$/)
+      .closest('details')!;
+    filter.open = true;
     act(() => updateUrlSearch({ q: 'fresh' }));
     await screen.findByText('Synthetic fresh – Ohne Datum – inquiry');
     await act(async () => {
@@ -301,6 +316,7 @@ test('a completed import refreshes visible events without discarding an unfinish
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   const view = render(<EventPanel csrfToken="fictional" revision={0} />);
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
   await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
   fireEvent.change(screen.getByLabelText('Eventname', { exact: true }), {
     target: { value: 'Fictional retained draft' },
@@ -318,4 +334,52 @@ test('a completed import refreshes visible events without discarding an unfinish
     (screen.getByLabelText('Eventname', { exact: true }) as HTMLInputElement)
       .value,
   ).toBe('Fictional retained draft');
+});
+
+test('starts with a grouped event list and reveals forms without losing an unfinished draft', async () => {
+  vi.stubGlobal('fetch', mocker([], { eventDate: '2026-10-24' }));
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByRole('heading', { name: /Oktober 2026/ });
+  expect(
+    screen.getByText('Event anlegen', { exact: true }).closest('details')!.open,
+  ).toBe(false);
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  const name = screen.getByLabelText('Eventname') as HTMLInputElement;
+  fireEvent.change(name, { target: { value: 'Fictional unfinished event' } });
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  expect(
+    screen.getByText('Event anlegen', { exact: true }).closest('details')!.open,
+  ).toBe(false);
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Fictional unfinished event',
+  );
+});
+
+test('groups multiple events in the same month and keeps undated events separate', async () => {
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/events'
+        ? Response.json({
+            timeZone: 'Europe/Berlin',
+            events: [
+              { ...row, id: 'fictional-oct-a', eventDate: '2026-10-24' },
+              { ...row, id: 'fictional-oct-b', eventDate: '2026-10-31' },
+              { ...row, id: 'fictional-nov', eventDate: '2026-11-05' },
+              { ...row, id: 'fictional-undated' },
+            ],
+          })
+        : base(url),
+    ),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByRole('heading', { name: 'Oktober 2026 2 Events' });
+  expect(
+    screen.getByRole('heading', { name: 'November 2026 1 Event' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('heading', { name: 'Ohne Datum 1 Event' }),
+  ).toBeTruthy();
 });

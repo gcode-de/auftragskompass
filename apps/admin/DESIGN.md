@@ -48,6 +48,16 @@ typography:
     fontSize: "1.25rem"
     lineHeight: 1.2
     letterSpacing: "-0.025em"
+  event-month-heading:
+    fontSize: "1.1rem"
+    lineHeight: 1.2
+    letterSpacing: "-0.025em"
+  event-row-title:
+    fontSize: "1.05rem"
+    fontWeight: 650
+  event-count:
+    fontSize: "0.8rem"
+    fontWeight: 400
   label:
     fontWeight: 550
   button:
@@ -85,6 +95,11 @@ components:
   theme-toggle-pressed:
     backgroundColor: "{colors.selected-surface}"
     textColor: "{colors.selected-ink}"
+  event-disclosure:
+    textColor: "{colors.accent}"
+    padding: "0.75rem 0.25rem"
+  event-row:
+    padding: "1.25rem 0"
   input:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -137,6 +152,8 @@ Der Anwendungskopf verwendet ein zweispaltiges Grid (`minmax(0, 1fr) auto`): Nam
 
 Die Anmeldung ist eine eigene, maximal `30rem` breite Karte; der Anwendungsrahmen wird dafür maximal `65rem` breit und erhält `1.5rem` Innenabstand. Der sichtbare Arbeitsbereich folgt dem URL-Hash. Die globale Suche zeigt Events und Kontakte gemeinsam; Einstellungen haben eigene Unterbereiche.
 
+Eventlisten gruppieren Einträge anhand des Eventdatums nach Monat und Jahr; ohne Datum entsteht die Gruppe „Ohne Datum“. Monatsgruppen haben `2rem` Abstand nach oben. Ihre h3-Überschrift zeigt die Anzahl daneben (`gap: 0.75rem`, umbrechend, an der Grundlinie ausgerichtet). Listen sind ohne Aufzählungszeichen; flache Zeilen haben `1.25rem` vertikalen Innenabstand und einen unteren `border`-Trenner.
+
 ## Elevation & Depth
 
 Arbeitsflächen und Seitennavigation verwenden keine Schatten. Umrandungen und Flächenfarben schaffen Trennung. Die Anmeldung behält `0 0.25rem 1rem #20304408`; der generische Navigationsstil enthält `0 0.25rem 1rem #2030440d`, während Haupt- und Einstellungsnavigation diesen Schatten abschalten. Das native modale Menü liegt im Top Layer mit Hintergrundabdunklung `#0b1813aa`.
@@ -147,6 +164,8 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 
 ## Components
 
+- **Eventfilter und Editor:** native `<details>`/`<summary>` mit oberen und unteren `border`-Trennern und `1rem` Außenabstand. Summary ist mindestens `48px` hoch, mit Akzentschrift, Gewicht 600 und `0.75rem 0.25rem` Innenabstand. Filter sind bei vorhandenen Eventfiltern in der URL anfänglich geöffnet und tragen „Filter · aktiv“. Der Editor beginnt geschlossen. Bearbeiten oder Duplizieren öffnet ihn, scrollt zum Formular und fokussiert den Namen. Erfolgreiches Speichern oder ausdrückliches Abbrechen schließt ihn und fokussiert die Summary. Bloßes Einklappen erhält den Formularentwurf; Fehler lassen die Eingaben bestehen. Der Abbrechen-Knopf erscheint bei einem geladenen Bearbeitungs- oder Duplikatentwurf.
+- **Eventzeilen:** Monatsüberschrift `1.1rem`, Anzahl `0.8rem` mit Gewicht 400 und `muted`; erste Zeile mit Name, Datum und Status `1.05rem` mit Gewicht 650. Zweite Zeile, Zeitzone und Ressourcenhinweis verwenden `0.875rem` und `muted`. Aktionen stehen darunter mit `0.5rem` Abstand nach oben und rechts. Aktualisieren sowie Duplizieren/Bearbeiten verwenden transparente Sekundäraktionen mit Akzenttext und `hover-surface`. Die Zeilen erhalten keine eigenen Kartenflächen oder Schatten.
 - **Aktionen:** grüne Knöpfe, Gewicht 600; deaktiviert mit Deckkraft 0.65 und `not-allowed`. Die Abmeldung ist transparent mit grüner Schrift und heller Umrandung; beim Überfahren verwendet sie `hover-surface` als Hintergrund und behält die Akzentschrift. Allgemeiner Fokus: `3px solid var(--focus)`, Abstand `3px`.
 - **Darstellungsumschalter:** „Dunkelmodus“ ist vor und nach Anmeldung im Anwendungskopf verfügbar, mit dekorativem Mond-SVG und `aria-pressed` für den Dunkelzustand. Gespeichert wird ausschließlich `light` oder `dark` unter `localStorage["ak-theme"]`; ungültige oder nicht lesbare Werte fallen auf die Systempräferenz zurück. Ohne explizite Wahl werden Systemänderungen übernommen. Ein Klick setzt eine explizite Wahl; Änderungen anderer Tabs sowie gelöschte Präferenzen werden über das `storage`-Ereignis übernommen. Bei gesperrtem Speicher funktioniert die Wahl für die laufende Sitzung. Das aktuelle Schema wird per Layout-Effekt als `data-theme` am Dokumentwurzelelement gesetzt; Farben wechseln ohne Übergangsanimation. Der Umschalter bietet keine eigene Funktion zum Zurücksetzen auf die Systempräferenz.
 - **Formulare:** sichtbare Labels, Felder mit `surface`-Hintergrund und `field-border`-Rand; Textflächen und Mehrfachauswahl mindestens `7rem` hoch. Checkboxen/Radios verwenden die Akzentfarbe.
