@@ -1,0 +1,11 @@
+[Unit]
+Description=AuftragsKompass daily encrypted database backup
+
+[Timer]
+OnCalendar=*-*-* 00:30:00 Europe/Berlin
+RandomizedDelaySec=5min
+Persistent=true
+Unit=ak-test-backup.service
+
+[Install]
+WantedBy=timers.target

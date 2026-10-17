@@ -1,0 +1,10 @@
+[Unit]
+Description=AuftragsKompass encrypted database backup
+Requires=ak-test-database.service
+After=ak-test-database.service
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 -B /etc/auftragskompass-test/run_backup.py --project ak-test --directory /var/backups/auftragskompass-test --certificate /etc/auftragskompass-test/backup-recipient.pem
+TimeoutStartSec=25min

@@ -28,6 +28,8 @@ Restore benötigt ein separates Compose-Projekt mit ausschließlich gestarteter,
 Vorhandene externe Dumps und Archive lassen sich mit dem separaten
 [geprüften Verschlüsselungswerkzeug](backup-encryption.md) schützen (E005.1).
 Dies aktiviert keinen Zeitplan und ist noch keine unabhängige Sicherung.
+Ein [serialisierter Lauf mit systemd-Vorlagen](scheduled-backup.md) ist in E005.2
+vorbereitet; Aktivierung und unabhängige Kopie bleiben separat erforderlich.
 
 ### Podman (H004)
 
