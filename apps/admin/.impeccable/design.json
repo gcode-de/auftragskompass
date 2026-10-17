@@ -233,7 +233,7 @@
     },
     "navigationAccount": {
       "placement": "Navigationsfuß der scrollbar gehaltenen Desktop-Seitenleiste; mobil nur im geöffneten nativen Dialog. Keine zusätzliche Kontozeile im Hauptbereich und kein Fußzeilenspruch.",
-      "feedback": "Statusrolle im Kontobereich; sichtbare Rückmeldung mit #294c3e und sidebar-ink, damit Fehler beim Abmelden im modalen Kontext angekündigt werden.",
+      "feedback": "Statusrolle im Kontobereich; sichtbare Rückmeldung mit #294c3e und sidebar-ink, damit Fehler beim Abmelden im modalen Kontext angekündigt werden. Im abgemeldeten Zustand erscheint die Statusmeldung ausschließlich direkt in der Anmeldung.",
       "trigger": "44 × 44px transparenter Knopf mit dekorativem 22 × 22px Hamburger-SVG; aria-label Menü öffnen."
     },
     "calendarState": {

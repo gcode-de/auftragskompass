@@ -56,6 +56,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] H014.1: fehlende Komponententests für Öffnen, Schließen und Bearbeiten der Eventakte einschließlich Fokusrückgabe ergänzen. Abnahme: Changed-Code-Coverage für den gesamten H014-Diff ab 0773613 erfüllt; keine Laufzeitänderung und kein Deployment eines ungeprüften Standes.
 
+- [x] H015.1: Dokumentation der Anmeldestatus-Platzierung nach finalem Designreview präzisieren; reine Dokumentation, JSON- und Formatprüfung.
+
 - [x] H015: mobile Menüleiste verdichten, Konto/Abmeldung ins Menü verschieben und kontrastreiche Kalenderlinks in beiden Farbmodi sichern. Abnahme: Abmeldung erreichbar, Menüfokus unverändert, mobile Überlagerung/Überlauf ausgeschlossen und gemessener Kalenderlink-Kontrast mindestens 4,5:1.
 
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
