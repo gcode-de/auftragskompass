@@ -615,6 +615,54 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await calendar.screenshot({
       path: 'tests/test-results/calendar-day.png',
     });
+    if (mode === 'password') {
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      const contrast = await calendar
+        .getByRole('link', { name: 'Fictional resource booking' })
+        .first()
+        .evaluate((el) => {
+          const luminance = (value: string) => {
+            const parts = value
+              .match(/[\d.]+/g)!
+              .map(Number)
+              .map((channel) => channel / 255)
+              .map((v) =>
+                v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4,
+              );
+            return parts[0]! * 0.2126 + parts[1]! * 0.7152 + parts[2]! * 0.0722;
+          };
+          const foreground = luminance(getComputedStyle(el).color);
+          const background = luminance(
+            getComputedStyle(el.closest('.calendar-state')!).backgroundColor,
+          );
+          return (
+            (Math.max(foreground, background) + 0.05) /
+            (Math.min(foreground, background) + 0.05)
+          );
+        });
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+      await calendar.screenshot({
+        path: 'tests/test-results/admin-calendar-dark.png',
+        animations: 'disabled',
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await calendar
+        .getByRole('heading', {
+          name: 'Event- und Ressourcenkalender',
+          exact: true,
+        })
+        .scrollIntoViewIfNeeded();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(391);
+      await page.screenshot({
+        path: 'tests/test-results/admin-mobile-calendar-dark.png',
+        animations: 'disabled',
+      });
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+    }
+
     await calendar
       .getByRole('combobox', { name: 'Kalenderansicht', exact: true })
       .selectOption('week');
@@ -954,6 +1002,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await menuButton.click();
       const menu = page.getByRole('dialog', { name: 'Menü', exact: true });
       await expect(menu).toBeVisible();
+      await expect(
+        menu.getByRole('button', { name: 'Abmelden', exact: true }),
+      ).toBeVisible();
       await expect(menu).toHaveCSS('opacity', '1');
       await page.screenshot({
         path: 'tests/test-results/admin-mobile-menu.png',

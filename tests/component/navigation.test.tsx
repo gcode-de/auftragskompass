@@ -123,3 +123,24 @@ test('mobile menu opens as a modal and closes on selection or Escape', () => {
       .getAttribute('aria-expanded'),
   ).toBe('false');
 });
+
+test('keeps account actions in the menu and reveals the mobile copy only while open', () => {
+  HTMLDialogElement.prototype.showModal = vi.fn(function (
+    this: HTMLDialogElement,
+  ) {
+    this.open = true;
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.open = false;
+  });
+  render(<Navigation account={<button>Fictional logout</button>} />);
+  expect(screen.getAllByText('Fictional logout')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
+  expect(
+    within(screen.getByRole('dialog', { name: 'Menü' })).getByRole('button', {
+      name: 'Fictional logout',
+    }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+  expect(screen.getAllByText('Fictional logout')).toHaveLength(1);
+});

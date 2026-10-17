@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   useUrlSearch,
   updateUrlSearch,
@@ -87,7 +87,7 @@ export function SettingsNavigation() {
     </nav>
   );
 }
-export function Navigation() {
+export function Navigation({ account }: { account?: ReactNode }) {
   const search = useUrlSearch(),
     q = new URLSearchParams(search).get('q') ?? '';
   const route = useWorkspaceRoute();
@@ -106,7 +106,7 @@ export function Navigation() {
     setOpen(false);
     trigger.current?.focus();
   }
-  function menu() {
+  function menu(showAccount = true) {
     return (
       <>
         <p className="menu-brand">AuftragsKompass</p>
@@ -138,7 +138,9 @@ export function Navigation() {
             </a>
           ))}
         </nav>
-        <p className="menu-footnote">Ein Bereich. Alles im Blick.</p>
+        {showAccount && account && (
+          <div className="menu-account">{account}</div>
+        )}
       </>
     );
   }
@@ -150,6 +152,7 @@ export function Navigation() {
       <div className="workspace-toolbar">
         <button
           className="menu-trigger"
+          aria-label="Menü öffnen"
           ref={trigger}
           aria-haspopup="dialog"
           aria-controls="workspace-menu"
@@ -162,7 +165,18 @@ export function Navigation() {
             setOpen(true);
           }}
         >
-          Menü öffnen
+          <svg
+            viewBox="0 0 24 24"
+            width="22"
+            height="22"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
         </button>
         <p className="workspace-title">{title}</p>
         <a className="search-shortcut" href="#search">
@@ -191,7 +205,7 @@ export function Navigation() {
         <button className="menu-close" onClick={closeMenu}>
           Menü schließen
         </button>
-        {menu()}
+        {menu(open)}
       </dialog>
       <div hidden={route !== 'search'} className="search-panel">
         <h2>Globale Suche</h2>

@@ -274,6 +274,7 @@ export function CalendarPanel() {
                     )
                     .map((event) => (
                       <article
+                        className="calendar-state"
                         key={event.id}
                         style={{
                           padding: '0.4rem',
@@ -358,6 +359,7 @@ export function CalendarPanel() {
                                   : 'free';
                       return (
                         <td
+                          className="calendar-state"
                           key={day.date}
                           style={{
                             border: '1px solid #6b7280',

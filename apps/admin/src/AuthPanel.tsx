@@ -109,19 +109,25 @@ export function AuthPanel() {
       aria-label="Anmeldung"
       className={user ? 'workspace' : 'login-card'}
     >
-      <p
-        role="status"
-        className={status === 'Angemeldet' ? 'session-ready' : undefined}
-      >
-        {status}
-      </p>
+      {!user && <p role="status">{status}</p>}
       {user ? (
         <>
-          <div className="account-bar">
-            <p>{user.email}</p>
-            <button onClick={() => void logout()}>Abmelden</button>
-          </div>
-          <Navigation />
+          <Navigation
+            account={
+              <div className="account-bar">
+                <p
+                  role="status"
+                  className={
+                    status === 'Angemeldet' ? 'session-ready' : undefined
+                  }
+                >
+                  {status}
+                </p>
+                <p>{user.email}</p>
+                <button onClick={() => void logout()}>Abmelden</button>
+              </div>
+            }
+          />
           <div
             className="workspace-page"
             hidden={route !== 'events' && route !== 'search'}
