@@ -61,6 +61,15 @@ keine vollständigen Eventakten; Datum, Status, Kontakte und Dubletten sind vor
 Import abzugleichen. Es wurde kein Import ausgelöst. Frühere Historie und
 Agenturmodus sind nicht als vollständig abgeglichen bestätigt.
 
+Zusätzlich wurde der gesamte lokal vorhandene Sicherungsordner als verschlüsselte
+Transportkopie vorbereitet (E002.1). Nach vollständiger Entschlüsselung wurden
+sämtliche enthaltenen Dateien einzeln gegen ihre SHA-256-Werte geprüft; Originale
+blieben unverändert. Der private Wiederherstellungsschlüssel und seine Passphrase
+liegen ausschließlich beim Betreiber, außerhalb von Git und Server. Diese Kopie
+liegt noch auf demselben Rechner. Unabhängiges Speicherziel, geschützte zweite
+Schlüsselverwahrung und fachliche Vollständigkeitsabnahme bleiben offen. Es wurden
+keine weiteren Bookitup-Daten abgerufen oder in die Anwendung übernommen.
+
 Die Event-CSV ist ein begrenzter Kalenderauszug ohne vollständige Eventakten.
 Im Originalexport eines Jahres wurde eine Zeile mit abweichender Spaltenzahl
 festgestellt und unverändert erhalten; vor einem Import ist sie zu prüfen.
