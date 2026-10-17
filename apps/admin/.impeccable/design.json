@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-17T14:37:28.563043Z",
+  "generatedAt": "2026-10-17T19:09:06.693974Z",
   "title": "Design System: AuftragsKompass",
   "extensions": {
     "colorMeta": {
@@ -240,6 +240,12 @@
       "scope": "Pastellfarbene Eventartikel und Ressourcenzellen mit calendar-state.",
       "links": "Erben die feste dunkle Schrift #111827 in beiden Darstellungen.",
       "focus": "Outline-Farbe #111827."
+    },
+    "dataExport": {
+      "route": "Einstellungen → Datenexport; #settings-export.",
+      "structure": "Semantische Liste mit drei nativen Downloadlinks für Kontakte, alle Events und Produktkatalog.",
+      "appearance": "Vorhandene Palette und Fokusfarben; inline-flex, mindestens 44px Höhe, Schriftgewicht 600. Erläuterungen muted, margin 0 0 0.75rem. Absätze maximal 70ch.",
+      "guidance": "Vollständiger eigener Bestand unabhängig von Filtern, einschließlich archivierter und annullierter Einträge; CSV ersetzt keine vollständige Datensicherung."
     }
   },
   "components": [

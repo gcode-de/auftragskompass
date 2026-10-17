@@ -1,3 +1,4 @@
+import { ExportPanel } from './ExportPanel.js';
 import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
 import { ImportPanel } from './ImportPanel.js';
 import { CalendarPanel } from './CalendarPanel.js';
@@ -23,6 +24,7 @@ export function AuthPanel() {
     'subscriptions',
     'import',
     'security',
+    'export',
   ].includes(route);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState('Anmeldung wird geprüft …');
@@ -170,6 +172,9 @@ export function AuthPanel() {
                 csrfToken={user.csrfToken}
                 onImported={() => setImportRevision((value) => value + 1)}
               />
+            </div>
+            <div hidden={route !== 'export'}>
+              <ExportPanel />
             </div>
             <div hidden={route !== 'security'}>
               {mode === 'password' && (

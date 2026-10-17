@@ -34,6 +34,7 @@ const settingsLinks = [
   ['settings', 'Stammdaten'],
   ['settings-calendar', 'Kalender-Abos'],
   ['import-review', 'Datenimport'],
+  ['settings-export', 'Datenexport'],
   ['settings-security', 'Konto & Zugriff'],
 ] as const;
 export type WorkspaceRoute =
@@ -41,11 +42,13 @@ export type WorkspaceRoute =
   | 'subscriptions'
   | 'import'
   | 'security'
+  | 'export'
   | 'search';
 function readRoute(): WorkspaceRoute {
   const hash = window.location.hash.slice(1);
   if (hash === 'import-review') return 'import';
   if (hash === 'settings-calendar') return 'subscriptions';
+  if (hash === 'settings-export') return 'export';
   if (hash === 'settings-security') return 'security';
   if (hash.startsWith('event-')) return 'events';
   if (hash.startsWith('contact-')) return 'contacts';
@@ -72,7 +75,8 @@ export function SettingsNavigation() {
     subscriptions: 'settings-calendar',
     import: 'import-review',
     security: 'settings-security',
-  }[route as 'settings' | 'subscriptions' | 'import' | 'security'];
+    export: 'settings-export',
+  }[route as 'settings' | 'subscriptions' | 'import' | 'security' | 'export'];
   return (
     <nav className="settings-navigation" aria-label="Einstellungen">
       {settingsLinks.map(([hash, label]) => (
@@ -91,9 +95,13 @@ export function Navigation({ account }: { account?: ReactNode }) {
   const search = useUrlSearch(),
     q = new URLSearchParams(search).get('q') ?? '';
   const route = useWorkspaceRoute();
-  const settings = ['settings', 'subscriptions', 'import', 'security'].includes(
-    route,
-  );
+  const settings = [
+    'settings',
+    'subscriptions',
+    'import',
+    'security',
+    'export',
+  ].includes(route);
   const title =
     route === 'search'
       ? 'Suchergebnisse'

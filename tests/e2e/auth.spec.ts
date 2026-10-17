@@ -942,6 +942,72 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await page.setViewportSize({ width: 1280, height: 720 });
     }
 
+    await navigate('Einstellungen', 'Datenexport');
+    const exports = page.getByRole('region', {
+      name: 'Datenexport',
+      exact: true,
+    });
+    await expect(exports).toBeVisible();
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Einstellungen', exact: true })
+        .getByRole('link', { name: 'Datenexport', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
+    for (const [label, file, content] of [
+      [
+        'Kontakte als CSV herunterladen',
+        'contacts.csv',
+        'Synthetic browser contact',
+      ],
+      [
+        'Alle Events als CSV herunterladen',
+        'events.csv',
+        'Fictional Future Event',
+      ],
+      [
+        'Produktkatalog als CSV herunterladen',
+        'products.csv',
+        'Synthetic browser product',
+      ],
+    ] as const) {
+      const pending = page.waitForEvent('download');
+      await exports.getByRole('link', { name: label, exact: true }).click();
+      const download = await pending;
+      expect(download.suggestedFilename()).toBe(file);
+      expect(await readFile((await download.path())!, 'utf8')).toContain(
+        content!,
+      );
+    }
+    if (mode === 'password') {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: 'tests/test-results/exports-desktop-light.png',
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.screenshot({
+        path: 'tests/test-results/exports-desktop-dark.png',
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({
+        path: 'tests/test-results/exports-mobile-dark.png',
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.screenshot({
+        path: 'tests/test-results/exports-mobile-light.png',
+        fullPage: true,
+        animations: 'disabled',
+      });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(391);
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
     await navigate('Einstellungen', 'Kalender-Abos');
     const subscriptions = page.getByRole('region', {
       name: 'Kalender-Abos',

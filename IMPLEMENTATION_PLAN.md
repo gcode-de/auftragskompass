@@ -64,6 +64,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.4: geschützter Produkt-CSV-Export mit unveränderten ganzzahligen Cent-/Steuerwerten, Netto-/Bruttobasis und allen Archivzuständen; Formelschutz, no-store und Mandantentrennung. Abnahme: Grenzwerte bleiben exakt, fremde/anonyme Sitzungen scheitern, Archivbestand und Sonderzeichen bleiben enthalten.
 
+- [x] E005.5: Exportbereich unter Einstellungen mit Downloads für Kontakte, alle Events und den Produktkatalog; mobile und helle/dunkle Darstellung, klare Exportgrenzen und private Ablage. Abnahme: geschützter Download im vollständigen Chromium-Ablauf, direkte Navigation/aktive Auswahl und kein mobiler Überlauf.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

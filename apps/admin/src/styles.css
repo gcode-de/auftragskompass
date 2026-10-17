@@ -895,3 +895,18 @@ summary {
   background: #294c3e;
   color: var(--sidebar-ink);
 }
+
+.export-list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+.export-list p {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+}
+
+.export-panel p {
+  max-width: 70ch;
+}
