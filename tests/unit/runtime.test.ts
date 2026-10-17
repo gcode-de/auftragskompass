@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import {
   loadRuntimeConfig,
   createHealthServer,
@@ -116,17 +117,69 @@ test('readiness distinguishes worker failure and bounds stalled dependencies; lo
     },
     'serialization_test',
   );
-  app.get('/throw', () => {
+  app.post('/throw', () => {
     throw new Error('synthetic-private-message');
   });
   try {
     expect((await app.inject('/health/ready')).statusCode).toBe(503);
-    expect((await app.inject('/throw')).statusCode).toBe(500);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/throw?token=synthetic-private-token',
+          headers: {
+            authorization: 'Bearer synthetic-private-authorization',
+            cookie: 'synthetic-private-cookie',
+          },
+          payload: { note: 'synthetic-private-body' },
+        })
+      ).statusCode,
+    ).toBe(500);
     expect(
       (await app.inject('/unknown?token=synthetic-private-token')).statusCode,
     ).toBe(404);
     expect(logs.join('')).not.toContain('synthetic-private');
+    const completed = logs
+      .flatMap((chunk) => chunk.trim().split('\n'))
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.msg === 'request_completed');
+    expect(completed).toHaveLength(6);
+    for (const entry of completed)
+      expect(Object.keys(entry).sort()).toEqual([
+        'hostname',
+        'level',
+        'msg',
+        'pid',
+        'statusCode',
+        'time',
+      ]);
   } finally {
     await app.close();
   }
+});
+
+test('runtime starts in a fresh process without deprecated request logging', () => {
+  const moduleUrl = new URL(
+    '../../packages/core/src/runtime.ts',
+    import.meta.url,
+  ).href;
+  const child = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      `
+    import { createHealthServer, loadRuntimeConfig } from ${JSON.stringify(moduleUrl)};
+    const app = createHealthServer(
+      loadRuntimeConfig(${JSON.stringify(env)}, () => 'synthetic-secret-value'),
+      { database: async () => true, worker: async () => true },
+    );
+    await app.inject('/health/live');
+    await app.close();
+  `,
+    ],
+    { encoding: 'utf8', timeout: 10000 },
+  );
+  expect(child.status, child.stderr).toBe(0);
+  expect(child.stderr).not.toContain('FSTDEP023');
 });

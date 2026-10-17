@@ -1,4 +1,4 @@
-import Fastify, { type FastifyError } from 'fastify';
+import Fastify, { LogController, type FastifyError } from 'fastify';
 import type { Writable } from 'node:stream';
 
 export function loadRuntimeConfig(
@@ -81,7 +81,7 @@ export function createHealthServer(
   timeoutMs = 1000,
 ) {
   const app = Fastify({
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
     logger: {
       level: config.logLevel,
       ...(stream ? { stream } : {}),
