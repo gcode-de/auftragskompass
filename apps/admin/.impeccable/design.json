@@ -214,7 +214,7 @@
       },
       "record-heading": {
         "displayName": "Aktenüberschrift",
-        "purpose": "Fokussierbare Überschrift der geöffneten Eventakte."
+        "purpose": "Fokussierbarer h2-Aktentitel der geöffneten Eventakte."
       }
     },
     "eventListing": {
@@ -224,6 +224,7 @@
       "rows": "Flache Zeilen mit 1.25rem vertikalem Innenabstand und unterem border-Trenner; keine eigenen Kartenflächen oder Schatten."
     },
     "eventRecord": {
+      "headings": "Eigenständiger h2-Aktentitel mit record-heading, margin-block 1em und scroll-margin-top 5rem. Unterbereiche einschließlich Ressourcenzuweisung verwenden h3 bei erhaltener Darstellung mit 1rem und margin-block 1.33em.",
       "context": "Geöffnete Akte blendet Listensteuerung, Monatsüberschriften und andere Eventzeilen aus.",
       "navigation": "Gewöhnliche Knöpfe Übersicht/Ressourcen/Notizen/Logbuch in beschrifteter Navigation; aria-current=location, inaktive Bereiche hidden; keine ARIA-Tabs.",
       "state": "Inaktive Bereiche bleiben eingehängt und erhalten Ressourceneingaben. Ausgewählter Bereich bleibt bei Versionsaktualisierungen dank stabiler Eventidentität und revision erhalten.",
@@ -238,6 +239,7 @@
       "desktopTransition": "Beim Wechsel auf min-width: 901px schließt der matchMedia-Listener einen geöffneten nativen Dialog, setzt aria-expanded zurück und fokussiert den aktuellen Desktop-Seitenleistenlink; ohne aktuellen Link (Suche) den Suchlink der Werkzeugleiste. Listener wird beim Unmount entfernt."
     },
     "calendarState": {
+      "legend": "Mit Kalenderlegende benannte Gruppe (role=group); unveränderte sichtbare Darstellung.",
       "scope": "Pastellfarbene Eventartikel und Ressourcenzellen mit calendar-state.",
       "links": "Erben die feste dunkle Schrift #111827 in beiden Darstellungen.",
       "focus": "Outline-Farbe #111827."

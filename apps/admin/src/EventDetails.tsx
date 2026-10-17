@@ -143,9 +143,9 @@ export function EventDetails({
       {loading && <p>Eventakte wird geladen …</p>}
       {data && (
         <>
-          <h3 ref={heading} tabIndex={-1}>
+          <h2 ref={heading} tabIndex={-1}>
             Eventakte: {data.event.name}
-          </h3>
+          </h2>
           <nav
             className="record-navigation"
             aria-label="Bereiche der Eventakte"
@@ -237,7 +237,7 @@ export function EventDetails({
             />
           </div>
           <div hidden={section !== 'overview'}>
-            <h4>Kontakte</h4>
+            <h3>Kontakte</h3>
             {!data.contacts.length && <p>Noch keine Kontakte zugeordnet.</p>}
             <ul>
               {data.contacts.map((person) => (
@@ -264,7 +264,7 @@ export function EventDetails({
                 </li>
               ))}
             </ul>
-            <h4>Location</h4>
+            <h3>Location</h3>
             {data.location ? (
               <>
                 <p>{data.location.name}</p>
@@ -284,14 +284,14 @@ export function EventDetails({
             )}
           </div>
           <div hidden={section !== 'notes'}>
-            <h4>Interne Notizen</h4>
+            <h3>Interne Notizen</h3>
             <div
               aria-label={'Notizen: ' + data.event.name}
               dangerouslySetInnerHTML={{ __html: data.event.notesHtml }}
             />
           </div>
           <div hidden={section !== 'activity'}>
-            <h4>Logbuch</h4>
+            <h3>Logbuch</h3>
             {!data.activities.length && <p>Noch keine Aktivitäten.</p>}
             <ol>
               {data.activities.map((activity) => (

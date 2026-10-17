@@ -201,7 +201,7 @@ export function CalendarPanel() {
               <a href="#import-review">Import-Prüfliste</a> abgleichen.
             </p>
           )}
-          <p aria-label="Kalenderlegende">
+          <p role="group" aria-label="Kalenderlegende">
             {[
               [
                 data.pendingPromises ? 'hold' : 'free',

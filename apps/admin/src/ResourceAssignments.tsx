@@ -269,7 +269,7 @@ export function ResourceAssignments({
   }
   return (
     <section aria-label="Ressourcenzuweisung" aria-busy={loading || busy}>
-      <h4>Ressourcen zuweisen</h4>
+      <h3>Ressourcen zuweisen</h3>
       <p role="status">{message}</p>
       {loading && <p>Verfügbarkeit wird geladen …</p>}
       <p>

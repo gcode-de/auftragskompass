@@ -65,6 +65,7 @@ test('calendar displays events, soft conflicts and resource periods and changes 
   vi.stubGlobal('fetch', fetcher);
   render(<CalendarPanel />);
   await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
+  expect(screen.getByRole('group', { name: 'Kalenderlegende' })).toBeTruthy();
   expect(
     screen.getAllByText(/Fictional calendar event/).length,
   ).toBeGreaterThan(0);

@@ -86,6 +86,7 @@ test('event details collect contacts, venue, notes and activities and save statu
   );
   await screen.findByRole('heading', {
     name: 'Eventakte: Synthetic detail event',
+    level: 2,
   });
   expect(
     screen

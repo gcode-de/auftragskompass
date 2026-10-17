@@ -781,9 +781,14 @@ summary {
   scroll-margin-top: 5rem;
 }
 
-.event-record h3 {
+.event-record > h2 {
   scroll-margin-top: 5rem;
   font-size: 1.35rem;
+  margin-block: 1em;
+}
+.event-record h3 {
+  font-size: 1rem;
+  margin-block: 1.33em;
 }
 .event-record dl {
   display: grid;

@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
 import { registerImportRoutes } from '../../packages/core/src/import-routes.js';
 import { fictionalImport } from '../fixtures/minimal-import.js';
@@ -7,7 +8,7 @@ import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -25,7 +26,7 @@ import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 async function signInScenario(browser: Browser, mode: 'google' | 'password') {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   const dir = await mkdtemp(join(tmpdir(), 'ak-tls-'));
   const container = await new PostgreSqlContainer(
     'postgres:17.6-alpine',
@@ -180,15 +181,78 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         policyErrors.push('blocked');
     });
     page.setDefaultTimeout(10000);
+    const auditFailures: {
+      state: string;
+      ids: string[];
+      targets: unknown[];
+    }[] = [];
+    let auditIndex = 0;
+    const audit = async (state: string) => {
+      const result = await new AxeBuilder({ page })
+        .withTags([
+          'wcag2a',
+          'wcag2aa',
+          'wcag21a',
+          'wcag21aa',
+          'wcag22aa',
+          'best-practice',
+        ])
+        .analyze();
+      const violations = result.violations.map(({ id, impact, nodes }) => ({
+        id,
+        impact,
+        targets: nodes.map((node) => node.target),
+      }));
+      const report = test.info().outputPath(`a11y-${auditIndex++}.json`);
+      await writeFile(
+        report,
+        JSON.stringify(
+          {
+            state,
+            mode,
+            viewport: page.viewportSize(),
+            theme: await page.locator('html').getAttribute('data-theme'),
+            violations,
+            incomplete: result.incomplete.map(({ id, nodes }) => ({
+              id,
+              nodes: nodes.map(({ target, failureSummary }) => ({
+                target,
+                failureSummary,
+              })),
+            })),
+          },
+          null,
+          2,
+        ),
+      );
+      await test.info().attach(`${mode}-${state}-a11y`, {
+        contentType: 'application/json',
+        path: report,
+      });
+      if (violations.length)
+        auditFailures.push({
+          state,
+          ids: violations.map((v) => v.id),
+          targets: violations.map((v) => v.targets),
+        });
+    };
+
     const loadedDocument = await page.goto(origin);
     expect(loadedDocument!.headers()['content-security-policy']).toContain(
       "frame-ancestors 'none'",
     );
+    await expect(
+      mode === 'password'
+        ? page.getByLabel('E-Mail oder Benutzername')
+        : page.getByRole('link', { name: 'Mit Google anmelden' }),
+    ).toBeVisible();
+    await audit('login');
     if (mode === 'password') {
       await page.setViewportSize({ width: 320, height: 740 });
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(321);
+      await audit('login-mobile-light');
       await page.setViewportSize({ width: 1280, height: 720 });
       const identifierBox = await page
         .getByLabel('E-Mail oder Benutzername')
@@ -212,6 +276,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeInViewport();
     await page.getByRole('button', { name: 'Dunkelmodus' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await audit('events-desktop-dark');
     await page.reload();
     await expect(
       page.getByRole('button', { name: 'Dunkelmodus' }),
@@ -234,6 +299,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           .getByRole('navigation', { name: 'Einstellungen', exact: true })
           .getByRole('link', { name: setting, exact: true })
           .click();
+      await expect(
+        page
+          .getByRole('navigation', { name: 'Hauptnavigation' })
+          .getByRole('link', { name: label, exact: true }),
+      ).toHaveAttribute('aria-current', 'page');
+      await audit(label + (setting ?? ''));
     };
     await navigate('Einstellungen', 'Konto & Zugriff');
     if (mode === 'google') {
@@ -647,30 +718,32 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     });
     if (mode === 'password') {
       await page.getByRole('button', { name: 'Dunkelmodus' }).click();
-      const contrast = await calendar
-        .getByRole('link', { name: 'Fictional resource booking' })
-        .first()
-        .evaluate((el) => {
-          const luminance = (value: string) => {
-            const parts = value
-              .match(/[\d.]+/g)!
-              .map(Number)
-              .map((channel) => channel / 255)
-              .map((v) =>
-                v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4,
+      const contrasts = await calendar
+        .locator('.calendar-state')
+        .evaluateAll((elements) =>
+          elements.map((el) => {
+            const luminance = (value: string) => {
+              const parts = value
+                .match(/[\d.]+/g)!
+                .map(Number)
+                .map((channel) => channel / 255)
+                .map((v) =>
+                  v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4,
+                );
+              return (
+                parts[0]! * 0.2126 + parts[1]! * 0.7152 + parts[2]! * 0.0722
               );
-            return parts[0]! * 0.2126 + parts[1]! * 0.7152 + parts[2]! * 0.0722;
-          };
-          const foreground = luminance(getComputedStyle(el).color);
-          const background = luminance(
-            getComputedStyle(el.closest('.calendar-state')!).backgroundColor,
-          );
-          return (
-            (Math.max(foreground, background) + 0.05) /
-            (Math.min(foreground, background) + 0.05)
-          );
-        });
-      expect(contrast).toBeGreaterThanOrEqual(4.5);
+            };
+            const foreground = luminance(getComputedStyle(el).color);
+            const background = luminance(getComputedStyle(el).backgroundColor);
+            return (
+              (Math.max(foreground, background) + 0.05) /
+              (Math.min(foreground, background) + 0.05)
+            );
+          }),
+        );
+      expect(contrasts.length).toBeGreaterThan(0);
+      expect(Math.min(...contrasts)).toBeGreaterThanOrEqual(4.5);
       await calendar.screenshot({
         path: 'tests/test-results/admin-calendar-dark.png',
         animations: 'disabled',
@@ -955,6 +1028,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           exact: true,
         })
         .click({ trial: true });
+      await audit('admin-mobile-record-resources');
       await page.screenshot({
         path: 'tests/test-results/admin-mobile-record-resources.png',
         animations: 'disabled',
@@ -962,6 +1036,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await currentRecord
         .getByRole('button', { name: 'Übersicht', exact: true })
         .click();
+      await audit('admin-mobile-record-overview');
       await page.screenshot({
         path: 'tests/test-results/admin-mobile-record-overview.png',
         animations: 'disabled',
@@ -972,6 +1047,31 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await page.setViewportSize({ width: 1280, height: 720 });
     }
 
+    if (mode === 'password') {
+      for (const [width, theme] of [
+        [390, 'light'],
+        [390, 'dark'],
+        [1280, 'dark'],
+        [1280, 'light'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await audit(`record-${width}-${theme}`);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path: `tests/test-results/record-${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
     await navigate('Einstellungen', 'Datenexport');
     const exports = page.getByRole('region', {
       name: 'Datenexport',
@@ -1010,24 +1110,28 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     }
     if (mode === 'password') {
       await page.evaluate(() => window.scrollTo(0, 0));
+      await audit('exports-desktop-light');
       await page.screenshot({
         path: 'tests/test-results/exports-desktop-light.png',
         fullPage: true,
         animations: 'disabled',
       });
       await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await audit('exports-desktop-dark');
       await page.screenshot({
         path: 'tests/test-results/exports-desktop-dark.png',
         fullPage: true,
         animations: 'disabled',
       });
       await page.setViewportSize({ width: 390, height: 844 });
+      await audit('exports-mobile-dark');
       await page.screenshot({
         path: 'tests/test-results/exports-mobile-dark.png',
         fullPage: true,
         animations: 'disabled',
       });
       await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await audit('exports-mobile-light');
       await page.screenshot({
         path: 'tests/test-results/exports-mobile-light.png',
         fullPage: true,
@@ -1102,6 +1206,17 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         menu.getByRole('button', { name: 'Abmelden', exact: true }),
       ).toBeVisible();
       await expect(menu).toHaveCSS('opacity', '1');
+      await audit('mobile-menu-light');
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await menuButton.click();
+      await expect(menu).toHaveCSS('opacity', '1');
+      await audit('mobile-menu-dark');
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await menuButton.click();
+      await expect(menu).toHaveCSS('opacity', '1');
+
       await page.screenshot({
         path: 'tests/test-results/admin-mobile-menu.png',
       });
@@ -1201,6 +1316,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         page.getByRole('button', { name: 'Abmelden', exact: true }),
       ).toBeVisible();
     }
+    await audit('signed-in-final');
+    const controls = await page
+      .locator('.menu-trigger')
+      .getAttribute('aria-controls');
+    expect(await page.locator(`[id="${controls}"]`).count()).toBe(1);
+    expect(auditFailures).toEqual([]);
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);
