@@ -448,6 +448,23 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       })
       .click();
     await expect(
+      events.getByRole('button', {
+        name: 'Eventakte öffnen: Synthetic browser event',
+      }),
+    ).not.toBeVisible();
+    await page.goBack();
+    await expect(
+      events.getByRole('button', {
+        name: 'Eventakte öffnen: Synthetic browser event',
+      }),
+    ).toBeVisible();
+    await events
+      .getByRole('button', {
+        name: 'Eventakte öffnen: Synthetic browser event',
+      })
+      .click();
+    await events.getByRole('button', { name: 'Notizen', exact: true }).click();
+    await expect(
       events.getByLabel('Notizen: Synthetic browser event').locator('strong'),
     ).toHaveText('Fictional browser note');
     expect(
@@ -458,12 +475,16 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       exact: true,
     });
     await record
+      .getByRole('button', { name: 'Übersicht', exact: true })
+      .click();
+    await record
       .getByRole('combobox', { name: 'Status in der Eventakte', exact: true })
       .selectOption('option');
     await record.getByRole('button', { name: 'Status speichern' }).click();
     await expect(
       events.getByText('Eventstatus gespeichert.', { exact: true }),
     ).toBeVisible();
+    await record.getByRole('button', { name: 'Logbuch', exact: true }).click();
     await expect(
       record.getByText(/Status von Anfrage auf Option geändert/),
     ).toBeVisible();
@@ -505,6 +526,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('button', {
         name: 'Eventakte öffnen: Fictional resource booking',
       })
+      .click();
+    await record
+      .getByRole('button', { name: 'Ressourcen', exact: true })
       .click();
     const assignment = record.getByRole('region', {
       name: 'Ressourcenzuweisung',
@@ -555,6 +579,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
     ).toBeVisible();
+    await record.getByRole('button', { name: 'Logbuch', exact: true }).click();
     await expect(
       record.getByText(/Ressourcenzuordnung und Dispositionszeitraum geändert/),
     ).toBeVisible();
@@ -562,7 +587,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       events.getByText('Fictional resource booking – 20.10.2030 – Gebucht', {
         exact: true,
       }),
-    ).toBeVisible();
+    ).toBeAttached();
+    await record
+      .getByRole('button', { name: 'Ressourcen', exact: true })
+      .click();
     await expect(assignment).toHaveAttribute('aria-busy', 'false');
     await assignment.screenshot({
       path: 'tests/test-results/resource-assignment.png',
@@ -608,7 +636,6 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     });
 
     await navigate('Events');
-    await record.getByRole('button', { name: 'Eventakte schließen' }).click();
     await events.getByText('Filter', { exact: true }).click();
     await events.getByLabel('Events suchen', { exact: true }).fill('browser');
     await events.getByLabel('Filter von').fill('2026-10-16');
@@ -659,7 +686,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('link', { name: 'Synthetic browser event' })
       .click();
     await expect(
-      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+      events.getByRole('heading', {
+        name: 'Eventakte: Synthetic browser event',
+        exact: true,
+      }),
     ).toBeInViewport();
     await navigate('Einstellungen', 'Datenimport');
     await importPreview
@@ -808,6 +838,61 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           exact: true,
         }),
     ).toBeVisible();
+
+    if (mode === 'password') {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const currentRecord = events.getByRole('region', {
+        name: 'Eventakte',
+        exact: true,
+      });
+      await currentRecord
+        .getByRole('button', { name: 'Ressourcen', exact: true })
+        .click();
+      const dispositionStart = currentRecord.getByLabel(
+        'Eventbeginn für die Disposition',
+        { exact: true },
+      );
+      await dispositionStart.fill('2030-10-27T16:30');
+      await currentRecord
+        .getByRole('button', { name: 'Notizen', exact: true })
+        .click();
+      await expect(dispositionStart).not.toBeVisible();
+      await currentRecord
+        .getByRole('button', { name: 'Ressourcen', exact: true })
+        .click();
+      await expect(dispositionStart).toHaveValue('2030-10-27T16:30');
+      await currentRecord
+        .getByRole('heading', {
+          name: 'Eventakte: Fictional Future Event',
+          exact: true,
+        })
+        .scrollIntoViewIfNeeded();
+      const recordNav = currentRecord.getByRole('navigation', {
+        name: 'Bereiche der Eventakte',
+      });
+      expect((await recordNav.boundingBox())!.height).toBeLessThan(100);
+      await currentRecord
+        .getByRole('heading', {
+          name: 'Eventakte: Fictional Future Event',
+          exact: true,
+        })
+        .click({ trial: true });
+      await page.screenshot({
+        path: 'tests/test-results/admin-mobile-record-resources.png',
+        animations: 'disabled',
+      });
+      await currentRecord
+        .getByRole('button', { name: 'Übersicht', exact: true })
+        .click();
+      await page.screenshot({
+        path: 'tests/test-results/admin-mobile-record-overview.png',
+        animations: 'disabled',
+      });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(391);
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
 
     await navigate('Einstellungen', 'Kalender-Abos');
     const subscriptions = page.getByRole('region', {

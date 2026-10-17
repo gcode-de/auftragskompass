@@ -108,13 +108,17 @@ export function EventPanel({
   useEffect(() => {
     const changed = () => {
       const id = window.location.hash.slice(1);
+      if (!id.startsWith('event-')) {
+        setDetailId(null);
+        return;
+      }
       if (
         id.startsWith('event-') &&
         rows.some((row) => 'event-' + row.id === id)
       ) {
         setDetailId(id.slice(6));
-        document.getElementById(id)?.scrollIntoView();
-      }
+        document.getElementById(id)?.scrollIntoView?.();
+      } else setDetailId(null);
     };
     changed();
     window.addEventListener('hashchange', changed);
@@ -218,6 +222,7 @@ export function EventPanel({
   const zone = draft?.timeZone ?? timeZone,
     start = fromInstant(draft?.startsAt ?? null, zone),
     end = fromInstant(draft?.endsAt ?? null, zone);
+  const showingDetail = rows.some((row) => row.id === detailId);
   const groups = new Map<string, EventRow[]>();
   for (const row of rows) {
     const month = row.eventDate?.slice(0, 7) ?? '';
@@ -227,307 +232,315 @@ export function EventPanel({
   }
   return (
     <section id="events" aria-label="Events" aria-busy={loading}>
-      <div className="section-heading">
-        <h2>Events</h2>
-        <button
-          className="secondary-action"
-          disabled={busy}
-          onClick={() =>
-            void refresh().catch(() =>
-              setMessage('Events konnten nicht geladen werden.'),
-            )
-          }
+      <div hidden={showingDetail}>
+        <div className="section-heading">
+          <h2>Events</h2>
+          <button
+            className="secondary-action"
+            disabled={busy}
+            onClick={() =>
+              void refresh().catch(() =>
+                setMessage('Events konnten nicht geladen werden.'),
+              )
+            }
+          >
+            Events aktualisieren
+          </button>
+        </div>
+        <details
+          className="event-filters"
+          open={Object.keys(emptyEventFilters).some((key) => filters.get(key))}
         >
-          Events aktualisieren
-        </button>
-      </div>
-      <details
-        className="event-filters"
-        open={Object.keys(emptyEventFilters).some((key) => filters.get(key))}
-      >
-        <summary>
-          Filter
-          {Object.keys(emptyEventFilters).some((key) => filters.get(key))
-            ? ' · aktiv'
-            : ''}
-        </summary>
-        <form
-          key={urlSearch + ':' + timeZone}
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget),
-              undated = data.get('undated') === 'on';
-            updateUrlSearch({
-              q: String(data.get('q') ?? ''),
-              status: String(data.get('status') ?? ''),
-              eventTypeId: String(data.get('eventTypeId') ?? ''),
-              from: undated ? '' : String(data.get('from') ?? ''),
-              to: undated ? '' : String(data.get('to') ?? ''),
-              undated: undated ? 'true' : '',
-            });
-          }}
-        >
-          <fieldset disabled={busy || !timeZone}>
-            <legend>Eventfilter</legend>
-            <label>
-              Events suchen
-              <input
-                name="q"
-                maxLength={200}
-                defaultValue={filters.get('q') ?? ''}
-              />
-            </label>
-            <label>
-              Filter von
-              <input
-                name="from"
-                type="date"
-                defaultValue={filters.get('from') ?? ''}
-              />
-            </label>
-            <label>
-              Filter bis
-              <input
-                name="to"
-                type="date"
-                defaultValue={filters.get('to') ?? ''}
-              />
-            </label>
-            <label>
-              Filterstatus
-              <select name="status" defaultValue={filters.get('status') ?? ''}>
-                <option value="">Alle Status</option>
-                {statuses.map((status) => (
-                  <option key={status.code} value={status.code}>
-                    {status.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Filtereventart
-              <select
-                name="eventTypeId"
-                defaultValue={filters.get('eventTypeId') ?? ''}
-              >
-                <option value="">Alle Eventarten</option>
-                {types.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Nur Events ohne Datum
-              <input
-                name="undated"
-                type="checkbox"
-                defaultChecked={filters.get('undated') === 'true'}
-              />
-            </label>
-            <p>Ohne Datum setzt die Datumsgrenzen zurück.</p>
-            <button>Events filtern</button>
-            <button
-              type="button"
-              onClick={() => updateUrlSearch(emptyEventFilters)}
-            >
-              Eventfilter zurücksetzen
-            </button>
-          </fieldset>
-        </form>
-        <p className="event-timezone">Zeitzone: {zone || 'Wird geladen'}</p>
-      </details>
-
-      <details className="event-editor" ref={editor}>
-        <summary>{editing ? 'Event bearbeiten' : 'Event anlegen'}</summary>
-        <form
-          id="event-editor"
-          key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save(event.currentTarget);
-          }}
-        >
-          <fieldset disabled={busy || !timeZone}>
-            <legend>{editing ? 'Event bearbeiten' : 'Neues Event'}</legend>
-            <label>
-              Eventname
-              <input
-                name="name"
-                required
-                maxLength={200}
-                defaultValue={draft?.name ?? ''}
-              />
-            </label>
-            <label>
-              Eventstatus
-              <select name="status" defaultValue={draft?.status ?? 'inquiry'}>
-                {statuses.map((status) => (
-                  <option
-                    key={status.code}
-                    value={status.code}
-                    disabled={status.code === 'booked'}
-                  >
-                    {status.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p>
-              Gebucht wird mit einer konkreten Ressourcenzuweisung verfügbar.
-            </p>
-            <label>
-              Eventart
-              <select
-                name="eventTypeId"
-                defaultValue={draft?.eventTypeId ?? ''}
-              >
-                <option value="">Noch offen</option>
-                {options(types, draft?.eventTypeId ?? null)}
-              </select>
-            </label>
-            <label>
-              Fotobox-Paket
-              <select name="packageId" defaultValue={draft?.packageId ?? ''}>
-                <option value="">Noch offen</option>
-                {options(packages, draft?.packageId ?? null)}
-              </select>
-            </label>
-            <label>
-              Veranstaltungsort
-              <select name="locationId" defaultValue={draft?.locationId ?? ''}>
-                <option value="">Noch offen</option>
-                {options(locations, draft?.locationId ?? null)}
-              </select>
-            </label>
-            <label>
-              Hauptkontakt
-              <select
-                name="primaryContactId"
-                defaultValue={draft?.primaryContactId ?? ''}
-              >
-                <option value="">Noch offen</option>
-                {options(contacts, draft?.primaryContactId ?? null)}
-              </select>
-            </label>
-            <label>
-              Weitere Kontakte
-              <select
-                name="additionalContactIds"
-                multiple
-                defaultValue={draft?.additionalContactIds ?? []}
-              >
-                {options(contacts, draft?.additionalContactIds ?? [])}
-              </select>
-            </label>
-            <label>
-              Anfragequelle
-              <input
-                name="source"
-                maxLength={200}
-                defaultValue={draft?.source ?? ''}
-              />
-            </label>
-            <label>
-              Eventdatum
-              <input
-                name="eventDate"
-                type="date"
-                defaultValue={draft?.eventDate ?? ''}
-              />
-            </label>
-            <label>
-              Eventbeginn
-              <input
-                name="startsAt"
-                type="datetime-local"
-                step="0.001"
-                onChange={(event) => {
-                  (
-                    event.currentTarget.form!.elements.namedItem(
-                      event.currentTarget.name === 'startsAt'
-                        ? 'startOffset'
-                        : 'endOffset',
-                    ) as HTMLInputElement
-                  ).value = '';
-                }}
-                defaultValue={start.value}
-              />
-            </label>
-            <label>
-              UTC-Versatz Beginn
-              <input
-                name="startOffset"
-                placeholder="Automatisch, z. B. +02:00 bei Zeitumstellung"
-                defaultValue={start.offset}
-              />
-            </label>
-            <label>
-              Eventende
-              <input
-                name="endsAt"
-                type="datetime-local"
-                step="0.001"
-                onChange={(event) => {
-                  (
-                    event.currentTarget.form!.elements.namedItem(
-                      event.currentTarget.name === 'startsAt'
-                        ? 'startOffset'
-                        : 'endOffset',
-                    ) as HTMLInputElement
-                  ).value = '';
-                }}
-                defaultValue={end.value}
-              />
-            </label>
-            <label>
-              UTC-Versatz Ende
-              <input
-                name="endOffset"
-                placeholder="Automatisch, z. B. +01:00 bei Zeitumstellung"
-                defaultValue={end.offset}
-              />
-            </label>
-            <label>
-              Eventbeschreibung
-              <textarea
-                name="description"
-                maxLength={4000}
-                defaultValue={draft?.description ?? ''}
-              />
-            </label>
-            <label>
-              Interne Notizen
-              <textarea
-                name="notesHtml"
-                maxLength={20000}
-                defaultValue={draft?.notesHtml ?? ''}
-                aria-describedby="event-notes-help"
-              />
-            </label>
-            <p id="event-notes-help">
-              Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
-              &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-              href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte Vorschau
-              erscheint am Event.
-            </p>
-            <button>Event speichern</button>
-            {draft && (
+          <summary>
+            Filter
+            {Object.keys(emptyEventFilters).some((key) => filters.get(key))
+              ? ' · aktiv'
+              : ''}
+          </summary>
+          <form
+            key={urlSearch + ':' + timeZone}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const data = new FormData(event.currentTarget),
+                undated = data.get('undated') === 'on';
+              updateUrlSearch({
+                q: String(data.get('q') ?? ''),
+                status: String(data.get('status') ?? ''),
+                eventTypeId: String(data.get('eventTypeId') ?? ''),
+                from: undated ? '' : String(data.get('from') ?? ''),
+                to: undated ? '' : String(data.get('to') ?? ''),
+                undated: undated ? 'true' : '',
+              });
+            }}
+          >
+            <fieldset disabled={busy || !timeZone}>
+              <legend>Eventfilter</legend>
+              <label>
+                Events suchen
+                <input
+                  name="q"
+                  maxLength={200}
+                  defaultValue={filters.get('q') ?? ''}
+                />
+              </label>
+              <label>
+                Filter von
+                <input
+                  name="from"
+                  type="date"
+                  defaultValue={filters.get('from') ?? ''}
+                />
+              </label>
+              <label>
+                Filter bis
+                <input
+                  name="to"
+                  type="date"
+                  defaultValue={filters.get('to') ?? ''}
+                />
+              </label>
+              <label>
+                Filterstatus
+                <select
+                  name="status"
+                  defaultValue={filters.get('status') ?? ''}
+                >
+                  <option value="">Alle Status</option>
+                  {statuses.map((status) => (
+                    <option key={status.code} value={status.code}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Filtereventart
+                <select
+                  name="eventTypeId"
+                  defaultValue={filters.get('eventTypeId') ?? ''}
+                >
+                  <option value="">Alle Eventarten</option>
+                  {types.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Nur Events ohne Datum
+                <input
+                  name="undated"
+                  type="checkbox"
+                  defaultChecked={filters.get('undated') === 'true'}
+                />
+              </label>
+              <p>Ohne Datum setzt die Datumsgrenzen zurück.</p>
+              <button>Events filtern</button>
               <button
                 type="button"
-                onClick={() => {
-                  setDraft(null);
-                  setEditing(false);
-                  closeEditor();
-                }}
+                onClick={() => updateUrlSearch(emptyEventFilters)}
               >
-                Event abbrechen
+                Eventfilter zurücksetzen
               </button>
-            )}
-          </fieldset>
-        </form>
-      </details>
+            </fieldset>
+          </form>
+          <p className="event-timezone">Zeitzone: {zone || 'Wird geladen'}</p>
+        </details>
+
+        <details className="event-editor" ref={editor}>
+          <summary>{editing ? 'Event bearbeiten' : 'Event anlegen'}</summary>
+          <form
+            id="event-editor"
+            key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save(event.currentTarget);
+            }}
+          >
+            <fieldset disabled={busy || !timeZone}>
+              <legend>{editing ? 'Event bearbeiten' : 'Neues Event'}</legend>
+              <label>
+                Eventname
+                <input
+                  name="name"
+                  required
+                  maxLength={200}
+                  defaultValue={draft?.name ?? ''}
+                />
+              </label>
+              <label>
+                Eventstatus
+                <select name="status" defaultValue={draft?.status ?? 'inquiry'}>
+                  {statuses.map((status) => (
+                    <option
+                      key={status.code}
+                      value={status.code}
+                      disabled={status.code === 'booked'}
+                    >
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p>
+                Gebucht wird mit einer konkreten Ressourcenzuweisung verfügbar.
+              </p>
+              <label>
+                Eventart
+                <select
+                  name="eventTypeId"
+                  defaultValue={draft?.eventTypeId ?? ''}
+                >
+                  <option value="">Noch offen</option>
+                  {options(types, draft?.eventTypeId ?? null)}
+                </select>
+              </label>
+              <label>
+                Fotobox-Paket
+                <select name="packageId" defaultValue={draft?.packageId ?? ''}>
+                  <option value="">Noch offen</option>
+                  {options(packages, draft?.packageId ?? null)}
+                </select>
+              </label>
+              <label>
+                Veranstaltungsort
+                <select
+                  name="locationId"
+                  defaultValue={draft?.locationId ?? ''}
+                >
+                  <option value="">Noch offen</option>
+                  {options(locations, draft?.locationId ?? null)}
+                </select>
+              </label>
+              <label>
+                Hauptkontakt
+                <select
+                  name="primaryContactId"
+                  defaultValue={draft?.primaryContactId ?? ''}
+                >
+                  <option value="">Noch offen</option>
+                  {options(contacts, draft?.primaryContactId ?? null)}
+                </select>
+              </label>
+              <label>
+                Weitere Kontakte
+                <select
+                  name="additionalContactIds"
+                  multiple
+                  defaultValue={draft?.additionalContactIds ?? []}
+                >
+                  {options(contacts, draft?.additionalContactIds ?? [])}
+                </select>
+              </label>
+              <label>
+                Anfragequelle
+                <input
+                  name="source"
+                  maxLength={200}
+                  defaultValue={draft?.source ?? ''}
+                />
+              </label>
+              <label>
+                Eventdatum
+                <input
+                  name="eventDate"
+                  type="date"
+                  defaultValue={draft?.eventDate ?? ''}
+                />
+              </label>
+              <label>
+                Eventbeginn
+                <input
+                  name="startsAt"
+                  type="datetime-local"
+                  step="0.001"
+                  onChange={(event) => {
+                    (
+                      event.currentTarget.form!.elements.namedItem(
+                        event.currentTarget.name === 'startsAt'
+                          ? 'startOffset'
+                          : 'endOffset',
+                      ) as HTMLInputElement
+                    ).value = '';
+                  }}
+                  defaultValue={start.value}
+                />
+              </label>
+              <label>
+                UTC-Versatz Beginn
+                <input
+                  name="startOffset"
+                  placeholder="Automatisch, z. B. +02:00 bei Zeitumstellung"
+                  defaultValue={start.offset}
+                />
+              </label>
+              <label>
+                Eventende
+                <input
+                  name="endsAt"
+                  type="datetime-local"
+                  step="0.001"
+                  onChange={(event) => {
+                    (
+                      event.currentTarget.form!.elements.namedItem(
+                        event.currentTarget.name === 'startsAt'
+                          ? 'startOffset'
+                          : 'endOffset',
+                      ) as HTMLInputElement
+                    ).value = '';
+                  }}
+                  defaultValue={end.value}
+                />
+              </label>
+              <label>
+                UTC-Versatz Ende
+                <input
+                  name="endOffset"
+                  placeholder="Automatisch, z. B. +01:00 bei Zeitumstellung"
+                  defaultValue={end.offset}
+                />
+              </label>
+              <label>
+                Eventbeschreibung
+                <textarea
+                  name="description"
+                  maxLength={4000}
+                  defaultValue={draft?.description ?? ''}
+                />
+              </label>
+              <label>
+                Interne Notizen
+                <textarea
+                  name="notesHtml"
+                  maxLength={20000}
+                  defaultValue={draft?.notesHtml ?? ''}
+                  aria-describedby="event-notes-help"
+                />
+              </label>
+              <p id="event-notes-help">
+                Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
+                &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
+                href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte Vorschau
+                erscheint am Event.
+              </p>
+              <button>Event speichern</button>
+              {draft && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(null);
+                    setEditing(false);
+                    closeEditor();
+                  }}
+                >
+                  Event abbrechen
+                </button>
+              )}
+            </fieldset>
+          </form>
+        </details>
+      </div>
       <p role="status">{message}</p>
       {loading && <p role="status">Events werden geladen …</p>}
       {!loading && !loadFailed && !rows.length && <p>Keine Events gefunden.</p>}
@@ -540,8 +553,15 @@ export function EventPanel({
             }).format(new Date(month + '-01T12:00:00Z'))
           : 'Ohne Datum';
         return (
-          <section className="event-month" key={month} aria-label={label}>
-            <h3>
+          <section
+            className="event-month"
+            key={month}
+            aria-label={label}
+            hidden={
+              showingDetail && !entries.some((row) => row.id === detailId)
+            }
+          >
+            <h3 hidden={showingDetail}>
               {label}{' '}
               <span>
                 {entries.length} {entries.length === 1 ? 'Event' : 'Events'}
@@ -549,8 +569,12 @@ export function EventPanel({
             </h3>
             <ul className="event-list">
               {entries.map((row) => (
-                <li key={row.id} id={'event-' + row.id}>
-                  <span>
+                <li
+                  key={row.id}
+                  id={'event-' + row.id}
+                  hidden={showingDetail && row.id !== detailId}
+                >
+                  <span hidden={showingDetail}>
                     {row.name} –{' '}
                     {row.eventDate
                       ? row.eventDate.split('-').reverse().join('.')
@@ -559,28 +583,30 @@ export function EventPanel({
                     {statuses.find((s) => s.code === row.status)?.label ??
                       row.status}
                   </span>{' '}
-                  <span>
+                  <span hidden={showingDetail}>
                     {types.find((type) => type.id === row.eventTypeId)?.name ??
                       'Eventart offen'}{' '}
                     {contacts.find((c) => c.id === row.primaryContactId)?.name}{' '}
                     {locations.find((l) => l.id === row.locationId)?.name}
                   </span>
-                  <p className="event-resource-hint">
+                  <p className="event-resource-hint" hidden={showingDetail}>
                     Ressourcen in der Eventakte prüfen.
                   </p>
                   <button
+                    hidden={showingDetail}
                     aria-label={`Eventakte öffnen: ${row.name}`}
                     aria-expanded={detailId === row.id}
                     onClick={() => {
                       setDetailId(row.id);
-                      window.history.replaceState(null, '', '#event-' + row.id);
+                      window.location.hash = 'event-' + row.id;
                     }}
                   >
                     Eventakte öffnen
                   </button>
                   {detailId === row.id && (
                     <EventDetails
-                      key={`${row.id}:${row.version}`}
+                      key={row.id}
+                      revision={row.version}
                       id={row.id}
                       csrfToken={csrfToken}
                       statuses={statuses}
@@ -593,15 +619,24 @@ export function EventPanel({
                       onEdit={(event) => {
                         setDraft(event);
                         setEditing(true);
+                        setDetailId(null);
+                        window.history.replaceState(null, '', '#events');
                       }}
                       onClose={() => {
                         setDetailId(null);
-                        window.history.replaceState(null, '', '#events');
+                        window.location.hash = 'events';
+                        requestAnimationFrame(() =>
+                          document
+                            .getElementById('event-' + row.id)
+                            ?.querySelector<HTMLButtonElement>('button')
+                            ?.focus(),
+                        );
                       }}
                     />
                   )}
                   <button
                     disabled={busy}
+                    hidden={showingDetail}
                     aria-label={`Event duplizieren: ${row.name}`}
                     onClick={() => {
                       const active = (choices: Choice[], id: string | null) =>
@@ -640,6 +675,7 @@ export function EventPanel({
                   </button>
                   <button
                     disabled={busy}
+                    hidden={showingDetail}
                     aria-label={`Event bearbeiten: ${row.name}`}
                     onClick={() => {
                       setDraft(row);

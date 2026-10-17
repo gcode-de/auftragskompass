@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-17T14:20:23.746450Z",
+  "generatedAt": "2026-10-17T14:28:45.951115Z",
   "title": "Design System: AuftragsKompass",
   "extensions": {
     "colorMeta": {
@@ -206,6 +206,10 @@
       "event-count": {
         "displayName": "Eventanzahl",
         "purpose": "Anzahl neben der Monatsüberschrift."
+      },
+      "record-heading": {
+        "displayName": "Aktenüberschrift",
+        "purpose": "Fokussierbare Überschrift der geöffneten Eventakte."
       }
     },
     "eventListing": {
@@ -213,6 +217,14 @@
       "editorBehavior": "Bearbeiten oder Duplizieren öffnet den Editor, scrollt zum Formular und fokussiert den Namen. Erfolgreiches Speichern oder ausdrückliches Abbrechen schließt ihn und fokussiert die Summary. Einklappen erhält den Entwurf; Fehler erhalten Eingaben.",
       "grouping": "Monat und Jahr nach Eventdatum; ohne Datum: Ohne Datum. Anzahl an der Monatsüberschrift.",
       "rows": "Flache Zeilen mit 1.25rem vertikalem Innenabstand und unterem border-Trenner; keine eigenen Kartenflächen oder Schatten."
+    },
+    "eventRecord": {
+      "context": "Geöffnete Akte blendet Listensteuerung, Monatsüberschriften und andere Eventzeilen aus.",
+      "navigation": "Gewöhnliche Knöpfe Übersicht/Ressourcen/Notizen/Logbuch in beschrifteter Navigation; aria-current=location, inaktive Bereiche hidden; keine ARIA-Tabs.",
+      "state": "Inaktive Bereiche bleiben eingehängt und erhalten Ressourceneingaben. Ausgewählter Bereich bleibt bei Versionsaktualisierungen dank stabiler Eventidentität und revision erhalten.",
+      "focus": "Öffnen fokussiert die Aktenüberschrift; Schließen den passenden Listenknopf. Bearbeiten öffnet das zentrale Formular und fokussiert den Eventnamen.",
+      "overview": "Definitionsliste mit minmax(7rem, 0.35fr) minmax(0, 1fr), gap 0.75rem 1rem; bis 600px einspaltig, gap 0.25rem.",
+      "mobile": "Bis 600px feste untere Navigation, vier gleich breite Spalten, surface, Ebene 5; Padding 0.5rem 0.5rem max(0.5rem, env(safe-area-inset-bottom)). Rahmen reserviert calc(6rem + env(safe-area-inset-bottom))."
     }
   },
   "components": [

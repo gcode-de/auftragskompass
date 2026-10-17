@@ -52,6 +52,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] H013: Eventliste nach Monaten gliedern; Filter und Eventformular nur bei Bedarf öffnen, Bearbeiten/Duplizieren automatisch zum Formular führen und Eingaben beim Einklappen erhalten. Abnahme: Monat/Ohne-Datum-Gruppen, aktive Filter, Entwürfe, Speichern/Abbrechen und direkte Eventlinks im mobilen Chromium-Geschäftsablauf.
 
+- [x] H014: Eventakte als eigener Arbeitskontext mit Bereichen Übersicht, Ressourcen, Notizen und Logbuch; mobile untere Bereichsnavigation, erhaltene Bereichsauswahl nach Aktualisierung und Rückkehr zur Liste. Abnahme: Bereiche verbergen fremde Inhalte, Reservierungsablauf bleibt grün, Neuladen/direkte Links/Browser-Zurück sowie mobile Tastatur-/Fokusbedienung.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

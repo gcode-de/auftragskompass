@@ -48,6 +48,10 @@ typography:
     fontSize: "1.25rem"
     lineHeight: 1.2
     letterSpacing: "-0.025em"
+  record-heading:
+    fontSize: "1.35rem"
+    lineHeight: 1.2
+    letterSpacing: "-0.025em"
   event-month-heading:
     fontSize: "1.1rem"
     lineHeight: 1.2
@@ -93,6 +97,13 @@ components:
     rounded: "{rounded.control}"
     padding: "0.6rem 1rem"
   theme-toggle-pressed:
+    backgroundColor: "{colors.selected-surface}"
+    textColor: "{colors.selected-ink}"
+  record-navigation:
+    backgroundColor: "transparent"
+    textColor: "{colors.muted}"
+    padding: "0 0 1rem"
+  record-navigation-current:
     backgroundColor: "{colors.selected-surface}"
     textColor: "{colors.selected-ink}"
   event-disclosure:
@@ -154,6 +165,10 @@ Die Anmeldung ist eine eigene, maximal `30rem` breite Karte; der Anwendungsrahme
 
 Eventlisten gruppieren Einträge anhand des Eventdatums nach Monat und Jahr; ohne Datum entsteht die Gruppe „Ohne Datum“. Monatsgruppen haben `2rem` Abstand nach oben. Ihre h3-Überschrift zeigt die Anzahl daneben (`gap: 0.75rem`, umbrechend, an der Grundlinie ausgerichtet). Listen sind ohne Aufzählungszeichen; flache Zeilen haben `1.25rem` vertikalen Innenabstand und einen unteren `border`-Trenner.
 
+Die geöffnete Eventakte bildet einen eigenen Arbeitskontext: Listensteuerung, Monatsüberschriften und andere Eventzeilen werden ausgeblendet. Die Übersicht verwendet eine Definitionsliste mit `minmax(7rem, 0.35fr) minmax(0, 1fr)`, Abstand `0.75rem 1rem` und `1.5rem` Blockrand. Bis einschließlich **600px** steht die Definitionsliste einspaltig mit `0.25rem` Abstand; Werte erhalten `0.75rem` unteren Außenabstand.
+
+Bis einschließlich 600px liegt die Aktennavigation unten fest: vier gleich breite Spalten, Ebene 5, `surface`-Hintergrund und oberer `border`-Trenner. Padding: `0.5rem 0.5rem max(0.5rem, env(safe-area-inset-bottom))`; Knöpfe: `0.8rem` Schrift und `0.65rem 0.15rem` Padding. Der Anwendungsrahmen reserviert bei vorhandener Akte `calc(6rem + env(safe-area-inset-bottom))` nach unten. Auf größeren Bildschirmen bleibt die Aktennavigation im Inhaltsfluss mit unterem Trenner.
+
 ## Elevation & Depth
 
 Arbeitsflächen und Seitennavigation verwenden keine Schatten. Umrandungen und Flächenfarben schaffen Trennung. Die Anmeldung behält `0 0.25rem 1rem #20304408`; der generische Navigationsstil enthält `0 0.25rem 1rem #2030440d`, während Haupt- und Einstellungsnavigation diesen Schatten abschalten. Das native modale Menü liegt im Top Layer mit Hintergrundabdunklung `#0b1813aa`.
@@ -164,6 +179,7 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 
 ## Components
 
+- **Eventakte:** Überschrift `1.35rem`, `scroll-margin-top: 5rem`, programmatisch fokussierbar über `tabIndex=-1`. Beim Öffnen erhält sie Fokus. Schließen führt zum passenden „Eventakte öffnen“-Knopf in der Liste zurück; Bearbeiten öffnet das zentrale Eventformular und fokussiert das Namensfeld. Die Auswahl „Übersicht“, „Ressourcen“, „Notizen“, „Logbuch“ besteht aus gewöhnlichen Knöpfen in einer beschrifteten Navigation; `aria-current="location"` kennzeichnet den Bereich. Inaktive Bereiche bleiben mit `hidden` eingehängt, damit ungespeicherte Ressourceneingaben beim Bereichswechsel erhalten bleiben. Der ausgewählte Bereich bleibt bei Versionsaktualisierungen erhalten: Die Akte behält ihre stabile Eventidentität und lädt Daten über `revision` nach. Die Navigation verwendet keine ARIA-Tabrollen. Inaktive Knöpfe sind transparent mit `muted`-Schrift; aktive und überfahrene Knöpfe nutzen `selected-surface` und `selected-ink`.
 - **Eventfilter und Editor:** native `<details>`/`<summary>` mit oberen und unteren `border`-Trennern und `1rem` Außenabstand. Summary ist mindestens `48px` hoch, mit Akzentschrift, Gewicht 600 und `0.75rem 0.25rem` Innenabstand. Filter sind bei vorhandenen Eventfiltern in der URL anfänglich geöffnet und tragen „Filter · aktiv“. Der Editor beginnt geschlossen. Bearbeiten oder Duplizieren öffnet ihn, scrollt zum Formular und fokussiert den Namen. Erfolgreiches Speichern oder ausdrückliches Abbrechen schließt ihn und fokussiert die Summary. Bloßes Einklappen erhält den Formularentwurf; Fehler lassen die Eingaben bestehen. Der Abbrechen-Knopf erscheint bei einem geladenen Bearbeitungs- oder Duplikatentwurf.
 - **Eventzeilen:** Monatsüberschrift `1.1rem`, Anzahl `0.8rem` mit Gewicht 400 und `muted`; erste Zeile mit Name, Datum und Status `1.05rem` mit Gewicht 650. Zweite Zeile, Zeitzone und Ressourcenhinweis verwenden `0.875rem` und `muted`. Aktionen stehen darunter mit `0.5rem` Abstand nach oben und rechts. Aktualisieren sowie Duplizieren/Bearbeiten verwenden transparente Sekundäraktionen mit Akzenttext und `hover-surface`. Die Zeilen erhalten keine eigenen Kartenflächen oder Schatten.
 - **Aktionen:** grüne Knöpfe, Gewicht 600; deaktiviert mit Deckkraft 0.65 und `not-allowed`. Die Abmeldung ist transparent mit grüner Schrift und heller Umrandung; beim Überfahren verwendet sie `hover-surface` als Hintergrund und behält die Akzentschrift. Allgemeiner Fokus: `3px solid var(--focus)`, Abstand `3px`.

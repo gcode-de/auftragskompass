@@ -1,5 +1,5 @@
 import { ResourceAssignments } from './ResourceAssignments.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { EventRow } from './EventPanel.js';
 type Detail = {
   event: EventRow;
@@ -32,6 +32,7 @@ type Detail = {
 };
 export function EventDetails({
   id,
+  revision = 0,
   csrfToken,
   statuses,
   onChanged,
@@ -39,12 +40,15 @@ export function EventDetails({
   onClose,
 }: {
   id: string;
+  revision?: number;
   csrfToken: string;
   statuses: { code: string; label: string }[];
   onChanged: (message?: string) => Promise<void>;
   onEdit: (event: EventRow) => void;
   onClose: () => void;
 }) {
+  const [section, setSection] = useState('overview');
+  const heading = useRef<HTMLHeadingElement>(null);
   const [data, setData] = useState<Detail | null>(null),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
@@ -63,7 +67,13 @@ export function EventDetails({
     void load().catch(() =>
       setMessage('Eventakte konnte nicht geladen werden.'),
     );
-  }, [id]);
+  }, [id, revision]);
+  useEffect(() => {
+    if (data) {
+      heading.current?.scrollIntoView?.();
+      heading.current?.focus({ preventScroll: true });
+    }
+  }, [data?.event.id]);
   async function saveStatus(form: HTMLFormElement) {
     setBusy(true);
     setMessage('');
@@ -109,11 +119,16 @@ export function EventDetails({
       : 'Noch offen';
   }
   return (
-    <section aria-label="Eventakte" aria-busy={loading}>
-      <button type="button" onClick={onClose}>
+    <section
+      className="event-record"
+      aria-label="Eventakte"
+      aria-busy={loading}
+    >
+      <button className="secondary-action" type="button" onClick={onClose}>
         Eventakte schließen
       </button>
       <button
+        className="secondary-action"
         type="button"
         disabled={busy || loading}
         onClick={() =>
@@ -128,132 +143,170 @@ export function EventDetails({
       {loading && <p>Eventakte wird geladen …</p>}
       {data && (
         <>
-          <h3>Eventakte: {data.event.name}</h3>
-          <dl>
-            <dt>Datum</dt>
-            <dd>
-              {data.event.eventDate
-                ? data.event.eventDate.split('-').reverse().join('.')
-                : 'Ohne Datum'}
-            </dd>
-            <dt>Beginn</dt>
-            <dd>{time(data.event.startsAt)}</dd>
-            <dt>Ende</dt>
-            <dd>{time(data.event.endsAt)}</dd>
-            <dt>Zeitzone</dt>
-            <dd>{data.event.timeZone}</dd>
-            <dt>Eventart</dt>
-            <dd>{data.eventType?.name ?? 'Noch offen'}</dd>
-            <dt>Fotobox-Paket</dt>
-            <dd>{data.package?.name ?? 'Noch offen'}</dd>
-            <dt>Anfragequelle</dt>
-            <dd>{data.event.source || 'Noch offen'}</dd>
-            <dt>Beschreibung</dt>
-            <dd>{data.event.description || 'Keine Beschreibung'}</dd>
-          </dl>
-          <form
-            key={data.event.version}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void saveStatus(event.currentTarget);
-            }}
+          <h3 ref={heading} tabIndex={-1}>
+            Eventakte: {data.event.name}
+          </h3>
+          <nav
+            className="record-navigation"
+            aria-label="Bereiche der Eventakte"
           >
-            <fieldset disabled={busy || loading}>
-              <legend>Status ändern</legend>
-              <label>
-                Status in der Eventakte
-                <select name="status" defaultValue={data.event.status}>
-                  {statuses.map((status) => (
-                    <option
-                      key={status.code}
-                      value={status.code}
-                      disabled={status.code === 'booked'}
-                    >
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button>Status speichern</button>
-            </fieldset>
-          </form>
-          <button disabled={busy || loading} onClick={() => onEdit(data.event)}>
-            Stammdaten bearbeiten
-          </button>
-          <ResourceAssignments
-            key={data.event.id + ':' + data.event.version}
-            event={data.event}
-            csrfToken={csrfToken}
-            onChanged={async () => {
-              await load();
-              await onChanged('Ressourcen und Termin gespeichert.');
-            }}
-          />
-          <h4>Kontakte</h4>
-          {!data.contacts.length && <p>Noch keine Kontakte zugeordnet.</p>}
-          <ul>
-            {data.contacts.map((person) => (
-              <li key={person.id}>
-                {person.role === 'primary'
-                  ? 'Hauptkontakt'
-                  : 'Weiterer Kontakt'}
-                : {person.name} {person.contactPerson}{' '}
-                {person.email && (
-                  <a href={'mailto:' + encodeURIComponent(person.email)}>
-                    {person.email}
-                  </a>
-                )}{' '}
-                {[person.phone, person.mobile]
-                  .filter(Boolean)
-                  .map((number, index) => (
-                    <a
-                      key={index}
-                      href={'tel:' + number.replace(/[^+0-9]/g, '')}
-                    >
-                      {number}{' '}
+            {[
+              ['overview', 'Übersicht'],
+              ['resources', 'Ressourcen'],
+              ['notes', 'Notizen'],
+              ['activity', 'Logbuch'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-current={section === value ? 'location' : undefined}
+                onClick={() => {
+                  setSection(value!);
+                  heading.current?.scrollIntoView?.();
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div hidden={section !== 'overview'}>
+            <dl>
+              <dt>Datum</dt>
+              <dd>
+                {data.event.eventDate
+                  ? data.event.eventDate.split('-').reverse().join('.')
+                  : 'Ohne Datum'}
+              </dd>
+              <dt>Beginn</dt>
+              <dd>{time(data.event.startsAt)}</dd>
+              <dt>Ende</dt>
+              <dd>{time(data.event.endsAt)}</dd>
+              <dt>Zeitzone</dt>
+              <dd>{data.event.timeZone}</dd>
+              <dt>Eventart</dt>
+              <dd>{data.eventType?.name ?? 'Noch offen'}</dd>
+              <dt>Fotobox-Paket</dt>
+              <dd>{data.package?.name ?? 'Noch offen'}</dd>
+              <dt>Anfragequelle</dt>
+              <dd>{data.event.source || 'Noch offen'}</dd>
+              <dt>Beschreibung</dt>
+              <dd>{data.event.description || 'Keine Beschreibung'}</dd>
+            </dl>
+            <form
+              key={data.event.version}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveStatus(event.currentTarget);
+              }}
+            >
+              <fieldset disabled={busy || loading}>
+                <legend>Status ändern</legend>
+                <label>
+                  Status in der Eventakte
+                  <select name="status" defaultValue={data.event.status}>
+                    {statuses.map((status) => (
+                      <option
+                        key={status.code}
+                        value={status.code}
+                        disabled={status.code === 'booked'}
+                      >
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button>Status speichern</button>
+              </fieldset>
+            </form>
+            <button
+              disabled={busy || loading}
+              onClick={() => onEdit(data.event)}
+            >
+              Stammdaten bearbeiten
+            </button>
+          </div>
+          <div hidden={section !== 'resources'}>
+            <ResourceAssignments
+              key={data.event.id + ':' + data.event.version}
+              event={data.event}
+              csrfToken={csrfToken}
+              onChanged={async () => {
+                await load();
+                await onChanged('Ressourcen und Termin gespeichert.');
+              }}
+            />
+          </div>
+          <div hidden={section !== 'overview'}>
+            <h4>Kontakte</h4>
+            {!data.contacts.length && <p>Noch keine Kontakte zugeordnet.</p>}
+            <ul>
+              {data.contacts.map((person) => (
+                <li key={person.id}>
+                  {person.role === 'primary'
+                    ? 'Hauptkontakt'
+                    : 'Weiterer Kontakt'}
+                  : {person.name} {person.contactPerson}{' '}
+                  {person.email && (
+                    <a href={'mailto:' + encodeURIComponent(person.email)}>
+                      {person.email}
                     </a>
-                  ))}
-              </li>
-            ))}
-          </ul>
-          <h4>Location</h4>
-          {data.location ? (
-            <>
-              <p>{data.location.name}</p>
-              <p>
-                {[
-                  data.location.street,
-                  data.location.postalCode,
-                  data.location.city,
-                  data.location.country,
-                ]
-                  .filter(Boolean)
-                  .join(', ')}
-              </p>
-            </>
-          ) : (
-            <p>Noch kein Veranstaltungsort zugeordnet.</p>
-          )}
-          <h4>Interne Notizen</h4>
-          <div
-            aria-label={'Notizen: ' + data.event.name}
-            dangerouslySetInnerHTML={{ __html: data.event.notesHtml }}
-          />
-          <h4>Logbuch</h4>
-          {!data.activities.length && <p>Noch keine Aktivitäten.</p>}
-          <ol>
-            {data.activities.map((activity) => (
-              <li key={activity.id}>
-                <time dateTime={activity.occurredAt}>
-                  {time(activity.occurredAt)}
-                </time>{' '}
-                {activity.description}
-                {activity.eventVersion === null
-                  ? ' (Historischer Eintrag; frühere Details unbekannt)'
-                  : ''}
-              </li>
-            ))}
-          </ol>
+                  )}{' '}
+                  {[person.phone, person.mobile]
+                    .filter(Boolean)
+                    .map((number, index) => (
+                      <a
+                        key={index}
+                        href={'tel:' + number.replace(/[^+0-9]/g, '')}
+                      >
+                        {number}{' '}
+                      </a>
+                    ))}
+                </li>
+              ))}
+            </ul>
+            <h4>Location</h4>
+            {data.location ? (
+              <>
+                <p>{data.location.name}</p>
+                <p>
+                  {[
+                    data.location.street,
+                    data.location.postalCode,
+                    data.location.city,
+                    data.location.country,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                </p>
+              </>
+            ) : (
+              <p>Noch kein Veranstaltungsort zugeordnet.</p>
+            )}
+          </div>
+          <div hidden={section !== 'notes'}>
+            <h4>Interne Notizen</h4>
+            <div
+              aria-label={'Notizen: ' + data.event.name}
+              dangerouslySetInnerHTML={{ __html: data.event.notesHtml }}
+            />
+          </div>
+          <div hidden={section !== 'activity'}>
+            <h4>Logbuch</h4>
+            {!data.activities.length && <p>Noch keine Aktivitäten.</p>}
+            <ol>
+              {data.activities.map((activity) => (
+                <li key={activity.id}>
+                  <time dateTime={activity.occurredAt}>
+                    {time(activity.occurredAt)}
+                  </time>{' '}
+                  {activity.description}
+                  {activity.eventVersion === null
+                    ? ' (Historischer Eintrag; frühere Details unbekannt)'
+                    : ''}
+                </li>
+              ))}
+            </ol>
+          </div>
         </>
       )}
     </section>

@@ -383,3 +383,36 @@ test('groups multiple events in the same month and keeps undated events separate
     screen.getByRole('heading', { name: 'Ohne Datum 1 Event' }),
   ).toBeTruthy();
 });
+
+test('direct record links hide list controls and an unknown link never keeps an unrelated record open', async () => {
+  window.history.replaceState(null, '', '/#event-synthetic');
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/events/synthetic'
+        ? Response.json({
+            event: row,
+            contacts: [],
+            location: null,
+            eventType: null,
+            package: null,
+            activities: [],
+          })
+        : base(url),
+    ),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  expect(
+    screen.queryByRole('button', { name: 'Events aktualisieren' }),
+  ).toBeNull();
+  window.history.replaceState(null, '', '/#event-unlisted');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  expect(
+    screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+  ).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Events aktualisieren' }),
+  ).toBeTruthy();
+});

@@ -96,7 +96,9 @@ test('event details collect contacts, venue, notes and activities and save statu
     screen.getByRole('link', { name: '030 000000' }).getAttribute('href'),
   ).toBe('tel:030000000');
   expect(screen.getByText('Fictional venue')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Logbuch' }));
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Übersicht' }));
   fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
     target: { value: 'option' },
   });
@@ -185,4 +187,43 @@ test('event detail errors preserve loaded data and allow retries', async () => {
     />,
   );
   await screen.findByText(/Eventakte konnte nicht geladen/);
+});
+
+test('shows one record section and retains the selected section on a refreshed event version', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(detail)),
+  );
+  const props = {
+    statuses,
+    id: 'synthetic-event',
+    csrfToken: 'csrf',
+    onChanged: vi.fn(),
+    onEdit: vi.fn(),
+    onClose: vi.fn(),
+  };
+  const view = render(<EventDetails {...props} revision={1} />);
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  expect(
+    screen.queryByRole('combobox', { name: 'Status in der Eventakte' }),
+  ).toBeNull();
+  expect(
+    screen.getByLabelText('Notizen: Synthetic detail event').textContent,
+  ).toContain('Fictional note');
+  view.rerender(<EventDetails {...props} revision={2} />);
+  await vi.waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Notizen' })
+        .getAttribute('aria-current'),
+    ).toBe('location'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Logbuch' }));
+  expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
 });
