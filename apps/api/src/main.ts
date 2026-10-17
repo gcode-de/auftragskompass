@@ -18,6 +18,7 @@ import {
   registerLocationRoutes,
   registerEventRoutes,
   registerImportRoutes,
+  registerCalendarFeedRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -92,6 +93,7 @@ try {
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);
     registerImportRoutes(app, pool, auth.tenantId);
+    registerCalendarFeedRoutes(app, pool, auth.tenantId, auth.origin);
   }
   app.addHook('onClose', async () => {
     await pool.end();

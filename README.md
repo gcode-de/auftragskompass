@@ -2,14 +2,14 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
-**Stand:** C001–C025 sowie vorgezogen C076 sind umgesetzt: lokaler Containerbetrieb,
+**Stand:** C001–C026 sowie vorgezogen C076 sind umgesetzt: lokaler Containerbetrieb,
 CI, Datenbankmigrationen, Mandanten, eigener Passwortlogin oder Google-OIDC,
 Kontofreigaben und Auditlog. Kontakte, Veranstaltungsorte, Produkte, Ressourcen und
 Events sind verwaltbar. Ressourcen werden konfliktgeprüft disponiert und im Tages-,
 Wochen- und Monatskalender angezeigt. Der Minimalimport bietet Vorschau, Probelauf
-und eine gesonderte Ressourcenprüfung für Bestandszusagen.
+und eine gesonderte Ressourcenprüfung für Bestandszusagen. [Widerrufbare Kalender-Abos](docs/calendar-feeds.md) liefern Gesamt- oder Ressourcenfeeds über einen getrennten Token-Endpunkt.
 Dieser interne Dispositionsstand ersetzt noch nicht den vollständigen Ablauf;
-insbesondere ICS-Feed, Mailversand und Geschäftsdokumente folgen separat.
+Mailversand und Geschäftsdokumente folgen separat; die echte Smartphone-Abnahme des Kalender-Abos bleibt offen.
 Für einen früheren Bookitup-Ausstieg werden Sicherung, Mindestmigration und
 Betriebsabnahme vorgezogen; Mail und Geschäftsdokumente benötigen dann geprüfte
 externe Ersatzprozesse. M5/M6 folgen später.

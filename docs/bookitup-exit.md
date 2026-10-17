@@ -141,7 +141,7 @@ Bestandswerte werden beim Abgleich erhalten.
 | Bereich | Entscheidung | Ersatz bzw. Freigabebedingung |
 |---|---|---|
 | M1 Datenkern/Disposition | Behalten; derzeit bis C025 umgesetzt | C022/C023: DB-Konfliktschutz und echte Buchung/Zubehör/Terminwechsel umgesetzt; C024/C025: Wartungssperren und interner Kalender umgesetzt; Datenübernahme und Betriebsabnahme bleiben offen |
-| Smartphone-Kalender | C026 behalten, wenn bestehendes Abo weiter benötigt wird | TLS/Tokenzugriff testen; andernfalls ausdrücklich vereinbarter, gepflegter Übergangskalender; keine ungeschützte Admin-API |
+| Smartphone-Kalender | C026 implementiert und synthetisch geprüft | Auf dem tatsächlich genutzten Smartphone abonnieren und Update/Widerruf prüfen; andernfalls ausdrücklich vereinbarter, gepflegter Übergangskalender; keine ungeschützte Admin-API |
 | M2 Website/Widget | Später | Bestehende WordPress-Formulare direkt an eigenes Postfach liefern lassen; alle vier Pfade testen, manuelle Eventanlage; keine automatische Verfügbarkeitszusage |
 | M3 Kommunikation | Für schnellen Ausstieg später | Vorhandener unabhängiger Mailclient samt Originalpostfach; lokale Vorlagentexte/Signatur, manuelle Zuordnung und tägliche Wiedervorlage |
 | M4 Geschäftsdokumente | Nur mit geprüftem Ersatz später | Bereits vorhandene unabhängige Rechnungslösung, sofern vorhanden; sonst zuerst minimalen externen Ablauf festlegen und durchspielen. PDF-Archiv allein kann keine neuen Rechnungen erstellen |
@@ -174,7 +174,7 @@ nur bei vollständiger Erfüllung ihrer eigenen Abnahme abgehakt.
 | C076 | Reale künftige Buchungen und Zubehör zuordnen | Jeder Auftrag vollständig geprüft oder als ungelöster Konflikt sichtbar; keine Freigabe bei ungeklärter Kapazität |
 | E004 – Übergangsprozesse | Formulare, Postfach, Angebote/Rechnungen, Zahlungen, Aufgaben und Kundenlinks umstellen | Echter Betreiber-Probelauf; Originalbelege und Nummern bleiben erhalten; Eingang über alle Website-Pfade nachgewiesen |
 | C026 | Kalender-Abo, sofern für den Start beibehalten | Auf dem verwendeten Smartphone getestet, Widerruf und Storno nachgewiesen |
-| E005 – Betrieb | Auf kleinen Umfang begrenzte Vorziehung aus C078–C083: echte OIDC-Anmeldung/TLS, Benutzerfreigaben, Backup/Restore, Updates, Ausfallverfahren und Prüfung aller tatsächlich aktiven Endpunkte | Frische Umgebung aus Sicherung wiederhergestellt; fremder Mandant/unerlaubter Benutzer abgewiesen; täglicher Lauf mit Fehlerüberwachung und unabhängiger Kopie |
+| E005 – Betrieb | Auf kleinen Umfang begrenzte Vorziehung aus C078–C083: gewählte echte Anmeldung/TLS, Benutzerfreigaben, Backup/Restore, Updates, Ausfallverfahren und Prüfung aller tatsächlich aktiven Endpunkte | Frische Umgebung aus Sicherung wiederhergestellt; fremder Mandant/unerlaubter Benutzer abgewiesen; täglicher Lauf mit Fehlerüberwachung und unabhängiger Kopie |
 | E006 – Umschaltprobe/Release | Vorgezogener kleiner Umfang aus C027/C084/C085 mit Deltaimport und Betreiberabnahme | Gesamte Suite für enthaltene Module grün; Ablauf unten erfolgreich; dokumentierte Version und Rückfallpunkt |
 
 C022–C025 und der [Minimalimport E003.1–E003.3](minimal-import.md) sind technisch

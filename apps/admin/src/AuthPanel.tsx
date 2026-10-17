@@ -1,3 +1,4 @@
+import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
 import { ImportPanel } from './ImportPanel.js';
 import { CalendarPanel } from './CalendarPanel.js';
 import { Navigation } from './Navigation.js';
@@ -114,6 +115,7 @@ export function AuthPanel() {
           <section id="settings" aria-label="Einstellungen">
             <h2>Einstellungen</h2>
             <MasterDataSettings csrfToken={user.csrfToken} />
+            <CalendarFeedsPanel csrfToken={user.csrfToken} />
             <ImportPanel
               csrfToken={user.csrfToken}
               onImported={() => setImportRevision((value) => value + 1)}

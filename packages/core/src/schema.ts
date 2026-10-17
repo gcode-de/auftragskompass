@@ -268,3 +268,18 @@ export const importRecords = pgTable('import_records', {
   eventId: uuid('event_id'),
   promiseId: uuid('promise_id'),
 });
+
+export const calendarFeeds = pgTable('calendar_feeds', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  ownerId: uuid('owner_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  resourceId: uuid('resource_id'),
+  description: boolean('description').notNull(),
+  eventType: boolean('event_type').notNull(),
+  internalLink: boolean('internal_link').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});

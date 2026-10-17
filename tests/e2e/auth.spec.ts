@@ -1,3 +1,4 @@
+import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
 import { registerImportRoutes } from '../../packages/core/src/import-routes.js';
 import { fictionalImport } from '../fixtures/minimal-import.js';
 import { expect, test, type Browser } from '@playwright/test';
@@ -68,14 +69,18 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           res.end();
           return;
         }
-        if (req.url!.startsWith('/auth/') || req.url!.startsWith('/api/')) {
+        if (
+          req.url!.startsWith('/auth/') ||
+          req.url!.startsWith('/api/') ||
+          req.url!.startsWith('/feeds/')
+        ) {
           const chunks: Buffer[] = [];
           for await (const chunk of req) chunks.push(chunk as Buffer);
           const body = Buffer.concat(chunks);
           const result = await app.inject({
             method: req.method as 'GET' | 'POST',
             url: req.url!,
-            headers: req.headers,
+            headers: { ...req.headers, 'x-forwarded-proto': 'https' },
             ...(body.length ? { payload: body } : {}),
           });
           res.writeHead(result.statusCode, result.headers);
@@ -145,6 +150,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     registerLocationRoutes(app, pool, config.tenantId);
     registerEventRoutes(app, pool, config.tenantId);
     registerImportRoutes(app, pool, config.tenantId);
+    registerCalendarFeedRoutes(app, pool, config.tenantId, origin);
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     await page.goto(origin);
@@ -747,6 +753,44 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           exact: true,
         }),
     ).toBeVisible();
+
+    const subscriptions = page.getByRole('region', {
+      name: 'Kalender-Abos',
+      exact: true,
+    });
+    await subscriptions
+      .getByRole('button', { name: 'Abo erstellen', exact: true })
+      .click();
+    const calendarLink = subscriptions.getByLabel(
+      'Neuer Kalenderlink (nur jetzt sichtbar)',
+    );
+    await expect(calendarLink).toBeVisible();
+    const originalLink = await calendarLink.inputValue();
+    const anonymous = await browser.newContext({ ignoreHTTPSErrors: true });
+    try {
+      const calendar = await anonymous.request.get(originalLink);
+      expect(calendar.status()).toBe(200);
+      expect(await calendar.text()).toContain('Fictional Future Event');
+      expect(
+        (await anonymous.request.get(origin + '/api/v1/events')).status(),
+      ).toBe(401);
+      await subscriptions
+        .getByRole('button', { name: 'Link erneuern', exact: true })
+        .click();
+      await expect(calendarLink).not.toHaveValue(originalLink);
+      const rotated = await calendarLink.inputValue();
+      expect((await anonymous.request.get(originalLink)).status()).toBe(404);
+      expect((await anonymous.request.get(rotated)).status()).toBe(200);
+      await subscriptions
+        .getByRole('button', { name: 'Abo widerrufen', exact: true })
+        .click();
+      await expect(
+        subscriptions.getByText('Keine aktiven Kalender-Abos.'),
+      ).toBeVisible();
+      expect((await anonymous.request.get(rotated)).status()).toBe(404);
+    } finally {
+      await anonymous.close();
+    }
 
     if (mode === 'password') {
       await page.setViewportSize({ width: 390, height: 844 });
