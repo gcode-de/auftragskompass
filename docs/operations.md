@@ -25,6 +25,10 @@ Das Zielverzeichnis muss existieren und außerhalb des Repositories liegen. Back
 
 Restore benötigt ein separates Compose-Projekt mit ausschließlich gestarteter, leerer Datenbank. API/Worker müssen gestoppt sein. Das Werkzeug löscht keine vorhandenen Tabellen und spielt den Dump in einer Transaktion ein. Nur vertrauenswürdige eigene Backups verwenden. Der Smoke-Test prüft Neustart mit persistentem Volume, Backup, Restore in eine frische Instanz sowie Ablehnung eines zweiten Restores und des Überschreibens einer Sicherung. C078 ergänzt Verschlüsselung, Rotation und Dateisicherung; derzeit gibt es noch keine Anwendungsuploads.
 
+Vorhandene externe Dumps und Archive lassen sich mit dem separaten
+[geprüften Verschlüsselungswerkzeug](backup-encryption.md) schützen (E005.1).
+Dies aktiviert keinen Zeitplan und ist noch keine unabhängige Sicherung.
+
 ### Podman (H004)
 
 Dasselbe Werkzeug unterstützt die benannten Container aus den

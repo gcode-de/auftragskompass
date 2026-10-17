@@ -38,6 +38,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] C026.1: CI-Screenshot nach dem zweiten Ressourcen-/Terminwechsel erst nach der neu geladenen Eventliste und fertigen Zuweisung aufnehmen; keine pauschale Wartezeit oder Retry. Abnahme: kompletter Chromium-Geschäftsablauf mit einem Worker wiederholt grün.
 
+- [x] E005.1: vorhandene externe Sicherungsdateien mit dem bereits verfügbaren OpenSSL authentifiziert verschlüsseln und vor Veröffentlichung vollständig entschlüsseln/prüfen; Schlüssel bleiben außerhalb von Git. Abnahme: echter CMS-Rundlauf, Manipulation/falscher Schlüssel, Dateirechte, Git-Grenze, atomare Veröffentlichung und Überschreibschutz. Kein unabhängiges Ziel, Zeitplan oder Produktivfreigabe wird damit als erledigt gewertet.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
