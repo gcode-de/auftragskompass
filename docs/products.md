@@ -29,3 +29,20 @@ Administratorfreigabe schützen Schreibzugriffe. Produktänderung und minimierte
 Audit-Eintrag werden atomar gespeichert. Fremdschlüssel `(tenant_id,id)` ermöglichen
 spätere historische Bezüge. Tests prüfen Centgenauigkeit, die sichere Ganzzahlgrenze,
 Netto/Brutto, Steuergrenzen, unabhängige Kopien, Archivierung und Fehler-Rollback.
+
+## Offener Export (E005.4)
+
+`GET /api/v1/products/export.csv` liefert den gesamten eigenen Katalog einschließlich
+inaktiver und archivierter Produkte. Dieselbe Administratorsitzung wie für die
+Liste ist erforderlich. Fremde Sitzungen werden abgewiesen. Die Antwort verwendet
+`text/csv; charset=utf-8`, `attachment; filename="products.csv"` und `no-store`.
+
+Spalten: `id`, `version`, `name`, `description`, `unit`, `priceMinor`, `priceBasis`,
+`taxBasisPoints`, `state`, `position`. Die numerischen Einheiten bleiben unverändert:
+Euro-Cent und Hundertstel-Prozent; weder Rundung noch Netto-/Bruttoumrechnung finden
+statt. Status und Preisbasis verwenden die API-Codes. Die Reihenfolge folgt der
+Katalogliste. Tenant-IDs und Zugangsdaten sind nicht enthalten.
+
+CSV verwendet UTF-8-BOM, CRLF, maskierte Anführungszeichen und den bestehenden
+Formelschutz. Private Downloadablage außerhalb Git verwenden. Der Export ist ein
+offenes Weiterverwendungsformat, kein Sicherungs-/Restore- oder Rückimportvertrag.

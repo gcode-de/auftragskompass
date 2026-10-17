@@ -6,6 +6,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { products } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
+import { csv } from './contacts.js';
 export type ProductInput = {
   name: string;
   description: string;
@@ -120,6 +121,31 @@ export function registerProductRoutes(
     { schema: { response: { 200: { type: 'array', items: row } } } },
     () => repo.list(),
   );
+  app.get('/api/v1/products/export.csv', async (_request, reply) => {
+    const rows = await repo.list();
+    const columns = [
+      'id',
+      'version',
+      'name',
+      'description',
+      'unit',
+      'priceMinor',
+      'priceBasis',
+      'taxBasisPoints',
+      'state',
+      'position',
+    ] as const;
+    return reply
+      .type('text/csv; charset=utf-8')
+      .header('content-disposition', 'attachment; filename="products.csv"')
+      .header('cache-control', 'no-store')
+      .send(
+        csv([
+          columns.slice(),
+          ...rows.map((row) => columns.map((key) => String(row[key]))),
+        ]),
+      );
+  });
   app.post<{ Body: ProductInput }>(
     '/api/v1/products',
     {

@@ -146,7 +146,8 @@ test('product API rejects invalid money, requires auth and persists net/gross an
       payload: payload as Record<string, unknown>,
     });
   try {
-    expect((await app.inject('/api/v1/products')).statusCode).toBe(401);
+    for (const url of ['/api/v1/products', '/api/v1/products/export.csv'])
+      expect((await app.inject(url)).statusCode).toBe(401);
     expect(
       (await app.inject({ url: '/api/v1/products', cookies })).json(),
     ).toHaveLength(2);
@@ -172,6 +173,62 @@ test('product API rejects invalid money, requires auth and persists net/gross an
     const created = await create(input);
     expect(created.statusCode).toBe(201);
     expect(created.json()).not.toHaveProperty('tenantId');
+    const formula = await create({
+      ...input,
+      name: '+Fictional,"quoted"',
+      description: 'Fictional\nservice',
+      state: 'inactive',
+      priceMinor: 0,
+      taxBasisPoints: 0,
+    });
+    expect(formula.statusCode).toBe(201);
+    const foreignTenant = randomUUID();
+    await bootstrapAccess(
+      pool,
+      foreignTenant,
+      'foreign-product@example.invalid',
+      'Fictional foreign catalog',
+      'UTC',
+    );
+    const foreignAccess = accessRepository(pool, foreignTenant);
+    await foreignAccess.issueSession(
+      { subject: 'foreign-product', email: 'foreign-product@example.invalid' },
+      digest('synthetic-foreign-product'),
+    );
+    await productRepository(pool, foreignTenant).save(
+      (await foreignAccess.list())[0]!.userId!,
+      { ...input, name: 'Fictional foreign product' },
+    );
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/products/export.csv',
+          cookies: { '__Host-ak-session': 'synthetic-foreign-product' },
+        })
+      ).statusCode,
+    ).toBe(401);
+    const exported = await app.inject({
+      url: '/api/v1/products/export.csv',
+      cookies,
+    });
+    expect(exported.statusCode).toBe(200);
+    expect(exported.headers['content-type']).toContain('text/csv');
+    expect(exported.headers['cache-control']).toBe('no-store');
+    expect(exported.headers['content-disposition']).toContain('products.csv');
+    expect(exported.body).toMatch(/^\uFEFF"id","version"/);
+    expect(exported.body).toContain(
+      '"priceMinor","priceBasis","taxBasisPoints"',
+    );
+    expect(exported.body).toContain('"9007199254740991"');
+    expect(exported.body).toContain('"1","net","700"');
+    expect(exported.body).toContain('"1999","gross","1900"');
+    expect(exported.body).toContain('"archived"');
+    expect(exported.body).toContain('"inactive"');
+    expect(exported.body).toContain('"\'+Fictional,""quoted"""');
+    expect(exported.body).toContain('"Fictional\nservice"');
+    expect(exported.body).toContain('"Stück"');
+    expect(exported.body).not.toContain('Fictional foreign product');
+    expect(exported.body).not.toContain(tenantId);
     const update = (id: string, version: number) =>
       app.inject({
         method: 'PUT',

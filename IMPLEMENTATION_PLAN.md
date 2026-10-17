@@ -62,6 +62,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.3: geschützter vollständiger Event-CSV-Export als offenes Betriebsformat gemäß NF-10; UTF-8, UTC-Zeitpunkte/Zeitzone, Referenzen und Notizen, Formelschutz und no-store. Abnahme: anonymer/fremder Zugriff abgewiesen, alle eigenen Events einschließlich undatierter und annullierter Datensätze enthalten; kein Ersatz für Reservierungsbackup.
 
+- [x] E005.4: geschützter Produkt-CSV-Export mit unveränderten ganzzahligen Cent-/Steuerwerten, Netto-/Bruttobasis und allen Archivzuständen; Formelschutz, no-store und Mandantentrennung. Abnahme: Grenzwerte bleiben exakt, fremde/anonyme Sitzungen scheitern, Archivbestand und Sonderzeichen bleiben enthalten.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
