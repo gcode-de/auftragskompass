@@ -5,12 +5,41 @@
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  color: #203044;
-  background: #f3f6f8;
   font-synthesis: none;
   line-height: 1.5;
-  --accent: #116858;
-  --border: #cbd5df;
+  color-scheme: light dark;
+  color: var(--ink);
+  background: var(--canvas);
+  --surface: light-dark(#ffffff, #202824);
+  --canvas: light-dark(#f4f6f5, #151d19);
+  --ink: light-dark(#202d29, #e4ede7);
+  --muted: light-dark(#596b64, #afc2b6);
+  --accent: light-dark(#176b52, #91d3b4);
+  --border: light-dark(#d6dfda, #43564a);
+  --action-ink: light-dark(#ffffff, #11291e);
+  --action-hover: light-dark(#0b5144, #b2e5cb);
+  --hover-surface: light-dark(#e8f4ef, #2e493b);
+  --field-surface: light-dark(#fafcfd, #1b241f);
+  --field-border: light-dark(#9facbb, #738a7b);
+  --focus: light-dark(#137a69, #a4e4c1);
+  --status-surface: light-dark(#eaf2f7, #293e36);
+  --alert-surface: light-dark(#fff0ed, #482a28);
+  --alert-ink: light-dark(#a62c22, #f3b2a8);
+  --table-surface: light-dark(#edf3f6, #293a30);
+  --selection: light-dark(#c6e7d8, #315d46);
+  --selection-ink: light-dark(#172e27, #e4ede7);
+  --selected-surface: light-dark(#e3f0e8, #2e493b);
+  --selected-ink: light-dark(#155d46, #b2e5cb);
+  --sidebar: #172e27;
+  --sidebar-ink: #eaf2ee;
+  --layer-sticky: 5;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 * {
@@ -53,7 +82,7 @@ p {
   margin-bottom: 1.5rem;
 }
 .app-header p {
-  color: #526276;
+  color: var(--muted);
   margin-bottom: 0;
 }
 section {
@@ -62,8 +91,8 @@ section {
 }
 .workspace > section,
 .login-card {
-  background: white;
-  border: 1px solid #e0e6ec;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 1rem;
   padding: 1.5rem;
   margin: 1.5rem 0;
@@ -98,7 +127,7 @@ section {
 .workspace > [role='status'] {
   background: transparent;
   padding: 0;
-  color: #526276;
+  color: var(--muted);
 }
 
 nav {
@@ -109,7 +138,7 @@ nav {
   flex-wrap: wrap;
   gap: 0.25rem;
   padding: 0.5rem;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   box-shadow: 0 0.25rem 1rem #2030440d;
@@ -125,7 +154,7 @@ nav a {
   border-radius: 0.4rem;
 }
 nav a:hover {
-  background: #e8f4ef;
+  background: var(--hover-surface);
 }
 
 form {
@@ -147,7 +176,7 @@ fieldset {
   border: 1px solid var(--border);
   border-radius: 0.65rem;
   margin: 0;
-  background: #fafcfd;
+  background: var(--field-surface);
 }
 legend {
   font-weight: 650;
@@ -196,10 +225,10 @@ textarea {
   width: 100%;
   min-height: 44px;
   padding: 0.6rem 0.7rem;
-  border: 1px solid #9facbb;
+  border: 1px solid var(--field-border);
   border-radius: 0.4rem;
   color: inherit;
-  background: #fff;
+  background: var(--surface);
 }
 input[type='checkbox'],
 input[type='radio'] {
@@ -223,14 +252,14 @@ button {
   border: 1px solid var(--accent);
   border-radius: 0.4rem;
   background: var(--accent);
-  color: #fff;
+  color: var(--action-ink);
   font-weight: 600;
   cursor: pointer;
   align-self: end;
   overflow-wrap: anywhere;
 }
 button:hover:not(:disabled) {
-  background: #0b5144;
+  background: var(--action-hover);
 }
 button:disabled,
 input:disabled,
@@ -240,7 +269,7 @@ textarea:disabled {
   cursor: not-allowed;
 }
 :focus-visible {
-  outline: 3px solid #137a69;
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 
@@ -251,11 +280,11 @@ textarea:disabled {
 [role='alert'] {
   padding: 0.75rem 1rem;
   border-radius: 0.4rem;
-  background: #eaf2f7;
+  background: var(--status-surface);
 }
 [role='alert'] {
-  background: #fff0ed;
-  border: 1px solid #a62c22;
+  background: var(--alert-surface);
+  border: 1px solid var(--alert-ink);
 }
 ul {
   padding-left: 1.25rem;
@@ -279,7 +308,7 @@ td {
   border-bottom: 1px solid var(--border);
 }
 th {
-  background: #edf3f6;
+  background: var(--table-surface);
 }
 caption {
   text-align: left;
@@ -290,7 +319,7 @@ pre {
   max-width: 100%;
   overflow: auto;
   padding: 1rem;
-  background: #edf3f6;
+  background: var(--table-surface);
   border-radius: 0.4rem;
 }
 
@@ -321,23 +350,9 @@ pre {
 }
 
 /* Workspace chrome uses the same green action language as the existing forms. */
-:root {
-  --surface: #ffffff;
-  --canvas: #f4f6f5;
-  --ink: #202d29;
-  --muted: #596b64;
-  --accent: #176b52;
-  --border: #d6dfda;
-  --sidebar: #172e27;
-  --sidebar-ink: #eaf2ee;
-  --layer-sticky: 5;
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  color: var(--ink);
-  background: var(--canvas);
-}
 ::selection {
-  background: #c6e7d8;
-  color: #172e27;
+  background: var(--selection);
+  color: var(--selection-ink);
 }
 input,
 textarea {
@@ -513,8 +528,8 @@ nav svg {
   font-size: 0.9rem;
 }
 .settings-navigation a[aria-current] {
-  background: #e3f0e8;
-  color: #155d46;
+  background: var(--selected-surface);
+  color: var(--selected-ink);
 }
 #settings > div > section + section {
   border-top: 1px solid var(--border);
@@ -550,9 +565,7 @@ nav svg {
   font-size: 0.875rem;
 }
 button {
-  transition:
-    background-color 150ms ease,
-    transform 150ms var(--ease-out);
+  transition: transform 150ms var(--ease-out);
 }
 button:active:not(:disabled) {
   transform: scale(0.98);
@@ -575,7 +588,7 @@ button:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   button {
-    transition: background-color 150ms ease;
+    transition: none;
   }
   button:active:not(:disabled) {
     transform: none;
@@ -632,10 +645,61 @@ button:focus-visible {
   }
 }
 .account-bar button:hover:not(:disabled) {
-  background: #e8f4ef;
+  background: var(--hover-surface);
 }
 .search-shortcut {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  margin: 0;
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--border);
+  font-size: 0.875rem;
+}
+.theme-toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.theme-toggle:hover:not(:disabled),
+.theme-toggle[aria-pressed='true'] {
+  background: var(--selected-surface);
+  color: var(--selected-ink);
+}
+th,
+td,
+time {
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-close {
+  color: var(--sidebar-ink);
+}
+.app-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 1rem;
+  align-items: center;
+}
+.app-header h1 {
+  grid-column: 1;
+  grid-row: 1;
+  overflow-wrap: anywhere;
+}
+.app-header p {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+}
+
+.menu-close:hover:not(:disabled) {
+  background: #294c3e;
 }

@@ -48,6 +48,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] H011: getrennte Arbeitsbereiche mit Desktop-Seitenleiste, mobilem zugänglichem Menü und unterteilten Einstellungen; bestehende Eingaben, Suchzustand und direkte Event-/Importlinks erhalten. Abnahme: Bereichswechsel, Browserhistorie, Tastatur-/Fokusbedienung und Chromium-Geschäftsablauf bei 390 px ohne Seitenüberlauf; eigenständige Gestaltung anhand der Nutzerreferenzen.
 
+- [x] H012: Hell-/Dunkelmodus mit sichtbarem Umschalter, Systemeinstellung beim ersten Aufruf und lokaler Speicherung gemäß Nutzerwunsch. Abnahme: Neuladen, Systemwechsel, andere Tabs und gesperrter Browserspeicher; vollständige Farbpalette einschließlich Formularen, Tabellen, Meldungen und mobiler Navigation in Chromium prüfen.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

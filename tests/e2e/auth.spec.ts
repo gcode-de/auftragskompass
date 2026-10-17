@@ -155,6 +155,11 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     page.setDefaultTimeout(10000);
     await page.goto(origin);
     if (mode === 'password') {
+      await page.setViewportSize({ width: 320, height: 740 });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(321);
+      await page.setViewportSize({ width: 1280, height: 720 });
       const identifierBox = await page
         .getByLabel('E-Mail oder Benutzername')
         .boundingBox();
@@ -175,6 +180,14 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       page.getByRole('button', { name: 'Abmelden', exact: true }),
     ).toBeInViewport();
+    await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Dunkelmodus' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     expect(
       (await context.cookies()).find((c) => c.name === '__Host-ak-session'),
     ).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });
@@ -868,10 +881,27 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await page.screenshot({
         path: 'tests/test-results/admin-mobile-events.png',
       });
+      await page
+        .getByRole('button', { name: 'Dunkelmodus' })
+        .scrollIntoViewIfNeeded();
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      await page.screenshot({
+        path: 'tests/test-results/admin-mobile-dark.png',
+        animations: 'disabled',
+      });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(391);
       await page.setViewportSize({ width: 1280, height: 720 });
       await page
         .getByRole('heading', { name: 'AuftragsKompass', exact: true })
         .scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: 'tests/test-results/admin-desktop-dark.png',
+        animations: 'disabled',
+      });
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
       await page.screenshot({ path: 'tests/test-results/admin-desktop.png' });
     }
     if (mode === 'password') {

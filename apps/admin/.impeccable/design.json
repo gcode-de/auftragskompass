@@ -1,38 +1,108 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-17T14:07:18.843079Z",
+  "generatedAt": "2026-10-17T14:14:56.578945Z",
   "title": "Design System: AuftragsKompass",
   "extensions": {
     "colorMeta": {
-      "accent": {
-        "displayName": "accent",
-        "role": "primary",
-        "canonical": "#176b52"
-      },
       "surface": {
         "displayName": "surface",
         "role": "neutral",
-        "canonical": "#ffffff"
+        "canonical": "light-dark(#ffffff, #202824)"
       },
       "canvas": {
         "displayName": "canvas",
         "role": "neutral",
-        "canonical": "#f4f6f5"
+        "canonical": "light-dark(#f4f6f5, #151d19)"
       },
       "ink": {
         "displayName": "ink",
         "role": "neutral",
-        "canonical": "#202d29"
+        "canonical": "light-dark(#202d29, #e4ede7)"
       },
       "muted": {
         "displayName": "muted",
         "role": "neutral",
-        "canonical": "#596b64"
+        "canonical": "light-dark(#596b64, #afc2b6)"
+      },
+      "accent": {
+        "displayName": "accent",
+        "role": "primary",
+        "canonical": "light-dark(#176b52, #91d3b4)"
       },
       "border": {
         "displayName": "border",
         "role": "neutral",
-        "canonical": "#d6dfda"
+        "canonical": "light-dark(#d6dfda, #43564a)"
+      },
+      "action-ink": {
+        "displayName": "action-ink",
+        "role": "neutral",
+        "canonical": "light-dark(#ffffff, #11291e)"
+      },
+      "action-hover": {
+        "displayName": "action-hover",
+        "role": "neutral",
+        "canonical": "light-dark(#0b5144, #b2e5cb)"
+      },
+      "hover-surface": {
+        "displayName": "hover-surface",
+        "role": "neutral",
+        "canonical": "light-dark(#e8f4ef, #2e493b)"
+      },
+      "field-surface": {
+        "displayName": "field-surface",
+        "role": "neutral",
+        "canonical": "light-dark(#fafcfd, #1b241f)"
+      },
+      "field-border": {
+        "displayName": "field-border",
+        "role": "neutral",
+        "canonical": "light-dark(#9facbb, #738a7b)"
+      },
+      "focus": {
+        "displayName": "focus",
+        "role": "neutral",
+        "canonical": "light-dark(#137a69, #a4e4c1)"
+      },
+      "status-surface": {
+        "displayName": "status-surface",
+        "role": "neutral",
+        "canonical": "light-dark(#eaf2f7, #293e36)"
+      },
+      "alert-surface": {
+        "displayName": "alert-surface",
+        "role": "neutral",
+        "canonical": "light-dark(#fff0ed, #482a28)"
+      },
+      "alert-ink": {
+        "displayName": "alert-ink",
+        "role": "neutral",
+        "canonical": "light-dark(#a62c22, #f3b2a8)"
+      },
+      "table-surface": {
+        "displayName": "table-surface",
+        "role": "neutral",
+        "canonical": "light-dark(#edf3f6, #293a30)"
+      },
+      "selection": {
+        "displayName": "selection",
+        "role": "neutral",
+        "canonical": "light-dark(#c6e7d8, #315d46)"
+      },
+      "selection-ink": {
+        "displayName": "selection-ink",
+        "role": "neutral",
+        "canonical": "light-dark(#172e27, #e4ede7)"
+      },
+      "selected-surface": {
+        "displayName": "selected-surface",
+        "role": "neutral",
+        "canonical": "light-dark(#e3f0e8, #2e493b)"
+      },
+      "selected-ink": {
+        "displayName": "selected-ink",
+        "role": "neutral",
+        "canonical": "light-dark(#155d46, #b2e5cb)"
       },
       "sidebar": {
         "displayName": "sidebar",
@@ -43,16 +113,6 @@
         "displayName": "sidebar-ink",
         "role": "neutral",
         "canonical": "#eaf2ee"
-      },
-      "button-hover": {
-        "displayName": "button-hover",
-        "role": "neutral",
-        "canonical": "#0b5144"
-      },
-      "focus": {
-        "displayName": "focus",
-        "role": "neutral",
-        "canonical": "#137a69"
       },
       "sidebar-focus": {
         "displayName": "sidebar-focus",
@@ -79,65 +139,20 @@
         "role": "neutral",
         "canonical": "#b0c8bd"
       },
-      "selection": {
-        "displayName": "selection",
+      "sidebar-selected-ink": {
+        "displayName": "sidebar-selected-ink",
         "role": "neutral",
-        "canonical": "#c6e7d8"
-      },
-      "settings-active": {
-        "displayName": "settings-active",
-        "role": "neutral",
-        "canonical": "#e3f0e8"
-      },
-      "settings-active-ink": {
-        "displayName": "settings-active-ink",
-        "role": "neutral",
-        "canonical": "#155d46"
-      },
-      "field-border": {
-        "displayName": "field-border",
-        "role": "neutral",
-        "canonical": "#9facbb"
-      },
-      "field-surface": {
-        "displayName": "field-surface",
-        "role": "neutral",
-        "canonical": "#fafcfd"
-      },
-      "status": {
-        "displayName": "status",
-        "role": "neutral",
-        "canonical": "#eaf2f7"
-      },
-      "alert": {
-        "displayName": "alert",
-        "role": "neutral",
-        "canonical": "#fff0ed"
-      },
-      "alert-border": {
-        "displayName": "alert-border",
-        "role": "neutral",
-        "canonical": "#a62c22"
-      },
-      "table-header": {
-        "displayName": "table-header",
-        "role": "neutral",
-        "canonical": "#edf3f6"
-      },
-      "nav-hover": {
-        "displayName": "nav-hover",
-        "role": "neutral",
-        "canonical": "#e8f4ef"
-      },
-      "login-border": {
-        "displayName": "login-border",
-        "role": "neutral",
-        "canonical": "#e0e6ec"
+        "canonical": "#ffffff"
       },
       "backdrop": {
         "displayName": "backdrop",
         "role": "neutral",
         "canonical": "#0b1813aa"
+      },
+      "menu-close-border": {
+        "displayName": "menu-close-border",
+        "role": "neutral",
+        "canonical": "#779386"
       }
     },
     "shadows": [
@@ -161,7 +176,7 @@
       {
         "name": "button",
         "value": "150ms",
-        "purpose": "Farbwechsel und Druckreaktion; bei reduzierter Bewegung nur Farbe."
+        "purpose": "Nur Drucktransformation; Farben wechseln sofort. Bei reduzierter Bewegung weder Transition noch Skalierung."
       },
       {
         "name": "menu-entry",
@@ -187,7 +202,7 @@
       "refersTo": "button-primary",
       "description": "Standardaktion mit Fokus und reduzierter Bewegung.",
       "html": "<button class=\"ds-primary\">Speichern</button>",
-      "css": ".ds-primary{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;min-height:44px;padding:0.6rem 1rem;border:1px solid var(--accent,#176b52);border-radius:0.4rem;background:var(--accent,#176b52);color:#fff;font-weight:600;cursor:pointer;transition:background-color 150ms ease,transform 150ms cubic-bezier(0.23,1,0.32,1);}.ds-primary:hover:not(:disabled){background:#0b5144}.ds-primary:focus-visible{outline:3px solid #137a69;outline-offset:3px;transform:none}.ds-primary:active:not(:disabled){transform:scale(0.98)}.ds-primary:disabled{opacity:0.65;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-primary{transition:background-color 150ms ease}.ds-primary:active:not(:disabled){transform:none}}"
+      "css": ".ds-primary{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;min-height:44px;padding:0.6rem 1rem;border:1px solid var(--accent,light-dark(#176b52, #91d3b4));border-radius:0.4rem;background:var(--accent,light-dark(#176b52, #91d3b4));color:var(--action-ink,light-dark(#ffffff, #11291e));font-weight:600;cursor:pointer;transition:transform 150ms cubic-bezier(0.23,1,0.32,1);}.ds-primary:hover:not(:disabled){background:var(--action-hover,light-dark(#0b5144, #b2e5cb))}.ds-primary:focus-visible{outline:3px solid var(--focus,light-dark(#137a69, #a4e4c1));outline-offset:3px;transform:none}.ds-primary:active:not(:disabled){transform:scale(0.98)}.ds-primary:disabled{opacity:0.65;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}.ds-primary:active:not(:disabled){transform:none}}"
     },
     {
       "name": "Kontoaktion",
@@ -195,7 +210,7 @@
       "refersTo": "button-account",
       "description": "Transparente Abmeldeaktion.",
       "html": "<button class=\"ds-account\">Abmelden</button>",
-      "css": ".ds-account{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;min-height:44px;padding:0.6rem 1rem;border:1px solid var(--accent,#176b52);border-radius:0.4rem;background:var(--accent,#176b52);color:#fff;font-weight:600;cursor:pointer;transition:background-color 150ms ease,transform 150ms cubic-bezier(0.23,1,0.32,1);background:transparent;color:var(--accent,#176b52);border-color:var(--border,#d6dfda)}.ds-account:hover:not(:disabled){background:#e8f4ef}.ds-account:focus-visible{outline:3px solid #137a69;outline-offset:3px;}.ds-account:disabled{opacity:0.65;cursor:not-allowed}"
+      "css": ".ds-account{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;min-height:44px;padding:0.6rem 1rem;border:1px solid var(--accent,light-dark(#176b52, #91d3b4));border-radius:0.4rem;font-weight:600;cursor:pointer;transition:transform 150ms cubic-bezier(0.23,1,0.32,1);background:transparent;color:var(--accent,light-dark(#176b52, #91d3b4));border-color:var(--border,light-dark(#d6dfda, #43564a))}.ds-account:hover:not(:disabled){background:var(--hover-surface,light-dark(#e8f4ef, #2e493b))}.ds-account:focus-visible{outline:3px solid var(--focus,light-dark(#137a69, #a4e4c1));outline-offset:3px;}.ds-account:disabled{opacity:0.65;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-account{transition:none}}"
     },
     {
       "name": "Textfeld",
@@ -203,7 +218,7 @@
       "refersTo": "input",
       "description": "Beschriftetes Standardfeld.",
       "html": "<label class=\"ds-label\">Bezeichnung<input class=\"ds-input\" name=\"designation\"></label>",
-      "css": ".ds-label{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;display:grid;gap:0.35rem;font-weight:550;color:var(--ink,#202d29)}.ds-input{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;min-height:44px;padding:0.6rem 0.7rem;border:1px solid #9facbb;border-radius:0.4rem;background:#fff;color:inherit;caret-color:var(--accent,#176b52)}.ds-input:focus-visible{outline:3px solid #137a69;outline-offset:3px;}.ds-input:disabled{opacity:0.65;cursor:not-allowed}"
+      "css": ".ds-label{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;display:grid;gap:0.35rem;font-weight:550;color:var(--ink,light-dark(#202d29, #e4ede7))}.ds-input{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;min-height:44px;padding:0.6rem 0.7rem;border:1px solid var(--field-border,light-dark(#9facbb, #738a7b));border-radius:0.4rem;background:var(--surface,light-dark(#ffffff, #202824));color:inherit;caret-color:var(--accent,light-dark(#176b52, #91d3b4))}.ds-input:focus-visible{outline:3px solid var(--focus,light-dark(#137a69, #a4e4c1));outline-offset:3px;}.ds-input:disabled{opacity:0.65;cursor:not-allowed}"
     },
     {
       "name": "Arbeitsbereich",
@@ -211,7 +226,7 @@
       "refersTo": "workspace",
       "description": "Umrandete Fläche ohne Schatten.",
       "html": "<section class=\"ds-workspace\"><h2>Arbeitsbereich</h2><p>Angaben verwalten.</p></section>",
-      "css": ".ds-workspace{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;color:var(--ink,#202d29);background:var(--surface,#fff);padding:1.75rem;border:1px solid var(--border,#d6dfda);border-radius:0.75rem;overflow-x:auto}.ds-workspace h2{margin-top:0;font-size:1.25rem;line-height:1.2;letter-spacing:-0.025em}@media(max-width:900px){.ds-workspace{padding:1rem}}"
+      "css": ".ds-workspace{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;color:var(--ink,light-dark(#202d29, #e4ede7));background:var(--surface,light-dark(#ffffff, #202824));padding:1.75rem;border:1px solid var(--border,light-dark(#d6dfda, #43564a));border-radius:0.75rem;overflow-x:auto}.ds-workspace h2{margin-top:0;font-size:1.25rem;line-height:1.2;letter-spacing:-0.025em}@media(max-width:900px){.ds-workspace{padding:1rem}}"
     },
     {
       "name": "Hauptnavigation",
@@ -226,11 +241,19 @@
       "kind": "custom",
       "description": "Nicht leere Rückmeldung mit semantischer Statusrolle.",
       "html": "<p class=\"ds-status\" role=\"status\">Änderungen gespeichert.</p>",
-      "css": ".ds-status{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;color:var(--ink,#202d29);padding:0.75rem 1rem;border-radius:0.4rem;background:#eaf2f7}.ds-status:empty{display:none}"
+      "css": ".ds-status{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1rem;line-height:1.5;color:var(--ink,light-dark(#202d29, #e4ede7));padding:0.75rem 1rem;border-radius:0.4rem;background:var(--status-surface,light-dark(#eaf2f7, #293e36))}.ds-status:empty{display:none}"
+    },
+    {
+      "name": "Darstellungsumschalter",
+      "kind": "button",
+      "refersTo": "theme-toggle",
+      "description": "Statisches Vorschauprimitiv des Schalters; Verhalten ist in DESIGN.md dokumentiert.",
+      "html": "<button type=\"button\" class=\"ds-theme\" aria-pressed=\"true\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z\"/></svg>Dunkelmodus</button>",
+      "css": ".ds-theme{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.5;display:inline-flex;align-items:center;gap:0.5rem;min-height:44px;padding:0.6rem 1rem;font-size:0.875rem;font-weight:600;border:1px solid var(--border,light-dark(#d6dfda, #43564a));border-radius:0.4rem;background:transparent;color:var(--accent,light-dark(#176b52, #91d3b4));cursor:pointer;transition:transform 150ms cubic-bezier(0.23,1,0.32,1)}.ds-theme svg{width:1.1rem;height:1.1rem}.ds-theme:hover:not(:disabled),.ds-theme[aria-pressed=\"true\"]{background:var(--selected-surface,light-dark(#e3f0e8, #2e493b));color:var(--selected-ink,light-dark(#155d46, #b2e5cb))}.ds-theme:focus-visible{outline:3px solid var(--focus,light-dark(#137a69, #a4e4c1));outline-offset:3px}.ds-theme:active:not(:disabled){transform:scale(0.98)}@media(prefers-reduced-motion:reduce){.ds-theme{transition:none}.ds-theme:active:not(:disabled){transform:none}}"
     }
   ],
   "narrative": {
-    "overview": "Die interne Verwaltungsoberfläche unterstützt den Inhaber eines lokal betriebenen Fotobox-Unternehmens. Das bestehende System verwendet grüne Aktionen, eine dunkle Seitennavigation und helle, voneinander getrennte Arbeitsbereiche. Diese Dokumentation beschreibt den implementierten Zustand; sie legt keine neue Markenrichtung fest.",
+    "overview": "Die interne Verwaltungsoberfläche unterstützt den Inhaber eines lokal betriebenen Fotobox-Unternehmens. Das bestehende System verwendet grüne Aktionen, eine dunkle Seitennavigation und voneinander getrennte Arbeitsbereiche in heller oder dunkler Darstellung. Diese Dokumentation beschreibt den implementierten Zustand; sie legt keine neue Markenrichtung fest.",
     "keyCharacteristics": [
       "Getrennte Arbeitsbereiche mit gemeinsamer Navigation.",
       "Systemschrift, sichtbarer Tastaturfokus und überwiegend mindestens 44px hohe Bedienelemente.",
