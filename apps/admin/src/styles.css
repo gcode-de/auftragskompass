@@ -255,7 +255,7 @@ textarea:disabled {
 }
 [role='alert'] {
   background: #fff0ed;
-  border-left: 4px solid #a62c22;
+  border: 1px solid #a62c22;
 }
 ul {
   padding-left: 1.25rem;
@@ -318,4 +318,324 @@ pre {
   section {
     scroll-margin-top: 10rem;
   }
+}
+
+/* Workspace chrome uses the same green action language as the existing forms. */
+:root {
+  --surface: #ffffff;
+  --canvas: #f4f6f5;
+  --ink: #202d29;
+  --muted: #596b64;
+  --accent: #176b52;
+  --border: #d6dfda;
+  --sidebar: #172e27;
+  --sidebar-ink: #eaf2ee;
+  --layer-sticky: 5;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color: var(--ink);
+  background: var(--canvas);
+}
+::selection {
+  background: #c6e7d8;
+  color: #172e27;
+}
+input,
+textarea {
+  caret-color: var(--accent);
+}
+[hidden] {
+  display: none !important;
+}
+.app-shell {
+  max-width: 100rem;
+  padding: 0 2.5rem 3rem 18rem;
+}
+.app-header {
+  border: 0;
+  padding: 1.5rem 0 0.5rem;
+  margin: 0;
+}
+.app-header h1 {
+  font-size: 1.15rem;
+  letter-spacing: -0.025em;
+}
+.app-header p {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+.account-bar {
+  margin: 0.5rem 0 1.5rem;
+  font-size: 0.875rem;
+}
+.account-bar button {
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--border);
+}
+.workspace > [role='status'] {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.session-ready {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.app-shell:has(.login-card) {
+  padding: 1.5rem;
+  max-width: 65rem;
+}
+.desktop-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 15rem;
+  padding: 2rem 1rem;
+  background: var(--sidebar);
+  color: var(--sidebar-ink);
+  display: flex;
+  flex-direction: column;
+  z-index: var(--layer-sticky);
+}
+.menu-brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  margin: 0 0.75rem;
+  letter-spacing: -0.025em;
+}
+.menu-caption {
+  margin: 0.35rem 0.75rem 2rem;
+  font-size: 0.8rem;
+  color: #b0c8bd;
+}
+.desktop-sidebar nav,
+.mobile-menu nav {
+  position: static;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.desktop-sidebar a,
+.mobile-menu nav a {
+  color: #c5d6ce;
+  display: flex;
+  gap: 0.85rem;
+  font-weight: 500;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.5rem;
+}
+nav svg {
+  height: 1.3rem;
+  width: 1.3rem;
+  flex-shrink: 0;
+}
+.desktop-sidebar a[aria-current],
+.mobile-menu a[aria-current] {
+  color: #fff;
+  background: #315a48;
+  font-weight: 650;
+}
+.desktop-sidebar a:hover,
+.mobile-menu nav a:hover {
+  color: #fff;
+  background: #294c3e;
+}
+.desktop-sidebar a:focus-visible,
+.mobile-menu a:focus-visible {
+  outline-color: #c0e7ce;
+}
+.menu-footnote {
+  margin: auto 0.75rem 0;
+  padding-top: 2rem;
+  font-size: 0.8rem;
+  color: #b0c8bd;
+}
+.workspace-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+.workspace-title {
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+.search-shortcut {
+  margin-left: auto;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.menu-trigger {
+  display: none;
+}
+.workspace-page > section,
+.workspace > section {
+  margin: 0;
+  padding: 1.75rem;
+  background: var(--surface);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  box-shadow: none;
+  overflow-x: auto;
+}
+.workspace-page + .workspace-page:not([hidden]) {
+  margin-top: 1rem;
+}
+.workspace-page h2 {
+  font-size: 1.25rem;
+}
+.settings-navigation {
+  position: static;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+  padding: 0 0 0.75rem;
+  margin: 0 0 1.75rem;
+  gap: 0.5rem;
+}
+.settings-navigation a {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.settings-navigation a[aria-current] {
+  background: #e3f0e8;
+  color: #155d46;
+}
+#settings > div > section + section {
+  border-top: 1px solid var(--border);
+  padding-top: 2rem;
+  margin-top: 2rem;
+}
+.search-panel {
+  padding: 1.5rem 0;
+}
+.search-panel p {
+  color: var(--muted);
+  max-width: 65ch;
+}
+.mobile-menu {
+  width: min(21rem, calc(100% - 2rem));
+  max-height: 100dvh;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  padding: 1.25rem 1rem max(1.5rem, env(safe-area-inset-bottom));
+  border: 0;
+  background: var(--sidebar);
+  color: var(--sidebar-ink);
+}
+.mobile-menu::backdrop {
+  background: #0b1813aa;
+}
+.menu-close {
+  display: block;
+  margin: 0 0 1.5rem auto;
+  background: transparent;
+  border-color: #779386;
+  font-size: 0.875rem;
+}
+button {
+  transition:
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+button:focus-visible {
+  transform: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mobile-menu[data-motion='pointer'] {
+    transition:
+      transform 220ms var(--ease-out),
+      opacity 220ms var(--ease-out);
+  }
+  @starting-style {
+    .mobile-menu[data-motion='pointer'][open] {
+      transform: translateX(-1rem);
+      opacity: 0;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: background-color 150ms ease;
+  }
+  button:active:not(:disabled) {
+    transform: none;
+  }
+}
+@media (max-width: 900px) {
+  .app-shell {
+    padding: 0 1rem max(2rem, env(safe-area-inset-bottom));
+  }
+  .desktop-sidebar {
+    display: none;
+  }
+  .app-header {
+    padding-top: 1rem;
+  }
+  .app-header p {
+    display: none;
+  }
+  .account-bar {
+    margin-bottom: 1rem;
+  }
+  .workspace-toolbar {
+    position: sticky;
+    top: 0;
+    background: var(--canvas);
+    z-index: var(--layer-sticky);
+    padding: 0.75rem 0;
+    gap: 0.75rem;
+  }
+  .workspace-title {
+    font-size: 1.15rem;
+  }
+  .menu-trigger {
+    display: block;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .workspace-page > section,
+  .workspace > section {
+    padding: 1rem;
+  }
+  section {
+    scroll-margin-top: 5rem;
+  }
+  .settings-navigation {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settings-navigation a {
+    padding: 0.65rem;
+  }
+  .login-card {
+    margin-top: 2rem;
+  }
+}
+.account-bar button:hover:not(:disabled) {
+  background: #e8f4ef;
+}
+.search-shortcut {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }

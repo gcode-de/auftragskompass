@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AuthPanel } from '../../apps/admin/src/AuthPanel.js';
 afterEach(() => {
   cleanup();
+  window.history.replaceState(null, '', '/');
   vi.unstubAllGlobals();
 });
 test('offers Google login only when configured', async () => {
@@ -135,6 +136,8 @@ test('password login supports retries, clears secrets and sends no CSRF token be
       password: 'Fictional password 123!',
     }),
   });
+  window.history.replaceState(null, '', '/#settings-security');
+  fireEvent(window, new HashChangeEvent('hashchange'));
   expect(await screen.findByText(/Weitere Passwortkonten/)).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Konto freigeben' })).toBeNull();
 });
@@ -186,6 +189,7 @@ test.each([204, 401])(
               : Response.json([]),
       ),
     );
+    window.history.replaceState(null, '', '/#settings-security');
     render(<AuthPanel />);
     fireEvent.change(
       await screen.findByLabelText('Aktuelles Passwort', { exact: true }),
@@ -206,3 +210,34 @@ test.each([204, 401])(
     );
   },
 );
+
+test('shows one workspace and preserves unsaved input across section changes', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/auth/me'
+        ? Response.json({
+            email: 'fictional.owner@example.invalid',
+            csrfToken: 'fictional-csrf',
+          })
+        : url === '/api/v1/events'
+          ? Response.json({ timeZone: 'Europe/Berlin', events: [] })
+          : Response.json([]),
+    ),
+  );
+  render(<AuthPanel />);
+  await screen.findByRole('region', { name: 'Events' });
+  expect(screen.queryByRole('region', { name: 'Kontakte' })).toBeNull();
+  window.history.replaceState(null, '', '/#contacts');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  const input = await screen.findByLabelText('Name / Firma');
+  fireEvent.change(input, { target: { value: 'Fictional unsaved contact' } });
+  window.history.replaceState(null, '', '/#calendar');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  expect(screen.queryByRole('region', { name: 'Kontakte' })).toBeNull();
+  window.history.replaceState(null, '', '/#contacts');
+  fireEvent(window, new PopStateEvent('popstate'));
+  expect(
+    (screen.getByLabelText('Name / Firma') as HTMLInputElement).value,
+  ).toBe('Fictional unsaved contact');
+});

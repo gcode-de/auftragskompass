@@ -181,6 +181,18 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     expect(await page.evaluate(() => document.cookie)).not.toContain(
       'ak-session',
     );
+    const navigate = async (label: string, setting?: string) => {
+      await page
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .getByRole('link', { name: label, exact: true })
+        .click();
+      if (setting)
+        await page
+          .getByRole('navigation', { name: 'Einstellungen', exact: true })
+          .getByRole('link', { name: setting, exact: true })
+          .click();
+    };
+    await navigate('Einstellungen', 'Konto & Zugriff');
     if (mode === 'google') {
       await page
         .getByLabel('Google-E-Mail-Adresse')
@@ -212,6 +224,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         page.getByText('pending-browser@example.invalid – Gesperrt'),
       ).toBeVisible();
     } else await expect(page.getByText(/Weitere Passwortkonten/)).toBeVisible();
+    await navigate('Einstellungen', 'Datenimport');
     const importPreview = page.getByRole('region', {
       name: 'Bookitup-Importvorschau',
     });
@@ -235,6 +248,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await importPreview.screenshot({
       path: 'tests/test-results/import-preview.png',
     });
+    await navigate('Einstellungen', 'Stammdaten');
     const packages = page.getByRole('region', { name: 'Paketwerte' });
     await packages
       .getByLabel('Bezeichnung', { exact: true })
@@ -273,6 +287,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('button', { name: 'Speichern', exact: true })
       .click();
     await expect(reasons.getByText('Termin belegt – Archiviert')).toBeVisible();
+    await navigate('Ressourcen');
     const resources = page.getByRole('region', { name: 'Ressourcen' });
     await resources
       .getByRole('button', { name: 'Ressource bearbeiten: FB1', exact: true })
@@ -311,6 +326,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       blocks.getByText(/Fictional browser maintenance.*Freigegeben/),
     ).toBeVisible();
+    await navigate('Produkte');
     const products = page.getByRole('region', { name: 'Produkte' });
     await products
       .getByLabel('Produktname', { exact: true })
@@ -322,6 +338,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         exact: true,
       }),
     ).toBeVisible();
+    await navigate('Kontakte');
     const contacts = page.getByRole('region', { name: 'Kontakte' });
     await contacts.getByLabel('Name / Firma').fill('Synthetic browser contact');
     await contacts.getByLabel('Kontaktart').selectOption('company');
@@ -330,6 +347,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
+    await navigate('Kontakte');
     await contacts
       .getByRole('button', {
         name: 'Kontakt bearbeiten: Synthetic browser contact',
@@ -349,6 +367,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('link', { name: 'Kontakte als CSV exportieren' })
       .click();
     expect((await download).suggestedFilename()).toBe('contacts.csv');
+    await navigate('Locations');
     const locations = page.getByRole('region', { name: 'Locations' });
     await locations.getByLabel('Locationname').fill('Synthetic browser venue');
     await locations.getByLabel('Locationort').fill('Fictional city');
@@ -366,6 +385,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       locations.getByText('Synthetic browser venue – Archiviert'),
     ).toBeVisible();
+    await navigate('Kontakte');
     await contacts
       .getByRole('button', {
         name: 'Kontakt bearbeiten: Synthetic browser contact',
@@ -376,6 +396,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
+    await navigate('Events');
     const events = page.getByRole('region', { name: 'Events' });
     await events.getByRole('button', { name: 'Events aktualisieren' }).click();
     await expect(
@@ -429,6 +450,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       record.getByText(/Status von Anfrage auf Option geändert/),
     ).toBeVisible();
+    await navigate('Kontakte');
     await contacts
       .getByRole('button', {
         name: 'Events anzeigen: Synthetic browser contact',
@@ -437,6 +459,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       contacts.getByRole('link', { name: 'Synthetic browser event' }),
     ).toBeVisible();
+    await navigate('Events');
     await events
       .getByRole('button', {
         name: 'Event bearbeiten: Synthetic browser event',
@@ -526,6 +549,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await assignment.screenshot({
       path: 'tests/test-results/resource-assignment.png',
     });
+    await navigate('Kalender');
     const calendar = page.getByRole('region', {
       name: 'Kalender',
       exact: true,
@@ -565,6 +589,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       path: 'tests/test-results/calendar-month.png',
     });
 
+    await navigate('Events');
     await record.getByRole('button', { name: 'Eventakte schließen' }).click();
     await events.getByLabel('Events suchen', { exact: true }).fill('browser');
     await events.getByLabel('Filter von').fill('2026-10-16');
@@ -589,6 +614,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByRole('combobox', { name: 'Filterstatus', exact: true }),
     ).toHaveValue('cancelled');
+    await page.getByRole('link', { name: 'Suche', exact: true }).click();
     await page.getByLabel('Globale Suche').fill('Synthetic missing search');
     await page
       .getByRole('button', { name: 'Events und Kontakte suchen' })
@@ -616,6 +642,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeInViewport();
+    await navigate('Einstellungen', 'Datenimport');
     await importPreview
       .getByLabel('Normalisierte Importdaten')
       .fill(JSON.stringify(fictionalImport()));
@@ -657,11 +684,13 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       imported.getByText('Fictional Future Event', { exact: true }).first(),
     ).toBeVisible();
+    await navigate('Kalender');
     await expect(calendar.getByRole('alert')).toContainText(
       '1 ungeprüfte Bestandszusagen',
     );
     await expect(calendar.getByText('Frei', { exact: true })).toHaveCount(0);
     await expect(calendar.getByText('Bestand ungeprüft').first()).toBeVisible();
+    await navigate('Einstellungen', 'Datenimport');
     const reportDownload = page.waitForEvent('download');
     await imported
       .getByRole('button', { name: 'Privaten Prüfbericht herunterladen' })
@@ -724,6 +753,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       imported.getByText(/Keine ungeprüften Bestandszusagen vorhanden/),
     ).toBeVisible();
+    await navigate('Kalender');
     await expect(calendar.getByRole('alert')).toHaveCount(0);
     const importedEvent = (
       await pool.query(
@@ -760,6 +790,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         }),
     ).toBeVisible();
 
+    await navigate('Einstellungen', 'Kalender-Abos');
     const subscriptions = page.getByRole('region', {
       name: 'Kalender-Abos',
       exact: true,
@@ -803,6 +834,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(391);
+      await page.getByRole('link', { name: 'Suche', exact: true }).click();
       const search = page.getByLabel('Globale Suche');
       await search.focus();
       expect(
@@ -814,10 +846,36 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         .getByRole('heading', { name: 'AuftragsKompass', exact: true })
         .scrollIntoViewIfNeeded();
       await page.screenshot({ path: 'tests/test-results/admin-mobile.png' });
+      const menuButton = page.getByRole('button', { name: 'Menü öffnen' });
+      await menuButton.click();
+      const menu = page.getByRole('dialog', { name: 'Menü', exact: true });
+      await expect(menu).toBeVisible();
+      await expect(menu).toHaveCSS('opacity', '1');
+      await page.screenshot({
+        path: 'tests/test-results/admin-mobile-menu.png',
+      });
+      await page.keyboard.press('Escape');
+      await expect(menu).not.toBeVisible();
+      await expect(menuButton).toBeFocused();
+      await menuButton.click();
+      await page.mouse.click(380, 400);
+      await expect(menu).not.toBeVisible();
+      await menuButton.click();
+      await menu.getByRole('link', { name: 'Events', exact: true }).click();
+      await expect(events).toBeVisible();
+      await expect(contacts).not.toBeVisible();
+      await expect(calendar).not.toBeVisible();
+      await page.screenshot({
+        path: 'tests/test-results/admin-mobile-events.png',
+      });
       await page.setViewportSize({ width: 1280, height: 720 });
+      await page
+        .getByRole('heading', { name: 'AuftragsKompass', exact: true })
+        .scrollIntoViewIfNeeded();
       await page.screenshot({ path: 'tests/test-results/admin-desktop.png' });
     }
     if (mode === 'password') {
+      await navigate('Einstellungen', 'Konto & Zugriff');
       const change = page.getByRole('region', {
         name: 'Eigenes Passwort',
         exact: true,

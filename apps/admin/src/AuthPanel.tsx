@@ -1,7 +1,11 @@
 import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
 import { ImportPanel } from './ImportPanel.js';
 import { CalendarPanel } from './CalendarPanel.js';
-import { Navigation } from './Navigation.js';
+import {
+  Navigation,
+  SettingsNavigation,
+  useWorkspaceRoute,
+} from './Navigation.js';
 import { EventPanel } from './EventPanel.js';
 import { LocationPanel } from './LocationPanel.js';
 import { ContactPanel } from './ContactPanel.js';
@@ -13,6 +17,13 @@ import { AccessPanel } from './AccessPanel.js';
 import { useEffect, useState } from 'react';
 export type CurrentUser = { email: string; csrfToken: string };
 export function AuthPanel() {
+  const route = useWorkspaceRoute();
+  const inSettings = [
+    'settings',
+    'subscriptions',
+    'import',
+    'security',
+  ].includes(route);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState('Anmeldung wird geprüft …');
   const [mode, setMode] = useState('google');
@@ -98,7 +109,12 @@ export function AuthPanel() {
       aria-label="Anmeldung"
       className={user ? 'workspace' : 'login-card'}
     >
-      <p role="status">{status}</p>
+      <p
+        role="status"
+        className={status === 'Angemeldet' ? 'session-ready' : undefined}
+      >
+        {status}
+      </p>
       {user ? (
         <>
           <div className="account-bar">
@@ -106,44 +122,75 @@ export function AuthPanel() {
             <button onClick={() => void logout()}>Abmelden</button>
           </div>
           <Navigation />
-          <EventPanel csrfToken={user.csrfToken} revision={importRevision} />
-          <CalendarPanel key={importRevision} />
-          <LocationPanel csrfToken={user.csrfToken} />
-          <ContactPanel csrfToken={user.csrfToken} />
-          <ProductPanel csrfToken={user.csrfToken} />
-          <ResourcePanel csrfToken={user.csrfToken} />
-          <section id="settings" aria-label="Einstellungen">
+          <div
+            className="workspace-page"
+            hidden={route !== 'events' && route !== 'search'}
+          >
+            <EventPanel csrfToken={user.csrfToken} revision={importRevision} />
+          </div>
+          <div className="workspace-page" hidden={route !== 'calendar'}>
+            <CalendarPanel key={importRevision} />
+          </div>
+          <div className="workspace-page" hidden={route !== 'locations'}>
+            <LocationPanel csrfToken={user.csrfToken} />
+          </div>
+          <div
+            className="workspace-page"
+            hidden={route !== 'contacts' && route !== 'search'}
+          >
+            <ContactPanel csrfToken={user.csrfToken} />
+          </div>
+          <div className="workspace-page" hidden={route !== 'products'}>
+            <ProductPanel csrfToken={user.csrfToken} />
+          </div>
+          <div className="workspace-page" hidden={route !== 'resources'}>
+            <ResourcePanel csrfToken={user.csrfToken} />
+          </div>
+          <section
+            id="settings"
+            aria-label="Einstellungen"
+            hidden={!inSettings}
+          >
             <h2>Einstellungen</h2>
-            <MasterDataSettings csrfToken={user.csrfToken} />
-            <CalendarFeedsPanel csrfToken={user.csrfToken} />
-            <ImportPanel
-              csrfToken={user.csrfToken}
-              onImported={() => setImportRevision((value) => value + 1)}
-            />
-            {mode === 'password' && (
-              <PasswordPanel
+            <SettingsNavigation />
+            <div hidden={route !== 'settings'}>
+              <MasterDataSettings csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'subscriptions'}>
+              <CalendarFeedsPanel csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'import'}>
+              <ImportPanel
                 csrfToken={user.csrfToken}
-                onChanged={() => {
-                  setUser(null);
-                  setReady(true);
-                  setStatus('Passwort geändert. Bitte erneut anmelden.');
-                }}
+                onImported={() => setImportRevision((value) => value + 1)}
+              />
+            </div>
+            <div hidden={route !== 'security'}>
+              {mode === 'password' && (
+                <PasswordPanel
+                  csrfToken={user.csrfToken}
+                  onChanged={() => {
+                    setUser(null);
+                    setReady(true);
+                    setStatus('Passwort geändert. Bitte erneut anmelden.');
+                  }}
+                  onSessionEnded={() => {
+                    setUser(null);
+                    setReady(true);
+                    setStatus('Sitzung beendet. Bitte erneut anmelden.');
+                  }}
+                />
+              )}
+              <AccessPanel
+                passwordMode={mode === 'password'}
+                csrfToken={user.csrfToken}
                 onSessionEnded={() => {
                   setUser(null);
                   setReady(true);
                   setStatus('Sitzung beendet. Bitte erneut anmelden.');
                 }}
               />
-            )}
-            <AccessPanel
-              passwordMode={mode === 'password'}
-              csrfToken={user.csrfToken}
-              onSessionEnded={() => {
-                setUser(null);
-                setReady(true);
-                setStatus('Sitzung beendet. Bitte erneut anmelden.');
-              }}
-            />
+            </div>
           </section>
         </>
       ) : ready && mode === 'password' ? (
