@@ -70,6 +70,25 @@ test(
       const services = Array.isArray(state) ? state : [state];
       assert.equal(services.length, 4);
       for (const service of services) assert.equal(service.Health, 'healthy');
+      const adminAddress = (
+        await compose(project, ['port', 'admin', '8080'])
+      ).trim();
+      for (const path of [
+        '/',
+        '/api/v1/contacts',
+        '/feeds/v1/fictional.ics',
+        '/missing-route',
+      ]) {
+        const response = await fetch(`http://${adminAddress}${path}`);
+        assert.equal(response.headers.get('x-frame-options'), 'DENY');
+        assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+        assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+        assert.ok(
+          response.headers
+            .get('content-security-policy')
+            ?.includes("frame-ancestors 'none'"),
+        );
+      }
       const address = (await compose(project, ['port', 'api', '3000'])).trim();
       await compose(project, ['stop', 'worker']);
       const unavailable = await fetch(`http://${address}/health/ready`);

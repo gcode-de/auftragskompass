@@ -32,6 +32,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
   ).start();
   const pool = new Pool({ connectionString: container.getConnectionUri() });
   const app = Fastify();
+  const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
+  const adminHeaders = Object.fromEntries(
+    [
+      ...nginx.matchAll(/add_header ([\w-]+) (?:"([^"]+)"|([^; ]+)) always;/g),
+    ].map((match) => [match[1]!, match[2] ?? match[3]!]),
+  );
   execFileSync(
     'openssl',
     [
@@ -83,12 +89,16 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
             headers: { ...req.headers, 'x-forwarded-proto': 'https' },
             ...(body.length ? { payload: body } : {}),
           });
-          res.writeHead(result.statusCode, result.headers);
+          res.writeHead(result.statusCode, {
+            ...result.headers,
+            ...adminHeaders,
+          });
           res.end(result.rawPayload);
         } else {
           const result = await fetch('http://127.0.0.1:14873' + req.url!);
           res.writeHead(result.status, {
             'content-type': result.headers.get('content-type')!,
+            ...adminHeaders,
           });
           res.end(Buffer.from(await result.arrayBuffer()));
         }
@@ -99,6 +109,15 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     },
   );
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  await context.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (event) => {
+      const root = document.documentElement;
+      root.dataset.fictionalCspViolations =
+        (root.dataset.fictionalCspViolations ?? '') +
+        event.effectiveDirective +
+        ',';
+    });
+  });
   try {
     await new Promise<void>((resolve) =>
       server.listen(0, '127.0.0.1', resolve),
@@ -152,8 +171,19 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     registerImportRoutes(app, pool, config.tenantId);
     registerCalendarFeedRoutes(app, pool, config.tenantId, origin);
     const page = await context.newPage();
+    const policyErrors: string[] = [];
+    page.on('console', (message) => {
+      if (
+        message.type() === 'error' &&
+        message.text().includes('Content Security Policy')
+      )
+        policyErrors.push('blocked');
+    });
     page.setDefaultTimeout(10000);
-    await page.goto(origin);
+    const loadedDocument = await page.goto(origin);
+    expect(loadedDocument!.headers()['content-security-policy']).toContain(
+      "frame-ancestors 'none'",
+    );
     if (mode === 'password') {
       await page.setViewportSize({ width: 320, height: 740 });
       expect(
@@ -1174,6 +1204,36 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);
+    const violations = () =>
+      page.evaluate(
+        () => document.documentElement.dataset.fictionalCspViolations ?? '',
+      );
+    expect(policyErrors).toEqual([]);
+    expect(await violations()).toBe('');
+    await page.evaluate(() => {
+      const script = document.createElement('script');
+      script.textContent =
+        "document.documentElement.dataset.fictionalInlineExecuted = 'yes'";
+      document.head.append(script);
+    });
+    await expect.poll(violations).toContain('script-src-elem');
+    expect(
+      await page.evaluate(
+        () => document.documentElement.dataset.fictionalInlineExecuted,
+      ),
+    ).toBeUndefined();
+    const framingPage = await context.newPage();
+    const refused = framingPage.waitForEvent('console', {
+      predicate: (message) =>
+        /frame-ancestors|X-Frame-Options/.test(message.text()),
+    });
+    await framingPage.setContent(
+      `<iframe title="Fictional framing probe" src="${origin}"></iframe>`,
+    );
+    await refused;
+    expect(
+      framingPage.frames().some((frame) => frame.url() === origin + '/'),
+    ).toBe(false);
   } finally {
     await context.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
