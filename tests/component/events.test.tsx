@@ -416,3 +416,53 @@ test('direct record links hide list controls and an unknown link never keeps an 
     screen.getByRole('button', { name: 'Events aktualisieren' }),
   ).toBeTruthy();
 });
+
+test('opening, closing and editing a record returns to the correct list and editor controls', async () => {
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/events/synthetic'
+        ? Response.json({
+            event: row,
+            contacts: [],
+            location: null,
+            eventType: null,
+            package: null,
+            activities: [],
+          })
+        : base(url),
+    ),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Eventakte öffnen: Synthetic event',
+    }),
+  );
+  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Eventakte schließen' }));
+  await vi.waitFor(() =>
+    expect(
+      screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+    ).toBeNull(),
+  );
+  const open = screen.getByRole('button', {
+    name: 'Eventakte öffnen: Synthetic event',
+  });
+  await vi.waitFor(() => expect(document.activeElement).toBe(open));
+  fireEvent.click(open);
+  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Stammdaten bearbeiten' }),
+  );
+  expect(
+    screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+  ).toBeNull();
+  expect(screen.getByLabelText('Eventname').closest('details')!.open).toBe(
+    true,
+  );
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic event',
+  );
+});
