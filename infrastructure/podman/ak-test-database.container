@@ -11,7 +11,7 @@ Environment=POSTGRES_DB=auftragskompass
 Environment=POSTGRES_PASSWORD_FILE=/run/secrets/db_password
 Secret=ak-test-db,type=mount,target=db_password,mode=0400
 Volume=ak-test-data.volume:/var/lib/postgresql/data
-HealthCmd=pg_isready -U ak -d auftragskompass
+HealthCmd=pg_isready -h 127.0.0.1 -U ak -d auftragskompass
 HealthInterval=5s
 HealthTimeout=3s
 HealthRetries=12

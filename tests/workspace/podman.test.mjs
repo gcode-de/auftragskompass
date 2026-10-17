@@ -78,3 +78,13 @@ test('Node healthchecks use an exec array so Quadlet cannot strip shell quotes',
     assert.ok(command[2].endsWith('.catch(()=>process.exit(1))'));
   }
 });
+
+test('database readiness waits for the final TCP server rather than the initialization socket', () => {
+  const health = read('ak-test-database.container')
+    .split('\n')
+    .find((line) => line.startsWith('HealthCmd='));
+  assert.ok(health.includes('pg_isready -h 127.0.0.1'));
+  assert.ok(
+    readFileSync('compose.yaml', 'utf8').includes('pg_isready -h 127.0.0.1'),
+  );
+});

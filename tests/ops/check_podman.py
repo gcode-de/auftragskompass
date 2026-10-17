@@ -84,7 +84,7 @@ def main():
                     '-v', volume + ':/var/lib/postgresql/data',
                 ])
                 wait_for(lambda project=project: 'accepting connections' in run(
-                    'podman', 'exec', project + '-database', 'pg_isready', '-U', 'ak', '-d', 'auftragskompass'))
+                    'podman', 'exec', project + '-database', 'pg_isready', '-h', '127.0.0.1', '-U', 'ak', '-d', 'auftragskompass'))
 
             common = ['--user', '1000:1000', '--security-opt', 'no-new-privileges',
                       '--secret', secret + ',type=mount,target=db_password,uid=1000,gid=1000,mode=0400']
@@ -143,7 +143,7 @@ def main():
             assert sql(target, query) == 'Synthetic Podman restore record'
             refuses('restore', target, 'empty database')
             run('podman', 'restart', target + '-database')
-            wait_for(lambda: 'accepting connections' in run('podman', 'exec', target + '-database', 'pg_isready', '-U', 'ak'))
+            wait_for(lambda: 'accepting connections' in run('podman', 'exec', target + '-database', 'pg_isready', '-h', '127.0.0.1', '-U', 'ak'))
             assert sql(target, query) == sql(prefix, query)
             assert json.loads(run('podman', 'inspect', prefix + '-api'))[0]['HostConfig']['PortBindings'] in (None, {})
             print('Published images, closed API and backup/restore passed', flush=True)

@@ -88,6 +88,13 @@ Der Podman-Probelauf ist keine App-Login- oder Produktivabnahme.
 
 Loopback-HTTP dient ausschließlich lokaler Entwicklung. Für Zugriff über weitere Geräte ist ein lokaler TLS-Reverse-Proxy mit vertrauenswürdigem Zertifikat vor die Loopback-Ports zu schalten; er terminiert HTTPS und leitet nur Admin/API weiter. Datenbank und Worker bleiben intern. Keine Router-Portfreigabe zur Administration einrichten. Vor echter Nutzung müssen Google-Redirect-URI, Proxy-URL, Zugriffsschutz und Backup-Abnahme zusammen geprüft werden. Diese Compose-Datei stellt weder öffentliche TLS-Zertifikate noch DNS automatisch bereit.
 
+## PostgreSQL-Bereitschaft (H010)
+
+Compose und Quadlet prüfen `pg_isready` ausdrücklich über TCP an `127.0.0.1`
+im Datenbankcontainer. Der nur während der Erstinitialisierung verfügbare Unix-Socket
+darf API, Worker oder Sicherungslauf nicht vorzeitig freigeben. Auch die nativen
+Probeläufe warten auf den regulären TCP-Dienst. Bestehende Datenvolumes bleiben erhalten.
+
 ## Prüfungen
 
 `pnpm test:ops` erstellt isolierte Projekte mit Zufallsnamen, zufälligem Testpasswort und dynamischen Loopback-Ports. Testvolumes werden danach entfernt. `pnpm check` enthält diesen Test zusätzlich zu allen bisherigen Gates.
