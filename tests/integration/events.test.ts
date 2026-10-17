@@ -5,6 +5,12 @@ import {
 } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import {
+  contacts as contactTable,
+  events as eventTable,
+  eventContacts as eventContactTable,
+} from '../../packages/core/src/schema.js';
 import { migrate } from '../../packages/core/src/identity.js';
 import {
   bootstrapAccess,
@@ -414,4 +420,116 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
   } finally {
     await app.close();
   }
+});
+
+test('hundreds of fictional contacts and events remain complete, isolated and responsive', async () => {
+  const volumeTenant = randomUUID();
+  await bootstrapAccess(
+    pool,
+    volumeTenant,
+    'volume@example.invalid',
+    'Fictional volume tenant',
+    'UTC',
+  );
+  const sample = Array.from({ length: 500 }, (_, index) => ({
+    id: randomUUID(),
+    contactId: randomUUID(),
+    suffix: String(index).padStart(4, '0'),
+  }));
+  const db = drizzle(pool);
+  await db.insert(contactTable).values(
+    sample.map((item, index) => ({
+      tenantId: volumeTenant,
+      id: item.contactId,
+      kind: 'private',
+      name: 'Fictional volume contact ' + item.suffix,
+      contactPerson: '',
+      street: '',
+      postalCode: '',
+      city: '',
+      country: 'DE',
+      email: 'volume-' + item.suffix + '@example.invalid',
+      phone: '',
+      mobile: '',
+      phoneKey: '',
+      mobileKey: '',
+      state: index % 7 ? 'active' : 'archived',
+    })),
+  );
+  await db.insert(eventTable).values(
+    sample.map((item, index) => ({
+      tenantId: volumeTenant,
+      id: item.id,
+      name: 'Fictional volume event ' + item.suffix,
+      status: index % 5 ? 'inquiry' : 'cancelled',
+      source: 'Fictional volume fixture',
+      eventDate: '2030-01-01',
+      startsAt: new Date('2030-01-01T18:00:00Z'),
+      endsAt: new Date('2030-01-01T20:00:00Z'),
+      timeZone: 'UTC',
+      description: 'Fictional volume description',
+      notesHtml: '<p>Fictional volume note</p>',
+    })),
+  );
+  await db.insert(eventContactTable).values(
+    sample.map((item) => ({
+      tenantId: volumeTenant,
+      eventId: item.id,
+      contactId: item.contactId,
+      role: 'primary',
+    })),
+  );
+  const repo = eventRepository(pool, volumeTenant);
+  const people = contactRepository(pool, volumeTenant);
+  const times: Record<string, number[]> = {
+    contacts: [],
+    events: [],
+    search: [],
+    export: [],
+  };
+  const expectedNames = new Map<string, string>(
+    sample.map((item) => [item.id, 'Fictional volume contact ' + item.suffix]),
+  );
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let start = performance.now();
+    const listedContacts = await people.list();
+    times.contacts!.push(performance.now() - start);
+    expect(listedContacts).toHaveLength(500);
+    start = performance.now();
+    const listedEvents = await repo.list();
+    times.events!.push(performance.now() - start);
+    expect(listedEvents).toHaveLength(500);
+    start = performance.now();
+    const found = await repo.list(undefined, {
+      q: 'Fictional volume contact 0499',
+      from: '2030-01-01',
+      to: '2030-01-01',
+      status: 'inquiry',
+    });
+    times.search!.push(performance.now() - start);
+    expect(found.map((row) => row.id)).toEqual([sample[499]!.id]);
+    start = performance.now();
+    const exported = await repo.exportRows();
+    times.export!.push(performance.now() - start);
+    expect(exported).toHaveLength(500);
+    for (const row of exported)
+      expect(row.primaryContactName).toBe(expectedNames.get(row.id));
+  }
+  for (const values of Object.values(times))
+    expect(Math.max(...values)).toBeLessThan(2000);
+  expect(await people.list('Fictional event contact')).toEqual([]);
+  expect(await repo.list(undefined, { q: 'Synthetic event' })).toEqual([]);
+  const maximumMs = Object.fromEntries(
+    Object.entries(times).map(([key, values]) => [
+      key,
+      Math.ceil(Math.max(...values)),
+    ]),
+  );
+  console.info(
+    JSON.stringify({
+      fictionalRecords: { contacts: 500, events: 500 },
+      iterations: 5,
+      maximumMs,
+    }),
+  );
 });
