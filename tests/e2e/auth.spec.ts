@@ -1322,6 +1322,63 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getAttribute('aria-controls');
     expect(await page.locator(`[id="${controls}"]`).count()).toBe(1);
     expect(auditFailures).toEqual([]);
+    if (mode === 'password') {
+      await pool.query(
+        "INSERT INTO contacts(tenant_id,id,kind,name,contact_person,street,postal_code,city,country,email,phone,mobile,phone_key,mobile_key,state) SELECT $1::uuid,gen_random_uuid(),'private','Fictional browser volume '||n,'','','','','DE','','','','','','active' FROM generate_series(1,500) AS n",
+        [config.tenantId],
+      );
+      await pool.query(
+        "INSERT INTO events(tenant_id,id,name,status,source,event_date,time_zone,description,notes_html) SELECT $1::uuid,gen_random_uuid(),'Fictional browser volume '||n,'inquiry','Fictional browser load fixture',DATE '2030-01-01','UTC','Fictional browser load fixture','' FROM generate_series(1,500) AS n",
+        [config.tenantId],
+      );
+      const measurements = [];
+      for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 844 });
+        for (const [route, label, action] of [
+          ['events', 'Events', /^Eventakte öffnen: Fictional browser volume /],
+          [
+            'contacts',
+            'Kontakte',
+            /^Kontakt bearbeiten: Fictional browser volume /,
+          ],
+        ] as const) {
+          // A hash-only navigation would reuse the previous performance time origin.
+          await page.goto('about:blank');
+          await page.goto(origin + '/?q=Fictional+browser+volume#' + route);
+          const list = page.getByRole('region', { name: label, exact: true });
+          await expect(list).toHaveAttribute('aria-busy', 'false');
+          const actions = list.getByRole('button', { name: action });
+          await expect(actions).toHaveCount(500);
+          await actions.first().click({ trial: true });
+          const readyMs = await page.evaluate(
+            () =>
+              new Promise<number>((resolve) =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() => resolve(performance.now())),
+                ),
+              ),
+          );
+          expect(readyMs).toBeLessThan(2000);
+          expect(
+            await page.evaluate(() => document.documentElement.scrollWidth),
+          ).toBeLessThanOrEqual(width + 1);
+          measurements.push({
+            route,
+            width,
+            records: 500,
+            readyMs: Math.ceil(readyMs),
+          });
+        }
+      }
+      const volumeReport = test
+        .info()
+        .outputPath('fictional-browser-volume.json');
+      await writeFile(volumeReport, JSON.stringify(measurements, null, 2));
+      await test.info().attach('fictional-browser-volume', {
+        contentType: 'application/json',
+        path: volumeReport,
+      });
+    }
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

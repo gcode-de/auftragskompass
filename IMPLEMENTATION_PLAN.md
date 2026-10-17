@@ -90,6 +90,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.16: aktive Admin-Abläufe mit axe in Chromium auf WCAG-A/AA prüfen und bestätigte Befunde im bestehenden Design beheben; fokussierte C082-Vorziehung. Abnahme: Anmeldung, Arbeitsbereiche, Eventakte und mobiles Menü in beiden Darstellungen ohne automatische Verstöße; manuelle Tastatur-/Fokusprüfung und dokumentierte Grenzen, keine pauschale WCAG-Zertifizierung.
 
+- [x] E005.17: vorhandene Mengenprobe um echte HTTPS-/Chromium-Listen mit je 500 fiktiven Kontakten und Events bei 390/1280 Pixel ergänzen (Testslice). Abnahme: vollständige sichtbare Listen, nutzbare erste Aktion, kein Seitenüberlauf und Laden bis zum nächsten Paint jeweils unter zwei Sekunden; kein allgemeiner Hardware-/Produktivnachweis.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
