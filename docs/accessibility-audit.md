@@ -105,3 +105,13 @@ Die Ausgabegrenze umfasst keine Sicherungen, Exporte oder privaten Verzeichnisse
 Vor dem Browserstart fehlgeschlagene Läufe können ohne dieses Artefakt enden.
 Die Image-Veröffentlichung setzt weiterhin die gesamte erfolgreiche Qualitätssuite
 voraus; der Artefakt-Upload hebt keine Schranke auf.
+
+## Bewegungspräferenz (E005.20)
+
+Chromium prüft die bestehenden Regeln zusätzlich mit expliziter Medienpräferenz:
+Der Zeigeraufruf darf bei normaler Bewegung die vorhandene kurze Menütransition
+nutzen. Der Tastaturaufruf erfolgt ohne Menübewegung. Mit
+`prefers-reduced-motion: reduce` haben Menü und Schaltflächen keine Transition;
+auch eine per Leertaste oder Zeiger gehaltene Schaltfläche skaliert nicht. Zeiger- und
+Tastaturaufruf, Escape und Fokusrückgabe werden jeweils am nativen Dialog geprüft.
+Die Gestaltung und ihre bestehenden Zeiten wurden nicht verändert.

@@ -1199,6 +1199,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         .scrollIntoViewIfNeeded();
       await page.screenshot({ path: 'tests/test-results/admin-mobile.png' });
       const menuButton = page.getByRole('button', { name: 'Menü öffnen' });
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
       await menuButton.click();
       const menu = page.getByRole('dialog', { name: 'Menü', exact: true });
       await expect(menu).toBeVisible();
@@ -1206,6 +1207,11 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         menu.getByRole('button', { name: 'Abmelden', exact: true }),
       ).toBeVisible();
       await expect(menu).toHaveCSS('opacity', '1');
+      expect(
+        await menu.evaluate((el) =>
+          getComputedStyle(el).transitionDuration.split(',').map(parseFloat),
+        ),
+      ).toEqual([0.22, 0.22]);
       await audit('mobile-menu-light');
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'Dunkelmodus' }).click();
@@ -1222,6 +1228,31 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       });
       await page.keyboard.press('Escape');
       await expect(menu).not.toBeVisible();
+      await expect(menuButton).toBeFocused();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(menuButton).toHaveCSS('transition-duration', '0s');
+      await page.keyboard.down('Space');
+      await expect(menuButton).toHaveCSS('transform', 'none');
+      await page.keyboard.up('Space');
+      await expect(menu).toBeVisible();
+      await expect(menu).toHaveCSS('transition-duration', '0s');
+      await expect(menu).toHaveCSS('transform', 'none');
+      await page.keyboard.press('Escape');
+      await expect(menuButton).toBeFocused();
+      await menuButton.hover();
+      await page.mouse.down();
+      await expect(menuButton).toHaveCSS('transform', 'none');
+      await page.mouse.up();
+      await expect(menu).toBeVisible();
+      await expect(menu).toHaveCSS('transition-duration', '0s');
+      await expect(menu).toHaveCSS('transform', 'none');
+      await page.keyboard.press('Escape');
+      await expect(menuButton).toBeFocused();
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await menuButton.press('Enter');
+      await expect(menu).toBeVisible();
+      await expect(menu).toHaveCSS('transition-duration', '0s');
+      await page.keyboard.press('Escape');
       await expect(menuButton).toBeFocused();
       await menuButton.click();
       await page.setViewportSize({ width: 1280, height: 720 });
