@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -17,6 +18,7 @@ import {
 } from '../../apps/admin/src/url-state.js';
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   window.history.replaceState(null, '', '/');
 });
 function Result() {
@@ -145,3 +147,59 @@ test('keeps account actions in the menu and reveals the mobile copy only while o
   fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
   expect(screen.getAllByText('Fictional logout')).toHaveLength(1);
 });
+
+test.each(['#events', '#search'])(
+  'desktop switch closes the mobile menu and restores visible focus on %s',
+  (hash) => {
+    window.history.replaceState(null, '', '/' + hash);
+    let changed = () => {};
+    const viewport = {
+      matches: false,
+      addEventListener: vi.fn((_name: string, listener: () => void) => {
+        changed = listener;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => viewport),
+    );
+    HTMLDialogElement.prototype.showModal = vi.fn(function (
+      this: HTMLDialogElement,
+    ) {
+      this.open = true;
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function (
+      this: HTMLDialogElement,
+    ) {
+      this.open = false;
+    });
+    render(<Navigation />);
+    viewport.matches = true;
+    act(changed);
+    viewport.matches = false;
+    const trigger = screen.getByRole('button', { name: 'Menü öffnen' });
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', {
+      name: 'Menü',
+    }) as HTMLDialogElement;
+    act(changed);
+    expect(dialog.open).toBe(true);
+    viewport.matches = true;
+    act(changed);
+    expect(dialog.open).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    const target =
+      hash === '#search'
+        ? screen.getByRole('link', { name: 'Suche' })
+        : within(screen.getByLabelText('Arbeitsbereiche')).getByRole('link', {
+            name: 'Events',
+          });
+    expect(document.activeElement).toBe(target);
+    cleanup();
+    expect(viewport.removeEventListener).toHaveBeenCalledWith(
+      'change',
+      changed,
+    );
+  },
+);

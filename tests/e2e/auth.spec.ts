@@ -1079,6 +1079,25 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await expect(menu).not.toBeVisible();
       await expect(menuButton).toBeFocused();
       await menuButton.click();
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await expect(menu).not.toBeVisible();
+      await expect(
+        page.getByRole('link', { name: 'Suche', exact: true }),
+      ).toBeFocused();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: 'tests/test-results/menu-resize-desktop.png',
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await menuButton.click();
+      await expect(menu).toBeVisible();
+      await page.screenshot({
+        path: 'tests/test-results/menu-resize-mobile.png',
+        fullPage: false,
+        animations: 'disabled',
+      });
       await page.mouse.click(380, 400);
       await expect(menu).not.toBeVisible();
       await menuButton.click();

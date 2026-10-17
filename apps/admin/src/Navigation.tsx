@@ -109,6 +109,24 @@ export function Navigation({ account }: { account?: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const sidebar = useRef<HTMLElement>(null);
+  const searchLink = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const viewport = window.matchMedia('(min-width: 901px)');
+    const changed = () => {
+      if (!viewport.matches || !dialog.current!.open) return;
+      dialog.current!.close();
+      setOpen(false);
+      const current = sidebar.current!.querySelector<HTMLElement>(
+        'a[aria-current="page"]',
+      );
+      (current ?? searchLink.current!).focus();
+    };
+    viewport.addEventListener('change', changed);
+    return () => viewport.removeEventListener('change', changed);
+  }, []);
+
   function closeMenu() {
     dialog.current!.close();
     setOpen(false);
@@ -154,7 +172,11 @@ export function Navigation({ account }: { account?: ReactNode }) {
   }
   return (
     <>
-      <aside className="desktop-sidebar" aria-label="Arbeitsbereiche">
+      <aside
+        ref={sidebar}
+        className="desktop-sidebar"
+        aria-label="Arbeitsbereiche"
+      >
         {menu()}
       </aside>
       <div className="workspace-toolbar">
@@ -187,7 +209,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
           </svg>
         </button>
         <p className="workspace-title">{title}</p>
-        <a className="search-shortcut" href="#search">
+        <a ref={searchLink} className="search-shortcut" href="#search">
           Suche
         </a>
       </div>

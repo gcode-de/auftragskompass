@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-17T19:09:06.693974Z",
+  "generatedAt": "2026-10-17T19:38:16.356496Z",
   "title": "Design System: AuftragsKompass",
   "extensions": {
     "colorMeta": {
@@ -234,7 +234,8 @@
     "navigationAccount": {
       "placement": "Navigationsfuß der scrollbar gehaltenen Desktop-Seitenleiste; mobil nur im geöffneten nativen Dialog. Keine zusätzliche Kontozeile im Hauptbereich und kein Fußzeilenspruch.",
       "feedback": "Statusrolle im Kontobereich; sichtbare Rückmeldung mit #294c3e und sidebar-ink, damit Fehler beim Abmelden im modalen Kontext angekündigt werden. Im abgemeldeten Zustand erscheint die Statusmeldung ausschließlich direkt in der Anmeldung.",
-      "trigger": "44 × 44px transparenter Knopf mit dekorativem 22 × 22px Hamburger-SVG; aria-label Menü öffnen."
+      "trigger": "44 × 44px transparenter Knopf mit dekorativem 22 × 22px Hamburger-SVG; aria-label Menü öffnen.",
+      "desktopTransition": "Beim Wechsel auf min-width: 901px schließt der matchMedia-Listener einen geöffneten nativen Dialog, setzt aria-expanded zurück und fokussiert den aktuellen Desktop-Seitenleistenlink; ohne aktuellen Link (Suche) den Suchlink der Werkzeugleiste. Listener wird beim Unmount entfernt."
     },
     "calendarState": {
       "scope": "Pastellfarbene Eventartikel und Ressourcenzellen mit calendar-state.",
