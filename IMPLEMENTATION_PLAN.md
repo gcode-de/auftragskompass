@@ -104,6 +104,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.22: nativen und CI-Compose-Restore um fiktive fachliche Daten und Zugriffsschutz erweitern (Testslice). Abnahme: wiederhergestelltes Passwortkonto/Sitzung, Kontakt-/Eventbezug, exakte Produktwerte und gebuchte Ressource erhalten; SQL-Überlappungsschutz, Audit-Unveränderbarkeit, Mandantentrennung und Migrationsprüfsummen bleiben wirksam; leeres Ziel kann nicht als bestandener Restore gelten.
 
+- [x] E003.4: aus vorhandenen privaten Sicherungen einen offline geprüften Importentwurf und eine konkrete Klärungsliste vorbereiten. Abnahme: Quellprüfsummen, eindeutige Kontaktvorschläge, unveränderte Datums-/Statusangaben und deterministische Quellanker; fehlende Werte bleiben als Lücken sichtbar. Reale Dateien bleiben außerhalb Git; keine Übernahme oder Ressourcenfreigabe.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

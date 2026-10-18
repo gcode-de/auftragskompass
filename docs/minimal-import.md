@@ -61,6 +61,9 @@ Auftragsdaten müssen vor einer Übernahme geklärt werden. Eventarten und
 Paketwerte werden aus dem tatsächlichen Bestand übernommen; keine zusätzlichen
 Namen oder Paketpreise werden erfunden.
 
+Die [private Entwurfsvorbereitung und ihre Quellanker](bookitup-normalization.md)
+beschreiben die vorgezogene Offline-Klärung E003.4. Sie führt keine Übernahme aus.
+
 ## Zusagen und Ressourcen
 
 Die fünf vorhandenen Status werden ausdrücklich zugeordnet: Anfrage, Option,
