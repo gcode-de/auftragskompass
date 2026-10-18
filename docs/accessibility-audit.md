@@ -115,3 +115,13 @@ nutzen. Der Tastaturaufruf erfolgt ohne Menübewegung. Mit
 auch eine per Leertaste oder Zeiger gehaltene Schaltfläche skaliert nicht. Zeiger- und
 Tastaturaufruf, Escape und Fokusrückgabe werden jeweils am nativen Dialog geprüft.
 Die Gestaltung und ihre bestehenden Zeiten wurden nicht verändert.
+
+## Kleine Desktophöhe (H017)
+
+Bei 1280×420 CSS-Pixeln lässt sich die bestehende Seitenleiste in beiden
+Darstellungen bis zum Konto/Abmelden und wieder zu den oberen Navigationslinks
+scrollen. Chromium prüft Sichtbarkeit und tatsächliche Zeiger-Erreichbarkeit.
+Die beiden aktuellen Aufnahmen wurden visuell geprüft; die vorhandene
+`overflow-y: auto`-Regel funktioniert bereits. Es war keine Änderung der
+Oberfläche oder des Designsystems erforderlich. Normale Desktopbreite und
+mobiles Menü bleiben im vollständigen Browserablauf enthalten.

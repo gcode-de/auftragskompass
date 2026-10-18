@@ -1260,6 +1260,38 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await expect(
         page.getByRole('link', { name: 'Suche', exact: true }),
       ).toBeFocused();
+      const sidebar = page.getByRole('complementary', {
+        name: 'Arbeitsbereiche',
+      });
+      for (const theme of ['light', 'dark'] as const) {
+        await page.setViewportSize({ width: 1280, height: 420 });
+        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        const logout = sidebar.getByRole('button', {
+          name: 'Abmelden',
+          exact: true,
+        });
+        await logout.scrollIntoViewIfNeeded();
+        await expect(logout).toBeInViewport();
+        await logout.click({ trial: true });
+        await page.screenshot({
+          path: `tests/test-results/sidebar-short-${theme}.png`,
+          animations: 'disabled',
+        });
+        const firstLink = sidebar.getByRole('link', {
+          name: 'Events',
+          exact: true,
+        });
+        await firstLink.scrollIntoViewIfNeeded();
+        await expect(firstLink).toBeInViewport();
+        await firstLink.click({ trial: true });
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: 'tests/test-results/menu-resize-desktop.png',
