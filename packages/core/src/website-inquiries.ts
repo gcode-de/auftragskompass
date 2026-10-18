@@ -25,6 +25,7 @@ export class WebsiteInquiryError extends Error {
   constructor(
     readonly reason:
       | 'invalid'
+      | 'not_found'
       | 'expired'
       | 'conflict'
       | 'contact_review'

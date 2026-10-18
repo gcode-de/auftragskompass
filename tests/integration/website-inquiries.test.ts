@@ -1,4 +1,7 @@
-import { stageWebsiteInquiry } from '../../packages/core/src/website-inquiry-deliveries.js';
+import {
+  stageWebsiteInquiry,
+  importStagedWebsiteInquiry,
+} from '../../packages/core/src/website-inquiry-deliveries.js';
 import { beforeAll, beforeEach, afterAll, test, expect } from 'vitest';
 import {
   PostgreSqlContainer,
@@ -850,4 +853,175 @@ test('staging snapshots callers before lock waits, supports outer rollback and e
       )
     ).rowCount,
   ).toBe(1);
+});
+
+test('a durably received inquiry can be processed after its gateway deadline and retried without changing the original', async () => {
+  const value = {
+    ...entry(),
+    receivedAt: '2020-10-26T10:00:00.000Z',
+    expiresAt: '2020-10-27T10:00:00.000Z',
+  };
+  await stageWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    value,
+    new Date(value.receivedAt),
+  );
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+  ).rejects.toMatchObject({ reason: 'contact_review' });
+  expect((await counts()).events).toBe(0);
+  const imported = await importStagedWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    value.id,
+    { newContactCountry: 'DE' },
+  );
+  expect(imported.status).toBe('created');
+  const restarted = new Pool({
+    connectionString: container.getConnectionUri(),
+  });
+  try {
+    expect(
+      await importStagedWebsiteInquiry(
+        restarted,
+        tenantId,
+        actorId,
+        value.id,
+        {},
+      ),
+    ).toEqual({ ...imported, status: 'duplicate' });
+  } finally {
+    await restarted.end();
+  }
+  expect((await counts()).events).toBe(1);
+  expect(
+    (
+      await pool.query(
+        'SELECT payload FROM website_inquiry_deliveries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0].payload,
+  ).toEqual(value);
+  expect(
+    (
+      await pool.query(
+        'SELECT payload FROM website_inquiries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0].payload,
+  ).toEqual(value);
+});
+
+test('concurrent staged processing reuses an exact contact without overwriting it', async () => {
+  const personRow = await contactRepository(pool, tenantId).save(
+      actorId,
+      person,
+    ),
+    value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+    ),
+  );
+  expect(results.filter((row) => row.status === 'created')).toHaveLength(1);
+  expect(new Set(results.map((row) => row.eventId)).size).toBe(1);
+  expect(results.every((row) => row.contactId === personRow!.id)).toBe(true);
+  expect((await contactRepository(pool, tenantId).list())[0]!.phone).toBe('');
+  expect((await counts()).reservations).toBe(0);
+});
+
+test('staged processing keeps ambiguous originals and rejects missing, foreign or corrupted inputs', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  await contactRepository(pool, tenantId).save(actorId, {
+    ...person,
+    name: 'Fictional other person',
+  });
+  const before = await counts();
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {
+      newContactCountry: 'DE',
+    }),
+  ).rejects.toMatchObject({ reason: 'contact_review' });
+  expect(await counts()).toEqual(before);
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, actorId, randomUUID(), {}),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, randomUUID(), value.id, {}),
+  ).rejects.toMatchObject({ reason: 'forbidden' });
+  for (const [tenant, actor, id] of [
+    ['invalid', actorId, value.id],
+    [tenantId, 'invalid', value.id],
+    [tenantId, actorId, 'invalid'],
+  ])
+    await expect(
+      importStagedWebsiteInquiry(pool, tenant!, actor!, id!, {}),
+    ).rejects.toMatchObject({ reason: 'invalid' });
+  await pool.query(
+    "UPDATE website_inquiry_deliveries SET payload=jsonb_set(payload,'{id}',to_jsonb($2::text)),payload_hash=encode(sha256(convert_to(jsonb_set(payload,'{id}',to_jsonb($2::text))::text,'UTF8')),'hex') WHERE tenant_id=$1",
+    [tenantId, randomUUID()],
+  );
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  const broken = new Pool({ connectionString: container.getConnectionUri() });
+  await broken.end();
+  await expect(
+    importStagedWebsiteInquiry(broken, tenantId, actorId, value.id, {}),
+  ).rejects.toMatchObject({ reason: 'failed' });
+  expect(await counts()).toEqual(before);
+});
+
+test('staged processing isolates foreign tenants and checks stored payload and time metadata before creating anything', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {
+      newContactCountry: 'invalid',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  const foreignTenant = randomUUID();
+  await bootstrapAccess(
+    pool,
+    foreignTenant,
+    'foreign@example.invalid',
+    'Fictional foreign',
+    'Europe/Berlin',
+  );
+  await accessRepository(pool, foreignTenant).issueSession(
+    { subject: 'foreign', email: 'foreign@example.invalid' },
+    digest(randomUUID()),
+  );
+  const foreignActor = (await accessRepository(pool, foreignTenant).list())[0]!
+    .userId!;
+  await expect(
+    importStagedWebsiteInquiry(pool, foreignTenant, foreignActor, value.id, {
+      newContactCountry: 'DE',
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  for (const change of [
+    "payload=payload||'{\"unknown\":true}'::jsonb,payload_hash=encode(sha256(convert_to((payload||'{\"unknown\":true}'::jsonb)::text,'UTF8')),'hex')",
+    "received_at=received_at+interval '1 second'",
+    "expires_at=expires_at+interval '1 second'",
+  ]) {
+    await pool.query(
+      'UPDATE website_inquiry_deliveries SET ' + change + ' WHERE tenant_id=$1',
+      [tenantId],
+    );
+    await expect(
+      importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {
+        newContactCountry: 'DE',
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid' });
+    await pool.query(
+      "UPDATE website_inquiry_deliveries SET payload=$2,payload_hash=encode(sha256(convert_to($2::jsonb::text,'UTF8')),'hex'),received_at=$3,expires_at=$4 WHERE tenant_id=$1",
+      [tenantId, JSON.stringify(value), value.receivedAt, value.expiresAt],
+    );
+  }
+  expect((await counts()).events).toBe(0);
 });

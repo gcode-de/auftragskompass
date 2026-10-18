@@ -4,6 +4,7 @@ import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { websiteInquiryDeliveries } from './schema.js';
 import {
   isWebsiteInquiry,
+  receiveWebsiteInquiry,
   WebsiteInquiryError,
   type WebsiteInquiry,
 } from './website-inquiries.js';
@@ -65,6 +66,56 @@ export async function stageWebsiteInquiry(
         stagedBy: actorId,
       });
       return { status: 'stored' as const };
+    });
+  } catch (error) {
+    if (error instanceof WebsiteInquiryError) throw error;
+    if (error instanceof AccessError)
+      throw new WebsiteInquiryError('forbidden');
+    throw new WebsiteInquiryError('failed');
+  }
+}
+
+export async function importStagedWebsiteInquiry(
+  connection: Connection,
+  tenantId: string,
+  actorId: string,
+  inquiryId: string,
+  options: { newContactCountry?: string },
+) {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (![tenantId, actorId, inquiryId].every((value) => uuid.test(value)))
+    throw new WebsiteInquiryError('invalid');
+  const country = options.newContactCountry;
+  try {
+    return await database(connection).transaction(async (tx) => {
+      await lockTenant(tx, tenantId);
+      await requireAdministrator(tx, tenantId, actorId);
+      const [row] = await tx
+        .select()
+        .from(websiteInquiryDeliveries)
+        .where(
+          and(
+            eq(websiteInquiryDeliveries.tenantId, tenantId),
+            eq(websiteInquiryDeliveries.id, inquiryId),
+          ),
+        );
+      if (!row) throw new WebsiteInquiryError('not_found');
+      if (
+        !isWebsiteInquiry(row.payload) ||
+        row.payload.id !== row.id ||
+        row.payload.receivedAt !== row.receivedAt.toISOString() ||
+        row.payload.expiresAt !== row.expiresAt.toISOString()
+      )
+        throw new WebsiteInquiryError('invalid');
+      // The durable receipt proves timely arrival; gateway expiry must not discard a review backlog.
+      return receiveWebsiteInquiry(
+        tx,
+        tenantId,
+        actorId,
+        row.payload,
+        row.stagedAt,
+        country === undefined ? {} : { newContactCountry: country },
+      );
     });
   } catch (error) {
     if (error instanceof WebsiteInquiryError) throw error;

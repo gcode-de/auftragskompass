@@ -150,3 +150,21 @@ Ein Integrationstest führt das echte Gateway mit eigener Datenbank durch:
 dauerhafte Originalablage. Der Gateway-Eingang bleibt danach absichtlich
 unquittiert. Netzwerktransport, persistente Quittierungs-Outbox und sichtbare
 Bearbeitung ausstehender Eingänge bleiben nächste Schritte vor Freischaltung.
+
+## Weiterbearbeitung des lokalen Eingangs (E004.12)
+
+`importStagedWebsiteInquiry` liest einen bereits gesicherten Eingang im eigenen
+Mandanten und prüft die aktive Betreiberfreigabe erneut. Original-ID und
+Empfangs-/Ablaufzeiten müssen mit den gespeicherten Metadaten übereinstimmen;
+beschädigte Inhalte werden nicht als Event weiterverarbeitet. Die bestehende
+atomare Übernahme verwendet den dokumentierten ersten lokalen Prüfzeitpunkt.
+Damit verhindert ein inzwischen abgelaufener Gateway-Termin keine spätere
+Kontaktprüfung. Die ursprüngliche Frist wird weder verschoben noch neu erfunden.
+
+Neue Kontakte benötigen weiterhin das ausdrücklich übergebene Land; bei exaktem
+bestehendem Kontakt ist kein Land erforderlich. Unklare Zuordnungen scheitern
+mit `contact_review`, ohne Teilanlage oder Veränderung des gesicherten Originals.
+Eine spätere Wiederholung kann nach Klärung erneut ausgeführt werden. Parallele
+Verarbeitung und Wiederanlauf ergeben dasselbe Event mit demselben Kontakt.
+Die ursprüngliche Ablage bleibt erhalten; dieser Dienst quittiert nicht im
+Gateway und wird noch nicht automatisch oder per HTTP ausgelöst.

@@ -67,5 +67,8 @@ export {
 } from './website-inquiries.js';
 
 export { registerWebsiteInquiryRoutes } from './website-inquiry-routes.js';
-export { stageWebsiteInquiry } from './website-inquiry-deliveries.js';
+export {
+  stageWebsiteInquiry,
+  importStagedWebsiteInquiry,
+} from './website-inquiry-deliveries.js';
 export { receiveWebsiteInquiryBatch } from './website-inquiry-sync.js';
