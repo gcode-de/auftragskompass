@@ -83,3 +83,22 @@ alternativer Modus erhalten. H008 ergänzt den eigenen Passwortwechsel mit Wider
 aller Sitzungen. H009 ergänzt eine kontrollierte Wiederherstellung ausschließlich
 über bestehenden SSH-/Podman-Betreiberzugriff, ohne HTTP-Endpunkt. Weitere lokale
 Konten werden für den Solo-Betrieb nicht vorgezogen und folgen bei Bedarf.
+
+## Externe Angebote und Rechnungen zum Erststart (18.10.2026)
+
+Der Betreiber hat LibreOffice als externes Werkzeug für Angebote und Rechnungen
+gewählt. Damit ist die Werkzeugwahl für den reduzierten Start festgelegt, nicht
+bereits der vollständige Ersatzprozess abgenommen. AuftragsKompass erhält dafür
+vorerst weder eine LibreOffice-Integration noch eine vorgezogene Rechnungsfunktion.
+
+Vor Umschaltung bleibt der manuelle Gesamtprobelauf aus E004 erforderlich:
+Angebot, Annahme, Anzahlung, Schlussrechnung, Teilzahlung und Korrektur;
+Dokumentnummern, Originalbelege und Zahlungsübersicht müssen nachvollziehbar
+bleiben. Bestehende Belege werden nicht neu ausgestellt. Konkrete Vorlagen,
+Nummernfortführung, Ablage, Sicherung und fachliche Anforderungen sind gesondert
+zu prüfen; aus der Werkzeugwahl wird keine steuerliche oder rechtliche Eignung
+abgeleitet.
+
+Der künftige Eingang neuer Website-Anfragen ist laut Betreiber noch unklar.
+Bestehende Formulare oder Kundenlinks werden deshalb nicht abgeschaltet oder
+ungeprüft ersetzt. E004 und die Produktivumschaltung bleiben offen.

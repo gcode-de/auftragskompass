@@ -188,8 +188,10 @@ nur bei vollständiger Erfüllung ihrer eigenen Abnahme abgehakt.
 
 C022–C025 und der [Minimalimport E003.1–E003.3](minimal-import.md) sind technisch
 umgesetzt und synthetisch geprüft. Auch der vorgezogene [Ressourcenabgleich
-C076](import-resource-review.md) ist implementiert. Als Nächstes sind die externen
-Ersatzprozesse E004 und die konkrete Betriebsabnahme E005 zu klären. Echte Daten sind noch
+C076](import-resource-review.md) ist implementiert. Für E004 ist inzwischen LibreOffice als externer Weg für Angebote/Rechnungen
+[gewählt](decisions.md#externe-angebote-und-rechnungen-zum-erststart-18102026);
+der manuelle Gesamtprobelauf und der Website-Anfrageweg bleiben offen.
+Daneben ist die konkrete Betriebsabnahme E005 zu klären. Echte Daten sind noch
 nicht übernommen; vor deren Nutzung bleiben Normalisierung, fachlicher Mengenabgleich
 und Ressourcenprüfung erforderlich.
 E002 bleibt für die fachliche Sicherungsabnahme und unabhängige Zweitkopie offen;
