@@ -82,7 +82,10 @@ im lokalen Cache. Vorhandene Container und Volumes werden nicht übernommen.
 
 Diese Prüfung ist eine manuelle Linux-Abnahme; `pnpm test:ops` führt in der CI die
 Adapter-/Sicherheitstests und den vorhandenen realen Compose-Probelauf aus.
-Der Podman-Probelauf ist keine App-Login- oder Produktivabnahme.
+Der Podman-Probelauf ist keine App-Login- oder Produktivabnahme. E005.21 ergänzt
+Worker-/Datenbankausfall und Wiederanlauf mit unveränderten App-Prozess-IDs.
+Das [begrenzte Störungshandbuch](incidents.md) beschreibt Diagnose,
+Abhängigkeitsreihenfolge und die Grenze eines sicheren Update-Rückfalls.
 
 ## TLS und Zugriff
 

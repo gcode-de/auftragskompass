@@ -121,6 +121,35 @@ def main():
                            '-d', 'auftragskompass', '-Atc', statement)
 
             sql(prefix, "CREATE TABLE synthetic_backup_check (label text); INSERT INTO synthetic_backup_check VALUES ('Synthetic Podman restore record')")
+            def probe(service, port, endpoint):
+                return json.loads(run('podman', 'exec', prefix + '-' + service, 'node', '-e',
+                    "fetch('http://127.0.0.1:" + port + endpoint + "').then(async r=>console.log(JSON.stringify({status:r.status,body:await r.json()})))"))
+
+            print('Checking worker outage, database outage and connection recovery', flush=True)
+            run('podman', 'stop', prefix + '-worker')
+            unavailable = probe('api', '3000', '/health/ready')
+            assert unavailable['status'] == 503
+            assert unavailable['body']['dependencies']['worker'] == 'down'
+            assert probe('api', '3000', '/health/live')['status'] == 200
+            run('podman', 'start', prefix + '-worker')
+            wait_for(lambda: probe('api', '3000', '/health/ready')['status'] == 200)
+            api_pid = json.loads(run('podman', 'inspect', prefix + '-api'))[0]['State']['Pid']
+            worker_pid = json.loads(run('podman', 'inspect', prefix + '-worker'))[0]['State']['Pid']
+            run('podman', 'stop', prefix + '-database')
+            for service, port in [('api', '3000'), ('worker', '3001')]:
+                unavailable = probe(service, port, '/health/ready')
+                assert unavailable['status'] == 503
+                assert unavailable['body']['dependencies']['database'] == 'down'
+                assert probe(service, port, '/health/live')['status'] == 200
+            wait_for(lambda: probe('worker', '3001', '/health/ready')['body']['dependencies']['worker'] == 'down')
+            run('podman', 'start', prefix + '-database')
+            wait_for(lambda: probe('worker', '3001', '/health/ready')['status'] == 200)
+            wait_for(lambda: probe('api', '3000', '/health/ready')['status'] == 200)
+            for service, pid in [('api', api_pid), ('worker', worker_pid)]:
+                state = json.loads(run('podman', 'inspect', prefix + '-' + service))[0]['State']
+                assert state['Running'] and state['Pid'] == pid
+            assert sql(prefix, 'SELECT label FROM synthetic_backup_check') == 'Synthetic Podman restore record'
+            print('Worker and database recovery passed without application restart', flush=True)
             dump = directory / 'synthetic.dump'
             tool = [sys.executable, str(ROOT / 'scripts/backup_restore.py')]
             def backup(mode, project):

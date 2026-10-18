@@ -98,6 +98,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E005.20: vorhandene Bewegungsregeln im echten Chromium prüfen (Testslice). Abnahme: Zeigeraufruf mit normaler Bewegung, bewegungsfreier Tastaturaufruf sowie reduzierte Bewegung bei Menü und gedrückter Schaltfläche; Escape/Fokusrückgabe bleiben erhalten. Keine Gestaltungsänderung.
 
+- [x] E005.21: nativen isolierten Podman-Probelauf um Worker-/Datenbankausfall und Wiederanlauf ergänzen; begrenztes Störungshandbuch für den internen MVP (C083-Teil). Abnahme: Bereitschaft fällt geschlossen aus, Liveness bleibt erreichbar, Verbindungspools und Ablaufworker erholen sich ohne Datenverlust; fremde Testinstallation unverändert und eigene Testressourcen entfernt.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
