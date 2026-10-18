@@ -16,7 +16,12 @@ import type { AddressInfo } from 'node:net';
 import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
-import { bootstrapAccess } from '../../packages/core/src/access.js';
+import { receiveWebsiteInquiry } from '../../packages/core/src/website-inquiries.js';
+import { inquiryFormV1 } from '../../packages/core/src/inquiry-form.js';
+import {
+  bootstrapAccess,
+  accessRepository,
+} from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
 import { registerEventRoutes } from '../../packages/core/src/events.js';
 import { registerLocationRoutes } from '../../packages/core/src/locations.js';
@@ -1563,6 +1568,60 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         path: volumeReport,
       });
     }
+    // Synthetic local intake fixture; no public endpoint or real booking is used.
+    const receivedAt = new Date();
+    const owner = (await accessRepository(pool, config.tenantId).list()).find(
+      (row) => row.email === 'synthetic@example.invalid',
+    )!.userId!;
+    const websiteInquiry = await receiveWebsiteInquiry(
+      pool,
+      config.tenantId,
+      owner,
+      {
+        id: randomUUID(),
+        receivedAt: receivedAt.toISOString(),
+        expiresAt: new Date(receivedAt.getTime() + 86400000).toISOString(),
+        submission: {
+          formId: 'fotobox-bw-main',
+          formVersion: 1,
+          fields: {
+            firstName: 'Fictional Website',
+            lastName: 'Browser',
+            email: 'fictional.website@example.invalid',
+            eventDate: '2031-10-27',
+            comment: 'Fictional inquiry through local intake',
+          },
+        },
+        privacyNotice: inquiryFormV1.privacyNotice,
+        privacyUrl: inquiryFormV1.privacyUrl,
+      },
+      receivedAt,
+      { newContactCountry: 'DE' },
+    );
+    await page.goto(
+      origin +
+        '/?q=Fictional%20Website%20Browser#event-' +
+        websiteInquiry.eventId,
+    );
+    const websiteRecord = page.getByRole('region', {
+      name: 'Eventakte',
+      exact: true,
+    });
+    await expect(
+      websiteRecord.getByRole('heading', {
+        name: 'Eventakte: Fictional Website Browser',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await websiteRecord
+      .getByRole('button', { name: 'Logbuch', exact: true })
+      .click();
+    await expect(
+      websiteRecord.getByRole('listitem').filter({
+        hasText: 'Website-Anfrage empfangen: fotobox-bw-main (v1).',
+      }),
+    ).toBeVisible();
+    await audit('website-inquiry-event');
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

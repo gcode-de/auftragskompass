@@ -969,7 +969,13 @@ export function registerEventRoutes(
       eventVersion: { anyOf: [version, { type: 'null' }] },
       kind: {
         type: 'string',
-        enum: ['created', 'updated', 'status_changed', 'resources_changed'],
+        enum: [
+          'created',
+          'updated',
+          'status_changed',
+          'resources_changed',
+          'website_received',
+        ],
       },
       previousStatus: nullableStatus,
       nextStatus: nullableStatus,

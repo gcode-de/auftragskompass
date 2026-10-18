@@ -58,3 +58,10 @@ export {
   createInquiryGateway,
   registerInquiryPreviewRoute,
 } from './inquiry-gateway.js';
+
+export {
+  receiveWebsiteInquiry,
+  isWebsiteInquiry,
+  WebsiteInquiryError,
+  type WebsiteInquiry,
+} from './website-inquiries.js';

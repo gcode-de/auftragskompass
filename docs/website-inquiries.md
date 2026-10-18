@@ -117,3 +117,7 @@ Validierung und keine Buchungsprüfung. Verlassen dieses Einstellungsbereichs
 verwirft die Eingaben. Änderungen der Formularinhalte und mehrere Formulare
 bleiben ausdrücklich als späterer Ausbau vorgesehen (AN-01/AN-04/AN-05); es gibt
 noch keinen Formular-Editor und keine automatische Paketzuordnung.
+
+Die [lokale atomare Übernahme](website-inquiry-intake.md) ist als interner Dienst
+synthetisch geprüft. Netzwerkabholung, sichtbarer Anfrageeingang und echte
+Übernahme sind damit noch nicht aktiviert.

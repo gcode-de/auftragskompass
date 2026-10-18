@@ -198,13 +198,20 @@ export const eventContacts = pgTable('event_contacts', {
 });
 
 export const eventActivities = pgTable('event_activities', {
+  source: text('source'),
   id: bigint('id', { mode: 'bigint' }).primaryKey().generatedAlwaysAsIdentity(),
   tenantId: uuid('tenant_id').notNull(),
   eventId: uuid('event_id').notNull(),
   actorId: uuid('actor_id'),
   eventVersion: integer('event_version'),
   kind: text('kind', {
-    enum: ['created', 'updated', 'status_changed', 'resources_changed'],
+    enum: [
+      'created',
+      'updated',
+      'status_changed',
+      'resources_changed',
+      'website_received',
+    ],
   }).notNull(),
   previousStatus: text('previous_status'),
   nextStatus: text('next_status'),
@@ -282,4 +289,18 @@ export const calendarFeeds = pgTable('calendar_feeds', {
     .notNull()
     .defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+export const websiteInquiries = pgTable('website_inquiries', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  contactId: uuid('contact_id').notNull(),
+  eventId: uuid('event_id').notNull(),
+  payload: jsonb('payload').notNull(),
+  payloadHash: text('payload_hash').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  importedAt: timestamp('imported_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });

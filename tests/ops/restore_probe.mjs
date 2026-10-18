@@ -18,6 +18,8 @@ import { contactRepository } from './packages/core/dist/contacts.js';
 import { eventRepository } from './packages/core/dist/events.js';
 import { productRepository } from './packages/core/dist/products.js';
 import { resourceRepository } from './packages/core/dist/resources.js';
+import { receiveWebsiteInquiry } from './packages/core/dist/website-inquiries.js';
+import { inquiryFormV1 } from './packages/core/dist/inquiry-form.js';
 import { reservationRepository } from './packages/core/dist/reservations.js';
 
 const mode = process.argv[2];
@@ -40,6 +42,24 @@ const tenant = '00000000-0000-4000-8000-000000000122';
 const foreign = '00000000-0000-4000-8000-000000000123';
 const email = 'fictional.restore@example.invalid';
 const password = 'Fictional restore password 123!';
+const inquiry = {
+  id: '00000000-0000-4000-8000-000000000124',
+  receivedAt: '2030-10-26T10:00:00.000Z',
+  expiresAt: '2030-10-27T10:00:00.000Z',
+  submission: {
+    formId: 'fotobox-bw-main',
+    formVersion: 1,
+    fields: {
+      firstName: 'Fictional restored',
+      lastName: 'contact',
+      email: 'restore.contact@example.invalid',
+      eventDate: '2030-10-27',
+      comment: 'Fictional original <restore> inquiry',
+    },
+  },
+  privacyNotice: inquiryFormV1.privacyNotice,
+  privacyUrl: inquiryFormV1.privacyUrl,
+};
 const cookies = { '__Host-ak-session': 'synthetic-restore-session' };
 try {
   if (mode === 'seed') {
@@ -130,6 +150,14 @@ try {
       undefined,
       [{ unitId: unit.id, periodSource: 'event' }],
     );
+    await receiveWebsiteInquiry(
+      pool,
+      tenant,
+      actor,
+      inquiry,
+      new Date(inquiry.receivedAt),
+      {},
+    );
     assert.equal(
       await passwordAccess(pool, tenant).issueSession(
         'fictional.restore',
@@ -148,12 +176,47 @@ try {
     const people = await contactRepository(pool, tenant).list();
     assert.equal(people.length, 1);
     assert.equal(people[0].name, 'Fictional restored contact');
-    const events = await eventRepository(pool, tenant).list();
+    const restoredEvents = await eventRepository(pool, tenant).list();
+    assert.equal(restoredEvents.length, 2);
+    const events = restoredEvents.filter((event) => event.status === 'booked');
     assert.equal(events.length, 1);
     assert.equal(events[0].status, 'booked');
     const detail = await eventRepository(pool, tenant).detail(events[0].id);
     assert.equal(detail.contacts[0].id, people[0].id);
     assert.equal(detail.event.notesHtml, '<p>Fictional restored note</p>');
+    const original = (
+      await pool.query(
+        'SELECT payload,event_id,contact_id FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
+        [tenant, inquiry.id],
+      )
+    ).rows[0];
+    assert.deepEqual(original.payload, inquiry);
+    assert.equal(original.contact_id, people[0].id);
+    const received = await eventRepository(pool, tenant).detail(
+      original.event_id,
+    );
+    assert.equal(received.event.status, 'inquiry');
+    assert.ok(
+      received.activities.some(
+        (row) =>
+          row.description ===
+          'Website-Anfrage empfangen: fotobox-bw-main (v1).',
+      ),
+    );
+    const actor = (await accessRepository(pool, tenant).list())[0].userId;
+    assert.equal(
+      (
+        await receiveWebsiteInquiry(
+          pool,
+          tenant,
+          actor,
+          inquiry,
+          new Date('2030-11-01T10:00:00Z'),
+          {},
+        )
+      ).status,
+      'duplicate',
+    );
     const product = (await productRepository(pool, tenant).list())[0];
     assert.equal(product.priceMinor, 12345);
     assert.equal(product.priceBasis, 'gross');

@@ -53,12 +53,14 @@ export async function readEventActivities(
     nextStatus: row.nextStatus,
     occurredAt: row.occurredAt.toISOString(),
     description:
-      row.kind === 'created'
-        ? 'Event angelegt.'
-        : row.kind === 'resources_changed'
-          ? 'Ressourcenzuordnung und Dispositionszeitraum geändert.'
-          : row.kind === 'updated'
-            ? 'Event geändert.'
-            : `Status von ${eventStatuses.find((s) => s.code === row.previousStatus)!.label} auf ${eventStatuses.find((s) => s.code === row.nextStatus)!.label} geändert.`,
+      row.kind === 'website_received'
+        ? 'Website-Anfrage empfangen: ' + row.source + '.'
+        : row.kind === 'created'
+          ? 'Event angelegt.'
+          : row.kind === 'resources_changed'
+            ? 'Ressourcenzuordnung und Dispositionszeitraum geändert.'
+            : row.kind === 'updated'
+              ? 'Event geändert.'
+              : `Status von ${eventStatuses.find((s) => s.code === row.previousStatus)!.label} auf ${eventStatuses.find((s) => s.code === row.nextStatus)!.label} geändert.`,
   }));
 }
