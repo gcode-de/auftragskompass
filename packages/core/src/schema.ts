@@ -304,3 +304,14 @@ export const websiteInquiries = pgTable('website_inquiries', {
     .notNull()
     .defaultNow(),
 });
+
+export const websiteInquiryDeliveries = pgTable('website_inquiry_deliveries', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  payload: jsonb('payload').notNull(),
+  payloadHash: text('payload_hash').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  stagedAt: timestamp('staged_at', { withTimezone: true }).notNull(),
+  stagedBy: uuid('staged_by').notNull(),
+});

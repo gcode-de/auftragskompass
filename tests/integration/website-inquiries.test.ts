@@ -1,3 +1,4 @@
+import { stageWebsiteInquiry } from '../../packages/core/src/website-inquiry-deliveries.js';
 import { beforeAll, beforeEach, afterAll, test, expect } from 'vitest';
 import {
   PostgreSqlContainer,
@@ -634,4 +635,219 @@ test('original inquiry reads reject missing actors, foreign permissions, broken 
   } finally {
     await unavailable.close();
   }
+});
+
+test('durable staging preserves an unresolved original without business writes and survives retries after gateway expiry', async () => {
+  const value = entry(),
+    before = await counts();
+  const stage = (at = now) =>
+    stageWebsiteInquiry(pool, tenantId, actorId, value, at);
+  expect(await stage()).toEqual({ status: 'stored' });
+  expect(await counts()).toEqual(before);
+  const first = (
+    await pool.query(
+      'SELECT * FROM website_inquiry_deliveries WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows[0];
+  expect(first.payload).toEqual(value);
+  expect(first.staged_by).toBe(actorId);
+  expect(first.staged_at).toEqual(now);
+  const restarted = new Pool({
+    connectionString: container.getConnectionUri(),
+  });
+  try {
+    expect(
+      await stageWebsiteInquiry(
+        restarted,
+        tenantId,
+        actorId,
+        {
+          ...value,
+          submission: {
+            fields: value.submission.fields,
+            formVersion: 1,
+            formId: 'fotobox-bw-main',
+          },
+        },
+        new Date('2030-11-01T10:00:00.000Z'),
+      ),
+    ).toEqual({ status: 'duplicate' });
+  } finally {
+    await restarted.end();
+  }
+  expect(
+    (
+      await pool.query(
+        'SELECT * FROM website_inquiry_deliveries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows,
+  ).toEqual([first]);
+  await expect(
+    stageWebsiteInquiry(
+      pool,
+      tenantId,
+      actorId,
+      { ...value, privacyNotice: 'Fictional changed notice' },
+      now,
+    ),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+});
+
+test('parallel staging stores exactly once per tenant and rejects foreign or revoked actors', async () => {
+  const value = entry();
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      stageWebsiteInquiry(pool, tenantId, actorId, value, now),
+    ),
+  );
+  expect(results.filter((row) => row.status === 'stored')).toHaveLength(1);
+  expect(results.filter((row) => row.status === 'duplicate')).toHaveLength(4);
+  await expect(
+    stageWebsiteInquiry(pool, tenantId, randomUUID(), value, now),
+  ).rejects.toMatchObject({ reason: 'forbidden' });
+  const foreignTenant = randomUUID();
+  await bootstrapAccess(
+    pool,
+    foreignTenant,
+    'foreign@example.invalid',
+    'Fictional foreign',
+    'Europe/Berlin',
+  );
+  await expect(
+    stageWebsiteInquiry(pool, foreignTenant, actorId, value, now),
+  ).rejects.toMatchObject({ reason: 'forbidden' });
+  await accessRepository(pool, foreignTenant).issueSession(
+    { subject: 'fictional-foreign', email: 'foreign@example.invalid' },
+    digest(randomUUID()),
+  );
+  const foreignActor = (await accessRepository(pool, foreignTenant).list())[0]!
+    .userId!;
+  expect(
+    await stageWebsiteInquiry(pool, foreignTenant, foreignActor, value, now),
+  ).toEqual({ status: 'stored' });
+  await accessRepository(pool, tenantId).grant(
+    actorId,
+    'second.owner@example.invalid',
+  );
+  await accessRepository(pool, tenantId).issueSession(
+    { subject: 'fictional-second', email: 'second.owner@example.invalid' },
+    digest(randomUUID()),
+  );
+  await pool.query(
+    'UPDATE allowed_accounts SET active=false WHERE tenant_id=$1 AND user_id=$2',
+    [tenantId, actorId],
+  );
+  await expect(
+    stageWebsiteInquiry(pool, tenantId, actorId, value, now),
+  ).rejects.toMatchObject({ reason: 'forbidden' });
+});
+
+test('invalid or expired first deliveries fail without storing and failed persistence has neutral errors', async () => {
+  const value = entry();
+  for (const [input, at] of [
+    [{ ...value, unknown: 'fictional' }, now],
+    [value, new Date('invalid')],
+    [value, new Date('2030-10-25T10:00:00.000Z')],
+  ] as const)
+    await expect(
+      stageWebsiteInquiry(pool, tenantId, actorId, input, at),
+    ).rejects.toMatchObject({ reason: 'invalid' });
+  await expect(
+    stageWebsiteInquiry(pool, 'invalid', actorId, value, now),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  await expect(
+    stageWebsiteInquiry(pool, tenantId, 'invalid', value, now),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  await expect(
+    stageWebsiteInquiry(
+      pool,
+      tenantId,
+      actorId,
+      value,
+      new Date(value.expiresAt),
+    ),
+  ).rejects.toMatchObject({ reason: 'expired' });
+  expect(
+    (
+      await pool.query(
+        'SELECT * FROM website_inquiry_deliveries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows,
+  ).toEqual([]);
+  const broken = new Pool({ connectionString: container.getConnectionUri() });
+  await broken.end();
+  await expect(
+    stageWebsiteInquiry(broken, tenantId, actorId, value, now),
+  ).rejects.toMatchObject({
+    reason: 'failed',
+    message: 'Website inquiry unavailable',
+  });
+});
+
+test('staging snapshots callers before lock waits, supports outer rollback and enforces database integrity', async () => {
+  const value = entry(),
+    at = new Date(now);
+  const client = await pool.connect();
+  await client.query('BEGIN');
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text,814022))',
+    [tenantId],
+  );
+  const pending = stageWebsiteInquiry(pool, tenantId, actorId, value, at);
+  (value as { privacyNotice: string }).privacyNotice =
+    'Fictional mutated caller';
+  at.setUTCFullYear(2040);
+  await client.query('COMMIT');
+  client.release();
+  await pending;
+  const row = (
+    await pool.query(
+      'SELECT * FROM website_inquiry_deliveries WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows[0];
+  expect(row.payload.privacyNotice).toBe(inquiryFormV1.privacyNotice);
+  expect(row.staged_at).toEqual(now);
+  await expect(
+    pool.query(
+      'UPDATE website_inquiry_deliveries SET staged_by=$2 WHERE tenant_id=$1',
+      [tenantId, randomUUID()],
+    ),
+  ).rejects.toMatchObject({ code: '23503' });
+  await expect(
+    pool.query(
+      'UPDATE website_inquiry_deliveries SET staged_at=expires_at WHERE tenant_id=$1',
+      [tenantId],
+    ),
+  ).rejects.toMatchObject({ code: '23514' });
+  await expect(
+    pool.query(
+      'INSERT INTO website_inquiry_deliveries SELECT * FROM website_inquiry_deliveries WHERE tenant_id=$1',
+      [tenantId],
+    ),
+  ).rejects.toMatchObject({ code: '23505' });
+
+  await expect(
+    pool.query(
+      'UPDATE website_inquiry_deliveries SET payload=payload||\'{"unknown":true}\'::jsonb WHERE tenant_id=$1',
+      [tenantId],
+    ),
+  ).rejects.toMatchObject({ code: '23514' });
+  await expect(
+    drizzle(pool).transaction(async (tx) => {
+      await stageWebsiteInquiry(tx, tenantId, actorId, entry(), now);
+      throw new Error('fictional rollback');
+    }),
+  ).rejects.toThrow('fictional rollback');
+  expect(
+    (
+      await pool.query(
+        'SELECT * FROM website_inquiry_deliveries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rowCount,
+  ).toBe(1);
 });

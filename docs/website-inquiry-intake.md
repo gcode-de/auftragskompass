@@ -89,3 +89,29 @@ verfügbar. Spätere Kontakt- oder Eventänderungen verändern diese Anzeige nic
 Kommentare erscheinen vollständig als Text, einschließlich Zeilenumbrüchen und
 HTML-Zeichen. Die Darstellung ist in mobilem und breitem Hell/Dunkel geprüft.
 Es gibt hier keine Bearbeitung oder öffentliche Aktivierung.
+
+## Dauerhafter lokaler Eingang vor Zuordnung (E004.10)
+
+`stageWebsiteInquiry` sichert einen zuvor authentifiziert abgeholten Originaleintrag
+in `website_inquiry_deliveries`, ohne Kontakt, Event oder Reservierung anzulegen.
+Der ausschließlich intern aufrufbare Dienst prüft vollständigen Inhalt,
+Mandant und aktive Betreiberberechtigung. Neue Einträge müssen noch innerhalb
+ihrer Gateway-Laufzeit liegen; ein zu weit in der Zukunft liegender Eingang wird
+abgelehnt. Die Prüfzeit wird beim Aufruf eingefroren und zusammen mit der
+Betreiberkennung gespeichert. Migration `0024_website_inquiry_deliveries.sql`
+sichert Zuordnung, Inhaltshash und Zeitgrenzen zusätzlich in PostgreSQL ab.
+
+Identische Wiederholungen, auch parallel oder nach Pool-Neustart, verändern den
+Originalbeleg und seine erste lokale Eingangszeit nicht. Bereits gesicherte
+Einträge bleiben nach Gateway-Ablauf erhalten und als identische Wiederholung
+erkennbar; abweichender Inhalt derselben Anfrage-ID scheitert. Ein äußerer
+Transaktionsfehler rollt auch diesen Eingang vollständig zurück. Der echte
+Dump-/Restore-Probelauf erhält einen noch nicht fachlich zugeordneten Eingang
+und prüft seine Wiederholung nach Ablauf.
+
+Diese private Zwischensicherung erlaubt später eine Kontaktprüfung ohne Verlust
+des Originals. Sie führt selbst keine Quittierung, automatische Eventanlage,
+Netzwerkabholung oder Löschung aus. Signierte Zustellung, sichtbare Prüfliste und
+wiederanlaufbare Quittierung folgen getrennt vor öffentlicher Aktivierung.
+Die lokale Aufbewahrungsentscheidung bleibt offen; die Gateway-Ablaufzeit löscht
+diesen privaten Eingang nicht.

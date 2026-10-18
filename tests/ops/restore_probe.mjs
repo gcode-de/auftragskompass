@@ -1,3 +1,4 @@
+import { stageWebsiteInquiry } from './packages/core/dist/website-inquiry-deliveries.js';
 // Fed to Node over stdin in the disposable runtime image, whose cwd is /app.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -59,6 +60,10 @@ const inquiry = {
   },
   privacyNotice: inquiryFormV1.privacyNotice,
   privacyUrl: inquiryFormV1.privacyUrl,
+};
+const stagedInquiry = {
+  ...inquiry,
+  id: '00000000-0000-4000-8000-000000000125',
 };
 const cookies = { '__Host-ak-session': 'synthetic-restore-session' };
 try {
@@ -150,6 +155,16 @@ try {
       undefined,
       [{ unitId: unit.id, periodSource: 'event' }],
     );
+    assert.deepEqual(
+      await stageWebsiteInquiry(
+        pool,
+        tenant,
+        actor,
+        stagedInquiry,
+        new Date(inquiry.receivedAt),
+      ),
+      { status: 'stored' },
+    );
     await receiveWebsiteInquiry(
       pool,
       tenant,
@@ -190,7 +205,27 @@ try {
         [tenant, inquiry.id],
       )
     ).rows[0];
+    const actor = (await accessRepository(pool, tenant).list())[0].userId;
     assert.deepEqual(original.payload, inquiry);
+    const staged = (
+      await pool.query(
+        'SELECT payload,staged_at FROM website_inquiry_deliveries WHERE tenant_id=$1 AND id=$2',
+        [tenant, stagedInquiry.id],
+      )
+    ).rows[0];
+    assert.deepEqual(staged.payload, stagedInquiry);
+    assert.equal(staged.staged_at.toISOString(), inquiry.receivedAt);
+    assert.deepEqual(
+      await stageWebsiteInquiry(
+        pool,
+        tenant,
+        actor,
+        stagedInquiry,
+        new Date('2030-11-01T10:00:00.000Z'),
+      ),
+      { status: 'duplicate' },
+    );
+
     assert.equal(original.contact_id, people[0].id);
     const received = await eventRepository(pool, tenant).detail(
       original.event_id,
@@ -203,7 +238,6 @@ try {
           'Website-Anfrage empfangen: fotobox-bw-main (v1).',
       ),
     );
-    const actor = (await accessRepository(pool, tenant).list())[0].userId;
     assert.equal(
       (
         await receiveWebsiteInquiry(
