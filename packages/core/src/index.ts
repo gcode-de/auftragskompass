@@ -31,3 +31,13 @@ export {
   isInquirySubmission,
   type InquirySubmission,
 } from './inquiry-form.js';
+
+export {
+  signGatewayMessage,
+  verifyGatewayMessage,
+  gatewayMessageLimit,
+  type GatewayMessage,
+  type GatewayKey,
+  type GatewayDirection,
+  type GatewayKind,
+} from './gateway-message.js';

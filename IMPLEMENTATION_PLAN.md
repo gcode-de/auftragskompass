@@ -114,6 +114,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.2: das aktuelle Websiteformular als versionierte Felddefinition und unverändernden Eingangsvertrag abbilden. Abnahme: alle acht beobachteten Felder, Pflichtangaben und sichtbaren Paketwerte; sichere Schema-/Datumsprüfung, keine alten Paketwerte als Ziel-ID verwenden, Formular-ID/Version als Grundlage für spätere mehrere/bearbeitbare Formulare. Kein öffentlicher Empfang oder Websiteaustausch.
 
+- [x] E004.3: signierten Übergabevertrag für Anfragen als klar begrenzten C028-Teil implementieren. Abnahme: feste Version/Zwecke, Bindung an Mandant/Richtung/Schlüssel-ID, sichere Signaturprüfung, begrenzte Zeit/Grenzgrößen und überlappende Schlüsselrotation; neutrale Ablehnung ohne sensible Ausgabe. Persistenter Replay-/Operationsschutz folgt getrennt vor jedem Empfangsendpunkt; C028 bleibt insgesamt offen.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
