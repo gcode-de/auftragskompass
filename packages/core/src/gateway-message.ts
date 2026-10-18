@@ -3,7 +3,7 @@ import AjvCompiler from '@fastify/ajv-compiler';
 
 export type GatewayDirection = 'core-to-gateway' | 'gateway-to-core';
 export type GatewayKind =
-  'inquiries.pull' | 'inquiries.batch' | 'inquiries.ack';
+  'inquiries.pull' | 'inquiries.batch' | 'inquiries.ack' | 'inquiries.receipt';
 export type GatewayKey = {
   id: string;
   tenantId: string;
@@ -81,7 +81,12 @@ const validMessage = compile({
       },
       kind: {
         type: 'string',
-        enum: ['inquiries.pull', 'inquiries.batch', 'inquiries.ack'],
+        enum: [
+          'inquiries.pull',
+          'inquiries.batch',
+          'inquiries.ack',
+          'inquiries.receipt',
+        ],
       },
       payload: { type: 'object' },
     },
@@ -106,8 +111,8 @@ function keyActive(key: GatewayKey, time: number) {
 }
 function permitted(direction: GatewayDirection, kind: GatewayKind) {
   return direction === 'gateway-to-core'
-    ? kind === 'inquiries.batch'
-    : kind !== 'inquiries.batch';
+    ? kind === 'inquiries.batch' || kind === 'inquiries.receipt'
+    : kind === 'inquiries.pull' || kind === 'inquiries.ack';
 }
 function mac(body: string, key: GatewayKey) {
   return createHmac('sha256', key.secret)

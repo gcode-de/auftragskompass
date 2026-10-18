@@ -99,3 +99,7 @@ Signatur und persistenter technischer Wiederholschutz sind inzwischen im
 [verschlüsselte Zwischenspeicher](inquiry-inbox.md) hält die Eingaben einschließlich
 des Datenschutzhinweises; eine öffentliche Route oder echte Übernahme ist damit
 weiterhin nicht aktiviert.
+
+Die [getrennte API](inquiry-gateway.md) ist mit synthetischem Eingang, signierter
+Abholung und Quittierung getestet. Sie läuft noch nicht auf der öffentlichen
+Website; lokale Übernahme und Formularoberfläche bleiben offen.

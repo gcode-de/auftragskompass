@@ -270,3 +270,24 @@ test('serialization errors cannot expose private property names', () => {
     ).toThrow(/^Invalid gateway message$/);
   }
 });
+
+test('acknowledgment receipts are separately authenticated in the return direction', () => {
+  const receipt = {
+    ...message(),
+    kind: 'inquiries.receipt',
+    payload: { requestId: message().messageId, acknowledgedCount: 1 },
+  } as unknown as GatewayMessage;
+  const responseKey = { ...key, direction: 'gateway-to-core' as const };
+  const signed = signGatewayMessage(receipt, responseKey);
+  expect(
+    verifyGatewayMessage(signed, {
+      ...context(),
+      direction: responseKey.direction,
+      kind: receipt.kind,
+      keys: [responseKey],
+    }),
+  ).toEqual(receipt);
+  expect(() => signGatewayMessage(receipt, key)).toThrow(
+    'Invalid gateway message',
+  );
+});

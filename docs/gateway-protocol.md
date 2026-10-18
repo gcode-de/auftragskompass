@@ -16,10 +16,11 @@ Ein Paket enthält ausschließlich `keyId`, `body` und `signature`. `body` ist d
 - `messageId`: frische UUID je Übertragungsversuch, später dauerhaft gegen Replay geprüft;
 - `operationId`: stabile UUID der fachlichen Operation für sichere Wiederholungen;
 - `issuedAt`: ganzzahlige UTC-Unixsekunden;
-- `kind`: `inquiries.pull`, `inquiries.batch` oder `inquiries.ack`;
+- `kind`: `inquiries.pull`, `inquiries.batch`, `inquiries.ack` oder `inquiries.receipt`;
 - `payload`: JSON-Objekt; seine konkrete fachliche Prüfung folgt am Empfänger.
 
-Pull und Quittierung dürfen nur in Richtung `core-to-gateway`, Antworten nur in
+Pull und Quittierungsaufträge dürfen nur in Richtung `core-to-gateway`, signierte
+Abholantworten und Quittierungsbelege nur in
 Richtung `gateway-to-core` laufen. Der Empfänger setzt erwarteten Mandanten,
 Richtung und Zweck aus seiner eigenen Konfiguration beziehungsweise Route;
 Clientangaben dürfen diesen Kontext nicht festlegen.
@@ -128,3 +129,8 @@ angehängt noch protokolliert. Es gibt noch keine automatische Beleglöschung;
 Fristen, Bereinigung und Kapazitätsüberwachung bleiben eine Bedingung vor
 öffentlichem Betrieb. Keine bestehende Datenbank wird durch diesen Schritt
 automatisch migriert oder zurückgesetzt.
+
+E004.6 ergänzt den signierten Zweck `inquiries.receipt` für Quittierungsantworten.
+Die vorwärts gerichtete Migration `gateway-0003-receipt-purpose.sql` erweitert
+ausschließlich die erlaubten Zwecke der technischen Operationsbelege; bereits
+veröffentlichte Migrationen bleiben unverändert.

@@ -53,3 +53,5 @@ export {
   InquiryInboxError,
   type InquiryInboxConfig,
 } from './inquiry-inbox.js';
+
+export { createInquiryGateway } from './inquiry-gateway.js';

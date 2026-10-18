@@ -120,6 +120,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.5: mandantengebundenen verschlüsselten Anfrage-Zwischenspeicher implementieren. Abnahme: alle acht Felder und Datenschutzhinweis erhalten, authentifizierte Verschlüsselung/Schlüsselrotation, idempotenter Eingang auch parallel, begrenzte konfigurierte Kapazität/Laufzeit, private lesende Abholung und Quittierung ohne Klartextrest sowie gezielte Ablaufbereinigung; keine öffentliche Route, kein Versand oder realer Import.
 
+- [x] E004.6: getrennte versionierte Anfrage-API im synthetischen Gateway implementieren. Abnahme: öffentliche Definition/Eingangsbestätigung, strenge Origin-/Größen-/Feld-/Spamprüfung, Rate-Limit, keine internen IDs oder sensiblen Fehler; ausschließlich signierte private Abholung/Quittierung mit Replay-Schutz und begrenzter Antwort. Keine öffentliche Installation, Website-Umschaltung oder reale Übernahme.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

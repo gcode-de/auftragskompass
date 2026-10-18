@@ -102,7 +102,7 @@ test(
         'node',
         '--input-type=module',
         '-e',
-        "import { readFile } from 'node:fs/promises'; for (const name of ['gateway-0001-receipts.sql','gateway-0002-inquiries.sql']) await readFile('/app/packages/core/gateway-migrations/' + name, 'utf8');",
+        "import { readFile } from 'node:fs/promises'; for (const name of ['gateway-0001-receipts.sql','gateway-0002-inquiries.sql','gateway-0003-receipt-purpose.sql']) await readFile('/app/packages/core/gateway-migrations/' + name, 'utf8');",
       ]);
       const adminAddress = (
         await compose(project, ['port', 'admin', '8080'])

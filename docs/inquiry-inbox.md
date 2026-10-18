@@ -3,7 +3,8 @@
 Der [Zwischenspeicher](../packages/core/src/inquiry-inbox.ts) ergänzt den
 [Übergabevertrag](gateway-protocol.md) und die
 [acht bestehenden Websitefelder](website-inquiries.md). Er ist eine interne
-Bibliothek, noch kein öffentlicher HTTP-Empfang. Website, Bookitup, echte Kontakte,
+Bibliothek; die getestete [getrennte API](inquiry-gateway.md) ist noch nicht
+öffentlich installiert. Website, Bookitup, echte Kontakte,
 Events und Inhaberpasswort bleiben unverändert. Es gibt keinen Nachrichtenversand.
 
 ## Konfiguration und Daten

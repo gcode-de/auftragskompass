@@ -305,6 +305,7 @@ test('SQL constraints reject invalid direction, count and digest', async () => {
   for (const [direction, kind, digest, count] of [
     ['unknown', 'inquiries.ack', hash, 1],
     ['gateway-to-core', 'inquiries.ack', hash, 1],
+    ['core-to-gateway', 'inquiries.receipt', hash, 1],
     ['core-to-gateway', 'inquiries.ack', 'invalid', 1],
     ['core-to-gateway', 'inquiries.ack', hash, 101],
   ]) {
@@ -408,4 +409,22 @@ test('a callback cannot rewrite verified envelope metadata after applying an eff
     message: 'Gateway operation rejected',
   });
   expect(await counts()).toEqual({ messages: 0, operations: 0, effects: 0 });
+});
+
+test('the forward migration permits authenticated return receipts only in their own direction', async () => {
+  const receipt = { ...message(), kind: 'inquiries.receipt' as const },
+    returnKey = { ...key, direction: 'gateway-to-core' as const };
+  expect(
+    await processGatewayOperation(
+      pool,
+      signGatewayMessage(receipt, returnKey),
+      {
+        ...context(),
+        direction: returnKey.direction,
+        kind: receipt.kind,
+        keys: [returnKey],
+      },
+      applyEffect,
+    ),
+  ).toEqual({ status: 'applied', count: 1 });
 });
