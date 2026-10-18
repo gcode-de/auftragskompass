@@ -134,6 +134,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.12: einen dauerhaft gesicherten Eingang kontrolliert als unverbindliches Event weiterverarbeiten. Abnahme: ursprünglicher lokaler Prüfzeitpunkt statt abgelaufener Gateway-Frist, erneute aktive Betreiberprüfung, Land ausschließlich explizit für neue Kontakte, unklare Zuordnung bleibt ohne Teilanlage erhalten, idempotente Parallelität/Neustart und Mandantentrennung; keine automatische Verarbeitung oder Quittierung.
 
+- [x] E004.13: offene Website-Eingänge im bestehenden Eventbereich geschützt prüfen und bewusst als Anfrage übernehmen. Abnahme: paginierte Mandantenliste, vollständige Originalangaben erst im aufgeklappten Prüfbereich, explizites Land ohne Vorbelegung, CSRF/Autorisierung, sichtbare und wiederholbare Zuordnungsfehler, kein Duplikat bei Retry sowie mobile Hell/Dunkel-/Tastaturprüfung in Chromium; keine öffentliche Anbindung oder echte Übernahme.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

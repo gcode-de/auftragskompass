@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-type Original = {
+export type OriginalInquiry = {
   formId: string;
   formVersion: number;
   receivedAt: string;
@@ -14,7 +14,7 @@ export function WebsiteInquiry({
   eventId: string;
   timeZone: string;
 }) {
-  const [original, setOriginal] = useState<Original | null>(null),
+  const [original, setOriginal] = useState<OriginalInquiry | null>(null),
     [loading, setLoading] = useState(false),
     [failed, setFailed] = useState(false);
   async function load() {
@@ -25,7 +25,7 @@ export function WebsiteInquiry({
         '/api/v1/events/' + eventId + '/website-inquiry',
       );
       if (!response.ok) throw new Error();
-      setOriginal((await response.json()) as Original);
+      setOriginal((await response.json()) as OriginalInquiry);
     } catch {
       setFailed(true);
     } finally {
@@ -46,31 +46,7 @@ export function WebsiteInquiry({
         verändern diese Originalanfrage nicht.
       </p>
       {original ? (
-        <>
-          <p>
-            Formular {original.formId} · Version {original.formVersion} ·
-            Eingang:{' '}
-            <time dateTime={original.receivedAt}>
-              {new Intl.DateTimeFormat('de-DE', {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-                timeZone,
-              }).format(new Date(original.receivedAt))}
-            </time>
-          </p>
-          <dl>
-            {original.fields.map((field) => (
-              <Fragment key={field.label}>
-                <dt>{field.label}</dt>
-                <dd>{field.value || 'Nicht angegeben'}</dd>
-              </Fragment>
-            ))}
-          </dl>
-          <p>{original.privacyNotice}</p>
-          <a href={original.privacyUrl}>
-            Damals verlinkte Datenschutzerklärung
-          </a>
-        </>
+        <OriginalInquiryContents original={original} timeZone={timeZone} />
       ) : failed ? (
         <div role="alert">
           <p>
@@ -85,5 +61,38 @@ export function WebsiteInquiry({
         <p role="status">Originalanfrage wird geladen …</p>
       )}
     </details>
+  );
+}
+
+export function OriginalInquiryContents({
+  original,
+  timeZone,
+}: {
+  original: OriginalInquiry;
+  timeZone: string;
+}) {
+  return (
+    <>
+      <p>
+        Formular {original.formId} · Version {original.formVersion} · Eingang:{' '}
+        <time dateTime={original.receivedAt}>
+          {new Intl.DateTimeFormat('de-DE', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+            timeZone,
+          }).format(new Date(original.receivedAt))}
+        </time>
+      </p>
+      <dl>
+        {original.fields.map((field) => (
+          <Fragment key={field.label}>
+            <dt>{field.label}</dt>
+            <dd>{field.value || 'Nicht angegeben'}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      <p>{original.privacyNotice}</p>
+      <a href={original.privacyUrl}>Damals verlinkte Datenschutzerklärung</a>
+    </>
   );
 }

@@ -7,6 +7,63 @@ import { websiteInquiries } from './schema.js';
 import { isWebsiteInquiry } from './website-inquiries.js';
 import { inquiryFormV1 } from './inquiry-form.js';
 
+export const websiteInquiryViewSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'formId',
+    'formVersion',
+    'receivedAt',
+    'fields',
+    'privacyNotice',
+    'privacyUrl',
+  ],
+  properties: {
+    formId: { type: 'string' },
+    formVersion: { type: 'integer' },
+    receivedAt: { type: 'string', format: 'date-time' },
+    privacyNotice: { type: 'string' },
+    privacyUrl: { type: 'string' },
+    fields: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['label', 'value'],
+        properties: {
+          label: { type: 'string' },
+          value: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+export function websiteInquiryView(input: unknown) {
+  if (!isWebsiteInquiry(input)) throw new Error('Invalid stored inquiry');
+  const original = input;
+  return {
+    formId: original.submission.formId,
+    formVersion: original.submission.formVersion,
+    receivedAt: original.receivedAt,
+    privacyNotice: original.privacyNotice,
+    privacyUrl: original.privacyUrl,
+    fields: inquiryFormV1.fields.map((field) => {
+      const raw = original.submission.fields[field.name] ?? '';
+      return {
+        label: field.label,
+        value:
+          field.type === 'select'
+            ? (field.options.find((option) => option.value === raw)?.label ??
+              '')
+            : field.type === 'date'
+              ? raw.split('-').reverse().join('.')
+              : raw,
+      };
+    }),
+  };
+}
+
 export function registerWebsiteInquiryRoutes(
   app: FastifyInstance,
   pool: Pool,
@@ -23,37 +80,7 @@ export function registerWebsiteInquiryRoutes(
           properties: { id: { type: 'string', format: 'uuid' } },
         },
         response: {
-          200: {
-            type: 'object',
-            additionalProperties: false,
-            required: [
-              'formId',
-              'formVersion',
-              'receivedAt',
-              'fields',
-              'privacyNotice',
-              'privacyUrl',
-            ],
-            properties: {
-              formId: { type: 'string' },
-              formVersion: { type: 'integer' },
-              receivedAt: { type: 'string', format: 'date-time' },
-              privacyNotice: { type: 'string' },
-              privacyUrl: { type: 'string' },
-              fields: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['label', 'value'],
-                  properties: {
-                    label: { type: 'string' },
-                    value: { type: 'string' },
-                  },
-                },
-              },
-            },
-          },
+          200: websiteInquiryViewSchema,
         },
       },
     },
@@ -78,29 +105,7 @@ export function registerWebsiteInquiryRoutes(
                 ),
               );
             if (!row) return null;
-            if (!isWebsiteInquiry(row.payload))
-              throw new Error('Invalid stored inquiry');
-            const original = row.payload;
-            return {
-              formId: original.submission.formId,
-              formVersion: original.submission.formVersion,
-              receivedAt: original.receivedAt,
-              privacyNotice: original.privacyNotice,
-              privacyUrl: original.privacyUrl,
-              fields: inquiryFormV1.fields.map((field) => {
-                const raw = original.submission.fields[field.name] ?? '';
-                return {
-                  label: field.label,
-                  value:
-                    field.type === 'select'
-                      ? (field.options.find((option) => option.value === raw)
-                          ?.label ?? '')
-                      : field.type === 'date'
-                        ? raw.split('-').reverse().join('.')
-                        : raw,
-                };
-              }),
-            };
+            return websiteInquiryView(row.payload);
           },
           { isolationLevel: 'repeatable read', accessMode: 'read only' },
         );

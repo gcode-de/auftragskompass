@@ -1,3 +1,4 @@
+import { registerWebsiteInboxRoutes } from '../../packages/core/src/website-inbox-routes.js';
 import { registerWebsiteInquiryRoutes } from '../../packages/core/src/website-inquiry-routes.js';
 import { registerInquiryPreviewRoute } from '../../packages/core/src/inquiry-gateway.js';
 import AxeBuilder from '@axe-core/playwright';
@@ -17,7 +18,7 @@ import type { AddressInfo } from 'node:net';
 import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
-import { receiveWebsiteInquiry } from '../../packages/core/src/website-inquiries.js';
+import { stageWebsiteInquiry } from '../../packages/core/src/website-inquiry-deliveries.js';
 import { inquiryFormV1 } from '../../packages/core/src/inquiry-form.js';
 import {
   bootstrapAccess,
@@ -179,6 +180,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     registerImportRoutes(app, pool, config.tenantId);
     registerInquiryPreviewRoute(app);
     registerWebsiteInquiryRoutes(app, pool, config.tenantId);
+    registerWebsiteInboxRoutes(app, pool, config.tenantId);
     registerCalendarFeedRoutes(app, pool, config.tenantId, origin);
     const page = await context.newPage();
     const policyErrors: string[] = [];
@@ -1572,15 +1574,16 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     }
     // Synthetic local intake fixture; no public endpoint or real booking is used.
     const receivedAt = new Date('2030-10-26T10:00:00.000Z');
+    const websiteInquiryId = randomUUID();
     const owner = (await accessRepository(pool, config.tenantId).list()).find(
       (row) => row.email === 'synthetic@example.invalid',
     )!.userId!;
-    const websiteInquiry = await receiveWebsiteInquiry(
+    await stageWebsiteInquiry(
       pool,
       config.tenantId,
       owner,
       {
-        id: randomUUID(),
+        id: websiteInquiryId,
         receivedAt: receivedAt.toISOString(),
         expiresAt: new Date(receivedAt.getTime() + 86400000).toISOString(),
         submission: {
@@ -1602,8 +1605,76 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         privacyUrl: inquiryFormV1.privacyUrl,
       },
       receivedAt,
-      { newContactCountry: 'DE' },
     );
+    await page.goto(origin + '/?q=Fictional%20Website%20Browser#events');
+    const websiteInbox = page.locator('details.website-inbox');
+    await websiteInbox.locator('summary').first().focus();
+    await websiteInbox.locator('summary').first().press('Enter');
+    const inboxEntry = websiteInbox.locator('details.website-inquiry');
+    await expect(inboxEntry).toHaveCount(1);
+    await inboxEntry.locator('summary').focus();
+    await inboxEntry.locator('summary').press('Enter');
+    const country = inboxEntry.getByLabel(
+      'Land für einen neuen Kontakt (2-Buchstaben-Code)',
+    );
+    await expect(country).toHaveValue('');
+    await expect(inboxEntry.locator('dt')).toHaveCount(8);
+    if (mode === 'password') {
+      for (const [width, theme] of [
+        [1280, 'light'],
+        [1280, 'dark'],
+        [390, 'dark'],
+        [390, 'light'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width + 1);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await audit(`website-inbox-${width}-${theme}`);
+        await page.screenshot({
+          path: `tests/test-results/website-inbox-${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+    }
+    await inboxEntry.locator('summary').focus();
+    await inboxEntry.locator('summary').press('Space');
+    await expect(inboxEntry).not.toHaveAttribute('open', '');
+    await inboxEntry.locator('summary').press('Enter');
+    await expect(country).toBeVisible();
+    await inboxEntry
+      .getByRole('button', { name: 'Als Anfrage übernehmen' })
+      .click();
+    await expect(inboxEntry.getByRole('alert')).toContainText(
+      'Kontaktzuordnung bitte prüfen',
+    );
+    await country.fill('DE');
+    await inboxEntry
+      .getByRole('button', { name: 'Als Anfrage übernehmen' })
+      .click();
+    await expect(
+      websiteInbox.getByText('Keine offenen Website-Eingänge vorhanden.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: 'Eventakte öffnen: Fictional Website Browser',
+      }),
+    ).toBeVisible();
+    const websiteInquiry = (
+      await pool.query<{ eventId: string }>(
+        'SELECT event_id AS "eventId" FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, websiteInquiryId],
+      )
+    ).rows[0]!;
     await page.goto(
       origin +
         '/?q=Fictional%20Website%20Browser#event-' +

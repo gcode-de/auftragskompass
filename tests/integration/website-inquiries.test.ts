@@ -1,3 +1,4 @@
+import { registerWebsiteInboxRoutes } from '../../packages/core/src/website-inbox-routes.js';
 import {
   stageWebsiteInquiry,
   importStagedWebsiteInquiry,
@@ -1024,4 +1025,190 @@ test('staged processing isolates foreign tenants and checks stored payload and t
     );
   }
   expect((await counts()).events).toBe(0);
+});
+
+test('website inbox API paginates pending originals and requires CSRF for an explicit non-booking import', async () => {
+  const value = entry();
+  for (let i = 0; i < 26; i++)
+    await stageWebsiteInquiry(
+      pool,
+      tenantId,
+      actorId,
+      { ...value, id: i === 0 ? value.id : randomUUID() },
+      now,
+    );
+  const token = randomUUID();
+  await accessRepository(pool, tenantId).issueSession(
+    { subject: 'fictional', email: 'fictional.owner@example.invalid' },
+    digest(token),
+  );
+  const app = Fastify();
+  await registerAuth(app, pool, {
+    mode: 'password',
+    tenantId,
+    origin: 'https://fictional.example.invalid',
+  });
+  registerWebsiteInboxRoutes(app, pool, tenantId);
+  const headers = {
+    cookie: '__Host-ak-session=' + token,
+    origin: 'https://fictional.example.invalid',
+    'x-csrf-token': digest('csrf:' + token),
+  };
+  try {
+    expect(
+      (await app.inject({ url: '/api/v1/website-inquiries' })).statusCode,
+    ).toBe(401);
+    const response = await app.inject({
+      url: '/api/v1/website-inquiries',
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    const body = response.json();
+    expect(body.total).toBe(26);
+    expect(body.limit).toBe(25);
+    expect(body.items).toHaveLength(25);
+    expect(body.items[0].original.fields).toHaveLength(8);
+    expect(response.body).not.toContain('payloadHash');
+    expect(response.body).not.toContain(tenantId);
+    const second = await app.inject({
+      url: '/api/v1/website-inquiries?offset=25',
+      headers,
+    });
+    expect(second.json().items).toHaveLength(1);
+    expect(
+      new Set([...body.items, ...second.json().items].map((row) => row.id))
+        .size,
+    ).toBe(26);
+    const url = '/api/v1/website-inquiries/' + value.id + '/import';
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers: { cookie: headers.cookie, origin: headers.origin },
+          payload: { newContactCountry: 'DE' },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (await app.inject({ method: 'POST', url, headers, payload: {} })).json(),
+    ).toEqual({ error: 'contact_review' });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers,
+          payload: { newContactCountry: 'DE', unknown: 'fictional' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const imported = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { newContactCountry: 'DE' },
+    });
+    expect(imported.statusCode).toBe(200);
+    expect(imported.json().status).toBe('created');
+    expect(
+      (await app.inject({ method: 'POST', url, headers, payload: {} })).json(),
+    ).toEqual({ ...imported.json(), status: 'duplicate' });
+    expect(
+      (await app.inject({ url: '/api/v1/website-inquiries', headers })).json()
+        .total,
+    ).toBe(25);
+    expect((await counts()).reservations).toBe(0);
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/website-inquiries?offset=-1',
+          headers,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/website-inquiries/' + randomUUID() + '/import',
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test('website inbox routes fail closed without guards or valid own permissions and hide damaged storage', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  const url = '/api/v1/website-inquiries',
+    action = url + '/' + value.id + '/import',
+    bare = Fastify();
+  registerWebsiteInboxRoutes(bare, pool, tenantId);
+  try {
+    expect((await bare.inject({ url })).statusCode).toBe(401);
+    expect(
+      (await bare.inject({ method: 'POST', url: action, payload: {} }))
+        .statusCode,
+    ).toBe(401);
+  } finally {
+    await bare.close();
+  }
+  let actor: string = randomUUID();
+  const app = Fastify();
+  app.decorateRequest('authSession', null);
+  app.addHook('onRequest', async (request) => {
+    request.authSession = { userId: actor, email: 'fictional@example.invalid' };
+  });
+  registerWebsiteInboxRoutes(app, pool, tenantId);
+  try {
+    expect((await app.inject({ url })).statusCode).toBe(403);
+    expect(
+      (await app.inject({ method: 'POST', url: action, payload: {} }))
+        .statusCode,
+    ).toBe(403);
+    actor = actorId;
+    expect((await app.inject({ url: url + '?offset=100' })).json().offset).toBe(
+      0,
+    );
+    await pool.query(
+      "UPDATE website_inquiry_deliveries SET payload=jsonb_set(payload,'{id}',to_jsonb($2::text)),payload_hash=encode(sha256(convert_to(jsonb_set(payload,'{id}',to_jsonb($2::text))::text,'UTF8')),'hex') WHERE tenant_id=$1",
+      [tenantId, randomUUID()],
+    );
+    expect((await app.inject({ url })).json()).toEqual({
+      error: 'unavailable',
+    });
+    expect(
+      (await app.inject({ method: 'POST', url: action, payload: {} }))
+        .statusCode,
+    ).toBe(400);
+  } finally {
+    await app.close();
+  }
+  const broken = new Pool({ connectionString: container.getConnectionUri() });
+  await broken.end();
+  const unavailable = Fastify();
+  unavailable.decorateRequest('authSession', null);
+  unavailable.addHook('onRequest', async (request) => {
+    request.authSession = {
+      userId: actorId,
+      email: 'fictional@example.invalid',
+    };
+  });
+  registerWebsiteInboxRoutes(unavailable, broken, tenantId);
+  try {
+    expect((await unavailable.inject({ url })).statusCode).toBe(503);
+    expect(
+      (
+        await unavailable.inject({ method: 'POST', url: action, payload: {} })
+      ).json(),
+    ).toEqual({ error: 'unavailable' });
+  } finally {
+    await unavailable.close();
+  }
 });

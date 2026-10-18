@@ -168,3 +168,36 @@ Eine spätere Wiederholung kann nach Klärung erneut ausgeführt werden. Paralle
 Verarbeitung und Wiederanlauf ergeben dasselbe Event mit demselben Kontakt.
 Die ursprüngliche Ablage bleibt erhalten; dieser Dienst quittiert nicht im
 Gateway und wird noch nicht automatisch oder per HTTP ausgelöst.
+
+## Sichtbare Prüfung und manuelle Übernahme (E004.13)
+
+Im bestehenden Eventbereich steht der zunächst geschlossene Bereich
+„Website-Eingänge prüfen“. Erst beim Öffnen lädt er offene lokale Eingänge.
+Jeder Eintrag lässt sich einzeln mit seinen acht Originalangaben und dem damaligen
+Datenschutzhinweis öffnen. Das Länderfeld bleibt leer: nur für einen neu
+anzulegenden Kontakt muss der Betreiber ausdrücklich einen zweistelligen Code
+angeben. Eine bewusste Übernahme erzeugt ausschließlich eine unverbindliche
+Anfrage. Vorhandene Kontakte werden nicht überschrieben und Ressourcen nicht
+reserviert. Nicht auflösbare Zuordnungen bleiben unverändert gespeichert und
+können nach Prüfung erneut versucht werden. Erfolg wird erst nach bestätigter
+Antwort angezeigt; ein anschließender Listenfehler behauptet keinen Rollback.
+
+- `GET /api/v1/website-inquiries?offset=0` liefert ausschließlich im eigenen
+  Mandanten noch nicht fachlich übernommene Originale, insgesamt gezählt und mit
+  je 25 Einträgen nach lokalem Eingang/ID sortiert. Ein durch parallele Bearbeitung
+  zu großer Offset wird auf die letzte vorhandene Seite begrenzt. `no-store`,
+  aktuelle Betreiberberechtigung und strikte Queryprüfung sind verpflichtend.
+- `POST /api/v1/website-inquiries/:id/import` erwartet ein JSON-Objekt mit optionalem
+  `newContactCountry` (zwei Großbuchstaben). Die echte API verlangt Sitzung,
+  korrekten Origin und CSRF. Zusätzliche Felder werden abgewiesen. Gleiche
+  Wiederholung liefert dieselbe Event-/Kontaktzuordnung; ein Zuordnungskonflikt
+  bleibt als `contact_review` sichtbar. Unbekannte IDs liefern 404 und
+  Speicherfehler eine neutrale 503-Antwort.
+
+Die Darstellung übernimmt die vorhandenen nativen Disclosure-, Formular- und
+Definitionlistenmuster. Ein älterer Listenabruf darf einen bereits übernommenen
+Eintrag nach neuerem Abruf nicht wieder einblenden. Browserprüfungen umfassen
+leeres Land, korrigierbaren Fehler, echte API-Übernahme, aktualisierte Eventliste
+und Originalangaben in der Eventakte. Hell/Dunkel werden bei 1280 und 390 Pixeln
+mit synthetischen Daten und axe geprüft. Die Website selbst ist weiterhin nicht
+an diesen lokalen Prüfbereich angeschlossen.

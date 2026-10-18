@@ -1,3 +1,4 @@
+import { WebsiteInbox } from './WebsiteInbox.js';
 import { EventDetails } from './EventDetails.js';
 import {
   useUrlSearch,
@@ -247,6 +248,11 @@ export function EventPanel({
             Events aktualisieren
           </button>
         </div>
+        <WebsiteInbox
+          csrfToken={csrfToken}
+          timeZone={timeZone || 'Europe/Berlin'}
+          onImported={refresh}
+        />
         <details
           className="event-filters"
           open={Object.keys(emptyEventFilters).some((key) => filters.get(key))}

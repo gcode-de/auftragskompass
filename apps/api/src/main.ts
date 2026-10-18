@@ -21,6 +21,7 @@ import {
   registerCalendarFeedRoutes,
   registerInquiryPreviewRoute,
   registerWebsiteInquiryRoutes,
+  registerWebsiteInboxRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -88,6 +89,7 @@ try {
   if (auth) {
     registerInquiryPreviewRoute(app);
     registerWebsiteInquiryRoutes(app, pool, auth.tenantId);
+    registerWebsiteInboxRoutes(app, pool, auth.tenantId);
     registerAccessRoutes(app, pool, auth.tenantId, auth.mode ?? 'google');
     registerAuditRoutes(app, pool, auth.tenantId);
     registerMasterDataRoutes(app, pool, auth.tenantId);

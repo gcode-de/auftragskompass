@@ -790,16 +790,19 @@ summary {
   font-size: 1rem;
   margin-block: 1.33em;
 }
-.event-record dl {
+.event-record dl,
+.website-inbox dl {
   display: grid;
   grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
   gap: 0.75rem 1rem;
   margin-block: 1.5rem;
 }
-.event-record dt {
+.event-record dt,
+.website-inbox dt {
   color: var(--muted);
 }
-.event-record dd {
+.event-record dd,
+.website-inbox dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -848,11 +851,13 @@ summary {
   .app-shell:has(.event-record) {
     padding-bottom: calc(6rem + env(safe-area-inset-bottom));
   }
-  .event-record dl {
+  .event-record dl,
+  .website-inbox dl {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.25rem;
   }
-  .event-record dd {
+  .event-record dd,
+  .website-inbox dd {
     margin-bottom: 0.75rem;
   }
 }
@@ -950,4 +955,22 @@ summary {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
+}
+
+.website-inbox > ul {
+  list-style: none;
+  padding: 0;
+}
+.website-inbox > ul > li {
+  border-top: 1px solid var(--border);
+  padding-block: 0.75rem;
+}
+.website-inbox p {
+  max-width: 70ch;
+}
+.website-inbox input {
+  max-width: 7rem;
+}
+.website-inbox summary {
+  overflow-wrap: anywhere;
 }
