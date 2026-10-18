@@ -107,6 +107,20 @@ test(
       const adminAddress = (
         await compose(project, ['port', 'admin', '8080'])
       ).trim();
+      for (const [path, mime] of [
+        ['/inquiry-widget/inquiry-widget.js', 'javascript'],
+        ['/inquiry-widget/inquiry-widget.css', 'text/css'],
+      ]) {
+        const asset = await fetch(`http://${adminAddress}${path}`);
+        assert.equal(asset.status, 200);
+        assert.equal(asset.headers.get('access-control-allow-origin'), '*');
+        assert.equal(
+          asset.headers.get('access-control-allow-credentials'),
+          null,
+        );
+        assert.ok(asset.headers.get('content-type')?.includes(mime));
+        assert.ok((await asset.text()).length > 100);
+      }
       for (const path of [
         '/',
         '/api/v1/contacts',
@@ -114,6 +128,7 @@ test(
         '/missing-route',
       ]) {
         const response = await fetch(`http://${adminAddress}${path}`);
+        assert.equal(response.headers.get('access-control-allow-origin'), null);
         assert.equal(response.headers.get('x-frame-options'), 'DENY');
         assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
         assert.equal(response.headers.get('x-content-type-options'), 'nosniff');

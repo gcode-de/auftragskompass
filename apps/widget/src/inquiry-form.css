@@ -1,0 +1,190 @@
+:host {
+  color-scheme: light dark;
+  --ak-surface: light-dark(#fff, #202824);
+  --ak-ink: light-dark(#202d29, #e4ede7);
+  --ak-muted: light-dark(#596b64, #afc2b6);
+  --ak-accent: light-dark(#176b52, #91d3b4);
+  --ak-action-ink: light-dark(#fff, #11291e);
+  --ak-action-hover: light-dark(#0b5144, #b2e5cb);
+  --ak-field: light-dark(#fafcfd, #1b241f);
+  --ak-border: light-dark(#9facbb, #738a7b);
+  --ak-focus: light-dark(#137a69, #a4e4c1);
+  --ak-alert: light-dark(#fff0ed, #482a28);
+  --ak-alert-ink: light-dark(#a62c22, #f3b2a8);
+  --ak-selection: light-dark(#c6e7d8, #315d46);
+  display: block;
+  color: var(--ak-ink);
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.ak-inquiry {
+  box-sizing: border-box;
+  max-inline-size: 52rem;
+  margin-inline: auto;
+  padding: 1.5rem;
+  background: var(--ak-surface);
+  overflow-wrap: anywhere;
+}
+.ak-inquiry * {
+  box-sizing: border-box;
+}
+.ak-inquiry ::selection {
+  background: var(--ak-selection);
+  color: var(--ak-ink);
+}
+.ak-inquiry fieldset {
+  min-inline-size: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.ak-inquiry legend {
+  font-size: 1.25rem;
+  font-weight: 650;
+  line-height: 1.35;
+  padding: 0;
+  margin-block-end: 0.5rem;
+  max-inline-size: 100%;
+}
+.ak-hint {
+  color: var(--ak-muted);
+  margin-block: 0.5rem 1.5rem;
+}
+.ak-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 1.5rem;
+}
+.ak-field {
+  min-inline-size: 0;
+}
+.ak-wide {
+  grid-column: 1/-1;
+}
+.ak-inquiry label {
+  display: block;
+  margin-block-end: 0.4rem;
+}
+.ak-inquiry input,
+.ak-inquiry select,
+.ak-inquiry textarea {
+  font: inherit;
+  inline-size: 100%;
+  min-block-size: 44px;
+  border: 1px solid var(--ak-border);
+  border-radius: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  color: var(--ak-ink);
+  background: var(--ak-field);
+  caret-color: var(--ak-accent);
+  accent-color: var(--ak-accent);
+  scrollbar-color: var(--ak-border) var(--ak-field);
+}
+.ak-inquiry textarea {
+  resize: vertical;
+  min-block-size: 7rem;
+}
+.ak-inquiry input:disabled,
+.ak-inquiry textarea:disabled,
+.ak-inquiry select:disabled {
+  opacity: 1;
+  -webkit-text-fill-color: var(--ak-ink);
+}
+.ak-privacy {
+  color: var(--ak-muted);
+  margin-block: 1.5rem;
+  max-inline-size: 70ch;
+}
+.ak-inquiry a {
+  color: var(--ak-accent);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 0.08em;
+}
+.ak-inquiry :focus-visible,
+.ak-inquiry [tabindex='-1']:focus {
+  outline: 3px solid var(--ak-focus);
+  outline-offset: 3px;
+}
+.ak-inquiry button {
+  font: inherit;
+  font-weight: 600;
+  min-block-size: 44px;
+  padding: 0.7rem 1.25rem;
+  background: var(--ak-accent);
+  color: var(--ak-action-ink);
+  border: 0;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+.ak-inquiry button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ak-inquiry button:hover:not(:disabled) {
+    background: var(--ak-action-hover);
+  }
+}
+.ak-inquiry button:active:not(:disabled) {
+  background: var(--ak-action-hover);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ak-inquiry button {
+    transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .ak-inquiry button:active:not(:focus-visible):not(:disabled) {
+    transform: scale(0.98);
+  }
+}
+.ak-error,
+.ak-feedback {
+  margin-block: 1rem;
+  padding: 1rem;
+  background: var(--ak-alert);
+  color: var(--ak-alert-ink);
+}
+.ak-feedback {
+  background: var(--ak-field);
+  color: var(--ak-ink);
+}
+.ak-error:empty,
+.ak-progress:empty {
+  display: none;
+}
+.ak-progress {
+  color: var(--ak-muted);
+  max-inline-size: 70ch;
+}
+.ak-website {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .ak-inquiry {
+    padding: 1rem;
+  }
+  .ak-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .ak-inquiry legend {
+    font-size: 1.125rem;
+  }
+  .ak-inquiry button {
+    inline-size: 100%;
+  }
+}
+.ak-package-choice {
+  margin-block: 0.4rem 0;
+  color: var(--ak-muted);
+}

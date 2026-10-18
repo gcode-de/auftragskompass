@@ -144,6 +144,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.17: browsergeeignete gemeinsame Formulardefinition und öffentlichen Sendeclient bereitstellen. Abnahme: unverändert acht Felder ohne Servermodule im Browser-Bundle, feste HTTPS-Route ohne Cookies/Redirects, begrenzte neutrale Antworten und unveränderliche Einsendung mit gleicher ID bei Wiederholung/Parallelität; keine Website-Umschaltung oder echte Einsendung.
 
+- [x] E004.18: die acht bisherigen Anfragefelder als mobil bedienbares, isoliert einbettbares React-Formular umsetzen. Abnahme: Pflichtangaben/Datenschutz unverändert, native Prüfung, eindeutige Lade-/Fehler-/Erfolgszustände, gesperrter unveränderlicher Retry bei unklarem Eingang, externe isolierte CSS-Datei, Tastatur/Hell/Dunkel und echte Chromium-Gateway-Einsendung mit synthetischen Daten; keine echte Website-Umschaltung.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

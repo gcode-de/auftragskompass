@@ -315,3 +315,79 @@ maßgebliche serverseitige Prüfung. Ein unklarer Sendeversuch muss in der Oberf
 unverändert erneut versucht werden, statt nach Bearbeitung eine neue ID zu erzeugen.
 Die bedienbare Einbettung und Browserabnahme folgen getrennt; keine echte Anfrage
 wurde versandt und die bestehende Website bleibt unverändert.
+
+## Einbettbare Formular-Komponente (E004.18)
+
+`mountInquiryForm(element, { gatewayOrigin })` rendert genau die bisherigen acht
+Felder in einem offenen Shadow DOM. Externe Website-Regeln verändern die Eingaben
+nicht; ein vom Modulstandort aufgelöstes externes Stylesheet wird vor dem Formular
+abgewartet. Es braucht keine Inline-Styles. Ladenfehler erhalten eine neutrale
+zugängliche Meldung. Der Rückgabewert bietet `unmount()`; ein belegter fremder
+Shadow-Bereich wird nicht überschrieben. `InquiryForm` ist zusätzlich als
+React-Komponente exportiert; die Stylesheet-Regeln erwarten ihre isolierte Einbettung.
+
+Native Pflichtfeld-/E-Mail-/Datumsprüfung, ursprüngliche Paketwerte und der vorhandene
+Datenschutzhinweis bleiben bestehen. Ein unsichtbares Honeypot-Feld ist keine weitere
+Kundenangabe. Der Datepicker folgt der Browsersprache. Lange ausgewählte Pakettexte
+werden zusätzlich umbrechend lesbar. Während des Sendens sind Kontrollen gesperrt;
+bei unklarem Ergebnis bleiben Texte schreibgeschützt kopierbar und derselbe Versuch
+wird erneut gesendet. Nur eine ausdrückliche Serverablehnung gibt die Angaben zur
+Korrektur frei. Die Bestätigung nennt keine persönlichen Daten und verspricht keine
+Buchung. Fehler beziehungsweise Erfolg erhalten Fokus; nach einer Wiederholung
+gehen keine Eingaben in eine neue ID über. Eingaben bleiben nur im Arbeitsspeicher
+dieser Seite; Neuladen beginnt einen neuen Versuch.
+
+Das Admin-Image enthält die beiden öffentlichen statischen Dateien unter
+`/inquiry-widget/inquiry-widget.js` und `/inquiry-widget/inquiry-widget.css`.
+Nur diese zwei statischen Dateien erlauben fremden Origins lesenden Zugriff ohne
+Credentials; private App-Routen erhalten keine solche CORS-Freigabe. Der isolierte
+Container-Probelauf prüft MIME-Typen, die begrenzte CORS-Freigabe und bestehende
+Sicherheitsheader. Diese Dateien enthalten
+keinen Mandantenschlüssel, private API-URL oder Zugangsdaten. Beispiel für eine
+**später zu konfigurierende** Einbettung, nicht auf der echten Website installiert:
+
+```html
+<div id="fotobox-anfrage"></div>
+<script type="module">
+  import { mountInquiryForm } from '/inquiry-widget/inquiry-widget.js';
+  mountInquiryForm(document.getElementById('fotobox-anfrage'), {
+    gatewayOrigin: 'https://gateway.example.invalid',
+  });
+</script>
+```
+
+Für WordPress müssen Script-/Stylesheet-Hosting, dessen CSP und der tatsächlich
+betriebene öffentliche Gateway samt erlaubtem Website-Origin zusammenpassen.
+`gateway.example.invalid` ist absichtlich kein erreichbares Ziel. Der lokale
+Core wird nicht als öffentliche Formular-API verwendet. Ein automatischer lokaler
+Abhol-/Quittierungslauf ist weiterhin separat einzurichten. Die echte Website
+bleibt unverändert; es wurden ausschließlich synthetische Einsendungen geprüft.
+
+Chromium prüft native Pflichtangaben, alle acht übermittelten Werte, echten
+verschlüsselten Gateway-Eingang, verlorenen Empfangsbeleg ohne Dublette,
+Tastatur/Fokus, unveränderten Retry und leeren Browserstorage. Hell/Dunkel bei
+390/768/1440 Pixeln sowie Fehler/Erfolg sind mit axe und Screenshot abgenommen.
+Die Gestaltung erweitert die bestehende Formularvorschau mit deren Systemschrift
+und Farbrollen. Formulare bearbeiten und mehrere Formulartypen bleiben spätere
+Ausbauschritte. Physische iOS-/Android-Geräte sind damit noch nicht geprüft.
+
+Design-/Review-Nachweis: Die endgültige Widget-CSS wurde mit
+`apps/admin/src/styles.css`, `apps/admin/DESIGN.md` und dessen
+`.impeccable/design.json` verglichen. Hell-/Dunkel-Farbpaare für Flächen, Text,
+Aktionen, Felder, Fokus und Fehler sowie Systemschrift, Kontrollradius,
+Mindesthöhe und Druckimpuls übernehmen die bestehende Sprache. Das eigene
+52rem-Formular, die Legende und der Wechsel auf eine Spalte bis 600px sind lokale
+Komponentenvarianten. Die beiden bestehenden Design-Systemdateien bleiben
+unverändert; daraus entstehen keine neuen globalen Regeln.
+
+Der unabhängige Finish-Review lautet `ship` für den vorliegenden Komponenten- und
+Captureumfang, ohne materielle Korrekturen. Acht vorhandene axe-Prüfungen meldeten
+keine Befunde; vier Chromium-Abläufe einschließlich synthetischer Einsendung am
+öffentlichen Test-Gateway waren grün. Der Impeccable-Detector lieferte beim
+endgültigen UI-Quellstand `[]`, das Taste-Quelllint 0 FAIL/0 WARN. Der zusätzliche
+Taste-Browserinspektor erfasste nur die private Vorschauhülle außerhalb des
+Shadow DOM; seine Auswertung belegt deshalb keine automatische Prüfung der
+Formularkomponente. Die Komponenten-Captures wurden separat visuell geprüft.
+Physische Geräte und eine echte WordPress-Anbindung bleiben offen. Der
+Impeccable-Launcher war nicht direkt ausführbar; der Kontext wurde direkt gelesen,
+die Documenter-Rolle durch einen generischen Ersatzagenten übernommen.

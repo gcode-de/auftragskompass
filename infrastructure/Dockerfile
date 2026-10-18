@@ -15,3 +15,5 @@ CMD ["node", "apps/api/dist/main.js"]
 FROM nginxinc/nginx-unprivileged:1.28-alpine AS admin
 COPY infrastructure/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/admin/dist /usr/share/nginx/html
+
+COPY --from=build /app/apps/widget/dist /usr/share/nginx/html/inquiry-widget

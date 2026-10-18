@@ -7,7 +7,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command:
-      'pnpm --filter @auftragskompass/admin build && pnpm --filter @auftragskompass/admin preview --host 127.0.0.1 --port 14873 --strictPort',
+      'pnpm --filter @auftragskompass/widget build && pnpm --filter @auftragskompass/admin build && pnpm --filter @auftragskompass/admin preview --host 127.0.0.1 --port 14873 --strictPort',
     url: 'http://127.0.0.1:14873',
     reuseExistingServer: false,
   },
