@@ -84,7 +84,7 @@ per Regel-Ausnahme unterdrückt und bleiben im JSON-Bericht sichtbar.
 
 ## Ergebnis der automatischen Probe
 
-Der letzte vollständige lokale Lauf enthält **60 Prüfungen über 27 Zustandsnamen**
+Der vollständige lokale Lauf zu E005.16 enthält **60 Prüfungen über 27 Zustandsnamen**
 mit beiden Anmeldeverfahren und null automatischen Verstößen. Die JSON-Belege liegen
 als synthetische Testartefakte unter `tests/test-results`, nicht als echte
 Kundendaten in Git. Die beiden Komponententests für Überschriftenebene und
@@ -125,3 +125,16 @@ Die beiden aktuellen Aufnahmen wurden visuell geprüft; die vorhandene
 `overflow-y: auto`-Regel funktioniert bereits. Es war keine Änderung der
 Oberfläche oder des Designsystems erforderlich. Normale Desktopbreite und
 mobiles Menü bleiben im vollständigen Browserablauf enthalten.
+
+## Import-Fehlerhinweise (E003.5)
+
+Vier zusätzliche Axe-Prüfungen und aktuelle Aufnahmen prüfen einen ungültigen
+synthetischen Kontakt in der Importvorschau bei 390/1280 CSS-Pixeln, jeweils
+hell/dunkel. Der bekannte Feldname ergänzt die vorhandene Fehlerzeile; Eingaben,
+Navigation und bestehende Meldungsdarstellung bleiben erhalten. Unbekannte
+Eigenschaftsnamen werden auch clientseitig nicht als Feldbezeichnung ausgegeben.
+
+Die unabhängige Abschlussprüfung bewertet diese kleine Erweiterung mit `ship`.
+Sie nutzte einen frischen allgemeinen Reviewer mit dem Impeccable-Ersatzrubrik
+statt einer direkt auswählbaren Spezialrolle. Alle vier Aufnahmen wurden geprüft;
+die Bewertung gilt für diese Feldhinweise, nicht als pauschale Freigabe der App.

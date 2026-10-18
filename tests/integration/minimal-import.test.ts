@@ -162,9 +162,28 @@ test('authenticated preview reads tenant timezone, leaves all business/audit tab
     { section: 'manifest', row: 0, code: 'invalid_format' },
   ]);
   expect(bad.body).not.toContain('fictional-secret-content');
+  const invalid = fictionalImport();
+  invalid.contacts[0]!.data.phone = 'fictional-private-phone';
+  const fieldError = await app.inject({
+    method: 'POST',
+    url,
+    cookies,
+    headers,
+    payload: invalid,
+  });
+  expect(fieldError.statusCode).toBe(200);
+  expect(fieldError.json().errors).toContainEqual({
+    section: 'contacts',
+    row: 1,
+    code: 'invalid_fields',
+    field: 'phone',
+  });
+  expect(fieldError.body).not.toContain('fictional-private-phone');
+  expect(await snapshot()).toEqual(before);
   const log = logs.join('');
   for (const value of [
     'fictional-secret-content',
+    'fictional-private-phone',
     'fictional@example.invalid',
     'Fictional Future Event',
     'fictional-import-session',

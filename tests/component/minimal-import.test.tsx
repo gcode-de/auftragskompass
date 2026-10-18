@@ -359,3 +359,32 @@ test.each(['missing', 'unavailable'])(
     ).toBe(true);
   },
 );
+
+test('preview labels safe field hints and never displays unknown field names', async () => {
+  stubPreview(async () =>
+    Response.json({
+      ...report,
+      errors: [
+        { section: 'contacts', row: 2, code: 'invalid_fields', field: 'phone' },
+        {
+          section: 'locations',
+          row: 3,
+          code: 'invalid_fields',
+          field: 'country',
+        },
+        {
+          section: 'contacts',
+          row: 4,
+          code: 'invalid_fields',
+          field: 'constructor',
+        },
+      ],
+    }),
+  );
+  render(<ImportPanel csrfToken="fictional-csrf" />);
+  submit();
+  await screen.findByText(/Kontakte · Zeile 2 · Telefonnummer:/);
+  expect(screen.getByText(/Locations · Zeile 3 · Ländercode:/)).toBeTruthy();
+  expect(screen.getByText(/Kontakte · Zeile 4: Felder/)).toBeTruthy();
+  expect(screen.queryByText(/function Object/)).toBeNull();
+});

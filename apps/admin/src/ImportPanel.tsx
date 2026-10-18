@@ -1,6 +1,33 @@
 import { ImportOverview, sectionLabels as sections } from './ImportOverview.js';
 import { useState } from 'react';
-type Issue = { section: string; row: number; code: string };
+type Issue = { section: string; row: number; code: string; field?: string };
+const fieldLabels: Record<string, string> = {
+  externalId: 'Quell-ID',
+  name: 'Name',
+  kind: 'Kontakttyp',
+  contactPerson: 'Ansprechpartner',
+  street: 'Straße',
+  postalCode: 'Postleitzahl',
+  city: 'Ort',
+  country: 'Ländercode',
+  email: 'E-Mail-Adresse',
+  phone: 'Telefonnummer',
+  mobile: 'Mobilnummer',
+  state: 'Aktiv-/Archivstatus',
+  position: 'Sortierung',
+  status: 'Eventstatus',
+  eventTypeId: 'Eventart',
+  packageId: 'Paket',
+  locationId: 'Location',
+  primaryContactId: 'Hauptkontakt',
+  additionalContactIds: 'Weitere Kontakte',
+  source: 'Anfragequelle',
+  eventDate: 'Eventdatum',
+  startsAt: 'Beginn',
+  endsAt: 'Ende',
+  description: 'Beschreibung',
+  notesHtml: 'Notizen',
+};
 type Preview = {
   valid: boolean;
   checkedAt: string;
@@ -442,8 +469,11 @@ export function ImportPanel({
                 <ul>
                   {issues.map((issue, i) => (
                     <li key={i}>
-                      {sections[issue.section]} · Zeile {issue.row}:{' '}
-                      {codes[issue.code] ?? issue.code}
+                      {sections[issue.section]} · Zeile {issue.row}
+                      {issue.field && Object.hasOwn(fieldLabels, issue.field)
+                        ? ' · ' + fieldLabels[issue.field]
+                        : ''}
+                      : {codes[issue.code] ?? issue.code}
                     </li>
                   ))}
                 </ul>

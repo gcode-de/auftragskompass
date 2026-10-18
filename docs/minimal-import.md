@@ -340,3 +340,22 @@ ungeprüfte Zusage, Kalenderhinweis und den heruntergeladenen privaten Bericht.
 Integrationstests prüfen zusätzlich Quell-/Zielversionen, Mandantenisolation und
 die Buchungssperre. Das ersetzt weder den Abgleich des echten Exports noch die
 fachliche Freigabe von Boxen und Zubehör.
+
+## Sichere Feldhinweise der Vorschau (E003.5)
+
+Bei `invalid_fields` kann ein Fehler zusätzlich das optionale `field` enthalten.
+Es benennt das erste betroffene bekannte Schemafeld der jeweiligen Zeile oder
+`externalId`. Fehlende Pflichtfelder werden ebenfalls zugeordnet. Der Hinweis
+wird unmittelbar nach der einzelnen Validierung ermittelt, sodass spätere Zeilen
+keine Fehlerzuordnung überschreiben. Alte Antworten ohne Feld bleiben nutzbar.
+
+Es werden ausschließlich Feldnamen aus dem kontrollierten Importschema
+zurückgegeben. Unbekannte Zusatzfelder, deren Namen persönliche Daten enthalten
+könnten, werden nicht übernommen; Feldwerte und rohe Validator-Meldungen bleiben
+weiterhin privat. Die API-Ausgabe begrenzt `field` zusätzlich per Enum.
+Die Oberfläche zeigt nur eigene deutsche Feldbezeichnungen und verwendet bei
+unbekannten oder fehlenden Hinweisen die bisherige allgemeine Meldung.
+
+Das ist ein Korrekturhinweis für den normalisierten Quelldatensatz, keine
+automatische Reparatur oder Freigabe. Nach einer Korrektur erneut vorschauen;
+Referenzfehler können durch einen ungültigen übergeordneten Datensatz entstehen.

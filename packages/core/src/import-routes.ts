@@ -6,7 +6,11 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import { tenants } from './schema.js';
 import { AccessError, requireAdministrator } from './access.js';
-import { importSections, previewImport } from './minimal-import.js';
+import {
+  importSections,
+  importFieldNames,
+  previewImport,
+} from './minimal-import.js';
 const integer = { type: 'integer', minimum: 0 };
 const issue = {
   type: 'object',
@@ -16,6 +20,7 @@ const issue = {
     section: { type: 'string', enum: ['manifest', ...importSections] },
     row: integer,
     code: { type: 'string' },
+    field: { type: 'string', enum: importFieldNames },
   },
 };
 const count = {

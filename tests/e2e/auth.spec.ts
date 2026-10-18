@@ -342,6 +342,45 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     const importPreview = page.getByRole('region', {
       name: 'Bookitup-Importvorschau',
     });
+    const invalidImport = fictionalImport();
+    invalidImport.contacts[0]!.data.phone = 'Fictional invalid phone';
+    await importPreview
+      .getByLabel('Normalisierte Importdaten')
+      .fill(JSON.stringify(invalidImport));
+    await importPreview
+      .getByRole('button', { name: 'Importvorschau prüfen' })
+      .click();
+    await expect(
+      importPreview.getByText(/Kontakte · Zeile 1 · Telefonnummer:/),
+    ).toBeVisible();
+    if (mode === 'password') {
+      for (const [width, theme] of [
+        [1280, 'light'],
+        [390, 'light'],
+        [390, 'dark'],
+        [1280, 'dark'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        await audit(`import-field-${width}-${theme}`);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width + 1);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path: `tests/test-results/import-field-${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+    }
     await importPreview
       .getByLabel('Normalisierte Importdaten')
       .fill(JSON.stringify(fictionalImport()));

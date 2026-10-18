@@ -36,7 +36,12 @@ export type ImportManifest = {
     }
   >[];
 };
-type Issue = { section: Section | 'manifest'; row: number; code: string };
+type Issue = {
+  section: Section | 'manifest';
+  row: number;
+  code: string;
+  field?: string;
+};
 export type ImportPreview = {
   valid: boolean;
   checkedAt: string;
@@ -55,10 +60,19 @@ export type ImportPreview = {
     requiresResourceReview: boolean;
   }[];
 };
+type ValidationError = {
+  instancePath: string;
+  keyword: string;
+  params: Record<string, unknown>;
+};
+type ImportValidator = {
+  (input: unknown): unknown;
+  errors?: ValidationError[] | null;
+};
 // Reuse Fastify's installed validator with mutation/coercion disabled for imports.
 export const compileImportSchema: (definition: {
   schema: object;
-}) => (input: unknown) => unknown = AjvCompiler()(
+}) => ImportValidator = AjvCompiler()(
   {},
   {
     customOptions: {
@@ -108,6 +122,24 @@ export const importManifestSchema = {
     ),
   },
 };
+export const importFieldNames = [
+  ...new Set([
+    'externalId',
+    ...Object.values(fields).flatMap((section) => Object.keys(section)),
+  ]),
+];
+function invalidField(section: Section, error?: ValidationError) {
+  const path = error?.instancePath ?? '';
+  if (path === '/externalId') return 'externalId';
+  const field = path.startsWith('/data/')
+    ? path.split('/')[2]
+    : path === '/data' && error?.keyword === 'required'
+      ? error.params.missingProperty
+      : undefined;
+  return typeof field === 'string' && Object.hasOwn(fields[section], field)
+    ? field
+    : undefined;
+}
 const validManifest = compileImportSchema({ schema: importManifestSchema });
 const validators = Object.fromEntries(
   importSections.map((section) => [
@@ -169,19 +201,31 @@ export function previewImport(
       counts = result.counts[section];
     counts.total = entries.length;
     const ids = new Map<string, number>();
-    const valid = entries.map((entry) => Boolean(validators[section]!(entry)));
+    const validation = entries.map((entry) => {
+      const check = validators[section]!;
+      const valid = Boolean(check(entry));
+      return {
+        valid,
+        field: valid ? undefined : invalidField(section, check.errors?.[0]),
+      };
+    });
     entries.forEach((entry, i) => {
-      if (valid[i])
+      if (validation[i]!.valid)
         ids.set(entry.externalId, (ids.get(entry.externalId) ?? 0) + 1);
     });
     entries.forEach((entry, i) => {
-      const code = !valid[i]
+      const code = !validation[i]!.valid
         ? 'invalid_fields'
         : ids.get(entry.externalId)! > 1
           ? 'duplicate_external_id'
           : null;
       if (code) {
-        result.errors.push({ section, row: i + 1, code });
+        result.errors.push({
+          section,
+          row: i + 1,
+          code,
+          ...(validation[i]!.field ? { field: validation[i]!.field } : {}),
+        });
         counts.invalid++;
       } else {
         validRows[section].set(

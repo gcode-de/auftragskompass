@@ -185,5 +185,49 @@ test.each([
     section: 'contacts',
     row: 1,
     code: 'invalid_fields',
+    field: Object.keys(change)[0],
   });
+});
+
+test('invalid fields identify only schema-owned names and keep each row separate', () => {
+  const input = fictionalImport();
+  const base = input.contacts[0]!;
+  const missing = structuredClone(base) as {
+    externalId: string;
+    data: Record<string, unknown>;
+  };
+  delete missing.data.country;
+  const result = preview({
+    ...input,
+    contacts: [
+      { ...base, data: { ...base.data, name: '' } },
+      { ...base, data: { ...base.data, phone: 'fictional-private-phone' } },
+      missing,
+      { ...base, externalId: '' },
+      {
+        ...base,
+        data: {
+          ...base.data,
+          'fictional.private@example.invalid': 'fictional-private-value',
+        },
+      },
+      { ...base, externalId: 'fictional-last-valid-contact' },
+    ],
+  });
+  expect(result.errors.filter((e) => e.section === 'contacts')).toEqual([
+    { section: 'contacts', row: 1, code: 'invalid_fields', field: 'name' },
+    { section: 'contacts', row: 2, code: 'invalid_fields', field: 'phone' },
+    { section: 'contacts', row: 3, code: 'invalid_fields', field: 'country' },
+    {
+      section: 'contacts',
+      row: 4,
+      code: 'invalid_fields',
+      field: 'externalId',
+    },
+    { section: 'contacts', row: 5, code: 'invalid_fields' },
+  ]);
+  expect(JSON.stringify(result)).not.toContain('fictional-private');
+  expect(JSON.stringify(result)).not.toContain(
+    'fictional.private@example.invalid',
+  );
 });
