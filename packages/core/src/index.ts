@@ -24,3 +24,10 @@ export { registerImportRoutes } from './import-routes.js';
 export { bootstrapPassword, passwordAccess } from './password-access.js';
 
 export { registerCalendarFeedRoutes } from './calendar-feeds.js';
+
+export {
+  inquiryFormV1,
+  inquirySubmissionSchema,
+  isInquirySubmission,
+  type InquirySubmission,
+} from './inquiry-form.js';
