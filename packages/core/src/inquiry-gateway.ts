@@ -1,4 +1,8 @@
-import Fastify, { LogController, type FastifyError } from 'fastify';
+import Fastify, {
+  LogController,
+  type FastifyError,
+  type FastifyInstance,
+} from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
@@ -536,4 +540,16 @@ export async function createInquiryGateway(options: Options) {
     },
   );
   return app;
+}
+
+// Registered only after the administrative API's session guard. Never accepts input.
+export function registerInquiryPreviewRoute(app: FastifyInstance) {
+  app.get(
+    '/api/v1/website-inquiries/form-definition',
+    {
+      schema: { response: { 200: definitionSchema } },
+    },
+    async (_request, reply) =>
+      reply.header('cache-control', 'no-store').send(inquiryFormV1),
+  );
 }

@@ -19,6 +19,7 @@ import {
   registerEventRoutes,
   registerImportRoutes,
   registerCalendarFeedRoutes,
+  registerInquiryPreviewRoute,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -84,6 +85,7 @@ try {
     auth && auth.mode !== 'password' ? await googleProvider(auth) : undefined,
   );
   if (auth) {
+    registerInquiryPreviewRoute(app);
     registerAccessRoutes(app, pool, auth.tenantId, auth.mode ?? 'google');
     registerAuditRoutes(app, pool, auth.tenantId);
     registerMasterDataRoutes(app, pool, auth.tenantId);

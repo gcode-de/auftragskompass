@@ -54,4 +54,7 @@ export {
   type InquiryInboxConfig,
 } from './inquiry-inbox.js';
 
-export { createInquiryGateway } from './inquiry-gateway.js';
+export {
+  createInquiryGateway,
+  registerInquiryPreviewRoute,
+} from './inquiry-gateway.js';

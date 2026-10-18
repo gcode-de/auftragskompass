@@ -1,3 +1,4 @@
+import { InquiryPreview } from './InquiryPreview.js';
 import { ExportPanel } from './ExportPanel.js';
 import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
 import { ImportPanel } from './ImportPanel.js';
@@ -25,6 +26,7 @@ export function AuthPanel() {
     'import',
     'security',
     'export',
+    'inquiry',
   ].includes(route);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState('Anmeldung wird geprüft …');
@@ -173,6 +175,7 @@ export function AuthPanel() {
                 onImported={() => setImportRevision((value) => value + 1)}
               />
             </div>
+            {route === 'inquiry' && <InquiryPreview />}
             <div hidden={route !== 'export'}>
               <ExportPanel />
             </div>

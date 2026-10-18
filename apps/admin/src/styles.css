@@ -915,3 +915,27 @@ summary {
 .export-panel p {
   max-width: 70ch;
 }
+
+.inquiry-preview {
+  max-width: 52rem;
+}
+.inquiry-preview > p,
+.inquiry-preview fieldset > p {
+  max-width: 70ch;
+}
+.inquiry-preview form {
+  margin-top: 1.75rem;
+}
+.inquiry-preview .inquiry-wide {
+  grid-column: 1 / -1;
+}
+.inquiry-preview select {
+  width: 100%;
+  min-width: 0;
+}
+
+.inquiry-field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}

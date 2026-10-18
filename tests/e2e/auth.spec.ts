@@ -1,3 +1,4 @@
+import { registerInquiryPreviewRoute } from '../../packages/core/src/inquiry-gateway.js';
 import AxeBuilder from '@axe-core/playwright';
 import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
 import { registerImportRoutes } from '../../packages/core/src/import-routes.js';
@@ -170,6 +171,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     registerLocationRoutes(app, pool, config.tenantId);
     registerEventRoutes(app, pool, config.tenantId);
     registerImportRoutes(app, pool, config.tenantId);
+    registerInquiryPreviewRoute(app);
     registerCalendarFeedRoutes(app, pool, config.tenantId, origin);
     const page = await context.newPage();
     const policyErrors: string[] = [];
@@ -246,6 +248,13 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         ? page.getByLabel('E-Mail oder Benutzername')
         : page.getByRole('link', { name: 'Mit Google anmelden' }),
     ).toBeVisible();
+    expect(
+      (
+        await page.request.get(
+          origin + '/api/v1/website-inquiries/form-definition',
+        )
+      ).status(),
+    ).toBe(401);
     await audit('login');
     if (mode === 'password') {
       await page.setViewportSize({ width: 320, height: 740 });
@@ -1179,6 +1188,79 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(391);
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+    await navigate('Einstellungen', 'Website-Formular');
+    const inquiryPreview = page.getByRole('region', {
+      name: 'Website-Formularvorschau',
+    });
+    await expect(
+      inquiryPreview.getByLabel('Vorname *', { exact: true }),
+    ).toBeVisible();
+    const previewPosts: string[] = [];
+    const recordPreviewPost = (request: import('@playwright/test').Request) => {
+      if (request.method() !== 'GET') previewPosts.push(request.url());
+    };
+    page.on('request', recordPreviewPost);
+    await inquiryPreview
+      .getByRole('button', { name: 'Eingaben prüfen' })
+      .click();
+    await expect(inquiryPreview.getByRole('status')).toHaveCount(0);
+    await inquiryPreview
+      .getByLabel('Vorname *', { exact: true })
+      .fill('Fictional');
+    await inquiryPreview
+      .getByLabel('Nachname *', { exact: true })
+      .fill('Example');
+    await inquiryPreview
+      .getByLabel('E-Mail *', { exact: true })
+      .fill('fictional@example.invalid');
+    await inquiryPreview
+      .getByLabel('Veranstaltungsdatum *', { exact: true })
+      .fill('2030-10-27');
+    await inquiryPreview
+      .getByLabel('Gewünschtes Fotobox-Paket (optional)', { exact: true })
+      .selectOption('easy-print-plus');
+    await inquiryPreview
+      .getByRole('button', { name: 'Eingaben prüfen' })
+      .click();
+    await expect(inquiryPreview.getByRole('status')).toContainText(
+      'nichts versendet',
+    );
+    expect(previewPosts).toEqual([]);
+    page.off('request', recordPreviewPost);
+    // Navigating away drops the unsaved preview inputs.
+    await navigate('Einstellungen', 'Datenexport');
+    await navigate('Einstellungen', 'Website-Formular');
+    await expect(
+      inquiryPreview.getByLabel('Vorname *', { exact: true }),
+    ).toHaveValue('');
+    if (mode === 'password') {
+      for (const [width, theme] of [
+        [1280, 'light'],
+        [1280, 'dark'],
+        [390, 'dark'],
+        [390, 'light'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width + 1);
+        await audit(`inquiry-preview-${width}-${theme}`);
+        await page.screenshot({
+          path: `tests/test-results/inquiry-preview-${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
       await page.setViewportSize({ width: 1280, height: 720 });
     }
     await navigate('Einstellungen', 'Kalender-Abos');

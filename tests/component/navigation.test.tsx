@@ -80,6 +80,7 @@ test('resolves deep links, settings and browser history without losing search', 
     ['#import-review', 'import'],
     ['#settings-security', 'security'],
     ['#settings-export', 'export'],
+    ['#settings-inquiry', 'inquiry'],
     ['#contact-synthetic', 'contacts'],
     ['#unknown', 'events'],
   ]) {

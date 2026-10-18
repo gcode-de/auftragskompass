@@ -102,4 +102,18 @@ weiterhin nicht aktiviert.
 
 Die [getrennte API](inquiry-gateway.md) ist mit synthetischem Eingang, signierter
 Abholung und Quittierung getestet. Sie läuft noch nicht auf der öffentlichen
-Website; lokale Übernahme und Formularoberfläche bleiben offen.
+Website; lokale Übernahme und öffentlich eingebettete Formularoberfläche bleiben offen.
+
+## Lesende Vorschau (E004.7)
+
+Unter Einstellungen → Website-Formular zeigt die angemeldete Testinstallation
+die gemeinsame Definition mit allen acht Feldern. Der Abruf
+`GET /api/v1/website-inquiries/form-definition` unterliegt dem vorhandenen
+Sitzungsschutz und liefert keine Kundendaten. Es gibt dort keinen POST-Empfang.
+
+„Eingaben prüfen“ verwendet ausschließlich die native Browserprüfung und sendet
+oder speichert nichts. Die Vorschau ist keine vollständige serverseitige
+Validierung und keine Buchungsprüfung. Verlassen dieses Einstellungsbereichs
+verwirft die Eingaben. Änderungen der Formularinhalte und mehrere Formulare
+bleiben ausdrücklich als späterer Ausbau vorgesehen (AN-01/AN-04/AN-05); es gibt
+noch keinen Formular-Editor und keine automatische Paketzuordnung.

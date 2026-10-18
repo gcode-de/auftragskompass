@@ -35,6 +35,7 @@ const settingsLinks = [
   ['settings-calendar', 'Kalender-Abos'],
   ['import-review', 'Datenimport'],
   ['settings-export', 'Datenexport'],
+  ['settings-inquiry', 'Website-Formular'],
   ['settings-security', 'Konto & Zugriff'],
 ] as const;
 export type WorkspaceRoute =
@@ -42,12 +43,14 @@ export type WorkspaceRoute =
   | 'subscriptions'
   | 'import'
   | 'security'
+  | 'inquiry'
   | 'export'
   | 'search';
 function readRoute(): WorkspaceRoute {
   const hash = window.location.hash.slice(1);
   if (hash === 'import-review') return 'import';
   if (hash === 'settings-calendar') return 'subscriptions';
+  if (hash === 'settings-inquiry') return 'inquiry';
   if (hash === 'settings-export') return 'export';
   if (hash === 'settings-security') return 'security';
   if (hash.startsWith('event-')) return 'events';
@@ -76,7 +79,16 @@ export function SettingsNavigation() {
     import: 'import-review',
     security: 'settings-security',
     export: 'settings-export',
-  }[route as 'settings' | 'subscriptions' | 'import' | 'security' | 'export'];
+    inquiry: 'settings-inquiry',
+  }[
+    route as
+      | 'settings'
+      | 'subscriptions'
+      | 'import'
+      | 'security'
+      | 'export'
+      | 'inquiry'
+  ];
   return (
     <nav className="settings-navigation" aria-label="Einstellungen">
       {settingsLinks.map(([hash, label]) => (
@@ -101,6 +113,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
     'import',
     'security',
     'export',
+    'inquiry',
   ].includes(route);
   const title =
     route === 'search'
