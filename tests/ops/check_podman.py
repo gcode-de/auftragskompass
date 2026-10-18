@@ -120,6 +120,16 @@ def main():
                 return run('podman', 'exec', project + '-database', 'psql', '-U', 'ak',
                            '-d', 'auftragskompass', '-Atc', statement)
 
+            def domain_probe(mode, host):
+                return subprocess.run(['podman', 'exec', '-i', '-e', 'AK_DB_HOST=' + host,
+                    prefix + '-api', 'node', '--input-type=module', '-', mode],
+                    input=(ROOT / 'tests/ops/restore_probe.mjs').read_text(), text=True, capture_output=True)
+            seeded = domain_probe('seed', 'database')
+            if seeded.returncode:
+                raise RuntimeError('Fictional domain fixture failed: ' + seeded.stderr)
+            missing = domain_probe('verify', 'restore-database')
+            assert missing.returncode != 0 and 'Synthetic restore schema missing' in missing.stderr
+
             sql(prefix, "CREATE TABLE synthetic_backup_check (label text); INSERT INTO synthetic_backup_check VALUES ('Synthetic Podman restore record')")
             def probe(service, port, endpoint):
                 return json.loads(run('podman', 'exec', prefix + '-' + service, 'node', '-e',
@@ -170,6 +180,10 @@ def main():
             backup('restore', target)
             query = 'SELECT label FROM synthetic_backup_check'
             assert sql(target, query) == 'Synthetic Podman restore record'
+            verified = domain_probe('verify', 'restore-database')
+            if verified.returncode:
+                raise RuntimeError('Domain restore verification failed: ' + verified.stderr)
+            print('Restored domain, authentication and database invariants verified', flush=True)
             refuses('restore', target, 'empty database')
             run('podman', 'restart', target + '-database')
             wait_for(lambda: 'accepting connections' in run('podman', 'exec', target + '-database', 'pg_isready', '-h', '127.0.0.1', '-U', 'ak'))

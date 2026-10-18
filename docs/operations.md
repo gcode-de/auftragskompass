@@ -87,6 +87,30 @@ Worker-/Datenbankausfall und Wiederanlauf mit unveränderten App-Prozess-IDs.
 Das [begrenzte Störungshandbuch](incidents.md) beschreibt Diagnose,
 Abhängigkeitsreihenfolge und die Grenze eines sicheren Update-Rückfalls.
 
+### Fachliche Restore-Probe (E005.22)
+
+Der native Probelauf und der Compose-Test in der CI lesen zusätzlich
+`tests/ops/restore_probe.mjs` und führen den Testcode per stdin ausschließlich
+im eigenen wegwerfbaren Runtime-Container aus. Compose verwendet dafür einen
+eigenen kurzlebigen Container im jeweiligen isolierten Projekt; er startet
+keinen zusätzlichen API-Dienst.
+Die Runtime-Images enthalten diese Testdatei nicht. Seed verweigert einen bereits
+belegten Mandantenbestand. Das Wiederherstellungsziel muss vor dem Restore an der
+fachlichen Prüfung scheitern; ein leeres Ziel ist kein Erfolgsnachweis.
+
+Nach dem Restore müssen fiktiver Kontakt und Eventzuordnung, gebuchte Ressource
+mit Puffern, Produktpreis in Cent und Steuerbasis unverändert lesbar sein.
+Die gesicherte Sitzung und ein neuer Passwortlogin funktionieren weiter, ein
+falsches Passwort und dieselbe Sitzung in einem anderen Mandanten werden
+abgewiesen. Direkte SQL-Proben bestätigen den GiST-Überlappungsschutz,
+Mandanten-Fremdschlüssel und das unveränderbare Auditlog. Ein erneuter
+Migrationslauf akzeptiert die wiederhergestellten Prüfsummen ohne Änderung.
+
+Alle Konten und Datensätze sind ausdrücklich fiktiv. Negative SQL-/Loginproben
+und neue Sitzungen betreffen nur die wiederhergestellte Kopie. Das ist weiterhin
+kein echter Import, kein Restore des Betreiberkontos und kein Nachweis einer
+unabhängigen PBS-/NAS-Wiederherstellung.
+
 ## TLS und Zugriff
 
 Loopback-HTTP dient ausschließlich lokaler Entwicklung. Für Zugriff über weitere Geräte ist ein lokaler TLS-Reverse-Proxy mit vertrauenswürdigem Zertifikat vor die Loopback-Ports zu schalten; er terminiert HTTPS und leitet nur Admin/API weiter. Datenbank und Worker bleiben intern. Keine Router-Portfreigabe zur Administration einrichten. Vor echter Nutzung müssen Google-Redirect-URI, Proxy-URL, Zugriffsschutz und Backup-Abnahme zusammen geprüft werden. Diese Compose-Datei stellt weder öffentliche TLS-Zertifikate noch DNS automatisch bereit.

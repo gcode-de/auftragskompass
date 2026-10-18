@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile as execFileCallback } from 'node:child_process';
+import { execFile as execFileCallback, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -27,17 +27,42 @@ test(
     );
     const run = async (program, args) =>
       (await execFile(program, args, { maxBuffer: 8 * 1024 * 1024 })).stdout;
+    const composeArgs = (name) => [
+      'compose',
+      '--env-file',
+      envFile,
+      '-p',
+      name,
+      '-f',
+      'compose.yaml',
+    ];
     const compose = (name, args) =>
-      run('docker', [
-        'compose',
-        '--env-file',
-        envFile,
-        '-p',
-        name,
-        '-f',
-        'compose.yaml',
-        ...args,
-      ]);
+      run('docker', [...composeArgs(name), ...args]);
+    const fixture = await readFile('tests/ops/restore_probe.mjs', 'utf8');
+    const domainProbe = (name, mode) =>
+      spawnSync(
+        'docker',
+        [
+          ...composeArgs(name),
+          'run',
+          '--rm',
+          '--no-deps',
+          '-T',
+          'api',
+          'node',
+          '--input-type=module',
+          '-',
+          mode,
+          'database',
+        ],
+        {
+          input: fixture,
+          encoding: 'utf8',
+          timeout: 30000,
+          maxBuffer: 8 * 1024 * 1024,
+        },
+      );
+
     const sql = (name, query) =>
       compose(name, [
         'exec',
@@ -100,6 +125,8 @@ test(
         project,
         "CREATE TABLE synthetic_example (label text); INSERT INTO synthetic_example VALUES ('Synthetic backup record')",
       );
+      const seeded = domainProbe(project, 'seed');
+      assert.equal(seeded.status, 0, seeded.stderr);
       await compose(project, ['down']);
       await compose(project, ['up', '-d', '--wait']);
       assert.equal(
@@ -130,6 +157,10 @@ test(
         ]),
       );
       await compose(target, ['up', '-d', 'database', '--wait']);
+      const missing = domainProbe(target, 'verify');
+      assert.notEqual(missing.status, 0);
+      assert.ok(missing.stderr.includes('Synthetic restore schema missing'));
+
       await run('python3', [
         'scripts/backup_restore.py',
         'restore',
@@ -144,6 +175,8 @@ test(
         (await sql(target, 'SELECT label FROM synthetic_example')).trim(),
         'Synthetic backup record',
       );
+      const verified = domainProbe(target, 'verify');
+      assert.equal(verified.status, 0, verified.stderr);
       await assert.rejects(
         run('python3', [
           'scripts/backup_restore.py',
