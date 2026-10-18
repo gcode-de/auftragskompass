@@ -33,7 +33,7 @@ export class GatewayOperationError extends Error {
 }
 
 export async function processGatewayOperation(
-  pool: Pool,
+  pool: Connection,
   packet: unknown,
   context: Parameters<typeof verifyGatewayMessage>[1],
   apply: (

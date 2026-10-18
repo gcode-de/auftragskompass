@@ -115,3 +115,38 @@ Netzwerkabholung oder Löschung aus. Signierte Zustellung, sichtbare Prüfliste 
 wiederanlaufbare Quittierung folgen getrennt vor öffentlicher Aktivierung.
 Die lokale Aufbewahrungsentscheidung bleibt offen; die Gateway-Ablaufzeit löscht
 diesen privaten Eingang nicht.
+
+## Signierte Batch-Zustellung (E004.11)
+
+`receiveWebsiteInquiryBatch` verbindet den bestehenden Signatur-/Replay-Vertrag
+mit der lokalen Zwischensicherung. Der lokale Aufrufer muss die Nachrichten-ID
+seines eigenen Pull-Aufrufs als `requestId` übergeben. Nur dazu passende,
+zeitlich gültige `gateway-to-core`-Antworten mit Zweck `inquiries.batch` werden
+angenommen. Batch und einzelne Originaleinträge sind strikt geprüft: höchstens
+100 unterschiedliche Anfrage-IDs und höchstens 50.000 UTF-8-Bytes im Array.
+Signatur und Payload werden vor Datenbankwirkungen geprüft; Schlüssel, Paket und
+Prüfzeit können während Datenbankwartezeiten nicht nachträglich geändert werden.
+
+Aktive Betreiberfreigabe, vollständiger Batch, Nonce und Operationsbeleg committen
+zusammen. Auch Wiederholungen mit bereits vorhandenem Operationsbeleg prüfen
+die Berechtigung erneut. Identische Nachrichten sind Replay; derselbe Vorgang
+mit frischer Nachricht ist eine Wiederholung mit gespeichertem Zähler.
+Abweichende Inhalte derselben Operations-ID scheitern. Ein einzelner neuer
+abgelaufener oder widersprüchlicher Eingang rollt den gesamten Batch zurück,
+einschließlich aller Transportbelege. Technische Zähler bestätigen nur lokal
+vorhandene Originaleingänge, keine Kontaktzuordnung oder Buchung.
+
+Der private Synchronisationsstart muss zusätzlich zu `migrate` einmalig
+`migrateGateway` gegen die **lokale** Datenbank ausführen, bevor er den Dienst
+verwendet. Dies installiert die vorhandenen technischen Replay-/Operations-
+Tabellen über denselben Prüfsummenlauf; die dabei angelegte verschlüsselte
+Gateway-Inboxtabelle wird lokal nicht verwendet. Die getrennte öffentliche
+Gateway-Datenbank erhält weiterhin ausschließlich `migrateGateway`, niemals
+Core-Migrationen oder Zugang zur lokalen Datenbank. Keine Initialisierung wird
+hier automatisch beim App-Start aktiviert.
+
+Ein Integrationstest führt das echte Gateway mit eigener Datenbank durch:
+öffentlicher synthetischer Eingang → signierter Pull → lokale Batch-Prüfung →
+dauerhafte Originalablage. Der Gateway-Eingang bleibt danach absichtlich
+unquittiert. Netzwerktransport, persistente Quittierungs-Outbox und sichtbare
+Bearbeitung ausstehender Eingänge bleiben nächste Schritte vor Freischaltung.

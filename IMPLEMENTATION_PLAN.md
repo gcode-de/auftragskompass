@@ -130,6 +130,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.10: vollständige Website-Eingänge vor fachlicher Zuordnung dauerhaft lokal zwischenlagern. Abnahme: geschützter mandantengebundener Dienst, strikte Originalprüfung, idempotenter Neustart/Parallelität, abweichender Inhalt abgewiesen, atomarer Rollback und Erhalt nach Gateway-Ablauf im echten Restore-Probelauf; keine Eventanlage, Netzwerkabholung oder Quittierung.
 
+- [x] E004.11: signierte Gateway-Abholantworten atomar in den dauerhaften lokalen Eingang übernehmen. Abnahme: Bindung an den eigenen Pull-Aufruf, strikte Batch-/Originalprüfung, persistenter Replay-/Operationsschutz, Neustart und Parallelität, vollständiger Rollback bei einem fehlerhaften Eintrag und aktive Betreiberberechtigung auch bei Wiederholung; kein Netzwerkaufruf, keine Quittierung oder reale Aktivierung.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
