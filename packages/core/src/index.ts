@@ -41,3 +41,9 @@ export {
   type GatewayDirection,
   type GatewayKind,
 } from './gateway-message.js';
+
+export {
+  migrateGateway,
+  processGatewayOperation,
+  GatewayOperationError,
+} from './gateway-operations.js';

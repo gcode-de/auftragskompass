@@ -3,9 +3,9 @@
 Dies ist der Authentifizierungsteil von C028 für die vorgezogenen
 [Website-Anfragen](website-inquiries.md). Es existiert damit noch kein öffentlicher
 Empfang, kein Synchronisationsdienst und keine vollständige C028-Abnahme.
-Vor jeder Wirkung sind persistenter Replay-/Operationsschutz und die jeweils
-konkrete fachliche Payload-Prüfung erforderlich. Bis dahin wird kein Endpunkt
-aktiviert. Eine gültige Signatur ist keine Buchungsfreigabe.
+Vor jeder Wirkung sind der unten beschriebene persistente Replay-/Operationsschutz
+und die jeweils konkrete fachliche Payload-Prüfung erforderlich. Es wird noch kein
+Endpunkt aktiviert. Eine gültige Signatur ist keine Buchungsfreigabe.
 
 ## Format und Bindung
 
@@ -78,6 +78,53 @@ Operations-ID transaktional und mandantengebunden verarbeitet werden:
    scheitern. Wiederholungen/Neustarts/Parallelität benötigen Datenbanktests.
 
 Ein Transport-Retry erhält eine neue Nachrichten-ID und aktuelle Zeit, aber
-dieselbe Operations-ID. Aufbewahrung und Bereinigung der Replay-Belege werden
-erst mit diesem persistenten Teil festgelegt. Dieser Vertrag sendet nichts und
+dieselbe Operations-ID. Aufbewahrung und Bereinigung der Replay-Belege bleiben
+vor öffentlichem Betrieb festzulegen. Dieser Vertrag sendet nichts und
 übernimmt weder echte Kontakte noch Events.
+
+## Persistenter Transaktionsschutz (E004.4)
+
+[processGatewayOperation](../packages/core/src/gateway-operations.ts) prüft das
+Paket erneut selbst, bevor es eine Datenbanktransaktion eröffnet. Die separate
+[Gateway-Migration](../packages/core/gateway-migrations/gateway-0001-receipts.sql)
+enthält nur Nachrichten- und Operationsbelege mit `tenant_id`. Sie erzeugt keine
+Kontakte, Benutzer, Events oder Reservierungen und benötigt keine Kopie des
+lokalen Mandantenstamms. `migrateGateway` verwendet den vorhandenen transaktionalen
+Migrationslauf mit Prüfsummen; bestehende Core-Migrationen werden nicht verändert.
+Eine eigenständige Gateway-Datenbank und eine lokale Datenbank können ihre jeweils
+eigenen Belege halten. Der normale App-Start aktiviert diese Migration nicht.
+
+Die Nachrichten-ID ist je Mandant und Richtung eindeutig. Für dieselbe fachliche
+Operations-ID serialisiert ein transaktionales PostgreSQL-Advisory-Lock die
+Verarbeitung. Ein möglicher Hash-Lock-Konflikt serialisiert lediglich zusätzliche
+Operationen, verändert aber nicht deren Geltungsbereich. Der Inhalt wird nach
+PostgreSQL-`jsonb`-Normalisierung mit dem eingebauten
+[SHA-256](https://www.postgresql.org/docs/17/functions-binarystring.html) von Zweck
+und Payload fingerprintiert. Geänderte Objektschlüssel-Reihenfolge erzeugt dadurch
+keinen falschen Konflikt; geänderter Inhalt oder Zweck scheitert.
+
+Callback, Nachrichten-ID und Operationsbeleg committen in derselben Transaktion.
+Eine erfolgreiche Wiederholung mit frischer Nachrichten-ID liefert nur den
+gespeicherten Wirkungszähler (0–100), ohne den Callback nochmals auszuführen.
+Identische bereits committene Pakete werden als Replay abgewiesen. Nach einem
+Rollback darf derselbe unveränderte Versuch erneut vollständig ausgeführt werden.
+Die Sperren und Belege wirken auch bei Parallelität und nach einem Pool-Neustart.
+
+Der Callback bekommt die bestehende transaktionale Drizzle-Verbindung und einen
+schreibgeschützten Nachrichtenrahmen; dessen IDs können nicht nachträglich
+umgeschrieben werden. Die geprüfte Richtung bleibt für die Transaktion fest. Er muss
+die konkrete Payload prüfen und alle fachlichen Datenbankwirkungen darüber
+ausführen. **Keine HTTP-, Mail- oder Dateiwirkungen im Callback:** Solche Effekte
+benötigen weiterhin eine transaktionale Outbox. Empfangene Anfragen benötigen
+zusätzlich ihre eigene fachliche ID und einen Schutz vor doppelter Eventanlage.
+Reine Pull-Antworten enthalten später frische Transportnachrichten; die technischen
+Belege sind kein Klartext-Cache für personenbezogene Antworten.
+
+Die Belege speichern IDs, Richtung, Zweck, Hash, Zähler und Zeitpunkte, niemals
+Payloads oder Schlüssel. Auch diese technischen Zuordnungen bleiben privat.
+Unerlaubte Pakete, Replay, Inhaltskonflikte, unzulässige Zähler und DB-/Callbackfehler
+liefern feste neutrale Fehlergründe. Originalfehler und Eingaben werden weder
+angehängt noch protokolliert. Es gibt noch keine automatische Beleglöschung;
+Fristen, Bereinigung und Kapazitätsüberwachung bleiben eine Bedingung vor
+öffentlichem Betrieb. Keine bestehende Datenbank wird durch diesen Schritt
+automatisch migriert oder zurückgesetzt.

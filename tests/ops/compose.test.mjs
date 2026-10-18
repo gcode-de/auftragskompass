@@ -95,6 +95,15 @@ test(
       const services = Array.isArray(state) ? state : [state];
       assert.equal(services.length, 4);
       for (const service of services) assert.equal(service.Health, 'healthy');
+      await compose(project, [
+        'exec',
+        '-T',
+        'api',
+        'node',
+        '--input-type=module',
+        '-e',
+        "import { readFile } from 'node:fs/promises'; await readFile('/app/packages/core/gateway-migrations/gateway-0001-receipts.sql', 'utf8');",
+      ]);
       const adminAddress = (
         await compose(project, ['port', 'admin', '8080'])
       ).trim();
