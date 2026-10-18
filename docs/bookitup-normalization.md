@@ -67,3 +67,26 @@ Auch ein später schemafehlerfreier Stand benötigt weiterhin Quellen-/Mengenabg
 Dublettenentscheidungen, korrekte Uhrzeiten und die ausdrückliche Prüfung jeder
 zugesagten Ressource. Dieser Entwurf verändert weder Inhaberpasswort noch echte
 Aufträge, Nummernkreise, Zahlungen oder Kundenkommunikation.
+
+## Private Feldkorrekturliste (E003.6)
+
+Aus den bekannten `invalid_fields`-Hinweisen entsteht zusätzlich
+`FELDKORREKTUREN_PRIVAT.csv`. Sie enthält Abschnitt, ursprüngliche Manifestzeile,
+unveränderten Quellanker, Feld, Anzeigename und Ausgangswert. Die beiden letzten
+Spalten für geprüften neuen Wert und Entscheidung mit Quellenbeleg bleiben leer.
+Referenzfehler ohne eigenes ungültiges Feld werden nicht als weitere
+Feldkorrekturen dupliziert. Die Zukunfts-/Ressourcenprüfung bleibt separat nötig.
+
+Die Liste ist ausschließlich eine private Arbeitsunterlage. UTF-8 mit BOM,
+Semikolon-Trennung und korrekte CSV-Zitierung erhalten mehrzeilige Werte.
+Formelanfänge einschließlich führender Leerzeichen sowie Steuerzeichen am
+Zellanfang werden als Text geschützt; ein solches Schutzapostroph ist kein
+zusätzlicher Quellwert. Dateien bleiben mit Modus 600 außerhalb von Git.
+
+Der Erzeuger wurde mit fiktiven Formel-/Mehrzeilenwerten, unveränderten Eingaben,
+leeren Entscheidungsfeldern und unzulässigen Zeilen geprüft. Für den echten
+Entwurf wurden eindeutige Quellanker/Felder, CSV-Rundlauf und reproduzierbare
+Ausgabe geprüft; die Eingabeprüfsummen blieben gleich. Es gibt keinen automatischen
+Rückimport des Blattes. Fachlich geprüfte Änderungen gehören in einen separaten
+neuen Manifestentwurf mit denselben freigegebenen Quellankern, der erneut
+vorgeschaut werden muss. Das Blatt erteilt keine Import- oder Buchungsfreigabe.

@@ -108,6 +108,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E003.5: Importvorschau bei ungültigen Feldern um sichere Feldhinweise ergänzen. Abnahme: richtige Felder auch bei mehreren Zeilen und fehlenden Angaben, keine Eingangswerte oder unbekannten Eigenschaftsnamen im Bericht, optionale kompatible API-Angabe und verständliche Anzeige in der vorhandenen Oberfläche.
 
+- [x] E003.6: private Korrekturliste aus dem geprüften Offline-Entwurf und seinen Feldfehlern vorbereiten. Abnahme: eindeutige Quellanker und Zeilen, unveränderte Ausgangswerte, leere Korrektur-/Entscheidungsfelder, Formelschutz und reproduzierbare Ausgabe; kein Rückimport oder Ändern der Originale.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.
