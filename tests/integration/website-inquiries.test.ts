@@ -19,6 +19,7 @@ import { readEventActivities } from '../../packages/core/src/event-activity.js';
 import Fastify from 'fastify';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerEventRoutes } from '../../packages/core/src/events.js';
+import { registerWebsiteInquiryRoutes } from '../../packages/core/src/website-inquiry-routes.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 let container: StartedPostgreSqlContainer,
   pool: Pool,
@@ -461,4 +462,176 @@ test('the database rejects a changed original payload that no longer matches its
       [tenantId],
     ),
   ).rejects.toMatchObject({ code: '23514' });
+});
+
+test('original inquiry endpoint is tenant-scoped, read-only and keeps complete submitted values after contact edits', async () => {
+  const value = entry();
+  value.submission.fields.comment = 'Fictional original\n' + 'x'.repeat(4900);
+  const result = await receive(value),
+    token = randomUUID();
+  await accessRepository(pool, tenantId).issueSession(
+    { subject: 'fictional', email: 'fictional.owner@example.invalid' },
+    digest(token),
+  );
+  const app = Fastify();
+  await registerAuth(app, pool, {
+    mode: 'password',
+    tenantId,
+    origin: 'https://fictional.example.invalid',
+  });
+  registerWebsiteInquiryRoutes(app, pool, tenantId);
+  try {
+    const url = '/api/v1/events/' + result.eventId + '/website-inquiry';
+    expect((await app.inject({ url })).statusCode).toBe(401);
+    await contactRepository(pool, tenantId).save(
+      actorId,
+      {
+        ...person,
+        name: 'Fictional edited contact',
+        email: 'edited@example.invalid',
+      },
+      result.contactId,
+      1,
+    );
+    const response = await app.inject({
+      url,
+      headers: { cookie: '__Host-ak-session=' + token },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.fields).toHaveLength(8);
+    expect(
+      body.fields.find((field: { label: string }) => field.label === 'Vorname')
+        .value,
+    ).toBe('Fictional');
+    expect(
+      body.fields.find(
+        (field: { label: string }) => field.label === 'Kommentar',
+      ).value,
+    ).toBe(value.submission.fields.comment);
+    expect(body.privacyNotice).toBe(value.privacyNotice);
+    expect(body.privacyUrl).toBe(value.privacyUrl);
+    expect(
+      body.fields.find(
+        (field: { label: string }) =>
+          field.label === 'Gewünschtes Fotobox-Paket',
+      ).value,
+    ).toBe('easy print+ (400 Ausdrucke, Drucklayout)');
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body).not.toContain('payloadHash');
+    expect(response.body).not.toContain(tenantId);
+    expect(response.body).not.toContain('Fictional edited contact');
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers: {
+            cookie: '__Host-ak-session=' + token,
+            origin: 'https://fictional.example.invalid',
+            'x-csrf-token': 'fictional',
+          },
+          payload: {},
+        })
+      ).statusCode,
+    ).not.toBe(200);
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/events/' + randomUUID() + '/website-inquiry',
+          headers: { cookie: '__Host-ak-session=' + token },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await eventRepository(pool, tenantId).detail(result.eventId))
+        .websiteInquiryAvailable,
+    ).toBe(true);
+  } finally {
+    await app.close();
+  }
+  const foreign = Fastify();
+  try {
+    await registerAuth(foreign, pool, {
+      mode: 'password',
+      tenantId: randomUUID(),
+      origin: 'https://fictional.example.invalid',
+    });
+    registerWebsiteInquiryRoutes(foreign, pool, tenantId);
+    expect(
+      (
+        await foreign.inject({
+          url: '/api/v1/events/' + result.eventId + '/website-inquiry',
+          headers: { cookie: '__Host-ak-session=' + token },
+        })
+      ).statusCode,
+    ).toBe(401);
+  } finally {
+    await foreign.close();
+  }
+});
+
+test('original inquiry reads reject missing actors, foreign permissions, broken storage and corrupted metadata neutrally', async () => {
+  const value = entry();
+  delete (value.submission.fields as Record<string, unknown>).phone;
+  delete (value.submission.fields as Record<string, unknown>).package;
+  delete (value.submission.fields as Record<string, unknown>).location;
+  delete (value.submission.fields as Record<string, unknown>).comment;
+  const result = await receive(value),
+    url = '/api/v1/events/' + result.eventId + '/website-inquiry';
+  const bare = Fastify();
+  registerWebsiteInquiryRoutes(bare, pool, tenantId);
+  try {
+    expect((await bare.inject({ url })).statusCode).toBe(401);
+  } finally {
+    await bare.close();
+  }
+  const app = Fastify();
+  let actor = actorId;
+  app.decorateRequest('authSession', null);
+  app.addHook('onRequest', async (request) => {
+    request.authSession = {
+      userId: actor,
+      email: 'fictional.owner@example.invalid',
+    };
+  });
+  registerWebsiteInquiryRoutes(app, pool, tenantId);
+  try {
+    const empty = await app.inject({ url });
+    expect(empty.statusCode).toBe(200);
+    expect(
+      empty
+        .json()
+        .fields.filter((field: { value: string }) => field.value === ''),
+    ).toHaveLength(4);
+    actor = randomUUID();
+    expect((await app.inject({ url })).statusCode).toBe(403);
+    actor = actorId;
+    await pool.query(
+      'UPDATE website_inquiries SET payload=payload||\'{"unknown":"fictional-private-value"}\'::jsonb,payload_hash=encode(sha256(convert_to((payload||\'{"unknown":"fictional-private-value"}\'::jsonb)::text,\'UTF8\')),\'hex\') WHERE tenant_id=$1',
+      [tenantId],
+    );
+    const broken = await app.inject({ url });
+    expect(broken.statusCode).toBe(503);
+    expect(broken.json()).toEqual({ error: 'unavailable' });
+    expect(broken.body).not.toContain('fictional-private');
+  } finally {
+    await app.close();
+  }
+  const closed = new Pool({ connectionString: container.getConnectionUri() });
+  await closed.end();
+  const unavailable = Fastify();
+  unavailable.decorateRequest('authSession', null);
+  unavailable.addHook('onRequest', async (request) => {
+    request.authSession = {
+      userId: actorId,
+      email: 'fictional.owner@example.invalid',
+    };
+  });
+  registerWebsiteInquiryRoutes(unavailable, closed, tenantId);
+  try {
+    expect((await unavailable.inject({ url })).statusCode).toBe(503);
+  } finally {
+    await unavailable.close();
+  }
 });

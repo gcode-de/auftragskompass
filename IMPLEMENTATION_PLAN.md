@@ -126,6 +126,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.8: atomare lokale Übernahme einer geprüften Website-Anfrage als Kontakt und unverbindliches Event implementieren. Abnahme: Originalfelder/Datenschutzhinweis und Herkunft im Logbuch, idempotenter Neustart/Parallelität, konservative Kontaktzuordnung ohne Stammdaten-Überschreiben, explizites Land für neue Kontakte, vollständiger Rollback und Mandantentrennung; keine Netzwerkabholung, echte Übernahme oder Reservierung.
 
+- [x] E004.9: vollständige Originalanfrage über einen geschützten lesenden Endpunkt und eine aufklappbare Eventaktenansicht zugänglich machen. Abnahme: alle acht Originalfelder einschließlich langer Kommentare/Datenschutzhinweis, klare Trennung von bearbeiteten Stammdaten, Abruf erst beim Öffnen, Lade-/Fehlerzustände, Mandantentrennung und mobiles Hell/Dunkel in Chromium; keine Schreiboperation oder echte Übernahme.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

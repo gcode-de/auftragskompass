@@ -1,3 +1,4 @@
+import { registerWebsiteInquiryRoutes } from '../../packages/core/src/website-inquiry-routes.js';
 import { registerInquiryPreviewRoute } from '../../packages/core/src/inquiry-gateway.js';
 import AxeBuilder from '@axe-core/playwright';
 import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
@@ -177,6 +178,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     registerEventRoutes(app, pool, config.tenantId);
     registerImportRoutes(app, pool, config.tenantId);
     registerInquiryPreviewRoute(app);
+    registerWebsiteInquiryRoutes(app, pool, config.tenantId);
     registerCalendarFeedRoutes(app, pool, config.tenantId, origin);
     const page = await context.newPage();
     const policyErrors: string[] = [];
@@ -1569,7 +1571,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       });
     }
     // Synthetic local intake fixture; no public endpoint or real booking is used.
-    const receivedAt = new Date();
+    const receivedAt = new Date('2030-10-26T10:00:00.000Z');
     const owner = (await accessRepository(pool, config.tenantId).list()).find(
       (row) => row.email === 'synthetic@example.invalid',
     )!.userId!;
@@ -1589,7 +1591,11 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
             lastName: 'Browser',
             email: 'fictional.website@example.invalid',
             eventDate: '2031-10-27',
-            comment: 'Fictional inquiry through local intake',
+            phone: '+49 555 02000',
+            location: 'Fictional Website Hall',
+            package: 'easy-print-plus',
+            comment:
+              'Fictional original <script>text</script>\n' + 'x'.repeat(300),
           },
         },
         privacyNotice: inquiryFormV1.privacyNotice,
@@ -1622,6 +1628,54 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       }),
     ).toBeVisible();
     await audit('website-inquiry-event');
+    await websiteRecord
+      .getByRole('button', { name: 'Übersicht', exact: true })
+      .click();
+    const original = websiteRecord.locator('details.website-inquiry');
+    await expect(original).not.toHaveAttribute('open', '');
+    await original.locator('summary').click();
+    await expect(
+      original.getByText('Fictional Website', { exact: true }),
+    ).toBeVisible();
+    await expect(original.locator('dt')).toHaveCount(8);
+    await expect(
+      original.getByText(/Fictional original <script>text/),
+    ).toBeVisible();
+    await expect(original.locator('script')).toHaveCount(0);
+    await expect(
+      original.getByText('easy print+ (400 Ausdrucke, Drucklayout)', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    if (mode === 'password') {
+      for (const [width, theme] of [
+        [1280, 'light'],
+        [1280, 'dark'],
+        [390, 'dark'],
+        [390, 'light'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width + 1);
+        await audit(`website-original-${width}-${theme}`);
+        await page.screenshot({
+          path: `tests/test-results/website-original-${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+
     await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);

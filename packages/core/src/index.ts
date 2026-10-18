@@ -65,3 +65,5 @@ export {
   WebsiteInquiryError,
   type WebsiteInquiry,
 } from './website-inquiries.js';
+
+export { registerWebsiteInquiryRoutes } from './website-inquiry-routes.js';

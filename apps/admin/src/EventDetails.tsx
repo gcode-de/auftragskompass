@@ -1,8 +1,10 @@
+import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
 import { useEffect, useRef, useState } from 'react';
 import type { EventRow } from './EventPanel.js';
 type Detail = {
   event: EventRow;
+  websiteInquiryAvailable?: boolean;
   contacts: {
     id: string;
     name: string;
@@ -237,6 +239,13 @@ export function EventDetails({
             />
           </div>
           <div hidden={section !== 'overview'}>
+            {data.websiteInquiryAvailable && (
+              <WebsiteInquiry
+                key={id}
+                eventId={id}
+                timeZone={data.event.timeZone}
+              />
+            )}
             <h3>Kontakte</h3>
             {!data.contacts.length && <p>Noch keine Kontakte zugeordnet.</p>}
             <ul>

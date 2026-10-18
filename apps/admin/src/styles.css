@@ -939,3 +939,15 @@ summary {
   gap: 0.35rem;
   min-width: 0;
 }
+
+.website-inquiry p {
+  max-width: 70ch;
+}
+.website-inquiry dd {
+  white-space: pre-wrap;
+}
+.website-inquiry > a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+}

@@ -36,6 +36,7 @@ import {
   contacts,
   locations,
   masterData,
+  websiteInquiries,
 } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
@@ -362,8 +363,18 @@ export function eventRepository(pool: Connection, tenantId: string) {
                 ),
               ),
             );
+          const inquiry = await tx
+            .select({ id: websiteInquiries.id })
+            .from(websiteInquiries)
+            .where(
+              and(
+                eq(websiteInquiries.tenantId, tenantId),
+                eq(websiteInquiries.eventId, id),
+              ),
+            );
           return {
             event,
+            websiteInquiryAvailable: inquiry.length > 0,
             contacts: people.map((person) => ({
               ...person,
               role:
@@ -1003,9 +1014,11 @@ export function registerEventRoutes(
               'eventType',
               'package',
               'activities',
+              'websiteInquiryAvailable',
             ],
             properties: {
               event: row,
+              websiteInquiryAvailable: { type: 'boolean' },
               contacts: { type: 'array', items: contact },
               location: { anyOf: [venue, { type: 'null' }] },
               eventType: { anyOf: [named, { type: 'null' }] },

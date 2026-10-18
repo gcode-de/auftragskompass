@@ -69,3 +69,23 @@ wiederaufnehmbar sein; ein `contact_review` darf nicht automatisch quittiert wer
 Der isolierte Compose-Dump-/Restore-Probelauf prüft zusätzlich die vollständige
 Originalanfrage, ihren Herkunftseintrag und eine idempotente Wiederholung gegen
 die tatsächlich wiederhergestellte Datenbank.
+
+## Originalanfrage in der Eventakte (E004.9)
+
+`GET /api/v1/events/:id/website-inquiry` liefert ausschließlich für den
+angemeldeten, weiterhin freigegebenen Betreiber des lokalen Mandanten die acht
+beschrifteten Originalwerte, Formularversion, Eingangszeit und den damaligen
+Datenschutzhinweis. Fehlende optionale Werte bleiben leer; Paketwerte werden mit
+ihrer ursprünglichen Versionsbezeichnung dargestellt. Nicht vorhandene Eingänge
+liefern 404, beschädigte gespeicherte Inhalte eine neutrale 503-Antwort.
+Antworten sind mit `no-store` gekennzeichnet und enthalten keine internen
+Kontaktkennungen oder Fingerabdrücke.
+
+Die Eventdetailantwort enthält `websiteInquiryAvailable`. Nur bei vorhandenem
+Eingang erscheint in der Übersicht die zunächst geschlossene „Originalanfrage
+der Website“. Erst ihr Öffnen lädt die Daten. Ladefehler bieten einen erneuten
+Abruf; erfolgreich geladene Angaben bleiben innerhalb dieser Eventansicht
+verfügbar. Spätere Kontakt- oder Eventänderungen verändern diese Anzeige nicht.
+Kommentare erscheinen vollständig als Text, einschließlich Zeilenumbrüchen und
+HTML-Zeichen. Die Darstellung ist in mobilem und breitem Hell/Dunkel geprüft.
+Es gibt hier keine Bearbeitung oder öffentliche Aktivierung.
