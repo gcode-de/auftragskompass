@@ -18,7 +18,10 @@
     "pg": "8.23.0",
     "sanitize-html": "2.18.1"
   },
-  "exports": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./inquiry-form-definition": "./dist/inquiry-form-definition.js"
+  },
   "types": "./dist/index.d.ts",
   "devDependencies": {
     "@types/sanitize-html": "2.16.2"

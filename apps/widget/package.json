@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@auftragskompass/core": "workspace:*"
   }
 }

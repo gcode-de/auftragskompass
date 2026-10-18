@@ -288,3 +288,30 @@ unverändert und es wird kein Event automatisch angelegt. Zusätzliche Tests pr�
 unter anderem unpassende signierte Belege, Zeitablauf während des Transfers,
 Timeouts und fehlende Rechte. Es ist weiterhin kein öffentlicher HTTPS-Dienst
 angeschlossen und kein automatischer Worker gestartet.
+
+## Öffentlicher Browser-Client (E004.17)
+
+Die unveränderte Formularbeschreibung und ihr Einsendungstyp liegen jetzt in
+`inquiry-form-definition.ts`. Servervalidierung und Widget verwenden dieselben
+acht Felder, Paketwerte und Datenschutzangaben. Der eigene Paket-Unterpfad enthält
+keine Datenbank-, Node- oder Validierungsserver-Importe. Vite baut daraus ein
+kleines ES-Modul unter `apps/widget/dist/inquiry-widget.js`; es ist noch kein
+installiertes WordPress-Formular.
+
+`createInquirySubmission` friert eine Einsendung einschließlich zufälliger ID und
+Honeypot als Request-Text im Arbeitsspeicher ein. Änderungen am ursprünglichen
+Objekt ändern diesen Versuch nicht. Parallele Aufrufe teilen denselben laufenden
+Request; nach verlorener Antwort verwendet ein erneuter Aufruf dieselbe ID und
+denselben Inhalt. Erst eine streng geprüfte HTTP-202-Antwort mit ausschließlich
+`status: received` gilt als Eingang. Danach sendet derselbe Versuch nicht erneut
+und gibt den gespeicherten Request-Text frei. Das ist keine Buchungsbestätigung.
+
+Ziel ist ausschließlich die feste versionierte Formularroute eines HTTPS-Origins
+ohne Zugangsdaten, weitere Pfade, Query oder Fragment. Cookies und Redirects sind
+ausgeschlossen; Antwortzeit und -größe sind auf zehn Sekunden beziehungsweise
+4.096 Bytes begrenzt. Fehler enthalten keine Servertexte oder Eingaben. Der Client
+speichert nichts in URLs, Browserstorage oder Logs. Er ersetzt nicht die weiterhin
+maßgebliche serverseitige Prüfung. Ein unklarer Sendeversuch muss in der Oberfläche
+unverändert erneut versucht werden, statt nach Bearbeitung eine neue ID zu erzeugen.
+Die bedienbare Einbettung und Browserabnahme folgen getrennt; keine echte Anfrage
+wurde versandt und die bestehende Website bleibt unverändert.

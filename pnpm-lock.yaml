@@ -119,7 +119,11 @@ importers:
 
   apps/gateway: {}
 
-  apps/widget: {}
+  apps/widget:
+    dependencies:
+      '@auftragskompass/core':
+        specifier: workspace:*
+        version: link:../../packages/core
 
   apps/worker:
     dependencies:

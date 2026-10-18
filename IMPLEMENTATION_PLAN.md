@@ -142,6 +142,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.16: vorbereitete Quittierungsaufträge über begrenztes HTTPS versenden. Abnahme: Commit vor Versand, stabile Operation bei verlorener Gateway-Antwort und Neustart, frischer signierter Versuch, Bindung des Empfangsbelegs an den aktuellen Aufruf, sichere Transportgrenzen und kein lokaler Abschluss bei Fehler; kein automatischer Lauf oder echte Verbindung.
 
+- [x] E004.17: browsergeeignete gemeinsame Formulardefinition und öffentlichen Sendeclient bereitstellen. Abnahme: unverändert acht Felder ohne Servermodule im Browser-Bundle, feste HTTPS-Route ohne Cookies/Redirects, begrenzte neutrale Antworten und unveränderliche Einsendung mit gleicher ID bei Wiederholung/Parallelität; keine Website-Umschaltung oder echte Einsendung.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

@@ -1,3 +1,4 @@
+import { createInquirySubmission } from '../../apps/widget/src/inquiry-client.js';
 import {
   beforeAll,
   beforeEach,
@@ -5,6 +6,7 @@ import {
   afterAll,
   test,
   expect,
+  vi,
 } from 'vitest';
 import {
   PostgreSqlContainer,
@@ -488,4 +490,50 @@ test('changing caller configuration cannot redirect an authenticated acknowledgm
   expect(r.statusCode).toBe(200);
   expect(await own.pending(10, now)).toEqual([]);
   expect(await other.pending(10, now)).toHaveLength(1);
+});
+
+test('the browser client retries a lost public response without a second encrypted intake and preserves all eight original fields', async () => {
+  const fields = {
+    ...submission().fields,
+    phone: '+49 000 000000',
+    location: 'Fictional demonstration hall',
+    package: 'easy-print-plus' as const,
+  };
+  const attempt = createInquirySubmission(
+    'https://fictional-gateway.example.invalid',
+    fields,
+  );
+  let lose = true;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: unknown, options?: RequestInit) => {
+      const result = await app.inject({
+        method: 'POST',
+        url: new URL(String(url)).pathname,
+        headers: { origin, 'content-type': 'application/json' },
+        payload: options!.body as string,
+      });
+      expect(result.statusCode).toBe(202);
+      if (lose) {
+        lose = false;
+        throw new Error('fictional response lost after intake');
+      }
+      return new Response(new Uint8Array(result.rawPayload), {
+        status: result.statusCode,
+        headers: { 'content-type': 'application/json' },
+      });
+    }),
+  );
+  try {
+    await expect(attempt.send()).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+    expect(await count()).toBe(1);
+    expect(await attempt.send()).toEqual({ status: 'received' });
+    expect(await count()).toBe(1);
+    const [stored] = await inquiryInbox(pool, storage).pending(10, now);
+    expect(stored!.submission.fields).toEqual(fields);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
