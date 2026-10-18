@@ -1,4 +1,13 @@
-import { beforeAll, beforeEach, afterAll, test, expect } from 'vitest';
+import { pullWebsiteInquiries } from '../../packages/core/src/website-inquiry-pull.js';
+import {
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  test,
+  expect,
+  vi,
+} from 'vitest';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
@@ -442,9 +451,297 @@ test('the actual gateway public receive and signed pull feed the local durable i
       (await gatewayPool.query("SELECT to_regclass('contacts') AS contacts"))
         .rows[0].contacts,
     ).toBeNull();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, options?: RequestInit) => {
+        const result = await app.inject({
+          method: 'POST',
+          url: '/sync/v1/inquiries/pull',
+          payload: JSON.parse(options!.body as string),
+        });
+        return new Response(new Uint8Array(result.rawPayload), {
+          status: result.statusCode,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+    expect(
+      await pullWebsiteInquiries(pool, tenantId, actorId, {
+        origin: 'https://fictional-gateway.example.invalid',
+        requestKey: coreKey,
+        responseKeys: [key],
+        now: () => now,
+      }),
+    ).toEqual({ status: 'applied', count: 1 });
     expect((await counts()).events).toBe(0);
   } finally {
     await app.close();
     await gatewayPool.end();
   }
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+const pullOptions = () => ({
+  origin: 'https://fictional-gateway.example.invalid',
+  requestKey: {
+    ...key,
+    id: 'fictional-request',
+    direction: 'core-to-gateway' as const,
+    secret: Buffer.alloc(32, 8),
+  },
+  responseKeys: [key],
+  now: () => now,
+});
+function responding(packetBody?: string) {
+  return vi.fn(async (_url: unknown, options?: RequestInit) => {
+    const request = JSON.parse((options as RequestInit).body as string),
+      message = JSON.parse(request.body);
+    const response = batch([entry()], message.messageId);
+    return new Response(packetBody ?? JSON.stringify(response.packet), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+}
+test('HTTPS pull uses a fresh signed request, no cookies or redirects, and persists authenticated originals before returning', async () => {
+  const fetcher = responding();
+  vi.stubGlobal('fetch', fetcher);
+  const config = pullOptions();
+  expect(await pullWebsiteInquiries(pool, tenantId, actorId, config)).toEqual({
+    status: 'applied',
+    count: 1,
+  });
+  const [url, options] = fetcher.mock.calls[0]!;
+  expect(url).toBe(
+    'https://fictional-gateway.example.invalid/sync/v1/inquiries/pull',
+  );
+  expect(options).toMatchObject({
+    method: 'POST',
+    redirect: 'error',
+    credentials: 'omit',
+    headers: { 'content-type': 'application/json' },
+  });
+  expect(options!.signal).toBeInstanceOf(AbortSignal);
+  const { verifyGatewayMessage } =
+    await import('../../packages/core/src/gateway-message.js');
+  expect(
+    verifyGatewayMessage(JSON.parse(options!.body as string), {
+      tenantId,
+      direction: 'core-to-gateway',
+      kind: 'inquiries.pull',
+      keys: [config.requestKey],
+      now: now.getTime() / 1000,
+    })?.payload,
+  ).toEqual({ limit: 100 });
+  expect((await counts()).website_inquiry_deliveries).toBe(1);
+  expect((await counts()).events).toBe(0);
+});
+test('HTTPS pull rejects unsafe configuration and unauthorized actors before opening a connection', async () => {
+  const fetcher = responding();
+  vi.stubGlobal('fetch', fetcher);
+  const config = pullOptions();
+  for (const origin of [
+    'http://fictional.example.invalid',
+    'https://user:password@fictional.example.invalid',
+    'https://fictional.example.invalid/path',
+    'https://fictional.example.invalid/?secret=fictional',
+    'https://fictional.example.invalid/#fragment',
+    'invalid',
+  ])
+    await expect(
+      pullWebsiteInquiries(pool, tenantId, actorId, { ...config, origin }),
+    ).rejects.toMatchObject({ reason: 'invalid' });
+  await expect(
+    pullWebsiteInquiries(pool, tenantId, randomUUID(), config),
+  ).rejects.toMatchObject({ reason: 'forbidden' });
+  expect(fetcher).not.toHaveBeenCalled();
+});
+test('HTTPS response errors, invalid encodings and oversized streams leave no local effects or sensitive diagnostics', async () => {
+  const config = pullOptions();
+  const variants = [
+    () => new Response('{}', { status: 503 }),
+    () =>
+      new Response('{}', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
+    () =>
+      new Response(null, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    () =>
+      new Response('{broken', {
+        headers: { 'content-type': 'application/json' },
+      }),
+    () =>
+      new Response(Buffer.from([0xff]), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    () =>
+      new Response('x'.repeat(132097), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    () =>
+      new Response('x', {
+        headers: {
+          'content-type': 'application/json',
+          'content-length': '132097',
+        },
+      }),
+    () => {
+      throw new Error('fictional-private-transport-details');
+    },
+  ];
+  for (const variant of variants) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => variant()),
+    );
+    await expect(
+      pullWebsiteInquiries(pool, tenantId, actorId, config),
+    ).rejects.toMatchObject({
+      reason: 'failed',
+      message: 'Website inquiry unavailable',
+    });
+  }
+  expect(Object.values(await counts())).toEqual([0, 0, 0, 0, 0]);
+  vi.stubGlobal('fetch', responding());
+  expect(await pullWebsiteInquiries(pool, tenantId, actorId, config)).toEqual({
+    status: 'applied',
+    count: 1,
+  });
+});
+
+test('HTTPS pulls reject broken streams and response authentication failures without partial intake', async () => {
+  const config = pullOptions();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error('fictional private stream error'));
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    ),
+  );
+  await expect(
+    pullWebsiteInquiries(pool, tenantId, actorId, config),
+  ).rejects.toMatchObject({ reason: 'failed' });
+  vi.stubGlobal('fetch', responding(JSON.stringify(batch().packet)));
+  await expect(
+    pullWebsiteInquiries(pool, tenantId, actorId, config),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  vi.stubGlobal('fetch', responding('{}'));
+  await expect(
+    pullWebsiteInquiries(pool, tenantId, actorId, config),
+  ).rejects.toMatchObject({ reason: 'unauthorized' });
+  let reads = 0;
+  vi.stubGlobal('fetch', responding());
+  await expect(
+    pullWebsiteInquiries(pool, tenantId, actorId, {
+      ...config,
+      now: () => new Date(now.getTime() + (reads++ === 0 ? 0 : 3601000)),
+    }),
+  ).rejects.toMatchObject({ reason: 'unauthorized' });
+  expect(Object.values(await counts())).toEqual([0, 0, 0, 0, 0]);
+});
+
+test('HTTPS pull snapshots destination and verification keys before awaiting local authorization', async () => {
+  const config = pullOptions(),
+    signingKey = { ...key, secret: Buffer.from(key.secret) };
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    const request = JSON.parse(JSON.parse(options!.body as string).body);
+    return Response.json(
+      signGatewayMessage(
+        {
+          version: 1,
+          tenantId,
+          messageId: randomUUID(),
+          operationId: randomUUID(),
+          issuedAt: now.getTime() / 1000,
+          kind: 'inquiries.batch',
+          payload: { requestId: request.messageId, inquiries: [entry()] },
+        },
+        signingKey,
+      ),
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const pending = pullWebsiteInquiries(pool, tenantId, actorId, config);
+  config.origin = 'https://fictional-other.example.invalid';
+  key.secret.fill(0);
+  expect(await pending).toEqual({ status: 'applied', count: 1 });
+  expect(fetcher.mock.calls[0]![0]).toBe(
+    'https://fictional-gateway.example.invalid/sync/v1/inquiries/pull',
+  );
+});
+
+test('HTTPS pull binds the ten-second abort signal and leaves timed-out input retryable', async () => {
+  const controller = new AbortController(),
+    timeout = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValue(controller.signal);
+  const fetcher = vi.fn(
+    async (_url: unknown, options?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        options!.signal!.addEventListener(
+          'abort',
+          () => reject(options!.signal!.reason),
+          { once: true },
+        );
+      }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const pending = pullWebsiteInquiries(pool, tenantId, actorId, pullOptions());
+  const rejection = expect(pending).rejects.toMatchObject({
+    reason: 'failed',
+    message: 'Website inquiry unavailable',
+  });
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalled());
+  expect(timeout).toHaveBeenCalledWith(10000);
+  controller.abort(new DOMException('fictional timeout', 'TimeoutError'));
+  await rejection;
+  expect(Object.values(await counts())).toEqual([0, 0, 0, 0, 0]);
+});
+
+test('HTTPS pull uses the real default clock and accepts a correctly signed empty response', async () => {
+  const clockKey = { ...key, notBefore: 0, expiresAt: Number.MAX_SAFE_INTEGER };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: unknown, options?: RequestInit) => {
+      const request = JSON.parse(JSON.parse(options!.body as string).body);
+      return Response.json(
+        signGatewayMessage(
+          {
+            ...request,
+            messageId: randomUUID(),
+            operationId: randomUUID(),
+            kind: 'inquiries.batch',
+            payload: { requestId: request.messageId, inquiries: [] },
+          },
+          clockKey,
+        ),
+      );
+    }),
+  );
+  const config = pullOptions();
+  expect(
+    await pullWebsiteInquiries(pool, tenantId, actorId, {
+      origin: config.origin,
+      requestKey: {
+        ...config.requestKey,
+        notBefore: 0,
+        expiresAt: Number.MAX_SAFE_INTEGER,
+      },
+      responseKeys: [clockKey],
+    }),
+  ).toEqual({ status: 'applied', count: 0 });
 });

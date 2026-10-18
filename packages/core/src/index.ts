@@ -74,3 +74,4 @@ export {
 export { receiveWebsiteInquiryBatch } from './website-inquiry-sync.js';
 
 export { registerWebsiteInboxRoutes } from './website-inbox-routes.js';
+export { pullWebsiteInquiries } from './website-inquiry-pull.js';

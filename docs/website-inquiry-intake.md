@@ -201,3 +201,32 @@ leeres Land, korrigierbaren Fehler, echte API-Übernahme, aktualisierte Eventlis
 und Originalangaben in der Eventakte. Hell/Dunkel werden bei 1280 und 390 Pixeln
 mit synthetischen Daten und axe geprüft. Die Website selbst ist weiterhin nicht
 an diesen lokalen Prüfbereich angeschlossen.
+
+## Ausgehende HTTPS-Abholung (E004.14)
+
+`pullWebsiteInquiries` ruft ausschließlich den festen Pfad
+`/sync/v1/inquiries/pull` eines ausdrücklich konfigurierten HTTPS-Origins auf.
+URL-Zugangsdaten, fremde Pfade, Querys und Fragmente sind unzulässig. Vor dem
+Netzwerkaufruf wird die lokale Betreiberberechtigung geprüft. Jede reine Abholung
+bekommt frische Nachrichten-/Operations-IDs und fordert höchstens 100 Eingänge an.
+Cookies werden nicht gesendet; Redirects sind verboten. Ziel, Signaturpaket und
+Prüfschlüssel werden vor der ersten Wartezeit eingefroren.
+
+Der Abruf verwendet ein festes Zehn-Sekunden-Abbruchsignal für Fetch und Body.
+Nur HTTP 200 mit JSON-Inhalt wird verarbeitet. Sowohl angekündigte als auch
+wirklich gelesene Antwortbytes sind auf 132.096 begrenzt; Streams werden nach
+Abschluss oder Fehler geschlossen. Ungültiges UTF-8 oder JSON und interne
+Transportfehler führen zu neutralen Fehlern ohne Eingangsdaten, URLs oder
+Schlüssel in Fehlermeldungen. Anschließend prüft der bestehende Batch-Dienst
+Signatur, Bezug zum eigenen Pull-Aufruf und aktuelle Zeit nochmals, bevor er
+Originale atomar lokal sichert. Eine während des Abrufs abgelaufene Signatur wird
+nicht mit der alten Startzeit akzeptiert.
+
+Tests decken signierte Requests/Antworten, echte Gateway-Routen über einen
+synthetischen Fetch-Adapter, Rechteprüfung, kaputte/übergroße Streams,
+Abbruchsignal, falsch zugeordnete Antworten, Zeitablauf und Wiederholung ab.
+Eine öffentliche HTTPS-Installation ist hier noch nicht getestet oder verbunden.
+Der Dienst startet keinen Worker und quittiert keine Eingänge. Wiederholtes
+Abholen ist lesend und kann bereits gesicherte Originale nicht duplizieren;
+Quittierungen benötigen weiterhin eine persistente Outbox und einen eigenen
+signierten Empfangsbeleg.
