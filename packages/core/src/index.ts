@@ -79,3 +79,4 @@ export {
   prepareWebsiteInquiryAcknowledgement,
   receiveWebsiteInquiryAcknowledgement,
 } from './website-inquiry-ack.js';
+export { acknowledgeWebsiteInquiries } from './website-inquiry-ack-send.js';

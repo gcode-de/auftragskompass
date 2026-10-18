@@ -262,3 +262,29 @@ Migration ist rein additiv. Bestehender Backup-/Restore-Probelauf prüft nun auc
 offenen Quittierungsauftrag samt unveränderter Originalzuordnung und erneutem Versuch.
 Aufbewahrung/Bereinigung technischer Belege bleibt vor öffentlichem Dauerbetrieb
 festzulegen; hier werden keine Daten automatisch entfernt.
+
+## Quittierungsversand über HTTPS (E004.16)
+
+`acknowledgeWebsiteInquiries` bereitet genau einen Versuch vor und wartet auf dessen
+lokalen Commit, bevor `/sync/v1/inquiries/ack` aufgerufen wird. Ungültige
+Transportkonfiguration oder fehlende Betreiberrechte öffnen keine Verbindung.
+Ohne offenen Eingang bleibt der Lauf ohne HTTP-Aufruf. Abruf und Quittierung teilen
+dieselbe HTTPS-Origin-Prüfung, Schlüsselkopie und begrenzte JSON-Übertragung:
+keine URL-Zugangsdaten/Querys/Redirects/Cookies, zehn Sekunden und 132.096 Antwortbytes.
+
+Jeder Versand wird frisch signiert; die Operations-ID und sortierten Original-IDs
+bleiben für denselben offenen Auftrag erhalten. Die Antwort muss zusätzlich zum
+persistenten Versuch **genau zum aktuellen HTTP-Aufruf** gehören und zur aktuellen
+Empfangszeit gültig signiert sein. Erst der bestehende transaktionale Empfangsdienst
+schließt den Auftrag ab. Transport-, Signatur-, Zuordnungs- oder lokale Fehler
+lassen ihn wiederaufnehmbar. Ein bereits im Gateway bestätigter, aber lokal wegen
+verlorener Antwort offener Auftrag wird mit derselben Operation erneut versucht.
+
+Der Vertragstest verwendet die echten getrennten Gateway-Routen und eine eigene
+Gateway-Datenbank: Nach verlorenem Empfangsbeleg ist dort der verschlüsselte Inhalt
+bereits entfernt; nach lokalem Pool-Neustart liefert der Retry den persistenten
+Gateway-Beleg ohne zweite ACK-Wirkung. Das vollständige lokale Original bleibt
+unverändert und es wird kein Event automatisch angelegt. Zusätzliche Tests prüfen
+unter anderem unpassende signierte Belege, Zeitablauf während des Transfers,
+Timeouts und fehlende Rechte. Es ist weiterhin kein öffentlicher HTTPS-Dienst
+angeschlossen und kein automatischer Worker gestartet.

@@ -1,4 +1,13 @@
-import { beforeAll, beforeEach, afterAll, test, expect } from 'vitest';
+import { acknowledgeWebsiteInquiries } from '../../packages/core/src/website-inquiry-ack-send.js';
+import {
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  test,
+  expect,
+  vi,
+} from 'vitest';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
@@ -388,5 +397,177 @@ test('damaged pending batch relationships fail closed and invalid receipt contex
   ]);
   await expect(prepare()).rejects.toMatchObject({ reason: 'invalid' });
   await expect(receive(packet)).rejects.toMatchObject({ reason: 'invalid' });
+  expect(await pending()).toBe('1');
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+const syncOptions = () => ({
+  origin: 'https://fictional-gateway.example.invalid',
+  requestKey: {
+    ...key,
+    id: 'fictional-request',
+    direction: 'core-to-gateway' as const,
+    secret: Buffer.alloc(32, 8),
+  },
+  responseKeys: [key],
+  now: () => now,
+});
+test('HTTPS ACK sends only a committed attempt with a fresh signature, then persists the bound receipt', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  const config = syncOptions(),
+    fetcher = vi.fn(async (url: unknown, options?: RequestInit) => {
+      expect(url).toBe(
+        'https://fictional-gateway.example.invalid/sync/v1/inquiries/ack',
+      );
+      expect(options).toMatchObject({
+        method: 'POST',
+        credentials: 'omit',
+        redirect: 'error',
+      });
+      const packet = JSON.parse(options!.body as string),
+        message = JSON.parse(packet.body);
+      const { verifyGatewayMessage } =
+        await import('../../packages/core/src/gateway-message.js');
+      expect(
+        verifyGatewayMessage(packet, {
+          tenantId,
+          direction: 'core-to-gateway',
+          kind: 'inquiries.ack',
+          keys: [config.requestKey],
+          now: now.getTime() / 1000,
+        })?.payload,
+      ).toEqual({ inquiryIds: [value.id] });
+      const persisted = (
+        await pool.query(
+          'SELECT operation_id FROM website_inquiry_ack_attempts WHERE tenant_id=$1 AND message_id=$2',
+          [tenantId, message.messageId],
+        )
+      ).rows[0];
+      expect(persisted.operation_id).toBe(message.operationId);
+      return Response.json(receipt(message.messageId));
+    });
+  vi.stubGlobal('fetch', fetcher);
+  expect(
+    await acknowledgeWebsiteInquiries(pool, tenantId, actorId, config),
+  ).toEqual({ status: 'applied', count: 1 });
+  expect(await pending()).toBe('0');
+  expect(
+    await acknowledgeWebsiteInquiries(pool, tenantId, actorId, config),
+  ).toEqual({ status: 'idle', count: 0 });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+test('HTTP failures and unrelated signed receipts leave the same operation pending and retryable', async () => {
+  await stageWebsiteInquiry(pool, tenantId, actorId, entry(), now);
+  const config = syncOptions(),
+    job = (await prepare())!;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('{}', { status: 503 })),
+  );
+  await expect(
+    acknowledgeWebsiteInquiries(pool, tenantId, actorId, config),
+  ).rejects.toMatchObject({
+    reason: 'failed',
+    message: 'Website inquiry unavailable',
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(receipt(job.messageId))),
+  );
+  await expect(
+    acknowledgeWebsiteInquiries(pool, tenantId, actorId, config),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  expect(await pending()).toBe('1');
+  expect((await prepare())!.operationId).toBe(job.operationId);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({})),
+  );
+  await expect(
+    acknowledgeWebsiteInquiries(pool, tenantId, actorId, config),
+  ).rejects.toMatchObject({ reason: 'unauthorized' });
+  expect(await pending()).toBe('1');
+});
+test('invalid transport configuration or unauthorized operator never opens a connection or prepares a job', async () => {
+  await stageWebsiteInquiry(pool, tenantId, actorId, entry(), now);
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  const config = syncOptions();
+  for (const invalid of [
+    {
+      ...config,
+      now: () => {
+        throw new Error('fictional private clock');
+      },
+    },
+    { ...config, origin: 'http://fictional.example.invalid' },
+    { ...config, responseKeys: [] },
+    {
+      ...config,
+      requestKey: {
+        ...config.requestKey,
+        direction: 'gateway-to-core' as const,
+      },
+    },
+  ])
+    await expect(
+      acknowledgeWebsiteInquiries(pool, tenantId, actorId, invalid),
+    ).rejects.toMatchObject({ reason: 'invalid' });
+  await expect(
+    acknowledgeWebsiteInquiries(pool, tenantId, randomUUID(), config),
+  ).rejects.toMatchObject({ reason: 'forbidden' });
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(await pending()).toBe('0');
+});
+test('ACK timeout and signature expiry during transfer preserve the durable job for another attempt', async () => {
+  await stageWebsiteInquiry(pool, tenantId, actorId, entry(), now);
+  const config = syncOptions(),
+    controller = new AbortController();
+  vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+  const fetcher = vi.fn(
+    async (_url: unknown, options?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) =>
+        options!.signal!.addEventListener(
+          'abort',
+          () => reject(options!.signal!.reason),
+          { once: true },
+        ),
+      ),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const pendingSend = acknowledgeWebsiteInquiries(
+    pool,
+    tenantId,
+    actorId,
+    config,
+  );
+  const failure = expect(pendingSend).rejects.toMatchObject({
+    reason: 'failed',
+  });
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalled());
+  controller.abort();
+  await failure;
+  vi.restoreAllMocks();
+  const job = (await prepare())!;
+  let clock = now;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: unknown, options?: RequestInit) => {
+      const request = JSON.parse(JSON.parse(options!.body as string).body);
+      clock = new Date(now.getTime() + 3601000);
+      return Response.json(receipt(request.messageId));
+    }),
+  );
+  await expect(
+    acknowledgeWebsiteInquiries(pool, tenantId, actorId, {
+      ...config,
+      now: () => clock,
+    }),
+  ).rejects.toMatchObject({ reason: 'unauthorized' });
+  expect((await prepare())!.operationId).toBe(job.operationId);
   expect(await pending()).toBe('1');
 });

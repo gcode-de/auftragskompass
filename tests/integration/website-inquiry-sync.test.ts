@@ -1,3 +1,4 @@
+import { acknowledgeWebsiteInquiries } from '../../packages/core/src/website-inquiry-ack-send.js';
 import { pullWebsiteInquiries } from '../../packages/core/src/website-inquiry-pull.js';
 import {
   beforeAll,
@@ -367,7 +368,7 @@ test('validated packet, key and time cannot be mutated while waiting for the loc
   ).toEqual(now);
 });
 
-test('the actual gateway public receive and signed pull feed the local durable inbox without acknowledgement', async () => {
+test('the actual gateway receive, pull and restart-safe ACK retain local originals after a lost remote response', async () => {
   const { createInquiryGateway } =
     await import('../../packages/core/src/inquiry-gateway.js');
   await pool.query('CREATE DATABASE fictional_gateway_contract');
@@ -473,6 +474,89 @@ test('the actual gateway public receive and signed pull feed the local durable i
         now: () => now,
       }),
     ).toEqual({ status: 'applied', count: 1 });
+    expect((await counts()).events).toBe(0);
+    const sent: Array<{
+      operationId: string;
+      messageId: string;
+      payload: unknown;
+    }> = [];
+    let loseResponse = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, options?: RequestInit) => {
+        const packet = JSON.parse(options!.body as string);
+        sent.push(JSON.parse(packet.body));
+        const result = await app.inject({
+          method: 'POST',
+          url: new URL(String(url)).pathname,
+          payload: packet,
+        });
+        expect(result.statusCode).toBe(200);
+        if (loseResponse) {
+          loseResponse = false;
+          throw new Error('fictional response lost after gateway commit');
+        }
+        return new Response(new Uint8Array(result.rawPayload), {
+          status: result.statusCode,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+    const config = {
+      origin: 'https://fictional-gateway.example.invalid',
+      requestKey: coreKey,
+      responseKeys: [key],
+      now: () => now,
+    };
+    await expect(
+      acknowledgeWebsiteInquiries(pool, tenantId, actorId, config),
+    ).rejects.toMatchObject({ reason: 'failed' });
+    const acknowledged = (
+      await gatewayPool.query(
+        'SELECT ciphertext,acknowledged_at FROM ak_gateway_inquiries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0];
+    expect(acknowledged.ciphertext).toBeNull();
+    expect(acknowledged.acknowledged_at).toEqual(now);
+    expect(
+      (
+        await pool.query(
+          'SELECT completed_at FROM website_inquiry_ack_operations WHERE tenant_id=$1',
+          [tenantId],
+        )
+      ).rows[0].completed_at,
+    ).toBeNull();
+    const restarted = new Pool({
+      connectionString: container.getConnectionUri(),
+    });
+    try {
+      expect(
+        await acknowledgeWebsiteInquiries(restarted, tenantId, actorId, config),
+      ).toEqual({ status: 'applied', count: 1 });
+    } finally {
+      await restarted.end();
+    }
+    expect(sent).toHaveLength(2);
+    expect(sent[0]!.operationId).toBe(sent[1]!.operationId);
+    expect(sent[0]!.messageId).not.toBe(sent[1]!.messageId);
+    expect(sent[0]!.payload).toEqual(sent[1]!.payload);
+    expect(
+      (
+        await gatewayPool.query(
+          "SELECT count(*) FROM ak_gateway_operations WHERE tenant_id=$1 AND kind='inquiries.ack'",
+          [tenantId],
+        )
+      ).rows[0].count,
+    ).toBe('1');
+    expect(
+      (
+        await pool.query(
+          'SELECT payload FROM website_inquiry_deliveries WHERE tenant_id=$1',
+          [tenantId],
+        )
+      ).rows[0].payload,
+    ).toEqual(stored);
     expect((await counts()).events).toBe(0);
   } finally {
     await app.close();
