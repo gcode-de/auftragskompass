@@ -1,3 +1,4 @@
+import { prepareWebsiteInquiryAcknowledgement } from './packages/core/dist/website-inquiry-ack.js';
 import { stageWebsiteInquiry } from './packages/core/dist/website-inquiry-deliveries.js';
 // Fed to Node over stdin in the disposable runtime image, whose cwd is /app.
 import assert from 'node:assert/strict';
@@ -165,6 +166,13 @@ try {
       ),
       { status: 'stored' },
     );
+    const acknowledgement = await prepareWebsiteInquiryAcknowledgement(
+      pool,
+      tenant,
+      actor,
+      new Date(inquiry.receivedAt),
+    );
+    assert.deepEqual(acknowledgement.inquiryIds, [stagedInquiry.id]);
     await receiveWebsiteInquiry(
       pool,
       tenant,
@@ -215,6 +223,29 @@ try {
     ).rows[0];
     assert.deepEqual(staged.payload, stagedInquiry);
     assert.equal(staged.staged_at.toISOString(), inquiry.receivedAt);
+    const previousAck = (
+      await pool.query(
+        'SELECT id FROM website_inquiry_ack_operations WHERE tenant_id=$1 AND completed_at IS NULL',
+        [tenant],
+      )
+    ).rows[0];
+    const retryAck = await prepareWebsiteInquiryAcknowledgement(
+      pool,
+      tenant,
+      actor,
+      new Date('2030-11-01T10:00:00.000Z'),
+    );
+    assert.equal(retryAck.operationId, previousAck.id);
+    assert.deepEqual(retryAck.inquiryIds, [stagedInquiry.id]);
+    assert.equal(
+      (
+        await pool.query(
+          'SELECT count(*) FROM website_inquiry_ack_attempts WHERE tenant_id=$1',
+          [tenant],
+        )
+      ).rows[0].count,
+      '2',
+    );
     assert.deepEqual(
       await stageWebsiteInquiry(
         pool,

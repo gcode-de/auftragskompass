@@ -315,3 +315,27 @@ export const websiteInquiryDeliveries = pgTable('website_inquiry_deliveries', {
   stagedAt: timestamp('staged_at', { withTimezone: true }).notNull(),
   stagedBy: uuid('staged_by').notNull(),
 });
+
+export const websiteInquiryAckOperations = pgTable(
+  'website_inquiry_ack_operations',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    id: uuid('id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+);
+export const websiteInquiryAckItems = pgTable('website_inquiry_ack_items', {
+  tenantId: uuid('tenant_id').notNull(),
+  operationId: uuid('operation_id').notNull(),
+  inquiryId: uuid('inquiry_id').notNull(),
+});
+export const websiteInquiryAckAttempts = pgTable(
+  'website_inquiry_ack_attempts',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    messageId: uuid('message_id').notNull(),
+    operationId: uuid('operation_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+);

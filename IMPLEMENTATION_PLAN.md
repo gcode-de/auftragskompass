@@ -138,6 +138,8 @@ vollständige Ausbauplan, nicht die Pflichtliste für den verkürzten Erststart.
 
 - [x] E004.14: ausgehende HTTPS-Abholung signierter Gateway-Batches implementieren. Abnahme: fester versionierter Pull-Pfad ohne Redirects/Cookies, aktive lokale Freigabe vor dem Abruf, feste Zeit-/Bytegrenzen einschließlich fehlerhafter Streams, erneute Signatur-/Zeitprüfung und atomare dauerhafte Ablage; keine Quittierung, Worker-Aktivierung oder echte Verbindung.
 
+- [x] E004.15: dauerhafte Quittierungs-Outbox ausschließlich für lokal gesicherte Originale ergänzen. Abnahme: stabile Operations-ID und unveränderliche Batch-Zuordnung über Neustart/Parallelität, frische persistente Versuch-ID, signierter und gebundener Empfangsbeleg, atomarer Abschluss/Replay-Schutz und Mandantentrennung; kein HTTP-Versand oder automatischer Lauf.
+
 Die Entwicklung beginnt mit einem bewusst kleinen internen MVP. Dieser kann Kontakte und Events verwalten, FB1/FB2 konfliktfrei reservieren, die Belegung im Kalender zeigen und einen ICS-Feed bereitstellen. Erst danach kommen öffentliche Anfragen, E-Mail, Geschäftsdokumente, Verträge, Fragebögen und weitere Komfortfunktionen hinzu.
 
 Es gibt keine lange Integrationsphase am Ende: Jeder Commit liefert einen vertikalen, testbaren Fortschritt. Datenbank, API und Oberfläche werden für ein Feature möglichst gemeinsam erweitert.

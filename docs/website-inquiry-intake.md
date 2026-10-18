@@ -64,7 +64,10 @@ Zustellversuch sicher quittiert werden kann. Quittierung darf erst nach lokalem
 Commit erfolgen; dieser Dienst quittiert oder löscht im Gateway selbst nichts.
 Fehlertexte enthalten feste Gründe ohne Eingaben, Adressen oder interne Ursachen.
 Vor echter Aktivierung müssen ausstehende Prüfentscheidungen sichtbar und
-wiederaufnehmbar sein; ein `contact_review` darf nicht automatisch quittiert werden.
+wiederaufnehmbar sein. Seit E004.13 sind vollständig lokal gesicherte Originale
+im Prüfbereich sichtbar; deren Transportquittierung ist von der noch offenen
+Kontaktzuordnung getrennt. Ein `contact_review` allein ist niemals ein
+Zustellnachweis und darf keine Quittierung auslösen.
 
 Der isolierte Compose-Dump-/Restore-Probelauf prüft zusätzlich die vollständige
 Originalanfrage, ihren Herkunftseintrag und eine idempotente Wiederholung gegen
@@ -230,3 +233,32 @@ Der Dienst startet keinen Worker und quittiert keine Eingänge. Wiederholtes
 Abholen ist lesend und kann bereits gesicherte Originale nicht duplizieren;
 Quittierungen benötigen weiterhin eine persistente Outbox und einen eigenen
 signierten Empfangsbeleg.
+
+## Dauerhafte Quittierungs-Outbox (E004.15)
+
+Migration `0025_website_inquiry_acknowledgements.sql` ergänzt getrennte Operationen,
+Original-Zuordnungen und Versandversuche. `prepareWebsiteInquiryAcknowledgement`
+prüft erneut den aktiven Betreiber und erstellt je Mandant höchstens eine offene
+Operation mit maximal 100 **bereits vollständig lokal gesicherten** Eingängen.
+Fremdschlüssel verhindern die Zuordnung unbekannter oder fremder Originale;
+Eindeutigkeit verhindert eine zweite Operation für denselben Eingang. Sortierte
+IDs und Operations-ID bleiben bei Wiederholung, Parallelität und Neustart gleich.
+Jeder Versuch erhält vor einem späteren Versand eine neue persistente Nachrichten-ID.
+Neue Originale warten auf die nächste Operation, statt einen laufenden Batch zu ändern.
+
+`receiveWebsiteInquiryAcknowledgement` akzeptiert ausschließlich zeitgültige,
+signierte `inquiries.receipt`-Pakete. Der Bezug muss zu einem dauerhaft gespeicherten
+eigenen Versuch gehören; der Zähler muss zwischen null und dessen Batchgröße liegen.
+Null ist nach zwischenzeitlichem Gateway-Ablauf zulässig: Die Originale sind bereits
+lokal vollständig vorhanden. Fehlende, unpassende, fremde oder ungültige Belege
+schließen keine Operation ab. Technischer Replay-Beleg und Abschluss werden atomar
+geschrieben. Ein verspäteter Beleg kann niemals eine neuere Operation abschließen.
+Lokale Originale bleiben einschließlich ungeklärter Kontaktzuordnung erhalten.
+
+Der Dienst führt keinen HTTP-Aufruf aus und ist noch nicht automatisch aktiviert.
+Der Sender muss einen vorbereiteten Versuch **erst nach Commit** versenden; nach
+verlorener Antwort wird dieselbe Operation mit frischer Versuch-ID erneut gesendet.
+Migration ist rein additiv. Bestehender Backup-/Restore-Probelauf prüft nun auch den
+offenen Quittierungsauftrag samt unveränderter Originalzuordnung und erneutem Versuch.
+Aufbewahrung/Bereinigung technischer Belege bleibt vor öffentlichem Dauerbetrieb
+festzulegen; hier werden keine Daten automatisch entfernt.
