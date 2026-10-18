@@ -132,3 +132,66 @@ test.each(['firstName', 'lastName', 'email', 'eventDate'])(
     expect(isInquirySubmission(input)).toBe(false);
   },
 );
+
+test('public text cannot contain PostgreSQL NULs or overflow the combined contact name', () => {
+  for (const field of [
+    'firstName',
+    'lastName',
+    'phone',
+    'location',
+    'comment',
+  ]) {
+    expect(
+      isInquirySubmission({
+        ...submission(),
+        fields: { ...submission().fields, [field]: 'Fictional\0text' },
+      }),
+    ).toBe(false);
+  }
+  expect(
+    isInquirySubmission({
+      ...submission(),
+      fields: {
+        ...submission().fields,
+        firstName: 'a'.repeat(100),
+        lastName: 'b'.repeat(100),
+      },
+    }),
+  ).toBe(false);
+  expect(
+    isInquirySubmission({
+      ...submission(),
+      fields: {
+        ...submission().fields,
+        firstName: 'a'.repeat(99),
+        lastName: 'b'.repeat(100),
+      },
+    }),
+  ).toBe(true);
+  expect(
+    isInquirySubmission({
+      ...submission(),
+      fields: { ...submission().fields, phone: undefined },
+    }),
+  ).toBe(false);
+});
+
+test('public text must remain representable as UTF-8 without replacing characters', () => {
+  for (const comment of ['Fictional\ud800', 'Fictional\udfff'])
+    expect(
+      isInquirySubmission({
+        ...submission(),
+        fields: { ...submission().fields, comment },
+      }),
+    ).toBe(false);
+  expect(
+    isInquirySubmission({
+      ...submission(),
+      fields: {
+        ...submission().fields,
+        firstName: '😀'.repeat(50),
+        lastName: '😀'.repeat(50),
+      },
+    }),
+  ).toBe(true);
+});

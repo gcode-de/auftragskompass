@@ -66,7 +66,9 @@ ist ein existierendes ISO-Kalenderdatum `YYYY-MM-DD` mit Jahr 0001–9999.
 Die spätere Oberfläche muss die bisherige deutsche Datumseingabe darauf abbilden.
 
 Grenzen: je 100 Zeichen für Vor-/Nachname, 254 für E-Mail, 60 für Telefonnummer,
-200 für den freien Veranstaltungsort und 5.000 für Kommentar. Für Telefonnummern
+200 für den freien Veranstaltungsort und 5.000 für Kommentar. Der zusammengesetzte
+getrimmte Kontaktname bleibt auf 200 Unicode-Codepunkte begrenzt. NUL und ungültige
+Unicode-Surrogates werden ohne stillen Zeichenersatz abgewiesen. Für Telefonnummern
 gilt die vorhandene Kontaktprüfung. Optionale Felder dürfen fehlen oder leer sein,
 aber keine anderen Typen besitzen. Die Prüfung entfernt, ergänzt oder konvertiert
 keine Werte. Texte bleiben untrusted; die spätere Darstellung muss sie als Text
@@ -91,3 +93,9 @@ oder Wiederholsperre. Dafür folgen getrennte getestete Schritte.
 
 Der öffentliche Verfügbarkeitskalender und die spätere Formularverwaltung werden
 nicht durch diesen ersten Vertrag als implementiert gewertet.
+
+Signatur und persistenter technischer Wiederholschutz sind inzwischen im
+[Übergabevertrag](gateway-protocol.md) umgesetzt. Der
+[verschlüsselte Zwischenspeicher](inquiry-inbox.md) hält die Eingaben einschließlich
+des Datenschutzhinweises; eine öffentliche Route oder echte Übernahme ist damit
+weiterhin nicht aktiviert.

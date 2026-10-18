@@ -4,6 +4,7 @@ import { tenants, users, memberships } from '../../packages/core/src/schema.js';
 import {
   gatewayMessages,
   gatewayOperations,
+  gatewayInquiries,
 } from '../../packages/core/src/gateway-schema.js';
 test('typed schema declares tenant-bound identity keys matching SQL', () => {
   expect(getTableConfig(tenants).columns.map((c) => c.name)).toEqual([
@@ -59,4 +60,27 @@ test('gateway receipt keys include tenant and direction without business foreign
     expect(definition.foreignKeys).toHaveLength(0);
     expect(definition.columns.map((c) => c.name)).toEqual(columns);
   }
+});
+
+test('typed inquiry storage has a tenant-bound key and only encrypted content columns', () => {
+  const definition = getTableConfig(gatewayInquiries);
+  expect(definition.primaryKeys[0]!.columns.map((c) => c.name)).toEqual([
+    'tenant_id',
+    'id',
+  ]);
+  expect(definition.foreignKeys).toHaveLength(0);
+  expect(definition.columns.map((c) => c.name)).toEqual([
+    'tenant_id',
+    'id',
+    'form_id',
+    'form_version',
+    'key_id',
+    'payload_hash',
+    'received_at',
+    'expires_at',
+    'acknowledged_at',
+    'ciphertext',
+    'iv',
+    'tag',
+  ]);
 });

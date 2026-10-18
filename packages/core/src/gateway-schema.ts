@@ -38,3 +38,22 @@ export const gatewayOperations = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.direction, t.operationId] })],
 );
+
+export const gatewayInquiries = pgTable(
+  'ak_gateway_inquiries',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    id: uuid('id').notNull(),
+    formId: text('form_id').notNull(),
+    formVersion: integer('form_version').notNull(),
+    keyId: text('key_id').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+    ciphertext: text('ciphertext'),
+    iv: text('iv'),
+    tag: text('tag'),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.id] })],
+);

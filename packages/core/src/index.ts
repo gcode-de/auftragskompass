@@ -47,3 +47,9 @@ export {
   processGatewayOperation,
   GatewayOperationError,
 } from './gateway-operations.js';
+
+export {
+  inquiryInbox,
+  InquiryInboxError,
+  type InquiryInboxConfig,
+} from './inquiry-inbox.js';

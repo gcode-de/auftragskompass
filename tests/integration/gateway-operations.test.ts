@@ -88,11 +88,17 @@ test('gateway migrations remain minimal and repeatable with verified checksums',
       )
     ).rows[0],
   ).toEqual({ contacts: null, tenants: null });
-  const original = (await pool.query('SELECT name,checksum FROM ak_migrations'))
-    .rows[0]!;
+  const original = (
+    await pool.query('SELECT name,checksum FROM ak_migrations WHERE name=$1', [
+      'gateway-0001-receipts.sql',
+    ])
+  ).rows[0]!;
   expect(original.name).toBe('gateway-0001-receipts.sql');
   try {
-    await pool.query("UPDATE ak_migrations SET checksum='fictional-invalid'");
+    await pool.query(
+      "UPDATE ak_migrations SET checksum='fictional-invalid' WHERE name=$1",
+      [original.name],
+    );
     await expect(migrateGateway(pool)).rejects.toThrow(
       'Migration checksum mismatch',
     );

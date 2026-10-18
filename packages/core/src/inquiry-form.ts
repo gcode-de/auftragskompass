@@ -1,5 +1,6 @@
 import AjvCompiler from '@fastify/ajv-compiler';
 import { Temporal } from '@js-temporal/polyfill';
+import { toUSVString } from 'node:util';
 import { contactFields } from './contacts.js';
 
 // Observed on the public website on 2026-10-18; this is not a booking form.
@@ -124,8 +125,20 @@ export function isInquirySubmission(
   input: unknown,
 ): input is InquirySubmission {
   if (!validate(input)) return false;
+  const fields = (input as InquirySubmission).fields;
+  if (
+    Object.values(fields).some(
+      (value) =>
+        typeof value !== 'string' ||
+        value.includes('\0') ||
+        toUSVString(value) !== value,
+    ) ||
+    Array.from(fields.firstName.trim() + ' ' + fields.lastName.trim()).length >
+      200
+  )
+    return false;
   try {
-    Temporal.PlainDate.from((input as InquirySubmission).fields.eventDate, {
+    Temporal.PlainDate.from(fields.eventDate, {
       overflow: 'reject',
     });
     return true;
