@@ -213,6 +213,41 @@ test('username/email login, secure cookies, CSRF, logout and unsupported methods
   expect((await app.inject({ url: '/auth/me', headers })).statusCode).toBe(401);
   expect((await login()).statusCode).toBe(204);
 });
+test('90-day session survives restart without sliding expiry and still rejects an expired token', async () => {
+  await server();
+  const response = await login();
+  expect(response.statusCode).toBe(204);
+  const cookie = response.cookies[0]!;
+  expect(cookie.maxAge).toBe(90 * 24 * 60 * 60);
+  const hash = digest(cookie.value);
+  const readExpiry = async () =>
+    (
+      await pool.query(
+        'SELECT expires_at FROM sessions WHERE tenant_id=$1 AND token_hash=$2',
+        [tenantId, hash],
+      )
+    ).rows[0].expires_at as Date;
+  expect(
+    Math.abs(
+      (await readExpiry()).getTime() - Date.now() - 90 * 24 * 60 * 60_000,
+    ),
+  ).toBeLessThan(5000);
+  // Represent the last day of the session without advancing the real database clock.
+  await pool.query(
+    "UPDATE sessions SET expires_at=now()+interval '1 day' WHERE tenant_id=$1 AND token_hash=$2",
+    [tenantId, hash],
+  );
+  const expiry = await readExpiry();
+  await server();
+  const cookies = { '__Host-ak-session': cookie.value };
+  expect((await app.inject({ url: '/auth/me', cookies })).statusCode).toBe(200);
+  expect(await readExpiry()).toEqual(expiry);
+  await pool.query(
+    "UPDATE sessions SET expires_at=now()-interval '1 second' WHERE tenant_id=$1 AND token_hash=$2",
+    [tenantId, hash],
+  );
+  expect((await app.inject({ url: '/auth/me', cookies })).statusCode).toBe(401);
+});
 test('persistent lockout covers both identifiers and restart; expiry restores access', async () => {
   await server();
   const repo = passwordAccess(pool, tenantId);

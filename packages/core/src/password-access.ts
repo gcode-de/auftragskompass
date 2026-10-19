@@ -1,3 +1,4 @@
+import { sessionDurationSeconds } from './auth-config.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -221,7 +222,7 @@ export function passwordAccess(pool: Pool, tenantId: string) {
           tenantId,
           userId: account!.credential.userId,
           tokenHash,
-          expiresAt: new Date(Date.now() + 8 * 60 * 60_000),
+          expiresAt: new Date(Date.now() + sessionDurationSeconds * 1000),
         });
         await appendAudit(
           tx,

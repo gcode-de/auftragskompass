@@ -15,7 +15,7 @@ import {
 import { appendAudit } from './audit.js';
 import { passwordAccess } from './password-access.js';
 import { accessRepository } from './access.js';
-import type { AuthConfig } from './auth-config.js';
+import { sessionDurationSeconds, type AuthConfig } from './auth-config.js';
 import type { IdentityProvider } from './oidc.js';
 export const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
@@ -145,7 +145,7 @@ export async function registerAuth(
         return reply
           .setCookie(sessionCookie, token, {
             ...cookieOptions,
-            maxAge: 8 * 60 * 60,
+            maxAge: sessionDurationSeconds,
           })
           .code(204)
           .send();
@@ -263,7 +263,7 @@ export async function registerAuth(
         return reply
           .setCookie(sessionCookie, token, {
             ...cookieOptions,
-            maxAge: 8 * 60 * 60,
+            maxAge: sessionDurationSeconds,
           })
           .redirect('/');
       } catch {

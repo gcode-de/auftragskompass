@@ -114,6 +114,16 @@ test('full signed OIDC flow, cookies, authenticated writes, CSRF, logout and rep
     sameSite: 'Lax',
     path: '/',
   });
+  expect(session.maxAge).toBe(90 * 24 * 60 * 60);
+  const expiry = (
+    await pool.query(
+      'SELECT expires_at FROM sessions WHERE tenant_id=$1 AND token_hash=$2',
+      [config.tenantId, digest(session.value)],
+    )
+  ).rows[0].expires_at as Date;
+  expect(
+    Math.abs(expiry.getTime() - Date.now() - 90 * 24 * 60 * 60_000),
+  ).toBeLessThan(5000);
   expect((await app.inject(flow)).statusCode).toBe(400);
   const cookies = { '__Host-ak-session': session.value };
   const me = await app.inject({ url: '/auth/me', cookies });

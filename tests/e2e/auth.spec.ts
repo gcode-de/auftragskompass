@@ -304,6 +304,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     expect(
       (await context.cookies()).find((c) => c.name === '__Host-ak-session'),
     ).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });
+    const sessionExpiry = (await context.cookies()).find(
+      (cookie) => cookie.name === '__Host-ak-session',
+    )!.expires;
+    expect(
+      Math.abs(sessionExpiry - Date.now() / 1000 - 90 * 24 * 60 * 60),
+    ).toBeLessThan(120);
     expect(await page.evaluate(() => document.cookie)).not.toContain(
       'ak-session',
     );

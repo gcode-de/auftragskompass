@@ -44,8 +44,9 @@ Anmeldung `AK_BOOTSTRAP_EMAIL` aus der externen Konfiguration entfernen.
 - `POST /auth/logout`: verlangt exakten Origin und `X-CSRF-Token` aus `/auth/me`,
   löscht die serverseitige Sitzung und das Cookie; Erfolg 204.
 - Alle `/api/*`-Routen sind automatisch sitzungsgeschützt. Schreibende Methoden
-  benötigen ebenfalls Origin und CSRF-Token. Sitzungen laufen nach acht Stunden
-  absolut ab; jeder Zugriff prüft die aktive Membership erneut.
+  benötigen ebenfalls Origin und CSRF-Token. Sitzungen laufen nach 90 Tagen
+  absolut ab; Cookie und Datenbank verwenden dieselbe Frist. Zugriffe verlängern
+  diese Frist nicht. Jeder Zugriff prüft die aktive Membership erneut.
 - Cookies: `__Host-`-Präfix, Secure, HttpOnly, SameSite=Lax, Path=/, keine Domain.
   State, Browserbindung und Sitzungstokens liegen nur als SHA-256-Hash in PostgreSQL.
   PKCE-Verifier und Nonce werden kurzzeitig im Anmeldeversuch gespeichert.
@@ -277,3 +278,19 @@ Die Regression verwendet ausschließlich fiktive Daten und prüft fehlende,
 ungültige, fremde sowie gültige Sitzungen und Schreibzugriffe mit und ohne CSRF.
 Die vorhandenen anonymen Healthchecks und tokengebundenen Kalenderfeeds behalten
 ihre eigenen Zugriffsverträge.
+
+## Sitzungsdauer (H018)
+
+Gemäß Nutzerwunsch gelten neu ausgestellte Sitzungen für beide Anmeldearten
+90 Tage ab Anmeldung, auch nach einem API-Neustart. Das sichere persistente Cookie
+und der serverseitige Ablauf werden aus derselben Dauer abgeleitet. Es gibt keine
+stille Verlängerung durch Nutzung. Bestehende Sitzungen behalten ihre bisherige
+Frist; nach dem Update ist einmaliges erneutes Anmelden nötig, um 90 Tage zu
+erhalten. Es werden keine bestehenden Tokens nachträglich verlängert.
+
+Abmelden widerruft die aktuelle Sitzung sofort. Passwortwechsel,
+Betreiber-Wiederherstellung und Kontosperren beenden weiterhin alle betroffenen
+Sitzungen. Cookie-/CSRF-Schutz und laufende Berechtigungsprüfung bleiben erhalten.
+Ein Browser, der Cookies löscht, oder ein privates Browserfenster kann trotzdem
+früher eine neue Anmeldung verlangen. Auf gemeinsam genutzten Geräten abmelden;
+eine gestohlene, nicht widerrufene Sitzung wäre bis zu ihrem Ablauf verwendbar.

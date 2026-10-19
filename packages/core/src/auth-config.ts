@@ -1,3 +1,5 @@
+export const sessionDurationSeconds = 90 * 24 * 60 * 60;
+
 export type GoogleAuthConfig = {
   mode?: 'google';
   origin: string;
