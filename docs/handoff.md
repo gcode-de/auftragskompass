@@ -37,6 +37,10 @@ C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pau
 
 ## Letzter geprüfter Laufzeitstand
 
+### Laufzeitnachtrag 19.10.2026 (M4-Grundlagen)
+
+Geprüfter Stand **`7ab88bbc0634404cf3376b62ee3ebded1d8f9ac6`**, CI-Lauf 39265947701 vollständig grün (Qualität und Images). Auf dem Podman-Testhost laufen `ak-test-api`, `ak-test-worker` und `ak-test-admin` gesund auf genau dieser Revision; der automatische Updater hat sie selbstständig übernommen. In dieser Revision zusätzlich enthalten: Vorbelegung `DE` für neue Website-Kontakte, sichtbare Build-Version in der Navigation (im ausgelieferten Bundle nachgewiesen) sowie die Migrationen `0026` (Dokumentvorlagen) und `0027` (Nummernkreise). Neue Routen `/api/v1/document-templates` und `/api/v1/document-numbers` sind im Betrieb registriert. Offen bleiben die PDF-Erzeugung (C048/C049) und die eigentlichen Angebote/Rechnungen (C051/C054).
+
 ### Betriebsnachtrag H020 (19.10.2026)
 
 Auf ausdrücklichen Nutzerwunsch wurde das GitHub-Repository öffentlich geschaltet.
