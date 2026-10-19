@@ -59,6 +59,8 @@ export {
   registerInquiryPreviewRoute,
 } from './inquiry-gateway.js';
 
+export { loadInquiryConfig, type InquiryConfig } from './inquiry-config.js';
+
 export {
   receiveWebsiteInquiry,
   isWebsiteInquiry,

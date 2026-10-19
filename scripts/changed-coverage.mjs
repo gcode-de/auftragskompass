@@ -3,9 +3,12 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 // These entrypoints only wire processes/DOM; Compose and Chromium exercise them.
+// The gateway entrypoint starts only under the opt-in `gateway` Compose profile
+// (M2 activation), so no suite runs it yet.
 const excluded = new Set([
   'apps/admin/src/main.tsx',
   'apps/api/src/main.ts',
+  'apps/gateway/src/main.ts',
   'apps/worker/src/main.ts',
 ]);
 export function changedCoverage(diff, lcov) {

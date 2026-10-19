@@ -95,8 +95,60 @@ services:
       timeout: 3s
       retries: 30
     restart: unless-stopped
+  gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      target: runtime
+    command: [node, apps/gateway/dist/main.js]
+    user: '${AK_UID:-1000}:${AK_GID:-1000}'
+    secrets:
+      - db_password
+      - source: gateway_storage_keys
+        target: gateway_storage_keys
+        mode: 0400
+      - source: gateway_sync_keys
+        target: gateway_sync_keys
+        mode: 0400
+    environment:
+      AK_DB_HOST: database
+      AK_DB_NAME: auftragskompass
+      AK_DB_USER: ak
+      AK_DB_PASSWORD_FILE: /run/secrets/db_password
+      AK_LOG_LEVEL: ${AK_LOG_LEVEL:-info}
+      AK_TIMEZONE: ${AK_TIMEZONE:-Europe/Berlin}
+      AK_BUILD_REVISION: ${AK_BUILD_REVISION:-development}
+      AK_HOST: 127.0.0.1
+      AK_PORT: 3002
+      AK_INQUIRY_TENANT_ID: ${AK_INQUIRY_TENANT_ID}
+      AK_INQUIRY_ALLOWED_ORIGINS: ${AK_INQUIRY_ALLOWED_ORIGINS:-http://127.0.0.1:8080}
+      AK_INQUIRY_MAX_STORED: ${AK_INQUIRY_MAX_STORED:-100}
+      AK_INQUIRY_RETENTION_HOURS: ${AK_INQUIRY_RETENTION_HOURS:-24}
+      AK_INQUIRY_RESPONSE_KEY_ID: ${AK_INQUIRY_RESPONSE_KEY_ID}
+      AK_INQUIRY_STORAGE_KEYS_FILE: /run/secrets/gateway_storage_keys
+      AK_INQUIRY_SYNC_KEYS_FILE: /run/secrets/gateway_sync_keys
+    depends_on:
+      database: { condition: service_healthy }
+    profiles: [gateway]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3002/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    init: true
+    restart: unless-stopped
 volumes:
   database:
 secrets:
   db_password:
     file: ${AK_DB_PASSWORD_FILE:?Set absolute path to an external password file}
+  gateway_storage_keys:
+    file: ${AK_GATEWAY_STORAGE_KEYS_FILE:-/dev/null}
+  gateway_sync_keys:
+    file: ${AK_GATEWAY_SYNC_KEYS_FILE:-/dev/null}
