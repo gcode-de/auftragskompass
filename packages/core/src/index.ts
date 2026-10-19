@@ -26,6 +26,16 @@ export {
   type DocumentTemplateInput,
 } from './document-templates.js';
 
+export {
+  assertNumberPattern,
+  formatDocumentNumber,
+  documentNumberRepository,
+  allocateDocumentNumber,
+  registerDocumentNumberRoutes,
+  DocumentNumberError,
+  type NumberSequenceInput,
+} from './document-numbers.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';

@@ -367,3 +367,11 @@ export const documentTemplatePositions = pgTable(
     discountBasisPoints: integer('discount_basis_points').notNull().default(0),
   },
 );
+export const documentNumberSequences = pgTable('document_number_sequences', {
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind').notNull(),
+  pattern: text('pattern').notNull(),
+  minLength: integer('min_length').notNull().default(4),
+  nextValue: integer('next_value').notNull().default(1),
+  version: integer('version').notNull().default(1),
+});

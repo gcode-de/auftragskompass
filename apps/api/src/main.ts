@@ -23,6 +23,7 @@ import {
   registerWebsiteInquiryRoutes,
   registerWebsiteInboxRoutes,
   registerDocumentTemplateRoutes,
+  registerDocumentNumberRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -97,6 +98,7 @@ try {
     registerResourceRoutes(app, pool, auth.tenantId);
     registerProductRoutes(app, pool, auth.tenantId);
     registerDocumentTemplateRoutes(app, pool, auth.tenantId);
+    registerDocumentNumberRoutes(app, pool, auth.tenantId);
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);
