@@ -1,0 +1,10 @@
+[Unit]
+Description=Safely update AuftragsKompass test containers from green CI
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/lib/auftragskompass/auto_update.py --config /etc/auftragskompass-update.json
+TimeoutStartSec=1800

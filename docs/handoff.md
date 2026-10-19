@@ -37,6 +37,19 @@ C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pau
 
 ## Letzter geprüfter Laufzeitstand
 
+### Betriebsnachtrag H020 (19.10.2026)
+
+Auf ausdrücklichen Nutzerwunsch wurde das GitHub-Repository öffentlich geschaltet.
+Der [automatische Update-Dienst](automatic-updates.md) ist auf dem Proxmox-Host
+aktiviert: fünf Minuten nach dem letzten Lauf, nur grüner aktueller Branch-Head,
+koordinierte Digest-Pins, pausierter Checkpoint und geprüfte CT-/Hostkopie vor dem
+Wechsel. Gemeinsames Schloss mit dem privaten manuellen Updater, dauerhafte
+Fehlersperre statt automatischem Schema-Rollback. Kein GitHub-Token installiert.
+Der erste echte Lauf aktualisierte auf den grünen Planungscommit
+`906a3e0a6eb8298e4193a4fc6c63b3d68d377160`; alle drei App-Container gesund mit exakt
+dieser Revision. Gateway und andere Dienste bleiben außerhalb dieses Updaters.
+Die folgenden Angaben zu H018 bleiben dessen historischer Feature-Nachweis.
+
 - Feature-Commit **`5281c9d41ffa8db99e10d37c7669fa856d47f8b0`**, `fix: keep authenticated sessions valid for 90 days` (H018), auf `codex/local-runtime-ci` gepusht.
 - [GitHub-Lauf 39210100093](https://github.com/gcode-de/auftragskompass/actions/runs/39210100093) vollständig erfolgreich, einschließlich Qualität und Images.
 - Lokal: Format, Lint, Typen, Workspace-/Dokumentationsprüfungen, Coverage mit **443 Tests**, **vier Chromium-Abläufe** und Build grün. CI führte zusätzlich ihre vollständigen Gates einschließlich Betriebsproben aus.
@@ -78,12 +91,12 @@ Keine Skill-Texte unkontrolliert ins Repo kopieren. Auf anderem Rechner müssen 
 - Eigener Login mit E-Mail/Benutzername und Passwort. Authentik oder Google nicht ungefragt aktivieren; Google-OIDC bleibt optional. Kein Ändern des echten Inhaberpassworts im Rahmen normaler Entwicklungsarbeit.
 - Mobile Bedienung priorisieren; Menü, getrennte Arbeitsbereiche und Eventakten-Unterbereiche sowie Hell-/Dunkelumschalter beibehalten. Bookitup-Screenshots waren Strukturreferenz, kein Auftrag zur pixelgleichen Kopie.
 - Das Formular von `fotobox-bw.de` zunächst vollständig mit seinen **acht bisherigen Feldern** übernehmen. Später Inhalte konfigurierbar machen und mehrere Formulare ermöglichen. Aktueller Vertrag, Paketwerte und Datenschutztext stehen versioniert in der gemeinsamen Definition; keine Werte neu erfinden.
-- Ein Anfrageeingang ist keine feste Buchung. Unklarer Empfang wird mit unverändertem Inhalt und gleicher ID wiederholt. Neue Kontakte brauchen weiterhin eine ausdrücklich angegebene Länderzuordnung; kein Land still voreinstellen.
+- Ein Anfrageeingang ist keine feste Buchung. Unklarer Empfang wird mit unverändertem Inhalt und gleicher ID wiederholt. Neue Entscheidung vom 19.10.2026: Deutschland darf für neue Website-Kontakte ausdrücklich vorbelegt werden; bestehende Kontakte nicht ändern. Diese Freigabe ist festgehalten, die Umsetzung der Vorbelegung ist damit noch nicht erfolgt.
 - Fünf bestätigte Eventarten: Hochzeit, Geburtstag, Firmenfeier, Weihnachtsfeier, sonstiges. Eine ältere Angabe „sieben“ ist kein Anlass, zwei weitere zu erfinden.
 - LibreOffice ist als Übergang für Angebote/Rechnungen gewählt, aber Nummernfortführung, offene Posten und vollständiger Ersatzablauf sind nicht abgenommen.
 - Bookitup: historische Auftragsübersichten reichen; keine weiteren historischen Detailakten sichern. Zukünftige Aufträge sind relevant. Zusätzlich Vorlagen, Standarddateien, erreichbare Finanzstände, Nummernkreise und Stammdaten erhalten. Relevante versandte Angebote/Rechnungen liegen nach Betreiberangabe im eigenen Mailbestand; keine redundanten Belegdownloads ohne Anlass.
 - Bestehende Sicherung ist noch nicht gleich fachlich abgenommen oder unabhängig gesichert. Kunden-/Bankdaten nicht aus Bildschirmtexten erraten. [Bestand und offene Abnahme](bookitup-exit.md), [Normalisierung](bookitup-normalization.md), [Minimalimport](minimal-import.md).
-- Jeden fertigen Commit sofort pushen, keine Force-Pushes/Amends gepushter Commits. Docker-Hub-Veröffentlichung automatisiert nach grüner CI, Deployment bewusst auf geprüfte Digests; Watchdog/Portainer nicht als bereits automatisch aktualisierend annehmen.
+- Jeden fertigen Commit sofort pushen, keine Force-Pushes/Amends gepushter Commits. Docker-Hub-Veröffentlichung automatisiert nach grüner CI. Neue Nutzerentscheidung vom 19.10.2026: [koordinierte automatische Testupdates](automatic-updates.md) mit Sicherung und Digest-Pins aktivieren (H020); nicht durch unabhängige Watchdog-/Registry-Neustarts ersetzen.
 
 ## Nächste sinnvolle Arbeit
 

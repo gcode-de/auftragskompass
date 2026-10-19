@@ -1,5 +1,9 @@
 # Home-Lab-Testbetrieb
 
+Seit H020 sind [koordinierte automatische Testupdates](automatic-updates.md)
+gemäß Nutzerwunsch vorgesehen; deren Aktivierungs-/Abnahmestand steht in der
+Projektübergabe. Der allgemeine Podman-Autoupdater ersetzt diesen Ablauf nicht.
+
 Diese Umgebung dient ersten Bedienungs- und Designtests mit synthetischen Daten.
 Sie ist keine Produktivfreigabe und übernimmt keine echten Bookitup-Daten.
 
@@ -34,9 +38,10 @@ namespace/auftragskompass:admin-<vollständiger Commit-Hash>
 ```
 
 API und Worker verwenden dasselbe Runtime-Image. Beide Tags müssen erfolgreich
-veröffentlicht sein, bevor die Installation aktualisiert wird. Kein `latest`-Tag
-und kein automatisches Update auf dem Testhost: Die getestete Revision wird bewusst
-ausgewählt. Docker-Hub-Tags sind veränderbar; für eine spätere Produktivfreigabe
+veröffentlicht sein, bevor die Installation aktualisiert wird. Kein `latest`-Tag.
+Seit H020 wählt der unten beschriebene automatische Dienst ausschließlich den
+grünen aktuellen Branch-Head; manuelle Updates bleiben unter demselben Schloss möglich.
+Docker-Hub-Tags sind veränderbar; für eine spätere Produktivfreigabe
 sind zusätzlich die tatsächlich veröffentlichten Image-Digests festzuhalten.
 
 ### Veröffentlichten und laufenden Stand abgleichen (E005.9)
@@ -59,7 +64,7 @@ podman inspect --type container --format '{{ index .Config.Labels "org.openconta
 Alle drei Ausgaben müssen dem erwarteten vollständigen Commit-Hash entsprechen.
 Ältere Images ohne diese Angabe gelten damit nicht als verifiziert. Dienstgesundheit,
 Sicherung vor dem Update und Anmeldung/Abmeldung werden weiterhin separat geprüft.
-Diese Ergänzung schaltet kein automatisches Update ein.
+Die OCI-Angaben allein schalten kein automatisches Update ein; dafür gilt H020 oben.
 
 Das Zielsystem wurde per SSH als `x86_64` geprüft. Deshalb veröffentlicht dieser
 erste Build ausschließlich `linux/amd64`; ARM-Unterstützung ist nicht abgenommen.

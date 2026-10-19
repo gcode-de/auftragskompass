@@ -1,0 +1,10 @@
+[Unit]
+Description=Check AuftragsKompass test images every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+Unit=ak-test-update.service
+
+[Install]
+WantedBy=timers.target
