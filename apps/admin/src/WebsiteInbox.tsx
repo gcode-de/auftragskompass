@@ -149,7 +149,7 @@ function InboxEntry({
   onSuccess: () => void;
 }) {
   const id = useId(),
-    [country, setCountry] = useState(''),
+    [country, setCountry] = useState('DE'),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   async function submit() {
@@ -223,8 +223,8 @@ function InboxEntry({
           onChange={(event) => setCountry(event.target.value)}
         />
         <p id={id + '-hint'}>
-          Nur für neue Kontakte nötig, zum Beispiel DE. Bestehende Kontakte
-          werden nicht geändert.
+          Für neue Kontakte ist Deutschland vorbelegt; für andere Länder den
+          Code ändern. Bestehende Kontakte werden nicht geändert.
         </p>
         {error && <p role="alert">{error}</p>}
         <button type="submit" disabled={busy}>

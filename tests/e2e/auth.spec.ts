@@ -1623,7 +1623,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     const country = inboxEntry.getByLabel(
       'Land für einen neuen Kontakt (2-Buchstaben-Code)',
     );
-    await expect(country).toHaveValue('');
+    await expect(country).toHaveValue('DE');
     await expect(inboxEntry.locator('dt')).toHaveCount(8);
     if (mode === 'password') {
       for (const [width, theme] of [
@@ -1657,6 +1657,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(inboxEntry).not.toHaveAttribute('open', '');
     await inboxEntry.locator('summary').press('Enter');
     await expect(country).toBeVisible();
+    await country.fill('');
     await inboxEntry
       .getByRole('button', { name: 'Als Anfrage übernehmen' })
       .click();

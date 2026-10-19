@@ -40,7 +40,7 @@ function open() {
   d.open = true;
   fireEvent(d, new Event('toggle'));
 }
-test('inbox loads on demand and preserves a review failure until explicit country selection succeeds', async () => {
+test('inbox loads on demand, pre-fills Germany for new contacts and preserves a review failure until the retry succeeds', async () => {
   let imported = false,
     attempt = 0;
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
@@ -80,7 +80,7 @@ test('inbox loads on demand and preserves a review failure until explicit countr
     within(row)
       .getByLabelText('Land für einen neuen Kontakt (2-Buchstaben-Code)')
       .getAttribute('value'),
-  ).toBe('');
+  ).toBe('DE');
   expect(row.querySelectorAll('dt')).toHaveLength(8);
   expect(view.container.querySelector('script')).toBeNull();
   fireEvent.submit(
@@ -95,7 +95,7 @@ test('inbox loads on demand and preserves a review failure until explicit countr
     within(row).getByLabelText(
       'Land für einen neuen Kontakt (2-Buchstaben-Code)',
     ),
-    { target: { value: 'de' } },
+    { target: { value: 'AT' } },
   );
   fireEvent.submit(
     within(row)
@@ -106,8 +106,10 @@ test('inbox loads on demand and preserves a review failure until explicit countr
   expect(onImported).toHaveBeenCalledOnce();
   const writes = fetcher.mock.calls.filter((call) => call[1]);
   expect(writes).toHaveLength(2);
-  expect(JSON.parse(writes[0]![1]!.body as string)).toEqual({});
   expect(JSON.parse(writes[1]![1]!.body as string)).toEqual({
+    newContactCountry: 'AT',
+  });
+  expect(JSON.parse(writes[0]![1]!.body as string)).toEqual({
     newContactCountry: 'DE',
   });
   expect(writes[1]![1]!.headers).toEqual({
