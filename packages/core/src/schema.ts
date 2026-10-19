@@ -339,3 +339,31 @@ export const websiteInquiryAckAttempts = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
 );
+export const documentTemplates = pgTable('document_templates', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  kind: text('kind').notNull(),
+  name: text('name').notNull(),
+  subject: text('subject').notNull(),
+  introText: text('intro_text').notNull(),
+  outroText: text('outro_text').notNull(),
+  validityDays: integer('validity_days').notNull().default(14),
+  state: text('state').notNull(),
+  version: integer('version').notNull().default(1),
+});
+export const documentTemplatePositions = pgTable(
+  'document_template_positions',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    templateId: uuid('template_id').notNull(),
+    id: uuid('id').notNull(),
+    position: integer('position').notNull(),
+    productId: uuid('product_id'),
+    description: text('description').notNull(),
+    quantity: integer('quantity').notNull(),
+    unit: text('unit').notNull(),
+    unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }).notNull(),
+    taxBasisPoints: integer('tax_basis_points').notNull(),
+    discountBasisPoints: integer('discount_basis_points').notNull().default(0),
+  },
+);

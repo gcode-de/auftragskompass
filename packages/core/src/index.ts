@@ -11,6 +11,21 @@ export { registerMasterDataRoutes } from './master-data.js';
 export { registerResourceRoutes } from './resources.js';
 export { registerProductRoutes } from './products.js';
 
+export {
+  documentKinds,
+  templatePlaceholders,
+  templateTokens,
+  assertTemplateText,
+  renderTemplate,
+  documentTemplateRepository,
+  registerDocumentTemplateRoutes,
+  DocumentTemplateError,
+  type DocumentKind,
+  type TemplatePlaceholder,
+  type TemplatePositionInput,
+  type DocumentTemplateInput,
+} from './document-templates.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';
