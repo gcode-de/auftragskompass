@@ -288,7 +288,8 @@ export const calendarFeeds = pgTable('calendar_feeds', {
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  // Feeds no longer expire; the column keeps legacy rows readable.
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
 });
 
 export const websiteInquiries = pgTable('website_inquiries', {

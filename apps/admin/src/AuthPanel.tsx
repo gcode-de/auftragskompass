@@ -132,7 +132,21 @@ export function AuthPanel() {
                   {status}
                 </p>
                 <p>{user.email}</p>
-                <button onClick={() => void logout()}>Abmelden</button>
+                <button aria-label="Abmelden" onClick={() => void logout()}>
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="20"
+                    height="20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h9" />
+                  </svg>
+                </button>
               </div>
             }
           />

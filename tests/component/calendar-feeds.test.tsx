@@ -121,7 +121,7 @@ test('load failures and uncertain mutations clear links and allow explicit reloa
   await screen.findByText('Kalender-Abos konnten nicht geladen werden.');
   failLoad = false;
   fireEvent.click(screen.getByRole('button', { name: 'Abos neu laden' }));
-  await screen.findByText(/Ressource · gültig/);
+  await screen.findByText(/Ressource · läuft nicht ab/);
   fireEvent.click(screen.getByRole('button', { name: 'Abo erstellen' }));
   await screen.findByLabelText('Neuer Kalenderlink (nur jetzt sichtbar)');
   failMutation = true;

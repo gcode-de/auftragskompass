@@ -5,7 +5,7 @@ type Feed = {
   description: boolean;
   eventType: boolean;
   internalLink: boolean;
-  expiresAt: string;
+  expiresAt: string | null;
 };
 type Resource = { id: string; name: string };
 export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
@@ -91,9 +91,9 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
       <h3>Kalender abonnieren</h3>
       <p>
         Der Link erlaubt jedem Besitzer Zugriff auf Termindaten. Nur mit deinem
-        gewünschten Kalenderdienst teilen. Gültigkeit: ein Jahr; beim Erneuern
-        wird der alte Link sofort ungültig. Abrufintervalle bestimmt dein
-        Kalenderclient.
+        gewünschten Kalenderdienst teilen. Der Link läuft nicht ab; erst das
+        Erneuern macht den alten Link sofort ungültig. Abrufintervalle bestimmt
+        dein Kalenderclient.
       </p>
       <p role="status">{message}</p>
       {url && (
@@ -150,10 +150,7 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
               ? (resources.find((r) => r.id === feed.resourceId)?.name ??
                 'Ressource')
               : 'Alle Events'}{' '}
-            · gültig bis{' '}
-            {new Intl.DateTimeFormat('de-DE', {
-              timeZone: 'Europe/Berlin',
-            }).format(new Date(feed.expiresAt))}
+            · läuft nicht ab
             <button
               disabled={busy}
               onClick={() =>

@@ -974,3 +974,40 @@ summary {
 .website-inbox summary {
   overflow-wrap: anywhere;
 }
+
+/* Icon-only controls: a 44px hit area with the glyph centred. */
+.menu-close,
+.theme-toggle,
+.account-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  line-height: 1;
+}
+.menu-close svg,
+.account-bar button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.theme-toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+@media (max-width: 900px) {
+  .menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    line-height: 1;
+  }
+  .menu-trigger svg {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+}

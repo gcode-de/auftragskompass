@@ -36,8 +36,9 @@ test('ICS uses CRLF, UTF-8-safe folding, escaped text, UTC times and stable priv
   for (const line of text.split('\r\n'))
     expect(Buffer.byteLength(line)).toBeLessThanOrEqual(75);
   const values = parsed(text);
-  expect(values).toContainEqual(['DTSTART', '20300331T000000Z']);
-  expect(values).toContainEqual(['DTEND', '20300331T020000Z']);
+  expect(values).toContainEqual(['DTSTART;VALUE=DATE', '20300331']);
+  expect(values).toContainEqual(['DTEND;VALUE=DATE', '20300401']);
+  expect(values).toContainEqual(['X-MICROSOFT-CDO-ALLDAYEVENT', 'TRUE']);
   expect(values).toContainEqual(['SEQUENCE', '7']);
   expect(values).toContainEqual(['STATUS', 'CONFIRMED']);
   expect(values.filter(([name]) => name === 'ATTENDEE')).toHaveLength(0);
@@ -96,7 +97,9 @@ test('all-day DST dates, cancellation and selected optional fields remain valid'
   );
   const values = parsed(text);
   expect(values).toContainEqual(['DTSTART;VALUE=DATE', '20300331']);
-  expect(values).toContainEqual(['DURATION', 'P1D']);
+  expect(values).toContainEqual(['DTEND;VALUE=DATE', '20300401']);
+  expect(values).toContainEqual(['X-MICROSOFT-CDO-ALLDAYEVENT', 'TRUE']);
+  expect(values.some(([name]) => name === 'DURATION')).toBe(false);
   expect(values).toContainEqual(['STATUS', 'CANCELLED']);
   expect(values).toContainEqual(['STATUS', 'TENTATIVE']);
   expect(text).toContain('Fictional description');

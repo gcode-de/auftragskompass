@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { calendarFeeds, resources } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
@@ -30,7 +30,7 @@ export function calendarFeedRepository(
       return db
         .select(metadata)
         .from(calendarFeeds)
-        .where(and(scoped, gt(calendarFeeds.expiresAt, sql`now()`)))
+        .where(scoped)
         .orderBy(calendarFeeds.createdAt);
     },
     async save(actorId: string, input: FeedInput, id?: string) {
@@ -53,7 +53,7 @@ export function calendarFeedRepository(
           values = {
             ...input,
             tokenHash: digest(token),
-            expiresAt: sql`now()+interval '1 year'`,
+            expiresAt: null,
           };
         const [row] = id
           ? await tx
@@ -103,7 +103,7 @@ export function calendarFeedRepository(
             FROM calendar_feeds f
             JOIN memberships m ON m.tenant_id=f.tenant_id AND m.user_id=f.owner_id AND m.active
             JOIN allowed_accounts a ON a.tenant_id=f.tenant_id AND a.user_id=f.owner_id AND a.active
-            WHERE f.tenant_id=${tenantId} AND f.token_hash=${digest(token)} AND f.expires_at>now()`,
+            WHERE f.tenant_id=${tenantId} AND f.token_hash=${digest(token)}`,
           );
           const feed = result.rows[0];
           if (!feed) return null;
@@ -198,7 +198,10 @@ const rowSchema = {
     ...inputSchema.properties,
     id: { type: 'string', format: 'uuid' },
     createdAt: { type: 'string', format: 'date-time' },
-    expiresAt: { type: 'string', format: 'date-time' },
+    // Feeds no longer expire; the field stays for older clients.
+    expiresAt: {
+      anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+    },
   },
 };
 export function registerCalendarFeedRoutes(

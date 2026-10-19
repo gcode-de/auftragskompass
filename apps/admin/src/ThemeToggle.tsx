@@ -43,6 +43,7 @@ export function ThemeToggle() {
     <button
       type="button"
       className="theme-toggle"
+      aria-label="Dunkelmodus"
       aria-pressed={theme === 'dark'}
       onClick={() => {
         const next = theme === 'dark' ? 'light' : 'dark';
@@ -66,7 +67,6 @@ export function ThemeToggle() {
       >
         <path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" />
       </svg>
-      Dunkelmodus
     </button>
   );
 }

@@ -259,8 +259,23 @@ export function Navigation({ account }: { account?: ReactNode }) {
         onClose={() => setOpen(false)}
         onCancel={() => setOpen(false)}
       >
-        <button className="menu-close" onClick={closeMenu}>
-          Menü schließen
+        <button
+          className="menu-close"
+          aria-label="Menü schließen"
+          onClick={closeMenu}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
         </button>
         {menu(open)}
       </dialog>

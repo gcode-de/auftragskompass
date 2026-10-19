@@ -203,10 +203,11 @@ test('protected management, validation, scoped metadata and hashed, expiring bea
     "UPDATE calendar_feeds SET created_at=now()-interval '2 years',expires_at=now()-interval '1 year' WHERE id=$1",
     [saved.id],
   );
-  expect((await feed(saved.url)).statusCode).toBe(404);
+  // Feeds no longer expire: a legacy row with a past date keeps working until deleted.
+  expect((await feed(saved.url)).statusCode).toBe(200);
   expect(
     (await app.inject({ url: '/api/v1/calendar-feeds', cookies })).json(),
-  ).toEqual([]);
+  ).toHaveLength(1);
 });
 test('resource scope, stable UIDs, increasing sequence for updates, cancellations and renamed lookups', async () => {
   const saved = (
@@ -426,7 +427,7 @@ test('undated rows are absent and day-only rows survive without fabricated times
   );
   const body = (await feed(saved.url)).body;
   expect(body).toContain('DTSTART;VALUE=DATE:20300331');
-  expect(body).toContain('DURATION:P1D');
+  expect(body).toContain('DTEND;VALUE=DATE:20300401');
   expect(body).toContain('Fictional day-only');
 });
 

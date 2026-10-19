@@ -45,6 +45,13 @@ function fold(line: string) {
   }
   return result;
 }
+// All-day events use an exclusive end date in the same calendar-day space.
+function nextDay(value: string) {
+  const [year, month, day] = value.split('-').map(Number),
+    date = new Date(Date.UTC(year!, month! - 1, day!));
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
 const timestamp = (value: Date) =>
   value
     .toISOString()
@@ -76,16 +83,13 @@ export function renderIcs(
       'LAST-MODIFIED:' + timestamp(changedAt),
       'SEQUENCE:' + sequence,
     );
-    if (event.startsAt && event.endsAt)
-      lines.push(
-        'DTSTART:' + timestamp(event.startsAt),
-        'DTEND:' + timestamp(event.endsAt),
-      );
-    else
-      lines.push(
-        'DTSTART;VALUE=DATE:' + event.eventDate.replace(/-/g, ''),
-        'DURATION:P1D',
-      );
+    // Always a true all-day event: calendar clients place VALUE=DATE entries in
+    // the all-day row, while a DURATION-based entry lands in the timed grid.
+    lines.push(
+      'DTSTART;VALUE=DATE:' + event.eventDate.replace(/-/g, ''),
+      'DTEND;VALUE=DATE:' + nextDay(event.eventDate).replace(/-/g, ''),
+      'X-MICROSOFT-CDO-ALLDAYEVENT:TRUE',
+    );
     const status = labels[event.status]!;
     const description = [
       status,
