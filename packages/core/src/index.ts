@@ -36,6 +36,30 @@ export {
   type NumberSequenceInput,
 } from './document-numbers.js';
 
+export {
+  documentTotals,
+  assertTotalsConsistent,
+  formatMinorUnits,
+  formatDocumentDate,
+  lineTotals,
+  DocumentTotalsError,
+  type TotalsLine,
+  type LineTotals,
+  type TaxGroup,
+  type DocumentTotals,
+} from './document-totals.js';
+
+export {
+  renderDocumentHtml,
+  escapeHtml,
+  documentLayoutRepository,
+  registerDocumentLayoutRoutes,
+  DocumentLayoutError,
+  type DocumentLayoutInput,
+  type DocumentLineInput,
+  type DocumentRenderInput,
+} from './document-layouts.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';

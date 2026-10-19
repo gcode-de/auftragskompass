@@ -375,3 +375,16 @@ export const documentNumberSequences = pgTable('document_number_sequences', {
   nextValue: integer('next_value').notNull().default(1),
   version: integer('version').notNull().default(1),
 });
+export const documentLayouts = pgTable('document_layouts', {
+  tenantId: uuid('tenant_id').primaryKey(),
+  senderName: text('sender_name').notNull(),
+  senderStreet: text('sender_street').notNull(),
+  senderPostalCode: text('sender_postal_code').notNull(),
+  senderCity: text('sender_city').notNull(),
+  primaryColor: text('primary_color').notNull(),
+  textColor: text('text_color').notNull(),
+  fontFamily: text('font_family').notNull(),
+  showPageNumbers: boolean('show_page_numbers').notNull().default(true),
+  showPositionNumbers: boolean('show_position_numbers').notNull().default(true),
+  version: integer('version').notNull().default(1),
+});
