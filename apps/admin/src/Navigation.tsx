@@ -38,6 +38,7 @@ const settingsLinks = [
   ['settings-export', 'Datenexport'],
   ['settings-inquiry', 'Website-Formular'],
   ['settings-templates', 'Dokumentvorlagen'],
+  ['settings-numbers', 'Nummernkreise'],
   ['settings-security', 'Konto & Zugriff'],
 ] as const;
 export type WorkspaceRoute =
@@ -48,6 +49,7 @@ export type WorkspaceRoute =
   | 'inquiry'
   | 'export'
   | 'templates'
+  | 'numbers'
   | 'search';
 function readRoute(): WorkspaceRoute {
   const hash = window.location.hash.slice(1);
@@ -57,6 +59,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'settings-export') return 'export';
   if (hash === 'settings-security') return 'security';
   if (hash === 'settings-templates') return 'templates';
+  if (hash === 'settings-numbers') return 'numbers';
   if (hash.startsWith('event-')) return 'events';
   if (hash.startsWith('contact-')) return 'contacts';
   if (hash === 'search') return 'search';
@@ -85,6 +88,7 @@ export function SettingsNavigation() {
     export: 'settings-export',
     inquiry: 'settings-inquiry',
     templates: 'settings-templates',
+    numbers: 'settings-numbers',
   }[
     route as
       | 'settings'
@@ -94,6 +98,7 @@ export function SettingsNavigation() {
       | 'export'
       | 'inquiry'
       | 'templates'
+      | 'numbers'
   ];
   return (
     <nav className="settings-navigation" aria-label="Einstellungen">
@@ -121,6 +126,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
     'export',
     'inquiry',
     'templates',
+    'numbers',
   ].includes(route);
   const title =
     route === 'search'
