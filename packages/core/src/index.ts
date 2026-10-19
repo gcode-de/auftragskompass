@@ -59,7 +59,14 @@ export {
   registerInquiryPreviewRoute,
 } from './inquiry-gateway.js';
 
-export { loadInquiryConfig, type InquiryConfig } from './inquiry-config.js';
+export {
+  loadInquiryConfig,
+  loadInquirySyncConfig,
+  type InquiryConfig,
+  type InquirySyncConfig,
+} from './inquiry-config.js';
+
+export { startWebsiteInquirySync } from './inquiry-sync-worker.js';
 
 export {
   receiveWebsiteInquiry,

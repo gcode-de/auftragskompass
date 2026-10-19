@@ -1,5 +1,6 @@
 import { acknowledgeWebsiteInquiries } from '../../packages/core/src/website-inquiry-ack-send.js';
 import { pullWebsiteInquiries } from '../../packages/core/src/website-inquiry-pull.js';
+import { startWebsiteInquirySync } from '../../packages/core/src/inquiry-sync-worker.js';
 import {
   beforeAll,
   beforeEach,
@@ -828,4 +829,141 @@ test('HTTPS pull uses the real default clock and accepts a correctly signed empt
       responseKeys: [clockKey],
     }),
   ).toEqual({ status: 'applied', count: 0 });
+});
+
+// The loop feeds real wall-clock timestamps to the transport, so its fixtures
+// are built from Date.now() rather than the frozen `now` above. The shared `key`
+// only becomes valid in 2030 and would reject every live signature.
+const loopKey = (): GatewayKey => {
+  const at = Math.floor(Date.now() / 1000);
+  return {
+    ...key,
+    id: 'fictional-live',
+    notBefore: at - 60,
+    expiresAt: at + 3600,
+  };
+};
+const liveEntry = () => {
+  const at = new Date();
+  return {
+    id: randomUUID(),
+    receivedAt: at.toISOString(),
+    expiresAt: new Date(at.getTime() + 3600_000).toISOString(),
+    submission: {
+      formId: 'fotobox-bw-main',
+      formVersion: 1,
+      fields: {
+        firstName: 'Fictional',
+        lastName: 'Loop',
+        email: 'loop@example.invalid',
+        eventDate: '2030-10-27',
+      },
+    },
+    privacyNotice: inquiryFormV1.privacyNotice,
+    privacyUrl: inquiryFormV1.privacyUrl,
+  };
+};
+const liveBatch = (requestId: string, signingKey: GatewayKey) =>
+  signGatewayMessage(
+    {
+      version: 1 as const,
+      tenantId,
+      messageId: randomUUID(),
+      operationId: randomUUID(),
+      issuedAt: Math.floor(Date.now() / 1000),
+      kind: 'inquiries.batch' as const,
+      payload: { requestId, inquiries: [liveEntry()] },
+    },
+    signingKey,
+  );
+const liveReceipt = (requestId: string, signingKey: GatewayKey) =>
+  signGatewayMessage(
+    {
+      version: 1 as const,
+      tenantId,
+      messageId: randomUUID(),
+      operationId: randomUUID(),
+      issuedAt: Math.floor(Date.now() / 1000),
+      kind: 'inquiries.receipt' as const,
+      payload: { requestId, acknowledgedCount: 1 },
+    },
+    signingKey,
+  );
+const json = (body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+function gatewayLoop(signingKey: GatewayKey) {
+  return vi.fn(async (url: unknown, options?: RequestInit) => {
+    const request = JSON.parse((options as RequestInit).body as string),
+      message = JSON.parse(request.body);
+    return String(url).endsWith('/pull')
+      ? json(liveBatch(message.messageId, signingKey))
+      : json(liveReceipt(message.messageId, signingKey));
+  });
+}
+const loopConfig = (signingKey: GatewayKey) => ({
+  tenantId,
+  actorId,
+  origin: 'https://fictional-gateway.example.invalid',
+  requestKey: {
+    ...signingKey,
+    id: 'fictional-request',
+    direction: 'core-to-gateway' as const,
+  },
+  responseKeys: [signingKey],
+  intervalMs: 3_600_000,
+});
+test('the sync loop pulls, acknowledges and becomes ready until it is stopped', async () => {
+  const signingKey = loopKey(),
+    fetcher = gatewayLoop(signingKey);
+  vi.stubGlobal('fetch', fetcher);
+  const errors = vi.fn();
+  const loop = startWebsiteInquirySync(pool, loopConfig(signingKey), errors);
+  try {
+    await vi.waitFor(() => expect(loop.ready()).toBe(true));
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      'https://fictional-gateway.example.invalid/sync/v1/inquiries/pull',
+      'https://fictional-gateway.example.invalid/sync/v1/inquiries/ack',
+    ]);
+    expect(errors).not.toHaveBeenCalled();
+    expect((await counts()).website_inquiry_deliveries).toBe(1);
+  } finally {
+    await loop.stop();
+  }
+});
+test('a failing cycle stays unready and reports instead of throwing', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('gateway unreachable');
+    }),
+  );
+  const errors = vi.fn();
+  const loop = startWebsiteInquirySync(pool, loopConfig(loopKey()), errors);
+  try {
+    await vi.waitFor(() => expect(errors).toHaveBeenCalled());
+    expect(loop.ready()).toBe(false);
+  } finally {
+    await loop.stop();
+  }
+});
+test('the loop requires an active administrator and pulls nothing otherwise', async () => {
+  const signingKey = loopKey(),
+    fetcher = gatewayLoop(signingKey);
+  vi.stubGlobal('fetch', fetcher);
+  const errors = vi.fn();
+  const loop = startWebsiteInquirySync(
+    pool,
+    { ...loopConfig(signingKey), actorId: randomUUID() },
+    errors,
+  );
+  try {
+    await vi.waitFor(() => expect(errors).toHaveBeenCalled());
+    expect(loop.ready()).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+  } finally {
+    await loop.stop();
+  }
 });

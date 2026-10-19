@@ -2,14 +2,15 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import {
   createHealthServer,
+  loadInquirySyncConfig,
   loadRuntimeConfig,
   migrate,
   startReservationExpiry,
+  startWebsiteInquirySync,
 } from '@auftragskompass/core';
+const readSecret = (path: string): string => readFileSync(path, 'utf8');
 try {
-  const config = loadRuntimeConfig(process.env, (path) =>
-    readFileSync(path, 'utf8'),
-  );
+  const config = loadRuntimeConfig(process.env, readSecret);
   const pool = new Pool({
     host: config.host,
     port: config.dbPort,
@@ -25,17 +26,26 @@ try {
     await pool.end();
     throw error;
   });
+  let sync: ReturnType<typeof startWebsiteInquirySync> | null = null;
   const app = createHealthServer(config, {
     database: async () => {
       await pool.query('SELECT 1');
       return true;
     },
-    worker: async () => expiry.ready(),
+    worker: async () => expiry.ready() && (!sync || sync.ready()),
   });
   const expiry = startReservationExpiry(pool, () =>
     app.log.error('reservation_expiry_failed'),
   );
+  // Website inquiries stay inert until a gateway origin is configured (M2).
+  if (process.env.AK_GATEWAY_ORIGIN)
+    sync = startWebsiteInquirySync(
+      pool,
+      loadInquirySyncConfig(process.env, readSecret),
+      () => app.log.error('inquiry_sync_failed'),
+    );
   app.addHook('onClose', async () => {
+    if (sync) await sync.stop();
     await expiry.stop();
     await pool.end();
   });
