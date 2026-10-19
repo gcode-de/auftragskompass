@@ -12,6 +12,7 @@ import { EventPanel } from './EventPanel.js';
 import { LocationPanel } from './LocationPanel.js';
 import { ContactPanel } from './ContactPanel.js';
 import { ProductPanel } from './ProductPanel.js';
+import { DocumentTemplatesPanel } from './DocumentTemplatesPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
 import { MasterDataSettings } from './MasterDataPanel.js';
 import { PasswordPanel } from './PasswordPanel.js';
@@ -27,6 +28,7 @@ export function AuthPanel() {
     'security',
     'export',
     'inquiry',
+    'templates',
   ].includes(route);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState('Anmeldung wird geprüft …');
@@ -176,6 +178,9 @@ export function AuthPanel() {
               />
             </div>
             {route === 'inquiry' && <InquiryPreview />}
+            <div hidden={route !== 'templates'}>
+              <DocumentTemplatesPanel csrfToken={user.csrfToken} />
+            </div>
             <div hidden={route !== 'export'}>
               <ExportPanel />
             </div>
