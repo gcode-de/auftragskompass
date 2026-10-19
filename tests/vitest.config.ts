@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // Mirrors apps/admin/vite.config.ts so admin modules that read the build
+  // revision are evaluable under test without a runtime fallback branch.
+  define: { __AK_REVISION__: JSON.stringify('development') },
   oxc: { jsx: { runtime: 'automatic' } },
   test: {
     coverage: {

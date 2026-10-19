@@ -85,6 +85,8 @@ jobs:
           target: admin
           platforms: linux/amd64
           push: true
+          build-args: |
+            AK_BUILD_REVISION=${{ github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}

@@ -204,3 +204,12 @@ test.each(['#events', '#search'])(
     );
   },
 );
+test('shows the running version next to the brand without disturbing navigation', () => {
+  render(<Navigation />);
+  const sidebar = within(screen.getByLabelText('Arbeitsbereiche'));
+  expect(sidebar.getByText(/^Version /)).toBeTruthy();
+  expect(sidebar.getByText(/^Version /).textContent).toBe(
+    'Version Entwicklung',
+  );
+  expect(sidebar.getByRole('link', { name: 'Events' })).toBeTruthy();
+});

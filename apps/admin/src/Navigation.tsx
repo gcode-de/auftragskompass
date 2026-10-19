@@ -4,6 +4,7 @@ import {
   updateUrlSearch,
   emptyEventFilters,
 } from './url-state.js';
+import { appVersionLabel } from './revision.js';
 
 const links = [
   [
@@ -150,6 +151,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
       <>
         <p className="menu-brand">AuftragsKompass</p>
         <p className="menu-caption">Dein Büro für Events</p>
+        <p className="menu-caption">Version {appVersionLabel}</p>
         <nav aria-label="Hauptnavigation">
           {links.map(([id, label, path]) => (
             <a
