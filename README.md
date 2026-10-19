@@ -15,6 +15,7 @@ Betriebsabnahme vorgezogen; Mail und Geschäftsdokumente benötigen dann geprüf
 externe Ersatzprozesse. M5/M6 folgen später.
 
 - [Bookitup-Sicherung und verkürzter Livegang](docs/bookitup-exit.md)
+- [Projektübergabe: Stand, nächste Schritte und Skills](docs/handoff.md)
 - [Fokussiertes Lastenheft](Lastenheft_Fotobox-Verwaltung_MVP.md)
 - [Commitgenauer Implementierungsplan](IMPLEMENTATION_PLAN.md)
 - [Entwicklungs- und Datenschutzregeln](AGENTS.md)
@@ -48,7 +49,7 @@ pnpm test:docs
 pnpm build
 ```
 
-`apps/admin` und `apps/widget` sind die künftigen React/Vite-Oberflächen; `apps/api`, `apps/worker` und `apps/gateway` bilden getrennte Einstiegspunkte. `packages/core` enthält den gemeinsamen Anwendungskern. Die Admin-App enthält Anmeldung und Kontofreigaben; API und Worker besitzen Healthchecks. Gateway und Widget bleiben für spätere öffentliche Funktionen getrennt.
+`apps/admin` enthält die React/Vite-Verwaltung, `apps/widget` das entwickelte einbettbare Anfrageformular. `apps/api`, `apps/worker` und `apps/gateway` bilden getrennte Einstiegspunkte; der öffentliche Gateway und dessen automatische lokale Anbindung sind noch nicht im echten Websitebetrieb eingerichtet. `packages/core` enthält den gemeinsamen Anwendungskern. API und Worker besitzen Healthchecks. Den aktuellen Funktions- und Betriebsstand beschreibt die [Projektübergabe](docs/handoff.md).
 
 `pnpm check` führt alle bisher verfügbaren Gates aus. `pnpm format` formatiert ausschließlich die explizit angegebenen Anwendungspfade und Root-Konfigurationen; private Nachbardateien werden nicht durchsucht. Markdown und Python werden separat durch die Dokumentationsprüfungen geprüft.
 

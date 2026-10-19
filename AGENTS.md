@@ -15,6 +15,8 @@ The authoritative implementation sequence is `IMPLEMENTATION_PLAN.md`. The compl
 3. Read the current milestone and commit slice in `IMPLEMENTATION_PLAN.md`.
 4. Inspect `git status`, recent commits, and existing tests before editing.
 
+For a new session or handoff, also read [the project handoff](docs/handoff.md) before selecting work. It records user decisions, skill requirements and the last verified operating state. Treat dated status as a snapshot: verify the actual repository, CI and deployment before making changes.
+
 If requirements conflict, the order of precedence is: latest explicit user instruction, `AGENTS.md`, the focused Lastenheft, the implementation plan, then the full research inventory.
 
 ## Scope and privacy boundary
@@ -49,6 +51,16 @@ This Git root also contains private customer and print-layout material that is i
 - Public APIs and the WordPress widget protocol must be versioned.
 
 ## Commit-by-commit workflow
+
+### User-requested skills
+
+- Use **Ponytail**, default full, for coding, fixes and reviews: the smallest complete solution, without cutting validation, security, accessibility or required tests.
+- Use **Impeccable** for frontend design, changes and reviews. Read its current `SKILL.md` and applicable workflow; preserve the existing design system and complete its required finish review/documentation.
+- For interface polish and motion, use **emil-design-eng** and, when implementing animation, **animate** as appropriate. Respect keyboard use and reduced motion.
+- Use **design-taste-frontend** for surfaces within its supported scope. Its current version excludes dashboards/app screens; do not force a new marketing direction onto the administration. Follow its component exception for narrow extensions where applicable.
+- These are explicit user preferences carried forward from this project chat. Before first use in a session, locate and read the installed skill and announce its use. Skill names, local locations and previous review limitations are recorded in [the handoff](docs/handoff.md). If a required skill is unavailable, report that and resolve its availability rather than silently claiming to have used it. Do not claim that documentation alone installs a skill.
+
+### Slice workflow
 
 Work on exactly one numbered slice from `IMPLEMENTATION_PLAN.md` at a time.
 
