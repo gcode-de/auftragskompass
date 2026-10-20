@@ -10,6 +10,7 @@ Network=ak-test.network
 NetworkAlias=worker
 User=1000:1000
 Secret=ak-test-db,type=mount,target=db_password,uid=1000,gid=1000,mode=0400
+Secret=ak-test-gateway-sync,type=mount,target=gateway_sync_keys,uid=1000,gid=1000,mode=0400
 Environment=AK_DB_HOST=database
 Environment=AK_DB_NAME=auftragskompass
 Environment=AK_DB_USER=ak
@@ -18,6 +19,11 @@ Environment=AK_HOST=0.0.0.0
 Environment=AK_PORT=3001
 Environment=AK_TIMEZONE=Europe/Berlin
 Environment=AK_BUILD_REVISION=REPLACE_REVISION
+Environment=AK_GATEWAY_ORIGIN=https://auftragskompass.samuelgesang.de
+Environment=AK_GATEWAY_REQUEST_KEY_ID=core-to-gateway-1
+Environment=AK_INQUIRY_TENANT_ID=1e73789f-b7a1-4445-bf15-652ff34b5ee2
+Environment=AK_INQUIRY_OPERATOR_ID=1d21afb6-0b57-4c77-a47b-7a67a0b85716
+Environment=AK_INQUIRY_SYNC_KEYS_FILE=/run/secrets/gateway_sync_keys
 Exec=node apps/worker/dist/main.js
 RunInit=true
 NoNewPrivileges=true
