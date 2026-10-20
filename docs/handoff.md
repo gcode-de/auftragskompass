@@ -1,6 +1,6 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **20.10.2026**, nach C051. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand: **20.10.2026**, nach C048.1. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
 ## In der nächsten Session zuerst
 
@@ -28,7 +28,7 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 | Disposition und Kalender | Physische Boxen/Zubehör, Vormerkungen, feste Buchungen, Datenbank-Konfliktschutz, Puffer, interne Sperren, Tages-/Wochen-/Monatskalender und widerrufbare ICS-Abos | Echter Ressourcenabgleich vor Nutzung; Smartphone-Abnahme des Kalender-Abos |
 | Website-Anfragen | Achtfeldrige Definition, öffentliche API, verschlüsselter Gateway-Eingang, signierte/idempotente Übertragung, dauerhafte lokale Ablage, Quittierung, manuelle Prüfung/Übernahme und mobiles einbettbares Formular entwickelt und synthetisch getestet; seit C028 zusätzlich die Gateway-Laufzeit als eigener Prozess und der Pull-/Quittungstakt im Worker als Code vorhanden | Gateway real starten (Kaltstart mit synthetischen Schlüsseln), Podman-Secrets anlegen, erlaubten Website-Origin festlegen, WordPress anschließen und gemeinsam abnehmen |
 | E-Mail/Kommunikation (M3) | Geplant | IMAP/SMTP, Zuordnung zu Events/Kontakten, Postfach, Vorlagen, Anhänge, geplanter Versand und Erinnerungen |
-| Geschäftsdokumente/Finanzen (M4) | Dokumentvorlagen für alle fünf Arten mit Positionen, Platzhaltern, Versionierung und Oberfläche (C047/C047.1); Marken-Layout und exakte Geldrechnung (C048), Chromium-PDF (C049), Nummernkreise (C050/C050.1); seit C051 werden Dokumente als Entwurf gespeichert und mit Nummer, Snapshot und inhaltsadressierter PDF finalisiert | Oberfläche für Angebote, Gültigkeitsdatum und Status `sent`/`expired`/`accepted`, PDF-Download, Logo, Annahmen, Auftragsbestätigungen, Rechnungen/Anzahlungen/Korrekturen und Zahlungen; LibreOffice bleibt gewählter externer Übergangsweg, Ablauf noch nicht abgenommen |
+| Geschäftsdokumente/Finanzen (M4) | Dokumentvorlagen für alle fünf Arten mit Positionen, Platzhaltern, Versionierung und Oberfläche (C047/C047.1); Marken-Layout und exakte Geldrechnung (C048), Logo über den Storage-Adapter (C048.1), Chromium-PDF (C049) mit Download (C049.1), Nummernkreise (C050/C050.1); seit C051 werden Dokumente als Entwurf gespeichert und mit Nummer, Snapshot und inhaltsadressierter PDF finalisiert | Oberfläche für Angebote, Gültigkeitsdatum und Status `sent`/`expired`/`accepted`, Annahmen, Auftragsbestätigungen, Rechnungen/Anzahlungen/Korrekturen und Zahlungen; LibreOffice bleibt gewählter externer Übergangsweg, Ablauf noch nicht abgenommen |
 | Verträge/Fragebögen (M5) | Bewusst zurückgestellt | Vorlagen, Kundenlinks, Signaturen, Abschlussnachweise, Fragebögen und kontrollierte Übernahme |
 | Aufgaben/Auswertungen (M6) | Bewusst zurückgestellt; Absagegründe-Stamm schon vorhanden | To-dos, relative Vorlagen/Fristen, Benachrichtigungen und Absageauswertungen |
 | Migration/Betrieb (M7 teilweise vorgezogen) | Minimalimport mit Vorschau/Dry-run/Mapping/Ressourcenprüfung; CSV-Exporte für Kontakte/Events/Produkte; Container, CI, Updates, verschlüsselte Sicherungswerkzeuge und Restore-Proben | Reale Datenübernahme, unabhängiges Sicherungsziel, Aufbewahrung/Timeraktivierung, letzte Delta-Sicherung und fachliche Produktivfreigabe |
@@ -36,6 +36,14 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pauschal als fertig werten. E-/H-Slices ziehen gezielte Teile vor, ohne ganze Milestones als abgeschlossen zu erklären.
 
 ## Letzter geprüfter Laufzeitstand
+
+### Laufzeitnachtrag 20.10.2026 (C049.1 und C048.1: PDF-Download und Logo)
+
+Geprüfter Stand **`e7c336a249e81f399482be6c0289f6b8547cd432`**, [CI-Lauf 39418950570](https://github.com/gcode-de/auftragskompass/actions/runs/39418950570) vollständig grün, einschließlich Changed-Code-Coverage und beiden Images. Die drei Testcontainer `ak-test-api`, `ak-test-worker` und `ak-test-admin` sind gesund auf genau dieser Revision; der automatische Updater hat sie übernommen. In der Testdatenbank stehen die Anwendungsmigrationen `0030_documents` und `0031_document_logos` mit Prüfsumme (31 Anwendungsmigrationen; dazu kommen drei Gateway-Migrationen in derselben Tabelle). Das Volume `ak-test-documents` bleibt an `/data` gebunden und ist im Container beschreibbar.
+
+Neu in dieser Revision: `GET /api/v1/documents/:id/pdf` liefert die finalisierte PDF über den gespeicherten Hash; `PUT /api/v1/document-layout/logo` nimmt PNG oder JPEG bis 512 KB an, prüft die Signatur gegen den deklarierten Typ, legt die Bytes im Storage-Adapter ab und referenziert sie im Layout; beim Finalisieren wird das Logo als `data:`-URI eingebettet.
+
+Offen: Oberfläche für Angebote, Gültigkeitsdatum und Status `sent`/`expired`/`accepted`, Rechnungsarten (C054).
 
 ### Laufzeitnachtrag 20.10.2026 (C051: Angebote persistieren und finalisieren)
 
