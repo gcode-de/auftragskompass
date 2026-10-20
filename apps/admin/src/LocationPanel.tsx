@@ -75,7 +75,6 @@ export function LocationPanel({ csrfToken }: { csrfToken: string }) {
   }
   return (
     <section id="locations" aria-label="Locations">
-      <h2>Locations</h2>
       <form
         onSubmit={(event) => {
           event.preventDefault();

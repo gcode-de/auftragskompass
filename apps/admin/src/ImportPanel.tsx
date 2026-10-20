@@ -293,7 +293,7 @@ export function ImportPanel({
   }
   return (
     <section aria-label="Bookitup-Importvorschau">
-      <h3>Bookitup-Importvorschau</h3>
+      <h2>Bookitup-Importvorschau</h2>
       <p>
         Nur normalisiertes JSON der Formatversion 1, Quelle bookitup. Maximal 4
         MiB und 10.000 Einträge je Abschnitt. Originalexporte zuerst privat
@@ -464,7 +464,7 @@ export function ImportPanel({
             ] as const
           ).map(([title, issues]) => (
             <div key={title}>
-              <h4>{title}</h4>
+              <h3>{title}</h3>
               {issues.length ? (
                 <ul>
                   {issues.map((issue, i) => (

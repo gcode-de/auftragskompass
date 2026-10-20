@@ -76,15 +76,6 @@ p {
   margin: auto;
   padding: 2rem;
 }
-.app-header {
-  padding: 0.5rem 0 1.5rem;
-  border-bottom: 3px solid var(--accent);
-  margin-bottom: 1.5rem;
-}
-.app-header p {
-  color: var(--muted);
-  margin-bottom: 0;
-}
 section {
   min-width: 0;
   scroll-margin-top: 7rem;
@@ -104,6 +95,15 @@ section {
 .login-card {
   max-width: 30rem;
   margin: 3rem auto;
+}
+.login-card h1 {
+  font-size: 1.5rem;
+}
+.login-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 .login-card form {
   gap: 0.65rem;
@@ -387,20 +387,6 @@ textarea {
   max-width: 100rem;
   padding: 0 2.5rem 3rem 18rem;
 }
-.app-header {
-  border: 0;
-  padding: 1.5rem 0 0.5rem;
-  margin: 0;
-}
-.app-header h1 {
-  font-size: 1.15rem;
-  letter-spacing: -0.025em;
-}
-.app-header p {
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin-top: 0.25rem;
-}
 .account-bar {
   margin: 0.5rem 0 1.5rem;
   font-size: 0.875rem;
@@ -591,6 +577,10 @@ nav svg {
   border-top: 1px solid var(--border);
   margin-bottom: 1.25rem;
 }
+.workspace-heading {
+  margin: 0;
+  min-width: 0;
+}
 .workspace-title {
   font-size: 1.5rem;
   font-weight: 650;
@@ -733,12 +723,6 @@ button:focus-visible {
   .desktop-sidebar {
     display: none;
   }
-  .app-header {
-    padding-top: 1rem;
-  }
-  .app-header p {
-    display: none;
-  }
   .account-bar {
     margin-bottom: 1rem;
   }
@@ -806,8 +790,7 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  flex: 0 0 auto;
   margin: 0;
   background: transparent;
   color: var(--accent);
@@ -832,22 +815,6 @@ time {
 .menu-close {
   color: var(--sidebar-ink);
 }
-.app-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.25rem 1rem;
-  align-items: center;
-}
-.app-header h1 {
-  grid-column: 1;
-  grid-row: 1;
-  overflow-wrap: anywhere;
-}
-.app-header p {
-  grid-column: 1;
-  grid-row: 2;
-  margin: 0;
-}
 
 .menu-close:hover:not(:disabled) {
   background: #294c3e;
@@ -857,6 +824,7 @@ time {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  margin-left: auto;
 }
 .sr-only {
   position: absolute;

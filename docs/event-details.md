@@ -1,6 +1,6 @@
-# Eventakte und Logbuch
+# Event-Details und Logbuch
 
-C020 öffnet aus der Eventliste eine Eventakte mit Termin, Status, Eventart, Paket, Quelle, Beschreibung, Haupt-/weiteren Kontakten, Kommunikationslinks, Location, bereinigten Notizen und Logbuch. Der Status kann hier direkt geändert werden. „Stammdaten bearbeiten“ übernimmt den frisch geladenen Stand in das bestehende Bearbeitungsformular. Buchungen bleiben bis zur Ressourcenzuweisung C023 gesperrt.
+C020 öffnet aus der Eventliste Event-Details mit Termin, Status, Eventart, Paket, Quelle, Beschreibung, Haupt-/weiteren Kontakten, Kommunikationslinks, Location, bereinigten Notizen und Logbuch. Der Status kann hier direkt geändert werden. „Stammdaten bearbeiten“ übernimmt den frisch geladenen Stand in das bestehende Bearbeitungsformular. Buchungen bleiben bis zur Ressourcenzuweisung C023 gesperrt.
 
 Die Akte bündelt die bereits verfügbaren Fachmodelle. Ressourcen, E-Mails, Dokumente, Dateien und Erinnerungen kommen mit ihren jeweiligen Implementierungsschritten hinzu. Es werden keine noch nicht vorhandenen Inhalte oder Links vorgetäuscht.
 
@@ -16,7 +16,7 @@ Statusänderung, Ressourcenzuweisung und Angebotsanlage bestätigen zuerst die S
 
 ## Automatische Aktualisierung und Entwurfsschutz (H030)
 
-Die Eventakte hat keinen normalen Knopf „Eventakte aktualisieren“ mehr. Sie lädt nach einer bestätigten Status- oder Ressourcenspeicherung sowie beim Sichtbarwerden des Dokuments oder beim Fokusgewinn des Fensters selbst neu. Fokus und Sichtbarkeit derselben Rückkehr ergeben genau eine Abfrage; laufende Abrufe werden nicht verdoppelt, ein verborgenes Dokument löst nichts aus, und es gibt keinen Takt. Verspätete Antworten älterer Anfragen werden weiterhin verworfen.
+Die Event-Details haben keinen normalen Knopf „Event-Details aktualisieren“ mehr. Sie laden nach einer bestätigten Status- oder Ressourcenspeicherung sowie beim Sichtbarwerden des Dokuments oder beim Fokusgewinn des Fensters selbst neu. Fokus und Sichtbarkeit derselben Rückkehr ergeben genau eine Abfrage; laufende Abrufe werden nicht verdoppelt, ein verborgenes Dokument löst nichts aus, und es gibt keinen Takt. Verspätete Antworten älterer Anfragen werden weiterhin verworfen.
 
 Solange eine Statusauswahl oder eine Ressourceneingabe ungespeichert ist, hält die Akte Hintergrundladungen zurück und zeigt statt eines `window.confirm` einen ruhigen Hinweis. Erst die ausdrückliche Aktion „Neu laden und Eingaben verwerfen“ fragt nach der Bestätigung, baut die Formulare bewusst neu auf und verwendet danach die zuletzt geladene Version. Nach Speichern oder Abbrechen wird ohne Umweg neu geladen. Ein Ladefehler behält die zuletzt geladenen Details und bietet eine reine Wiederholungsaktion; ein erneutes Laden sendet nie die vorherige Mutation. Bestätigtes Speichern und ein anschließender Ladefehler bleiben getrennt.
 

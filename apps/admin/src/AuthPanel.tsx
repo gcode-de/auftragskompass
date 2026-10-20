@@ -1,3 +1,4 @@
+import { ThemeToggle } from './ThemeToggle.js';
 import { InquiryPreview } from './InquiryPreview.js';
 import { ExportPanel } from './ExportPanel.js';
 import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
@@ -117,7 +118,15 @@ export function AuthPanel() {
       aria-label="Anmeldung"
       className={user ? 'workspace' : 'login-card'}
     >
-      {!user && <p role="status">{status}</p>}
+      {!user && (
+        <>
+          <div className="login-heading">
+            <h1>Anmelden bei AuftragsKompass</h1>
+            <ThemeToggle />
+          </div>
+          <p role="status">{status}</p>
+        </>
+      )}
       {user ? (
         <>
           <Navigation
@@ -158,7 +167,11 @@ export function AuthPanel() {
             className="workspace-page"
             hidden={route !== 'events' && route !== 'search'}
           >
-            <EventPanel csrfToken={user.csrfToken} revision={importRevision} />
+            <EventPanel
+              csrfToken={user.csrfToken}
+              revision={importRevision}
+              showHeading={route === 'search'}
+            />
           </div>
           <div className="workspace-page" hidden={route !== 'calendar'}>
             <CalendarPanel key={importRevision} />
@@ -170,7 +183,10 @@ export function AuthPanel() {
             className="workspace-page"
             hidden={route !== 'contacts' && route !== 'search'}
           >
-            <ContactPanel csrfToken={user.csrfToken} />
+            <ContactPanel
+              csrfToken={user.csrfToken}
+              showHeading={route === 'search'}
+            />
           </div>
           <div className="workspace-page" hidden={route !== 'products'}>
             <ProductPanel csrfToken={user.csrfToken} />
@@ -183,7 +199,6 @@ export function AuthPanel() {
             aria-label="Einstellungen"
             hidden={!inSettings}
           >
-            <h2>Einstellungen</h2>
             <SettingsNavigation />
             <div hidden={route !== 'settings'}>
               <MasterDataSettings csrfToken={user.csrfToken} />

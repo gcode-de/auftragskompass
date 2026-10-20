@@ -214,7 +214,7 @@
       },
       "record-heading": {
         "displayName": "Aktenüberschrift",
-        "purpose": "Fokussierbarer h2-Aktentitel der geöffneten Eventakte."
+        "purpose": "Fokussierbarer h2-Titel der geöffneten Event-Details."
       }
     },
     "eventListing": {

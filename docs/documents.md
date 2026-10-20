@@ -89,7 +89,7 @@ mit `missing_reference` ab, statt still ohne Marke zu drucken.
 
 ## Oberfläche
 
-In der Eventakte steht unter „Übersicht“ der Abschnitt „Angebote“. Er listet
+In den Event-Details steht unter „Übersicht“ der Abschnitt „Angebote“. Er listet
 Nummer, Zustand, Datum und Bruttobetrag der Dokumente dieses Events, legt aus
 einer aktiven Angebotsvorlage einen Entwurf mit dem Hauptkontakt an,
 finalisiert ihn und verlinkt die fertige PDF. Fehlt eine aktive Vorlage oder

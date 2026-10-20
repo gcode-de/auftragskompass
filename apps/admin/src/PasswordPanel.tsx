@@ -55,7 +55,7 @@ export function PasswordPanel({
   }
   return (
     <section aria-label="Eigenes Passwort">
-      <h3>Eigenes Passwort ändern</h3>
+      <h2>Eigenes Passwort ändern</h2>
       <p>
         Mindestens 15 Zeichen. Bei Erfolg werden alle Sitzungen dieses Kontos
         beendet; bitte anschließend neu anmelden.

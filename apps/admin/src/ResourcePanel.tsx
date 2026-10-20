@@ -77,7 +77,6 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   }
   return (
     <section id="resources" aria-label="Ressourcen">
-      <h2>Ressourcen</h2>
       <p>
         Fotoboxen erhalten die Kategorie „Fotobox“. Nur mit einer festen
         Fotobox-Zuweisung kann ein Event gebucht werden.

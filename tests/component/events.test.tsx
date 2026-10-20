@@ -421,12 +421,12 @@ test('direct record links hide list controls and an unknown link never keeps an 
     ),
   );
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
   expect(screen.queryByRole('button', { name: 'Event anlegen' })).toBeNull();
   window.history.replaceState(null, '', '/#event-unlisted');
   fireEvent(window, new HashChangeEvent('hashchange'));
   expect(
-    screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+    screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
   ).toBeNull();
   expect(screen.getByRole('button', { name: 'Event anlegen' })).toBeTruthy();
 });
@@ -454,11 +454,13 @@ test('opening, closing and editing a record returns to the correct list and edit
       name: /Synthetic event/,
     }),
   );
-  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
-  fireEvent.click(screen.getByRole('button', { name: 'Eventakte schließen' }));
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event-Details schließen' }),
+  );
   await vi.waitFor(() =>
     expect(
-      screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+      screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
     ).toBeNull(),
   );
   const open = screen.getByRole('link', {
@@ -466,7 +468,7 @@ test('opening, closing and editing a record returns to the correct list and edit
   });
   await vi.waitFor(() => expect(document.activeElement).toBe(open));
   fireEvent.click(open);
-  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
   const detailEdit = screen.getByRole('button', {
     name: 'Stammdaten bearbeiten: Synthetic event',
   });
@@ -474,7 +476,7 @@ test('opening, closing and editing a record returns to the correct list and edit
   expect(detailEdit.textContent).toBe('');
   fireEvent.click(detailEdit);
   expect(
-    screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+    screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
   ).toBeNull();
   expect(screen.getByLabelText('Eventname').closest('details')!.open).toBe(
     true,
@@ -531,7 +533,7 @@ test('event rows are direct links and their icon actions stay independent', asyn
   );
   expect(window.location.hash).toBe('#events');
   expect(
-    screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+    screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
   ).toBeNull();
   expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
     'Synthetic event',
@@ -557,7 +559,7 @@ test('event rows are direct links and their icon actions stay independent', asyn
   expect(detailCalls).toBe(0);
   // detail 0 is the keyboard activation shape; Chromium uses a real Enter in E2E.
   expect(clickLink(link, 0)).toBe(false);
-  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
   expect(detailCalls).toBe(1);
 });
 
@@ -585,7 +587,7 @@ test('global search submitted from an open event record closes the record and sh
       <EventPanel csrfToken="csrf" />
     </>,
   );
-  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
   fireEvent.click(screen.getByRole('button', { name: 'Suche öffnen' }));
   fireEvent.change(screen.getByLabelText('Globale Suche'), {
     target: { value: 'Synthetic global query' },
@@ -597,7 +599,7 @@ test('global search submitted from an open event record closes the record and sh
   );
   await vi.waitFor(() =>
     expect(
-      screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+      screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
     ).toBeNull(),
   );
   expect(window.location.hash).toBe('#search');
@@ -1518,7 +1520,7 @@ test('a confirmed resource save stays visible in the list when the parent refres
       name: /Synthetic event/,
     }),
   );
-  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
   fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
   fireEvent.click(
     await screen.findByLabelText('Synthetic box · Einheit 1 zuweisen'),
@@ -1712,7 +1714,7 @@ test('a newer list revision loads an open event file exactly once on return', as
       }),
     ),
   );
-  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
   listVersion = 2;
   rowName = 'Synthetic newer event';
   returnToApp();
@@ -1730,10 +1732,10 @@ test('a newer list revision loads an open event file exactly once on return', as
     ),
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic newer event',
+    name: 'Event: Synthetic newer event',
   });
   expect(detailCalls).toBe(2);
-  expect(screen.queryByText(/Eventakte konnte nicht geladen/)).toBeNull();
+  expect(screen.queryByText(/Event-Details konnte nicht geladen/)).toBeNull();
 });
 
 test('a failed return is retried by the next return without a manual control', async () => {

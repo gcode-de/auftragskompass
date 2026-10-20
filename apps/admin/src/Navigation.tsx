@@ -12,6 +12,7 @@ import {
   emptyEventFilters,
 } from './url-state.js';
 import { appVersionLabel } from './revision.js';
+import { ThemeToggle } from './ThemeToggle.js';
 import {
   discardForHomeMessage,
   discardForSearchMessage,
@@ -376,14 +377,16 @@ export function Navigation({ account }: { account?: ReactNode }) {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <a
-          className="workspace-title"
-          href="#events"
-          aria-label={`${title} – zur Eventübersicht`}
-          onClick={followHome}
-        >
-          {title}
-        </a>
+        <h1 className="workspace-heading">
+          <a
+            className="workspace-title"
+            href="#events"
+            aria-label={`${title} – zur Eventübersicht`}
+            onClick={followHome}
+          >
+            {title}
+          </a>
+        </h1>
         <div className={'global-search-shell' + (searchOpen ? ' open' : '')}>
           {searchOpen ? (
             <form className="global-search" onSubmit={submitSearch}>
@@ -470,6 +473,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
             </button>
           )}
         </div>
+        <ThemeToggle />
       </div>
       <dialog
         id="workspace-menu"

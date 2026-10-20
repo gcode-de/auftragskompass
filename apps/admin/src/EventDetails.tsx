@@ -232,11 +232,11 @@ export function EventDetails({
   return (
     <section
       className="event-record"
-      aria-label="Eventakte"
+      aria-label="Event-Details"
       aria-busy={loading}
     >
       <button className="secondary-action" type="button" onClick={onClose}>
-        Eventakte schließen
+        Event-Details schließen
       </button>
       <p role="status">{message}</p>
       {refreshDeferred && (
@@ -258,7 +258,7 @@ export function EventDetails({
       {loadFailed && !reloadWarning && !refreshDeferred && (
         <div className="reload-warning">
           <p role="alert">
-            Eventakte konnte nicht geladen werden.{' '}
+            Event-Details konnte nicht geladen werden.{' '}
             {data
               ? 'Der zuletzt geladene Stand bleibt sichtbar.'
               : 'Bitte erneut versuchen.'}
@@ -269,15 +269,15 @@ export function EventDetails({
             disabled={busy || loading}
             onClick={retryLoad}
           >
-            Eventakte erneut laden
+            Event-Details erneut laden
           </button>
         </div>
       )}
       {reloadWarning && (
         <div className="reload-warning">
           <p role="alert">
-            Gespeichert, aber die Eventakte konnte nicht neu geladen werden. Es
-            wurde nichts doppelt angelegt.
+            Gespeichert, aber die Event-Details konnten nicht neu geladen
+            werden. Es wurde nichts doppelt angelegt.
           </p>
           <button
             type="button"
@@ -285,20 +285,17 @@ export function EventDetails({
             disabled={busy}
             onClick={retryAfterSave}
           >
-            Eventakte erneut laden
+            Event-Details erneut laden
           </button>
         </div>
       )}
-      {loading && <p>Eventakte wird geladen …</p>}
+      {loading && <p>Event-Details werden geladen …</p>}
       {data && (
         <>
           <h2 ref={heading} tabIndex={-1}>
-            Eventakte: {data.event.name}
+            Event: {data.event.name}
           </h2>
-          <nav
-            className="record-navigation"
-            aria-label="Bereiche der Eventakte"
-          >
+          <nav className="record-navigation" aria-label="Bereiche des Events">
             {[
               ['overview', 'Übersicht'],
               ['resources', 'Ressourcen'],
@@ -349,7 +346,7 @@ export function EventDetails({
               <fieldset disabled={busy || loading}>
                 <legend>Status ändern</legend>
                 <label>
-                  Status in der Eventakte
+                  Status des Events
                   <select
                     name="status"
                     defaultValue={data.event.status}

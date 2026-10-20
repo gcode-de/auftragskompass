@@ -26,7 +26,13 @@ const fields = [
   ['phone', 'Festnetz', 60],
   ['mobile', 'Mobilnummer', 60],
 ] as const;
-export function ContactPanel({ csrfToken }: { csrfToken: string }) {
+export function ContactPanel({
+  csrfToken,
+  showHeading = true,
+}: {
+  csrfToken: string;
+  showHeading?: boolean;
+}) {
   const sequence = useRef(0);
   const query = new URLSearchParams(window.location.search).get('q') ?? '';
   const [rows, setRows] = useState<Contact[]>([]),
@@ -152,7 +158,7 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
   }
   return (
     <section id="contacts" aria-label="Kontakte" aria-busy={loading}>
-      <h2>Kontakte</h2>
+      {showHeading && <h2>Kontakte</h2>}
       <form
         onSubmit={(event) => {
           event.preventDefault();

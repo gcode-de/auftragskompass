@@ -769,14 +769,14 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await page.evaluate(() => Object.hasOwn(window, 'syntheticBad')),
     ).toBe(false);
     const record = events.getByRole('region', {
-      name: 'Eventakte',
+      name: 'Event-Details',
       exact: true,
     });
     await record
       .getByRole('button', { name: 'Übersicht', exact: true })
       .click();
     await record
-      .getByRole('combobox', { name: 'Status in der Eventakte', exact: true })
+      .getByRole('combobox', { name: 'Status des Events', exact: true })
       .selectOption('option');
     await record.getByRole('button', { name: 'Status speichern' }).click();
     await expect(
@@ -1083,7 +1083,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .click();
     await expect(
       events.getByRole('heading', {
-        name: 'Eventakte: Synthetic browser event',
+        name: 'Event: Synthetic browser event',
         exact: true,
       }),
     ).toBeInViewport();
@@ -1224,13 +1224,13 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .first()
       .click();
     await expect(
-      events.getByRole('region', { name: 'Eventakte', exact: true }),
+      events.getByRole('region', { name: 'Event-Details', exact: true }),
     ).toBeVisible();
     await expect(
       events
-        .getByRole('region', { name: 'Eventakte', exact: true })
+        .getByRole('region', { name: 'Event-Details', exact: true })
         .getByRole('heading', {
-          name: 'Eventakte: Fictional Future Event',
+          name: 'Event: Fictional Future Event',
           exact: true,
         }),
     ).toBeVisible();
@@ -1238,7 +1238,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     if (mode === 'password') {
       await page.setViewportSize({ width: 390, height: 844 });
       const currentRecord = events.getByRole('region', {
-        name: 'Eventakte',
+        name: 'Event-Details',
         exact: true,
       });
       await currentRecord
@@ -1258,17 +1258,17 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await expect(dispositionStart).toHaveValue('2030-10-27T16:30');
       await currentRecord
         .getByRole('heading', {
-          name: 'Eventakte: Fictional Future Event',
+          name: 'Event: Fictional Future Event',
           exact: true,
         })
         .scrollIntoViewIfNeeded();
       const recordNav = currentRecord.getByRole('navigation', {
-        name: 'Bereiche der Eventakte',
+        name: 'Bereiche des Events',
       });
       expect((await recordNav.boundingBox())!.height).toBeLessThan(100);
       await currentRecord
         .getByRole('heading', {
-          name: 'Eventakte: Fictional Future Event',
+          name: 'Event: Fictional Future Event',
           exact: true,
         })
         .click({ trial: true });
@@ -1526,9 +1526,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await expect(page.getByLabel('Globale Suche')).toHaveValue(
         'Synthetic mobile draft',
       );
-      await page
-        .getByRole('heading', { name: 'AuftragsKompass', exact: true })
-        .scrollIntoViewIfNeeded();
+      await page.getByRole('heading', { level: 1 }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: 'tests/test-results/admin-mobile.png' });
       const menuButton = page.getByRole('button', { name: 'Menü öffnen' });
       await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -1644,9 +1642,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       const filters = events.locator('.event-filters');
       if ((await filters.getAttribute('open')) !== null)
         await filters.locator('summary').click();
-      await page
-        .getByRole('heading', { name: 'AuftragsKompass', exact: true })
-        .scrollIntoViewIfNeeded();
+      await page.getByRole('heading', { level: 1 }).scrollIntoViewIfNeeded();
       await expect(contacts).not.toBeVisible();
       await expect(calendar).not.toBeVisible();
       await page.screenshot({
@@ -1665,9 +1661,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(391);
       await page.setViewportSize({ width: 1280, height: 720 });
-      await page
-        .getByRole('heading', { name: 'AuftragsKompass', exact: true })
-        .scrollIntoViewIfNeeded();
+      await page.getByRole('heading', { level: 1 }).scrollIntoViewIfNeeded();
       await page.screenshot({
         path: 'tests/test-results/admin-desktop-dark.png',
         animations: 'disabled',
@@ -1883,12 +1877,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         websiteInquiry.eventId,
     );
     const websiteRecord = page.getByRole('region', {
-      name: 'Eventakte',
+      name: 'Event-Details',
       exact: true,
     });
     await expect(
       websiteRecord.getByRole('heading', {
-        name: 'Eventakte: Fictional Website Browser',
+        name: 'Event: Fictional Website Browser',
         exact: true,
       }),
     ).toBeVisible();
@@ -1960,7 +1954,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     });
     await expect(desktopBrand).toBeVisible();
     await expect(desktopBrand).toHaveAttribute('href', '#events');
-    const detailStatus = page.getByLabel('Status in der Eventakte');
+    const detailStatus = page.getByLabel('Status des Events');
     await detailStatus.selectOption('option');
     let homePrompt = '';
     page.once('dialog', (dialog) => {

@@ -34,9 +34,11 @@ type Status = { code: string; label: string };
 export function EventPanel({
   csrfToken,
   revision = 0,
+  showHeading = true,
 }: {
   csrfToken: string;
   revision?: number;
+  showHeading?: boolean;
 }) {
   const urlSearch = useUrlSearch(),
     filters = new URLSearchParams(urlSearch),
@@ -384,6 +386,7 @@ export function EventPanel({
     ));
   }
   const zone = draft?.timeZone ?? timeZone;
+  const MonthHeading = showHeading ? 'h3' : 'h2';
   const showingDetail = rows.some((row) => row.id === detailId);
   const groups = new Map<string, EventRow[]>();
   for (const row of rows) {
@@ -396,7 +399,7 @@ export function EventPanel({
     <section id="events" aria-label="Events" aria-busy={loading}>
       <div hidden={showingDetail}>
         <div className="section-heading">
-          <h2>Events</h2>
+          {showHeading && <h2>Events</h2>}
           <div className="section-actions">
             <button
               ref={createTrigger}
@@ -824,12 +827,12 @@ export function EventPanel({
               showingDetail && !entries.some((row) => row.id === detailId)
             }
           >
-            <h3 hidden={showingDetail}>
+            <MonthHeading hidden={showingDetail}>
               {label}{' '}
               <span>
                 {entries.length} {entries.length === 1 ? 'Event' : 'Events'}
               </span>
-            </h3>
+            </MonthHeading>
             <ul className="event-list">
               {entries.map((row) => (
                 <li
@@ -878,7 +881,7 @@ export function EventPanel({
                         </span>
                       </a>
                       <p className="event-resource-hint">
-                        Ressourcen in der Eventakte prüfen.
+                        Ressourcen in den Event-Details prüfen.
                       </p>
                     </div>
                     <div className="event-actions">

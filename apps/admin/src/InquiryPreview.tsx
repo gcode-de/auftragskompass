@@ -35,7 +35,7 @@ export function InquiryPreview() {
   }, [revision]);
   return (
     <section className="inquiry-preview" aria-label="Website-Formularvorschau">
-      <h3>Website-Formular prüfen</h3>
+      <h2>Website-Formular prüfen</h2>
       <p>
         Vorschau der acht Felder von fotobox-bw.de. Diese Ansicht sendet keine
         Anfrage und speichert keine Eingaben.

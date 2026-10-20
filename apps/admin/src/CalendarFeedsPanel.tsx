@@ -88,7 +88,7 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
   }
   return (
     <section aria-label="Kalender-Abos">
-      <h3>Kalender abonnieren</h3>
+      <h2>Kalender abonnieren</h2>
       <p>
         Der Link erlaubt jedem Besitzer Zugriff auf Termindaten. Nur mit deinem
         gewünschten Kalenderdienst teilen. Der Link läuft nicht ab; erst das

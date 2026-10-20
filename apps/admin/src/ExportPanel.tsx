@@ -1,7 +1,7 @@
 export function ExportPanel() {
   return (
     <section className="export-panel" aria-label="Datenexport">
-      <h3>Daten exportieren</h3>
+      <h2>Daten exportieren</h2>
       <p>
         Die Downloads enthalten jeweils den gesamten eigenen Bestand, unabhängig
         von gesetzten Filtern. Inaktive, archivierte und annullierte Einträge

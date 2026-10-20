@@ -73,7 +73,7 @@ Der isolierte Compose-Dump-/Restore-Probelauf prüft zusätzlich die vollständi
 Originalanfrage, ihren Herkunftseintrag und eine idempotente Wiederholung gegen
 die tatsächlich wiederhergestellte Datenbank.
 
-## Originalanfrage in der Eventakte (E004.9)
+## Originalanfrage in den Event-Details (E004.9)
 
 `GET /api/v1/events/:id/website-inquiry` liefert ausschließlich für den
 angemeldeten, weiterhin freigegebenen Betreiber des lokalen Mandanten die acht
@@ -201,8 +201,8 @@ Die Darstellung übernimmt die vorhandenen nativen Disclosure-, Formular- und
 Definitionlistenmuster. Ein älterer Listenabruf darf einen bereits übernommenen
 Eintrag nach neuerem Abruf nicht wieder einblenden. Browserprüfungen umfassen
 leeres Land, korrigierbaren Fehler, echte API-Übernahme, aktualisierte Eventliste
-und Originalangaben in der Eventakte. Hell/Dunkel werden bei 1280 und 390 Pixeln
-mit synthetischen Daten und axe geprüft. Die Website selbst ist weiterhin nicht
+und Originalangaben in den Event-Details. Hell/Dunkel werden bei 1280 und 390
+Pixeln mit synthetischen Daten und axe geprüft. Die Website selbst ist weiterhin nicht
 an diesen lokalen Prüfbereich angeschlossen.
 
 ## Ausgehende HTTPS-Abholung (E004.14)

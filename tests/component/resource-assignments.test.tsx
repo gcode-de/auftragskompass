@@ -377,16 +377,16 @@ test('a confirmed booking stays saved when the reload fails and the reload can b
   fireEvent.submit(form);
   fireEvent.submit(form);
   await screen.findByText('Zuweisung und Termin gespeichert.');
-  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  await screen.findByText(/Event-Details konnten nicht neu geladen werden/);
   expect(puts).toBe(1);
   expect(changed).toHaveBeenCalledOnce();
   failReload = false;
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+    screen.getByRole('button', { name: 'Event-Details erneut laden' }),
   );
   await waitFor(() =>
     expect(
-      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+      screen.queryByText(/Event-Details konnten nicht neu geladen werden/),
     ).toBeNull(),
   );
   expect(changed).toHaveBeenCalledTimes(2);
@@ -413,7 +413,7 @@ test('a retry keeps unsaved resource input and reports the dirty state upward', 
   await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
   submit();
   await screen.findByText('Zuweisung und Termin gespeichert.');
-  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  await screen.findByText(/Event-Details konnten nicht neu geladen werden/);
   const start = screen.getByLabelText('Eventbeginn', {
     exact: true,
   }) as HTMLInputElement;
@@ -421,7 +421,7 @@ test('a retry keeps unsaved resource input and reports the dirty state upward', 
   expect(dirty).toHaveBeenLastCalledWith(true);
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+    screen.getByRole('button', { name: 'Event-Details erneut laden' }),
   );
   expect(confirm).toHaveBeenCalledWith(
     'Ungespeicherte Eingaben verwerfen und neu laden?',
@@ -431,11 +431,11 @@ test('a retry keeps unsaved resource input and reports the dirty state upward', 
   failReload = false;
   confirm.mockReturnValue(true);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+    screen.getByRole('button', { name: 'Event-Details erneut laden' }),
   );
   await waitFor(() =>
     expect(
-      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+      screen.queryByText(/Event-Details konnten nicht neu geladen werden/),
     ).toBeNull(),
   );
   expect(changed).toHaveBeenCalledTimes(2);

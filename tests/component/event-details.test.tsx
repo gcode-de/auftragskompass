@@ -107,7 +107,7 @@ test('event details collect contacts, venue, notes and activities and save statu
     />,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
     level: 2,
   });
   expect(
@@ -122,7 +122,7 @@ test('event details collect contacts, venue, notes and activities and save statu
   fireEvent.click(screen.getByRole('button', { name: 'Logbuch' }));
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Übersicht' }));
-  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },
   });
   fireEvent.submit(
@@ -145,7 +145,9 @@ test('event details collect contacts, venue, notes and activities and save statu
   expect(editButton.textContent).toBe('');
   fireEvent.click(editButton);
   expect(edit).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }));
-  fireEvent.click(screen.getByRole('button', { name: 'Eventakte schließen' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event-Details schließen' }),
+  );
   expect(close).toHaveBeenCalledOnce();
 });
 test('event detail errors preserve loaded data and allow retries', async () => {
@@ -177,7 +179,7 @@ test('event detail errors preserve loaded data and allow retries', async () => {
   await screen.findByText('Ohne Datum');
   await screen.findByText('Noch keine Aktivitäten.');
   const statusSelect = screen.getByLabelText(
-    'Status in der Eventakte',
+    'Status des Events',
   ) as HTMLSelectElement;
   fireEvent.change(statusSelect, { target: { value: 'option' } });
   for (const [code, text] of [
@@ -210,7 +212,7 @@ test('event detail errors preserve loaded data and allow retries', async () => {
   expect(confirm).toHaveBeenCalledWith(
     'Ungespeicherte Eingaben verwerfen und neu laden?',
   );
-  await screen.findByText(/Eventakte konnte nicht geladen/);
+  await screen.findByText(/Event-Details konnte nicht geladen/);
   cleanup();
   vi.stubGlobal(
     'fetch',
@@ -226,7 +228,7 @@ test('event detail errors preserve loaded data and allow retries', async () => {
       onClose={() => {}}
     />,
   );
-  await screen.findByText(/Eventakte konnte nicht geladen/);
+  await screen.findByText(/Event-Details konnte nicht geladen/);
 });
 
 test('shows one record section and retains the selected section on a refreshed event version', async () => {
@@ -244,12 +246,12 @@ test('shows one record section and retains the selected section on a refreshed e
   };
   const view = render(<EventDetails {...props} revision={1} />);
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
   expect(
-    screen.queryByRole('combobox', { name: 'Status in der Eventakte' }),
+    screen.queryByRole('combobox', { name: 'Status des Events' }),
   ).toBeNull();
   expect(
     screen.getByLabelText('Notizen: Synthetic detail event').textContent,
@@ -292,10 +294,10 @@ test('a confirmed status save is reported even when the reload fails and can be 
     />,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   failGet = true;
-  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },
   });
   const form = screen
@@ -304,16 +306,16 @@ test('a confirmed status save is reported even when the reload fails and can be 
   fireEvent.submit(form);
   fireEvent.submit(form);
   await screen.findByText('Status gespeichert.');
-  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  await screen.findByText(/Event-Details konnten nicht neu geladen werden/);
   expect(puts).toBe(1);
   expect(changed).not.toHaveBeenCalled();
   failGet = false;
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+    screen.getByRole('button', { name: 'Event-Details erneut laden' }),
   );
   await waitFor(() =>
     expect(
-      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+      screen.queryByText(/Event-Details konnten nicht neu geladen werden/),
     ).toBeNull(),
   );
   expect(changed).toHaveBeenCalledOnce();
@@ -359,7 +361,7 @@ test('a slower older event file response never overwrites the newer state', asyn
     }),
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic newer state',
+    name: 'Event: Synthetic newer state',
   });
   expect(screen.queryByText(/Synthetic stale state/)).toBeNull();
 });
@@ -394,39 +396,39 @@ test('a retry keeps a dirty status selection until discarding it is confirmed', 
     />,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   const select = () =>
-    screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement;
+    screen.getByLabelText('Status des Events') as HTMLSelectElement;
   failGet = true;
   fireEvent.change(select(), { target: { value: 'option' } });
   fireEvent.submit(
     screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
   );
   await screen.findByText('Status gespeichert.');
-  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  await screen.findByText(/Event-Details konnten nicht neu geladen werden/);
   // A second, still unsaved choice made after the failed reload must survive a
   // declined retry and must not be submitted against an unseen version.
   fireEvent.change(select(), { target: { value: 'inquiry' } });
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   const requests = gets;
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+    screen.getByRole('button', { name: 'Event-Details erneut laden' }),
   );
   expect(confirm).toHaveBeenCalledWith(
     'Ungespeicherte Eingaben verwerfen und neu laden?',
   );
   expect(gets).toBe(requests);
   expect(select().value).toBe('inquiry');
-  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  await screen.findByText(/Event-Details konnten nicht neu geladen werden/);
   failGet = false;
   confirm.mockReturnValue(true);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+    screen.getByRole('button', { name: 'Event-Details erneut laden' }),
   );
   await waitFor(() =>
     expect(
-      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+      screen.queryByText(/Event-Details konnten nicht neu geladen werden/),
     ).toBeNull(),
   );
   expect(gets).toBe(requests + 1);
@@ -469,7 +471,7 @@ test('a clean detail refreshes on return, while a dirty detail defers without a 
   };
   const view = render(<EventDetails {...props} />);
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   expect(
     screen.queryByRole('button', { name: 'Eventakte aktualisieren' }),
@@ -477,7 +479,7 @@ test('a clean detail refreshes on return, while a dirty detail defers without a 
   const loads = detailLoads(fetcher);
   returnToApp();
   await vi.waitFor(() => expect(detailLoads(fetcher)).toBe(loads + 1));
-  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },
   });
   server = { ...server, name: 'Synthetic newer detail', version: 2 };
@@ -487,8 +489,7 @@ test('a clean detail refreshes on return, while a dirty detail defers without a 
   expect(detailLoads(fetcher)).toBe(dirtyLoads);
   expect(confirm).not.toHaveBeenCalled();
   expect(
-    (screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement)
-      .value,
+    (screen.getByLabelText('Status des Events') as HTMLSelectElement).value,
   ).toBe('option');
   confirm.mockReturnValue(true);
   fireEvent.click(
@@ -497,9 +498,9 @@ test('a clean detail refreshes on return, while a dirty detail defers without a 
     }),
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic newer detail',
+    name: 'Event: Synthetic newer detail',
   });
-  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'inquiry' },
   });
   fireEvent.submit(
@@ -539,21 +540,21 @@ test('a failed background detail load keeps the prior data and retries without a
     />,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   fail = true;
   returnToApp();
-  await screen.findByText(/Eventakte konnte nicht geladen werden/);
+  await screen.findByText(/Event-Details konnte nicht geladen werden/);
   expect(
-    screen.getByRole('heading', { name: 'Eventakte: Synthetic detail event' }),
+    screen.getByRole('heading', { name: 'Event: Synthetic detail event' }),
   ).toBeTruthy();
   fail = false;
   name = 'Synthetic retried detail';
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+    screen.getByRole('button', { name: 'Event-Details erneut laden' }),
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic retried detail',
+    name: 'Event: Synthetic retried detail',
   });
   expect(puts).toBe(0);
 });
@@ -599,7 +600,7 @@ test('dirty resource assignment values survive the automatic background refresh'
     />,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
   await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
@@ -636,7 +637,7 @@ test('an older version returned by the server does not create a request loop', a
   };
   const view = render(<EventDetails {...props} revision={1} />);
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   view.rerender(<EventDetails {...props} revision={2} />);
   await vi.waitFor(() => expect(detailLoadsCounter).toBe(2));
@@ -671,11 +672,11 @@ test('changing the event id with the same version still loads the other file', a
     <EventDetails {...props} id="synthetic-event" revision={1} />,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   view.rerender(<EventDetails {...props} id="synthetic-other" revision={1} />);
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic other file',
+    name: 'Event: Synthetic other file',
   });
 });
 
@@ -698,7 +699,7 @@ test('home links ask before discarding a dirty event detail and cancel keeps rou
     </>,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
   const brand = within(screen.getByLabelText('Arbeitsbereiche')).getByRole(
     'link',
@@ -712,7 +713,7 @@ test('home links ask before discarding a dirty event detail and cancel keeps rou
   window.history.replaceState(null, '', '/#event-synthetic');
   fireEvent(window, new HashChangeEvent('hashchange'));
   const status = () =>
-    screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement;
+    screen.getByLabelText('Status des Events') as HTMLSelectElement;
   fireEvent.change(status(), { target: { value: 'option' } });
   for (const link of [brand, title]) {
     confirm.mockClear();
@@ -748,9 +749,9 @@ test('global search asks before leaving a dirty event detail', async () => {
     </>,
   );
   await screen.findByRole('heading', {
-    name: 'Eventakte: Synthetic detail event',
+    name: 'Event: Synthetic detail event',
   });
-  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Suche öffnen' }));
@@ -765,8 +766,7 @@ test('global search asks before leaving a dirty event detail', async () => {
   );
   expect(window.location.hash).toBe('#event-synthetic');
   expect(
-    (screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement)
-      .value,
+    (screen.getByLabelText('Status des Events') as HTMLSelectElement).value,
   ).toBe('option');
   expect(query.value).toBe('Synthetic search draft');
   confirm.mockReturnValue(true);

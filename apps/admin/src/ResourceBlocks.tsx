@@ -137,7 +137,7 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
       aria-label="Zeitweise Ressourcensperren"
       aria-busy={loading || busy}
     >
-      <h3>Zeitweise Ressourcensperren</h3>
+      <h2>Zeitweise Ressourcensperren</h2>
       <p role="status">{message}</p>
       <button
         type="button"

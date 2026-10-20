@@ -1,6 +1,6 @@
 # Reservierungsmodell
 
-C021 speichert Dispositionszeiträume unabhängig vom Eventtermin. C022 schützt feste Belegungen in PostgreSQL gegen Überschneidungen. C023 ergänzt Verfügbarkeitsanzeige und gemeinsame Speicherung von Event, Boxen und Zubehör in der Eventakte. Die Betriebs- und Migrationsabnahme vor realer Nutzung bleibt erforderlich.
+C021 speichert Dispositionszeiträume unabhängig vom Eventtermin. C022 schützt feste Belegungen in PostgreSQL gegen Überschneidungen. C023 ergänzt Verfügbarkeitsanzeige und gemeinsame Speicherung von Event, Boxen und Zubehör in den Event-Details. Die Betriebs- und Migrationsabnahme vor realer Nutzung bleibt erforderlich.
 
 ## Einheiten, Zeiträume und Zustände
 

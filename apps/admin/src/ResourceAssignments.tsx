@@ -416,8 +416,8 @@ export function ResourceAssignments({
       {reloadWarning && (
         <div className="reload-warning">
           <p role="alert">
-            Zuweisung gespeichert, aber die Eventakte konnte nicht neu geladen
-            werden. Nichts erneut buchen.
+            Zuweisung gespeichert, aber die Event-Details konnten nicht neu
+            geladen werden. Nichts erneut buchen.
           </p>
           <button
             type="button"
@@ -425,7 +425,7 @@ export function ResourceAssignments({
             disabled={busy}
             onClick={retryLoad}
           >
-            Eventakte erneut laden
+            Event-Details erneut laden
           </button>
         </div>
       )}
