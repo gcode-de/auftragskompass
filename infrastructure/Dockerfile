@@ -15,6 +15,9 @@ ENV NODE_ENV=production
 RUN apt-get update \
  && apt-get install -y --no-install-recommends chromium fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
+# Final documents live on a volume; owning the mount point here lets a fresh
+# named volume inherit the container user instead of staying root-owned.
+RUN mkdir -p /data && chown node:node /data
 USER node
 CMD ["node", "apps/api/dist/main.js"]
 

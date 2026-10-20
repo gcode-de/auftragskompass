@@ -93,6 +93,15 @@ export {
   hashPattern,
 } from './document-artifacts.js';
 
+export {
+  documentRepository,
+  registerDocumentRoutes,
+  DocumentError,
+  type DocumentLineDraft,
+  type DocumentDraftInput,
+  type DocumentDependencies,
+} from './documents.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';

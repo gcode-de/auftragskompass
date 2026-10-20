@@ -25,6 +25,9 @@ import {
   registerDocumentTemplateRoutes,
   registerDocumentNumberRoutes,
   registerDocumentLayoutRoutes,
+  registerDocumentRoutes,
+  localStorageAdapter,
+  chromiumPdfRenderer,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -101,6 +104,11 @@ try {
     registerDocumentTemplateRoutes(app, pool, auth.tenantId);
     registerDocumentNumberRoutes(app, pool, auth.tenantId);
     registerDocumentLayoutRoutes(app, pool, auth.tenantId);
+    registerDocumentRoutes(app, pool, auth.tenantId, {
+      origin: auth.origin,
+      store: localStorageAdapter({ root: config.documentStorage }),
+      render: chromiumPdfRenderer({ executablePath: config.chromiumPath }),
+    });
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);

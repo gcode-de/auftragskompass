@@ -32,6 +32,8 @@ services:
       AK_BUILD_REVISION: ${AK_BUILD_REVISION:-development}
       AK_HOST: 0.0.0.0
       AK_PORT: 3000
+      AK_DOCUMENT_STORAGE: /data
+    volumes: ['documents:/data']
     depends_on:
       database: { condition: service_healthy }
     ports: ['127.0.0.1:${AK_API_PORT:-3100}:3000']
@@ -145,6 +147,7 @@ services:
     restart: unless-stopped
 volumes:
   database:
+  documents:
 secrets:
   db_password:
     file: ${AK_DB_PASSWORD_FILE:?Set absolute path to an external password file}

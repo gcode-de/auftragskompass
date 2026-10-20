@@ -376,6 +376,37 @@ export const documentNumberSequences = pgTable('document_number_sequences', {
   nextValue: integer('next_value').notNull().default(1),
   version: integer('version').notNull().default(1),
 });
+export const documents = pgTable('documents', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  kind: text('kind').notNull(),
+  templateId: uuid('template_id').notNull(),
+  eventId: uuid('event_id'),
+  contactId: uuid('contact_id'),
+  number: text('number'),
+  state: text('state').notNull().default('draft'),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+  finalizedAt: timestamp('finalized_at', { withTimezone: true }),
+  snapshotHash: text('snapshot_hash'),
+  pdfHash: text('pdf_hash'),
+  netMinor: bigint('net_minor', { mode: 'number' }).notNull().default(0),
+  taxMinor: bigint('tax_minor', { mode: 'number' }).notNull().default(0),
+  grossMinor: bigint('gross_minor', { mode: 'number' }).notNull().default(0),
+  version: integer('version').notNull().default(1),
+});
+export const documentLines = pgTable('document_lines', {
+  tenantId: uuid('tenant_id').notNull(),
+  documentId: uuid('document_id').notNull(),
+  id: uuid('id').notNull(),
+  position: integer('position').notNull(),
+  productId: uuid('product_id'),
+  description: text('description').notNull(),
+  quantity: integer('quantity').notNull(),
+  unit: text('unit').notNull(),
+  unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }).notNull(),
+  taxBasisPoints: integer('tax_basis_points').notNull(),
+  discountBasisPoints: integer('discount_basis_points').notNull().default(0),
+});
 export const documentLayouts = pgTable('document_layouts', {
   tenantId: uuid('tenant_id').primaryKey(),
   senderName: text('sender_name').notNull(),

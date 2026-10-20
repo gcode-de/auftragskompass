@@ -53,6 +53,12 @@ describe('assertTransition', () => {
     ] as const)
       expect(() => assertTransition(from, to)).toThrow(DocumentSnapshotError);
   });
+  test('rejects every self-transition, including a repeated finalize', () => {
+    for (const state of ['draft', 'final', 'withdrawn'] as const)
+      expect(() => assertTransition(state, state)).toThrow(
+        DocumentSnapshotError,
+      );
+  });
 });
 
 describe('buildDocumentSnapshot', () => {

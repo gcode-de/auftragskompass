@@ -40,6 +40,13 @@ export function loadRuntimeConfig(
   const listenHost = env.AK_HOST ?? '127.0.0.1';
   if (!['127.0.0.1', '0.0.0.0', '::1'].includes(listenHost))
     throw new Error('Invalid AK_HOST');
+  // Document PDFs live outside the database; the directory must be a mount.
+  const documentStorage = env.AK_DOCUMENT_STORAGE ?? '/data';
+  if (!documentStorage.startsWith('/'))
+    throw new Error('Invalid AK_DOCUMENT_STORAGE');
+  const chromiumPath = env.AK_CHROMIUM_PATH ?? '/usr/bin/chromium';
+  if (!chromiumPath.startsWith('/'))
+    throw new Error('Invalid AK_CHROMIUM_PATH');
   return {
     host,
     database,
@@ -51,6 +58,8 @@ export function loadRuntimeConfig(
     timezone,
     revision,
     listenHost,
+    documentStorage,
+    chromiumPath,
   };
 }
 export type RuntimeConfig = ReturnType<typeof loadRuntimeConfig>;

@@ -35,7 +35,9 @@ export type AuditAction =
   | 'document_template.created'
   | 'document_template.updated'
   | 'document_number.updated'
-  | 'document_layout.updated';
+  | 'document_layout.updated'
+  | 'document.created'
+  | 'document.finalized';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

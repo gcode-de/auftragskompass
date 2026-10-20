@@ -1,0 +1,662 @@
+import { randomUUID } from 'node:crypto';
+import type { Pool } from 'pg';
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import { database, type Connection } from './database.js';
+import {
+  contacts,
+  documentLayouts,
+  documentLines,
+  documentTemplatePositions,
+  documentTemplates,
+  documents,
+  events,
+  locations,
+  masterData,
+  tenants,
+} from './schema.js';
+import { AccessError, lockTenant, requireAdministrator } from './access.js';
+import { appendAudit } from './audit.js';
+import {
+  documentKinds,
+  type DocumentKind,
+  type TemplatePlaceholder,
+} from './document-templates.js';
+import {
+  documentTotals,
+  formatDocumentDate,
+  formatMinorUnits,
+  type TotalsLine,
+} from './document-totals.js';
+import {
+  assertTransition,
+  buildDocumentSnapshot,
+  DocumentSnapshotError,
+  type DocumentState,
+} from './document-snapshot.js';
+import {
+  allocateDocumentNumber,
+  DocumentNumberError,
+} from './document-numbers.js';
+import {
+  DocumentPdfError,
+  renderDocumentPdf,
+  type PdfRenderer,
+} from './document-pdf.js';
+import { storeDocumentPdf } from './document-artifacts.js';
+import { StorageError, type StorageAdapter } from './storage.js';
+
+export class DocumentError extends Error {
+  constructor(
+    readonly reason:
+      | 'not_found'
+      | 'invalid_state'
+      | 'invalid_line'
+      | 'empty_lines'
+      | 'missing_reference'
+      | 'number_not_configured'
+      | 'invalid_content'
+      | 'artifact_failed',
+  ) {
+    super('Document rejected');
+  }
+}
+
+export type DocumentLineDraft = TotalsLine & {
+  productId?: string | null;
+  description: string;
+  unit: string;
+  discountBasisPoints: number;
+};
+export type DocumentDraftInput = {
+  templateId: string;
+  eventId?: string | null;
+  contactId?: string | null;
+  /** Omitted lines copy the template positions; an empty list is a mistake. */
+  lines?: DocumentLineDraft[];
+};
+export type DocumentDependencies = {
+  /** Marks the PDF; injected so tests never start Chromium. */
+  render: PdfRenderer;
+  /** Content-addressed artefact storage. */
+  store: StorageAdapter;
+  /** Admin origin for the {{documentLink}} placeholder. */
+  origin: string;
+  now?: () => Date;
+};
+
+type DocumentLineDraftRow = {
+  id: string;
+  position: number;
+  productId: string | null;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPriceMinor: number;
+  taxBasisPoints: number;
+  discountBasisPoints: number;
+};
+
+const lineColumns = {
+  id: documentLines.id,
+  position: documentLines.position,
+  productId: documentLines.productId,
+  description: documentLines.description,
+  quantity: documentLines.quantity,
+  unit: documentLines.unit,
+  unitPriceMinor: documentLines.unitPriceMinor,
+  taxBasisPoints: documentLines.taxBasisPoints,
+  discountBasisPoints: documentLines.discountBasisPoints,
+};
+
+function assertLine(line: DocumentLineDraft, index: number): void {
+  if (
+    typeof line.description !== 'string' ||
+    !line.description.trim() ||
+    typeof line.unit !== 'string' ||
+    !line.unit.trim()
+  )
+    throw new DocumentError('invalid_line');
+  if (index > 999) throw new DocumentError('invalid_line');
+}
+
+function recipientOf(contact: {
+  name: string;
+  contactPerson: string;
+  street: string;
+  postalCode: string;
+  city: string;
+}) {
+  const person = contact.contactPerson.trim(),
+    street = contact.street.trim(),
+    place = [contact.postalCode.trim(), contact.city.trim()]
+      .filter(Boolean)
+      .join(' ');
+  return {
+    name: person ? contact.name + '\n' + person : contact.name,
+    address: [street, place].filter(Boolean).join('\n'),
+  };
+}
+
+// The artefact is content addressed, so a failed write can leave at most an
+// unreferenced file behind; the database row is still the source of truth.
+function translate(error: unknown): never {
+  if (error instanceof AccessError || error instanceof DocumentError)
+    throw error;
+  if (error instanceof DocumentNumberError)
+    throw new DocumentError(
+      error.reason === 'not_configured'
+        ? 'number_not_configured'
+        : 'invalid_content',
+    );
+  if (error instanceof DocumentSnapshotError)
+    throw new DocumentError('invalid_content');
+  if (error instanceof DocumentPdfError || error instanceof StorageError)
+    throw new DocumentError('artifact_failed');
+  throw error;
+}
+
+export function documentRepository(
+  pool: Pool,
+  tenantId: string,
+  dependencies: DocumentDependencies,
+) {
+  const db = database(pool),
+    now = dependencies.now ?? (() => new Date()),
+    scope = eq(documents.tenantId, tenantId);
+
+  async function readOne(connection: Connection, id: string) {
+    const [document] = await database(connection)
+      .select()
+      .from(documents)
+      .where(and(scope, eq(documents.id, id)));
+    if (!document) return null;
+    const lines = await database(connection)
+      .select(lineColumns)
+      .from(documentLines)
+      .where(
+        and(
+          eq(documentLines.tenantId, tenantId),
+          eq(documentLines.documentId, id),
+        ),
+      )
+      .orderBy(asc(documentLines.position));
+    return { ...document, lines };
+  }
+
+  async function assertReference(
+    connection: Connection,
+    table: 'event' | 'contact',
+    id: string | null | undefined,
+  ) {
+    if (!id) return;
+    const [row] =
+      table === 'event'
+        ? await database(connection)
+            .select({ id: events.id })
+            .from(events)
+            .where(and(eq(events.tenantId, tenantId), eq(events.id, id)))
+        : await database(connection)
+            .select({ id: contacts.id })
+            .from(contacts)
+            .where(and(eq(contacts.tenantId, tenantId), eq(contacts.id, id)));
+    if (!row) throw new DocumentError('not_found');
+  }
+
+  return {
+    async get(id: string) {
+      return readOne(db, id);
+    },
+    async createDraft(actorId: string, input: DocumentDraftInput) {
+      const id = randomUUID();
+      await db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [template] = await tx
+          .select()
+          .from(documentTemplates)
+          .where(
+            and(
+              eq(documentTemplates.tenantId, tenantId),
+              eq(documentTemplates.id, input.templateId),
+            ),
+          );
+        if (!template) throw new DocumentError('not_found');
+        await assertReference(tx, 'event', input.eventId);
+        await assertReference(tx, 'contact', input.contactId);
+        const source = input.lines
+          ? input.lines
+          : (
+              await tx
+                .select()
+                .from(documentTemplatePositions)
+                .where(
+                  and(
+                    eq(documentTemplatePositions.tenantId, tenantId),
+                    eq(documentTemplatePositions.templateId, template.id),
+                  ),
+                )
+                .orderBy(asc(documentTemplatePositions.position))
+            ).map((position) => ({
+              productId: position.productId,
+              description: position.description,
+              quantity: position.quantity,
+              unit: position.unit,
+              unitPriceMinor: position.unitPriceMinor,
+              taxBasisPoints: position.taxBasisPoints,
+              discountBasisPoints: position.discountBasisPoints,
+            }));
+        if (!source.length) throw new DocumentError('empty_lines');
+        source.forEach(assertLine);
+        const totals = documentTotals(source),
+          at = now();
+        await tx.insert(documents).values({
+          tenantId,
+          id,
+          kind: template.kind,
+          templateId: template.id,
+          eventId: input.eventId ?? null,
+          contactId: input.contactId ?? null,
+          number: null,
+          state: 'draft',
+          issuedAt: at,
+          finalizedAt: null,
+          snapshotHash: null,
+          pdfHash: null,
+          netMinor: totals.netMinor,
+          taxMinor: totals.taxMinor,
+          grossMinor: totals.grossMinor,
+          version: 1,
+        });
+        await tx.insert(documentLines).values(
+          source.map((line, position) => ({
+            tenantId,
+            documentId: id,
+            id: randomUUID(),
+            position,
+            productId: line.productId ?? null,
+            description: line.description.trim(),
+            quantity: line.quantity,
+            unit: line.unit.trim(),
+            unitPriceMinor: line.unitPriceMinor,
+            taxBasisPoints: line.taxBasisPoints,
+            discountBasisPoints: line.discountBasisPoints,
+          })),
+        );
+        await appendAudit(tx, tenantId, 'document.created', actorId, id);
+      });
+      return (await readOne(db, id))!;
+    },
+    // Number, snapshot, PDF and state are one transaction: either the document
+    // is final with all four, or the number goes back to the sequence.
+    async finalize(actorId: string, id: string) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [document] = await tx
+          .select()
+          .from(documents)
+          .where(and(scope, eq(documents.id, id)))
+          .for('update');
+        if (!document) throw new DocumentError('not_found');
+        try {
+          assertTransition(document.state as DocumentState, 'final');
+        } catch {
+          throw new DocumentError('invalid_state');
+        }
+        const [template] = await tx
+          .select()
+          .from(documentTemplates)
+          .where(
+            and(
+              eq(documentTemplates.tenantId, tenantId),
+              eq(documentTemplates.id, document.templateId),
+            ),
+          );
+        if (!template) throw new DocumentError('missing_reference');
+        const [layout] = await tx
+          .select()
+          .from(documentLayouts)
+          .where(eq(documentLayouts.tenantId, tenantId));
+        if (!layout) throw new DocumentError('missing_reference');
+        const [tenant] = await tx
+          .select({ timezone: tenants.timezone })
+          .from(tenants)
+          .where(eq(tenants.id, tenantId));
+        if (!tenant) throw new DocumentError('missing_reference');
+        const [contact] = document.contactId
+          ? await tx
+              .select()
+              .from(contacts)
+              .where(
+                and(
+                  eq(contacts.tenantId, tenantId),
+                  eq(contacts.id, document.contactId),
+                ),
+              )
+          : [];
+        if (!contact) throw new DocumentError('missing_reference');
+        const [event] = document.eventId
+          ? await tx
+              .select()
+              .from(events)
+              .where(
+                and(
+                  eq(events.tenantId, tenantId),
+                  eq(events.id, document.eventId),
+                ),
+              )
+          : [];
+        const lines: DocumentLineDraftRow[] = await tx
+          .select(lineColumns)
+          .from(documentLines)
+          .where(
+            and(
+              eq(documentLines.tenantId, tenantId),
+              eq(documentLines.documentId, id),
+            ),
+          )
+          .orderBy(asc(documentLines.position));
+        if (!lines.length) throw new DocumentError('empty_lines');
+        const totals = documentTotals(lines),
+          recipient = recipientOf(contact),
+          values: Partial<Record<TemplatePlaceholder, string>> = {
+            contact: contact.name,
+            total: formatMinorUnits(totals.grossMinor) + ' €',
+            documentLink: dependencies.origin + '/#document-' + id,
+          };
+        if (event) {
+          values.event = event.name;
+          if (event.eventDate)
+            values.date = formatDocumentDate(
+              new Date(event.eventDate + 'T12:00:00Z'),
+              tenant.timezone,
+            );
+          if (event.locationId) {
+            const [location] = await tx
+              .select({ name: locations.name })
+              .from(locations)
+              .where(
+                and(
+                  eq(locations.tenantId, tenantId),
+                  eq(locations.id, event.locationId),
+                ),
+              );
+            if (location) values.location = location.name;
+          }
+          const kindIds = [event.eventTypeId, event.packageId].filter(
+            (value): value is string => Boolean(value),
+          );
+          if (kindIds.length) {
+            const names = new Map(
+              (
+                await tx
+                  .select({ id: masterData.id, name: masterData.name })
+                  .from(masterData)
+                  .where(
+                    and(
+                      eq(masterData.tenantId, tenantId),
+                      inArray(masterData.id, kindIds),
+                    ),
+                  )
+              ).map((row) => [row.id, row.name]),
+            );
+            const eventType = event.eventTypeId
+                ? names.get(event.eventTypeId)
+                : undefined,
+              packageName = event.packageId
+                ? names.get(event.packageId)
+                : undefined;
+            if (eventType) values.eventType = eventType;
+            if (packageName) values.package = packageName;
+          }
+        }
+        const at = now();
+        try {
+          const number = await allocateDocumentNumber(
+              tx,
+              tenantId,
+              document.kind as DocumentKind,
+              at,
+            ),
+            snapshot = buildDocumentSnapshot({
+              layout: {
+                senderName: layout.senderName,
+                senderStreet: layout.senderStreet,
+                senderPostalCode: layout.senderPostalCode,
+                senderCity: layout.senderCity,
+                primaryColor: layout.primaryColor,
+                textColor: layout.textColor,
+                fontFamily: layout.fontFamily as 'system' | 'sans' | 'serif',
+                showPageNumbers: layout.showPageNumbers,
+                showPositionNumbers: layout.showPositionNumbers,
+              },
+              template: {
+                subject: template.subject,
+                introText: template.introText,
+                outroText: template.outroText,
+              },
+              documentNumber: number,
+              issuedAt: at,
+              timeZone: tenant.timezone,
+              recipientName: recipient.name,
+              recipientAddress: recipient.address,
+              lines,
+              values,
+            }),
+            pdf = await renderDocumentPdf(snapshot.html, dependencies.render);
+          await storeDocumentPdf(dependencies.store, pdf);
+          await tx
+            .update(documents)
+            .set({
+              number,
+              state: 'final',
+              issuedAt: at,
+              finalizedAt: at,
+              snapshotHash: snapshot.hash,
+              pdfHash: pdf.hash,
+              netMinor: snapshot.netMinor,
+              taxMinor: snapshot.taxMinor,
+              grossMinor: snapshot.grossMinor,
+              version: document.version + 1,
+            })
+            .where(and(scope, eq(documents.id, id)));
+        } catch (error) {
+          translate(error);
+        }
+        await appendAudit(tx, tenantId, 'document.finalized', actorId, id);
+        return (await readOne(tx, id))!;
+      });
+    },
+  };
+}
+
+export function registerDocumentRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  tenantId: string,
+  dependencies: DocumentDependencies,
+) {
+  const repo = documentRepository(pool, tenantId, dependencies);
+  const line = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'description',
+      'quantity',
+      'unit',
+      'unitPriceMinor',
+      'taxBasisPoints',
+      'discountBasisPoints',
+    ],
+    properties: {
+      productId: {
+        anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
+      },
+      description: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 300,
+        pattern: '\\S',
+      },
+      quantity: { type: 'integer', minimum: 1, maximum: 100000 },
+      unit: { type: 'string', minLength: 1, maxLength: 40, pattern: '\\S' },
+      unitPriceMinor: {
+        type: 'integer',
+        minimum: 0,
+        maximum: Number.MAX_SAFE_INTEGER,
+      },
+      taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+      discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+    },
+  };
+  const nullableUuid = {
+      anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
+    },
+    nullableText = { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    params = {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', format: 'uuid' } },
+    };
+  const row = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'id',
+      'kind',
+      'templateId',
+      'eventId',
+      'contactId',
+      'number',
+      'state',
+      'issuedAt',
+      'finalizedAt',
+      'snapshotHash',
+      'pdfHash',
+      'netMinor',
+      'taxMinor',
+      'grossMinor',
+      'version',
+      'lines',
+    ],
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      kind: { type: 'string', enum: [...documentKinds] },
+      templateId: { type: 'string', format: 'uuid' },
+      eventId: nullableUuid,
+      contactId: nullableUuid,
+      number: nullableText,
+      state: { type: 'string', enum: ['draft', 'final', 'withdrawn'] },
+      issuedAt: { type: 'string', format: 'date-time' },
+      finalizedAt: {
+        anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+      },
+      snapshotHash: nullableText,
+      pdfHash: nullableText,
+      netMinor: { type: 'integer' },
+      taxMinor: { type: 'integer' },
+      grossMinor: { type: 'integer' },
+      version: { type: 'integer' },
+      lines: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'id',
+            'position',
+            'productId',
+            'description',
+            'quantity',
+            'unit',
+            'unitPriceMinor',
+            'taxBasisPoints',
+            'discountBasisPoints',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            position: { type: 'integer' },
+            productId: nullableUuid,
+            description: { type: 'string' },
+            quantity: { type: 'integer' },
+            unit: { type: 'string' },
+            unitPriceMinor: { type: 'integer' },
+            taxBasisPoints: { type: 'integer' },
+            discountBasisPoints: { type: 'integer' },
+          },
+        },
+      },
+    },
+  };
+  function failure(error: unknown, reply: FastifyReply) {
+    if (error instanceof AccessError)
+      return reply.code(403).send({ error: 'forbidden' });
+    if (error instanceof DocumentError) {
+      if (error.reason === 'not_found')
+        return reply.code(404).send({ error: 'not_found' });
+      if (error.reason === 'invalid_state')
+        return reply.code(409).send({ error: 'invalid_state' });
+      if (error.reason === 'artifact_failed')
+        return reply.code(500).send({ error: 'artifact_failed' });
+      return reply.code(400).send({ error: error.reason });
+    }
+    throw error;
+  }
+  app.post<{ Body: DocumentDraftInput }>(
+    '/api/v1/documents',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['templateId'],
+          properties: {
+            templateId: { type: 'string', format: 'uuid' },
+            eventId: nullableUuid,
+            contactId: nullableUuid,
+            lines: { type: 'array', maxItems: 200, items: line },
+          },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createDraft(request.authSession!.userId, request.body),
+          );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/documents/:id/finalize',
+    {
+      schema: {
+        params,
+        response: { 200: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.finalize(
+          request.authSession!.userId,
+          request.params.id,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/documents/:id',
+    { schema: { params, response: { 200: row } } },
+    async (request, reply) =>
+      (await repo.get(request.params.id)) ??
+      reply.code(404).send({ error: 'not_found' }),
+  );
+}

@@ -9,6 +9,7 @@ ContainerName=ak-test-api
 Network=ak-test.network
 NetworkAlias=api
 User=1000:1000
+Volume=ak-test-documents.volume:/data
 Secret=ak-test-db,type=mount,target=db_password,uid=1000,gid=1000,mode=0400
 # First start only: remove this Secret and AK_BOOTSTRAP_PASSWORD_FILE after bootstrap.
 Secret=ak-test-bootstrap,type=mount,target=initial_password,uid=1000,gid=1000,mode=0400
@@ -22,6 +23,7 @@ Environment=AK_DB_USER=ak
 Environment=AK_DB_PASSWORD_FILE=/run/secrets/db_password
 Environment=AK_HOST=0.0.0.0
 Environment=AK_PORT=3000
+Environment=AK_DOCUMENT_STORAGE=/data
 Environment=AK_TIMEZONE=Europe/Berlin
 Environment=AK_BUILD_REVISION=REPLACE_REVISION
 Exec=node apps/api/dist/main.js
