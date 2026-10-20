@@ -1,6 +1,6 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **19.10.2026**, nach H018. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand: **20.10.2026**, nach C051. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
 ## In der nächsten Session zuerst
 
@@ -28,7 +28,7 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 | Disposition und Kalender | Physische Boxen/Zubehör, Vormerkungen, feste Buchungen, Datenbank-Konfliktschutz, Puffer, interne Sperren, Tages-/Wochen-/Monatskalender und widerrufbare ICS-Abos | Echter Ressourcenabgleich vor Nutzung; Smartphone-Abnahme des Kalender-Abos |
 | Website-Anfragen | Achtfeldrige Definition, öffentliche API, verschlüsselter Gateway-Eingang, signierte/idempotente Übertragung, dauerhafte lokale Ablage, Quittierung, manuelle Prüfung/Übernahme und mobiles einbettbares Formular entwickelt und synthetisch getestet; seit C028 zusätzlich die Gateway-Laufzeit als eigener Prozess und der Pull-/Quittungstakt im Worker als Code vorhanden | Gateway real starten (Kaltstart mit synthetischen Schlüsseln), Podman-Secrets anlegen, erlaubten Website-Origin festlegen, WordPress anschließen und gemeinsam abnehmen |
 | E-Mail/Kommunikation (M3) | Geplant | IMAP/SMTP, Zuordnung zu Events/Kontakten, Postfach, Vorlagen, Anhänge, geplanter Versand und Erinnerungen |
-| Geschäftsdokumente/Finanzen (M4) | Dokumentvorlagen für alle fünf Arten mit Positionen, Platzhaltern, Versionierung und Oberfläche (C047/C047.1) | PDF-Layout, Nummernkreise, Angebote, Annahmen, Auftragsbestätigungen, Rechnungen/Anzahlungen/Korrekturen und Zahlungen; LibreOffice bleibt gewählter externer Übergangsweg, Ablauf noch nicht abgenommen |
+| Geschäftsdokumente/Finanzen (M4) | Dokumentvorlagen für alle fünf Arten mit Positionen, Platzhaltern, Versionierung und Oberfläche (C047/C047.1); Marken-Layout und exakte Geldrechnung (C048), Chromium-PDF (C049), Nummernkreise (C050/C050.1); seit C051 werden Dokumente als Entwurf gespeichert und mit Nummer, Snapshot und inhaltsadressierter PDF finalisiert | Oberfläche für Angebote, Gültigkeitsdatum und Status `sent`/`expired`/`accepted`, PDF-Download, Logo, Annahmen, Auftragsbestätigungen, Rechnungen/Anzahlungen/Korrekturen und Zahlungen; LibreOffice bleibt gewählter externer Übergangsweg, Ablauf noch nicht abgenommen |
 | Verträge/Fragebögen (M5) | Bewusst zurückgestellt | Vorlagen, Kundenlinks, Signaturen, Abschlussnachweise, Fragebögen und kontrollierte Übernahme |
 | Aufgaben/Auswertungen (M6) | Bewusst zurückgestellt; Absagegründe-Stamm schon vorhanden | To-dos, relative Vorlagen/Fristen, Benachrichtigungen und Absageauswertungen |
 | Migration/Betrieb (M7 teilweise vorgezogen) | Minimalimport mit Vorschau/Dry-run/Mapping/Ressourcenprüfung; CSV-Exporte für Kontakte/Events/Produkte; Container, CI, Updates, verschlüsselte Sicherungswerkzeuge und Restore-Proben | Reale Datenübernahme, unabhängiges Sicherungsziel, Aufbewahrung/Timeraktivierung, letzte Delta-Sicherung und fachliche Produktivfreigabe |
@@ -36,6 +36,16 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pauschal als fertig werten. E-/H-Slices ziehen gezielte Teile vor, ohne ganze Milestones als abgeschlossen zu erklären.
 
 ## Letzter geprüfter Laufzeitstand
+
+### Laufzeitnachtrag 20.10.2026 (C051: Angebote persistieren und finalisieren)
+
+Geprüfter Stand **`58469ee8235aafc4fa3b8500f3eb28a999843671`**, [CI-Lauf 39412962126](https://github.com/gcode-de/auftragskompass/actions/runs/39412962126) vollständig grün, einschließlich Changed-Code-Coverage und beiden Images. Die drei Testcontainer `ak-test-api`, `ak-test-worker` und `ak-test-admin` sind gesund auf genau dieser Revision; der automatische Updater hat sie selbstständig übernommen.
+
+Neu in dieser Revision: Migration `0030` (`documents`, `document_lines`), Entwurf und Finalisieren in einer Transaktion mit Nummernvergabe, Snapshot, Chromium-PDF und inhaltsadressierter Ablage, die drei Dokumentrouten sowie die Auditaktionen `document.created`/`document.finalized`. Betrieblich nachgewiesen: Das Host-Quadlet des API-Containers bindet `ak-test-documents.volume` an `/data` (neue Quadlet-Datei `ak-test-documents.volume`), der Container bleibt healthy, und im laufenden Container als Benutzer 1000 schreibt, liest und löscht der Storage-Adapter unter `/data`; Chromium erzeugt dort eine PDF mit `%PDF-`-Kopf und 7.113 Bytes. Ohne das Volume wäre die Ablage im Container-Dateisystem gelandet und bei jedem Update verloren gegangen.
+
+Lokal: 181 Unit-, 231 Integrations- und 151 Komponententests sowie vier Chromium-Abläufe grün, Format, Lint, Typen und Build grün. Der lokale `test:ops`-Lauf meldet auf macOS einen Fehlschlag im Backup-Phasentest, der unverändert schon auf dem Basiscommit auftritt; die Linux-CI ist vollständig grün.
+
+Offen: Oberfläche für Angebote, Gültigkeitsdatum und Status `sent`/`expired`/`accepted`, PDF-Download (C049.1), Logo (C048.1) und die Rechnungsarten (C054).
 
 ### Laufzeitnachtrag 19.10.2026 (M4-Grundlagen und Betreiberkorrekturen)
 
@@ -110,7 +120,7 @@ Noch keine neue E004.19-Implementierung allein durch diese Übergabe beauftragt.
 2. ~~Dauerhaften Abhol-/Quittierungslauf in den Worker einbinden~~ **erledigt als C028** (`7107edb`): `startWebsiteInquirySync` fährt den vorhandenen signierten Transport mit Signaturprüfung und Wiederholschutz und verlangt eine aktive Betreiberberechtigung als handelnde Identität; ohne `AK_GATEWAY_ORIGIN` bleibt der Takt inert, der laufende Testbetrieb ist nicht betroffen.
 2a. **Als Nächstes C028.1:** Gateway mit synthetischen Schlüsseln real kalt starten und den Worker dagegen laufen lassen, statt Pull-Antworten im Test zu stubben. Podman-Secrets `ak-test-gateway-storage`/`ak-test-gateway-sync` anlegen und die Platzhalter im Quadlet ersetzen. Der automatische Testupdater fasst nur `api`, `worker` und `admin` an; Gateway bleibt bewusst außerhalb.
 3. Gateway-Hosting, öffentliche Zieladresse, WordPress-Einbettung/CSP und tatsächlichen Anfrageweg mit synthetischen Daten abnehmen. Erst danach kontrollierte Website-Umschaltung; bis dahin das alte Formular nicht entfernen.
-4. Anschließend Angebot/Rechnung als gezielt priorisierten M4-Ausbau besprechen beziehungsweise den LibreOffice-Ersatzablauf konkret abnehmen. Nicht automatisch den gesamten M3/M5/M6-Umfang vorziehen.
+4. Angebot/Rechnung als gezielt priorisierten M4-Ausbau weiterführen: C051 (Persistenz und Finalisieren) ist umgesetzt, als Nächstes bieten sich Oberfläche, PDF-Download, Logo oder die Rechnungsarten an. Den LibreOffice-Ersatzablauf konkret abnehmen; nicht automatisch den gesamten M3/M5/M6-Umfang vorziehen.
 5. Parallel nötige Betreiberentscheidungen: unabhängiges Backupziel und Aufbewahrung, private Importkorrekturen, Länder-/Kontaktzuordnung, reale Zukunftsaufträge und tatsächliche Boxzuweisungen. Erst mit fachlicher Freigabe übernehmen.
 
 ## Betrieb und Datenschutz
