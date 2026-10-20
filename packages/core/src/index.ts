@@ -60,6 +60,16 @@ export {
   type DocumentRenderInput,
 } from './document-layouts.js';
 
+export {
+  renderDocumentPdf,
+  contentHash,
+  chromiumPdfRenderer,
+  DocumentPdfError,
+  type PdfArtifact,
+  type PdfRenderer,
+  type ChromiumOptions,
+} from './document-pdf.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';

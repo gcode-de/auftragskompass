@@ -11,6 +11,10 @@ RUN AK_BUILD_REVISION="$AK_BUILD_REVISION" pnpm build
 
 FROM build AS runtime
 ENV NODE_ENV=production
+# Chromium renders document PDFs; DejaVu keeps the glyphs stable between hosts.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
 USER node
 CMD ["node", "apps/api/dist/main.js"]
 
