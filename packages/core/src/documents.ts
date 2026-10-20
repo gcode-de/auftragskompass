@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import {
   contacts,
@@ -74,6 +74,11 @@ export type DocumentDraftInput = {
   contactId?: string | null;
   /** Omitted lines copy the template positions; an empty list is a mistake. */
   lines?: DocumentLineDraft[];
+};
+export type DocumentFilters = {
+  eventId?: string;
+  kind?: DocumentKind;
+  state?: DocumentState;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -206,6 +211,37 @@ export function documentRepository(
   return {
     async get(id: string) {
       return readOne(db, id);
+    },
+    // The overview only needs the header fields; lines stay per document.
+    async list(filters: DocumentFilters = {}) {
+      return db
+        .select({
+          id: documents.id,
+          kind: documents.kind,
+          templateId: documents.templateId,
+          eventId: documents.eventId,
+          contactId: documents.contactId,
+          number: documents.number,
+          state: documents.state,
+          issuedAt: documents.issuedAt,
+          finalizedAt: documents.finalizedAt,
+          netMinor: documents.netMinor,
+          taxMinor: documents.taxMinor,
+          grossMinor: documents.grossMinor,
+          version: documents.version,
+        })
+        .from(documents)
+        .where(
+          and(
+            scope,
+            filters.eventId
+              ? eq(documents.eventId, filters.eventId)
+              : undefined,
+            filters.kind ? eq(documents.kind, filters.kind) : undefined,
+            filters.state ? eq(documents.state, filters.state) : undefined,
+          ),
+        )
+        .orderBy(desc(documents.issuedAt), desc(documents.id));
     },
     // Only a final document has an artefact; the hash names it, so the bytes
     // always belong to the recorded snapshot.
@@ -691,6 +727,60 @@ export function registerDocumentRoutes(
         return failure(error, reply);
       }
     },
+  );
+  const listRow = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'id',
+      'kind',
+      'templateId',
+      'eventId',
+      'contactId',
+      'number',
+      'state',
+      'issuedAt',
+      'finalizedAt',
+      'netMinor',
+      'taxMinor',
+      'grossMinor',
+      'version',
+    ],
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      kind: { type: 'string', enum: [...documentKinds] },
+      templateId: { type: 'string', format: 'uuid' },
+      eventId: nullableUuid,
+      contactId: nullableUuid,
+      number: nullableText,
+      state: { type: 'string', enum: ['draft', 'final', 'withdrawn'] },
+      issuedAt: { type: 'string', format: 'date-time' },
+      finalizedAt: {
+        anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+      },
+      netMinor: { type: 'integer' },
+      taxMinor: { type: 'integer' },
+      grossMinor: { type: 'integer' },
+      version: { type: 'integer' },
+    },
+  };
+  app.get<{ Querystring: DocumentFilters }>(
+    '/api/v1/documents',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            eventId: { type: 'string', format: 'uuid' },
+            kind: { type: 'string', enum: [...documentKinds] },
+            state: { type: 'string', enum: ['draft', 'final', 'withdrawn'] },
+          },
+        },
+        response: { 200: { type: 'array', items: listRow } },
+      },
+    },
+    (request) => repo.list(request.query),
   );
   app.get<{ Params: { id: string } }>(
     '/api/v1/documents/:id',

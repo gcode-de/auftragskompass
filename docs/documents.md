@@ -13,6 +13,8 @@ Bedienoberfläche und der PDF-Download folgen in eigenen Slices.
 | `final` | finalisiert, unveränderbar | eindeutig je Mandant | HTML-Hash und PDF-Hash gesetzt |
 | `withdrawn` | zurückgezogen (Domänenregel vorhanden, noch kein Endpunkt) | keine | keiner |
 
+Die Übersicht `GET /api/v1/documents` liefert die Kopfdaten ohne Positionen und
+Hashes, neueste zuerst, und lässt sich nach Event, Art und Zustand filtern.
 Ein `POST /api/v1/documents` kopiert ohne eigene `lines` die Positionen der
 Vorlage. Die Dokumentart stammt immer aus der Vorlage, damit Art und Vorlage
 nicht auseinanderlaufen. Summen werden aus den Bruttopreisen in Cent berechnet
@@ -62,6 +64,7 @@ Containerbenutzer gehörend an, damit ein frisches Volume nicht root gehört.
 |---|---|---|
 | `POST /api/v1/documents` | `201` Dokument | `400` ungültige Positionen/Vorlage, `404` fremde Referenz |
 | `POST /api/v1/documents/:id/finalize` | `200` finales Dokument | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler |
+| `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`) | `400` ungültiger Filter |
 | `GET /api/v1/documents/:id` | `200` Dokument | `404` |
 | `GET /api/v1/documents/:id/pdf` | `200` PDF (`application/pdf`) | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler |
 | `PUT /api/v1/document-layout/logo` | `200` Layout mit Logo | `400` falsche Bildbytes, `404` kein Layout, `413` zu groß, `415` fremder Typ |

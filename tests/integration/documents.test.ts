@@ -643,6 +643,31 @@ test('the pdf download refuses drafts, missing artefacts and broken stores', asy
   });
 });
 
+test('the overview lists documents per tenant and filters by event, kind and state', async () => {
+  const repo = documentRepository(pool, tenantId, dependencies().deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
+    finalized = await repo.finalize(actorId, draft.id);
+  const all = await repo.list();
+  expect(all.map((row) => row.id)).toContain(finalized.id);
+  expect(all.every((row) => !('lines' in row))).toBe(true);
+  expect(all[0]!.issuedAt).toBeInstanceOf(Date);
+  const byEvent = await repo.list({ eventId });
+  expect(byEvent.map((row) => row.id)).toContain(finalized.id);
+  expect(byEvent.every((row) => row.eventId === eventId)).toBe(true);
+  const finals = await repo.list({ state: 'final' });
+  expect(finals.every((row) => row.state === 'final')).toBe(true);
+  const drafts = await repo.list({ kind: 'offer', state: 'draft' });
+  expect(
+    drafts.every((row) => row.state === 'draft' && row.kind === 'offer'),
+  ).toBe(true);
+  const foreign = await documentRepository(
+    pool,
+    otherTenantId,
+    dependencies().deps,
+  ).list();
+  expect(foreign.map((row) => row.id)).not.toContain(finalized.id);
+});
+
 test('the document API requires auth and enforces the final state', async () => {
   const config = {
     origin: site,
@@ -733,6 +758,25 @@ test('the document API requires auth and enforces the final state', async () => 
     expect(pdf.headers['content-type']).toBe('application/pdf');
     expect(pdf.headers['content-disposition']).toContain('.pdf');
     expect(pdf.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/v1/documents?kind=offer',
+      cookies,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().some((row: { id: string }) => row.id === id)).toBe(
+      true,
+    );
+    expect((await app.inject('/api/v1/documents')).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/documents?kind=unknown',
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(400);
     expect(
       (
         await app.inject({
