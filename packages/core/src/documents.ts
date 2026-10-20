@@ -345,6 +345,19 @@ export function documentRepository(
           .from(documentLayouts)
           .where(eq(documentLayouts.tenantId, tenantId));
         if (!layout) throw new DocumentError('missing_reference');
+        let logoDataUri: string | undefined;
+        if (layout.logoKey && layout.logoMediaType) {
+          try {
+            const logo = await dependencies.store.read(layout.logoKey);
+            logoDataUri = `data:${layout.logoMediaType};base64,${logo.toString('base64')}`;
+          } catch (error) {
+            // A configured logo that vanished must not silently disappear from
+            // the printed document.
+            if (error instanceof StorageError)
+              throw new DocumentError('missing_reference');
+            throw error;
+          }
+        }
         const [tenant] = await tx
           .select({ timezone: tenants.timezone })
           .from(tenants)
@@ -469,6 +482,7 @@ export function documentRepository(
               recipientAddress: recipient.address,
               lines,
               values,
+              ...(logoDataUri ? { logoDataUri } : {}),
             }),
             pdf = await renderDocumentPdf(snapshot.html, dependencies.render);
           await storeDocumentPdf(dependencies.store, pdf);

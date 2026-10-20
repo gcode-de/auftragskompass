@@ -186,17 +186,20 @@ beforeAll(async () => {
     minLength: 4,
     nextValue: 1,
   });
-  await documentLayoutRepository(pool, tenantId).save(actorId, {
-    senderName: 'Fictional Studio',
-    senderStreet: 'Synthetic Street 1',
-    senderPostalCode: '12345',
-    senderCity: 'Fictional Town',
-    primaryColor: '#2f6f4f',
-    textColor: '#1b1b1b',
-    fontFamily: 'sans',
-    showPageNumbers: true,
-    showPositionNumbers: true,
-  });
+  await documentLayoutRepository(pool, tenantId, memoryStore().store).save(
+    actorId,
+    {
+      senderName: 'Fictional Studio',
+      senderStreet: 'Synthetic Street 1',
+      senderPostalCode: '12345',
+      senderCity: 'Fictional Town',
+      primaryColor: '#2f6f4f',
+      textColor: '#1b1b1b',
+      fontFamily: 'sans',
+      showPageNumbers: true,
+      showPositionNumbers: true,
+    },
+  );
 });
 afterAll(async () => {
   await pool?.end();
@@ -883,4 +886,30 @@ test('a failing artefact store surfaces as a server error', async () => {
   } finally {
     await app.close();
   }
+});
+
+test('a configured logo is embedded into the final html', async () => {
+  const run = dependencies(),
+    png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('synthetic logo'),
+    ]),
+    layoutRepo = documentLayoutRepository(pool, tenantId, run.deps.store);
+  await layoutRepo.saveLogo(actorId, png, 'image/png');
+  const repo = documentRepository(pool, tenantId, run.deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
+    finalized = await repo.finalize(actorId, draft.id);
+  expect(finalized.state).toBe('final');
+  expect(run.rendered[0]).toContain(
+    'data:image/png;base64,' + png.toString('base64'),
+  );
+  await run.deps.store.remove(`logo-${tenantId}.png`);
+  const missing = await repo.createDraft(actorId, {
+    templateId,
+    contactId,
+    eventId,
+  });
+  await expect(repo.finalize(actorId, missing.id)).rejects.toMatchObject({
+    reason: 'missing_reference',
+  });
 });

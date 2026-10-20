@@ -9,6 +9,7 @@ import {
   renderTemplate,
   type TemplatePlaceholder,
 } from './document-templates.js';
+import type { StorageAdapter } from './storage.js';
 import {
   documentTotals,
   formatDocumentDate,
@@ -17,9 +18,34 @@ import {
 } from './document-totals.js';
 
 export class DocumentLayoutError extends Error {
-  constructor(readonly reason: 'not_found' | 'conflict') {
+  constructor(
+    readonly reason:
+      'not_found' | 'conflict' | 'invalid_logo' | 'logo_too_large',
+  ) {
     super('Document layout rejected');
   }
+}
+
+export const logoLimit = 512 * 1024;
+
+// The declared media type only counts when the bytes agree with it; otherwise
+// a renamed text file would end up inside a customer-facing PDF.
+export function assertLogo(
+  bytes: Buffer,
+  declared: string,
+): 'image/png' | 'image/jpeg' {
+  if (!Buffer.isBuffer(bytes) || !bytes.byteLength)
+    throw new DocumentLayoutError('invalid_logo');
+  if (bytes.byteLength > logoLimit)
+    throw new DocumentLayoutError('logo_too_large');
+  const png = bytes
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+    sniffed = png ? 'image/png' : jpeg ? 'image/jpeg' : null;
+  if (!sniffed || sniffed !== declared)
+    throw new DocumentLayoutError('invalid_logo');
+  return sniffed;
 }
 
 export type DocumentLayoutInput = {
@@ -82,6 +108,7 @@ export type DocumentRenderInput = {
   outroText: string;
   lines: readonly DocumentLineInput[];
   values: Partial<Record<TemplatePlaceholder, string>>;
+  logoDataUri?: string;
 };
 
 // Deterministic by construction: no clock, no locale lookup beyond the tenant
@@ -140,16 +167,21 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       td:last-child, th:last-child, .totals td:last-child { text-align: right; }
       .totals { margin-top: 3mm; margin-left: auto; width: 60mm; }
       .page-numbers { color: ${layout.primaryColor}; font-size: 8pt; text-align: right; }
+      .logo { display: block; max-height: 18mm; margin-bottom: 2mm; }
     </style>
   </head>
   <body>
-    <p class="sender">${[
-      layout.senderName,
-      layout.senderStreet,
-      layout.senderPostalCode + ' ' + layout.senderCity,
-    ]
-      .map(escapeHtml)
-      .join(' · ')}</p>
+${
+  input.logoDataUri
+    ? `    <img class="logo" src="${escapeHtml(input.logoDataUri)}" alt="">\n`
+    : ''
+}    <p class="sender">${[
+    layout.senderName,
+    layout.senderStreet,
+    layout.senderPostalCode + ' ' + layout.senderCity,
+  ]
+    .map(escapeHtml)
+    .join(' · ')}</p>
     <address>${lines(input.recipientName + '\n' + input.recipientAddress)}</address>
     <div class="meta">
       <p>Nummer ${escapeHtml(input.documentNumber)}</p>
@@ -179,7 +211,11 @@ ${
 `;
 }
 
-export function documentLayoutRepository(pool: Pool, tenantId: string) {
+export function documentLayoutRepository(
+  pool: Pool,
+  tenantId: string,
+  store: StorageAdapter,
+) {
   const scope = eq(documentLayouts.tenantId, tenantId);
   return {
     async get() {
@@ -215,6 +251,40 @@ export function documentLayoutRepository(pool: Pool, tenantId: string) {
         return row!;
       });
     },
+    // The logo lives outside the row: the bytes go to the storage adapter and
+    // the layout only keeps the derived key and media type.
+    async saveLogo(actorId: string, bytes: Buffer, declared: string) {
+      const mediaType = assertLogo(bytes, declared),
+        key = `logo-${tenantId}.${mediaType === 'image/png' ? 'png' : 'jpg'}`,
+        [existing] = await database(pool)
+          .select({ logoKey: documentLayouts.logoKey })
+          .from(documentLayouts)
+          .where(scope);
+      if (!existing) throw new DocumentLayoutError('not_found');
+      await store.put(key, bytes);
+      let superseded: string | null = null;
+      const row = await database(pool).transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [old] = await tx.select().from(documentLayouts).where(scope);
+        if (!old) throw new DocumentLayoutError('not_found');
+        if (old.logoKey && old.logoKey !== key) superseded = old.logoKey;
+        const [updated] = await tx
+          .update(documentLayouts)
+          .set({
+            logoKey: key,
+            logoMediaType: mediaType,
+            version: old.version + 1,
+          })
+          .where(scope)
+          .returning();
+        await appendAudit(tx, tenantId, 'document_layout.updated', actorId);
+        return updated!;
+      });
+      // A superseded file is only removed once the row points at the new one.
+      if (superseded) await store.remove(superseded).catch(() => {});
+      return row;
+    },
   };
 }
 
@@ -222,8 +292,18 @@ export function registerDocumentLayoutRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
+  store: StorageAdapter,
 ) {
-  const repo = documentLayoutRepository(pool, tenantId);
+  const repo = documentLayoutRepository(pool, tenantId, store);
+  // Raw image bodies never pass through JSON; the parser limit is the first
+  // size guard, the repository repeats it for direct callers.
+  for (const type of ['image/png', 'image/jpeg'])
+    if (!app.hasContentTypeParser(type))
+      app.addContentTypeParser(
+        type,
+        { parseAs: 'buffer', bodyLimit: logoLimit },
+        (_request, body, done) => done(null, body),
+      );
   const fields = {
     senderName: {
       type: 'string',
@@ -244,10 +324,15 @@ export function registerDocumentLayoutRoutes(
   function failure(error: unknown, reply: FastifyReply) {
     if (error instanceof AccessError)
       return reply.code(403).send({ error: 'forbidden' });
-    if (error instanceof DocumentLayoutError)
-      return reply
-        .code(error.reason === 'conflict' ? 409 : 404)
-        .send({ error: error.reason });
+    if (error instanceof DocumentLayoutError) {
+      if (error.reason === 'not_found')
+        return reply.code(404).send({ error: 'not_found' });
+      if (error.reason === 'conflict')
+        return reply.code(409).send({ error: 'conflict' });
+      // The parser limit already rejects oversized bodies, so a size error
+      // here can only come from a direct repository caller.
+      return reply.code(400).send({ error: error.reason });
+    }
     throw error;
   }
   app.get('/api/v1/document-layout', async (_request, reply) => {
@@ -294,6 +379,24 @@ export function registerDocumentLayoutRoutes(
           request.authSession!.userId,
           request.body,
           request.body.version,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.put<{ Body: Buffer }>(
+    '/api/v1/document-layout/logo',
+    async (request, reply) => {
+      try {
+        const declared = String(request.headers['content-type'] ?? '')
+          .split(';')[0]!
+          .trim()
+          .toLowerCase();
+        return await repo.saveLogo(
+          request.authSession!.userId,
+          request.body,
+          declared,
         );
       } catch (error) {
         return failure(error, reply);

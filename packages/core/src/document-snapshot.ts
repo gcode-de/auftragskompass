@@ -44,6 +44,7 @@ export type SnapshotInput = {
   recipientAddress: string;
   lines: readonly DocumentLineInput[];
   values: Parameters<typeof renderDocumentHtml>[0]['values'];
+  logoDataUri?: string;
 };
 
 export type DocumentSnapshot = {
@@ -82,6 +83,7 @@ export function buildDocumentSnapshot(input: SnapshotInput): DocumentSnapshot {
       outroText: input.template.outroText,
       lines: input.lines,
       values: input.values,
+      ...(input.logoDataUri ? { logoDataUri: input.logoDataUri } : {}),
     });
   } catch (error) {
     if (

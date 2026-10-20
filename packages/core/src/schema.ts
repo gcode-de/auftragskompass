@@ -418,5 +418,7 @@ export const documentLayouts = pgTable('document_layouts', {
   fontFamily: text('font_family').notNull(),
   showPageNumbers: boolean('show_page_numbers').notNull().default(true),
   showPositionNumbers: boolean('show_position_numbers').notNull().default(true),
+  logoKey: text('logo_key'),
+  logoMediaType: text('logo_media_type'),
   version: integer('version').notNull().default(1),
 });

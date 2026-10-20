@@ -180,6 +180,16 @@ describe('renderDocumentHtml', () => {
     expect(html).toContain('31,77');
     expect(html).toContain('Umsatzsteuer 19 %');
   });
+  test('embeds a logo as a data uri only when one is configured', () => {
+    expect(renderDocumentHtml(base)).not.toContain('class="logo"');
+    const html = renderDocumentHtml({
+      ...base,
+      logoDataUri: 'data:image/png;base64,QUJD',
+    });
+    expect(html).toContain(
+      '<img class="logo" src="data:image/png;base64,QUJD" alt="">',
+    );
+  });
   test('escapes description, recipient and placeholders so nothing breaks out', () => {
     const html = renderDocumentHtml({
       ...base,

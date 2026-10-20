@@ -64,10 +64,25 @@ Containerbenutzer gehörend an, damit ein frisches Volume nicht root gehört.
 | `POST /api/v1/documents/:id/finalize` | `200` finales Dokument | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler |
 | `GET /api/v1/documents/:id` | `200` Dokument | `404` |
 | `GET /api/v1/documents/:id/pdf` | `200` PDF (`application/pdf`) | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler |
+| `PUT /api/v1/document-layout/logo` | `200` Layout mit Logo | `400` falsche Bildbytes, `404` kein Layout, `413` zu groß, `415` fremder Typ |
 
 Alle Routen verlangen eine angemeldete Betreiberberechtigung, die
 CSRF-Prüfung gilt wie bei den übrigen schreibenden Endpunkten. Jede Abfrage ist
 auf den Mandanten begrenzt; fremde IDs liefern `404`.
+
+## Logo
+
+Das Layout kann genau ein Logo tragen. `PUT /api/v1/document-layout/logo`
+nimmt einen rohen PNG- oder JPEG-Körper an (höchstens 512 KB). Geprüft werden
+die magische Signatur gegen den angegebenen Inhaltstyp und die Größe; ein
+umbenanntes Fremdformat wird abgewiesen. Die Bytes liegen außerhalb der
+Datenbank, der Schlüssel `logo-<mandant>.png|jpg` steht mit dem Medientyp im
+Layout. Ersetzen schreibt zuerst die neue Datei, aktualisiert die Zeile, erhöht
+die Version und protokolliert `document_layout.updated`; erst danach wird die
+alte Datei entfernt. Beim Finalisieren liest der Dokumentdienst das Logo und
+bettet es als `data:`-URI in das HTML ein, damit die PDF ohne externe Quelle
+deterministisch bleibt. Fehlt ein eingetragenes Logo, bricht das Finalisieren
+mit `missing_reference` ab, statt still ohne Marke zu drucken.
 
 ## Protokoll
 
@@ -77,7 +92,6 @@ Finalisieren, jeweils mit Dokument-ID als `record_id`.
 ## Noch offen
 
 - Bedienoberfläche für Entwürfe, Finalisieren und Download.
-- Logo im Layout (C048.1).
 - Bearbeiten von Entwürfen, Gültigkeitsdatum, Status `sent`, `expired`,
   `accepted` und der Zurückziehen-Endpunkt.
 - Rechnungen, Anzahlungen und Korrekturen (C054).

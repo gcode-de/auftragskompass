@@ -103,7 +103,12 @@ try {
     registerProductRoutes(app, pool, auth.tenantId);
     registerDocumentTemplateRoutes(app, pool, auth.tenantId);
     registerDocumentNumberRoutes(app, pool, auth.tenantId);
-    registerDocumentLayoutRoutes(app, pool, auth.tenantId);
+    registerDocumentLayoutRoutes(
+      app,
+      pool,
+      auth.tenantId,
+      localStorageAdapter({ root: config.documentStorage }),
+    );
     registerDocumentRoutes(app, pool, auth.tenantId, {
       origin: auth.origin,
       store: localStorageAdapter({ root: config.documentStorage }),
