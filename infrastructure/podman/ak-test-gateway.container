@@ -7,6 +7,7 @@ After=ak-test-database.service
 Image=docker.io/REPLACE_IMAGE:runtime-REPLACE_REVISION
 ContainerName=ak-test-gateway
 Network=ak-test.network
+NetworkAlias=gateway
 User=1000:1000
 Secret=ak-test-db,type=mount,target=db_password,uid=1000,gid=1000,mode=0400
 Secret=ak-test-gateway-storage,type=mount,target=gateway_storage_keys,uid=1000,gid=1000,mode=0400
