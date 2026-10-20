@@ -189,9 +189,8 @@ export function CalendarPanel() {
       {data && !loading && !message && (
         <>
           <p>
-            {data.from} bis {data.to} · Zeitzone: {data.timeZone}.
-            Verfügbarkeiten werden beim Buchen erneut geprüft. Events ohne Datum
-            stehen in der Eventliste.
+            {data.from} bis {data.to}. Verfügbarkeiten werden beim Buchen erneut
+            geprüft. Events ohne Datum stehen in der Eventliste.
           </p>
           {data.pendingPromises > 0 && (
             <p role="alert">

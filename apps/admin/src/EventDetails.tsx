@@ -183,8 +183,6 @@ export function EventDetails({
               <dd>{time(data.event.startsAt)}</dd>
               <dt>Ende</dt>
               <dd>{time(data.event.endsAt)}</dd>
-              <dt>Zeitzone</dt>
-              <dd>{data.event.timeZone}</dd>
               <dt>Eventart</dt>
               <dd>{data.eventType?.name ?? 'Noch offen'}</dd>
               <dt>Fotobox-Paket</dt>
