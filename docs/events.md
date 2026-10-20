@@ -2,6 +2,12 @@
 
 C018 verbindet Stammdaten mit Eventname, Status, Anfragequelle, Beschreibung, internen Notizen und einem primären Termin. Unbekannte Zuordnungen und ein noch unbekanntes Datum dürfen bei einer Anfrage offen bleiben. Ein Hauptkontakt und bis zu 50 weitere Kontakte können zugeordnet werden. Die Kontaktliste zeigt zugeordnete Events über „Events anzeigen“. „Duplizieren“ bereitet eine neue Anfrage vor und übernimmt nur aktive Zuordnungen. Das Original bleibt erhalten; erst Speichern legt die Kopie an.
 
+## Kompaktes Anlegen (H029)
+
+„Event anlegen“ öffnet einen modalen Dialog mit nativem Datumsfeld, Kundenauswahl und Eventart. Diese drei Angaben genügen; jede für sich bleibt optional, damit auch undatierte oder noch nicht zugeordnete Anfragen möglich sind. Uhrzeiten, Status, Paket, Ort, Quelle, weitere Kontakte, Beschreibung und interne Notizen liegen zugeklappt unter „Weitere Angaben“ und behalten ihre Eingaben beim Auf- und Zuklappen. Es gibt genau eine primäre Speichern-Aktion und ein zugänglich benanntes Schließen; Fokus startet im Datumsfeld, bleibt per Tab im Dialog, Escape und Schließen schreiben nichts und geben den Fokus an den Auslöser zurück.
+
+Der serverseitig erforderliche Name wird deterministisch aus Eventart und Kunde gebildet („Eventart – Kunde“), bei nur einer Angabe aus dieser, sonst „Neues Event“. Das Namensfeld unter „Weitere Angaben“ zeigt den Vorschlag als Platzhalter, nicht als Wert; eine eigene Eingabe hat Vorrang. Datum ohne Zeiten sendet `eventDate` und `startsAt`/`endsAt: null`, undatiert sendet `eventDate: null`; es wird nie Mitternacht erfunden. Ein laufender POST sperrt Schließen und Escape, bis Erfolg oder Fehler feststehen; Erfolg schließt den Dialog auch bei anschließend fehlgeschlagener Listenabfrage. Ein offener, geänderter Bearbeiten-Editor sperrt Anlegen und Duplizieren, damit kein zweites Formular mit doppelten IDs entsteht und kein Entwurf still verworfen wird. Kein Autosave.
+
 ## Termin und Status
 
 Ein Datum ohne Uhrzeiten ist erlaubt. Werden Uhrzeiten angegeben, müssen Beginn und Ende vorhanden sein, Beginn vor Ende liegen und das Eventdatum dem lokalen Beginn entsprechen. Mehrtägige Events sind möglich. Die bei Anlage aus dem Mandanten übernommene Zeitzone bleibt am Event erhalten. Zeitpunkte werden in PostgreSQL als `timestamptz` in UTC gespeichert und in der Eventzeitzone angezeigt.

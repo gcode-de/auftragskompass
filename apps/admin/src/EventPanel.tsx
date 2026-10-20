@@ -9,6 +9,7 @@ import {
 import { useEffect, useState, useRef } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
 import { EventTimeField } from './EventTimeField.js';
+import { EventCreateDialog } from './EventCreateDialog.js';
 type Choice = { id: string; name: string; state: string };
 export type EventRow = {
   id: string;
@@ -40,7 +41,10 @@ export function EventPanel({
     filters = new URLSearchParams(urlSearch),
     sequence = useRef(0),
     saving = useRef(false),
-    editor = useRef<HTMLDetailsElement>(null);
+    editor = useRef<HTMLDetailsElement>(null),
+    createTrigger = useRef<HTMLButtonElement>(null),
+    createReturnFocus = useRef<HTMLElement | null>(null),
+    editReturnFocus = useRef<HTMLElement | null>(null);
   const [rows, setRows] = useState<EventRow[]>([]),
     [draft, setDraft] = useState<EventRow | null>(null),
     [editing, setEditing] = useState(false),
@@ -56,6 +60,8 @@ export function EventPanel({
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [reloadWarning, setReloadWarning] = useState(false),
+    [creating, setCreating] = useState(false),
+    [createInitial, setCreateInitial] = useState<EventRow | null>(null),
     [dateDerived, setDateDerived] = useState(false),
     [eventStatus, setEventStatus] = useState('inquiry'),
     [eventDate, setEventDate] = useState(''),
@@ -167,10 +173,43 @@ export function EventPanel({
         ?.focus({ preventScroll: true });
     }
   }, [draft]);
-  function closeEditor() {
-    if (editor.current) {
-      editor.current.open = false;
-      editor.current.querySelector('summary')?.focus({ preventScroll: true });
+  function openCreate(initial: EventRow | null = null) {
+    if (editing || draft) return;
+    createReturnFocus.current =
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement !== document.body
+        ? document.activeElement
+        : createTrigger.current;
+    setMessage('');
+    setCreateInitial(initial);
+    setCreating(true);
+  }
+  function restoreEditorFocus() {
+    const target = editReturnFocus.current;
+    editReturnFocus.current = null;
+    if (target?.isConnected) target.focus({ preventScroll: true });
+    else
+      setTimeout(
+        () => createTrigger.current?.focus({ preventScroll: true }),
+        0,
+      );
+  }
+  function closeCreate() {
+    setCreating(false);
+    setCreateInitial(null);
+    const target = createReturnFocus.current ?? createTrigger.current;
+    if (target?.isConnected) target.focus({ preventScroll: true });
+  }
+  async function created() {
+    setCreating(false);
+    setCreateInitial(null);
+    setMessage('Event gespeichert.');
+    createTrigger.current?.focus({ preventScroll: true });
+    try {
+      await refresh();
+      setReloadWarning(false);
+    } catch {
+      setReloadWarning(true);
     }
   }
   async function save(form: HTMLFormElement) {
@@ -245,6 +284,7 @@ export function EventPanel({
       : value('eventDate') || null;
     saving.current = true;
     setBusy(true);
+    let saved = false;
     try {
       const input = {
         name: value('name'),
@@ -297,7 +337,7 @@ export function EventPanel({
       setPrimaryContactId('');
       setAdditionalContactIds([]);
       form.reset();
-      closeEditor();
+      saved = true;
       setMessage('Event gespeichert.');
       try {
         await refresh();
@@ -314,6 +354,7 @@ export function EventPanel({
     } finally {
       saving.current = false;
       setBusy(false);
+      if (saved) setTimeout(restoreEditorFocus, 0);
     }
   }
   function options(choices: Choice[], current: string | string[] | null) {
@@ -347,17 +388,26 @@ export function EventPanel({
       <div hidden={showingDetail}>
         <div className="section-heading">
           <h2>Events</h2>
-          <button
-            className="secondary-action"
-            disabled={busy}
-            onClick={() =>
-              void refresh().catch(() =>
-                setMessage('Events konnten nicht geladen werden.'),
-              )
-            }
-          >
-            Events aktualisieren
-          </button>
+          <div className="section-actions">
+            <button
+              className="secondary-action"
+              disabled={busy}
+              onClick={() =>
+                void refresh().catch(() =>
+                  setMessage('Events konnten nicht geladen werden.'),
+                )
+              }
+            >
+              Events aktualisieren
+            </button>
+            <button
+              ref={createTrigger}
+              disabled={busy || editing || Boolean(draft)}
+              onClick={() => openCreate()}
+            >
+              Event anlegen
+            </button>
+          </div>
         </div>
         <WebsiteInbox
           csrfToken={csrfToken}
@@ -465,243 +515,246 @@ export function EventPanel({
           <p className="event-timezone">Zeitzone: {zone || 'Wird geladen'}</p>
         </details>
 
-        <details className="event-editor" ref={editor}>
-          <summary>{editing ? 'Event bearbeiten' : 'Event anlegen'}</summary>
-          <form
-            id="event-editor"
-            key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void save(event.currentTarget);
-            }}
-          >
-            <fieldset disabled={busy || !timeZone}>
-              <legend>{editing ? 'Event bearbeiten' : 'Neues Event'}</legend>
-              <label>
-                Eventname
-                <input
-                  name="name"
-                  required
-                  maxLength={200}
-                  defaultValue={draft?.name ?? ''}
-                />
-              </label>
-              <label>
-                Eventstatus
-                <select
-                  name="status"
-                  value={eventStatus}
-                  onChange={(event) =>
-                    setEventStatus(event.currentTarget.value)
-                  }
-                >
-                  {statuses.map((option) => (
-                    <option
-                      key={option.code}
-                      value={option.code}
-                      disabled={
-                        option.code === 'booked' && draft?.status !== 'booked'
-                      }
-                    >
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p>
-                Gebucht wird mit einer konkreten Ressourcenzuweisung verfügbar.
-              </p>
-              <label>
-                Hauptkontakt
-                <select
-                  name="primaryContactId"
-                  value={primaryContactId}
-                  onChange={(event) => {
-                    const next = event.currentTarget.value;
-                    setPrimaryContactId(next);
-                    setAdditionalContactIds((current) =>
-                      current.filter((id) => id !== next),
-                    );
-                  }}
-                >
-                  <option value="">Noch offen</option>
-                  {options(contacts, primaryContactId || null)}
-                </select>
-              </label>
-              <fieldset>
-                <legend>Termin</legend>
+        {editing && draft && (
+          <details className="event-editor" ref={editor}>
+            <summary>Event bearbeiten</summary>
+            <form
+              id="event-editor"
+              key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void save(event.currentTarget);
+              }}
+            >
+              <fieldset disabled={busy || !timeZone}>
+                <legend>{editing ? 'Event bearbeiten' : 'Neues Event'}</legend>
                 <label>
-                  Eventdatum
+                  Eventname
                   <input
-                    name="eventDate"
-                    type="date"
-                    value={eventDate}
-                    readOnly={dateDerived}
-                    aria-invalid={Boolean(scheduleErrors.eventDate)}
-                    aria-describedby={
-                      scheduleErrors.eventDate
-                        ? 'event-date-help event-eventDate-error'
-                        : 'event-date-help'
-                    }
-                    onChange={(event) => {
-                      setEventDate(event.currentTarget.value);
-                      clearScheduleError('eventDate');
-                    }}
+                    name="name"
+                    required
+                    maxLength={200}
+                    defaultValue={draft?.name ?? ''}
                   />
                 </label>
-                <p id="event-date-help">
-                  {dateDerived
-                    ? 'Wird aus dem Beginn übernommen. Um das Datum zu ändern, den Beginn ändern.'
-                    : 'Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event möglich. Mit Beginn wird das Datum aus dessen lokalem Starttag übernommen.'}
-                </p>
-                {scheduleErrors.eventDate && (
-                  <p
-                    className="field-error"
-                    id="event-eventDate-error"
-                    role="alert"
-                  >
-                    {scheduleErrors.eventDate}
-                  </p>
-                )}
-                <EventTimeField
-                  name="startsAt"
-                  label="Eventbeginn"
-                  timeZone={zone}
-                  instant={draft?.startsAt ?? null}
-                  error={scheduleErrors.startsAt}
-                  onChange={(next) => {
-                    setDateDerived(Boolean(next));
-                    if (next) {
-                      setEventDate(next.slice(0, 10));
-                      clearScheduleError('eventDate');
+                <label>
+                  Eventstatus
+                  <select
+                    name="status"
+                    value={eventStatus}
+                    onChange={(event) =>
+                      setEventStatus(event.currentTarget.value)
                     }
-                    clearScheduleError('startsAt');
-                  }}
-                />
-                <EventTimeField
-                  name="endsAt"
-                  label="Eventende"
-                  timeZone={zone}
-                  instant={draft?.endsAt ?? null}
-                  error={scheduleErrors.endsAt}
-                  onChange={() => clearScheduleError('endsAt')}
-                />
+                  >
+                    {statuses.map((option) => (
+                      <option
+                        key={option.code}
+                        value={option.code}
+                        disabled={
+                          option.code === 'booked' && draft?.status !== 'booked'
+                        }
+                      >
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <p>
-                  Beginn und Ende gemeinsam oder gar nicht. Das Ende muss nach
-                  dem Beginn liegen.
+                  Gebucht wird mit einer konkreten Ressourcenzuweisung
+                  verfügbar.
                 </p>
-              </fieldset>
-              <details className="event-advanced">
-                <summary>Weitere Angaben</summary>
-                <div className="event-advanced-fields">
+                <label>
+                  Hauptkontakt
+                  <select
+                    name="primaryContactId"
+                    value={primaryContactId}
+                    onChange={(event) => {
+                      const next = event.currentTarget.value;
+                      setPrimaryContactId(next);
+                      setAdditionalContactIds((current) =>
+                        current.filter((id) => id !== next),
+                      );
+                    }}
+                  >
+                    <option value="">Noch offen</option>
+                    {options(contacts, primaryContactId || null)}
+                  </select>
+                </label>
+                <fieldset>
+                  <legend>Termin</legend>
                   <label>
-                    Eventart
-                    <select
-                      name="eventTypeId"
-                      defaultValue={draft?.eventTypeId ?? ''}
-                    >
-                      <option value="">Noch offen</option>
-                      {options(types, draft?.eventTypeId ?? null)}
-                    </select>
-                  </label>
-                  <label>
-                    Fotobox-Paket
-                    <select
-                      name="packageId"
-                      defaultValue={draft?.packageId ?? ''}
-                    >
-                      <option value="">Noch offen</option>
-                      {options(packages, draft?.packageId ?? null)}
-                    </select>
-                  </label>
-                  <label>
-                    Veranstaltungsort
-                    <select
-                      name="locationId"
-                      defaultValue={draft?.locationId ?? ''}
-                    >
-                      <option value="">Noch offen</option>
-                      {options(locations, draft?.locationId ?? null)}
-                    </select>
-                  </label>
-                  <label>
-                    Anfragequelle
+                    Eventdatum
                     <input
-                      name="source"
-                      maxLength={200}
-                      defaultValue={draft?.source ?? ''}
-                    />
-                  </label>
-                  <label>
-                    Weitere Kontakte
-                    <select
-                      name="additionalContactIds"
-                      multiple
-                      value={additionalContactIds}
-                      onChange={(event) =>
-                        setAdditionalContactIds(
-                          Array.from(
-                            event.currentTarget.selectedOptions,
-                            (option) => option.value,
-                          ),
-                        )
+                      name="eventDate"
+                      type="date"
+                      value={eventDate}
+                      readOnly={dateDerived}
+                      aria-invalid={Boolean(scheduleErrors.eventDate)}
+                      aria-describedby={
+                        scheduleErrors.eventDate
+                          ? 'event-date-help event-eventDate-error'
+                          : 'event-date-help'
                       }
-                    >
-                      {options(
-                        contacts.filter(
-                          (choice) => choice.id !== primaryContactId,
-                        ),
-                        additionalContactIds,
-                      )}
-                    </select>
-                  </label>
-                  <label>
-                    Eventbeschreibung
-                    <textarea
-                      name="description"
-                      maxLength={4000}
-                      defaultValue={draft?.description ?? ''}
+                      onChange={(event) => {
+                        setEventDate(event.currentTarget.value);
+                        clearScheduleError('eventDate');
+                      }}
                     />
                   </label>
-                  <label>
-                    Interne Notizen
-                    <textarea
-                      name="notesHtml"
-                      maxLength={20000}
-                      defaultValue={draft?.notesHtml ?? ''}
-                      aria-describedby="event-notes-help"
-                    />
-                  </label>
-                  <p id="event-notes-help">
-                    Einfache HTML-Formatierung:
-                    &lt;strong&gt;fett&lt;/strong&gt;,
-                    &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-                    href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte
-                    Vorschau erscheint am Event.
+                  <p id="event-date-help">
+                    {dateDerived
+                      ? 'Wird aus dem Beginn übernommen. Um das Datum zu ändern, den Beginn ändern.'
+                      : 'Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event möglich. Mit Beginn wird das Datum aus dessen lokalem Starttag übernommen.'}
                   </p>
-                </div>
-              </details>
-              <button>Event speichern</button>
-              {editing && draft?.id && (
-                <a className="secondary-action" href={'#event-' + draft.id}>
-                  Ressourcen zuweisen
-                </a>
-              )}
-              {draft && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDraft(null);
-                    setEditing(false);
-                    closeEditor();
-                  }}
-                >
-                  Event abbrechen
-                </button>
-              )}
-            </fieldset>
-          </form>
-        </details>
+                  {scheduleErrors.eventDate && (
+                    <p
+                      className="field-error"
+                      id="event-eventDate-error"
+                      role="alert"
+                    >
+                      {scheduleErrors.eventDate}
+                    </p>
+                  )}
+                  <EventTimeField
+                    name="startsAt"
+                    label="Eventbeginn"
+                    timeZone={zone}
+                    instant={draft?.startsAt ?? null}
+                    error={scheduleErrors.startsAt}
+                    onChange={(next) => {
+                      setDateDerived(Boolean(next));
+                      if (next) {
+                        setEventDate(next.slice(0, 10));
+                        clearScheduleError('eventDate');
+                      }
+                      clearScheduleError('startsAt');
+                    }}
+                  />
+                  <EventTimeField
+                    name="endsAt"
+                    label="Eventende"
+                    timeZone={zone}
+                    instant={draft?.endsAt ?? null}
+                    error={scheduleErrors.endsAt}
+                    onChange={() => clearScheduleError('endsAt')}
+                  />
+                  <p>
+                    Beginn und Ende gemeinsam oder gar nicht. Das Ende muss nach
+                    dem Beginn liegen.
+                  </p>
+                </fieldset>
+                <details className="event-advanced">
+                  <summary>Weitere Angaben</summary>
+                  <div className="event-advanced-fields">
+                    <label>
+                      Eventart
+                      <select
+                        name="eventTypeId"
+                        defaultValue={draft?.eventTypeId ?? ''}
+                      >
+                        <option value="">Noch offen</option>
+                        {options(types, draft?.eventTypeId ?? null)}
+                      </select>
+                    </label>
+                    <label>
+                      Fotobox-Paket
+                      <select
+                        name="packageId"
+                        defaultValue={draft?.packageId ?? ''}
+                      >
+                        <option value="">Noch offen</option>
+                        {options(packages, draft?.packageId ?? null)}
+                      </select>
+                    </label>
+                    <label>
+                      Veranstaltungsort
+                      <select
+                        name="locationId"
+                        defaultValue={draft?.locationId ?? ''}
+                      >
+                        <option value="">Noch offen</option>
+                        {options(locations, draft?.locationId ?? null)}
+                      </select>
+                    </label>
+                    <label>
+                      Anfragequelle
+                      <input
+                        name="source"
+                        maxLength={200}
+                        defaultValue={draft?.source ?? ''}
+                      />
+                    </label>
+                    <label>
+                      Weitere Kontakte
+                      <select
+                        name="additionalContactIds"
+                        multiple
+                        value={additionalContactIds}
+                        onChange={(event) =>
+                          setAdditionalContactIds(
+                            Array.from(
+                              event.currentTarget.selectedOptions,
+                              (option) => option.value,
+                            ),
+                          )
+                        }
+                      >
+                        {options(
+                          contacts.filter(
+                            (choice) => choice.id !== primaryContactId,
+                          ),
+                          additionalContactIds,
+                        )}
+                      </select>
+                    </label>
+                    <label>
+                      Eventbeschreibung
+                      <textarea
+                        name="description"
+                        maxLength={4000}
+                        defaultValue={draft?.description ?? ''}
+                      />
+                    </label>
+                    <label>
+                      Interne Notizen
+                      <textarea
+                        name="notesHtml"
+                        maxLength={20000}
+                        defaultValue={draft?.notesHtml ?? ''}
+                        aria-describedby="event-notes-help"
+                      />
+                    </label>
+                    <p id="event-notes-help">
+                      Einfache HTML-Formatierung:
+                      &lt;strong&gt;fett&lt;/strong&gt;,
+                      &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
+                      href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte
+                      Vorschau erscheint am Event.
+                    </p>
+                  </div>
+                </details>
+                <button>Event speichern</button>
+                {editing && draft?.id && (
+                  <a className="secondary-action" href={'#event-' + draft.id}>
+                    Ressourcen zuweisen
+                  </a>
+                )}
+                {draft && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft(null);
+                      setEditing(false);
+                      restoreEditorFocus();
+                    }}
+                  >
+                    Event abbrechen
+                  </button>
+                )}
+              </fieldset>
+            </form>
+          </details>
+        )}
       </div>
       <p role="status">{message}</p>
       {reloadWarning && (
@@ -802,6 +855,8 @@ export function EventPanel({
                         }
                       }}
                       onEdit={(event) => {
+                        setCreating(false);
+                        setCreateInitial(null);
                         setDraft(event);
                         setEditing(true);
                         setDetailId(null);
@@ -820,7 +875,7 @@ export function EventPanel({
                     />
                   )}
                   <button
-                    disabled={busy}
+                    disabled={busy || editing}
                     hidden={showingDetail}
                     aria-label={`Event duplizieren: ${row.name}`}
                     onClick={() => {
@@ -835,8 +890,7 @@ export function EventPanel({
                         contacts,
                         row.primaryContactId,
                       );
-                      setEditing(false);
-                      setDraft({
+                      openCreate({
                         ...row,
                         name: row.name.slice(0, 192) + ' (Kopie)',
                         status: 'inquiry',
@@ -861,7 +915,10 @@ export function EventPanel({
                     disabled={busy}
                     hidden={showingDetail}
                     aria-label={`Event bearbeiten: ${row.name}`}
-                    onClick={() => {
+                    onClick={(event) => {
+                      editReturnFocus.current = event.currentTarget;
+                      setCreating(false);
+                      setCreateInitial(null);
                       setDraft(row);
                       setEditing(true);
                     }}
@@ -874,6 +931,25 @@ export function EventPanel({
           </section>
         );
       })}
+      {creating && (
+        <EventCreateDialog
+          key={
+            createInitial
+              ? `copy:${createInitial.id}:${createInitial.version}`
+              : 'new'
+          }
+          csrfToken={csrfToken}
+          timeZone={timeZone}
+          statuses={statuses}
+          types={types}
+          packages={packages}
+          locations={locations}
+          contacts={contacts}
+          initial={createInitial}
+          onClose={closeCreate}
+          onCreated={created}
+        />
+      )}
     </section>
   );
 }

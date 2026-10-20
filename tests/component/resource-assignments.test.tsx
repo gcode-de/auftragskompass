@@ -808,6 +808,11 @@ test('editor and event file keep their own time error ids at the same time', asy
   fireEvent.submit(region.querySelector('form')!);
   await within(region).findByText('Bitte auch das Ende angeben.');
 
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Event bearbeiten: Fictional booking',
+    }),
+  );
   const editor = document.getElementById('event-editor') as HTMLFormElement;
   const editorEnd = editor.querySelector<HTMLInputElement>('[name="endsAt"]')!;
   fireEvent.change(editor.querySelector('[name="startsAt"]')!, {

@@ -1,6 +1,6 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **20.10.2026**, nach C051.3, H025 und H026. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand: **20.10.2026**, nach C051.3, H026 und H029. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
 ## In der nächsten Session zuerst
 
@@ -24,7 +24,7 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 |---|---|---|
 | Anmeldung und Oberfläche | Eigener Login mit E-Mail oder Benutzername und Passwort, Passwortwechsel und kontrollierte Betreiber-Wiederherstellung; mobile Navigation, unterteilte Arbeitsbereiche, Hell/Dunkel und eine kleine Build-Version in der Navigation | Weitere lokale Passwortkonten nur bei konkretem Bedarf; Google-OIDC technisch optional, nicht als echter Betreiberlogin eingerichtet |
 | Kontakte und Stammdaten | Privat-/Firmenkontakte, Orte, Produkte/Preise, Pakete, Eventarten, Ressourcen und Absagegründe; Suche, Archivierung und Versionsschutz | Fachlicher Abgleich mit echtem Bestand |
-| Events und Aufträge | Anlage/Bearbeitung/Duplizieren, Suche/Filter, Monatsgruppen, Eventakte, Status, Notizen und unveränderbares Logbuch; Terminzeiten werden ohne manuelle UTC-Versatzfelder eingegeben (H022) | Gesamter kommerzieller Ablauf folgt separat |
+| Events und Aufträge | Anlage über kompakten Datum-zuerst-Dialog (H029), Bearbeiten/Duplizieren, Suche/Filter, Monatsgruppen, Eventakte, Status, Notizen und unveränderbares Logbuch; Terminzeiten werden ohne manuelle UTC-Versatzfelder eingegeben (H022) | Gesamter kommerzieller Ablauf folgt separat |
 | Disposition und Kalender | Physische Boxen/Zubehör, Vormerkungen, feste Buchungen, Datenbank-Konfliktschutz, Puffer, interne Sperren, Tages-/Wochen-/Monatskalender und widerrufbare ICS-Abos | Echter Ressourcenabgleich vor Nutzung; Smartphone-Abnahme des Kalender-Abos |
 | Website-Anfragen | Achtfeldrige Definition, öffentliche API, verschlüsselter Gateway-Eingang, signierte/idempotente Übertragung, dauerhafte lokale Ablage, Quittierung, manuelle Prüfung/Übernahme und mobiles einbettbares Formular entwickelt und synthetisch getestet; seit C028 zusätzlich die Gateway-Laufzeit als eigener Prozess und der Pull-/Quittungstakt im Worker als Code vorhanden | Gateway real starten (Kaltstart mit synthetischen Schlüsseln), Podman-Secrets anlegen, erlaubten Website-Origin festlegen, WordPress anschließen und gemeinsam abnehmen |
 | E-Mail/Kommunikation (M3) | Geplant | IMAP/SMTP, Zuordnung zu Events/Kontakten, Postfach, Vorlagen, Anhänge, geplanter Versand und Erinnerungen |
@@ -36,6 +36,12 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pauschal als fertig werten. E-/H-Slices ziehen gezielte Teile vor, ohne ganze Milestones als abgeschlossen zu erklären.
 
 ## Letzter geprüfter Laufzeitstand
+
+### Arbeitsnachtrag 20.10.2026 (H029: leichtes Anlegen mit Datum zuerst)
+
+Branch `codex/ux-event-simplification`. „Event anlegen“ öffnet einen modalen Dialog mit nativem Datumsfeld, Kundenauswahl und Eventart; Uhrzeiten, Ort, Notizen und weitere Felder liegen zugeklappt unter „Weitere Angaben“ und behalten ihre Eingaben. Der Name wird deterministisch aus Eventart und Kunde erzeugt, als Platzhalter gezeigt und ist unter „Weitere Angaben“ überschreibbar. Datum ohne Zeiten speichert `eventDate` ohne erfundene Mitternacht, undatiert bleibt möglich. Fokus startet im Datumsfeld, Tab bleibt im Dialog, Escape/Schließen schreiben nichts, und ein laufender POST sperrt Schließen und Escape. Ein offener Bearbeiten-Entwurf sperrt Anlegen/Duplizieren; nach Abbruch oder Speichern kehrt der Fokus auf einen überlebenden Auslöser zurück. Eigene `event-create-*`-IDs verhindern ID-Kollisionen mit dem Editor. Keine Server-, API-, Datenbank- oder Migrationsänderung.
+
+Lokal grün: Format, Lint, Typen, Build, 187 Unit-, 210 Komponenten- und 237 Integrationstests sowie vier Chromium-Abläufe inklusive Desktop-/Mobilgeometrie und Tastaturprüfung des Dialogs; Coverage 97,37 % Zeilen und 93,75 % Zweige (`EventCreateDialog.tsx` 99,1 % Zeilen, 91,7 % Zweige). Der lokale `test:ops`-Lauf scheitert weiterhin nur am bekannten macOS-`RLIMIT_FSIZE`-Backuptest; Linux-CI bleibt maßgeblich. **Kein Merge nach `main`.**
 
 ### Arbeitsnachtrag 20.10.2026 (H026: Termin und Ressourcenzuweisung ohne manuelle Versätze)
 

@@ -579,25 +579,68 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByLabel('Eventname', { exact: true }),
     ).not.toBeVisible();
-    await events.getByText('Event anlegen', { exact: true }).click();
+    const createTrigger = events.getByRole('button', {
+      name: 'Event anlegen',
+      exact: true,
+    });
+    await createTrigger.click();
+    const createDialog = events.getByRole('dialog', { name: 'Neues Event' });
+    await expect(createDialog).toBeVisible();
+    await expect(events.getByLabel('Eventdatum')).toBeFocused();
+    const desktopDialog = (await createDialog.boundingBox())!;
+    expect(desktopDialog.x).toBeGreaterThanOrEqual(0);
+    expect(desktopDialog.x + desktopDialog.width).toBeLessThanOrEqual(1280);
+    expect(desktopDialog.width).toBeGreaterThan(500);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileDialog = (await createDialog.boundingBox())!;
+    expect(mobileDialog.x).toBeGreaterThanOrEqual(0);
+    expect(mobileDialog.x + mobileDialog.width).toBeLessThanOrEqual(390);
+    expect(mobileDialog.width).toBeGreaterThan(300);
+    expect(
+      await createDialog.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const createClose = events.getByRole('button', {
+      name: 'Dialog schließen',
+    });
+    const createSave = events.getByRole('button', {
+      name: 'Event speichern',
+      exact: true,
+    });
+    await createSave.focus();
+    await page.keyboard.press('Tab');
+    await expect(createClose).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(createSave).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(createDialog).toBeHidden();
+    await expect(createTrigger).toBeFocused();
+    await createTrigger.click();
+    await expect(createDialog).toBeVisible();
     await expect(
       events
-        .getByLabel('Hauptkontakt')
+        .getByLabel('Kunde')
         .getByRole('option', { name: 'Synthetic browser contact' }),
     ).toBeEnabled();
+    await expect(events.getByLabel('Eventname', { exact: true })).toBeHidden();
+    await expect(
+      events.getByLabel('Eventbeginn', { exact: true }),
+    ).toBeHidden();
+    await expect(events.getByLabel('Veranstaltungsort')).toBeHidden();
+    await expect(events.getByLabel('Interne Notizen')).toBeHidden();
+    await expect(
+      events.getByRole('combobox', { name: 'Eventart', exact: true }),
+    ).toBeVisible();
+    await events.getByText('Weitere Angaben', { exact: true }).click();
+    await expect(events.getByLabel('Eventname', { exact: true })).toBeVisible();
     await events
       .getByLabel('Eventname', { exact: true })
       .fill('Synthetic browser event');
     await events
-      .getByLabel('Hauptkontakt')
+      .getByLabel('Kunde')
       .selectOption({ label: 'Synthetic browser contact' });
-    await expect(
-      events.getByRole('combobox', { name: 'Eventart', exact: true }),
-    ).toBeHidden();
-    await events.getByText('Weitere Angaben', { exact: true }).click();
-    await expect(
-      events.getByRole('combobox', { name: 'Eventart', exact: true }),
-    ).toBeVisible();
     await events
       .getByRole('combobox', { name: 'Eventart', exact: true })
       .selectOption({ label: 'Hochzeit' });
@@ -609,7 +652,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .fill(
         '<strong>Fictional browser note</strong><script>window.syntheticBad=true</script>',
       );
-    await events.getByRole('button', { name: 'Event speichern' }).click();
+    await createSave.click();
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Anfrage'),
     ).toBeVisible();
@@ -718,6 +761,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeVisible();
     await events.getByText('Event anlegen', { exact: true }).click();
+    await events.getByText('Weitere Angaben', { exact: true }).click();
     await events
       .getByLabel('Eventname', { exact: true })
       .fill('Fictional resource booking');

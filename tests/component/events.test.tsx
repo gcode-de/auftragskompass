@@ -337,24 +337,24 @@ test('a completed import refreshes visible events without discarding an unfinish
   ).toBe('Fictional retained draft');
 });
 
-test('starts with a grouped event list and reveals forms without losing an unfinished draft', async () => {
+test('opens a compact create dialog without disturbing the grouped list', async () => {
   vi.stubGlobal('fetch', mocker([], { eventDate: '2026-10-24' }));
   render(<EventPanel csrfToken="csrf" />);
   await screen.findByRole('heading', { name: /Oktober 2026/ });
-  expect(
-    screen.getByText('Event anlegen', { exact: true }).closest('details')!.open,
-  ).toBe(false);
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
-  const name = screen.getByLabelText('Eventname') as HTMLInputElement;
-  fireEvent.change(name, { target: { value: 'Fictional unfinished event' } });
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
-  expect(
-    screen.getByText('Event anlegen', { exact: true }).closest('details')!.open,
-  ).toBe(false);
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
-  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
-    'Fictional unfinished event',
+  expect(screen.queryByRole('dialog')).toBeNull();
+  const trigger = screen.getByRole('button', { name: 'Event anlegen' });
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  expect(within(dialog).getByLabelText('Eventdatum')).toBeTruthy();
+  expect(within(dialog).getByLabelText('Kunde')).toBeTruthy();
+  expect(within(dialog).getByLabelText('Eventart')).toBeTruthy();
+  expect(within(dialog).queryByLabelText('Eventbeginn')).toBeTruthy();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dialog schließen' }),
   );
+  await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.getByRole('heading', { name: /Oktober 2026/ })).toBeTruthy();
 });
 
 test('groups multiple events in the same month and keeps undated events separate', async () => {
@@ -605,7 +605,9 @@ test('a nonexistent spring-gap time shows a field error and is never submitted',
   });
   const start = screen.getByLabelText('Eventbeginn');
   expect(start.getAttribute('aria-invalid')).toBe('true');
-  expect(start.getAttribute('aria-describedby')).toBe('event-startsAt-error');
+  expect(start.getAttribute('aria-describedby')).toBe(
+    'event-create-startsAt-error',
+  );
   await screen.findByText(/existiert an diesem Tag nicht/);
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
@@ -740,7 +742,9 @@ test('a spring gap in the end time is reported on the end field and blocks savin
   });
   const end = screen.getByLabelText('Eventende');
   expect(end.getAttribute('aria-invalid')).toBe('true');
-  expect(end.getAttribute('aria-describedby')).toBe('event-endsAt-error');
+  expect(end.getAttribute('aria-describedby')).toBe(
+    'event-create-endsAt-error',
+  );
   await screen.findByText(/existiert an diesem Tag nicht/);
   expect(
     screen.getByLabelText('Eventbeginn').getAttribute('aria-invalid'),
@@ -886,9 +890,7 @@ test('a confirmed save closes the editor and survives a failed list reload', asy
   await screen.findByText('Event gespeichert.');
   await screen.findByText(/Liste konnte nicht neu geladen werden/);
   expect(mutations).toBe(1);
-  expect(
-    screen.getByText('Event anlegen', { exact: true }).closest('details')!.open,
-  ).toBe(false);
+  expect(screen.queryByRole('dialog')).toBeNull();
   failReload = false;
   fireEvent.click(screen.getByRole('button', { name: 'Events erneut laden' }));
   await screen.findByText('Synthetic reloaded event – Ohne Datum – Anfrage');
@@ -1076,7 +1078,7 @@ test('the main contact is excluded from further contacts and changing it clears 
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic contact event' },
   });
-  fireEvent.change(screen.getByLabelText('Hauptkontakt'), {
+  fireEvent.change(screen.getByLabelText('Kunde'), {
     target: { value: 'contact-main' },
   });
   const additional = screen.getByLabelText(
@@ -1087,7 +1089,7 @@ test('the main contact is excluded from further contacts and changing it clears 
   ).toBeNull();
   fireEvent.change(additional, { target: { value: 'contact-extra' } });
   expect(additional.value).toBe('contact-extra');
-  fireEvent.change(screen.getByLabelText('Hauptkontakt'), {
+  fireEvent.change(screen.getByLabelText('Kunde'), {
     target: { value: 'contact-extra' },
   });
   expect(additional.value).toBe('');
@@ -1165,7 +1167,9 @@ test('a start makes the business date read-only and derived while date-only and 
   await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
   const date = () => screen.getByLabelText('Eventdatum') as HTMLInputElement;
   expect(date().readOnly).toBe(false);
-  expect(screen.getByText(/Ohne Uhrzeiten bleibt ein Datum/)).toBeTruthy();
+  expect(
+    screen.getByText(/Ohne Datum bleibt das Event undatiert/),
+  ).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic date only' },
   });
@@ -1199,7 +1203,9 @@ test('a start makes the business date read-only and derived while date-only and 
   });
   expect(date().readOnly).toBe(true);
   expect(date().value).toBe('2026-12-31');
-  expect(date().getAttribute('aria-describedby')).toBe('event-date-help');
+  expect(date().getAttribute('aria-describedby')).toBe(
+    'event-create-date-help',
+  );
   expect(
     screen.getByText(/Wird aus dem Beginn übernommen.*Beginn ändern/),
   ).toBeTruthy();
@@ -1211,7 +1217,9 @@ test('a start makes the business date read-only and derived while date-only and 
     target: { value: '' },
   });
   expect(date().readOnly).toBe(false);
-  expect(screen.getByText(/Ohne Uhrzeiten bleibt ein Datum/)).toBeTruthy();
+  expect(
+    screen.getByText(/Ohne Datum bleibt das Event undatiert/),
+  ).toBeTruthy();
 });
 
 test('duplicating an event preserves every advanced value for editing', async () => {
