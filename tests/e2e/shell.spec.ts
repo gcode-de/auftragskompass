@@ -24,6 +24,11 @@ test('theme is available before login with one persisted toggle', async ({
       localStorage.setItem('ak-theme', 'light');
   });
   await page.goto('/');
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(321);
+  await page.setViewportSize({ width: 1280, height: 720 });
   const toggle = page.getByRole('button', { name: 'Dunkelmodus aktivieren' });
   await expect(toggle).toHaveCount(1);
   await expect(toggle).toHaveAttribute('title', 'Dunkelmodus aktivieren');
