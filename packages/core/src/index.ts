@@ -79,6 +79,13 @@ export {
   type SnapshotInput,
 } from './document-snapshot.js';
 
+export {
+  localStorageAdapter,
+  assertStorageKey,
+  StorageError,
+  type StorageAdapter,
+} from './storage.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';
