@@ -10,9 +10,13 @@ Ein systemd-Timer auf dem **Proxmox-Host**, nicht im App-Container, startet
 `scripts/auto_update.py` zwei Minuten nach Boot und dann fünf Minuten nach Ende
 des jeweils letzten Laufs. Der Rechner des Betreibers muss dafür nicht laufen.
 
-1. Öffentliche GitHub-API lesen: Nur der aktuelle Head von `codex/local-runtime-ci`
-   mit vollständig erfolgreichem Push-Lauf von `quality.yml` kommt infrage.
-   Laufende/fehlgeschlagene Builds und alte erfolgreiche Revisionen werden übersprungen.
+1. Öffentliche GitHub-API lesen: Nur der aktuelle Head des konfigurierten
+   Zielbranches mit vollständig erfolgreichem Push-Lauf von `quality.yml` kommt
+   infrage. Ohne `branch`-Schlüssel gilt unverändert `codex/local-runtime-ci`;
+   ausdrücklich freigegeben sind ausschließlich `codex/local-runtime-ci` und
+   `codex/ux-event-simplification`. Laufende/fehlgeschlagene Builds, Läufe einer
+   anderen Branch und alte erfolgreiche Revisionen werden übersprungen; der Lauf
+   muss zusätzlich exakt die abgefragte Branch und den abgefragten Head melden.
    Bei Netzwerk-/Rate-Limit-Fehlern werden keine Images umgestellt.
 2. Gesunde, konsistente laufende Revision prüfen; nur vorwärts gerichtete Git-Historie
    erlauben. Gleicher Stand ist ein No-op, kein erneuter Neustart.
@@ -52,9 +56,18 @@ Externe `/etc/auftragskompass-update.json` mit Modus 600 enthält nur diese Wert
 {
   "container": 999,
   "image": "docker.io/fictional/auftragskompass",
-  "state_dir": "/var/lib/auftragskompass-updates"
+  "state_dir": "/var/lib/auftragskompass-updates",
+  "branch": "codex/local-runtime-ci"
 }
 ```
+
+`branch` ist optional und muss, wenn vorhanden, exakt einem freigegebenen
+Branch-Ref entsprechen (`codex/local-runtime-ci` oder
+`codex/ux-event-simplification`). Fehlt der Schlüssel, gilt die bisherige Branch
+`codex/local-runtime-ci`; ältere Konfigurationsdateien bleiben damit gültig.
+Andere Schlüssel, fremde Branches, URLs, Pfadanteile, Leerraum und abweichende
+Schreibweise werden vor jedem GitHub-Aufruf abgewiesen. Die Freigabe gilt nur für
+den exakten Token; ein Präfixvergleich oder eine freie Branch-Wahl existiert nicht.
 
 Das Zustandsverzeichnis muss root gehören und Modus 700 haben. CT-ID und vorhandenen
 Registry-Namespace bewusst einsetzen. Das GitHub-Repository wurde auf ausdrücklichen
@@ -73,6 +86,28 @@ systemctl list-timers ak-test-update.timer
 journalctl -u ak-test-update.service -n 20
 ```
 
+### Zielbranch umstellen
+
+Der Testbetrieb folgt genau einer Branch. Ein Wechsel ist eine bewusste
+Betreiberaktion und wird nie neben einem laufenden Update durchgeführt:
+
+```sh
+systemctl disable --now ak-test-update.timer
+systemctl is-active ak-test-update.service      # muss "inactive" sein
+# /etc/auftragskompass-update.json (root, 0600) redaktionell um "branch" ergänzen
+python3 /usr/local/lib/auftragskompass/auto_update.py --config /etc/auftragskompass-update.json --check-only
+systemctl start ak-test-update.service
+systemctl enable --now ak-test-update.timer
+```
+
+`--check-only` darf nur `update-available` oder `current` melden und schreibt nichts.
+Erwartet wird `update-available`, wenn der Zielhead noch nicht läuft. Ein Rückschritt
+auf eine ältere Branch ist nicht möglich, weil der Updater ausschließlich
+vorwärts gerichtete Historie akzeptiert; ein solcher Wechsel scheitert dauerhaft mit
+`Only forward updates allowed` und blockiert den Timer. Deshalb vor dem Umschalten
+prüfen, dass der Zielhead Nachfahre des laufenden Standes ist. Zwei Branches
+gleichzeitig sind kein gültiger Zustand.
+
 Pausieren: `systemctl disable --now ak-test-update.timer`. Das beendet keinen bereits
 laufenden Updateprozess; vor manuellen Arbeiten dessen Ende abwarten.
 Automatische **und manuelle** Updates verwenden auf dem Proxmox-Host exklusiv
@@ -86,6 +121,14 @@ Hintergrund: Podmans allgemeiner [Autoupdater](https://docs.podman.io/en/latest/
 unterstützt einen automatischen Image-Rollback. Deshalb werden hier weder
 `AutoUpdate=registry` noch veränderliche Einzelcontainer-Tags verwendet.
 Die Buildfreigabe nutzt die dokumentierte [GitHub-Workflow-Run-API](https://docs.github.com/en/rest/actions/workflow-runs).
+
+## Zielbranch des Testbetriebs
+
+Der Testbetrieb folgt seit H028 der Branch `codex/ux-event-simplification`, damit
+UX-Änderungen ohne Merge nach `main` sichtbar werden. Jeder künftig gepushte Head
+dieser Branch wird erst nach vollständig grünem `quality`-Lauf und beiden
+veröffentlichten Images automatisch übernommen; vorher bleibt der laufende Stand
+unverändert. Die Bildfreigabe der Branch ist in [homelab.md](homelab.md) beschrieben.
 
 ## Einrichtungsstand 19.10.2026
 

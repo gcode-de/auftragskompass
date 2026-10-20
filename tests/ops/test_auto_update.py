@@ -27,13 +27,16 @@ class AutoUpdateTests(unittest.TestCase):
         self.old = 'a' * 40
         self.new = 'b' * 40
         self.events = []
+        self.paths = []
+        self.run_branch = 'codex/local-runtime-ci'
 
     def api(self, path):
+        self.paths.append(path)
         if 'git/ref/' in path:
             return {'object': {'sha': self.new}}
         if 'compare/' in path:
             return {'status': 'ahead'}
-        return {'workflow_runs': [{'head_sha': self.new, 'head_branch': 'codex/local-runtime-ci',
+        return {'workflow_runs': [{'head_sha': self.new, 'head_branch': self.run_branch,
                 'event': 'push', 'status': 'completed', 'conclusion': 'success',
                 'path': '.github/workflows/quality.yml', 'id': 1}]}
 
@@ -165,6 +168,75 @@ class AutoUpdateTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.module.update(self.config)
             self.assertTrue((self.root / 'needs-attention').exists())
+
+    def configured(self, branch):
+        return {**self.config, 'branch': branch}
+
+    def test_absent_branch_configuration_keeps_the_existing_runtime_branch(self):
+        self.assertEqual(self.execute(), 'updated')
+        self.assertEqual(self.paths[0], 'git/ref/heads/codex/local-runtime-ci')
+        self.assertTrue(all('git/ref/heads/' in path or 'compare/' in path
+                            or 'branch=codex%2Flocal-runtime-ci' in path for path in self.paths))
+
+    def test_ux_branch_configuration_drives_ref_selection_run_filter_and_head_assertion(self):
+        self.run_branch = 'codex/ux-event-simplification'
+        with patch.object(self.module, 'github', side_effect=self.api), \
+                patch.object(self.module, 'remote', side_effect=self.remote), \
+                patch.object(self.module, 'copy_backup', side_effect=lambda *args: self.events.append(['verified-copy'])):
+            self.assertEqual(self.module.update(self.configured('codex/ux-event-simplification')), 'updated')
+        self.assertEqual(self.paths[0], 'git/ref/heads/codex/ux-event-simplification')
+        self.assertTrue(any('branch=codex%2Fux-event-simplification' in path for path in self.paths))
+        self.assertFalse(any('local-runtime-ci' in path for path in self.paths))
+        self.assertEqual(json.loads((self.root / 'last-success.json').read_text())['revision'], self.new)
+        unit_writes = [args for args in self.events if args[:2] == ['python3', '-c']]
+        self.assertEqual(len(unit_writes), 3)
+
+    def test_run_of_another_allowed_branch_or_revision_never_pulls(self):
+        self.run_branch = 'codex/ux-event-simplification'
+        with patch.object(self.module, 'github', side_effect=self.api), \
+                patch.object(self.module, 'remote', side_effect=self.remote):
+            self.assertEqual(self.module.update(self.config), 'waiting-for-green-head')
+            self.assertFalse(self.events)
+        self.run_branch = 'codex/local-runtime-ci'
+        original = self.api
+        def api(path):
+            result = original(path)
+            if 'workflow_runs' in result:
+                result['workflow_runs'][0]['head_sha'] = self.old
+            return result
+        self.events.clear()
+        with patch.object(self.module, 'github', side_effect=api), \
+                patch.object(self.module, 'remote', side_effect=self.remote):
+            self.assertEqual(self.module.update(self.configured('codex/ux-event-simplification')),
+                             'waiting-for-green-head')
+            self.assertFalse(self.events)
+
+    def test_unknown_malformed_or_foreign_branch_configuration_is_rejected_before_github(self):
+        rejected = ['main', 'codex/unknown-feature', 'codex/', 'codex/-leading-dash',
+                    'codex/ux-event-simplification/../main', 'refs/heads/codex/ux-event-simplification',
+                    'codex/UX-event-simplification', ' codex/ux-event-simplification',
+                    'codex/ux-event-simplification\n', 'https://evil.invalid/codex/ux-event-simplification',
+                    'codex/local-runtime-ci?x=1', '../codex/ux-event-simplification',
+                    '', None, True, 123, ['codex/ux-event-simplification']]
+        for branch in rejected:
+            with self.subTest(branch=branch), \
+                    patch.object(self.module, 'github', side_effect=AssertionError('must not contact GitHub')), \
+                    patch.object(self.module, 'remote', side_effect=self.remote):
+                with self.assertRaises(ValueError):
+                    self.module.update(self.configured(branch))
+                self.assertEqual(self.events, [])
+
+    def test_operator_configuration_rejects_extra_keys_before_locking(self):
+        config_file = self.root / 'operator.json'
+        config_file.write_text(json.dumps({**self.config, 'branch': 'codex/local-runtime-ci',
+                                           'url': 'https://evil.invalid/'}))
+        config_file.chmod(0o600)
+        with patch.object(self.module.sys, 'argv',
+                          ['auto_update.py', '--config', str(config_file)]), \
+                patch.object(self.module, 'github', side_effect=AssertionError('must not contact GitHub')):
+            with self.assertRaises(SystemExit) as raised:
+                self.module.main()
+        self.assertEqual(raised.exception.code, 1)
 
 
 if __name__ == '__main__':

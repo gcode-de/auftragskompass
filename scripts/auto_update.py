@@ -14,9 +14,20 @@ import urllib.parse
 import urllib.request
 
 REPO = 'gcode-de/auftragskompass'
-BRANCH = 'codex/local-runtime-ci'
+DEFAULT_BRANCH = 'codex/local-runtime-ci'
+# Hard publication allowlist; a configuration can only select one of these exact refs.
+BRANCHES = frozenset({'codex/local-runtime-ci', 'codex/ux-event-simplification'})
+CONFIG_KEYS = frozenset({'container', 'image', 'state_dir', 'branch'})
 NAMES = ['api', 'worker', 'admin']
 SHA = r'[a-f0-9]{40}'
+
+
+def configured_branch(config):
+    value = config.get('branch', DEFAULT_BRANCH)
+    if (type(value) is not str or not re.fullmatch(r'codex/[a-z0-9][a-z0-9-]{0,40}', value)
+            or value not in BRANCHES):
+        raise ValueError('Unsupported update branch')
+    return value
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -94,17 +105,18 @@ def states(config):
 
 
 def update(config, *, check_only=False):
+    branch = configured_branch(config)
     state_dir = private_directory(config['state_dir'])
     marker = state_dir / 'needs-attention'
     if marker.exists():
         raise RuntimeError('Previous update requires operator inspection')
-    head = github('git/ref/heads/' + BRANCH)['object']['sha']
+    head = github('git/ref/heads/' + branch)['object']['sha']
     if not isinstance(head, str) or not re.fullmatch(SHA, head):
         raise ValueError('Invalid revision')
     runs = github('actions/workflows/quality.yml/runs?' + urllib.parse.urlencode(
-        {'branch': BRANCH, 'event': 'push', 'per_page': 1}))['workflow_runs']
+        {'branch': branch, 'event': 'push', 'per_page': 1}))['workflow_runs']
     if not runs or any(runs[0].get(key) != value for key, value in {
-        'head_sha': head, 'head_branch': BRANCH, 'event': 'push',
+        'head_sha': head, 'head_branch': branch, 'event': 'push',
         'status': 'completed', 'conclusion': 'success',
         'path': '.github/workflows/quality.yml',
     }.items()):
@@ -177,10 +189,11 @@ def main():
                 or config_path.stat().st_mode & 0o777 != 0o600):
             raise ValueError('Private operator configuration required')
         config = json.loads(config_path.read_text())
-        if (set(config) != {'container', 'image', 'state_dir'}
+        if (not {'container', 'image', 'state_dir'} <= set(config) or not set(config) <= CONFIG_KEYS
                 or type(config['container']) is not int or config['container'] <= 0
                 or not re.fullmatch(r'docker.io/[a-z0-9_-]+/auftragskompass', config['image'])):
             raise ValueError('Invalid operator configuration')
+        configured_branch(config)
         os.umask(0o077)
         with open('/run/lock/auftragskompass-update.lock', 'a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
