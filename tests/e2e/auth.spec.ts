@@ -5,7 +5,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
 import { registerImportRoutes } from '../../packages/core/src/import-routes.js';
 import { fictionalImport } from '../fixtures/minimal-import.js';
-import { expect, test, type Browser } from '@playwright/test';
+import { expect, test, type Browser, type Route } from '@playwright/test';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -573,28 +573,222 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeVisible();
     await navigate('Kontakte');
     const contacts = page.getByRole('region', { name: 'Kontakte' });
+    await expect(contacts.locator('ul.contact-list')).toBeAttached();
+    expect(
+      await contacts.evaluate((section) => {
+        const form = section.querySelector('.contact-toolbar form');
+        const list = section.querySelector('ul.contact-list');
+        return Boolean(
+          form &&
+          list &&
+          form.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }),
+    ).toBe(true);
+    await expect(contacts.getByLabel('Name / Firma')).toHaveCount(0);
+    const contactCreate = contacts.getByRole('button', {
+      name: 'Kontakt anlegen',
+    });
+    await expect(contactCreate).toHaveAttribute('title', 'Kontakt anlegen');
+    await contactCreate.click();
+    const contactDialog = contacts.getByRole('dialog', {
+      name: 'Kontakt anlegen',
+    });
+    await expect(contactDialog).toBeVisible();
+    await expect(contacts.getByLabel('Kontaktart')).toBeFocused();
+    const desktopContactDialog = (await contactDialog.boundingBox())!;
+    expect(desktopContactDialog.x).toBeGreaterThanOrEqual(0);
+    expect(
+      desktopContactDialog.x + desktopContactDialog.width,
+    ).toBeLessThanOrEqual(1280);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const mobileContactDialog = (await contactDialog.boundingBox())!;
+      expect(mobileContactDialog.x).toBeGreaterThanOrEqual(0);
+      expect(
+        mobileContactDialog.x + mobileContactDialog.width,
+      ).toBeLessThanOrEqual(width);
+      expect(mobileContactDialog.width).toBeGreaterThan(280);
+      expect(
+        await contactDialog.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
+      expect(
+        await contacts
+          .locator('.contact-toolbar')
+          .evaluate(
+            (element) => element.scrollWidth <= element.clientWidth + 1,
+          ),
+      ).toBe(true);
+      expect(
+        await contacts.evaluate(
+          (section) => section.scrollWidth <= section.clientWidth + 1,
+        ),
+      ).toBe(true);
+      await page.keyboard.press('Tab');
+      expect(
+        await contactDialog.evaluate((element) =>
+          element.contains(document.activeElement),
+        ),
+      ).toBe(true);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
     await contacts.getByLabel('Name / Firma').fill('Synthetic browser contact');
     await contacts.getByLabel('Kontaktart').selectOption('company');
     await contacts.getByLabel('E-Mail-Adresse').fill('browser@example.invalid');
     await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
+    await expect(contactDialog).toBeHidden();
+    await expect(
+      contacts.getByText('Synthetic browser contact', { exact: true }),
+    ).toBeVisible();
+    const contactSearch = contacts.getByLabel('Kontakte suchen');
+    await contactSearch.fill('no-such-synthetic-contact');
+    await contacts
+      .getByRole('button', { name: 'Kontakte durchsuchen' })
+      .click();
+    await expect(contacts.getByText('Keine Kontakte gefunden.')).toBeVisible();
+    await contactSearch.fill('Synthetic browser contact');
+    await contacts
+      .getByRole('button', { name: 'Kontakte durchsuchen' })
+      .click();
     await expect(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
     await navigate('Kontakte');
-    await contacts
-      .getByRole('button', {
-        name: 'Kontakt bearbeiten: Synthetic browser contact',
-      })
-      .click();
+    const contactEdit = contacts.getByRole('button', {
+      name: 'Kontakt bearbeiten: Synthetic browser contact',
+    });
+    const contactEvents = contacts.getByRole('button', {
+      name: 'Events anzeigen: Synthetic browser contact',
+    });
+    for (const [action, title] of [
+      [contactEdit, 'Kontakt bearbeiten'],
+      [contactEvents, 'Events anzeigen'],
+    ] as const) {
+      await expect(action).toHaveAttribute('title', title);
+      await expect(action).toHaveText('');
+      const actionBox = (await action.boundingBox())!;
+      expect(actionBox.width).toBeGreaterThanOrEqual(44);
+      expect(actionBox.height).toBeGreaterThanOrEqual(44);
+    }
+    await contactEdit.click();
+    const contactEditDialog = contacts.getByRole('dialog', {
+      name: 'Kontakt bearbeiten',
+    });
+    await expect(contactEditDialog).toBeVisible();
+    await expect(contacts.getByLabel('Name / Firma')).toHaveValue(
+      'Synthetic browser contact',
+    );
+    await page.keyboard.press('Escape');
+    await expect(contactEditDialog).toBeHidden();
+    await expect(contactEdit).toBeFocused();
+    await contactEdit.click();
+    let discardPrompt = '';
+    page.once('dialog', (dialog) => {
+      discardPrompt = dialog.message();
+      void dialog.dismiss();
+    });
+    await contacts.getByLabel('Name / Firma').fill('Synthetic browser dirty');
+    await page.keyboard.press('Escape');
+    await expect(contactEditDialog).toBeVisible();
+    await expect(contacts.getByLabel('Name / Firma')).toHaveValue(
+      'Synthetic browser dirty',
+    );
+    expect(discardPrompt).toContain('Ungespeicherte Eingaben verwerfen');
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.keyboard.press('Escape');
+    await expect(contactEditDialog).toBeHidden();
+    await contactEdit.click();
+    await expect(contacts.getByLabel('Name / Firma')).toHaveValue(
+      'Synthetic browser contact',
+    );
+    let releaseSave: (() => void) | undefined;
+    const contactMutationUrl = (url: URL) =>
+      url.pathname.startsWith('/api/v1/contacts/');
+    const failContactMutation = async (route: Route) => {
+      if (route.request().method() !== 'PUT') return route.continue();
+      await new Promise<void>((resolve) => {
+        releaseSave = resolve;
+      });
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'invalid' }),
+      });
+    };
+    await page.route(contactMutationUrl, failContactMutation);
+    await contacts.getByLabel('Name / Firma').fill('Synthetic browser pending');
+    await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
+    await expect(contactEditDialog).toHaveAttribute('aria-busy', 'true');
+    expect(
+      await contactEditDialog.evaluate((element) =>
+        element.contains(document.activeElement),
+      ),
+    ).toBe(true);
+    await page.keyboard.press('Tab');
+    expect(
+      await contactEditDialog.evaluate((element) =>
+        element.contains(document.activeElement),
+      ),
+    ).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    expect(
+      await contactEditDialog.evaluate((element) =>
+        element.contains(document.activeElement),
+      ),
+    ).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(contactEditDialog).toBeVisible();
+    releaseSave!();
+    await expect(contacts.getByText(/Speichern fehlgeschlagen/)).toBeVisible();
+    await expect(contacts.getByRole('alert')).toBeFocused();
+    await expect(contacts.getByLabel('Name / Firma')).toHaveValue(
+      'Synthetic browser pending',
+    );
+    await page.unroute(contactMutationUrl, failContactMutation);
+    await contacts.getByLabel('Name / Firma').fill('Synthetic browser contact');
+    await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
+    await expect(contactEditDialog).toBeHidden();
+    await contactEdit.click();
+    await expect(contactEditDialog).toBeVisible();
     await contacts.getByRole('button', { name: 'Dubletten prüfen' }).click();
-    await expect(
-      contacts.getByText('Keine möglichen Dubletten gefunden.'),
-    ).toBeVisible();
+    const duplicateSuccess = contacts.getByText(
+      'Keine möglichen Dubletten gefunden.',
+    );
+    await expect(duplicateSuccess).toBeVisible();
+    await expect(duplicateSuccess).toHaveAttribute('role', 'status');
+    const contactListUrl = (url: URL) => url.pathname === '/api/v1/contacts';
+    let failNextList = true;
+    const failContactList = async (route: Route) => {
+      if (route.request().method() !== 'GET' || !failNextList)
+        return route.continue();
+      failNextList = false;
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'unavailable' }),
+      });
+    };
+    await page.route(contactListUrl, failContactList);
     await contacts.getByLabel('Kontaktzustand').selectOption('archived');
     await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
+    await expect(contactEditDialog).toBeHidden();
+    await expect(
+      contacts.getByText(
+        'Kontakt gespeichert, die Liste konnte nicht neu geladen werden.',
+      ),
+    ).toBeVisible();
+    await page.unroute(contactListUrl, failContactList);
+    const contactRetry = contacts.getByRole('button', {
+      name: 'Kontakte erneut laden',
+    });
+    await expect(contactRetry).toBeVisible();
+    await contactRetry.click();
     await expect(
       contacts.getByText('Synthetic browser contact – Archiviert'),
     ).toBeVisible();
+    await expect(contactRetry).toBeHidden();
     const download = page.waitForEvent('download');
     await contacts
       .getByRole('link', { name: 'Kontakte als CSV exportieren' })
@@ -619,11 +813,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       locations.getByText('Synthetic browser venue – Archiviert'),
     ).toBeVisible();
     await navigate('Kontakte');
-    await contacts
-      .getByRole('button', {
-        name: 'Kontakt bearbeiten: Synthetic browser contact',
-      })
-      .click();
+    await contactEdit.click();
     await contacts.getByLabel('Kontaktzustand').selectOption('active');
     await contacts.getByRole('button', { name: 'Kontakt speichern' }).click();
     await expect(

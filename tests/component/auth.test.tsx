@@ -266,6 +266,9 @@ test('shows one workspace and preserves unsaved input across section changes', a
   expect(screen.queryByRole('region', { name: 'Kontakte' })).toBeNull();
   window.history.replaceState(null, '', '/#contacts');
   fireEvent(window, new HashChangeEvent('hashchange'));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Kontakt anlegen' }),
+  );
   const input = await screen.findByLabelText('Name / Firma');
   fireEvent.change(input, { target: { value: 'Fictional unsaved contact' } });
   window.history.replaceState(null, '', '/#calendar');

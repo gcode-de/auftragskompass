@@ -828,8 +828,28 @@ time {
 .section-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin-left: auto;
+}
+.contact-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.contact-toolbar form {
+  flex: 1 1 16rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  margin: 0;
+}
+.contact-toolbar .section-actions {
+  margin-left: 0;
+}
+.contact-list > li {
+  scroll-margin-top: 6rem;
 }
 .sr-only {
   position: absolute;
@@ -846,7 +866,8 @@ time {
   color: var(--alert-ink);
   font-weight: 550;
 }
-.event-create-backdrop {
+.event-create-backdrop,
+.form-dialog-backdrop {
   position: fixed;
   inset: 0;
   z-index: 20;
@@ -856,7 +877,8 @@ time {
   overflow-y: auto;
   background: light-dark(#172e2780, #0b120fcc);
 }
-.event-create-dialog {
+.event-create-dialog,
+.form-dialog {
   width: min(100%, 38rem);
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
@@ -867,13 +889,15 @@ time {
   border-radius: 1rem;
   box-shadow: 0 1.5rem 4rem #0b120f40;
 }
-.event-create-header {
+.event-create-header,
+.form-dialog-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
 }
-.event-create-header h3 {
+.event-create-header h3,
+.form-dialog-header h3 {
   margin: 0;
   font-size: 1.25rem;
 }
@@ -882,16 +906,19 @@ time {
   color: var(--muted);
   font-size: 0.9rem;
 }
-.event-create-close {
+.event-create-close,
+.form-dialog-close {
   min-width: 44px;
   min-height: 44px;
   font-size: 1.5rem;
   line-height: 1;
 }
-.event-create-dialog form {
+.event-create-dialog form,
+.form-dialog form {
   margin: 0.75rem 0 0;
 }
-.event-create-dialog fieldset {
+.event-create-dialog fieldset,
+.form-dialog fieldset {
   grid-template-columns: minmax(0, 1fr);
   gap: 0.9rem;
   padding: 0;
@@ -909,11 +936,20 @@ time {
   justify-content: flex-end;
   margin-top: 0.25rem;
 }
+.form-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
 @media (max-width: 30rem) {
-  .event-create-backdrop {
+  .event-create-backdrop,
+  .form-dialog-backdrop {
     padding: 0.5rem;
   }
-  .event-create-dialog {
+  .event-create-dialog,
+  .form-dialog {
     max-height: calc(100dvh - 1rem);
     padding: 1rem;
   }
