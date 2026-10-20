@@ -61,11 +61,13 @@ export function ResourceAssignments({
   event,
   csrfToken,
   onChanged,
+  onDirtyChange,
   importReview = false,
 }: {
   event: EventRow;
   csrfToken: string;
   onChanged: () => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
   importReview?: boolean;
 }) {
   const path =
@@ -73,7 +75,8 @@ export function ResourceAssignments({
     event.id;
   const form = useRef<HTMLFormElement>(null),
     request = useRef(0),
-    saving = useRef(false);
+    saving = useRef(false),
+    dirty = useRef(false);
   const [units, setUnits] = useState<Unit[]>([]),
     [sources, setSources] = useState<Record<string, string>>({}),
     [verified, setVerified] = useState(new Set<string>()),
@@ -228,6 +231,8 @@ export function ResourceAssignments({
       // The PUT is confirmed. Report it first; a failing reload is a refresh
       // problem, not a reason to submit the booking again.
       setMessage('Zuweisung und Termin gespeichert.');
+      dirty.current = false;
+      onDirtyChange?.(false);
       try {
         await onChanged();
         setReloadWarning(false);
@@ -246,6 +251,13 @@ export function ResourceAssignments({
     }
   }
   function retryLoad() {
+    if (
+      dirty.current &&
+      !window.confirm('Ungespeicherte Eingaben verwerfen und neu laden?')
+    )
+      return;
+    dirty.current = false;
+    onDirtyChange?.(false);
     setReloadWarning(false);
     void onChanged().catch(() => setReloadWarning(true));
   }
@@ -288,9 +300,11 @@ export function ResourceAssignments({
       <h3>Ressourcen zuweisen</h3>
       <p role="status">{message}</p>
       {reloadWarning && (
-        <p role="alert">
-          Zuweisung gespeichert, aber die Eventakte konnte nicht neu geladen
-          werden. Nichts erneut buchen.{' '}
+        <div className="reload-warning">
+          <p role="alert">
+            Zuweisung gespeichert, aber die Eventakte konnte nicht neu geladen
+            werden. Nichts erneut buchen.
+          </p>
           <button
             type="button"
             className="secondary-action"
@@ -299,7 +313,7 @@ export function ResourceAssignments({
           >
             Eventakte erneut laden
           </button>
-        </p>
+        </div>
       )}
       {loading && <p>Verfügbarkeit wird geladen …</p>}
       <p>
@@ -311,6 +325,8 @@ export function ResourceAssignments({
         onChange={() => {
           ++request.current;
           setVerified(new Set());
+          dirty.current = true;
+          onDirtyChange?.(true);
         }}
         onSubmit={(e) => {
           e.preventDefault();

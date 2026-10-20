@@ -376,3 +376,51 @@ test('a confirmed booking stays saved when the reload fails and the reload can b
   );
   expect(changed).toHaveBeenCalledTimes(2);
 });
+
+test('a retry keeps unsaved resource input and reports the dirty state upward', async () => {
+  let failReload = true;
+  const changed = vi.fn(async () => {
+    if (failReload) throw Error('reload');
+  });
+  const dirty = vi.fn();
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    options ? Response.json(event) : Response.json([resource]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <ResourceAssignments
+      event={event}
+      csrfToken="csrf"
+      onChanged={changed}
+      onDirtyChange={dirty}
+    />,
+  );
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  submit();
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  const date = screen.getByLabelText('Buchungsdatum') as HTMLInputElement;
+  fireEvent.change(date, { target: { value: '2030-10-17' } });
+  expect(dirty).toHaveBeenLastCalledWith(true);
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+  );
+  expect(confirm).toHaveBeenCalledWith(
+    'Ungespeicherte Eingaben verwerfen und neu laden?',
+  );
+  expect(changed).toHaveBeenCalledOnce();
+  expect(date.value).toBe('2030-10-17');
+  failReload = false;
+  confirm.mockReturnValue(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+    ).toBeNull(),
+  );
+  expect(changed).toHaveBeenCalledTimes(2);
+  expect(dirty).toHaveBeenLastCalledWith(false);
+});

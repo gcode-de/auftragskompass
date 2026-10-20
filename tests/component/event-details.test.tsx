@@ -180,8 +180,12 @@ test('event detail errors preserve loaded data and allow retries', async () => {
     screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
   );
   await screen.findByText(/Verbindung fehlgeschlagen/);
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
   fireEvent.click(
     screen.getByRole('button', { name: 'Eventakte aktualisieren' }),
+  );
+  expect(confirm).toHaveBeenCalledWith(
+    'Ungespeicherte Eingaben verwerfen und neu laden?',
   );
   await screen.findByText(/Eventakte konnte nicht geladen/);
   cleanup();
@@ -332,4 +336,84 @@ test('a slower older event file response never overwrites the newer state', asyn
     screen.getByRole('heading', { name: 'Eventakte: Synthetic newer state' }),
   ).toBeTruthy();
   expect(screen.queryByText(/Synthetic stale state/)).toBeNull();
+});
+
+test('a retry keeps a dirty status selection until discarding it is confirmed', async () => {
+  let failGet = false,
+    gets = 0,
+    server = { ...event, version: 1 };
+  const changed = vi.fn().mockResolvedValue(undefined);
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === '/api/v1/events/synthetic-event' && !options) gets += 1;
+    if (options) {
+      server = {
+        ...server,
+        ...JSON.parse(String(options.body)),
+        version: server.version + 1,
+      };
+      return Response.json(server);
+    }
+    if (failGet) return new Response(null, { status: 503 });
+    return Response.json({ ...detail, event: server });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={changed}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  const select = () =>
+    screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement;
+  failGet = true;
+  fireEvent.change(select(), { target: { value: 'option' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText('Status gespeichert.');
+  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  // A second, still unsaved choice made after the failed reload must survive a
+  // declined retry and must not be submitted against an unseen version.
+  fireEvent.change(select(), { target: { value: 'inquiry' } });
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const requests = gets;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+  );
+  expect(confirm).toHaveBeenCalledWith(
+    'Ungespeicherte Eingaben verwerfen und neu laden?',
+  );
+  expect(gets).toBe(requests);
+  expect(select().value).toBe('inquiry');
+  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  failGet = false;
+  confirm.mockReturnValue(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+    ).toBeNull(),
+  );
+  expect(gets).toBe(requests + 1);
+  expect(select().value).toBe('option');
+  expect(changed).toHaveBeenCalledOnce();
+  fireEvent.change(select(), { target: { value: 'inquiry' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText('Status gespeichert.');
+  const puts = fetcher.mock.calls.filter(([, options]) => options);
+  expect(JSON.parse(String(puts.at(-1)![1]!.body))).toMatchObject({
+    status: 'inquiry',
+    version: 2,
+  });
 });

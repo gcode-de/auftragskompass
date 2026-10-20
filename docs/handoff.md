@@ -1,6 +1,6 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **20.10.2026**, nach C051.3 und H022. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand: **20.10.2026**, nach C051.3 und H025. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
 ## In der nächsten Session zuerst
 
@@ -36,6 +36,14 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pauschal als fertig werten. E-/H-Slices ziehen gezielte Teile vor, ohne ganze Milestones als abgeschlossen zu erklären.
 
 ## Letzter geprüfter Laufzeitstand
+
+### Arbeitsnachtrag 20.10.2026 (H025: Härtung des Event-Editors nach der Prüfung)
+
+Branch `codex/ux-event-simplification`. Der Slice behebt ausschließlich bestätigte Befunde der beiden unabhängigen Prüfungen zu H023/H024: „Weitere Angaben“ nutzt die volle Formularbreite mit einem responsiven Feldraster (im echten Chromium-DOM gemessen: 1238 px in einem 1280-px-Gitter, vier Spalten, 21 px Rand beidseitig; mobil 345,8 px, eine Spalte, kein horizontaler Überlauf; vorher 297,5 px in einer Spalte), ein aus dem Beginn abgeleitetes Datum ist schreibgeschützt und erklärt, dass es dem Starttag folgt, weitere Kontakte werden ohne den Hauptkontakt normalisiert statt mit einer unsichtbaren Blockade zu enden, ein erneutes Laden der Akte verlangt bei ungespeicherten Status- oder Ressourceneingaben eine Bestätigung und verwendet danach die frisch geladene Version, jeder erfolgreiche Listenabruf löscht einen alten Neuladehinweis, eine bestätigte Ressourcenspeicherung bleibt bei fehlgeschlagener Listenabfrage im stabilen Elternteil sichtbar, und Hinweistext und Schaltfläche sind getrennt. Keine Server-, API-, Datenbank- oder Migrationsänderung.
+
+Lokal grün: Format, Lint, Typen, Build, 187 Unit-, 187 Komponenten- und 237 Integrationstests, alle vier Chromium-Abläufe, Coverage 97,64 % Zeilen und 94,66 % Zweige. Der Chromium-Ablauf prüft die Schreibsperre des Datums und den Datumswechsel 16.10.→16.11. über den Beginn. **Kein Testbetriebs-Update, kein Deployment, kein Merge nach `main`.**
+
+Offen und bewusst nicht in diesem Slice: die UTC-Versatzfelder der Ressourcen- und Sperrdisposition (weiterhin manuelle Versätze) und eine eigene Führung für gleichzeitige 409-Konflikte in der Akte, die heute nur eine Meldung mit Aufforderung zum Neuladen erzeugt.
 
 ### Arbeitsnachtrag 20.10.2026 (H022: Zeitumstellung ohne UTC-Versatzfelder)
 

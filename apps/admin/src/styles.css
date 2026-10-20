@@ -190,8 +190,30 @@ label {
 }
 fieldset > p,
 fieldset > fieldset,
-fieldset > ul {
+fieldset > ul,
+fieldset > details {
   grid-column: 1 / -1;
+}
+/* The collapsible advanced section and its fields use the full form width. */
+.event-advanced-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: start;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+.event-advanced-fields > p {
+  grid-column: 1 / -1;
+}
+.reload-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.reload-warning > p {
+  margin: 0;
 }
 /* Older settings forms use explicit label/input siblings rather than wrapped labels. */
 fieldset:has(> label[for]) {

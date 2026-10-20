@@ -56,6 +56,7 @@ export function EventPanel({
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [reloadWarning, setReloadWarning] = useState(false),
+    [dateDerived, setDateDerived] = useState(false),
     [eventStatus, setEventStatus] = useState('inquiry'),
     [eventDate, setEventDate] = useState(''),
     [primaryContactId, setPrimaryContactId] = useState(''),
@@ -64,8 +65,7 @@ export function EventPanel({
       startsAt?: string;
       endsAt?: string;
       eventDate?: string;
-    }>({}),
-    [contactError, setContactError] = useState('');
+    }>({});
   async function refresh() {
     const current = ++sequence.current;
     setLoading(true);
@@ -105,6 +105,7 @@ export function EventPanel({
       setPackages(packages);
       setLocations(locations);
       setContacts(contacts);
+      setReloadWarning(false);
     } catch (error) {
       if (current === sequence.current) {
         setLoadFailed(true);
@@ -142,9 +143,12 @@ export function EventPanel({
     setEventStatus(draft?.status ?? 'inquiry');
     setEventDate(draft?.eventDate ?? '');
     setPrimaryContactId(draft?.primaryContactId ?? '');
-    setAdditionalContactIds(draft?.additionalContactIds ?? []);
+    const primary = draft?.primaryContactId ?? '';
+    setAdditionalContactIds(
+      (draft?.additionalContactIds ?? []).filter((id) => id !== primary),
+    );
+    setDateDerived(Boolean(draft?.startsAt));
     setScheduleErrors({});
-    setContactError('');
   }, [draft]);
   function clearScheduleError(field: 'startsAt' | 'endsAt' | 'eventDate') {
     setScheduleErrors((current) => {
@@ -225,28 +229,17 @@ export function EventPanel({
       Date.parse(startTime.instant) >= Date.parse(endTime.instant)
     )
       errors.endsAt = 'Das Ende muss nach dem Beginn liegen.';
-    const contactConflict =
-      Boolean(primaryContactId) &&
-      additionalContactIds.includes(primaryContactId);
-    if (Object.keys(errors).length || contactConflict) {
+    if (Object.keys(errors).length) {
       setScheduleErrors(errors);
-      setContactError(
-        contactConflict
-          ? 'Der Hauptkontakt darf nicht zusätzlich als weiterer Kontakt gewählt werden.'
-          : '',
-      );
       const field = errors.startsAt
         ? 'startsAt'
         : errors.endsAt
           ? 'endsAt'
-          : errors.eventDate
-            ? 'eventDate'
-            : 'additionalContactIds';
+          : 'eventDate';
       form.querySelector<HTMLElement>(`[name="${field}"]`)?.focus();
       return;
     }
     setScheduleErrors({});
-    setContactError('');
     const businessDate = rawStart
       ? rawStart.slice(0, 10)
       : value('eventDate') || null;
@@ -297,6 +290,12 @@ export function EventPanel({
       // the follow-up list request fails; never invite a second submission.
       setDraft(null);
       setEditing(false);
+      // A create starts empty again; editing ends with the empty editor too.
+      setEventStatus('inquiry');
+      setEventDate('');
+      setDateDerived(false);
+      setPrimaryContactId('');
+      setAdditionalContactIds([]);
       form.reset();
       closeEditor();
       setMessage('Event gespeichert.');
@@ -523,7 +522,6 @@ export function EventPanel({
                     setAdditionalContactIds((current) =>
                       current.filter((id) => id !== next),
                     );
-                    setContactError('');
                   }}
                 >
                   <option value="">Noch offen</option>
@@ -538,10 +536,11 @@ export function EventPanel({
                     name="eventDate"
                     type="date"
                     value={eventDate}
+                    readOnly={dateDerived}
                     aria-invalid={Boolean(scheduleErrors.eventDate)}
                     aria-describedby={
                       scheduleErrors.eventDate
-                        ? 'event-eventDate-error'
+                        ? 'event-date-help event-eventDate-error'
                         : 'event-date-help'
                     }
                     onChange={(event) => {
@@ -551,9 +550,9 @@ export function EventPanel({
                   />
                 </label>
                 <p id="event-date-help">
-                  Mit Beginn wird das Datum aus dem lokalen Starttag übernommen.
-                  Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event
-                  möglich.
+                  {dateDerived
+                    ? 'Wird aus dem Beginn übernommen. Um das Datum zu ändern, den Beginn ändern.'
+                    : 'Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event möglich. Mit Beginn wird das Datum aus dessen lokalem Starttag übernommen.'}
                 </p>
                 {scheduleErrors.eventDate && (
                   <p
@@ -571,6 +570,7 @@ export function EventPanel({
                   instant={draft?.startsAt ?? null}
                   error={scheduleErrors.startsAt}
                   onChange={(next) => {
+                    setDateDerived(Boolean(next));
                     if (next) {
                       setEventDate(next.slice(0, 10));
                       clearScheduleError('eventDate');
@@ -593,105 +593,93 @@ export function EventPanel({
               </fieldset>
               <details className="event-advanced">
                 <summary>Weitere Angaben</summary>
-                <label>
-                  Eventart
-                  <select
-                    name="eventTypeId"
-                    defaultValue={draft?.eventTypeId ?? ''}
-                  >
-                    <option value="">Noch offen</option>
-                    {options(types, draft?.eventTypeId ?? null)}
-                  </select>
-                </label>
-                <label>
-                  Fotobox-Paket
-                  <select
-                    name="packageId"
-                    defaultValue={draft?.packageId ?? ''}
-                  >
-                    <option value="">Noch offen</option>
-                    {options(packages, draft?.packageId ?? null)}
-                  </select>
-                </label>
-                <label>
-                  Veranstaltungsort
-                  <select
-                    name="locationId"
-                    defaultValue={draft?.locationId ?? ''}
-                  >
-                    <option value="">Noch offen</option>
-                    {options(locations, draft?.locationId ?? null)}
-                  </select>
-                </label>
-                <label>
-                  Anfragequelle
-                  <input
-                    name="source"
-                    maxLength={200}
-                    defaultValue={draft?.source ?? ''}
-                  />
-                </label>
-                <label>
-                  Weitere Kontakte
-                  <select
-                    name="additionalContactIds"
-                    multiple
-                    value={additionalContactIds}
-                    aria-invalid={Boolean(contactError)}
-                    aria-describedby={
-                      contactError
-                        ? 'event-additionalContactIds-error'
-                        : undefined
-                    }
-                    onChange={(event) =>
-                      setAdditionalContactIds(
-                        Array.from(
-                          event.currentTarget.selectedOptions,
-                          (option) => option.value,
+                <div className="event-advanced-fields">
+                  <label>
+                    Eventart
+                    <select
+                      name="eventTypeId"
+                      defaultValue={draft?.eventTypeId ?? ''}
+                    >
+                      <option value="">Noch offen</option>
+                      {options(types, draft?.eventTypeId ?? null)}
+                    </select>
+                  </label>
+                  <label>
+                    Fotobox-Paket
+                    <select
+                      name="packageId"
+                      defaultValue={draft?.packageId ?? ''}
+                    >
+                      <option value="">Noch offen</option>
+                      {options(packages, draft?.packageId ?? null)}
+                    </select>
+                  </label>
+                  <label>
+                    Veranstaltungsort
+                    <select
+                      name="locationId"
+                      defaultValue={draft?.locationId ?? ''}
+                    >
+                      <option value="">Noch offen</option>
+                      {options(locations, draft?.locationId ?? null)}
+                    </select>
+                  </label>
+                  <label>
+                    Anfragequelle
+                    <input
+                      name="source"
+                      maxLength={200}
+                      defaultValue={draft?.source ?? ''}
+                    />
+                  </label>
+                  <label>
+                    Weitere Kontakte
+                    <select
+                      name="additionalContactIds"
+                      multiple
+                      value={additionalContactIds}
+                      onChange={(event) =>
+                        setAdditionalContactIds(
+                          Array.from(
+                            event.currentTarget.selectedOptions,
+                            (option) => option.value,
+                          ),
+                        )
+                      }
+                    >
+                      {options(
+                        contacts.filter(
+                          (choice) => choice.id !== primaryContactId,
                         ),
-                      )
-                    }
-                  >
-                    {options(
-                      contacts.filter(
-                        (choice) => choice.id !== primaryContactId,
-                      ),
-                      additionalContactIds,
-                    )}
-                  </select>
-                </label>
-                {contactError && (
-                  <p
-                    className="field-error"
-                    id="event-additionalContactIds-error"
-                    role="alert"
-                  >
-                    {contactError}
+                        additionalContactIds,
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Eventbeschreibung
+                    <textarea
+                      name="description"
+                      maxLength={4000}
+                      defaultValue={draft?.description ?? ''}
+                    />
+                  </label>
+                  <label>
+                    Interne Notizen
+                    <textarea
+                      name="notesHtml"
+                      maxLength={20000}
+                      defaultValue={draft?.notesHtml ?? ''}
+                      aria-describedby="event-notes-help"
+                    />
+                  </label>
+                  <p id="event-notes-help">
+                    Einfache HTML-Formatierung:
+                    &lt;strong&gt;fett&lt;/strong&gt;,
+                    &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
+                    href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte
+                    Vorschau erscheint am Event.
                   </p>
-                )}
-                <label>
-                  Eventbeschreibung
-                  <textarea
-                    name="description"
-                    maxLength={4000}
-                    defaultValue={draft?.description ?? ''}
-                  />
-                </label>
-                <label>
-                  Interne Notizen
-                  <textarea
-                    name="notesHtml"
-                    maxLength={20000}
-                    defaultValue={draft?.notesHtml ?? ''}
-                    aria-describedby="event-notes-help"
-                  />
-                </label>
-                <p id="event-notes-help">
-                  Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
-                  &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-                  href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte Vorschau
-                  erscheint am Event.
-                </p>
+                </div>
               </details>
               <button>Event speichern</button>
               {editing && draft?.id && (
@@ -717,9 +705,11 @@ export function EventPanel({
       </div>
       <p role="status">{message}</p>
       {reloadWarning && (
-        <p role="alert">
-          Event gespeichert, aber die Liste konnte nicht neu geladen werden. Die
-          Eingabe wurde nicht verloren.{' '}
+        <div className="reload-warning">
+          <p role="alert">
+            Gespeichert, aber die Liste konnte nicht neu geladen werden. Die
+            Eingabe wurde nicht verloren.
+          </p>
           <button
             type="button"
             className="secondary-action"
@@ -731,7 +721,7 @@ export function EventPanel({
           >
             Events erneut laden
           </button>
-        </p>
+        </div>
       )}
       {loading && <p role="status">Events werden geladen …</p>}
       {!loading && !loadFailed && !rows.length && <p>Keine Events gefunden.</p>}
@@ -804,8 +794,12 @@ export function EventPanel({
                       onChanged={async (
                         message = 'Eventstatus gespeichert.',
                       ) => {
-                        await refresh();
                         setMessage(message);
+                        try {
+                          await refresh();
+                        } catch {
+                          setReloadWarning(true);
+                        }
                       }}
                       onEdit={(event) => {
                         setDraft(event);
@@ -837,6 +831,10 @@ export function EventPanel({
                         )
                           ? id
                           : null;
+                      const duplicatePrimary = active(
+                        contacts,
+                        row.primaryContactId,
+                      );
                       setEditing(false);
                       setDraft({
                         ...row,
@@ -849,12 +847,10 @@ export function EventPanel({
                         eventTypeId: active(types, row.eventTypeId),
                         packageId: active(packages, row.packageId),
                         locationId: active(locations, row.locationId),
-                        primaryContactId: active(
-                          contacts,
-                          row.primaryContactId,
-                        ),
+                        primaryContactId: duplicatePrimary,
                         additionalContactIds: row.additionalContactIds.filter(
-                          (id) => active(contacts, id),
+                          (id) =>
+                            id !== duplicatePrimary && active(contacts, id),
                         ),
                       });
                     }}

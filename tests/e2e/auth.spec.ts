@@ -686,8 +686,14 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         name: 'Event bearbeiten: Synthetic browser event',
       })
       .click();
-    await events.getByLabel('Eventdatum').fill('2026-11-16');
+    // The business date is read-only while a start exists: it follows the
+    // local start day instead of silently ignoring a second date input.
+    await expect(events.getByLabel('Eventdatum')).toHaveAttribute(
+      'readonly',
+      '',
+    );
     await events.getByLabel('Eventbeginn').fill('2026-11-16T18:00');
+    await expect(events.getByLabel('Eventdatum')).toHaveValue('2026-11-16');
     await events.getByLabel('Eventende').fill('2026-11-17T01:00');
     await expect(events.getByLabel(/UTC-Versatz/)).toHaveCount(0);
     await events.getByRole('button', { name: 'Event speichern' }).click();
@@ -705,7 +711,6 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(events.getByLabel('Eventende')).toHaveValue(
       /^2026-11-17T01:00/,
     );
-    await events.getByLabel('Eventdatum').fill('2026-10-16');
     await events.getByLabel('Eventbeginn').fill('2026-10-16T18:00');
     await events.getByLabel('Eventende').fill('2026-10-17T01:00');
     await events.getByRole('button', { name: 'Event speichern' }).click();

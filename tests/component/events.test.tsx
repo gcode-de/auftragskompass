@@ -661,7 +661,7 @@ test('a new repeated start hour requires an explicit choice before saving', asyn
     target: { value: '2026-10-25T02:30' },
   });
   fireEvent.change(screen.getByLabelText('Eventende'), {
-    target: { value: '2026-10-26T04:00' },
+    target: { value: '2026-10-25T04:00' },
   });
   const selector = screen.getByLabelText(
     'Uhrzeitwahl Eventbeginn',
@@ -923,7 +923,8 @@ test('the normal editor keeps advanced values in Weitere Angaben and preserves t
   expect(screen.getByLabelText('Eventstatus')).toBeTruthy();
   expect(screen.getByLabelText('Hauptkontakt')).toBeTruthy();
   expect(screen.getByLabelText('Eventdatum')).toBeTruthy();
-  advanced.open = true;
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  expect(advanced.open).toBe(true);
   expect((screen.getByLabelText('Eventart') as HTMLSelectElement).value).toBe(
     'fictional-option',
   );
@@ -1100,7 +1101,7 @@ test('the main contact is excluded from further contacts and changing it clears 
   });
 });
 
-test('a saved duplicate between main and further contacts blocks the save', async () => {
+test('a stored duplicate between main and further contacts is normalised instead of trapping the save', async () => {
   const fetcher = mocker([], {
     primaryContactId: 'fictional-option',
     additionalContactIds: ['fictional-option'],
@@ -1113,14 +1114,22 @@ test('a saved duplicate between main and further contacts blocks the save', asyn
       name: 'Event bearbeiten: Synthetic event',
     }),
   );
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  const additional = screen.getByLabelText(
+    'Weitere Kontakte',
+  ) as HTMLSelectElement;
+  expect(
+    within(additional).queryByRole('option', { name: 'Synthetic choice' }),
+  ).toBeNull();
+  expect(additional.value).toBe('');
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText(/Hauptkontakt darf nicht zusätzlich/);
-  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
-  expect(document.activeElement).toBe(
-    screen.getByLabelText('Weitere Kontakte'),
-  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    primaryContactId: 'fictional-option',
+    additionalContactIds: [],
+  });
 });
 
 test('editing a booked event keeps its status unchanged', async () => {
@@ -1146,4 +1155,233 @@ test('editing a booked event keeps its status unchanged', async () => {
     name: 'Synthetic booked rename',
     status: 'booked',
   });
+});
+
+test('a start makes the business date read-only and derived while date-only and undated events stay possible', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  const date = () => screen.getByLabelText('Eventdatum') as HTMLInputElement;
+  expect(date().readOnly).toBe(false);
+  expect(screen.getByText(/Ohne Uhrzeiten bleibt ein Datum/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic date only' },
+  });
+  fireEvent.change(date(), { target: { value: '2026-12-24' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    eventDate: '2026-12-24',
+    startsAt: null,
+    endsAt: null,
+  });
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic undated event' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const mutations = fetcher.mock.calls.filter(([, options]) => options);
+  expect(mutations).toHaveLength(2);
+  expect(JSON.parse(String(mutations[1]![1]!.body)).eventDate).toBeNull();
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic scheduled event' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-12-31T23:30' },
+  });
+  expect(date().readOnly).toBe(true);
+  expect(date().value).toBe('2026-12-31');
+  expect(date().getAttribute('aria-describedby')).toBe('event-date-help');
+  expect(
+    screen.getByText(/Wird aus dem Beginn übernommen.*Beginn ändern/),
+  ).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2027-01-01T00:30' },
+  });
+  expect(date().value).toBe('2027-01-01');
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '' },
+  });
+  expect(date().readOnly).toBe(false);
+  expect(screen.getByText(/Ohne Uhrzeiten bleibt ein Datum/)).toBeTruthy();
+});
+
+test('duplicating an event preserves every advanced value for editing', async () => {
+  const fetcher = mocker([], {
+    eventTypeId: 'fictional-option',
+    packageId: 'fictional-option',
+    locationId: 'fictional-option',
+    primaryContactId: 'fictional-option',
+    additionalContactIds: ['fictional-option'],
+    source: 'Synthetic source',
+    description: 'Synthetic description',
+    notesHtml: '<strong>Fictional</strong>',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event duplizieren: Synthetic event',
+    }),
+  );
+  const advanced = screen
+    .getByText('Weitere Angaben', { exact: true })
+    .closest('details')!;
+  expect(advanced.open).toBe(false);
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic event (Kopie)',
+  );
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  expect(advanced.open).toBe(true);
+  expect((screen.getByLabelText('Eventart') as HTMLSelectElement).value).toBe(
+    'fictional-option',
+  );
+  expect(
+    (screen.getByLabelText('Fotobox-Paket') as HTMLSelectElement).value,
+  ).toBe('fictional-option');
+  expect(
+    (screen.getByLabelText('Veranstaltungsort') as HTMLSelectElement).value,
+  ).toBe('fictional-option');
+  expect(
+    (screen.getByLabelText('Anfragequelle') as HTMLInputElement).value,
+  ).toBe('Synthetic source');
+  expect(
+    (screen.getByLabelText('Eventbeschreibung') as HTMLTextAreaElement).value,
+  ).toBe('Synthetic description');
+  expect(
+    (screen.getByLabelText('Interne Notizen') as HTMLTextAreaElement).value,
+  ).toBe('<strong>Fictional</strong>');
+  expect(
+    (screen.getByLabelText('Weitere Kontakte') as HTMLSelectElement).value,
+  ).toBe('');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    name: 'Synthetic event (Kopie)',
+    eventTypeId: 'fictional-option',
+    packageId: 'fictional-option',
+    locationId: 'fictional-option',
+    primaryContactId: 'fictional-option',
+    additionalContactIds: [],
+    source: 'Synthetic source',
+    description: 'Synthetic description',
+    notesHtml: '<strong>Fictional</strong>',
+  });
+});
+
+test('a successful list refresh clears a stale reload warning', async () => {
+  let listFails = false;
+  let rows = [{ ...row }];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) {
+      rows = [{ ...row, ...JSON.parse(String(options.body)) }];
+      return Response.json(rows[0]);
+    }
+    if (listFails) return new Response(null, { status: 503 });
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({ timeZone: 'Europe/Berlin', events: rows });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  listFails = true;
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic saved event' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Liste konnte nicht neu geladen werden/);
+  listFails = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Events aktualisieren' }));
+  await screen.findByText('Synthetic saved event – Ohne Datum – Anfrage');
+  expect(
+    screen.queryByText(/Liste konnte nicht neu geladen werden/),
+  ).toBeNull();
+});
+
+test('a confirmed resource save stays visible in the list when the parent refresh fails', async () => {
+  let listFails = false,
+    puts = 0,
+    availability = 0;
+  const unit = {
+    unitId: 'synthetic-unit',
+    resourceId: 'synthetic-resource',
+    name: 'Synthetic box',
+    code: 'SYNTH-1',
+    category: 'Fotobox',
+    ordinal: 1,
+    selected: false,
+    periodSource: 'event',
+    baseStart: row.startsAt,
+    baseEnd: row.endsAt,
+    beforeDays: 0,
+    afterDays: 0,
+    startsAt: null,
+    endsAt: null,
+    available: true,
+    reason: null,
+    conflicts: [],
+  };
+  const base = mocker();
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) {
+      puts += 1;
+      return Response.json({ ...row, ...JSON.parse(String(options.body)) });
+    }
+    if (url === '/api/v1/events/synthetic/availability') {
+      availability += 1;
+      return Response.json([unit]);
+    }
+    if (url === '/api/v1/events/synthetic')
+      return Response.json({
+        event: { ...row, version: puts > 0 ? 2 : 1, status: 'booked' },
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      });
+    if (listFails) return new Response(null, { status: 503 });
+    return base(url);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Eventakte öffnen: Synthetic event',
+    }),
+  );
+  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  fireEvent.click(
+    await screen.findByLabelText('Synthetic box · Einheit 1 zuweisen'),
+  );
+  await vi.waitFor(() => expect(availability).toBe(1));
+  listFails = true;
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText('Ressourcen und Termin gespeichert.');
+  await screen.findByText(/Liste konnte nicht neu geladen werden/);
+  expect(puts).toBe(1);
+  expect(availability).toBe(2);
+  expect(screen.queryByText(/Speichern fehlgeschlagen/)).toBeNull();
 });

@@ -184,9 +184,11 @@ export function EventDocuments({
       </p>
       <p role="status">{message}</p>
       {reloadWarning && (
-        <p role="alert">
-          Gespeichert, aber die Angebotsliste konnte nicht neu geladen werden.
-          Nichts erneut anlegen.{' '}
+        <div className="reload-warning">
+          <p role="alert">
+            Gespeichert, aber die Angebotsliste konnte nicht neu geladen werden.
+            Nichts erneut anlegen.
+          </p>
           <button
             type="button"
             className="secondary-action"
@@ -195,7 +197,7 @@ export function EventDocuments({
           >
             Angebote erneut laden
           </button>
-        </p>
+        </div>
       )}
       {loading ? (
         <p>Angebote werden geladen …</p>

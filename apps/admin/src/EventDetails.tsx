@@ -53,12 +53,27 @@ export function EventDetails({
   const [section, setSection] = useState('overview');
   const heading = useRef<HTMLHeadingElement>(null),
     loadSequence = useRef(0),
-    saving = useRef(false);
-  const [data, setData] = useState<Detail | null>(null),
+    saving = useRef(false),
+    // A reload replaces the form values. Both refs mark unsaved input so a
+    // retry can never discard it silently.
+    dirty = useRef(false),
+    resourcesDirty = useRef(false),
+    loadedVersion = useRef<number | null>(null);
+  const [epoch, setEpoch] = useState(0),
+    [data, setData] = useState<Detail | null>(null),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
     [reloadWarning, setReloadWarning] = useState(false);
+  function mayReplaceDraft() {
+    if (!dirty.current && !resourcesDirty.current) return true;
+    if (!window.confirm('Ungespeicherte Eingaben verwerfen und neu laden?'))
+      return false;
+    dirty.current = false;
+    resourcesDirty.current = false;
+    setEpoch((current) => current + 1);
+    return true;
+  }
   async function load() {
     const current = ++loadSequence.current;
     setLoading(true);
@@ -68,6 +83,12 @@ export function EventDetails({
       const next = (await response.json()) as Detail;
       // A slower, older request must never overwrite a newer event state.
       if (current !== loadSequence.current) return;
+      // A new event version replaces the keyed forms, so their drafts are gone.
+      if (loadedVersion.current !== next.event.version) {
+        dirty.current = false;
+        resourcesDirty.current = false;
+      }
+      loadedVersion.current = next.event.version;
       setData(next);
       setReloadWarning(false);
     } catch (error) {
@@ -77,6 +98,7 @@ export function EventDetails({
     }
   }
   useEffect(() => {
+    if (!mayReplaceDraft()) return;
     void load().catch(() =>
       setMessage('Eventakte konnte nicht geladen werden.'),
     );
@@ -116,6 +138,7 @@ export function EventDetails({
       // The PUT is confirmed; report it before reloading so a failing GET is
       // never mistaken for a failed save.
       setMessage('Status gespeichert.');
+      dirty.current = false;
       try {
         await load();
         await onChanged();
@@ -132,6 +155,7 @@ export function EventDetails({
     }
   }
   function retryLoad() {
+    if (!mayReplaceDraft()) return;
     setReloadWarning(false);
     void (async () => {
       try {
@@ -164,19 +188,22 @@ export function EventDetails({
         className="secondary-action"
         type="button"
         disabled={busy || loading}
-        onClick={() =>
+        onClick={() => {
+          if (!mayReplaceDraft()) return;
           void load().catch(() =>
             setMessage('Eventakte konnte nicht geladen werden.'),
-          )
-        }
+          );
+        }}
       >
         Eventakte aktualisieren
       </button>
       <p role="status">{message}</p>
       {reloadWarning && (
-        <p role="alert">
-          Gespeichert, aber die Eventakte konnte nicht neu geladen werden. Es
-          wurde nichts doppelt angelegt.{' '}
+        <div className="reload-warning">
+          <p role="alert">
+            Gespeichert, aber die Eventakte konnte nicht neu geladen werden. Es
+            wurde nichts doppelt angelegt.
+          </p>
           <button
             type="button"
             className="secondary-action"
@@ -185,7 +212,7 @@ export function EventDetails({
           >
             Eventakte erneut laden
           </button>
-        </p>
+        </div>
       )}
       {loading && <p>Eventakte wird geladen …</p>}
       {data && (
@@ -238,7 +265,7 @@ export function EventDetails({
               <dd>{data.event.description || 'Keine Beschreibung'}</dd>
             </dl>
             <form
-              key={data.event.version}
+              key={data.event.version + ':' + epoch}
               onSubmit={(event) => {
                 event.preventDefault();
                 void saveStatus(event.currentTarget);
@@ -248,7 +275,13 @@ export function EventDetails({
                 <legend>Status ändern</legend>
                 <label>
                   Status in der Eventakte
-                  <select name="status" defaultValue={data.event.status}>
+                  <select
+                    name="status"
+                    defaultValue={data.event.status}
+                    onChange={() => {
+                      dirty.current = true;
+                    }}
+                  >
                     {statuses.map((status) => (
                       <option
                         key={status.code}
@@ -279,9 +312,12 @@ export function EventDetails({
           </div>
           <div hidden={section !== 'resources'}>
             <ResourceAssignments
-              key={data.event.id + ':' + data.event.version}
+              key={data.event.id + ':' + data.event.version + ':' + epoch}
               event={data.event}
               csrfToken={csrfToken}
+              onDirtyChange={(value) => {
+                resourcesDirty.current = value;
+              }}
               onChanged={async () => {
                 await load();
                 await onChanged('Ressourcen und Termin gespeichert.');
