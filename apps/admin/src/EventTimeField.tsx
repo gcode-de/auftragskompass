@@ -12,11 +12,15 @@ export function EventTimeField({
   label,
   timeZone,
   instant,
+  error,
+  onChange,
 }: {
   name: 'startsAt' | 'endsAt';
   label: string;
   timeZone: string;
   instant: string | null;
+  error?: string | undefined;
+  onChange?: (value: string) => void;
 }) {
   const [value, setValue] = useState(localDateTime(instant, timeZone)),
     [picked, setPicked] = useState<{
@@ -36,7 +40,8 @@ export function EventTimeField({
     invalid =
       resolution.kind === 'nonexistent' ||
       resolution.kind === 'invalid' ||
-      unresolved;
+      unresolved ||
+      Boolean(error);
   return (
     <>
       <label>
@@ -54,6 +59,7 @@ export function EventTimeField({
             setPicked((current) =>
               current && current.value === next ? current : null,
             );
+            onChange?.(next);
           }}
         />
       </label>
@@ -80,6 +86,11 @@ export function EventTimeField({
             ))}
           </select>
         </label>
+      )}
+      {error && (
+        <p className="field-error" id={errorId} role="alert">
+          {error}
+        </p>
       )}
       {unresolved && (
         <p className="field-error" id={errorId} role="alert">

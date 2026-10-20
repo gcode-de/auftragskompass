@@ -591,6 +591,13 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events
       .getByLabel('Hauptkontakt')
       .selectOption({ label: 'Synthetic browser contact' });
+    await expect(
+      events.getByRole('combobox', { name: 'Eventart', exact: true }),
+    ).toBeHidden();
+    await events.getByText('Weitere Angaben', { exact: true }).click();
+    await expect(
+      events.getByRole('combobox', { name: 'Eventart', exact: true }),
+    ).toBeVisible();
     await events
       .getByRole('combobox', { name: 'Eventart', exact: true })
       .selectOption({ label: 'Hochzeit' });

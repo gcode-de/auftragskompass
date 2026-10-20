@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 afterEach(() => {
@@ -660,7 +661,7 @@ test('a new repeated start hour requires an explicit choice before saving', asyn
     target: { value: '2026-10-25T02:30' },
   });
   fireEvent.change(screen.getByLabelText('Eventende'), {
-    target: { value: '2026-10-25T04:00' },
+    target: { value: '2026-10-26T04:00' },
   });
   const selector = screen.getByLabelText(
     'Uhrzeitwahl Eventbeginn',
@@ -894,4 +895,255 @@ test('a confirmed save closes the editor and survives a failed list reload', asy
   expect(
     screen.queryByText(/Liste konnte nicht neu geladen werden/),
   ).toBeNull();
+});
+
+test('the normal editor keeps advanced values in Weitere Angaben and preserves them', async () => {
+  const fetcher = mocker([], {
+    eventTypeId: 'fictional-option',
+    packageId: 'fictional-option',
+    locationId: 'fictional-option',
+    primaryContactId: 'fictional-option',
+    source: 'Synthetic source',
+    description: 'Synthetic description',
+    notesHtml: '<strong>Fictional</strong>',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  const advanced = screen
+    .getByText('Weitere Angaben', { exact: true })
+    .closest('details')!;
+  expect(advanced.open).toBe(false);
+  expect(screen.getByLabelText('Eventname')).toBeTruthy();
+  expect(screen.getByLabelText('Eventstatus')).toBeTruthy();
+  expect(screen.getByLabelText('Hauptkontakt')).toBeTruthy();
+  expect(screen.getByLabelText('Eventdatum')).toBeTruthy();
+  advanced.open = true;
+  expect((screen.getByLabelText('Eventart') as HTMLSelectElement).value).toBe(
+    'fictional-option',
+  );
+  expect(
+    (screen.getByLabelText('Fotobox-Paket') as HTMLSelectElement).value,
+  ).toBe('fictional-option');
+  expect(
+    (screen.getByLabelText('Veranstaltungsort') as HTMLSelectElement).value,
+  ).toBe('fictional-option');
+  expect(
+    (screen.getByLabelText('Anfragequelle') as HTMLInputElement).value,
+  ).toBe('Synthetic source');
+  expect(
+    (screen.getByLabelText('Eventbeschreibung') as HTMLTextAreaElement).value,
+  ).toBe('Synthetic description');
+  expect(
+    (screen.getByLabelText('Interne Notizen') as HTMLTextAreaElement).value,
+  ).toBe('<strong>Fictional</strong>');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic edited name' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    name: 'Synthetic edited name',
+    eventTypeId: 'fictional-option',
+    packageId: 'fictional-option',
+    locationId: 'fictional-option',
+    primaryContactId: 'fictional-option',
+    source: 'Synthetic source',
+    description: 'Synthetic description',
+    notesHtml: '<strong>Fictional</strong>',
+  });
+});
+
+test('the business date is derived from the local start across midnight and the DST day', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic midnight event' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-10-24T23:30' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-10-26T04:00' },
+  });
+  expect((screen.getByLabelText('Eventdatum') as HTMLInputElement).value).toBe(
+    '2026-10-24',
+  );
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher).eventDate).toBe('2026-10-24');
+  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic DST event' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-03-29T01:30' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-03-29T04:00' },
+  });
+  expect((screen.getByLabelText('Eventdatum') as HTMLInputElement).value).toBe(
+    '2026-03-29',
+  );
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const mutations = fetcher.mock.calls.filter(([, options]) => options);
+  expect(mutations).toHaveLength(2);
+  expect(JSON.parse(String(mutations[1]![1]!.body)).eventDate).toBe(
+    '2026-03-29',
+  );
+});
+
+test('partial and reversed times keep the draft and explain the affected field', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic invalid schedule' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-10-26T02:30' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Bitte auch das Ende angeben.');
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+  expect(document.activeElement).toBe(screen.getByLabelText('Eventende'));
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-10-26T01:30' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Das Ende muss nach dem Beginn liegen.');
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-10-26T04:00' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Bitte auch den Beginn angeben.');
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic invalid schedule',
+  );
+});
+
+test('the main contact is excluded from further contacts and changing it clears the overlap', async () => {
+  const contacts = [
+    { id: 'contact-main', name: 'Synthetic main', state: 'active' },
+    { id: 'contact-extra', name: 'Synthetic extra', state: 'active' },
+  ];
+  let rows = [{ ...row }];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) {
+      rows = [{ ...row, ...JSON.parse(String(options.body)) }];
+      return Response.json(rows[0]);
+    }
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({ timeZone: 'Europe/Berlin', events: rows });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    if (url === '/api/v1/contacts') return Response.json(contacts);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic contact event' },
+  });
+  fireEvent.change(screen.getByLabelText('Hauptkontakt'), {
+    target: { value: 'contact-main' },
+  });
+  const additional = screen.getByLabelText(
+    'Weitere Kontakte',
+  ) as HTMLSelectElement;
+  expect(
+    within(additional).queryByRole('option', { name: 'Synthetic main' }),
+  ).toBeNull();
+  fireEvent.change(additional, { target: { value: 'contact-extra' } });
+  expect(additional.value).toBe('contact-extra');
+  fireEvent.change(screen.getByLabelText('Hauptkontakt'), {
+    target: { value: 'contact-extra' },
+  });
+  expect(additional.value).toBe('');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    primaryContactId: 'contact-extra',
+    additionalContactIds: [],
+  });
+});
+
+test('a saved duplicate between main and further contacts blocks the save', async () => {
+  const fetcher = mocker([], {
+    primaryContactId: 'fictional-option',
+    additionalContactIds: ['fictional-option'],
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Hauptkontakt darf nicht zusätzlich/);
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+  expect(document.activeElement).toBe(
+    screen.getByLabelText('Weitere Kontakte'),
+  );
+});
+
+test('editing a booked event keeps its status unchanged', async () => {
+  const fetcher = mocker([], { status: 'booked' });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  const status = screen.getByLabelText('Eventstatus') as HTMLSelectElement;
+  expect(status.value).toBe('booked');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic booked rename' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    name: 'Synthetic booked rename',
+    status: 'booked',
+  });
 });

@@ -55,7 +55,17 @@ export function EventPanel({
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
-    [reloadWarning, setReloadWarning] = useState(false);
+    [reloadWarning, setReloadWarning] = useState(false),
+    [eventStatus, setEventStatus] = useState('inquiry'),
+    [eventDate, setEventDate] = useState(''),
+    [primaryContactId, setPrimaryContactId] = useState(''),
+    [additionalContactIds, setAdditionalContactIds] = useState<string[]>([]),
+    [scheduleErrors, setScheduleErrors] = useState<{
+      startsAt?: string;
+      endsAt?: string;
+      eventDate?: string;
+    }>({}),
+    [contactError, setContactError] = useState('');
   async function refresh() {
     const current = ++sequence.current;
     setLoading(true);
@@ -129,6 +139,22 @@ export function EventPanel({
     return () => window.removeEventListener('hashchange', changed);
   }, [rows]);
   useEffect(() => {
+    setEventStatus(draft?.status ?? 'inquiry');
+    setEventDate(draft?.eventDate ?? '');
+    setPrimaryContactId(draft?.primaryContactId ?? '');
+    setAdditionalContactIds(draft?.additionalContactIds ?? []);
+    setScheduleErrors({});
+    setContactError('');
+  }, [draft]);
+  function clearScheduleError(field: 'startsAt' | 'endsAt' | 'eventDate') {
+    setScheduleErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+  useEffect(() => {
     if (draft) {
       editor.current!.open = true;
       document.getElementById('event-editor')?.scrollIntoView?.();
@@ -184,6 +210,46 @@ export function EventPanel({
       form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
       return;
     }
+    const rawStart = value('startsAt'),
+      rawEnd = value('endsAt');
+    const errors: {
+      startsAt?: string;
+      endsAt?: string;
+      eventDate?: string;
+    } = {};
+    if (rawStart && !rawEnd) errors.endsAt = 'Bitte auch das Ende angeben.';
+    if (!rawStart && rawEnd) errors.startsAt = 'Bitte auch den Beginn angeben.';
+    if (
+      startTime.kind === 'unique' &&
+      endTime.kind === 'unique' &&
+      Date.parse(startTime.instant) >= Date.parse(endTime.instant)
+    )
+      errors.endsAt = 'Das Ende muss nach dem Beginn liegen.';
+    const contactConflict =
+      Boolean(primaryContactId) &&
+      additionalContactIds.includes(primaryContactId);
+    if (Object.keys(errors).length || contactConflict) {
+      setScheduleErrors(errors);
+      setContactError(
+        contactConflict
+          ? 'Der Hauptkontakt darf nicht zusätzlich als weiterer Kontakt gewählt werden.'
+          : '',
+      );
+      const field = errors.startsAt
+        ? 'startsAt'
+        : errors.endsAt
+          ? 'endsAt'
+          : errors.eventDate
+            ? 'eventDate'
+            : 'additionalContactIds';
+      form.querySelector<HTMLElement>(`[name="${field}"]`)?.focus();
+      return;
+    }
+    setScheduleErrors({});
+    setContactError('');
+    const businessDate = rawStart
+      ? rawStart.slice(0, 10)
+      : value('eventDate') || null;
     saving.current = true;
     setBusy(true);
     try {
@@ -196,7 +262,7 @@ export function EventPanel({
         primaryContactId: value('primaryContactId') || null,
         additionalContactIds: data.getAll('additionalContactIds').map(String),
         source: value('source'),
-        eventDate: value('eventDate') || null,
+        eventDate: businessDate,
         startsAt: startTime.kind === 'unique' ? startTime.instant : null,
         endsAt: endTime.kind === 'unique' ? endTime.instant : null,
         description: value('description'),
@@ -423,14 +489,22 @@ export function EventPanel({
               </label>
               <label>
                 Eventstatus
-                <select name="status" defaultValue={draft?.status ?? 'inquiry'}>
-                  {statuses.map((status) => (
+                <select
+                  name="status"
+                  value={eventStatus}
+                  onChange={(event) =>
+                    setEventStatus(event.currentTarget.value)
+                  }
+                >
+                  {statuses.map((option) => (
                     <option
-                      key={status.code}
-                      value={status.code}
-                      disabled={status.code === 'booked'}
+                      key={option.code}
+                      value={option.code}
+                      disabled={
+                        option.code === 'booked' && draft?.status !== 'booked'
+                      }
                     >
-                      {status.label}
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -439,103 +513,186 @@ export function EventPanel({
                 Gebucht wird mit einer konkreten Ressourcenzuweisung verfügbar.
               </p>
               <label>
-                Eventart
-                <select
-                  name="eventTypeId"
-                  defaultValue={draft?.eventTypeId ?? ''}
-                >
-                  <option value="">Noch offen</option>
-                  {options(types, draft?.eventTypeId ?? null)}
-                </select>
-              </label>
-              <label>
-                Fotobox-Paket
-                <select name="packageId" defaultValue={draft?.packageId ?? ''}>
-                  <option value="">Noch offen</option>
-                  {options(packages, draft?.packageId ?? null)}
-                </select>
-              </label>
-              <label>
-                Veranstaltungsort
-                <select
-                  name="locationId"
-                  defaultValue={draft?.locationId ?? ''}
-                >
-                  <option value="">Noch offen</option>
-                  {options(locations, draft?.locationId ?? null)}
-                </select>
-              </label>
-              <label>
                 Hauptkontakt
                 <select
                   name="primaryContactId"
-                  defaultValue={draft?.primaryContactId ?? ''}
+                  value={primaryContactId}
+                  onChange={(event) => {
+                    const next = event.currentTarget.value;
+                    setPrimaryContactId(next);
+                    setAdditionalContactIds((current) =>
+                      current.filter((id) => id !== next),
+                    );
+                    setContactError('');
+                  }}
                 >
                   <option value="">Noch offen</option>
-                  {options(contacts, draft?.primaryContactId ?? null)}
+                  {options(contacts, primaryContactId || null)}
                 </select>
               </label>
-              <label>
-                Weitere Kontakte
-                <select
-                  name="additionalContactIds"
-                  multiple
-                  defaultValue={draft?.additionalContactIds ?? []}
-                >
-                  {options(contacts, draft?.additionalContactIds ?? [])}
-                </select>
-              </label>
-              <label>
-                Anfragequelle
-                <input
-                  name="source"
-                  maxLength={200}
-                  defaultValue={draft?.source ?? ''}
+              <fieldset>
+                <legend>Termin</legend>
+                <label>
+                  Eventdatum
+                  <input
+                    name="eventDate"
+                    type="date"
+                    value={eventDate}
+                    aria-invalid={Boolean(scheduleErrors.eventDate)}
+                    aria-describedby={
+                      scheduleErrors.eventDate
+                        ? 'event-eventDate-error'
+                        : 'event-date-help'
+                    }
+                    onChange={(event) => {
+                      setEventDate(event.currentTarget.value);
+                      clearScheduleError('eventDate');
+                    }}
+                  />
+                </label>
+                <p id="event-date-help">
+                  Mit Beginn wird das Datum aus dem lokalen Starttag übernommen.
+                  Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event
+                  möglich.
+                </p>
+                {scheduleErrors.eventDate && (
+                  <p
+                    className="field-error"
+                    id="event-eventDate-error"
+                    role="alert"
+                  >
+                    {scheduleErrors.eventDate}
+                  </p>
+                )}
+                <EventTimeField
+                  name="startsAt"
+                  label="Eventbeginn"
+                  timeZone={zone}
+                  instant={draft?.startsAt ?? null}
+                  error={scheduleErrors.startsAt}
+                  onChange={(next) => {
+                    if (next) {
+                      setEventDate(next.slice(0, 10));
+                      clearScheduleError('eventDate');
+                    }
+                    clearScheduleError('startsAt');
+                  }}
                 />
-              </label>
-              <label>
-                Eventdatum
-                <input
-                  name="eventDate"
-                  type="date"
-                  defaultValue={draft?.eventDate ?? ''}
+                <EventTimeField
+                  name="endsAt"
+                  label="Eventende"
+                  timeZone={zone}
+                  instant={draft?.endsAt ?? null}
+                  error={scheduleErrors.endsAt}
+                  onChange={() => clearScheduleError('endsAt')}
                 />
-              </label>
-              <EventTimeField
-                name="startsAt"
-                label="Eventbeginn"
-                timeZone={zone}
-                instant={draft?.startsAt ?? null}
-              />
-              <EventTimeField
-                name="endsAt"
-                label="Eventende"
-                timeZone={zone}
-                instant={draft?.endsAt ?? null}
-              />
-              <label>
-                Eventbeschreibung
-                <textarea
-                  name="description"
-                  maxLength={4000}
-                  defaultValue={draft?.description ?? ''}
-                />
-              </label>
-              <label>
-                Interne Notizen
-                <textarea
-                  name="notesHtml"
-                  maxLength={20000}
-                  defaultValue={draft?.notesHtml ?? ''}
-                  aria-describedby="event-notes-help"
-                />
-              </label>
-              <p id="event-notes-help">
-                Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
-                &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-                href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte Vorschau
-                erscheint am Event.
-              </p>
+                <p>
+                  Beginn und Ende gemeinsam oder gar nicht. Das Ende muss nach
+                  dem Beginn liegen.
+                </p>
+              </fieldset>
+              <details className="event-advanced">
+                <summary>Weitere Angaben</summary>
+                <label>
+                  Eventart
+                  <select
+                    name="eventTypeId"
+                    defaultValue={draft?.eventTypeId ?? ''}
+                  >
+                    <option value="">Noch offen</option>
+                    {options(types, draft?.eventTypeId ?? null)}
+                  </select>
+                </label>
+                <label>
+                  Fotobox-Paket
+                  <select
+                    name="packageId"
+                    defaultValue={draft?.packageId ?? ''}
+                  >
+                    <option value="">Noch offen</option>
+                    {options(packages, draft?.packageId ?? null)}
+                  </select>
+                </label>
+                <label>
+                  Veranstaltungsort
+                  <select
+                    name="locationId"
+                    defaultValue={draft?.locationId ?? ''}
+                  >
+                    <option value="">Noch offen</option>
+                    {options(locations, draft?.locationId ?? null)}
+                  </select>
+                </label>
+                <label>
+                  Anfragequelle
+                  <input
+                    name="source"
+                    maxLength={200}
+                    defaultValue={draft?.source ?? ''}
+                  />
+                </label>
+                <label>
+                  Weitere Kontakte
+                  <select
+                    name="additionalContactIds"
+                    multiple
+                    value={additionalContactIds}
+                    aria-invalid={Boolean(contactError)}
+                    aria-describedby={
+                      contactError
+                        ? 'event-additionalContactIds-error'
+                        : undefined
+                    }
+                    onChange={(event) =>
+                      setAdditionalContactIds(
+                        Array.from(
+                          event.currentTarget.selectedOptions,
+                          (option) => option.value,
+                        ),
+                      )
+                    }
+                  >
+                    {options(
+                      contacts.filter(
+                        (choice) => choice.id !== primaryContactId,
+                      ),
+                      additionalContactIds,
+                    )}
+                  </select>
+                </label>
+                {contactError && (
+                  <p
+                    className="field-error"
+                    id="event-additionalContactIds-error"
+                    role="alert"
+                  >
+                    {contactError}
+                  </p>
+                )}
+                <label>
+                  Eventbeschreibung
+                  <textarea
+                    name="description"
+                    maxLength={4000}
+                    defaultValue={draft?.description ?? ''}
+                  />
+                </label>
+                <label>
+                  Interne Notizen
+                  <textarea
+                    name="notesHtml"
+                    maxLength={20000}
+                    defaultValue={draft?.notesHtml ?? ''}
+                    aria-describedby="event-notes-help"
+                  />
+                </label>
+                <p id="event-notes-help">
+                  Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
+                  &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
+                  href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte Vorschau
+                  erscheint am Event.
+                </p>
+              </details>
               <button>Event speichern</button>
               {editing && draft?.id && (
                 <a className="secondary-action" href={'#event-' + draft.id}>
