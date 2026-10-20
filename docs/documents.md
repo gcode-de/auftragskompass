@@ -87,6 +87,14 @@ bettet es als `data:`-URI in das HTML ein, damit die PDF ohne externe Quelle
 deterministisch bleibt. Fehlt ein eingetragenes Logo, bricht das Finalisieren
 mit `missing_reference` ab, statt still ohne Marke zu drucken.
 
+## Oberfläche
+
+In der Eventakte steht unter „Übersicht“ der Abschnitt „Angebote“. Er listet
+Nummer, Zustand, Datum und Bruttobetrag der Dokumente dieses Events, legt aus
+einer aktiven Angebotsvorlage einen Entwurf mit dem Hauptkontakt an,
+finalisiert ihn und verlinkt die fertige PDF. Fehlt eine aktive Vorlage oder
+ein Hauptkontakt, erklärt der Abschnitt das und deaktiviert das Formular.
+
 ## Protokoll
 
 `document.created` beim Anlegen des Entwurfs, `document.finalized` beim

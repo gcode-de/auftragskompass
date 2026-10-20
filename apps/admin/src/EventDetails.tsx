@@ -1,5 +1,6 @@
 import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
+import { EventDocuments } from './EventDocuments.js';
 import { useEffect, useRef, useState } from 'react';
 import type { EventRow } from './EventPanel.js';
 type Detail = {
@@ -224,6 +225,13 @@ export function EventDetails({
             >
               Stammdaten bearbeiten
             </button>
+            <EventDocuments
+              key={data.event.id}
+              eventId={data.event.id}
+              contactId={data.event.primaryContactId}
+              timeZone={data.event.timeZone}
+              csrfToken={csrfToken}
+            />
           </div>
           <div hidden={section !== 'resources'}>
             <ResourceAssignments
