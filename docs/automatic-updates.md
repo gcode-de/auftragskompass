@@ -57,7 +57,7 @@ Externe `/etc/auftragskompass-update.json` mit Modus 600 enthält nur diese Wert
   "container": 999,
   "image": "docker.io/fictional/auftragskompass",
   "state_dir": "/var/lib/auftragskompass-updates",
-  "branch": "codex/local-runtime-ci"
+  "branch": "codex/ux-event-simplification"
 }
 ```
 
@@ -89,19 +89,28 @@ journalctl -u ak-test-update.service -n 20
 ### Zielbranch umstellen
 
 Der Testbetrieb folgt genau einer Branch. Ein Wechsel ist eine bewusste
-Betreiberaktion und wird nie neben einem laufenden Update durchgeführt:
+Betreiberaktion und wird nie neben einem laufenden Update durchgeführt. Zuerst
+muss der **installierte** Updater den `branch`-Schlüssel kennen; ein älterer
+Hoststand weist die neue Konfiguration sonst mit `Invalid operator
+configuration` ab und der Timer scheitert dauerhaft:
 
 ```sh
 systemctl disable --now ak-test-update.timer
 systemctl is-active ak-test-update.service      # muss "inactive" sein
-# /etc/auftragskompass-update.json (root, 0600) redaktionell um "branch" ergänzen
+install -m 0755 scripts/auto_update.py /usr/local/lib/auftragskompass/auto_update.py
+# Erst jetzt /etc/auftragskompass-update.json (root, 0600) um "branch" ergänzen.
 python3 /usr/local/lib/auftragskompass/auto_update.py --config /etc/auftragskompass-update.json --check-only
 systemctl start ak-test-update.service
 systemctl enable --now ak-test-update.timer
 ```
 
-`--check-only` darf nur `update-available` oder `current` melden und schreibt nichts.
-Erwartet wird `update-available`, wenn der Zielhead noch nicht läuft. Ein Rückschritt
+Die Installation aus dem geprüften Repository-Stand ist Pflicht, nicht optional:
+Ohne sie kann `--check-only` die Konfiguration nicht lesen. `--check-only`
+schreibt nichts und meldet regulär `update-available`, `current` oder
+`waiting-for-green-head`. Der letzte Fall bedeutet: Der exakte Zielhead ist noch
+nicht vollständig grün oder seine Images sind noch nicht veröffentlicht; das ist
+kein Fehler und kein Anlass für manuelle Eingriffe. Erwartet wird
+`update-available`, sobald der Zielhead grün ist und noch nicht läuft. Ein Rückschritt
 auf eine ältere Branch ist nicht möglich, weil der Updater ausschließlich
 vorwärts gerichtete Historie akzeptiert; ein solcher Wechsel scheitert dauerhaft mit
 `Only forward updates allowed` und blockiert den Timer. Deshalb vor dem Umschalten
@@ -124,13 +133,18 @@ Die Buildfreigabe nutzt die dokumentierte [GitHub-Workflow-Run-API](https://docs
 
 ## Zielbranch des Testbetriebs
 
-Der Testbetrieb folgt seit H028 der Branch `codex/ux-event-simplification`, damit
-UX-Änderungen ohne Merge nach `main` sichtbar werden. Jeder künftig gepushte Head
-dieser Branch wird erst nach vollständig grünem `quality`-Lauf und beiden
-veröffentlichten Images automatisch übernommen; vorher bleibt der laufende Stand
-unverändert. Die Bildfreigabe der Branch ist in [homelab.md](homelab.md) beschrieben.
+Der Testbetrieb folgt der Branch `codex/ux-event-simplification`, damit
+UX-Änderungen ohne Merge nach `main` sichtbar werden. Die Betreiberkonfiguration
+wurde am 20.10.2026 read-only geprüft: `branch` steht auf
+`codex/ux-event-simplification`, der installierte Updater unterstützt den
+Schlüssel, der Timer ist aktiv und der laufende Stand entsprach dem damaligen
+Branch-Head. Ohne `branch`-Schlüssel bleibt `codex/local-runtime-ci` der
+Code-Standard. Jeder künftig gepushte Head der UX-Branch wird erst nach
+vollständig grünem `quality`-Lauf und beiden veröffentlichten Images automatisch
+übernommen; vorher bleibt der laufende Stand unverändert. Die Bildfreigabe der
+Branch ist in [homelab.md](homelab.md) beschrieben.
 
-## Einrichtungsstand 19.10.2026
+## Einrichtungsstand 19.10.2026, Zielbranchnachtrag 20.10.2026
 
 Updater, Service und Timer sind auf dem Proxmox-Host installiert. Die native
 Unitprüfung und das gemeinsame Schloss für manuelle/automatische Updates sind
@@ -140,3 +154,6 @@ Zielrevision. Der Timer ist aktiviert; der anschließende No-op-Probelauf bestä
 keinen erneuten Neustart bei unverändertem Stand.
 Die zwischenzeitlich erforderliche Token-Einrichtung entfällt durch die ausdrücklich
 beauftragte öffentliche Repository-Sichtbarkeit; es wurde kein Entwicklertoken kopiert.
+Am 20.10.2026 wurde zusätzlich geprüft, dass der installierte Updater exakt dem
+Skriptstand mit `branch`-Unterstützung entspricht, die UX-Branch konfiguriert ist
+und ein Timer-Lauf `current` meldet.
