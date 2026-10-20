@@ -83,8 +83,14 @@ test('resource assignment shows buffers, previews availability and books with ev
   expect(JSON.parse(String(call[1]?.body))).toMatchObject({
     status: 'booked',
     version: 1,
+    eventDate: '2030-10-16',
+    startsAt: '2030-10-16T16:00:00Z',
+    endsAt: '2030-10-16T18:00:00Z',
     assignments: [{ unitId: 'synthetic-box', periodSource: 'event' }],
   });
+  expect(
+    (screen.getByLabelText('Eventdatum') as HTMLInputElement).readOnly,
+  ).toBe(true);
 });
 
 const mount = (changed = async () => {}) =>
@@ -226,12 +232,14 @@ test('load errors, empty resource lists, and unavailable periods remain explicit
   await screen.findByText(/Ressourcen konnten nicht geladen/);
   expect(
     (
-      screen
-        .getByRole('button', {
-          name: 'Zuweisung und Termin speichern',
-        })
-        .closest('fieldset') as HTMLFieldSetElement
+      screen.getByRole('button', {
+        name: 'Zuweisung und Termin speichern',
+      }) as HTMLButtonElement
     ).disabled,
+  ).toBe(true);
+  expect(
+    (screen.getByRole('group', { name: 'Termin' }) as HTMLFieldSetElement)
+      .disabled,
   ).toBe(true);
   cleanup();
   fetcher.mockResolvedValue(Response.json({ invalid: 'synthetic' }));
@@ -265,7 +273,9 @@ test('load errors, empty resource lists, and unavailable periods remain explicit
       name: 'Verfügbarkeit prüfen: Fictional box · Einheit 1',
     }),
   );
-  await screen.findByText('Zeitraum und UTC-Versatz prüfen.');
+  await screen.findByText(
+    'Für die Prüfung zuerst einen vollständigen, gültigen Zeitraum angeben.',
+  );
 });
 test('preview failures and invalid or ambiguous time input do not claim availability', async () => {
   const fetcher = vi
@@ -286,12 +296,14 @@ test('preview failures and invalid or ambiguous time input do not claim availabi
   fetcher.mockRejectedValue(Error('offline'));
   submit();
   await screen.findByText(/Verbindung fehlgeschlagen/);
-  fireEvent.change(
-    screen.getByLabelText('Eventbeginn für die Disposition', { exact: true }),
-    { target: { value: '2030-03-31T02:30' } },
-  );
+  const start = screen.getByLabelText('Eventbeginn', { exact: true });
+  const callsBefore = fetcher.mock.calls.length;
+  fireEvent.change(start, { target: { value: '2030-03-31T02:30' } });
   submit();
-  await screen.findByText('Zeitraum und UTC-Versatz prüfen.');
+  await screen.findByText(/existiert an diesem Tag nicht/);
+  expect(fetcher.mock.calls).toHaveLength(callsBefore);
+  expect(document.activeElement).toBe(start);
+  expect((start as HTMLInputElement).value).toBe('2030-03-31T02:30');
 });
 
 test('import review reuses assignment controls through its own protected endpoint and strips read-only metadata', async () => {
@@ -399,8 +411,10 @@ test('a retry keeps unsaved resource input and reports the dirty state upward', 
   submit();
   await screen.findByText('Zuweisung und Termin gespeichert.');
   await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
-  const date = screen.getByLabelText('Buchungsdatum') as HTMLInputElement;
-  fireEvent.change(date, { target: { value: '2030-10-17' } });
+  const start = screen.getByLabelText('Eventbeginn', {
+    exact: true,
+  }) as HTMLInputElement;
+  fireEvent.change(start, { target: { value: '2030-10-18T18:00' } });
   expect(dirty).toHaveBeenLastCalledWith(true);
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   fireEvent.click(
@@ -410,7 +424,7 @@ test('a retry keeps unsaved resource input and reports the dirty state upward', 
     'Ungespeicherte Eingaben verwerfen und neu laden?',
   );
   expect(changed).toHaveBeenCalledOnce();
-  expect(date.value).toBe('2030-10-17');
+  expect(start.value).toBe('2030-10-18T18:00');
   failReload = false;
   confirm.mockReturnValue(true);
   fireEvent.click(
@@ -423,4 +437,304 @@ test('a retry keeps unsaved resource input and reports the dirty state upward', 
   );
   expect(changed).toHaveBeenCalledTimes(2);
   expect(dirty).toHaveBeenLastCalledWith(false);
+});
+
+const payload = (fetcher: ReturnType<typeof vi.fn>) =>
+  JSON.parse(
+    String(
+      fetcher.mock.calls.find(([, options]) => options?.method === 'PUT')?.[1]
+        ?.body,
+    ),
+  );
+const mountFor = (rows: unknown[], changed = vi.fn(async () => {})) => {
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    options ? Response.json(event) : Response.json(rows),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <ResourceAssignments event={event} csrfToken="csrf" onChanged={changed} />,
+  );
+  return { fetcher, changed };
+};
+const openAdvanced = () =>
+  fireEvent.click(screen.getByText(/Erweitert: eigener Dispositionszeitraum/));
+
+test('a spring gap is reported at the field and never submitted', async () => {
+  const { fetcher } = mountFor([{ ...resource, selected: true }]);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const start = screen.getByLabelText('Eventbeginn', { exact: true });
+  fireEvent.change(screen.getByLabelText('Eventende', { exact: true }), {
+    target: { value: '2030-03-31T04:00' },
+  });
+  fireEvent.change(start, { target: { value: '2030-03-31T02:30' } });
+  submit();
+  await screen.findByText(/existiert an diesem Tag nicht/);
+  expect(fetcher.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(false);
+  expect(document.activeElement).toBe(start);
+  expect((start as HTMLInputElement).value).toBe('2030-03-31T02:30');
+});
+
+test('both repeated autumn hours need an explicit, distinct choice per field', async () => {
+  const { fetcher } = mountFor([resource]);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  fireEvent.change(screen.getByLabelText('Eventbeginn', { exact: true }), {
+    target: { value: '2030-10-27T02:30' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende', { exact: true }), {
+    target: { value: '2030-10-27T02:45' },
+  });
+  const startChoice = screen.getByLabelText('Uhrzeitwahl Eventbeginn');
+  const endChoice = screen.getByLabelText('Uhrzeitwahl Eventende');
+  submit();
+  expect(fetcher.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(false);
+  expect(document.activeElement).toBe(startChoice);
+  await screen.findAllByText(/gibt es an diesem Tag zweimal/);
+  fireEvent.change(startChoice, { target: { value: 'earlier' } });
+  fireEvent.change(endChoice, { target: { value: 'later' } });
+  submit();
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  const body = payload(fetcher);
+  expect(body.startsAt).toBe('2030-10-27T00:30:00Z');
+  expect(body.endsAt).toBe('2030-10-27T01:45:00Z');
+  expect(body.eventDate).toBe('2030-10-27');
+});
+
+test('an unchanged saved time inside the repeated hour keeps its exact instant', async () => {
+  const ambiguous = {
+    ...event,
+    startsAt: '2030-10-27T00:30:00.500Z',
+    endsAt: '2030-10-27T01:45:00.750Z',
+    eventDate: '2030-10-27',
+  };
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    options ? Response.json(ambiguous) : Response.json([resource]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <ResourceAssignments
+      event={ambiguous}
+      csrfToken="csrf"
+      onChanged={async () => {}}
+    />,
+  );
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  expect(
+    (screen.getByLabelText('Uhrzeitwahl Eventbeginn') as HTMLSelectElement)
+      .value,
+  ).toBe('earlier');
+  submit();
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  expect(payload(fetcher)).toMatchObject({
+    startsAt: '2030-10-27T00:30:00.500Z',
+    endsAt: '2030-10-27T01:45:00.750Z',
+    eventDate: '2030-10-27',
+  });
+  // A deliberate switch to the other occurrence of the same wall clock wins.
+  fireEvent.change(screen.getByLabelText('Uhrzeitwahl Eventbeginn'), {
+    target: { value: 'later' },
+  });
+  submit();
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([, o]) => o?.method === 'PUT'),
+    ).toHaveLength(2),
+  );
+  const puts = fetcher.mock.calls.filter(([, o]) => o?.method === 'PUT');
+  expect(JSON.parse(String(puts[1]![1]?.body))).toMatchObject({
+    startsAt: '2030-10-27T01:30:00.5Z',
+    endsAt: '2030-10-27T01:45:00.750Z',
+    eventDate: '2030-10-27',
+  });
+});
+
+test('a changed date never reuses the previous summer or winter offset', async () => {
+  const summer = {
+    ...event,
+    startsAt: '2030-07-15T16:00:00Z',
+    endsAt: '2030-07-15T18:00:00Z',
+    eventDate: '2030-07-15',
+  };
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    options ? Response.json(summer) : Response.json([resource]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const changed = vi.fn(async () => {});
+  render(
+    <ResourceAssignments event={summer} csrfToken="csrf" onChanged={changed} />,
+  );
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  fireEvent.change(screen.getByLabelText('Eventbeginn', { exact: true }), {
+    target: { value: '2030-12-15T18:00' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende', { exact: true }), {
+    target: { value: '2030-12-15T20:00' },
+  });
+  submit();
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  expect(payload(fetcher)).toMatchObject({
+    startsAt: '2030-12-15T17:00:00Z',
+    endsAt: '2030-12-15T19:00:00Z',
+    eventDate: '2030-12-15',
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn', { exact: true }), {
+    target: { value: '2030-07-16T18:00' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende', { exact: true }), {
+    target: { value: '2030-07-16T20:00' },
+  });
+  submit();
+  await waitFor(() => expect(changed).toHaveBeenCalledTimes(2));
+  const puts = fetcher.mock.calls.filter(([, o]) => o?.method === 'PUT');
+  expect(JSON.parse(String(puts[1]![1]?.body))).toMatchObject({
+    startsAt: '2030-07-16T16:00:00Z',
+    endsAt: '2030-07-16T18:00:00Z',
+    eventDate: '2030-07-16',
+  });
+});
+
+test('the derived business date is read-only until the start is cleared', async () => {
+  const { fetcher } = mountFor([resource]);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const date = screen.getByLabelText('Eventdatum') as HTMLInputElement;
+  expect(date.readOnly).toBe(true);
+  expect(date.value).toBe('2030-10-16');
+  expect(screen.getByText(/Wird aus dem Beginn übernommen/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Eventbeginn', { exact: true }), {
+    target: { value: '2030-10-17T00:30' },
+  });
+  expect(date.value).toBe('2030-10-17');
+  fireEvent.change(screen.getByLabelText('Eventbeginn', { exact: true }), {
+    target: { value: '' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende', { exact: true }), {
+    target: { value: '' },
+  });
+  expect(date.readOnly).toBe(false);
+  fireEvent.change(date, { target: { value: '2030-10-20' } });
+  submit();
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  expect(payload(fetcher)).toMatchObject({
+    startsAt: null,
+    endsAt: null,
+    eventDate: '2030-10-20',
+  });
+  fireEvent.change(date, { target: { value: '' } });
+  submit();
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([, o]) => o?.method === 'PUT'),
+    ).toHaveLength(2),
+  );
+  const puts = fetcher.mock.calls.filter(([, o]) => o?.method === 'PUT');
+  expect(JSON.parse(String(puts[1]![1]?.body))).toMatchObject({
+    startsAt: null,
+    endsAt: null,
+    eventDate: null,
+  });
+});
+
+test('a stored custom schedule stays visible and is preserved while collapsed', async () => {
+  const custom = {
+    ...resource,
+    selected: true,
+    periodSource: 'manual',
+    baseStart: '2030-10-01T10:00:00Z',
+    baseEnd: '2030-10-02T10:00:00Z',
+  };
+  const { fetcher } = mountFor([custom]);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const details = screen
+    .getByText(/Erweitert: eigener Dispositionszeitraum/)
+    .closest('details') as HTMLDetailsElement;
+  expect(details.open).toBe(false);
+  expect(
+    screen.getByText(/gespeichert: .*01\.10\.2030.*02\.10\.2030/),
+  ).toBeTruthy();
+  submit();
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  expect(payload(fetcher).assignments[0]).toEqual({
+    unitId: 'synthetic-box',
+    periodSource: 'manual',
+    baseStart: '2030-10-01T10:00:00Z',
+    baseEnd: '2030-10-02T10:00:00Z',
+  });
+});
+
+test('an invalid time hidden in the advanced section is revealed and focused', async () => {
+  const custom = {
+    ...resource,
+    selected: true,
+    periodSource: 'manual',
+    baseStart: '2030-03-30T10:00:00Z',
+    baseEnd: '2030-03-30T18:00:00Z',
+  };
+  const { fetcher } = mountFor([custom]);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  openAdvanced();
+  const end = screen.getByLabelText(
+    'Dispositionsende: Fictional box · Einheit 1',
+  );
+  fireEvent.change(end, { target: { value: '2030-03-31T02:30' } });
+  fireEvent.click(screen.getByText(/Erweitert: eigener Dispositionszeitraum/));
+  const details = screen
+    .getByText(/Erweitert: eigener Dispositionszeitraum/)
+    .closest('details') as HTMLDetailsElement;
+  expect(details.open).toBe(false);
+  submit();
+  await screen.findByText(/existiert an diesem Tag nicht/);
+  expect(details.open).toBe(true);
+  expect(document.activeElement).toBe(end);
+  expect(fetcher.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(false);
+});
+
+test('incomplete or reversed event and custom periods are explained per field', async () => {
+  const custom = {
+    ...resource,
+    selected: true,
+    periodSource: 'manual',
+    baseStart: '2030-10-16T10:00:00Z',
+    baseEnd: '2030-10-16T12:00:00Z',
+  };
+  const { fetcher } = mountFor([custom]);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const start = screen.getByLabelText('Eventbeginn', { exact: true });
+  const end = screen.getByLabelText('Eventende', { exact: true });
+  fireEvent.change(end, { target: { value: '' } });
+  submit();
+  await screen.findByText('Bitte auch das Ende angeben.');
+  expect(document.activeElement).toBe(end);
+  fireEvent.change(end, { target: { value: '2030-10-15T18:00' } });
+  submit();
+  await screen.findByText('Das Ende muss nach dem Beginn liegen.');
+  fireEvent.change(start, { target: { value: '' } });
+  submit();
+  await screen.findByText('Bitte auch den Beginn angeben.');
+  fireEvent.change(end, { target: { value: '' } });
+  openAdvanced();
+  fireEvent.change(
+    screen.getByLabelText('Dispositionsbeginn: Fictional box · Einheit 1'),
+    { target: { value: '' } },
+  );
+  submit();
+  await screen.findByText('Bitte einen Dispositionsbeginn angeben.');
+  expect(document.activeElement).toBe(
+    screen.getByLabelText('Dispositionsbeginn: Fictional box · Einheit 1'),
+  );
+  fireEvent.change(
+    screen.getByLabelText('Dispositionsbeginn: Fictional box · Einheit 1'),
+    { target: { value: '2030-10-16T12:00' } },
+  );
+  fireEvent.change(
+    screen.getByLabelText('Dispositionsende: Fictional box · Einheit 1'),
+    { target: { value: '' } },
+  );
+  submit();
+  await screen.findByText('Bitte ein Dispositionsende angeben.');
+  fireEvent.change(
+    screen.getByLabelText('Dispositionsende: Fictional box · Einheit 1'),
+    { target: { value: '2030-10-16T10:00' } },
+  );
+  submit();
+  await screen.findByText('Das Dispositionsende muss nach dem Beginn liegen.');
+  expect(fetcher.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(false);
 });

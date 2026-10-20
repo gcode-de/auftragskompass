@@ -766,13 +766,21 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         exact: true,
       }),
     ).toHaveValue('booked');
-    await assignment.getByLabel('Buchungsdatum').fill('2030-10-20');
+    // The business date follows the local start day and is read-only.
+    const assignmentDate = assignment.getByLabel('Eventdatum');
+    await expect(assignmentDate).toHaveAttribute('readonly', '');
+    await expect(assignment.getByLabel(/UTC-Versatz/)).toHaveCount(0);
+    const fb2 = assignment.getByRole('group', { name: /FB2 · Einheit 1/ });
+    await fb2.getByText(/^Erweitert: eigener Dispositionszeitraum/).click();
+    await expect(fb2.getByLabel('Zeitraum: FB2 · Einheit 1')).toBeVisible();
+    await fb2.getByText(/^Erweitert: eigener Dispositionszeitraum/).click();
     await assignment
-      .getByLabel('Eventbeginn für die Disposition', { exact: true })
+      .getByLabel('Eventbeginn', { exact: true })
       .fill('2030-10-20T18:00');
     await assignment
-      .getByLabel('Eventende für die Disposition', { exact: true })
+      .getByLabel('Eventende', { exact: true })
       .fill('2030-10-20T20:00');
+    await expect(assignmentDate).toHaveValue('2030-10-20');
     await assignment
       .getByRole('button', {
         name: 'Verfügbarkeit prüfen: FB2 · Einheit 1',
@@ -1029,10 +1037,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       exact: true,
     });
     await review
-      .getByLabel('Eventbeginn für die Disposition', { exact: true })
+      .getByLabel('Eventbeginn', { exact: true })
       .fill('2030-10-27T18:00');
     await review
-      .getByLabel('Eventende für die Disposition', { exact: true })
+      .getByLabel('Eventende', { exact: true })
       .fill('2030-10-27T20:00');
     await review
       .getByLabel('FB2 · Einheit 1 zuweisen', { exact: true })
@@ -1107,10 +1115,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await currentRecord
         .getByRole('button', { name: 'Ressourcen', exact: true })
         .click();
-      const dispositionStart = currentRecord.getByLabel(
-        'Eventbeginn für die Disposition',
-        { exact: true },
-      );
+      const dispositionStart = currentRecord.getByLabel('Eventbeginn', {
+        exact: true,
+      });
       await dispositionStart.fill('2030-10-27T16:30');
       await currentRecord
         .getByRole('button', { name: 'Notizen', exact: true })

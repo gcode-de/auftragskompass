@@ -15,7 +15,7 @@ export function EventTimeField({
   error,
   onChange,
 }: {
-  name: 'startsAt' | 'endsAt';
+  name: string;
   label: string;
   timeZone: string;
   instant: string | null;

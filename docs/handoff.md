@@ -1,6 +1,6 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **20.10.2026**, nach C051.3 und H025. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand: **20.10.2026**, nach C051.3, H025 und H026. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
 ## In der nächsten Session zuerst
 
@@ -37,13 +37,21 @@ C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pau
 
 ## Letzter geprüfter Laufzeitstand
 
+### Arbeitsnachtrag 20.10.2026 (H026: Termin und Ressourcenzuweisung ohne manuelle Versätze)
+
+Branch `codex/ux-event-simplification`. Die Eventakte zeigt Termin, Buchungsstatus und Einheiten in einem Formular mit einer ausdrücklichen Speicherung. Eventbeginn und Eventende werden nur noch lokal eingegeben; `EventTimeField`/`event-time.ts` lösen den Versatz in der Eventzeitzone auf. Doppelte Herbst-Uhrzeiten verlangen eine getrennte Auswahl für Beginn und Ende, Frühjahrslücken einen Feldfehler mit Fokus und ohne Mutation. Ein unveränderter gespeicherter Zeitpunkt bleibt exakt erhalten (auch doppelte Stunde, Sekunden, Millisekunden); eine bewusste andere Auswahl derselben Wanduhrzeit hat Vorrang. Nach einer Datumsänderung wird kein alter Versatz weiterverwendet (Sommer→Winter und Winter→Sommer geprüft). Das Eventdatum folgt dem lokalen Starttag, ist dann schreibgeschützt und nach dem Leeren des Beginns wieder eingebbar; Datum ohne Uhrzeiten und undatiertes Event bleiben möglich. Eigene Dispositionszeiträume je Einheit liegen unter „Erweitert“, nennen ihre gespeicherten Werte schon im zugeklappten Zustand, werden unverändert übernommen und bei einem verborgenen Fehler geöffnet und fokussiert. Speichern-Erfolg und Ladefehler bleiben getrennt, ungespeicherte Eingaben werden vor einem erneuten Laden nur nach Bestätigung verworfen. Keine Server-, API-, Datenbank- oder Migrationsänderung; Pflichtprüfungen zu Quelle, Prüfstatus, Fotobox und Belegung bleiben unverändert.
+
+Lokal grün: Format, Lint, Typen, Build, 187 Unit-, 195 Komponenten- und 237 Integrationstests, der Chromium-Passwort- und -Google-Ablauf, Coverage 97,67 % Zeilen und 94,62 % Zweige (geänderter Code 100 % Zeilen, 95,3 % Zweige). Die tatsächliche DOM-Geometrie wurde mit dem gebauten Admin-Bundle und erfundenen Daten in Chromium gemessen: bei 1280 px stehen Datum, Beginn und Ende in einer Zeile, bei 390 px gestapelt, jeweils ohne horizontalen Überlauf; „Erweitert“ öffnet über den echten Summary-Klick. **Kein Testbetriebs-Update, kein Deployment, kein Merge nach `main`.**
+
+Offen und bewusst nicht in diesem Slice: die manuellen UTC-Versatzfelder der zeitweisen Ressourcensperren (`ResourceBlocks.tsx`) und eine eigene Führung für gleichzeitige 409-Konflikte in der Akte.
+
 ### Arbeitsnachtrag 20.10.2026 (H025: Härtung des Event-Editors nach der Prüfung)
 
 Branch `codex/ux-event-simplification`. Der Slice behebt ausschließlich bestätigte Befunde der beiden unabhängigen Prüfungen zu H023/H024: „Weitere Angaben“ nutzt die volle Formularbreite mit einem responsiven Feldraster (im echten Chromium-DOM gemessen: 1238 px in einem 1280-px-Gitter, vier Spalten, 21 px Rand beidseitig; mobil 345,8 px, eine Spalte, kein horizontaler Überlauf; vorher 297,5 px in einer Spalte), ein aus dem Beginn abgeleitetes Datum ist schreibgeschützt und erklärt, dass es dem Starttag folgt, weitere Kontakte werden ohne den Hauptkontakt normalisiert statt mit einer unsichtbaren Blockade zu enden, ein erneutes Laden der Akte verlangt bei ungespeicherten Status- oder Ressourceneingaben eine Bestätigung und verwendet danach die frisch geladene Version, jeder erfolgreiche Listenabruf löscht einen alten Neuladehinweis, eine bestätigte Ressourcenspeicherung bleibt bei fehlgeschlagener Listenabfrage im stabilen Elternteil sichtbar, und Hinweistext und Schaltfläche sind getrennt. Keine Server-, API-, Datenbank- oder Migrationsänderung.
 
 Lokal grün: Format, Lint, Typen, Build, 187 Unit-, 187 Komponenten- und 237 Integrationstests, alle vier Chromium-Abläufe, Coverage 97,64 % Zeilen und 94,66 % Zweige. Der Chromium-Ablauf prüft die Schreibsperre des Datums und den Datumswechsel 16.10.→16.11. über den Beginn. **Kein Testbetriebs-Update, kein Deployment, kein Merge nach `main`.**
 
-Offen und bewusst nicht in diesem Slice: die UTC-Versatzfelder der Ressourcen- und Sperrdisposition (weiterhin manuelle Versätze) und eine eigene Führung für gleichzeitige 409-Konflikte in der Akte, die heute nur eine Meldung mit Aufforderung zum Neuladen erzeugt.
+Offen und bewusst nicht in diesem Slice: die UTC-Versatzfelder der Ressourcen- und Sperrdisposition (weiterhin manuelle Versätze; die Ressourcendisposition der Eventakte wurde in H026 ohne Versatzfelder umgesetzt, die zeitweisen Sperren bleiben offen) und eine eigene Führung für gleichzeitige 409-Konflikte in der Akte, die heute nur eine Meldung mit Aufforderung zum Neuladen erzeugt.
 
 ### Arbeitsnachtrag 20.10.2026 (H022: Zeitumstellung ohne UTC-Versatzfelder)
 

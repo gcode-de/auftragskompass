@@ -20,6 +20,10 @@ Die Oberfläche trennt eine bestätigte Schreibantwort von einem anschließenden
 
 Anfrage, Option, Nicht verfügbar und Annulliert sind bearbeitbar. Annullieren erhält den Datensatz. **Gebucht bleibt bis C023 gesperrt**, weil ein bestätigter Auftrag eine geprüfte konkrete Ressourcenzuweisung benötigt. C018 erzeugt noch keine Reservierung und ist keine Kapazitätszusage. Suche und Filter stehen ab C019 bereit, die Eventakte mit Logbuch ab C020. Der Kalender folgt mit C025.
 
+## Ressourcen und Termin in der Eventakte
+
+Die Ressourcenzuweisung bearbeitet Termin, Buchungsstatus und Einheiten in einem Formular mit einer ausdrücklichen Speicherung. Der Terminblock verwendet dieselben lokalen Datum-/Uhrzeitfelder wie der Event-Editor; UTC-Versätze werden nicht eingegeben, doppelte Herbst-Uhrzeiten verlangen eine Auswahl, Frühjahrslücken erzeugen einen Feldfehler und fokussieren das betroffene Feld. Ein unveränderter gespeicherter Zeitpunkt bleibt exakt erhalten. Das Eventdatum folgt dem lokalen Starttag und ist dann schreibgeschützt; ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event möglich. Eigene Dispositionszeiträume einer Einheit liegen unter „Erweitert“, nennen ihre gespeicherten Werte bereits im zugeklappten Zustand und werden unverändert übernommen. Bei einem verborgenen fehlerhaften Feld öffnet die Prüfung den Bereich und fokussiert es, statt zu speichern. Erfolgreiches Speichern und ein anschließender Ladefehler bleiben getrennt; ungespeicherte Eingaben werden vor einem erneuten Laden nur nach Bestätigung verworfen.
+
 ## API v1
 
 - `GET /api/v1/events`: `{timeZone, events}` mit der aktuellen Mandantenzeitzone und den Events.
