@@ -2,6 +2,7 @@ import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
 import { EventDocuments } from './EventDocuments.js';
 import { useAutoRefresh } from './auto-refresh.js';
+import { registerUnsavedChanges } from './unsaved-changes.js';
 import { useEffect, useRef, useState } from 'react';
 import type { EventRow } from './EventPanel.js';
 type Detail = {
@@ -122,6 +123,10 @@ export function EventDetails({
     () => () => {
       ++loadSequence.current;
     },
+    [],
+  );
+  useEffect(
+    () => registerUnsavedChanges(() => dirty.current || resourcesDirty.current),
     [],
   );
   useEffect(() => {
@@ -367,10 +372,24 @@ export function EventDetails({
               </fieldset>
             </form>
             <button
+              type="button"
+              className="icon-action"
+              aria-label={`Stammdaten bearbeiten: ${data.event.name}`}
+              title="Event bearbeiten"
               disabled={busy || loading}
               onClick={() => onEdit(data.event)}
             >
-              Stammdaten bearbeiten
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
             </button>
             <EventDocuments
               key={data.event.id}

@@ -105,6 +105,15 @@ test('calendar navigation, empty views, free and unavailable resources, and refr
   vi.stubGlobal('fetch', fetcher);
   render(<CalendarPanel />);
   await screen.findByText('Keine Events in diesem Zeitraum.');
+  for (const [name, title] of [
+    ['Vorheriger Zeitraum', 'Vorheriger Zeitraum'],
+    ['Heute im Kalender', 'Heute im Kalender'],
+    ['Nächster Zeitraum', 'Nächster Zeitraum'],
+  ] as const) {
+    const action = screen.getByRole('button', { name });
+    expect(action.getAttribute('title')).toBe(title);
+    expect(action.textContent).toBe('');
+  }
   expect(screen.getAllByText('Frei').length).toBeGreaterThan(0);
   expect(screen.getByText('Allgemein gesperrt')).toBeTruthy();
   expect(screen.getByText('Inaktive Einheit')).toBeTruthy();

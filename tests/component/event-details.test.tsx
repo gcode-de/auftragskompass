@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { clickLink } from '../helpers/click-link.js';
 import {
   act,
   cleanup,
@@ -6,8 +7,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { EventDetails } from '../../apps/admin/src/EventDetails.js';
+import { Navigation } from '../../apps/admin/src/Navigation.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -135,9 +138,12 @@ test('event details collect contacts, venue, notes and activities and save statu
       body: expect.stringContaining('"version":1'),
     }),
   );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Stammdaten bearbeiten' }),
-  );
+  const editButton = screen.getByRole('button', {
+    name: 'Stammdaten bearbeiten: Synthetic detail event',
+  });
+  expect(editButton.getAttribute('title')).toBe('Event bearbeiten');
+  expect(editButton.textContent).toBe('');
+  fireEvent.click(editButton);
   expect(edit).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }));
   fireEvent.click(screen.getByRole('button', { name: 'Eventakte schließen' }));
   expect(close).toHaveBeenCalledOnce();
@@ -671,4 +677,99 @@ test('changing the event id with the same version still loads the other file', a
   await screen.findByRole('heading', {
     name: 'Eventakte: Synthetic other file',
   });
+});
+
+test('home links ask before discarding a dirty event detail and cancel keeps route and input', async () => {
+  window.history.replaceState(null, '', '/#event-synthetic');
+  const fetcher = vi.fn(async () => Response.json(detail));
+  vi.stubGlobal('fetch', fetcher);
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(
+    <>
+      <Navigation />
+      <EventDetails
+        statuses={statuses}
+        id="synthetic-event"
+        csrfToken="csrf"
+        onChanged={vi.fn()}
+        onEdit={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </>,
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  const brand = within(screen.getByLabelText('Arbeitsbereiche')).getByRole(
+    'link',
+    { name: 'AuftragsKompass – zur Eventübersicht' },
+  );
+  const title = screen.getByRole('link', {
+    name: 'Events – zur Eventübersicht',
+  });
+  expect(clickLink(brand)).toBe(false);
+  expect(confirm).not.toHaveBeenCalled();
+  window.history.replaceState(null, '', '/#event-synthetic');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  const status = () =>
+    screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement;
+  fireEvent.change(status(), { target: { value: 'option' } });
+  for (const link of [brand, title]) {
+    confirm.mockClear();
+    expect(clickLink(link)).toBe(true);
+    expect(confirm).toHaveBeenCalledWith(
+      'Ungespeicherte Eingaben verwerfen und zur Eventübersicht wechseln?',
+    );
+    expect(window.location.hash).toBe('#event-synthetic');
+    expect(status().value).toBe('option');
+  }
+  confirm.mockReturnValue(true);
+  expect(clickLink(title)).toBe(false);
+});
+
+test('global search asks before leaving a dirty event detail', async () => {
+  window.history.replaceState(null, '', '/#event-synthetic');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(detail)),
+  );
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(
+    <>
+      <Navigation />
+      <EventDetails
+        statuses={statuses}
+        id="synthetic-event"
+        csrfToken="csrf"
+        onChanged={vi.fn()}
+        onEdit={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </>,
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+    target: { value: 'option' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Suche öffnen' }));
+  const query = screen.getByLabelText('Globale Suche') as HTMLInputElement;
+  fireEvent.change(query, { target: { value: 'Synthetic search draft' } });
+  const form = screen
+    .getByRole('button', { name: 'Events und Kontakte suchen' })
+    .closest('form')!;
+  fireEvent.submit(form);
+  expect(confirm).toHaveBeenCalledWith(
+    'Ungespeicherte Eingaben verwerfen und zur Suche wechseln?',
+  );
+  expect(window.location.hash).toBe('#event-synthetic');
+  expect(
+    (screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement)
+      .value,
+  ).toBe('option');
+  expect(query.value).toBe('Synthetic search draft');
+  confirm.mockReturnValue(true);
+  fireEvent.submit(form);
+  expect(window.location.hash).toBe('#search');
 });

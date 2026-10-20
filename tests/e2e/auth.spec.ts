@@ -301,15 +301,62 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       page.getByRole('button', { name: 'Abmelden', exact: true }),
     ).toBeInViewport();
-    await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+    await page.getByRole('button', { name: /modus aktivieren/ }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await audit('events-desktop-dark');
     await page.reload();
     await expect(
-      page.getByRole('button', { name: 'Dunkelmodus' }),
+      page.getByRole('button', { name: /modus aktivieren/ }),
     ).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+    await page.getByRole('button', { name: /modus aktivieren/ }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(
+      page.getByRole('button', { name: 'Abmelden', exact: true }),
+    ).toHaveAttribute('title', 'Abmelden');
+    await expect(
+      page.getByRole('button', { name: /modus aktivieren/ }),
+    ).toHaveAttribute('title', /modus aktivieren/);
+    const sidebar = page.getByRole('complementary', {
+      name: 'Arbeitsbereiche',
+    });
+    const collapse = sidebar.getByRole('button', {
+      name: 'Navigation einklappen',
+    });
+    await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+    await collapse.click();
+    await expect(sidebar).toHaveClass(/collapsed/);
+    await expect(
+      sidebar.getByRole('button', { name: 'Navigation ausklappen' }),
+    ).toBeFocused();
+    await expect(
+      sidebar.getByRole('link', { name: 'Events', exact: true }),
+    ).toHaveAttribute('title', 'Events');
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(1281);
+    await page.reload();
+    await expect(sidebar).toHaveClass(/collapsed/);
+    const expand = sidebar.getByRole('button', {
+      name: 'Navigation ausklappen',
+    });
+    await expect(expand).toHaveAttribute('aria-expanded', 'false');
+    await expect(
+      sidebar.getByRole('link', {
+        name: 'AuftragsKompass – zur Eventübersicht',
+      }),
+    ).toHaveAttribute('title', 'AuftragsKompass – zur Eventübersicht');
+    await expand.click();
+    await expect(sidebar).not.toHaveClass(/collapsed/);
+    const resizeToggle = sidebar.getByRole('button', {
+      name: 'Navigation einklappen',
+    });
+    await resizeToggle.focus();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(
+      page.getByRole('button', { name: 'Menü öffnen' }),
+    ).toBeFocused();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await resizeToggle.focus();
     expect(
       (await context.cookies()).find((c) => c.name === '__Host-ak-session'),
     ).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });
@@ -394,7 +441,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         [1280, 'dark'],
       ] as const) {
         await page.setViewportSize({ width, height: 844 });
-        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
         if (
           (await toggle.getAttribute('aria-pressed')) !==
           String(theme === 'dark')
@@ -412,7 +459,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         });
       }
       await page.setViewportSize({ width: 1280, height: 720 });
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
     }
     await importPreview
       .getByLabel('Normalisierte Importdaten')
@@ -610,6 +657,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       name: 'Event anlegen',
       exact: true,
     });
+    await expect(createTrigger).toHaveAttribute('title', 'Event anlegen');
     await createTrigger.click();
     const createDialog = events.getByRole('dialog', { name: 'Neues Event' });
     await expect(createDialog).toBeVisible();
@@ -683,25 +731,34 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Anfrage'),
     ).toBeVisible();
-    await events
-      .getByRole('button', {
-        name: 'Eventakte öffnen: Synthetic browser event',
-      })
-      .click();
     await expect(
-      events.getByRole('button', {
-        name: 'Eventakte öffnen: Synthetic browser event',
+      events.getByRole('link', {
+        name: /Synthetic browser event/,
       }),
-    ).not.toBeVisible();
+    ).toHaveAttribute('href', /#event-/);
+    const editIcon = events.getByRole('button', {
+      name: 'Event bearbeiten: Synthetic browser event',
+    });
+    await expect(editIcon).toHaveAttribute('title', 'Event bearbeiten');
+    await expect(editIcon).toHaveText('');
+    const editBox = await editIcon.boundingBox();
+    expect(editBox!.width).toBeGreaterThanOrEqual(44);
+    expect(editBox!.height).toBeGreaterThanOrEqual(44);
+    const recordLink = events.getByRole('link', {
+      name: /Synthetic browser event/,
+    });
+    await recordLink.focus();
+    await page.keyboard.press('Enter');
+    await expect(recordLink).not.toBeVisible();
     await page.goBack();
     await expect(
-      events.getByRole('button', {
-        name: 'Eventakte öffnen: Synthetic browser event',
+      events.getByRole('link', {
+        name: /Synthetic browser event/,
       }),
     ).toBeVisible();
     await events
-      .getByRole('button', {
-        name: 'Eventakte öffnen: Synthetic browser event',
+      .getByRole('link', {
+        name: /Synthetic browser event/,
       })
       .click();
     await events.getByRole('button', { name: 'Notizen', exact: true }).click();
@@ -787,7 +844,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeVisible();
-    await events.getByText('Event anlegen', { exact: true }).click();
+    await events.getByRole('button', { name: 'Event anlegen' }).click();
     await events.getByText('Weitere Angaben', { exact: true }).click();
     await events
       .getByLabel('Eventname', { exact: true })
@@ -803,8 +860,8 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('button', { name: 'Event speichern', exact: true })
       .click();
     await events
-      .getByRole('button', {
-        name: 'Eventakte öffnen: Fictional resource booking',
+      .getByRole('link', {
+        name: /Fictional resource booking/,
       })
       .click();
     await record
@@ -904,7 +961,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       path: 'tests/test-results/calendar-day.png',
     });
     if (mode === 'password') {
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       const contrasts = await calendar
         .locator('.calendar-state')
         .evaluateAll((elements) =>
@@ -950,7 +1007,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         animations: 'disabled',
       });
       await page.setViewportSize({ width: 1280, height: 720 });
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
     }
 
     await calendar
@@ -998,7 +1055,8 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByRole('combobox', { name: 'Filterstatus', exact: true }),
     ).toHaveValue('cancelled');
-    await page.getByRole('link', { name: 'Suche', exact: true }).click();
+    await page.getByRole('button', { name: 'Suche öffnen' }).click();
+    await expect(page.getByLabel('Globale Suche')).toBeFocused();
     await page.getByLabel('Globale Suche').fill('Synthetic missing search');
     await page
       .getByRole('button', { name: 'Events und Kontakte suchen' })
@@ -1241,7 +1299,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         [1280, 'light'],
       ] as const) {
         await page.setViewportSize({ width, height: 844 });
-        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
         if (
           (await toggle.getAttribute('aria-pressed')) !==
           String(theme === 'dark')
@@ -1302,7 +1360,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         fullPage: true,
         animations: 'disabled',
       });
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       await audit('exports-desktop-dark');
       await page.screenshot({
         path: 'tests/test-results/exports-desktop-dark.png',
@@ -1316,7 +1374,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         fullPage: true,
         animations: 'disabled',
       });
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       await audit('exports-mobile-light');
       await page.screenshot({
         path: 'tests/test-results/exports-mobile-light.png',
@@ -1381,7 +1439,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         [390, 'light'],
       ] as const) {
         await page.setViewportSize({ width, height: 844 });
-        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
         if (
           (await toggle.getAttribute('aria-pressed')) !==
           String(theme === 'dark')
@@ -1445,14 +1503,29 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(391);
-      await page.getByRole('link', { name: 'Suche', exact: true }).click();
+      await expect(
+        page.getByRole('button', { name: /Navigation (ein|aus)klappen/ }),
+      ).toBeHidden();
+      await page.getByRole('button', { name: 'Suche öffnen' }).click();
       const search = page.getByLabel('Globale Suche');
-      await search.focus();
+      await expect(search).toBeFocused();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(391);
       expect(
         await search.evaluate((el) =>
           parseFloat(getComputedStyle(el).outlineWidth),
         ),
       ).toBeGreaterThanOrEqual(2);
+      await search.fill('Synthetic mobile draft');
+      await page.keyboard.press('Escape');
+      await expect(
+        page.getByRole('button', { name: 'Suche öffnen' }),
+      ).toBeFocused();
+      await page.getByRole('button', { name: 'Suche öffnen' }).click();
+      await expect(page.getByLabel('Globale Suche')).toHaveValue(
+        'Synthetic mobile draft',
+      );
       await page
         .getByRole('heading', { name: 'AuftragsKompass', exact: true })
         .scrollIntoViewIfNeeded();
@@ -1473,12 +1546,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       ).toEqual([0.22, 0.22]);
       await audit('mobile-menu-light');
       await page.keyboard.press('Escape');
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       await menuButton.click();
       await expect(menu).toHaveCSS('opacity', '1');
       await audit('mobile-menu-dark');
       await page.keyboard.press('Escape');
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       await menuButton.click();
       await expect(menu).toHaveCSS('opacity', '1');
 
@@ -1516,15 +1589,13 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await menuButton.click();
       await page.setViewportSize({ width: 1280, height: 720 });
       await expect(menu).not.toBeVisible();
-      await expect(
-        page.getByRole('link', { name: 'Suche', exact: true }),
-      ).toBeFocused();
+      await expect(page.getByLabel('Globale Suche')).toBeFocused();
       const sidebar = page.getByRole('complementary', {
         name: 'Arbeitsbereiche',
       });
       for (const theme of ['light', 'dark'] as const) {
         await page.setViewportSize({ width: 1280, height: 420 });
-        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
         if (
           (await toggle.getAttribute('aria-pressed')) !==
           String(theme === 'dark')
@@ -1550,7 +1621,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         await firstLink.click({ trial: true });
       }
       await page.setViewportSize({ width: 1280, height: 720 });
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: 'tests/test-results/menu-resize-desktop.png',
@@ -1582,9 +1653,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         path: 'tests/test-results/admin-mobile-events.png',
       });
       await page
-        .getByRole('button', { name: 'Dunkelmodus' })
+        .getByRole('button', { name: /modus aktivieren/ })
         .scrollIntoViewIfNeeded();
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
       await page.screenshot({
         path: 'tests/test-results/admin-mobile-dark.png',
@@ -1601,7 +1672,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         path: 'tests/test-results/admin-desktop-dark.png',
         animations: 'disabled',
       });
-      await page.getByRole('button', { name: 'Dunkelmodus' }).click();
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
       await page.screenshot({ path: 'tests/test-results/admin-desktop.png' });
     }
     if (mode === 'password') {
@@ -1656,11 +1727,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       const measurements = [];
       for (const width of [390, 1280]) {
         await page.setViewportSize({ width, height: 844 });
-        for (const [route, label, action] of [
-          ['events', 'Events', /^Eventakte öffnen: Fictional browser volume /],
+        for (const [route, label, role, action] of [
+          ['events', 'Events', 'link', /Fictional browser volume/],
           [
             'contacts',
             'Kontakte',
+            'button',
             /^Kontakt bearbeiten: Fictional browser volume /,
           ],
         ] as const) {
@@ -1669,7 +1741,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           await page.goto(origin + '/?q=Fictional+browser+volume#' + route);
           const list = page.getByRole('region', { name: label, exact: true });
           await expect(list).toHaveAttribute('aria-busy', 'false');
-          const actions = list.getByRole('button', { name: action });
+          const actions = list.getByRole(role, { name: action });
           await expect(actions).toHaveCount(500);
           await actions.first().click({ trial: true });
           const readyMs = await page.evaluate(
@@ -1756,7 +1828,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         [390, 'light'],
       ] as const) {
         await page.setViewportSize({ width, height: 844 });
-        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
         if (
           (await toggle.getAttribute('aria-pressed')) !==
           String(theme === 'dark')
@@ -1795,8 +1867,8 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       websiteInbox.getByText('Keine offenen Website-Eingänge vorhanden.'),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', {
-        name: 'Eventakte öffnen: Fictional Website Browser',
+      page.getByRole('link', {
+        name: /Fictional Website Browser/,
       }),
     ).toBeVisible();
     const websiteInquiry = (
@@ -1856,7 +1928,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         [390, 'light'],
       ] as const) {
         await page.setViewportSize({ width, height: 844 });
-        const toggle = page.getByRole('button', { name: 'Dunkelmodus' });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
         if (
           (await toggle.getAttribute('aria-pressed')) !==
           String(theme === 'dark')
@@ -1877,7 +1949,93 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await page.setViewportSize({ width: 1280, height: 720 });
     }
 
-    await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
+    // H031: the brand is a real fragment link. It must not reload the
+    // document, and a dirty event detail asks before discarding its input.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.evaluate(() => {
+      document.documentElement.dataset.fictionalH031 = 'kept';
+    });
+    const desktopBrand = page.getByRole('link', {
+      name: 'AuftragsKompass – zur Eventübersicht',
+    });
+    await expect(desktopBrand).toBeVisible();
+    await expect(desktopBrand).toHaveAttribute('href', '#events');
+    const detailStatus = page.getByLabel('Status in der Eventakte');
+    await detailStatus.selectOption('option');
+    let homePrompt = '';
+    page.once('dialog', (dialog) => {
+      homePrompt = dialog.message();
+      void dialog.dismiss();
+    });
+    await desktopBrand.click();
+    await expect(page).toHaveURL(/#event-/);
+    await expect(detailStatus).toHaveValue('option');
+    expect(homePrompt).toContain('Ungespeicherte Eingaben verwerfen');
+    page.once('dialog', (dialog) => void dialog.accept());
+    await desktopBrand.click();
+    await expect(page).toHaveURL(/#events$/);
+    expect(
+      await page.evaluate(() => document.documentElement.dataset.fictionalH031),
+    ).toBe('kept');
+    await page.getByRole('link', { name: 'Kalender', exact: true }).click();
+    await expect(page).toHaveURL(/#calendar$/);
+    await desktopBrand.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(desktopBrand).toBeFocused();
+    expect(
+      await desktopBrand.evaluate(
+        (element) => getComputedStyle(element).outlineStyle,
+      ),
+    ).not.toBe('none');
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#events$/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileTitle = page.getByRole('link', {
+      name: 'Kalender – zur Eventübersicht',
+    });
+    await page.evaluate(() => {
+      window.location.hash = 'calendar';
+    });
+    await expect(page).toHaveURL(/#calendar$/);
+    await expect(mobileTitle).toBeVisible();
+    await expect(page.getByLabel('Arbeitsbereiche')).toBeHidden();
+    await mobileTitle.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#events$/);
+    await page.getByRole('button', { name: 'Menü öffnen' }).click();
+    const menu = page.getByRole('dialog', { name: 'Menü' });
+    const mobileBrand = menu.getByRole('link', {
+      name: 'AuftragsKompass – zur Eventübersicht',
+    });
+    await expect(mobileBrand).toBeVisible();
+    await mobileBrand.click();
+    await expect(menu).toBeHidden();
+    await expect(page).toHaveURL(/#events$/);
+    expect(
+      await page.evaluate(() => document.documentElement.dataset.fictionalH031),
+    ).toBe('kept');
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    await sidebar
+      .getByRole('button', { name: 'Navigation einklappen' })
+      .click();
+    await page.route('**/auth/logout', (route) =>
+      route.fulfill({ status: 500, body: '' }),
+    );
+    const sidebarLogout = sidebar.getByRole('button', {
+      name: 'Abmelden',
+      exact: true,
+    });
+    await sidebarLogout.click();
+    const logoutFailure = sidebar.getByText(/Abmelden fehlgeschlagen/);
+    await expect(logoutFailure).toBeVisible();
+    await expect(logoutFailure).toHaveAttribute('role', 'status');
+    await expect(
+      sidebar.getByText('synthetic@example.invalid', { exact: true }),
+    ).toBeHidden();
+    await page.unroute('**/auth/logout');
+    await sidebarLogout.click();
     await expect(page.getByText('Abgemeldet')).toBeVisible();
     expect((await pool.query('SELECT * FROM sessions')).rowCount).toBe(0);
     const violations = () =>

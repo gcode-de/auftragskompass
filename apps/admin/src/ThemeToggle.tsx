@@ -39,11 +39,14 @@ export function ThemeToggle() {
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+  const nextAction =
+    theme === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren';
   return (
     <button
       type="button"
       className="theme-toggle"
-      aria-label="Dunkelmodus"
+      aria-label={nextAction}
+      title={nextAction}
       aria-pressed={theme === 'dark'}
       onClick={() => {
         const next = theme === 'dark' ? 'light' : 'dark';

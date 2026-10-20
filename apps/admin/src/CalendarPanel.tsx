@@ -185,26 +185,65 @@ export function CalendarPanel() {
         </label>
         <button
           type="button"
+          className="icon-action"
+          aria-label="Vorheriger Zeitraum"
+          title="Vorheriger Zeitraum"
           disabled={!data?.previousDate}
           onClick={() => setDate(data!.previousDate!)}
         >
-          Vorheriger Zeitraum
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
         </button>
         <button
           type="button"
+          className="icon-action"
+          aria-label="Heute im Kalender"
+          title="Heute im Kalender"
           onClick={() => {
             setDate('');
             setRevision((value) => value + 1);
           }}
         >
-          Heute im Kalender
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM12 14v4" />
+          </svg>
         </button>
         <button
           type="button"
+          className="icon-action"
+          aria-label="Nächster Zeitraum"
+          title="Nächster Zeitraum"
           disabled={!data?.nextDate}
           onClick={() => setDate(data!.nextDate!)}
         >
-          Nächster Zeitraum
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 6l6 6-6 6" />
+          </svg>
         </button>
       </fieldset>
       {loading && <p>Kalender wird geladen …</p>}

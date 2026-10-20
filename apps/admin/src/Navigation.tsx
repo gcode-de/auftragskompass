@@ -1,10 +1,30 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent as ReactFormEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
 import {
   useUrlSearch,
   updateUrlSearch,
   emptyEventFilters,
 } from './url-state.js';
 import { appVersionLabel } from './revision.js';
+import {
+  discardForHomeMessage,
+  discardForSearchMessage,
+  hasUnsavedChanges,
+} from './unsaved-changes.js';
+
+function sidebarPreference(): boolean {
+  try {
+    return localStorage.getItem('ak-sidebar') === 'collapsed';
+  } catch {
+    return false;
+  }
+}
 
 const links = [
   [
@@ -135,33 +155,129 @@ export function Navigation({ account }: { account?: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(sidebarPreference);
+  const [searchOpen, setSearchOpen] = useState(() => readRoute() === 'search');
+  const [searchDraft, setSearchDraft] = useState(q);
   const sidebar = useRef<HTMLElement>(null);
-  const searchLink = useRef<HTMLAnchorElement>(null);
+  const searchTrigger = useRef<HTMLButtonElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const restoreSearchFocus = useRef(false);
+  const sidebarHadFocus = useRef(false);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
     const viewport = window.matchMedia('(min-width: 901px)');
     const changed = () => {
-      if (!viewport.matches || !dialog.current!.open) return;
-      dialog.current!.close();
-      setOpen(false);
-      const current = sidebar.current!.querySelector<HTMLElement>(
-        'a[aria-current="page"]',
-      );
-      (current ?? searchLink.current!).focus();
+      if (viewport.matches) {
+        if (!dialog.current!.open) return;
+        dialog.current!.close();
+        setOpen(false);
+        const current = sidebar.current!.querySelector<HTMLElement>(
+          'a[aria-current="page"]',
+        );
+        (searchInput.current ?? current ?? searchTrigger.current)?.focus();
+        return;
+      }
+      if (dialog.current?.open) return;
+      if (
+        sidebarHadFocus.current ||
+        sidebar.current?.contains(document.activeElement)
+      ) {
+        sidebarHadFocus.current = false;
+        trigger.current?.focus();
+      }
     };
     viewport.addEventListener('change', changed);
     return () => viewport.removeEventListener('change', changed);
   }, []);
+  useEffect(() => {
+    const focused = (event: FocusEvent) => {
+      sidebarHadFocus.current = Boolean(
+        sidebar.current?.contains(event.target as Node),
+      );
+    };
+    document.addEventListener('focusin', focused);
+    return () => document.removeEventListener('focusin', focused);
+  }, []);
+  useEffect(() => {
+    const stored = (event: StorageEvent) => {
+      if (event.key === 'ak-sidebar' || event.key === null)
+        setCollapsed(sidebarPreference());
+    };
+    window.addEventListener('storage', stored);
+    return () => window.removeEventListener('storage', stored);
+  }, []);
+  useEffect(() => {
+    setSearchOpen(route === 'search');
+  }, [route]);
+  useEffect(() => {
+    setSearchDraft(q);
+  }, [q]);
+  useEffect(() => {
+    if (searchOpen) searchInput.current?.focus({ preventScroll: true });
+    else if (restoreSearchFocus.current) {
+      restoreSearchFocus.current = false;
+      searchTrigger.current?.focus({ preventScroll: true });
+    }
+  }, [searchOpen]);
 
   function closeMenu() {
     dialog.current!.close();
     setOpen(false);
     trigger.current?.focus();
   }
+  function toggleSidebar() {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem('ak-sidebar', next ? 'collapsed' : 'expanded');
+    } catch {
+      /* Browser privacy settings may disable preference storage. */
+    }
+  }
+  function closeSearch() {
+    restoreSearchFocus.current = true;
+    setSearchOpen(false);
+  }
+  function submitSearch(event: ReactFormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      route !== 'search' &&
+      hasUnsavedChanges() &&
+      !window.confirm(discardForSearchMessage)
+    )
+      return;
+    updateUrlSearch(
+      { ...emptyEventFilters, q: searchDraft },
+      route === 'search' ? undefined : 'search',
+    );
+    setSearchOpen(true);
+  }
+  function followHome(event: ReactMouseEvent<HTMLAnchorElement>) {
+    if (window.location.hash === '#events') {
+      event.preventDefault();
+      return;
+    }
+    if (hasUnsavedChanges() && !window.confirm(discardForHomeMessage))
+      event.preventDefault();
+  }
   function menu(showAccount = true) {
     return (
       <>
-        <p className="menu-brand">AuftragsKompass</p>
+        <a
+          className="menu-brand"
+          href="#events"
+          aria-label="AuftragsKompass – zur Eventübersicht"
+          title="AuftragsKompass – zur Eventübersicht"
+          onClick={(event) => {
+            followHome(event);
+            if (dialog.current?.open) closeMenu();
+          }}
+        >
+          <span className="brand-name">AuftragsKompass</span>
+          <span className="brand-mark" aria-hidden="true">
+            AK
+          </span>
+        </a>
         <p className="menu-caption">Dein Büro für Events</p>
         <p className="menu-caption">Version {appVersionLabel}</p>
         <nav aria-label="Hauptnavigation">
@@ -169,6 +285,8 @@ export function Navigation({ account }: { account?: ReactNode }) {
             <a
               key={id}
               href={'#' + id}
+              aria-label={label}
+              title={label}
               aria-current={
                 id === (settings ? 'settings' : route) ? 'page' : undefined
               }
@@ -187,7 +305,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
               >
                 <path d={path} />
               </svg>
-              {label}
+              <span className="nav-label">{label}</span>
             </a>
           ))}
         </nav>
@@ -201,15 +319,38 @@ export function Navigation({ account }: { account?: ReactNode }) {
     <>
       <aside
         ref={sidebar}
-        className="desktop-sidebar"
+        className={'desktop-sidebar' + (collapsed ? ' collapsed' : '')}
         aria-label="Arbeitsbereiche"
       >
+        <button
+          type="button"
+          className="sidebar-toggle"
+          aria-label={
+            collapsed ? 'Navigation ausklappen' : 'Navigation einklappen'
+          }
+          title={collapsed ? 'Navigation ausklappen' : 'Navigation einklappen'}
+          aria-expanded={!collapsed}
+          onClick={toggleSidebar}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d={collapsed ? 'M10 6l6 6-6 6' : 'M14 6l-6 6 6 6'} />
+          </svg>
+        </button>
         {menu()}
       </aside>
       <div className="workspace-toolbar">
         <button
           className="menu-trigger"
           aria-label="Menü öffnen"
+          title="Menü öffnen"
           ref={trigger}
           aria-haspopup="dialog"
           aria-controls="workspace-menu"
@@ -235,10 +376,100 @@ export function Navigation({ account }: { account?: ReactNode }) {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <p className="workspace-title">{title}</p>
-        <a ref={searchLink} className="search-shortcut" href="#search">
-          Suche
+        <a
+          className="workspace-title"
+          href="#events"
+          aria-label={`${title} – zur Eventübersicht`}
+          onClick={followHome}
+        >
+          {title}
         </a>
+        <div className={'global-search-shell' + (searchOpen ? ' open' : '')}>
+          {searchOpen ? (
+            <form className="global-search" onSubmit={submitSearch}>
+              <label className="sr-only" htmlFor="global-search-input">
+                Globale Suche
+              </label>
+              <input
+                id="global-search-input"
+                ref={searchInput}
+                type="search"
+                name="q"
+                maxLength={200}
+                placeholder="Events und Kontakte suchen"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeSearch();
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                className="icon-action"
+                aria-label="Events und Kontakte suchen"
+                title="Events und Kontakte suchen"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m16 16 5 5" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="icon-action"
+                aria-label="Suche schließen"
+                title="Suche schließen"
+                onClick={closeSearch}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
+            </form>
+          ) : (
+            <button
+              ref={searchTrigger}
+              type="button"
+              className="search-shortcut icon-action"
+              aria-label="Suche öffnen"
+              title="Suche öffnen"
+              aria-expanded={false}
+              onClick={() => {
+                restoreSearchFocus.current = false;
+                setSearchOpen(true);
+              }}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m16 16 5 5" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
       <dialog
         id="workspace-menu"
@@ -262,6 +493,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
         <button
           className="menu-close"
           aria-label="Menü schließen"
+          title="Menü schließen"
           onClick={closeMenu}
         >
           <svg
@@ -279,29 +511,6 @@ export function Navigation({ account }: { account?: ReactNode }) {
         </button>
         {menu(open)}
       </dialog>
-      <div hidden={route !== 'search'} className="search-panel">
-        <h2>Globale Suche</h2>
-        <p>
-          Events und Kontakte nach einem gemeinsamen Suchbegriff durchsuchen.
-        </p>
-        <form
-          className="global-search"
-          key={q}
-          onSubmit={(event) => {
-            event.preventDefault();
-            updateUrlSearch({
-              ...emptyEventFilters,
-              q: String(new FormData(event.currentTarget).get('q') ?? ''),
-            });
-          }}
-        >
-          <label>
-            Globale Suche
-            <input name="q" maxLength={200} defaultValue={q} />
-          </label>
-          <button>Events und Kontakte suchen</button>
-        </form>
-      </div>
     </>
   );
 }

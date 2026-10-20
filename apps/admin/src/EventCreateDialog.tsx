@@ -273,6 +273,7 @@ export function EventCreateDialog({
             type="button"
             className="secondary-action event-create-close"
             aria-label="Dialog schließen"
+            title="Dialog schließen"
             disabled={busy}
             onClick={() => {
               if (saving.current || busy) return;

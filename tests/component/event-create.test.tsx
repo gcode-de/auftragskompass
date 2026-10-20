@@ -258,6 +258,7 @@ test('Escape and close write nothing, keep the focus trap and return focus', asy
   await waitFor(() => expect(document.activeElement).toBe(trigger));
   await openCreate();
   const close = screen.getByRole('button', { name: 'Dialog schließen' });
+  expect(close.getAttribute('title')).toBe('Dialog schließen');
   const save = screen.getByRole('button', { name: 'Event speichern' });
   save.focus();
   fireEvent.keyDown(save, { key: 'Tab' });

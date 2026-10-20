@@ -400,10 +400,23 @@ export function EventPanel({
           <div className="section-actions">
             <button
               ref={createTrigger}
+              className="icon-action"
+              aria-label="Event anlegen"
+              title="Event anlegen"
               disabled={busy || editing || Boolean(draft)}
               onClick={() => openCreate()}
             >
-              Event anlegen
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
             </button>
           </div>
         </div>
@@ -824,35 +837,136 @@ export function EventPanel({
                   id={'event-' + row.id}
                   hidden={showingDetail && row.id !== detailId}
                 >
-                  <span hidden={showingDetail}>
-                    {row.name} –{' '}
-                    {row.eventDate
-                      ? row.eventDate.split('-').reverse().join('.')
-                      : 'Ohne Datum'}{' '}
-                    –{' '}
-                    {statuses.find((s) => s.code === row.status)?.label ??
-                      row.status}
-                  </span>{' '}
-                  <span hidden={showingDetail}>
-                    {types.find((type) => type.id === row.eventTypeId)?.name ??
-                      'Eventart offen'}{' '}
-                    {contacts.find((c) => c.id === row.primaryContactId)?.name}{' '}
-                    {locations.find((l) => l.id === row.locationId)?.name}
-                  </span>
-                  <p className="event-resource-hint" hidden={showingDetail}>
-                    Ressourcen in der Eventakte prüfen.
-                  </p>
-                  <button
-                    hidden={showingDetail}
-                    aria-label={`Eventakte öffnen: ${row.name}`}
-                    aria-expanded={detailId === row.id}
-                    onClick={() => {
-                      setDetailId(row.id);
-                      window.location.hash = 'event-' + row.id;
-                    }}
-                  >
-                    Eventakte öffnen
-                  </button>
+                  <div className="event-row" hidden={showingDetail}>
+                    <div className="event-summary-block">
+                      <a
+                        className="event-summary"
+                        href={'#event-' + row.id}
+                        onClick={(event) => {
+                          if (
+                            event.button !== 0 ||
+                            event.metaKey ||
+                            event.ctrlKey ||
+                            event.shiftKey ||
+                            event.altKey
+                          )
+                            return;
+                          if (window.getSelection?.()?.toString()) {
+                            event.preventDefault();
+                            return;
+                          }
+                          setDetailId(row.id);
+                        }}
+                      >
+                        <span className="event-title">
+                          {row.name} –{' '}
+                          {row.eventDate
+                            ? row.eventDate.split('-').reverse().join('.')
+                            : 'Ohne Datum'}{' '}
+                          –{' '}
+                          {statuses.find((s) => s.code === row.status)?.label ??
+                            row.status}
+                        </span>
+                        <span className="event-meta">
+                          {types.find((type) => type.id === row.eventTypeId)
+                            ?.name ?? 'Eventart offen'}{' '}
+                          {
+                            contacts.find((c) => c.id === row.primaryContactId)
+                              ?.name
+                          }{' '}
+                          {locations.find((l) => l.id === row.locationId)?.name}
+                        </span>
+                      </a>
+                      <p className="event-resource-hint">
+                        Ressourcen in der Eventakte prüfen.
+                      </p>
+                    </div>
+                    <div className="event-actions">
+                      <button
+                        type="button"
+                        className="icon-action"
+                        disabled={busy || editing}
+                        aria-label={`Event duplizieren: ${row.name}`}
+                        title="Event duplizieren"
+                        onClick={() => {
+                          const active = (
+                            choices: Choice[],
+                            id: string | null,
+                          ) =>
+                            choices.some(
+                              (choice) =>
+                                choice.id === id && choice.state === 'active',
+                            )
+                              ? id
+                              : null;
+                          const duplicatePrimary = active(
+                            contacts,
+                            row.primaryContactId,
+                          );
+                          openCreate({
+                            ...row,
+                            name: row.name.slice(0, 192) + ' (Kopie)',
+                            status: 'inquiry',
+                            timeZone,
+                            eventDate: row.startsAt
+                              ? localDateTime(row.startsAt, timeZone).slice(
+                                  0,
+                                  10,
+                                )
+                              : row.eventDate,
+                            eventTypeId: active(types, row.eventTypeId),
+                            packageId: active(packages, row.packageId),
+                            locationId: active(locations, row.locationId),
+                            primaryContactId: duplicatePrimary,
+                            additionalContactIds:
+                              row.additionalContactIds.filter(
+                                (id) =>
+                                  id !== duplicatePrimary &&
+                                  active(contacts, id),
+                              ),
+                          });
+                        }}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M9 9h10v10H9zM5 15H3V3h12v2" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-action"
+                        disabled={busy}
+                        aria-label={`Event bearbeiten: ${row.name}`}
+                        title="Event bearbeiten"
+                        onClick={(event) => {
+                          editReturnFocus.current = event.currentTarget;
+                          setCreating(false);
+                          setCreateInitial(null);
+                          setDraft(row);
+                          setEditing(true);
+                        }}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                   {detailId === row.id && (
                     <EventDetails
                       key={row.id}
@@ -884,63 +998,12 @@ export function EventPanel({
                         requestAnimationFrame(() =>
                           document
                             .getElementById('event-' + row.id)
-                            ?.querySelector<HTMLButtonElement>('button')
+                            ?.querySelector<HTMLAnchorElement>('.event-summary')
                             ?.focus(),
                         );
                       }}
                     />
                   )}
-                  <button
-                    disabled={busy || editing}
-                    hidden={showingDetail}
-                    aria-label={`Event duplizieren: ${row.name}`}
-                    onClick={() => {
-                      const active = (choices: Choice[], id: string | null) =>
-                        choices.some(
-                          (choice) =>
-                            choice.id === id && choice.state === 'active',
-                        )
-                          ? id
-                          : null;
-                      const duplicatePrimary = active(
-                        contacts,
-                        row.primaryContactId,
-                      );
-                      openCreate({
-                        ...row,
-                        name: row.name.slice(0, 192) + ' (Kopie)',
-                        status: 'inquiry',
-                        timeZone,
-                        eventDate: row.startsAt
-                          ? localDateTime(row.startsAt, timeZone).slice(0, 10)
-                          : row.eventDate,
-                        eventTypeId: active(types, row.eventTypeId),
-                        packageId: active(packages, row.packageId),
-                        locationId: active(locations, row.locationId),
-                        primaryContactId: duplicatePrimary,
-                        additionalContactIds: row.additionalContactIds.filter(
-                          (id) =>
-                            id !== duplicatePrimary && active(contacts, id),
-                        ),
-                      });
-                    }}
-                  >
-                    Duplizieren
-                  </button>
-                  <button
-                    disabled={busy}
-                    hidden={showingDetail}
-                    aria-label={`Event bearbeiten: ${row.name}`}
-                    onClick={(event) => {
-                      editReturnFocus.current = event.currentTarget;
-                      setCreating(false);
-                      setCreateInitial(null);
-                      setDraft(row);
-                      setEditing(true);
-                    }}
-                  >
-                    Bearbeiten
-                  </button>
                 </li>
               ))}
             </ul>

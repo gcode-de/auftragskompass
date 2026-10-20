@@ -169,7 +169,24 @@ export function ContactPanel({ csrfToken }: { csrfToken: string }) {
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
-        <button disabled={busy}>Suchen</button>
+        <button
+          className="icon-action"
+          aria-label="Kontakte durchsuchen"
+          title="Kontakte durchsuchen"
+          disabled={busy}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m16 16 5 5" />
+          </svg>
+        </button>
       </form>
       <a href="/api/v1/contacts/export.csv" download>
         Kontakte als CSV exportieren

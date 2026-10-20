@@ -1,5 +1,6 @@
 import { updateUrlSearch } from '../../apps/admin/src/url-state.js';
 import { afterEach, expect, test, vi } from 'vitest';
+import { clickLink } from '../helpers/click-link.js';
 import {
   act,
   cleanup,
@@ -9,6 +10,7 @@ import {
   within,
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
+import { Navigation } from '../../apps/admin/src/Navigation.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -65,7 +67,7 @@ function mocker(errors: string[] = [], supplied: Record<string, unknown> = {}) {
   });
 }
 function showForms() {
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
   screen.getByText(/^Filter(?: · aktiv)?$/).closest('details')!.open = true;
 }
 test('events create without date, retain formatted notes and edit/cancel with version checks', async () => {
@@ -307,7 +309,7 @@ test('older event search responses and failures cannot overwrite a newer result'
       }),
     );
     render(<EventPanel csrfToken="csrf" />);
-    fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
     const filter = screen
       .getByText(/^Filter(?: · aktiv)?$/)
       .closest('details')!;
@@ -332,7 +334,7 @@ test('a completed import refreshes visible events without discarding an unfinish
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   const view = render(<EventPanel csrfToken="fictional" revision={0} />);
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
   await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
   fireEvent.change(screen.getByLabelText('Eventname', { exact: true }), {
     target: { value: 'Fictional retained draft' },
@@ -448,8 +450,8 @@ test('opening, closing and editing a record returns to the correct list and edit
   );
   render(<EventPanel csrfToken="csrf" />);
   fireEvent.click(
-    await screen.findByRole('button', {
-      name: 'Eventakte öffnen: Synthetic event',
+    await screen.findByRole('link', {
+      name: /Synthetic event/,
     }),
   );
   await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
@@ -459,15 +461,18 @@ test('opening, closing and editing a record returns to the correct list and edit
       screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
     ).toBeNull(),
   );
-  const open = screen.getByRole('button', {
-    name: 'Eventakte öffnen: Synthetic event',
+  const open = screen.getByRole('link', {
+    name: /Synthetic event/,
   });
   await vi.waitFor(() => expect(document.activeElement).toBe(open));
   fireEvent.click(open);
   await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Stammdaten bearbeiten' }),
-  );
+  const detailEdit = screen.getByRole('button', {
+    name: 'Stammdaten bearbeiten: Synthetic event',
+  });
+  expect(detailEdit.getAttribute('title')).toBe('Event bearbeiten');
+  expect(detailEdit.textContent).toBe('');
+  fireEvent.click(detailEdit);
   expect(
     screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
   ).toBeNull();
@@ -477,6 +482,131 @@ test('opening, closing and editing a record returns to the correct list and edit
   expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
     'Synthetic event',
   );
+});
+
+test('event rows are direct links and their icon actions stay independent', async () => {
+  window.history.replaceState(null, '', '/#events');
+  let detailCalls = 0;
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url === '/api/v1/events/synthetic') {
+        detailCalls += 1;
+        return Response.json({
+          event: row,
+          contacts: [],
+          location: null,
+          eventType: null,
+          package: null,
+          activities: [],
+        });
+      }
+      return base(url);
+    }),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  const link = await screen.findByRole('link', {
+    name: /Synthetic event/,
+  });
+  expect(link.getAttribute('href')).toBe('#event-synthetic');
+  expect(link.textContent).toContain('Synthetic event');
+  expect(link.querySelector('a,button')).toBeNull();
+  expect(
+    screen.queryByRole('button', {
+      name: 'Eventakte öffnen: Synthetic event',
+    }),
+  ).toBeNull();
+  for (const [name, title] of [
+    ['Event anlegen', 'Event anlegen'],
+    ['Event bearbeiten: Synthetic event', 'Event bearbeiten'],
+    ['Event duplizieren: Synthetic event', 'Event duplizieren'],
+  ] as const) {
+    const action = screen.getByRole('button', { name });
+    expect(action.getAttribute('title')).toBe(title);
+    expect(action.textContent).toBe('');
+  }
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event bearbeiten: Synthetic event' }),
+  );
+  expect(window.location.hash).toBe('#events');
+  expect(
+    screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+  ).toBeNull();
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic event',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
+  for (const init of [
+    { metaKey: true },
+    { ctrlKey: true },
+    { shiftKey: true },
+    { altKey: true },
+    { button: 1 },
+  ]) {
+    expect(clickLink(link, 1, init)).toBe(false);
+    expect(window.location.hash).toBe('#events');
+    expect(detailCalls).toBe(0);
+  }
+  const selection = vi
+    .spyOn(window, 'getSelection')
+    .mockReturnValue({ toString: () => 'Synthetic' } as Selection);
+  expect(clickLink(link)).toBe(true);
+  selection.mockRestore();
+  expect(window.location.hash).toBe('#events');
+  expect(detailCalls).toBe(0);
+  // detail 0 is the keyboard activation shape; Chromium uses a real Enter in E2E.
+  expect(clickLink(link, 0)).toBe(false);
+  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  expect(detailCalls).toBe(1);
+});
+
+test('global search submitted from an open event record closes the record and shows results', async () => {
+  window.history.replaceState(null, '', '/#event-synthetic');
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/events/synthetic'
+        ? Response.json({
+            event: row,
+            contacts: [],
+            location: null,
+            eventType: null,
+            package: null,
+            activities: [],
+          })
+        : base(url),
+    ),
+  );
+  render(
+    <>
+      <Navigation />
+      <EventPanel csrfToken="csrf" />
+    </>,
+  );
+  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Suche öffnen' }));
+  fireEvent.change(screen.getByLabelText('Globale Suche'), {
+    target: { value: 'Synthetic global query' },
+  });
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Events und Kontakte suchen' })
+      .closest('form')!,
+  );
+  await vi.waitFor(() =>
+    expect(
+      screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
+    ).toBeNull(),
+  );
+  expect(window.location.hash).toBe('#search');
+  expect(window.location.search).toContain('q=Synthetic+global+query');
+  expect(
+    screen.getByRole('link', {
+      name: /Synthetic event/,
+    }),
+  ).toBeTruthy();
 });
 
 function savedBody(fetcher: ReturnType<typeof mocker>) {
@@ -999,7 +1129,7 @@ test('the business date is derived from the local start across midnight and the 
   );
   await screen.findByText('Event gespeichert.');
   expect(savedBody(fetcher).eventDate).toBe('2026-10-24');
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic DST event' },
   });
@@ -1195,7 +1325,7 @@ test('a start makes the business date read-only and derived while date-only and 
     startsAt: null,
     endsAt: null,
   });
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic undated event' },
   });
@@ -1206,7 +1336,7 @@ test('a start makes the business date read-only and derived while date-only and 
   const mutations = fetcher.mock.calls.filter(([, options]) => options);
   expect(mutations).toHaveLength(2);
   expect(JSON.parse(String(mutations[1]![1]!.body)).eventDate).toBeNull();
-  fireEvent.click(screen.getByText('Event anlegen', { exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic scheduled event' },
   });
@@ -1384,8 +1514,8 @@ test('a confirmed resource save stays visible in the list when the parent refres
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   fireEvent.click(
-    await screen.findByRole('button', {
-      name: 'Eventakte öffnen: Synthetic event',
+    await screen.findByRole('link', {
+      name: /Synthetic event/,
     }),
   );
   await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
@@ -1565,8 +1695,8 @@ test('a newer list revision loads an open event file exactly once on return', as
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   fireEvent.click(
-    await screen.findByRole('button', {
-      name: 'Eventakte öffnen: Synthetic event',
+    await screen.findByRole('link', {
+      name: /Synthetic event/,
     }),
   );
   await vi.waitFor(() => expect(pendingDetail).toHaveLength(1));
@@ -1686,4 +1816,86 @@ test('a return during a running create mutation keeps the draft and reports one 
   expect(posts).toBe(1);
   expect(screen.queryByText(/Speichern fehlgeschlagen/)).toBeNull();
   expect(screen.queryByText(/Verbindung fehlgeschlagen/)).toBeNull();
+});
+
+test('an already-home brand click keeps an open create dialog and its inputs', async () => {
+  window.history.replaceState(null, '', '/#events');
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  const confirm = vi.spyOn(window, 'confirm');
+  render(
+    <>
+      <Navigation />
+      <EventPanel csrfToken="csrf" />
+    </>,
+  );
+  showForms();
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  fireEvent.change(within(dialog).getByLabelText('Eventname'), {
+    target: { value: 'Synthetic home draft' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('Eventdatum'), {
+    target: { value: '2026-11-20' },
+  });
+  const filter = screen.getByLabelText('Events suchen') as HTMLInputElement;
+  fireEvent.change(filter, { target: { value: 'Synthetic filter draft' } });
+  const mutations = fetcher.mock.calls.filter(([, options]) => options).length;
+  expect(
+    clickLink(
+      within(screen.getByLabelText('Arbeitsbereiche')).getByRole('link', {
+        name: 'AuftragsKompass – zur Eventübersicht',
+      }),
+    ),
+  ).toBe(true);
+  expect(window.location.hash).toBe('#events');
+  expect(screen.getByRole('dialog', { name: 'Neues Event' })).toBe(dialog);
+  expect(
+    (within(dialog).getByLabelText('Eventname') as HTMLInputElement).value,
+  ).toBe('Synthetic home draft');
+  expect(
+    (within(dialog).getByLabelText('Eventdatum') as HTMLInputElement).value,
+  ).toBe('2026-11-20');
+  expect(
+    (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
+  ).toBe('Synthetic filter draft');
+  expect(confirm).not.toHaveBeenCalled();
+  expect(fetcher.mock.calls.filter(([, options]) => options)).toHaveLength(
+    mutations,
+  );
+});
+
+test('an already-home brand click keeps a dirty event editor unchanged', async () => {
+  window.history.replaceState(null, '', '/#events');
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  const confirm = vi.spyOn(window, 'confirm');
+  render(
+    <>
+      <Navigation />
+      <EventPanel csrfToken="csrf" />
+    </>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  const editor = screen.getByLabelText('Eventname').closest('details')!;
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic edited draft' },
+  });
+  expect(
+    clickLink(
+      within(screen.getByLabelText('Arbeitsbereiche')).getByRole('link', {
+        name: 'AuftragsKompass – zur Eventübersicht',
+      }),
+    ),
+  ).toBe(true);
+  expect(window.location.hash).toBe('#events');
+  expect(editor.open).toBe(true);
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic edited draft',
+  );
+  expect(confirm).not.toHaveBeenCalled();
+  expect(fetcher.mock.calls.filter(([, options]) => options)).toHaveLength(0);
 });

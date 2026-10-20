@@ -131,8 +131,12 @@ export function AuthPanel() {
                 >
                   {status}
                 </p>
-                <p>{user.email}</p>
-                <button aria-label="Abmelden" onClick={() => void logout()}>
+                <p className="account-email">{user.email}</p>
+                <button
+                  aria-label="Abmelden"
+                  title="Abmelden"
+                  onClick={() => void logout()}
+                >
                   <svg
                     viewBox="0 0 24 24"
                     width="20"

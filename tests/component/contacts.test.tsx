@@ -61,11 +61,18 @@ test('contacts search, suggest duplicates, edit and archive with direct communic
     screen.getByRole('button', { name: 'Kontakt speichern' }).closest('form')!,
   );
   await screen.findByText('Synthetic Company – Archiviert');
+  const searchAction = screen.getByRole('button', {
+    name: 'Kontakte durchsuchen',
+  });
+  expect(searchAction.getAttribute('title')).toBe('Kontakte durchsuchen');
+  expect(searchAction.textContent).toBe('');
   fireEvent.change(screen.getByLabelText('Kontakte suchen'), {
     target: { value: 'Synthetic' },
   });
   fireEvent.submit(
-    screen.getByRole('button', { name: 'Suchen' }).closest('form')!,
+    screen
+      .getByRole('button', { name: 'Kontakte durchsuchen' })
+      .closest('form')!,
   );
   expect(fetcher).toHaveBeenCalledWith('/api/v1/contacts?q=Synthetic');
   fireEvent.click(
@@ -120,7 +127,9 @@ test('contacts retain input after validation, conflict, load and connection erro
   render(<ContactPanel csrfToken="csrf" />);
   await screen.findByText(/Kontakte konnten nicht geladen/);
   fireEvent.submit(
-    screen.getByRole('button', { name: 'Suchen' }).closest('form')!,
+    screen
+      .getByRole('button', { name: 'Kontakte durchsuchen' })
+      .closest('form')!,
   );
   await screen.findByText(/Kontakte konnten nicht geladen/);
 });
@@ -174,7 +183,9 @@ test('contact search keeps the newest result when an older request finishes late
     target: { value: 'fresh' },
   });
   fireEvent.submit(
-    screen.getByRole('button', { name: 'Suchen' }).closest('form')!,
+    screen
+      .getByRole('button', { name: 'Kontakte durchsuchen' })
+      .closest('form')!,
   );
   await screen.findByText('Synthetic fresh contact');
   await act(async () => resolveOld(Response.json([row])));
@@ -191,7 +202,9 @@ test('reapplying the global query resets a local contact search even when the UR
     target: { value: 'local' },
   });
   fireEvent.submit(
-    screen.getByRole('button', { name: 'Suchen' }).closest('form')!,
+    screen
+      .getByRole('button', { name: 'Kontakte durchsuchen' })
+      .closest('form')!,
   );
   act(() => updateUrlSearch({ q: 'Synthetic' }));
   expect(

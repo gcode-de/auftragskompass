@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AuthPanel } from '../../apps/admin/src/AuthPanel.js';
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   window.history.replaceState(null, '', '/');
   vi.unstubAllGlobals();
 });
@@ -46,7 +47,9 @@ test('authenticated logout carries CSRF protection and supports retry', async ()
   });
   vi.stubGlobal('fetch', fetcher);
   render(<AuthPanel />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Abmelden' }));
+  const logout = await screen.findByRole('button', { name: 'Abmelden' });
+  expect(logout.getAttribute('title')).toBe('Abmelden');
+  fireEvent.click(logout);
   expect(await screen.findByText(/Abmelden fehlgeschlagen/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Abmelden' }));
   expect(await screen.findByText('Abgemeldet')).toBeTruthy();
@@ -54,6 +57,39 @@ test('authenticated logout carries CSRF protection and supports retry', async ()
     method: 'POST',
     headers: { 'x-csrf-token': 'synthetic-csrf' },
   });
+});
+
+test('collapsed sidebar keeps a failed logout status visible and announced', async () => {
+  localStorage.setItem('ak-sidebar', 'collapsed');
+  let logoutCalls = 0;
+  const fetcher = vi.fn(async (url: string) => {
+    if (url === '/api/v1/events')
+      return Response.json({ timeZone: 'Europe/Berlin', events: [] });
+    if (url.startsWith('/api/')) return Response.json([]);
+    if (url === '/auth/me')
+      return Response.json({
+        email: 'synthetic@example.invalid',
+        csrfToken: 'synthetic-csrf',
+      });
+    return new Response(null, { status: ++logoutCalls === 1 ? 500 : 204 });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<AuthPanel />);
+  await screen.findByText('synthetic@example.invalid');
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  expect(sidebar.className).toContain('collapsed');
+  const logout = screen.getByRole('button', { name: 'Abmelden' });
+  fireEvent.click(logout);
+  const failure = await screen.findByText(/Abmelden fehlgeschlagen/);
+  expect(failure.getAttribute('role')).toBe('status');
+  expect(failure.className).not.toContain('account-email');
+  expect(failure.closest('.account-bar')).toBeTruthy();
+  expect(screen.getByText('synthetic@example.invalid').className).toContain(
+    'account-email',
+  );
+  expect(logout.isConnected).toBe(true);
+  fireEvent.click(logout);
+  expect(await screen.findByText('Abgemeldet')).toBeTruthy();
 });
 
 test('returns to login when a session expires or own access is blocked', async () => {

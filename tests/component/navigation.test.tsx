@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { clickLink } from '../helpers/click-link.js';
 import {
   act,
   cleanup,
@@ -19,6 +20,7 @@ import {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear();
   window.history.replaceState(null, '', '/');
 });
 function Result() {
@@ -104,16 +106,30 @@ test('mobile menu opens as a modal and closes on selection or Escape', () => {
   });
   render(<Workspace />);
   const trigger = screen.getByRole('button', { name: 'Menü öffnen' });
+  expect(trigger.getAttribute('title')).toBe('Menü öffnen');
   fireEvent.click(screen.getByRole('link', { name: 'Events' }));
   fireEvent.click(trigger, { detail: 1 });
   const dialog = screen.getByRole('dialog', { name: 'Menü' });
   expect(dialog.hasAttribute('open')).toBe(true);
+  expect(
+    within(dialog)
+      .getByRole('button', { name: 'Menü schließen' })
+      .getAttribute('title'),
+  ).toBe('Menü schließen');
   fireEvent.click(within(dialog).getByRole('link', { name: 'Kontakte' }));
   expect(dialog.hasAttribute('open')).toBe(false);
   fireEvent.click(trigger);
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'Menü schließen' }),
   );
+  expect(dialog.hasAttribute('open')).toBe(false);
+  fireEvent.click(trigger);
+  window.history.replaceState(null, '', '/#events');
+  const menuBrand = within(dialog).getByRole('link', {
+    name: 'AuftragsKompass – zur Eventübersicht',
+  });
+  expect(menuBrand.getAttribute('href')).toBe('#events');
+  expect(clickLink(menuBrand)).toBe(true);
   expect(dialog.hasAttribute('open')).toBe(false);
   fireEvent.click(trigger);
   fireEvent(dialog, new Event('cancel', { cancelable: true }));
@@ -192,7 +208,7 @@ test.each(['#events', '#search'])(
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     const target =
       hash === '#search'
-        ? screen.getByRole('link', { name: 'Suche' })
+        ? screen.getByLabelText('Globale Suche')
         : within(screen.getByLabelText('Arbeitsbereiche')).getByRole('link', {
             name: 'Events',
           });
@@ -204,6 +220,47 @@ test.each(['#events', '#search'])(
     );
   },
 );
+test('brand and workspace title are real home links from both layouts without dropping filters', () => {
+  window.history.replaceState(null, '', '/?q=Fictional#calendar');
+  const confirm = vi.spyOn(window, 'confirm');
+  render(<Workspace />);
+  const brand = within(screen.getByLabelText('Arbeitsbereiche')).getByRole(
+    'link',
+    { name: 'AuftragsKompass – zur Eventübersicht' },
+  );
+  const title = screen.getByRole('link', {
+    name: 'Kalender – zur Eventübersicht',
+  });
+  expect(brand.getAttribute('href')).toBe('#events');
+  expect(title.getAttribute('href')).toBe('#events');
+  brand.focus();
+  expect(document.activeElement).toBe(brand);
+  // jsdom does not perform fragment navigation itself. The real click must not
+  // be cancelled; the following replaceState mirrors the browser's hash step.
+  expect(clickLink(brand, 0)).toBe(false);
+  window.history.replaceState(null, '', '/?q=Fictional#events');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  expect(window.location.hash).toBe('#events');
+  expect(window.location.search).toBe('?q=Fictional');
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('events');
+  expect(confirm).not.toHaveBeenCalled();
+  window.history.replaceState(null, '', '/?q=Fictional#calendar');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  const titleLink = screen.getByRole('link', {
+    name: 'Kalender – zur Eventübersicht',
+  });
+  expect(clickLink(titleLink)).toBe(false);
+  window.history.replaceState(null, '', '/?q=Fictional#events');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  expect(window.location.hash).toBe('#events');
+  expect(window.location.search).toBe('?q=Fictional');
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('events');
+  expect(clickLink(brand)).toBe(true);
+  expect(window.location.hash).toBe('#events');
+  expect(window.location.search).toBe('?q=Fictional');
+  expect(confirm).not.toHaveBeenCalled();
+});
+
 test('shows the running version next to the brand without disturbing navigation', () => {
   render(<Navigation />);
   const sidebar = within(screen.getByLabelText('Arbeitsbereiche'));
@@ -212,4 +269,158 @@ test('shows the running version next to the brand without disturbing navigation'
     'Version Entwicklung',
   );
   expect(sidebar.getByRole('link', { name: 'Events' })).toBeTruthy();
+});
+
+test('desktop navigation collapses to labelled icons and remembers the preference', () => {
+  window.history.replaceState(null, '', '/#events');
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  const collapse = within(sidebar).getByRole('button', {
+    name: 'Navigation einklappen',
+  });
+  expect(collapse.getAttribute('title')).toBe('Navigation einklappen');
+  expect(collapse.getAttribute('aria-expanded')).toBe('true');
+  collapse.focus();
+  fireEvent.click(collapse);
+  expect(sidebar.className).toContain('collapsed');
+  expect(localStorage.getItem('ak-sidebar')).toBe('collapsed');
+  const events = within(sidebar).getByRole('link', { name: 'Events' });
+  expect(events.getAttribute('title')).toBe('Events');
+  expect(events.getAttribute('aria-current')).toBe('page');
+  expect(document.activeElement?.getAttribute('aria-label')).toBe(
+    'Navigation ausklappen',
+  );
+  cleanup();
+  render(<Workspace />);
+  const collapsedSidebar = screen.getByLabelText('Arbeitsbereiche');
+  expect(collapsedSidebar.className).toContain('collapsed');
+  const expand = within(collapsedSidebar).getByRole('button', {
+    name: 'Navigation ausklappen',
+  });
+  expect(expand.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(expand);
+  expect(collapsedSidebar.className).not.toContain('collapsed');
+  expect(localStorage.getItem('ak-sidebar')).toBe('expanded');
+  const collapsedBrand = within(collapsedSidebar).getByRole('link', {
+    name: 'AuftragsKompass – zur Eventübersicht',
+  });
+  expect(collapsedBrand.getAttribute('title')).toBe(
+    'AuftragsKompass – zur Eventübersicht',
+  );
+  localStorage.setItem('ak-sidebar', 'collapsed');
+  fireEvent(window, new StorageEvent('storage', { key: 'ak-sidebar' }));
+  expect(collapsedSidebar.className).toContain('collapsed');
+  localStorage.clear();
+  fireEvent(window, new StorageEvent('storage', { key: null }));
+  expect(collapsedSidebar.className).not.toContain('collapsed');
+});
+
+test('an unknown sidebar preference falls back to expanded', () => {
+  localStorage.setItem('ak-sidebar', 'invalid');
+  render(<Workspace />);
+  expect(screen.getByLabelText('Arbeitsbereiche').className).not.toContain(
+    'collapsed',
+  );
+  expect(
+    screen.getByRole('button', { name: 'Navigation einklappen' }),
+  ).toBeTruthy();
+});
+
+test('global search expands from an icon, keeps a draft on close and submits with the hash', () => {
+  window.history.replaceState(null, '', '/?status=option#calendar');
+  render(<Workspace />);
+  const open = screen.getByRole('button', { name: 'Suche öffnen' });
+  expect(open.getAttribute('title')).toBe('Suche öffnen');
+  expect(open.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(open);
+  const input = screen.getByLabelText('Globale Suche') as HTMLInputElement;
+  expect(document.activeElement).toBe(input);
+  expect(
+    screen
+      .getByRole('button', { name: 'Events und Kontakte suchen' })
+      .getAttribute('title'),
+  ).toBe('Events und Kontakte suchen');
+  expect(
+    screen
+      .getByRole('button', { name: 'Suche schließen' })
+      .getAttribute('title'),
+  ).toBe('Suche schließen');
+  fireEvent.change(input, { target: { value: 'Synthetic draft search' } });
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.queryByLabelText('Globale Suche')).toBeNull();
+  const trigger = screen.getByRole('button', { name: 'Suche öffnen' });
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger);
+  expect(
+    (screen.getByLabelText('Globale Suche') as HTMLInputElement).value,
+  ).toBe('Synthetic draft search');
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Events und Kontakte suchen' })
+      .closest('form')!,
+  );
+  expect(window.location.hash).toBe('#search');
+  expect(window.location.search).toContain('q=Synthetic+draft+search');
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('search');
+  expect(screen.getByLabelText('Globale Suche')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Suche schließen' }));
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Suche öffnen' }),
+  );
+});
+
+test('sidebar collapse still works when browser storage is blocked', () => {
+  const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    throw new Error('blocked');
+  });
+  const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new Error('blocked');
+  });
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  expect(sidebar.className).not.toContain('collapsed');
+  fireEvent.click(
+    within(sidebar).getByRole('button', { name: 'Navigation einklappen' }),
+  );
+  expect(sidebar.className).toContain('collapsed');
+  get.mockRestore();
+  set.mockRestore();
+});
+
+test('shrinking to the mobile breakpoint moves focused sidebar controls to the menu trigger', () => {
+  window.history.replaceState(null, '', '/#events');
+  let changed = () => {};
+  const viewport = {
+    matches: true,
+    addEventListener: vi.fn((_name: string, listener: () => void) => {
+      changed = listener;
+    }),
+    removeEventListener: vi.fn(),
+  };
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => viewport),
+  );
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  const toggle = within(sidebar).getByRole('button', {
+    name: 'Navigation einklappen',
+  });
+  toggle.focus();
+  expect(document.activeElement).toBe(toggle);
+  viewport.matches = false;
+  act(changed);
+  const trigger = screen.getByRole('button', { name: 'Menü öffnen' });
+  expect(document.activeElement).toBe(trigger);
+  expect(document.activeElement).not.toBe(document.body);
+  act(() => {
+    fireEvent.click(screen.getByRole('button', { name: 'Suche öffnen' }));
+  });
+  const input = screen.getByLabelText('Globale Suche');
+  expect(document.activeElement).toBe(input);
+  viewport.matches = true;
+  act(changed);
+  viewport.matches = false;
+  act(changed);
+  expect(document.activeElement).toBe(input);
 });

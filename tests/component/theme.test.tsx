@@ -30,9 +30,18 @@ test('follows the system until an explicit choice, then persists and restores it
     media.dispatchEvent(new Event('change'));
   });
   expect(document.documentElement.dataset.theme).toBe('dark');
-  fireEvent.click(screen.getByRole('button', { name: 'Dunkelmodus' }));
+  const light = screen.getByRole('button', {
+    name: 'Hellmodus aktivieren',
+  });
+  expect(light.getAttribute('title')).toBe('Hellmodus aktivieren');
+  fireEvent.click(light);
   expect(document.documentElement.dataset.theme).toBe('light');
   expect(localStorage.getItem('ak-theme')).toBe('light');
+  expect(
+    screen
+      .getByRole('button', { name: 'Dunkelmodus aktivieren' })
+      .getAttribute('title'),
+  ).toBe('Dunkelmodus aktivieren');
   media.matches = false;
   act(() => {
     media.dispatchEvent(new Event('change'));
@@ -46,7 +55,7 @@ test('follows the system until an explicit choice, then persists and restores it
   render(<ThemeToggle />);
   expect(
     screen
-      .getByRole('button', { name: 'Dunkelmodus' })
+      .getByRole('button', { name: 'Dunkelmodus aktivieren' })
       .getAttribute('aria-pressed'),
   ).toBe('false');
 });
@@ -71,8 +80,13 @@ test('still switches when browser storage is unavailable', () => {
     throw new Error('blocked');
   });
   render(<ThemeToggle />);
-  fireEvent.click(screen.getByRole('button', { name: 'Dunkelmodus' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dunkelmodus aktivieren' }),
+  );
   expect(document.documentElement.dataset.theme).toBe('dark');
+  expect(
+    screen.getByRole('button', { name: 'Hellmodus aktivieren' }),
+  ).toBeTruthy();
   act(() => {
     media.dispatchEvent(new Event('change'));
   });
