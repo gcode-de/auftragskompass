@@ -610,6 +610,36 @@ test('a draft refuses empty and malformed lines', async () => {
   ).rejects.toMatchObject({ reason: 'invalid_line' });
 });
 
+test('the pdf download refuses drafts, missing artefacts and broken stores', async () => {
+  const run = dependencies(),
+    repo = documentRepository(pool, tenantId, run.deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId });
+  await expect(repo.pdf(draft.id)).rejects.toMatchObject({
+    reason: 'not_found',
+  });
+  const finalized = await repo.finalize(actorId, draft.id);
+  await expect(repo.pdf(finalized.id)).resolves.toMatchObject({
+    number: finalized.number,
+  });
+  await run.deps.store.remove(finalized.pdfHash! + '.pdf');
+  await expect(repo.pdf(finalized.id)).rejects.toMatchObject({
+    reason: 'not_found',
+  });
+  const broken = documentRepository(pool, tenantId, {
+    ...run.deps,
+    store: {
+      async put() {},
+      async read() {
+        throw new StorageError('failed');
+      },
+      async remove() {},
+    },
+  });
+  await expect(broken.pdf(finalized.id)).rejects.toMatchObject({
+    reason: 'artifact_failed',
+  });
+});
+
 test('the document API requires auth and enforces the final state', async () => {
   const config = {
     origin: site,
@@ -691,6 +721,15 @@ test('the document API requires auth and enforces the final state', async () => 
     });
     expect(read.statusCode).toBe(200);
     expect(read.json().number).toMatch(/^AN-\d{4}-\d{4}$/);
+    const pdf = await app.inject({
+      method: 'GET',
+      url: '/api/v1/documents/' + id + '/pdf',
+      cookies,
+    });
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.headers['content-disposition']).toContain('.pdf');
+    expect(pdf.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
     expect(
       (
         await app.inject({
@@ -716,6 +755,32 @@ test('the document API requires auth and enforces the final state', async () => 
     });
     expect(rejected.statusCode).toBe(400);
     expect(rejected.json().error).toBe('missing_reference');
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/documents/' + withoutContact.json().id + '/pdf',
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/documents/' + randomUUID() + '/pdf',
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/documents/' + id + '/pdf',
+        })
+      ).statusCode,
+    ).toBe(401);
     expect(
       (
         await app.inject({

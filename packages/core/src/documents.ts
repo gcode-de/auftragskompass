@@ -43,7 +43,7 @@ import {
   renderDocumentPdf,
   type PdfRenderer,
 } from './document-pdf.js';
-import { storeDocumentPdf } from './document-artifacts.js';
+import { storeDocumentPdf, readDocumentPdf } from './document-artifacts.js';
 import { StorageError, type StorageAdapter } from './storage.js';
 
 export class DocumentError extends Error {
@@ -206,6 +206,32 @@ export function documentRepository(
   return {
     async get(id: string) {
       return readOne(db, id);
+    },
+    // Only a final document has an artefact; the hash names it, so the bytes
+    // always belong to the recorded snapshot.
+    async pdf(id: string) {
+      const [document] = await db
+        .select({
+          number: documents.number,
+          pdfHash: documents.pdfHash,
+          state: documents.state,
+        })
+        .from(documents)
+        .where(and(scope, eq(documents.id, id)));
+      if (!document?.pdfHash || document.state !== 'final' || !document.number)
+        throw new DocumentError('not_found');
+      try {
+        return {
+          number: document.number,
+          bytes: await readDocumentPdf(dependencies.store, document.pdfHash),
+        };
+      } catch (error) {
+        if (error instanceof StorageError)
+          throw new DocumentError(
+            error.reason === 'missing' ? 'not_found' : 'artifact_failed',
+          );
+        throw error;
+      }
     },
     async createDraft(actorId: string, input: DocumentDraftInput) {
       const id = randomUUID();
@@ -658,5 +684,25 @@ export function registerDocumentRoutes(
     async (request, reply) =>
       (await repo.get(request.params.id)) ??
       reply.code(404).send({ error: 'not_found' }),
+  );
+  // Binary response: no JSON schema, and the file name comes from our own
+  // number, still reduced to characters that cannot break the header.
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/documents/:id/pdf',
+    { schema: { params } },
+    async (request, reply) => {
+      try {
+        const { number, bytes } = await repo.pdf(request.params.id);
+        return reply
+          .type('application/pdf')
+          .header(
+            'Content-Disposition',
+            `inline; filename="${number.replace(/[^A-Za-z0-9._-]/g, '_')}.pdf"`,
+          )
+          .send(bytes);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
   );
 }
