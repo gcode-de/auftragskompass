@@ -838,3 +838,60 @@ test('changing the saved offset of a repeated hour is an explicit, honoured choi
   await screen.findByText('Event gespeichert.');
   expect(savedBody(fetcher).startsAt).toBe('2026-10-25T00:30:00Z');
 });
+
+test('a confirmed save closes the editor and survives a failed list reload', async () => {
+  let listLoads = 0,
+    failReload = true,
+    mutations = 0;
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) {
+      mutations += 1;
+      return Response.json({
+        ...row,
+        ...JSON.parse(String(options.body)),
+        version: 2,
+      });
+    }
+    if (url.startsWith('/api/v1/events')) {
+      listLoads += 1;
+      if (listLoads > 1 && failReload)
+        return new Response(null, { status: 503 });
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: [
+          {
+            ...row,
+            name: listLoads > 1 ? 'Synthetic reloaded event' : row.name,
+          },
+        ],
+      });
+    }
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic saved event' },
+  });
+  const form = screen
+    .getByRole('button', { name: 'Event speichern' })
+    .closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  await screen.findByText('Event gespeichert.');
+  await screen.findByText(/Liste konnte nicht neu geladen werden/);
+  expect(mutations).toBe(1);
+  expect(
+    screen.getByText('Event anlegen', { exact: true }).closest('details')!.open,
+  ).toBe(false);
+  failReload = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Events erneut laden' }));
+  await screen.findByText('Synthetic reloaded event – Ohne Datum – Anfrage');
+  expect(
+    screen.queryByText(/Liste konnte nicht neu geladen werden/),
+  ).toBeNull();
+});

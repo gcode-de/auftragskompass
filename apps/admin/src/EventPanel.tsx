@@ -39,6 +39,7 @@ export function EventPanel({
   const urlSearch = useUrlSearch(),
     filters = new URLSearchParams(urlSearch),
     sequence = useRef(0),
+    saving = useRef(false),
     editor = useRef<HTMLDetailsElement>(null);
   const [rows, setRows] = useState<EventRow[]>([]),
     [draft, setDraft] = useState<EventRow | null>(null),
@@ -53,7 +54,8 @@ export function EventPanel({
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
-    [loadFailed, setLoadFailed] = useState(false);
+    [loadFailed, setLoadFailed] = useState(false),
+    [reloadWarning, setReloadWarning] = useState(false);
   async function refresh() {
     const current = ++sequence.current;
     setLoading(true);
@@ -142,6 +144,7 @@ export function EventPanel({
     }
   }
   async function save(form: HTMLFormElement) {
+    if (saving.current) return;
     setMessage('');
     const data = new FormData(form),
       value = (key: string) => String(data.get(key) ?? ''),
@@ -181,6 +184,7 @@ export function EventPanel({
       form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
       return;
     }
+    saving.current = true;
     setBusy(true);
     try {
       const input = {
@@ -223,12 +227,19 @@ export function EventPanel({
         );
         return;
       }
-      await refresh();
+      // The write is confirmed. Close the editor and report the save even if
+      // the follow-up list request fails; never invite a second submission.
       setDraft(null);
       setEditing(false);
       form.reset();
       closeEditor();
       setMessage('Event gespeichert.');
+      try {
+        await refresh();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
     } catch (error) {
       setMessage(
         error instanceof RangeError
@@ -236,6 +247,7 @@ export function EventPanel({
           : 'Verbindung fehlgeschlagen. Deine Eingabe bleibt erhalten.',
       );
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -547,6 +559,23 @@ export function EventPanel({
         </details>
       </div>
       <p role="status">{message}</p>
+      {reloadWarning && (
+        <p role="alert">
+          Event gespeichert, aber die Liste konnte nicht neu geladen werden. Die
+          Eingabe wurde nicht verloren.{' '}
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={busy}
+            onClick={() => {
+              setReloadWarning(false);
+              void refresh().catch(() => setReloadWarning(true));
+            }}
+          >
+            Events erneut laden
+          </button>
+        </p>
+      )}
       {loading && <p role="status">Events werden geladen …</p>}
       {!loading && !loadFailed && !rows.length && <p>Keine Events gefunden.</p>}
       {[...groups].map(([month, entries]) => {

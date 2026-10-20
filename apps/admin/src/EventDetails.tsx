@@ -51,19 +51,29 @@ export function EventDetails({
   onClose: () => void;
 }) {
   const [section, setSection] = useState('overview');
-  const heading = useRef<HTMLHeadingElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null),
+    loadSequence = useRef(0),
+    saving = useRef(false);
   const [data, setData] = useState<Detail | null>(null),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [reloadWarning, setReloadWarning] = useState(false);
   async function load() {
+    const current = ++loadSequence.current;
     setLoading(true);
     try {
       const response = await fetch('/api/v1/events/' + id);
       if (!response.ok) throw Error('load');
-      setData((await response.json()) as Detail);
+      const next = (await response.json()) as Detail;
+      // A slower, older request must never overwrite a newer event state.
+      if (current !== loadSequence.current) return;
+      setData(next);
+      setReloadWarning(false);
+    } catch (error) {
+      if (current === loadSequence.current) throw error;
     } finally {
-      setLoading(false);
+      if (current === loadSequence.current) setLoading(false);
     }
   }
   useEffect(() => {
@@ -78,6 +88,8 @@ export function EventDetails({
     }
   }, [data?.event.id]);
   async function saveStatus(form: HTMLFormElement) {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
     setMessage('');
     try {
@@ -101,16 +113,34 @@ export function EventDetails({
         );
         return;
       }
-      await load();
-      await onChanged();
+      // The PUT is confirmed; report it before reloading so a failing GET is
+      // never mistaken for a failed save.
       setMessage('Status gespeichert.');
+      try {
+        await load();
+        await onChanged();
+      } catch {
+        setReloadWarning(true);
+      }
     } catch {
       setMessage(
         'Verbindung fehlgeschlagen. Aktuellen Stand vor einem erneuten Versuch laden.',
       );
     } finally {
+      saving.current = false;
       setBusy(false);
     }
+  }
+  function retryLoad() {
+    setReloadWarning(false);
+    void (async () => {
+      try {
+        await load();
+        await onChanged();
+      } catch {
+        setReloadWarning(true);
+      }
+    })();
   }
   function time(value: string | null) {
     return value
@@ -143,6 +173,20 @@ export function EventDetails({
         Eventakte aktualisieren
       </button>
       <p role="status">{message}</p>
+      {reloadWarning && (
+        <p role="alert">
+          Gespeichert, aber die Eventakte konnte nicht neu geladen werden. Es
+          wurde nichts doppelt angelegt.{' '}
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={busy}
+            onClick={retryLoad}
+          >
+            Eventakte erneut laden
+          </button>
+        </p>
+      )}
       {loading && <p>Eventakte wird geladen …</p>}
       {data && (
         <>

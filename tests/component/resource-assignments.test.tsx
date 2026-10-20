@@ -1,5 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { ResourceAssignments } from '../../apps/admin/src/ResourceAssignments.js';
 afterEach(() => {
   cleanup();
@@ -332,4 +338,41 @@ test('import review reuses assignment controls through its own protected endpoin
     ),
   ).toBe(true);
   expect(changed).toHaveBeenCalledOnce();
+});
+
+test('a confirmed booking stays saved when the reload fails and the reload can be retried', async () => {
+  let failReload = true,
+    puts = 0;
+  const changed = vi.fn(async () => {
+    if (failReload) throw Error('reload');
+  });
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options) {
+      puts += 1;
+      return Response.json(event);
+    }
+    return Response.json([resource]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  mount(changed);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const form = screen
+    .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+    .closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  expect(puts).toBe(1);
+  expect(changed).toHaveBeenCalledOnce();
+  failReload = false;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+    ).toBeNull(),
+  );
+  expect(changed).toHaveBeenCalledTimes(2);
 });

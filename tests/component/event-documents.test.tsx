@@ -1,5 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { EventDocuments } from '../../apps/admin/src/EventDocuments.js';
 
 afterEach(() => {
@@ -207,4 +213,42 @@ test('a withdrawn document is listed without actions', async () => {
   expect(await screen.findByText('Zurückgezogen')).toBeTruthy();
   expect(screen.queryByRole('link', { name: /PDF öffnen/ })).toBeNull();
   expect(screen.queryByRole('button', { name: /finalisieren/ })).toBeNull();
+});
+
+test('a confirmed draft is not recreated when the reload fails and the load can be retried', async () => {
+  let failDocuments = false,
+    posts = 0;
+  const fetcher = vi.fn(async (url: string) => {
+    if (url === '/api/v1/document-templates') return Response.json(templates);
+    if (url.startsWith('/api/v1/documents?eventId=')) {
+      if (failDocuments) return new Response(null, { status: 503 });
+      return Response.json([draft]);
+    }
+    if (url === '/api/v1/documents') {
+      posts += 1;
+      return Response.json(draft, { status: 201 });
+    }
+    throw new Error('unexpected ' + url);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventDocuments {...props} />);
+  const create = await screen.findByRole('button', { name: 'Entwurf anlegen' });
+  failDocuments = true;
+  const form = create.closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  expect(await screen.findByText('Entwurf angelegt.')).toBeTruthy();
+  expect(
+    await screen.findByText(/Angebotsliste konnte nicht neu geladen werden/),
+  ).toBeTruthy();
+  expect(posts).toBe(1);
+  failDocuments = false;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Angebote erneut laden' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(/Angebotsliste konnte nicht neu geladen werden/),
+    ).toBeNull(),
+  );
 });

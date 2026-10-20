@@ -72,14 +72,16 @@ export function ResourceAssignments({
     (importReview ? '/api/v1/imports/bookitup/promises/' : '/api/v1/events/') +
     event.id;
   const form = useRef<HTMLFormElement>(null),
-    request = useRef(0);
+    request = useRef(0),
+    saving = useRef(false);
   const [units, setUnits] = useState<Unit[]>([]),
     [sources, setSources] = useState<Record<string, string>>({}),
     [verified, setVerified] = useState(new Set<string>()),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
-    [loaded, setLoaded] = useState(false);
+    [loaded, setLoaded] = useState(false),
+    [reloadWarning, setReloadWarning] = useState(false);
   useEffect(() => {
     let active = true;
     void fetch(path + '/availability')
@@ -183,6 +185,8 @@ export function ResourceAssignments({
     }
   }
   async function save() {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
     setMessage('');
     try {
@@ -221,8 +225,15 @@ export function ResourceAssignments({
         );
         return;
       }
-      await onChanged();
+      // The PUT is confirmed. Report it first; a failing reload is a refresh
+      // problem, not a reason to submit the booking again.
       setMessage('Zuweisung und Termin gespeichert.');
+      try {
+        await onChanged();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
     } catch (error) {
       setMessage(
         error instanceof RangeError
@@ -230,8 +241,13 @@ export function ResourceAssignments({
           : 'Verbindung fehlgeschlagen. Aktuellen Stand vor einem erneuten Versuch laden.',
       );
     } finally {
+      saving.current = false;
       setBusy(false);
     }
+  }
+  function retryLoad() {
+    setReloadWarning(false);
+    void onChanged().catch(() => setReloadWarning(true));
   }
   function time(value: string | null) {
     return value
@@ -271,6 +287,20 @@ export function ResourceAssignments({
     <section aria-label="Ressourcenzuweisung" aria-busy={loading || busy}>
       <h3>Ressourcen zuweisen</h3>
       <p role="status">{message}</p>
+      {reloadWarning && (
+        <p role="alert">
+          Zuweisung gespeichert, aber die Eventakte konnte nicht neu geladen
+          werden. Nichts erneut buchen.{' '}
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={busy}
+            onClick={retryLoad}
+          >
+            Eventakte erneut laden
+          </button>
+        </p>
+      )}
       {loading && <p>Verfügbarkeit wird geladen …</p>}
       <p>
         Zeitzone: {event.timeZone}. Jede Speicherung prüft die Belegung erneut.

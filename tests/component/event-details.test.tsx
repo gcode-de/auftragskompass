@@ -1,5 +1,12 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { EventDetails } from '../../apps/admin/src/EventDetails.js';
 afterEach(() => {
   cleanup();
@@ -151,6 +158,10 @@ test('event detail errors preserve loaded data and allow retries', async () => {
   );
   await screen.findByText('Ohne Datum');
   await screen.findByText('Noch keine Aktivitäten.');
+  const statusSelect = screen.getByLabelText(
+    'Status in der Eventakte',
+  ) as HTMLSelectElement;
+  fireEvent.change(statusSelect, { target: { value: 'option' } });
   for (const [code, text] of [
     ['conflict', /Inzwischen geändert/],
     ['invalid', /Status konnte nicht gespeichert/],
@@ -161,6 +172,7 @@ test('event detail errors preserve loaded data and allow retries', async () => {
       screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
     );
     await screen.findByText(text);
+    expect(statusSelect.value).toBe('option');
     error = 'invalid';
   }
   fetcher.mockRejectedValue(Error('offline'));
@@ -227,4 +239,97 @@ test('shows one record section and retains the selected section on a refreshed e
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
   expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
+});
+
+test('a confirmed status save is reported even when the reload fails and can be retried', async () => {
+  let failGet = false,
+    puts = 0;
+  const changed = vi.fn().mockResolvedValue(undefined);
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options) {
+      puts += 1;
+      return Response.json({ ...event, status: 'option', version: 2 });
+    }
+    if (failGet) return new Response(null, { status: 503 });
+    return Response.json(detail);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={changed}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  failGet = true;
+  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+    target: { value: 'option' },
+  });
+  const form = screen
+    .getByRole('button', { name: 'Status speichern' })
+    .closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  await screen.findByText('Status gespeichert.');
+  await screen.findByText(/Eventakte konnte nicht neu geladen werden/);
+  expect(puts).toBe(1);
+  expect(changed).not.toHaveBeenCalled();
+  failGet = false;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(/Eventakte konnte nicht neu geladen werden/),
+    ).toBeNull(),
+  );
+  expect(changed).toHaveBeenCalledOnce();
+});
+
+test('a slower older event file response never overwrites the newer state', async () => {
+  const pending: ((reply: Response) => void)[] = [];
+  const fetcher = vi.fn((_url: string, options?: RequestInit) => {
+    if (options) return Promise.resolve(Response.json(event));
+    return new Promise<Response>((resolve) => pending.push(resolve));
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const props = {
+    statuses,
+    id: 'synthetic-event',
+    csrfToken: 'csrf',
+    onChanged: vi.fn(),
+    onEdit: vi.fn(),
+    onClose: vi.fn(),
+  };
+  const view = render(<EventDetails {...props} revision={1} />);
+  await waitFor(() => expect(pending).toHaveLength(1));
+  view.rerender(<EventDetails {...props} revision={2} />);
+  await waitFor(() => expect(pending).toHaveLength(2));
+  pending[1]!(
+    Response.json({
+      ...detail,
+      event: { ...event, name: 'Synthetic newer state', version: 2 },
+    }),
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic newer state',
+  });
+  await act(async () =>
+    pending[0]!(
+      Response.json({
+        ...detail,
+        event: { ...event, name: 'Synthetic stale state', version: 1 },
+      }),
+    ),
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Eventakte: Synthetic newer state' }),
+  ).toBeTruthy();
+  expect(screen.queryByText(/Synthetic stale state/)).toBeNull();
 });

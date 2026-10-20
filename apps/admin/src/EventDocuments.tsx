@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 type DocumentRow = {
   id: string;
@@ -58,7 +58,9 @@ export function EventDocuments({
     [templateId, setTemplateId] = useState(''),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(''),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [reloadWarning, setReloadWarning] = useState(false),
+    mutating = useRef(false);
   async function load() {
     const [documentReply, templateReply] = await Promise.all([
       fetch('/api/v1/documents?eventId=' + encodeURIComponent(eventId)),
@@ -79,7 +81,8 @@ export function EventDocuments({
   }, [eventId]);
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!templateId || !contactId) return;
+    if (!templateId || !contactId || mutating.current) return;
+    mutating.current = true;
     setBusy('create');
     setMessage('');
     try {
@@ -97,15 +100,25 @@ export function EventDocuments({
         );
         return;
       }
-      await load();
+      // Confirmed write: report it before the list reload. A later GET failure
+      // must never read as a reason to create the draft again.
       setMessage('Entwurf angelegt.');
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
     } catch {
       setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
     } finally {
+      mutating.current = false;
       setBusy('');
     }
   }
   async function finalize(id: string) {
+    if (mutating.current) return;
+    mutating.current = true;
     setBusy(id);
     setMessage('');
     try {
@@ -122,6 +135,12 @@ export function EventDocuments({
               ? 'PDF konnte nicht erzeugt werden. Bitte Betreiber informieren.'
               : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
         );
+        // Refresh a possibly stale row, but keep the explanatory message.
+        try {
+          await load();
+        } catch {
+          // The retry affordance for confirmed writes does not apply here.
+        }
       } else {
         const result = (await reply.json()) as { number?: string };
         setMessage(
@@ -129,13 +148,23 @@ export function EventDocuments({
             ? 'Finalisiert als ' + result.number + '.'
             : 'Angebot finalisiert.',
         );
+        try {
+          await load();
+          setReloadWarning(false);
+        } catch {
+          setReloadWarning(true);
+        }
       }
-      await load();
     } catch {
       setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
     } finally {
+      mutating.current = false;
       setBusy('');
     }
+  }
+  function retryLoad() {
+    setReloadWarning(false);
+    void load().catch(() => setReloadWarning(true));
   }
   function date(value: string) {
     return new Intl.DateTimeFormat('de-DE', {
@@ -154,6 +183,20 @@ export function EventDocuments({
         erhält es seine Nummer und eine unveränderliche PDF.
       </p>
       <p role="status">{message}</p>
+      {reloadWarning && (
+        <p role="alert">
+          Gespeichert, aber die Angebotsliste konnte nicht neu geladen werden.
+          Nichts erneut anlegen.{' '}
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={busy !== ''}
+            onClick={retryLoad}
+          >
+            Angebote erneut laden
+          </button>
+        </p>
+      )}
       {loading ? (
         <p>Angebote werden geladen …</p>
       ) : (

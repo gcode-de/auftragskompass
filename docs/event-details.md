@@ -10,6 +10,10 @@ Die Akte bündelt die bereits verfügbaren Fachmodelle. Ressourcen, E-Mails, Dok
 
 Event, Zuordnungen und Logbuch werden aus demselben konsistenten Datenbank-Snapshot gelesen. Ein Statuswechsel verwendet das bestehende `PUT /api/v1/events/:id` mit aktuellem vollständigem Eventdatensatz, Version, Origin und CSRF-Token. Veraltete Versionen ergeben 409; die Oberfläche erhält ihre Eingabe und verlangt eine erneute Prüfung. Änderungen, Audit und fachlicher Logeintrag werden in einer Transaktion gespeichert. Beim Fehlschlag bleibt der bisherige Stand erhalten.
 
+## Speichern und Neuladen
+
+Statusänderung, Ressourcenzuweisung und Angebotsanlage bestätigen zuerst die Schreibantwort. Nach einer 2xx-Antwort meldet die Akte den Erfolg, auch wenn das anschließende `GET` scheitert; sie bietet dann einen Hinweis „gespeichert, aber nicht neu geladen“ samt Schaltfläche zum erneuten Laden und fordert ausdrücklich nicht zu einer Wiederholung der Mutation auf. Nur ein fehlgeschlagener `PUT`/`POST` behält die Eingabe und verlangt eine erneute Prüfung. Ein laufender Vorgang und Doppelklicks erzeugen höchstens eine Mutation. `EventDetails` nummeriert Ladeanfragen und ignoriert verspätete Antworten einer älteren Anfrage, damit ein neuerer Eventstand erhalten bleibt.
+
 ## Unveränderbare Aktivitäten
 
 Migration `0012_event_activity.sql` ergänzt `event_activities`. Ein Eintrag speichert interne Mandanten-, Event- und Akteurreferenz, Eventversion, Typ, UTC-Zeitpunkt und gegebenenfalls vorherigen/neuen Status. Die Oberfläche zeigt die Zeit in der Eventzeitzone. Die Beschreibungen werden aus festen Typen/Statusbezeichnungen erzeugt. Freitextnotizen, Adressen, E-Mails, Eventnamen oder Beschreibungsinhalte werden nicht in das unveränderbare Log kopiert.
