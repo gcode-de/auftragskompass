@@ -7,7 +7,8 @@ import {
   emptyEventFilters,
 } from './url-state.js';
 import { useEffect, useState, useRef } from 'react';
-import { toInstant, fromInstant } from './event-time.js';
+import { localDateTime, resolveEventTime } from './event-time.js';
+import { EventTimeField } from './EventTimeField.js';
 type Choice = { id: string; name: string; state: string };
 export type EventRow = {
   id: string;
@@ -141,12 +142,34 @@ export function EventPanel({
     }
   }
   async function save(form: HTMLFormElement) {
-    setBusy(true);
     setMessage('');
+    const data = new FormData(form),
+      value = (key: string) => String(data.get(key) ?? ''),
+      zone = draft?.timeZone ?? timeZone;
+    const choice = (key: string) =>
+      value(key) === 'later' ? ('later' as const) : ('earlier' as const);
+    const [startTime, endTime] = [
+      resolveEventTime(value('startsAt'), zone, {
+        originalInstant: draft?.startsAt ?? null,
+        choice: choice('startsAtChoice'),
+      }),
+      resolveEventTime(value('endsAt'), zone, {
+        originalInstant: draft?.endsAt ?? null,
+        choice: choice('endsAtChoice'),
+      }),
+    ];
+    if (
+      [startTime, endTime].some(
+        (time) => time.kind === 'nonexistent' || time.kind === 'invalid',
+      )
+    ) {
+      setMessage(
+        'Termin prüfen: Uhrzeit existiert am gewählten Tag nicht. Bitte Beginn und Ende anpassen.',
+      );
+      return;
+    }
+    setBusy(true);
     try {
-      const data = new FormData(form),
-        value = (key: string) => String(data.get(key) ?? ''),
-        zone = draft?.timeZone ?? timeZone;
       const input = {
         name: value('name'),
         status: value('status'),
@@ -157,8 +180,8 @@ export function EventPanel({
         additionalContactIds: data.getAll('additionalContactIds').map(String),
         source: value('source'),
         eventDate: value('eventDate') || null,
-        startsAt: toInstant(value('startsAt'), zone, value('startOffset')),
-        endsAt: toInstant(value('endsAt'), zone, value('endOffset')),
+        startsAt: startTime.kind === 'unique' ? startTime.instant : null,
+        endsAt: endTime.kind === 'unique' ? endTime.instant : null,
         description: value('description'),
         notesHtml: value('notesHtml'),
         ...(editing ? { version: draft!.version } : {}),
@@ -196,7 +219,7 @@ export function EventPanel({
     } catch (error) {
       setMessage(
         error instanceof RangeError
-          ? 'Termin prüfen: Uhrzeit muss existieren; bei doppelten Uhrzeiten den UTC-Versatz angeben.'
+          ? 'Termin prüfen: Bitte gültige Uhrzeiten für Beginn und Ende angeben.'
           : 'Verbindung fehlgeschlagen. Deine Eingabe bleibt erhalten.',
       );
     } finally {
@@ -220,9 +243,7 @@ export function EventPanel({
       </option>
     ));
   }
-  const zone = draft?.timeZone ?? timeZone,
-    start = fromInstant(draft?.startsAt ?? null, zone),
-    end = fromInstant(draft?.endsAt ?? null, zone);
+  const zone = draft?.timeZone ?? timeZone;
   const showingDetail = rows.some((row) => row.id === detailId);
   const groups = new Map<string, EventRow[]>();
   for (const row of rows) {
@@ -455,58 +476,18 @@ export function EventPanel({
                   defaultValue={draft?.eventDate ?? ''}
                 />
               </label>
-              <label>
-                Eventbeginn
-                <input
-                  name="startsAt"
-                  type="datetime-local"
-                  step="0.001"
-                  onChange={(event) => {
-                    (
-                      event.currentTarget.form!.elements.namedItem(
-                        event.currentTarget.name === 'startsAt'
-                          ? 'startOffset'
-                          : 'endOffset',
-                      ) as HTMLInputElement
-                    ).value = '';
-                  }}
-                  defaultValue={start.value}
-                />
-              </label>
-              <label>
-                UTC-Versatz Beginn
-                <input
-                  name="startOffset"
-                  placeholder="Automatisch, z. B. +02:00 bei Zeitumstellung"
-                  defaultValue={start.offset}
-                />
-              </label>
-              <label>
-                Eventende
-                <input
-                  name="endsAt"
-                  type="datetime-local"
-                  step="0.001"
-                  onChange={(event) => {
-                    (
-                      event.currentTarget.form!.elements.namedItem(
-                        event.currentTarget.name === 'startsAt'
-                          ? 'startOffset'
-                          : 'endOffset',
-                      ) as HTMLInputElement
-                    ).value = '';
-                  }}
-                  defaultValue={end.value}
-                />
-              </label>
-              <label>
-                UTC-Versatz Ende
-                <input
-                  name="endOffset"
-                  placeholder="Automatisch, z. B. +01:00 bei Zeitumstellung"
-                  defaultValue={end.offset}
-                />
-              </label>
+              <EventTimeField
+                name="startsAt"
+                label="Eventbeginn"
+                timeZone={zone}
+                instant={draft?.startsAt ?? null}
+              />
+              <EventTimeField
+                name="endsAt"
+                label="Eventende"
+                timeZone={zone}
+                instant={draft?.endsAt ?? null}
+              />
               <label>
                 Eventbeschreibung
                 <textarea
@@ -664,10 +645,7 @@ export function EventPanel({
                         status: 'inquiry',
                         timeZone,
                         eventDate: row.startsAt
-                          ? fromInstant(row.startsAt, timeZone).value.slice(
-                              0,
-                              10,
-                            )
+                          ? localDateTime(row.startsAt, timeZone).slice(0, 10)
                           : row.eventDate,
                         eventTypeId: active(types, row.eventTypeId),
                         packageId: active(packages, row.packageId),

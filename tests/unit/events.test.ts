@@ -3,7 +3,12 @@ import {
   sanitizeNotes,
   validateSchedule,
 } from '../../packages/core/src/events.js';
-import { toInstant, fromInstant } from '../../apps/admin/src/event-time.js';
+import {
+  localDateTime,
+  fromInstant,
+  resolveEventTime,
+  resolveLocalTime,
+} from '../../apps/admin/src/event-time.js';
 test('event notes retain simple formatting and safe links but strip active content', () => {
   expect(
     sanitizeNotes(
@@ -38,24 +43,113 @@ test('event schedules accept missing dates and date-only but reject partial, rev
       validateSchedule(args[0], args[1], args[2], 'Europe/Berlin'),
     ).toThrow('invalid_schedule');
 });
-test('local event times use tenant timezone, reject DST gaps and require offsets for repeated hours', () => {
-  expect(toInstant('', 'Europe/Berlin')).toBeNull();
-  expect(fromInstant(null, 'Europe/Berlin')).toEqual({ value: '', offset: '' });
-  expect(toInstant('2026-07-01T18:00', 'Europe/Berlin')).toBe(
-    '2026-07-01T16:00:00Z',
+test('unique local event times resolve in the tenant timezone without a manual offset', () => {
+  expect(resolveLocalTime('', 'Europe/Berlin')).toEqual({ kind: 'empty' });
+  expect(resolveLocalTime('no-time', 'Europe/Berlin')).toEqual({
+    kind: 'invalid',
+  });
+  expect(resolveLocalTime('2026-07-01T18:00', '')).toEqual({
+    kind: 'invalid',
+  });
+  expect(resolveLocalTime('2026-07-01T18:00', 'Europe/Berlin')).toEqual({
+    kind: 'unique',
+    instant: '2026-07-01T16:00:00Z',
+  });
+  expect(resolveLocalTime('2026-10-26T18:00', 'Europe/Berlin')).toEqual({
+    kind: 'unique',
+    instant: '2026-10-26T17:00:00Z',
+  });
+  expect(resolveLocalTime('2026-01-15T18:00', 'Europe/Berlin')).toEqual({
+    kind: 'unique',
+    instant: '2026-01-15T17:00:00Z',
+  });
+  expect(localDateTime(null, 'Europe/Berlin')).toBe('');
+  expect(localDateTime('2026-10-25T01:30:00Z', 'Europe/Berlin')).toBe(
+    '2026-10-25T02:30:00',
   );
-  expect(() => toInstant('2026-03-29T02:30', 'Europe/Berlin')).toThrow();
-  expect(() => toInstant('2026-10-25T02:30', 'Europe/Berlin')).toThrow();
-  expect(toInstant('2026-10-25T02:30', 'Europe/Berlin', '+02:00')).toBe(
-    '2026-10-25T00:30:00Z',
-  );
-  expect(toInstant('2026-10-25T02:30', 'Europe/Berlin', '+01:00')).toBe(
-    '2026-10-25T01:30:00Z',
+  expect(localDateTime('2026-07-01T16:00:00.123Z', 'Europe/Berlin')).toBe(
+    '2026-07-01T18:00:00.123',
   );
   expect(fromInstant('2026-10-25T01:30:00Z', 'Europe/Berlin')).toEqual({
     value: '2026-10-25T02:30:00',
     offset: '+01:00',
   });
+});
+
+test('DST edge local times are detected instead of guessed', () => {
+  expect(resolveLocalTime('2026-03-29T02:30', 'Europe/Berlin')).toEqual({
+    kind: 'nonexistent',
+  });
+  expect(resolveLocalTime('2026-03-29T03:00', 'Europe/Berlin')).toEqual({
+    kind: 'unique',
+    instant: '2026-03-29T01:00:00Z',
+  });
+  const ambiguous = resolveLocalTime('2026-10-25T02:30', 'Europe/Berlin');
+  expect(ambiguous.kind).toBe('ambiguous');
+  if (ambiguous.kind !== 'ambiguous') throw Error('expected ambiguous');
+  expect(ambiguous.options).toEqual([
+    {
+      choice: 'earlier',
+      instant: '2026-10-25T00:30:00Z',
+      offset: '+02:00',
+      label: 'Sommerzeit (UTC+02:00)',
+    },
+    {
+      choice: 'later',
+      instant: '2026-10-25T01:30:00Z',
+      offset: '+01:00',
+      label: 'Normalzeit (UTC+01:00)',
+    },
+  ]);
+  expect(
+    resolveEventTime('2026-10-25T02:30', 'Europe/Berlin', {
+      choice: 'earlier',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-10-25T00:30:00Z' });
+  expect(
+    resolveEventTime('2026-10-25T02:30', 'Europe/Berlin', {
+      choice: 'later',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-10-25T01:30:00Z' });
+  expect(
+    resolveEventTime('2026-10-25T02:30', 'Europe/Berlin', { choice: '' }),
+  ).toEqual(ambiguous);
+});
+
+test('unchanged event instants survive edits in repeated hours and keep seconds', () => {
+  expect(
+    resolveEventTime('2026-10-25T02:30:00', 'Europe/Berlin', {
+      originalInstant: '2026-10-25T01:30:00Z',
+    }),
+  ).toEqual({
+    kind: 'unique',
+    instant: '2026-10-25T01:30:00Z',
+    preserved: true,
+  });
+  expect(
+    resolveEventTime('2026-10-25T02:45:00', 'Europe/Berlin', {
+      originalInstant: '2026-10-25T01:30:00Z',
+    }).kind,
+  ).toBe('ambiguous');
+  expect(
+    resolveEventTime('2026-07-01T18:00:00.123', 'Europe/Berlin', {
+      originalInstant: '2026-07-01T16:00:00.123Z',
+    }),
+  ).toEqual({
+    kind: 'unique',
+    instant: '2026-07-01T16:00:00.123Z',
+    preserved: true,
+  });
+  expect(
+    resolveEventTime('2026-11-01T18:00', 'Europe/Berlin', {
+      originalInstant: '2026-07-01T16:00:00Z',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-11-01T17:00:00Z' });
+  expect(
+    resolveEventTime('', 'Europe/Berlin', {
+      originalInstant: '2026-07-01T16:00:00Z',
+    }),
+  ).toEqual({ kind: 'empty' });
 });
 
 test('oversized sanitized notes fail safely', () => {

@@ -672,6 +672,39 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
     ).toBeVisible();
+    // Real DST change: 16.10. is CEST, 16.11. is CET. The browser only edits
+    // wall-clock fields; the instant must follow the tenant timezone.
+    await events
+      .getByRole('button', {
+        name: 'Event bearbeiten: Synthetic browser event',
+      })
+      .click();
+    await events.getByLabel('Eventdatum').fill('2026-11-16');
+    await events.getByLabel('Eventbeginn').fill('2026-11-16T18:00');
+    await events.getByLabel('Eventende').fill('2026-11-17T01:00');
+    await expect(events.getByLabel(/UTC-Versatz/)).toHaveCount(0);
+    await events.getByRole('button', { name: 'Event speichern' }).click();
+    await expect(
+      events.getByText('Synthetic browser event – 16.11.2026 – Annulliert'),
+    ).toBeVisible();
+    await events
+      .getByRole('button', {
+        name: 'Event bearbeiten: Synthetic browser event',
+      })
+      .click();
+    await expect(events.getByLabel('Eventbeginn')).toHaveValue(
+      /^2026-11-16T18:00/,
+    );
+    await expect(events.getByLabel('Eventende')).toHaveValue(
+      /^2026-11-17T01:00/,
+    );
+    await events.getByLabel('Eventdatum').fill('2026-10-16');
+    await events.getByLabel('Eventbeginn').fill('2026-10-16T18:00');
+    await events.getByLabel('Eventende').fill('2026-10-17T01:00');
+    await events.getByRole('button', { name: 'Event speichern' }).click();
+    await expect(
+      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+    ).toBeVisible();
     await events.getByText('Event anlegen', { exact: true }).click();
     await events
       .getByLabel('Eventname', { exact: true })

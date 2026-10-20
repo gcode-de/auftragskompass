@@ -1,11 +1,11 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **20.10.2026**, nach C051.3. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand: **20.10.2026**, nach C051.3 und H022. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
 ## In der nächsten Session zuerst
 
 1. [AGENTS.md](../AGENTS.md) vollständig lesen; dann diese Übergabe, den relevanten Abschnitt des [Lastenhefts](../Lastenheft_Fotobox-Verwaltung_MVP.md) und den aktuellen Slice im [Implementierungsplan](../IMPLEMENTATION_PLAN.md).
-2. `git status`, Branch, Remote und letzte Commits prüfen. Bisheriger Arbeitsbranch: `codex/local-runtime-ci`, Remote: [gcode-de/auftragskompass](https://github.com/gcode-de/auftragskompass). Nicht automatisch zu `main` wechseln oder gepushte Commits umschreiben.
+2. `git status`, Branch, Remote und letzte Commits prüfen. Arbeitsbranch seit H022: `codex/ux-event-simplification` (Basis `codex/local-runtime-ci`), Remote: [gcode-de/auftragskompass](https://github.com/gcode-de/auftragskompass). Nicht automatisch zu `main` wechseln oder gepushte Commits umschreiben.
 3. Angeforderte Skills unten lokalisieren und vor ihrer Anwendung lesen. Der bestehende Entwurf ist eine Verwaltungs-App, keine neue Marketingseite.
 4. Für Betriebsarbeit zusätzlich die private Betreiberübergabe lesen: außerhalb Git unter `AuftragsKompass-Sicherung/uebergabe-2026-10-19/README.md` im Dokumente-Verzeichnis des bisherigen Betreiberrechners. Auf einem anderen Rechner ist sie nicht automatisch verfügbar. Keine Secrets in den Chat oder Git übernehmen.
 5. Genau einen passenden nummerierten Slice auswählen beziehungsweise im Plan konkretisieren. Tests zuerst bei Verhaltensänderungen; erforderliche Gates, explizites Staging, vollständiger staged Review, ein Conventional Commit, sofortiger Push. Kein automatischer Produktivwechsel.
@@ -24,7 +24,7 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 |---|---|---|
 | Anmeldung und Oberfläche | Eigener Login mit E-Mail oder Benutzername und Passwort, Passwortwechsel und kontrollierte Betreiber-Wiederherstellung; mobile Navigation, unterteilte Arbeitsbereiche, Hell/Dunkel und eine kleine Build-Version in der Navigation | Weitere lokale Passwortkonten nur bei konkretem Bedarf; Google-OIDC technisch optional, nicht als echter Betreiberlogin eingerichtet |
 | Kontakte und Stammdaten | Privat-/Firmenkontakte, Orte, Produkte/Preise, Pakete, Eventarten, Ressourcen und Absagegründe; Suche, Archivierung und Versionsschutz | Fachlicher Abgleich mit echtem Bestand |
-| Events und Aufträge | Anlage/Bearbeitung/Duplizieren, Suche/Filter, Monatsgruppen, Eventakte, Status, Notizen und unveränderbares Logbuch | Gesamter kommerzieller Ablauf folgt separat |
+| Events und Aufträge | Anlage/Bearbeitung/Duplizieren, Suche/Filter, Monatsgruppen, Eventakte, Status, Notizen und unveränderbares Logbuch; Terminzeiten werden ohne manuelle UTC-Versatzfelder eingegeben (H022) | Gesamter kommerzieller Ablauf folgt separat |
 | Disposition und Kalender | Physische Boxen/Zubehör, Vormerkungen, feste Buchungen, Datenbank-Konfliktschutz, Puffer, interne Sperren, Tages-/Wochen-/Monatskalender und widerrufbare ICS-Abos | Echter Ressourcenabgleich vor Nutzung; Smartphone-Abnahme des Kalender-Abos |
 | Website-Anfragen | Achtfeldrige Definition, öffentliche API, verschlüsselter Gateway-Eingang, signierte/idempotente Übertragung, dauerhafte lokale Ablage, Quittierung, manuelle Prüfung/Übernahme und mobiles einbettbares Formular entwickelt und synthetisch getestet; seit C028 zusätzlich die Gateway-Laufzeit als eigener Prozess und der Pull-/Quittungstakt im Worker als Code vorhanden | Gateway real starten (Kaltstart mit synthetischen Schlüsseln), Podman-Secrets anlegen, erlaubten Website-Origin festlegen, WordPress anschließen und gemeinsam abnehmen |
 | E-Mail/Kommunikation (M3) | Geplant | IMAP/SMTP, Zuordnung zu Events/Kontakten, Postfach, Vorlagen, Anhänge, geplanter Versand und Erinnerungen |
@@ -36,6 +36,12 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pauschal als fertig werten. E-/H-Slices ziehen gezielte Teile vor, ohne ganze Milestones als abgeschlossen zu erklären.
 
 ## Letzter geprüfter Laufzeitstand
+
+### Arbeitsnachtrag 20.10.2026 (H022: Zeitumstellung ohne UTC-Versatzfelder)
+
+Branch `codex/ux-event-simplification` (abgezweigt von `origin/codex/local-runtime-ci`). Die Eventoberfläche fragt beim Anlegen, Bearbeiten und Duplizieren nur noch lokales Datum und lokale Uhrzeit ab. Eindeutige Zeiten löst `apps/admin/src/event-time.ts` in der Eventzeitzone auf; doppelte Herbststunden zeigen ausschließlich dort eine Auswahl Sommerzeit/Normalzeit, Frühjahrslücken einen Feldfehler. Unveränderte Zeiten behalten den gespeicherten Zeitpunkt (auch in der doppelten Stunde und mit Millisekunden); geänderte Datums-/Zeitwerte verwenden keinen alten Versatz mehr. Die Versatzfelder der Ressourcen- und Sperrdisposition sind bewusst unverändert. Keine Server-, API-, Datenbank- oder Migrationsänderung.
+
+Lokal grün: Format, Lint, Typen, Build, 184 Unit-, 164 Komponenten-, 237 Integrationstests, Changed-Code-Coverage (`event-time.ts` 97,4 % Zeilen / 100 % Zweige, `EventTimeField.tsx` 100 % Zeilen / 92,9 % Zweige) und die vier Chromium-Abläufe inklusive echtem Datumswechsel 16.10.→16.11. und zurück. **Der Testbetrieb wurde in dieser Sitzung nicht aktualisiert und es wurde nichts ausgeliefert**; Containerstand und CI-Lauf dieses Commits sind beim Fortsetzen zu prüfen.
 
 ### Laufzeitnachtrag 20.10.2026 (C051.3: Angebote in der Eventakte)
 

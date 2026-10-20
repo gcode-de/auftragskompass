@@ -466,3 +466,175 @@ test('opening, closing and editing a record returns to the correct list and edit
     'Synthetic event',
   );
 });
+
+function savedBody(fetcher: ReturnType<typeof mocker>) {
+  const call = fetcher.mock.calls.find(([, options]) => options);
+  return JSON.parse(String((call?.[1] as RequestInit).body)) as Record<
+    string,
+    unknown
+  >;
+}
+
+test('moving an event time from summer to winter resolves the new local time without the old offset', async () => {
+  const fetcher = mocker([], {
+    eventDate: '2026-07-01',
+    startsAt: '2026-07-01T16:00:00Z',
+    endsAt: '2026-07-01T18:00:00Z',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  expect(screen.queryByLabelText(/UTC-Versatz/)).toBeNull();
+  expect((screen.getByLabelText('Eventbeginn') as HTMLInputElement).value).toBe(
+    '2026-07-01T18:00',
+  );
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2026-10-26' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-10-26T18:00' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-10-27T01:00' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const saved = savedBody(fetcher);
+  expect(saved.startsAt).toBe('2026-10-26T17:00:00Z');
+  expect(saved.endsAt).toBe('2026-10-27T00:00:00Z');
+  expect(saved.eventDate).toBe('2026-10-26');
+});
+
+test('moving an event time from winter to summer resolves the new local time without the old offset', async () => {
+  const fetcher = mocker([], {
+    eventDate: '2026-01-15',
+    startsAt: '2026-01-15T17:00:00Z',
+    endsAt: '2026-01-15T19:00:00Z',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2026-07-01' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-07-01T18:00' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-07-02T01:00' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const saved = savedBody(fetcher);
+  expect(saved.startsAt).toBe('2026-07-01T16:00:00Z');
+  expect(saved.endsAt).toBe('2026-07-01T23:00:00Z');
+});
+
+test('a repeated fall-back hour offers both daylight and standard time choices', async () => {
+  for (const [choice, expected] of [
+    ['earlier', '2026-10-25T00:30:00Z'],
+    ['later', '2026-10-25T01:30:00Z'],
+  ] as const) {
+    const fetcher = mocker();
+    vi.stubGlobal('fetch', fetcher);
+    render(<EventPanel csrfToken="csrf" />);
+    showForms();
+    await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+    fireEvent.change(screen.getByLabelText('Eventdatum'), {
+      target: { value: '2026-10-25' },
+    });
+    fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+      target: { value: '2026-10-25T02:30' },
+    });
+    fireEvent.change(screen.getByLabelText('Eventende'), {
+      target: { value: '2026-10-25T04:00' },
+    });
+    const selector = screen.getByLabelText(
+      'Uhrzeitwahl Eventbeginn',
+    ) as HTMLSelectElement;
+    expect(selector.value).toBe('earlier');
+    expect(
+      screen.getByRole('option', { name: 'Sommerzeit (UTC+02:00)' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('option', { name: 'Normalzeit (UTC+01:00)' }),
+    ).toBeTruthy();
+    fireEvent.change(selector, { target: { value: choice } });
+    fireEvent.submit(
+      screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+    );
+    await screen.findByText('Event gespeichert.');
+    expect(savedBody(fetcher).startsAt).toBe(expected);
+    cleanup();
+  }
+});
+
+test('a nonexistent spring-gap time shows a field error and is never submitted', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic gap event' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2026-03-29' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-03-29T02:30' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-03-29T04:00' },
+  });
+  const start = screen.getByLabelText('Eventbeginn');
+  expect(start.getAttribute('aria-invalid')).toBe('true');
+  expect(start.getAttribute('aria-describedby')).toBe('event-startsAt-error');
+  await screen.findByText(/existiert an diesem Tag nicht/);
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Termin prüfen/);
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+});
+
+test('an unchanged repeated hour keeps its stored instant without asking for a choice', async () => {
+  const fetcher = mocker([], {
+    eventDate: '2026-10-25',
+    startsAt: '2026-10-25T01:30:00Z',
+    endsAt: '2026-10-25T03:00:00Z',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  expect((screen.getByLabelText('Eventbeginn') as HTMLInputElement).value).toBe(
+    '2026-10-25T02:30',
+  );
+  expect(screen.queryByLabelText('Uhrzeitwahl Eventbeginn')).toBeNull();
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const saved = savedBody(fetcher);
+  expect(saved.startsAt).toBe('2026-10-25T01:30:00Z');
+  expect(saved.endsAt).toBe('2026-10-25T03:00:00Z');
+});
