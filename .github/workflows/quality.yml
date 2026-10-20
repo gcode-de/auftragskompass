@@ -45,9 +45,11 @@ jobs:
           if-no-files-found: ignore
   images:
     needs: quality
+    # Publication allowlist: only these exact pushed branch refs may publish images.
+    # One place to change; pull requests never publish and arbitrary branches never match.
     if: >-
       github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/local-runtime-ci')
+      contains(fromJSON('["refs/heads/main","refs/heads/codex/local-runtime-ci","refs/heads/codex/ux-event-simplification"]'), github.ref)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:

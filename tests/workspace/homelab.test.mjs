@@ -9,8 +9,6 @@ test('image publishing requires green quality gates, fixed repository name and a
   for (const required of [
     'needs: quality',
     "github.event_name == 'push'",
-    "github.ref == 'refs/heads/main'",
-    "github.ref == 'refs/heads/codex/local-runtime-ci'",
     'secrets.DOCKERHUB_TOKEN',
     'secrets.DOCKERHUB_USER',
     'node scripts/dockerhub.mjs',
@@ -27,6 +25,26 @@ test('image publishing requires green quality gates, fixed repository name and a
   assert.ok(!publish.includes(':latest'));
   for (const action of workflow.matchAll(/uses: (\S+)/g))
     assert.match(action[1], /@[a-f0-9]{40}$/);
+});
+
+test('image publication allowlist is exactly the reviewed branch refs in one place', () => {
+  const workflow = readFileSync('.github/workflows/quality.yml', 'utf8');
+  const publish = workflow.split('\n  images:\n')[1];
+  const allowlist = publish.match(
+    /contains\(fromJSON\('([^']+)'\), github.ref\)/,
+  );
+  assert.ok(allowlist, 'publication allowlist missing');
+  assert.deepEqual(JSON.parse(allowlist[1]), [
+    'refs/heads/main',
+    'refs/heads/codex/local-runtime-ci',
+    'refs/heads/codex/ux-event-simplification',
+  ]);
+  const condition = publish.split('\n    runs-on:')[0];
+  assert.equal(condition.match(/github\.ref/g).length, 1);
+  assert.ok(condition.includes("github.event_name == 'push'"));
+  assert.ok(!condition.includes('pull_request'));
+  assert.ok(!/github\.ref\s*[!=]=/.test(condition));
+  assert.equal(condition.match(/fromJSON\(/g).length, 1);
 });
 
 test('both published images identify the exact source revision for operator verification', () => {

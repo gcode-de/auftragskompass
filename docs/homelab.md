@@ -27,8 +27,24 @@ Es gibt keinen automatischen Wechsel zu öffentlicher Sichtbarkeit.
 Keine Zugangsdaten in versionierte Dateien oder Chatnachrichten schreiben. Auf dem
 Home-Lab-Host genügt für private Images ein separater Token mit Leserecht außerhalb
 von Git. Die Veröffentlichung läuft nur nach erfolgreichen Qualitätsprüfungen bei
-einem Push auf `main` oder `codex/local-runtime-ci`. Pull Requests veröffentlichen
-nichts. Fehler der Registry-Einrichtung verhindern jeden Image-Push.
+einem Push auf einen ausdrücklich freigegebenen Branch-Ref: `refs/heads/main`,
+`refs/heads/codex/local-runtime-ci` oder `refs/heads/codex/ux-event-simplification`.
+Die Allowlist steht als `fromJSON`-Liste an genau einer Stelle im `images`-Job von
+`quality.yml`. Jeder andere Branch und jeder Pull Request veröffentlichen nichts;
+der Vergleich erfolgt auf den vollständigen Ref und nicht auf einen Teilstring.
+Fehler der Registry-Einrichtung verhindern jeden Image-Push.
+
+Die UX-Branch `codex/ux-event-simplification` ist damit der zweite freigegebene
+Veröffentlichungszweig für den Testbetrieb. Ab H028 folgt der automatische
+Testbetrieb dieser Branch auf ausdrückliche Betreiberkonfiguration. Damit gilt:
+jeder künftig gepushte Head dieser Branch wird erst nach vollständig grünem
+`quality`-Lauf und beiden veröffentlichten Images automatisch übernommen. Eine
+neue Branch in der Allowlist ist eine bewusste, zu testende Codeänderung.
+
+Der veröffentlichte Stand der UX-Branch ist der geprüfte Termin-Editor mit
+„Weiteren Angaben“, ohne manuelle UTC-Versatzfelder im Terminblock und mit
+zugänglichem Bereich „Erweitert“ für eigene Dispositionszeiträume. Die Oberfläche
+bleibt bis zum Abschluss der separaten Bookitup-Referenzprüfung unverändert.
 
 Es entstehen zwei Tags im selben Repository:
 
