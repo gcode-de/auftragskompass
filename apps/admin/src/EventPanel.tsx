@@ -531,6 +531,11 @@ export function EventPanel({
                 erscheint am Event.
               </p>
               <button>Event speichern</button>
+              {editing && draft?.id && (
+                <a className="secondary-action" href={'#event-' + draft.id}>
+                  Ressourcen zuweisen
+                </a>
+              )}
               {draft && (
                 <button
                   type="button"
