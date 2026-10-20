@@ -13,6 +13,7 @@ export function EventTimeField({
   timeZone,
   instant,
   error,
+  idPrefix = 'event',
   onChange,
 }: {
   name: string;
@@ -20,6 +21,9 @@ export function EventTimeField({
   timeZone: string;
   instant: string | null;
   error?: string | undefined;
+  // Several forms can show the same field name at once; the prefix keeps each
+  // error id unique so aria-describedby always resolves to its own message.
+  idPrefix?: string;
   onChange?: (value: string) => void;
 }) {
   const [value, setValue] = useState(localDateTime(instant, timeZone)),
@@ -36,7 +40,7 @@ export function EventTimeField({
       originalInstant: instant,
       choice,
     }),
-    errorId = `event-${name}-error`,
+    errorId = `${idPrefix}-${name}-error`,
     invalid =
       resolution.kind === 'nonexistent' ||
       resolution.kind === 'invalid' ||

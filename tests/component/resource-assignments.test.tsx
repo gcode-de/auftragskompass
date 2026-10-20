@@ -5,11 +5,14 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
+import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { ResourceAssignments } from '../../apps/admin/src/ResourceAssignments.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.history.replaceState(null, '', '/');
 });
 const event = {
   id: 'synthetic-event',
@@ -737,4 +740,97 @@ test('incomplete or reversed event and custom periods are explained per field', 
   submit();
   await screen.findByText('Das Dispositionsende muss nach dem Beginn liegen.');
   expect(fetcher.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(false);
+});
+
+test('a corrected field drops its stale validation error without saving again', async () => {
+  const { fetcher } = mountFor([resource]);
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const end = screen.getByLabelText('Eventende', {
+    exact: true,
+  }) as HTMLInputElement;
+  fireEvent.change(end, { target: { value: '' } });
+  submit();
+  await screen.findByText('Bitte auch das Ende angeben.');
+  expect(end.getAttribute('aria-invalid')).toBe('true');
+  expect(
+    document.getElementById(end.getAttribute('aria-describedby')!)?.textContent,
+  ).toBe('Bitte auch das Ende angeben.');
+  fireEvent.change(end, { target: { value: '2030-10-16T19:00' } });
+  expect(screen.queryByText('Bitte auch das Ende angeben.')).toBeNull();
+  expect(screen.queryByText(/Termin prüfen/)).toBeNull();
+  expect(end.getAttribute('aria-invalid')).toBe('false');
+  expect(end.getAttribute('aria-describedby')).toBeNull();
+  // Reversed times are a pairing error: correcting the start clears the end.
+  fireEvent.change(end, { target: { value: '2030-10-16T15:00' } });
+  submit();
+  await screen.findByText('Das Ende muss nach dem Beginn liegen.');
+  expect(end.getAttribute('aria-invalid')).toBe('true');
+  fireEvent.change(screen.getByLabelText('Eventbeginn', { exact: true }), {
+    target: { value: '2030-10-16T14:00' },
+  });
+  expect(
+    screen.queryByText('Das Ende muss nach dem Beginn liegen.'),
+  ).toBeNull();
+  expect(end.getAttribute('aria-invalid')).toBe('false');
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'PUT'),
+  ).toBe(false);
+});
+
+test('editor and event file keep their own time error ids at the same time', async () => {
+  const row = { ...event, name: 'Fictional booking', endsAt: null };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.endsWith('/availability')) return Response.json([resource]);
+    if (options) return Response.json(row);
+    if (url === '/api/v1/events')
+      return Response.json({ timeZone: 'Europe/Berlin', events: [row] });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <>
+      <EventPanel csrfToken="csrf" />
+      <ResourceAssignments
+        event={row}
+        csrfToken="csrf"
+        onChanged={async () => {}}
+      />
+    </>,
+  );
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const region = screen.getByRole('region', { name: 'Ressourcenzuweisung' });
+  const resourceEnd = region.querySelector<HTMLInputElement>(
+    'input[name="endsAt"]',
+  )!;
+  fireEvent.change(resourceEnd, { target: { value: '' } });
+  fireEvent.submit(region.querySelector('form')!);
+  await within(region).findByText('Bitte auch das Ende angeben.');
+
+  const editor = document.getElementById('event-editor') as HTMLFormElement;
+  const editorEnd = editor.querySelector<HTMLInputElement>('[name="endsAt"]')!;
+  fireEvent.change(editor.querySelector('[name="startsAt"]')!, {
+    target: { value: '2030-10-16T19:00' },
+  });
+  fireEvent.change(editorEnd, { target: { value: '2030-10-16T18:00' } });
+  fireEvent.submit(editor);
+  await within(editor).findByText('Das Ende muss nach dem Beginn liegen.');
+
+  expect(resourceEnd.getAttribute('aria-describedby')).toBe(
+    'assignment-endsAt-error',
+  );
+  expect(editorEnd.getAttribute('aria-describedby')).toBe('event-endsAt-error');
+  const described = (element: HTMLElement) =>
+    document.getElementById(element.getAttribute('aria-describedby')!);
+  expect(described(resourceEnd)?.textContent).toBe(
+    'Bitte auch das Ende angeben.',
+  );
+  expect(described(editorEnd)?.textContent).toBe(
+    'Das Ende muss nach dem Beginn liegen.',
+  );
+  expect(region.contains(described(resourceEnd))).toBe(true);
+  expect(editor.contains(described(editorEnd))).toBe(true);
+  expect(document.querySelectorAll('#assignment-endsAt-error')).toHaveLength(1);
+  expect(document.querySelectorAll('#event-endsAt-error')).toHaveLength(1);
 });

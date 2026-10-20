@@ -152,6 +152,33 @@ export function ResourceAssignments({
       choice: choice === 'earlier' || choice === 'later' ? choice : '',
     });
   }
+  // A corrected field must not keep the message from the last save. Pairing
+  // errors belong to both fields of a period, so correcting either one clears
+  // both; times that are still impossible keep their own intrinsic error from
+  // EventTimeField until they become valid.
+  function clearFieldErrors(name: string) {
+    const base = name.replace(/Choice$/, ''),
+      partner = base.startsWith('start-')
+        ? 'end-' + base.slice(6)
+        : base.startsWith('end-')
+          ? 'start-' + base.slice(4)
+          : base === 'startsAt'
+            ? 'endsAt'
+            : base === 'endsAt'
+              ? 'startsAt'
+              : '',
+      stale = [base, partner].filter((key) => key && errorsByField[key]);
+    if (!stale.length) return;
+    const next = { ...errorsByField };
+    for (const key of stale) delete next[key];
+    setErrorsByField(next);
+    if (!Object.keys(next).length)
+      setMessage((current) =>
+        current === 'Termin prüfen: markierte Felder korrigieren.'
+          ? ''
+          : current,
+      );
+  }
   function reveal(name: string) {
     const field = form.current?.querySelector<HTMLElement>(`[name="${name}"]`);
     if (!field) return;
@@ -409,7 +436,10 @@ export function ResourceAssignments({
       </p>
       <form
         ref={form}
-        onChange={() => {
+        onChange={(event) => {
+          clearFieldErrors(
+            (event.target as HTMLElement).getAttribute('name') ?? '',
+          );
           ++request.current;
           setVerified(new Set());
           dirty.current = true;
@@ -450,6 +480,7 @@ export function ResourceAssignments({
             name="startsAt"
             label="Eventbeginn"
             timeZone={event.timeZone}
+            idPrefix="assignment"
             instant={event.startsAt}
             error={errorsByField.startsAt}
             onChange={(next) => {
@@ -461,6 +492,7 @@ export function ResourceAssignments({
             name="endsAt"
             label="Eventende"
             timeZone={event.timeZone}
+            idPrefix="assignment"
             instant={event.endsAt}
             error={errorsByField.endsAt}
           />
@@ -561,6 +593,7 @@ export function ResourceAssignments({
                       name={'start-' + unit.unitId}
                       label={'Dispositionsbeginn: ' + label}
                       timeZone={event.timeZone}
+                      idPrefix="assignment"
                       instant={unit.baseStart}
                       error={errorsByField['start-' + unit.unitId]}
                     />
@@ -568,6 +601,7 @@ export function ResourceAssignments({
                       name={'end-' + unit.unitId}
                       label={'Dispositionsende: ' + label}
                       timeZone={event.timeZone}
+                      idPrefix="assignment"
                       instant={unit.baseEnd}
                       error={errorsByField['end-' + unit.unitId]}
                     />
