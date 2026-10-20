@@ -37,9 +37,9 @@ C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pau
 
 ## Letzter geprüfter Laufzeitstand
 
-### Laufzeitnachtrag 19.10.2026 (M4-Grundlagen)
+### Laufzeitnachtrag 19.10.2026 (M4-Grundlagen und Betreiberkorrekturen)
 
-Geprüfter Stand **`7ab88bbc0634404cf3376b62ee3ebded1d8f9ac6`**, CI-Lauf 39265947701 vollständig grün (Qualität und Images). Auf dem Podman-Testhost laufen `ak-test-api`, `ak-test-worker` und `ak-test-admin` gesund auf genau dieser Revision; der automatische Updater hat sie selbstständig übernommen. In dieser Revision zusätzlich enthalten: Vorbelegung `DE` für neue Website-Kontakte, sichtbare Build-Version in der Navigation (im ausgelieferten Bundle nachgewiesen) sowie die Migrationen `0026` (Dokumentvorlagen) und `0027` (Nummernkreise). Neue Routen `/api/v1/document-templates` und `/api/v1/document-numbers` sind im Betrieb registriert. Offen bleiben die PDF-Erzeugung (C048/C049) und die eigentlichen Angebote/Rechnungen (C051/C054).
+Geprüfter Stand **`1e057c7788124ea115e910dd0ffac8e61db61a04`**, CI-Lauf 39320658977 vollständig grün (Qualität und Images). Auf dem Podman-Testhost laufen `ak-test-api`, `ak-test-worker` und `ak-test-admin` gesund auf genau dieser Revision; der automatische Updater hat sie selbstständig übernommen. In dieser Revision enthalten: Vorbelegung `DE` für neue Website-Kontakte, sichtbare Build-Version in der Navigation, Migrationen `0026` (Dokumentvorlagen), `0027` (Nummernkreise), `0028` (Dokumentlayout) und `0029` (Kalender-Abos ohne Ablauf), dazu die Betreiberkorrekturen H021: Kalender-Abos laufen nicht mehr ab, Termine sind echte Ganztagstermine, und „Menü schließen"/„Abmelden"/„Dunkelmodus" sind Icon-Schaltflächen. Betrieblich nachgewiesen: `expires_at` ist in der Testdatenbank nullable ohne Default, der Text „läuft nicht ab" und das `aria-label` „Menü schließen" stehen im ausgelieferten Admin-Bundle, und im Runtime-Image erzeugt `ics.js` einen Ganztagstermin mit `ALLDAY`-Kennzeichen ohne `DURATION`-Eigenschaft. Offen bleiben die PDF-Erzeugung (C048.1 Logo, C049) und die eigentlichen Angebote/Rechnungen (C051/C054).
 
 ### Betriebsnachtrag H020 (19.10.2026)
 
