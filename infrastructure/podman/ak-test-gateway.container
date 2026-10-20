@@ -16,7 +16,7 @@ Environment=AK_DB_HOST=database
 Environment=AK_DB_NAME=auftragskompass
 Environment=AK_DB_USER=ak
 Environment=AK_DB_PASSWORD_FILE=/run/secrets/db_password
-Environment=AK_HOST=127.0.0.1
+Environment=AK_HOST=0.0.0.0
 Environment=AK_PORT=3002
 Environment=AK_TIMEZONE=Europe/Berlin
 Environment=AK_BUILD_REVISION=REPLACE_REVISION
