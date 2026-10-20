@@ -103,3 +103,9 @@ describe('buildDocumentSnapshot', () => {
     ).toThrow(DocumentSnapshotError);
   });
 });
+
+test('passes an unexpected failure through instead of hiding it', () => {
+  expect(() =>
+    buildDocumentSnapshot({ ...input(), layout: undefined as never }),
+  ).toThrow(TypeError);
+});
