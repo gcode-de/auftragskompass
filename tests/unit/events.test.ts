@@ -8,6 +8,7 @@ import {
   fromInstant,
   resolveEventTime,
   resolveLocalTime,
+  savedAmbiguousChoice,
 } from '../../apps/admin/src/event-time.js';
 test('event notes retain simple formatting and safe links but strip active content', () => {
   expect(
@@ -154,4 +155,81 @@ test('unchanged event instants survive edits in repeated hours and keep seconds'
 
 test('oversized sanitized notes fail safely', () => {
   expect(() => sanitizeNotes('&'.repeat(20000))).toThrow('invalid_notes');
+});
+
+test('an explicit ambiguous choice overrides the saved instant but keeps its seconds when unchanged', () => {
+  expect(
+    resolveEventTime('2026-10-25T02:30', 'Europe/Berlin', {
+      originalInstant: '2026-10-25T01:30:00Z',
+      choice: 'later',
+    }),
+  ).toEqual({
+    kind: 'unique',
+    instant: '2026-10-25T01:30:00Z',
+    preserved: true,
+  });
+  expect(
+    resolveEventTime('2026-10-25T02:30', 'Europe/Berlin', {
+      originalInstant: '2026-10-25T01:30:00Z',
+      choice: 'earlier',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-10-25T00:30:00Z' });
+  expect(
+    resolveEventTime('2026-10-25T02:30:00.456', 'Europe/Berlin', {
+      originalInstant: '2026-10-25T01:30:00.456Z',
+      choice: 'later',
+    }),
+  ).toEqual({
+    kind: 'unique',
+    instant: '2026-10-25T01:30:00.456Z',
+    preserved: true,
+  });
+});
+
+test('saved ambiguous instants preselect their offset and changed wall clocks do not', () => {
+  expect(
+    savedAmbiguousChoice(
+      '2026-10-25T02:30',
+      'Europe/Berlin',
+      '2026-10-25T01:30:00Z',
+    ),
+  ).toBe('later');
+  expect(
+    savedAmbiguousChoice(
+      '2026-10-25T02:30',
+      'Europe/Berlin',
+      '2026-10-25T00:30:00Z',
+    ),
+  ).toBe('earlier');
+  expect(
+    savedAmbiguousChoice(
+      '2026-10-25T02:45',
+      'Europe/Berlin',
+      '2026-10-25T01:30:00Z',
+    ),
+  ).toBe('');
+  expect(
+    savedAmbiguousChoice(
+      '2026-07-01T18:00',
+      'Europe/Berlin',
+      '2026-07-01T16:00:00Z',
+    ),
+  ).toBe('');
+});
+
+test('an unparsable original timestamp never rejects a valid wall clock', () => {
+  expect(
+    resolveEventTime('2026-10-25T02:30', 'Europe/Berlin', {
+      originalInstant: 'not-an-instant',
+    }),
+  ).toEqual(resolveLocalTime('2026-10-25T02:30', 'Europe/Berlin'));
+  expect(
+    resolveEventTime('2026-10-25T02:30', 'Europe/Berlin', {
+      originalInstant: 'not-an-instant',
+      choice: 'later',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-10-25T01:30:00Z' });
+  expect(
+    savedAmbiguousChoice('2026-10-25T02:30', 'Europe/Berlin', 'broken'),
+  ).toBe('');
 });

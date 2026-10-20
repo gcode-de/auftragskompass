@@ -147,7 +147,11 @@ export function EventPanel({
       value = (key: string) => String(data.get(key) ?? ''),
       zone = draft?.timeZone ?? timeZone;
     const choice = (key: string) =>
-      value(key) === 'later' ? ('later' as const) : ('earlier' as const);
+      value(key) === 'later'
+        ? ('later' as const)
+        : value(key) === 'earlier'
+          ? ('earlier' as const)
+          : '';
     const [startTime, endTime] = [
       resolveEventTime(value('startsAt'), zone, {
         originalInstant: draft?.startsAt ?? null,
@@ -158,14 +162,23 @@ export function EventPanel({
         choice: choice('endsAtChoice'),
       }),
     ];
+    const times = [startTime, endTime];
     if (
-      [startTime, endTime].some(
+      times.some(
         (time) => time.kind === 'nonexistent' || time.kind === 'invalid',
       )
     ) {
       setMessage(
         'Termin prüfen: Uhrzeit existiert am gewählten Tag nicht. Bitte Beginn und Ende anpassen.',
       );
+      form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      return;
+    }
+    if (times.some((time) => time.kind === 'ambiguous')) {
+      setMessage(
+        'Termin prüfen: Die Uhrzeit kommt an diesem Tag zweimal vor. Bitte für Beginn und Ende Sommerzeit oder Normalzeit wählen.',
+      );
+      form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
       return;
     }
     setBusy(true);

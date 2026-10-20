@@ -566,7 +566,8 @@ test('a repeated fall-back hour offers both daylight and standard time choices',
     const selector = screen.getByLabelText(
       'Uhrzeitwahl Eventbeginn',
     ) as HTMLSelectElement;
-    expect(selector.value).toBe('earlier');
+    expect(selector.value).toBe('');
+    expect(screen.getByRole('option', { name: 'Bitte wählen' })).toBeTruthy();
     expect(
       screen.getByRole('option', { name: 'Sommerzeit (UTC+02:00)' }),
     ).toBeTruthy();
@@ -612,7 +613,7 @@ test('a nonexistent spring-gap time shows a field error and is never submitted',
   expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
 });
 
-test('an unchanged repeated hour keeps its stored instant without asking for a choice', async () => {
+test('an unchanged repeated hour preselects the saved offset and keeps its instant', async () => {
   const fetcher = mocker([], {
     eventDate: '2026-10-25',
     startsAt: '2026-10-25T01:30:00Z',
@@ -629,7 +630,11 @@ test('an unchanged repeated hour keeps its stored instant without asking for a c
   expect((screen.getByLabelText('Eventbeginn') as HTMLInputElement).value).toBe(
     '2026-10-25T02:30',
   );
-  expect(screen.queryByLabelText('Uhrzeitwahl Eventbeginn')).toBeNull();
+  const selector = screen.getByLabelText(
+    'Uhrzeitwahl Eventbeginn',
+  ) as HTMLSelectElement;
+  expect(selector.value).toBe('later');
+  expect(screen.getByRole('option', { name: 'Bitte wählen' })).toBeTruthy();
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
@@ -637,4 +642,199 @@ test('an unchanged repeated hour keeps its stored instant without asking for a c
   const saved = savedBody(fetcher);
   expect(saved.startsAt).toBe('2026-10-25T01:30:00Z');
   expect(saved.endsAt).toBe('2026-10-25T03:00:00Z');
+});
+
+test('a new repeated start hour requires an explicit choice before saving', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic ambiguous start' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2026-10-25' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-10-25T02:30' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-10-25T04:00' },
+  });
+  const selector = screen.getByLabelText(
+    'Uhrzeitwahl Eventbeginn',
+  ) as HTMLSelectElement;
+  expect(selector.value).toBe('');
+  expect(screen.getByRole('option', { name: 'Bitte wählen' })).toBeTruthy();
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(/zweimal vor/);
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+  expect(document.activeElement).toBe(screen.getByLabelText('Eventbeginn'));
+  fireEvent.change(selector, { target: { value: 'earlier' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher).startsAt).toBe('2026-10-25T00:30:00Z');
+});
+
+test('a repeated end hour also requires its own explicit choice', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic ambiguous end' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2026-10-25' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-10-25T00:30' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-10-25T02:30' },
+  });
+  const selector = screen.getByLabelText(
+    'Uhrzeitwahl Eventende',
+  ) as HTMLSelectElement;
+  expect(selector.value).toBe('');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(/zweimal vor/);
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+  expect(document.activeElement).toBe(screen.getByLabelText('Eventende'));
+  fireEvent.change(selector, { target: { value: 'later' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const saved = savedBody(fetcher);
+  expect(saved.startsAt).toBe('2026-10-24T22:30:00Z');
+  expect(saved.endsAt).toBe('2026-10-25T01:30:00Z');
+});
+
+test('a spring gap in the end time is reported on the end field and blocks saving', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic gap end' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2026-03-29' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-03-29T01:00' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventende'), {
+    target: { value: '2026-03-29T02:30' },
+  });
+  const end = screen.getByLabelText('Eventende');
+  expect(end.getAttribute('aria-invalid')).toBe('true');
+  expect(end.getAttribute('aria-describedby')).toBe('event-endsAt-error');
+  await screen.findByText(/existiert an diesem Tag nicht/);
+  expect(
+    screen.getByLabelText('Eventbeginn').getAttribute('aria-invalid'),
+  ).toBe('false');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Termin prüfen/);
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+  expect(document.activeElement).toBe(end);
+});
+
+test('duplicating a saved repeated hour keeps the original instant unless changed', async () => {
+  const fetcher = mocker([], {
+    eventDate: '2026-10-25',
+    startsAt: '2026-10-25T00:30:00.123Z',
+    endsAt: '2026-10-25T01:30:00.500Z',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event duplizieren: Synthetic event',
+    }),
+  );
+  expect(
+    (screen.getByLabelText('Uhrzeitwahl Eventbeginn') as HTMLSelectElement)
+      .value,
+  ).toBe('earlier');
+  expect(
+    (screen.getByLabelText('Uhrzeitwahl Eventende') as HTMLSelectElement).value,
+  ).toBe('later');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const saved = savedBody(fetcher);
+  expect(saved.name).toBe('Synthetic event (Kopie)');
+  expect(saved.startsAt).toBe('2026-10-25T00:30:00.123Z');
+  expect(saved.endsAt).toBe('2026-10-25T01:30:00.500Z');
+});
+
+test('changing a saved repeated hour back into the repeated range requires a new choice', async () => {
+  const fetcher = mocker([], {
+    eventDate: '2026-10-25',
+    startsAt: '2026-10-25T01:30:00Z',
+    endsAt: '2026-10-25T03:00:00Z',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  expect(
+    (screen.getByLabelText('Uhrzeitwahl Eventbeginn') as HTMLSelectElement)
+      .value,
+  ).toBe('later');
+  fireEvent.change(screen.getByLabelText('Eventbeginn'), {
+    target: { value: '2026-10-25T02:45' },
+  });
+  expect(
+    (screen.getByLabelText('Uhrzeitwahl Eventbeginn') as HTMLSelectElement)
+      .value,
+  ).toBe('');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(/zweimal vor/);
+  expect(fetcher.mock.calls.some(([, options]) => options)).toBe(false);
+});
+
+test('changing the saved offset of a repeated hour is an explicit, honoured choice', async () => {
+  const fetcher = mocker([], {
+    eventDate: '2026-10-25',
+    startsAt: '2026-10-25T01:30:00Z',
+    endsAt: '2026-10-25T03:00:00Z',
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.change(screen.getByLabelText('Uhrzeitwahl Eventbeginn'), {
+    target: { value: 'earlier' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher).startsAt).toBe('2026-10-25T00:30:00Z');
 });

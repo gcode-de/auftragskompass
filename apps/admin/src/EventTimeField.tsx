@@ -2,6 +2,8 @@ import { useState } from 'react';
 import {
   localDateTime,
   resolveEventTime,
+  resolveLocalTime,
+  savedAmbiguousChoice,
   type AmbiguousTimeChoice,
 } from './event-time.js';
 
@@ -17,14 +19,24 @@ export function EventTimeField({
   instant: string | null;
 }) {
   const [value, setValue] = useState(localDateTime(instant, timeZone)),
-    [choice, setChoice] = useState<AmbiguousTimeChoice | ''>(''),
+    [picked, setPicked] = useState<{
+      value: string;
+      choice: AmbiguousTimeChoice;
+    } | null>(null),
+    savedChoice = savedAmbiguousChoice(value, timeZone, instant),
+    choice = picked?.value === value ? picked.choice : savedChoice,
+    local = resolveLocalTime(value, timeZone),
+    options = local.kind === 'ambiguous' ? local.options : [],
+    unresolved = local.kind === 'ambiguous' && choice === '',
     resolution = resolveEventTime(value, timeZone, {
       originalInstant: instant,
+      choice,
     }),
-    options = resolution.kind === 'ambiguous' ? resolution.options : [],
     errorId = `event-${name}-error`,
     invalid =
-      resolution.kind === 'nonexistent' || resolution.kind === 'invalid';
+      resolution.kind === 'nonexistent' ||
+      resolution.kind === 'invalid' ||
+      unresolved;
   return (
     <>
       <label>
@@ -36,7 +48,13 @@ export function EventTimeField({
           value={value}
           aria-invalid={invalid}
           aria-describedby={invalid ? errorId : undefined}
-          onChange={(event) => setValue(event.currentTarget.value)}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setValue(next);
+            setPicked((current) =>
+              current && current.value === next ? current : null,
+            );
+          }}
         />
       </label>
       {options.length > 0 && (
@@ -44,11 +62,17 @@ export function EventTimeField({
           {`Uhrzeitwahl ${label}`}
           <select
             name={`${name}Choice`}
-            value={choice || options[0]!.choice}
+            value={choice}
+            aria-invalid={unresolved}
+            aria-describedby={unresolved ? errorId : undefined}
             onChange={(event) =>
-              setChoice(event.currentTarget.value as AmbiguousTimeChoice)
+              setPicked({
+                value,
+                choice: event.currentTarget.value as AmbiguousTimeChoice,
+              })
             }
           >
+            <option value="">Bitte wählen</option>
             {options.map((option) => (
               <option key={option.choice} value={option.choice}>
                 {option.label}
@@ -56,6 +80,12 @@ export function EventTimeField({
             ))}
           </select>
         </label>
+      )}
+      {unresolved && (
+        <p className="field-error" id={errorId} role="alert">
+          Diese Uhrzeit gibt es an diesem Tag zweimal. Bitte Sommerzeit oder
+          Normalzeit wählen.
+        </p>
       )}
       {resolution.kind === 'nonexistent' && (
         <p className="field-error" id={errorId} role="alert">
