@@ -86,6 +86,13 @@ export {
   type StorageAdapter,
 } from './storage.js';
 
+export {
+  artifactKey,
+  storeDocumentPdf,
+  readDocumentPdf,
+  hashPattern,
+} from './document-artifacts.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';

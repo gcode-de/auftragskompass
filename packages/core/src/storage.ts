@@ -16,7 +16,7 @@ export type StorageAdapter = {
   remove(key: string): Promise<void>;
 };
 
-const keyPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const keyPattern = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 
 // Keys are plain file names: no separators, no traversal, no hidden prefixes.
 export function assertStorageKey(key: string): void {
