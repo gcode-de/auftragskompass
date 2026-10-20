@@ -183,6 +183,15 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     registerWebsiteInboxRoutes(app, pool, config.tenantId);
     registerCalendarFeedRoutes(app, pool, config.tenantId, origin);
     const page = await context.newPage();
+    // Headless Chromium has no foreground tab, so a real tab switch keeps
+    // every page visible. Trigger the same visibility/focus transition in the
+    // built page instead of sleeping or calling the removed refresh controls.
+    const returnToApp = async () => {
+      await page.evaluate(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('focus'));
+      });
+    };
     const policyErrors: string[] = [];
     page.on('console', (message) => {
       if (
@@ -575,7 +584,25 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeVisible();
     await navigate('Events');
     const events = page.getByRole('region', { name: 'Events' });
-    await events.getByRole('button', { name: 'Events aktualisieren' }).click();
+    // A real tab return refreshes the list without a manual control. Stammdaten
+    // created earlier must be available in the create dialog afterwards.
+    let eventListRequests = 0;
+    page.on('request', (request) => {
+      if (
+        request.method() === 'GET' &&
+        request.url().includes('/api/v1/events')
+      )
+        eventListRequests += 1;
+    });
+    const listRequestsBeforeReturn = eventListRequests;
+    const refreshedList = page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/v1/events') &&
+        response.request().method() === 'GET',
+    );
+    await returnToApp();
+    await refreshedList;
+    expect(eventListRequests).toBe(listRequestsBeforeReturn + 1);
     await expect(
       events.getByLabel('Eventname', { exact: true }),
     ).not.toBeVisible();

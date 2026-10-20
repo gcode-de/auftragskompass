@@ -1,6 +1,7 @@
 import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
 import { EventDocuments } from './EventDocuments.js';
+import { useAutoRefresh } from './auto-refresh.js';
 import { useEffect, useRef, useState } from 'react';
 import type { EventRow } from './EventPanel.js';
 type Detail = {
@@ -58,12 +59,16 @@ export function EventDetails({
     // retry can never discard it silently.
     dirty = useRef(false),
     resourcesDirty = useRef(false),
-    loadedVersion = useRef<number | null>(null);
+    loadedVersion = useRef<number | null>(null),
+    loadedId = useRef<string | null>(null),
+    attemptedRevision = useRef<number | null>(null);
   const [epoch, setEpoch] = useState(0),
     [data, setData] = useState<Detail | null>(null),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
+    [loadFailed, setLoadFailed] = useState(false),
+    [refreshDeferred, setRefreshDeferred] = useState(false),
     [reloadWarning, setReloadWarning] = useState(false);
   function mayReplaceDraft() {
     if (!dirty.current && !resourcesDirty.current) return true;
@@ -76,6 +81,7 @@ export function EventDetails({
   }
   async function load() {
     const current = ++loadSequence.current;
+    attemptedRevision.current = revision;
     setLoading(true);
     try {
       const response = await fetch('/api/v1/events/' + id);
@@ -83,26 +89,56 @@ export function EventDetails({
       const next = (await response.json()) as Detail;
       // A slower, older request must never overwrite a newer event state.
       if (current !== loadSequence.current) return;
-      // A new event version replaces the keyed forms, so their drafts are gone.
-      if (loadedVersion.current !== next.event.version) {
-        dirty.current = false;
-        resourcesDirty.current = false;
+      // The user started editing while this request was in flight. Keep the
+      // form untouched and offer the newer data explicitly instead.
+      if (dirty.current || resourcesDirty.current) {
+        setRefreshDeferred(true);
+        return;
       }
       loadedVersion.current = next.event.version;
+      loadedId.current = next.event.id;
       setData(next);
+      setLoadFailed(false);
+      setRefreshDeferred(false);
       setReloadWarning(false);
     } catch (error) {
-      if (current === loadSequence.current) throw error;
+      if (current === loadSequence.current) {
+        setLoadFailed(true);
+        throw error;
+      }
     } finally {
       if (current === loadSequence.current) setLoading(false);
     }
   }
+  function backgroundLoad() {
+    if (dirty.current || resourcesDirty.current) {
+      setRefreshDeferred(true);
+      return;
+    }
+    void load().catch(() => {});
+  }
+  useAutoRefresh(backgroundLoad, () => loading || busy || saving.current);
+  useEffect(
+    () => () => {
+      ++loadSequence.current;
+    },
+    [],
+  );
   useEffect(() => {
-    if (!mayReplaceDraft()) return;
-    void load().catch(() =>
-      setMessage('Eventakte konnte nicht geladen werden.'),
-    );
-  }, [id, revision]);
+    void load().catch(() => {});
+  }, [id]);
+  useEffect(() => {
+    if (loading || loadFailed) return;
+    if (loadedId.current === id && loadedVersion.current === revision) return;
+    // A successful response that still carries an older version must not turn
+    // the revision check into a request loop.
+    if (attemptedRevision.current === revision) return;
+    if (dirty.current || resourcesDirty.current) {
+      setRefreshDeferred(true);
+      return;
+    }
+    void load().catch(() => {});
+  }, [revision, loading, loadFailed]);
   useEffect(() => {
     if (data) {
       heading.current?.scrollIntoView?.();
@@ -128,7 +164,7 @@ export function EventDetails({
         const error = (await response.json()) as { error: string };
         setMessage(
           error.error === 'conflict'
-            ? 'Inzwischen geändert. Eventakte aktualisieren und erneut prüfen.'
+            ? 'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.'
             : error.error === 'import_review_required'
               ? 'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.'
               : 'Status konnte nicht gespeichert werden. Eingaben und Anmeldung prüfen.',
@@ -139,6 +175,7 @@ export function EventDetails({
       // never mistaken for a failed save.
       setMessage('Status gespeichert.');
       dirty.current = false;
+      setRefreshDeferred(false);
       try {
         await load();
         await onChanged();
@@ -156,7 +193,13 @@ export function EventDetails({
   }
   function retryLoad() {
     if (!mayReplaceDraft()) return;
+    setRefreshDeferred(false);
+    void load().catch(() => {});
+  }
+  function retryAfterSave() {
+    if (!mayReplaceDraft()) return;
     setReloadWarning(false);
+    setRefreshDeferred(false);
     void (async () => {
       try {
         await load();
@@ -165,6 +208,12 @@ export function EventDetails({
         setReloadWarning(true);
       }
     })();
+  }
+  function discardDeferred() {
+    if (!mayReplaceDraft()) return;
+    setReloadWarning(false);
+    setRefreshDeferred(false);
+    void load().catch(() => {});
   }
   function time(value: string | null) {
     return value
@@ -184,20 +233,41 @@ export function EventDetails({
       <button className="secondary-action" type="button" onClick={onClose}>
         Eventakte schließen
       </button>
-      <button
-        className="secondary-action"
-        type="button"
-        disabled={busy || loading}
-        onClick={() => {
-          if (!mayReplaceDraft()) return;
-          void load().catch(() =>
-            setMessage('Eventakte konnte nicht geladen werden.'),
-          );
-        }}
-      >
-        Eventakte aktualisieren
-      </button>
       <p role="status">{message}</p>
+      {refreshDeferred && (
+        <div className="reload-warning">
+          <p role="status">
+            Eine Aktualisierung steht aus. Sie wird zurückgehalten, damit deine
+            ungespeicherten Eingaben erhalten bleiben.
+          </p>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={busy || loading}
+            onClick={discardDeferred}
+          >
+            Neu laden und Eingaben verwerfen
+          </button>
+        </div>
+      )}
+      {loadFailed && !reloadWarning && !refreshDeferred && (
+        <div className="reload-warning">
+          <p role="alert">
+            Eventakte konnte nicht geladen werden.{' '}
+            {data
+              ? 'Der zuletzt geladene Stand bleibt sichtbar.'
+              : 'Bitte erneut versuchen.'}
+          </p>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={busy || loading}
+            onClick={retryLoad}
+          >
+            Eventakte erneut laden
+          </button>
+        </div>
+      )}
       {reloadWarning && (
         <div className="reload-warning">
           <p role="alert">
@@ -208,7 +278,7 @@ export function EventDetails({
             type="button"
             className="secondary-action"
             disabled={busy}
-            onClick={retryLoad}
+            onClick={retryAfterSave}
           >
             Eventakte erneut laden
           </button>

@@ -1,6 +1,6 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **20.10.2026**, nach C051.3, H026 und H029. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand: **20.10.2026**, nach C051.3, H026, H029 und H030 (Phase 1, ungeprüft). Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
 ## In der nächsten Session zuerst
 
@@ -36,6 +36,12 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pauschal als fertig werten. E-/H-Slices ziehen gezielte Teile vor, ohne ganze Milestones als abgeschlossen zu erklären.
 
 ## Letzter geprüfter Laufzeitstand
+
+### Arbeitsnachtrag 20.10.2026 (H030: automatische Aktualisierung, Phase 1)
+
+Branch `codex/ux-event-simplification`. Die sichtbaren Schaltflächen „Events aktualisieren“, „Eventakte aktualisieren“ und „Kalender aktualisieren“ sind entfernt. Ein gemeinsamer Hook `useAutoRefresh` aktualisiert Eventliste, Eventakte und Kalender beim Sichtbarwerden des Dokuments oder Fokusgewinn, jeweils dedupliziert für dieselbe Rückkehr; laufende Abrufe und verborgene Dokumente lösen keine zusätzliche Abfrage aus, Listener werden beim Unmount entfernt, und es gibt keinen Takt. Ein schmutziger Bearbeiten-/Anlegeentwurf sowie die Eventakte mit ungespeicherter Status- oder Ressourceneingabe bleiben erhalten; die Akte hält Hintergrundladungen zurück und zeigt einen ruhigen Hinweis mit ausdrücklicher Verwerfen-und-Neuladen-Aktion. Ladefehler behalten die letzten guten Daten und bieten eine reine Wiederholungsaktion. Keine Server-, API-, Datenbank- oder Migrationsänderung.
+
+Lokal sind die neuen Regressionstests sowie 187 Unit- und 231 Komponententests, vier Chromium-Abläufe, Format, Lint, Typen, Build und Coverage (97,38 % Zeilen, 93,81 % Zweige; Changed-Code 65/65 Zeilen, 73/77 Zweige) grün. Die unabhängige Prüfung ist eingearbeitet: ein doppelter Aktenabruf bei gleichzeitiger Listenaktualisierung ist durch Id-/Revisions- und In-Flight-Schutz samt Kombinationstest behoben, der verzögerte Hinweis ist präzisiert und als Status angekündigt, der obsolete WebsiteInbox-Text sowie der Fokusverlust im Kalender sind korrigiert. **Noch nicht committet/gepusht; Linux-CI und Podman-Vorschau stehen aus, H030 bleibt bis dahin in Arbeit.** Eine echte Tab-Rückkehr ist im headless Chromium nicht abbildbar; der E2E-Ablauf löst dieselbe Sichtbarkeits-/Fokusfolge im gebauten Bundle aus, die reale Browserprüfung bleibt der Vorschau vorbehalten. Der bekannte macOS-`RLIMIT_FSIZE`-Backuptest bleibt unverändert und ist nicht Teil dieses Slices.
 
 ### Arbeitsnachtrag 20.10.2026 (H029: leichtes Anlegen mit Datum zuerst)
 

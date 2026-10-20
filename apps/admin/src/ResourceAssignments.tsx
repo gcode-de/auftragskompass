@@ -58,7 +58,8 @@ const errors: Record<string, string> = {
     'Die Mandantenzeitzone wurde geändert. Termin vor der Übernahme fachlich klären.',
   import_review_required:
     'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.',
-  conflict: 'Inzwischen geändert. Eventakte aktualisieren und erneut prüfen.',
+  conflict:
+    'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.',
   resource_conflict:
     'Belegungskonflikt. Die bisherige Buchung bleibt erhalten.',
   booking_required:
@@ -132,7 +133,7 @@ export function ResourceAssignments({
       .catch(() => {
         if (active)
           setMessage(
-            'Ressourcen konnten nicht geladen werden. Eventakte aktualisieren.',
+            'Ressourcen konnten nicht geladen werden. Bitte erneut versuchen.',
           );
       })
       .finally(() => {

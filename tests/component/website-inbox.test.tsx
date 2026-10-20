@@ -209,7 +209,7 @@ test('failed and malformed import responses keep values; a confirmed duplicate s
       .closest('form')!,
   );
   await screen.findByText(
-    'Anfrage übernommen. Eventliste bitte aktualisieren.',
+    'Anfrage übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
   );
   await screen.findByText('Keine offenen Website-Eingänge vorhanden.');
 });

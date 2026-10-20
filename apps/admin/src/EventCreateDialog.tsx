@@ -214,7 +214,7 @@ export function EventCreateDialog({
         const error = (await response.json()) as { error: string };
         setMessage(
           error.error === 'conflict'
-            ? 'Inzwischen geändert. Events aktualisieren und erneut bearbeiten.'
+            ? 'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.'
             : error.error === 'import_review_required'
               ? 'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.'
               : error.error === 'reservations_need_review'

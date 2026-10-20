@@ -102,7 +102,7 @@ export function WebsiteInbox({
                         void load();
                         void onImported().catch(() =>
                           setMessage(
-                            'Anfrage übernommen. Eventliste bitte aktualisieren.',
+                            'Anfrage übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
                           ),
                         );
                       }}

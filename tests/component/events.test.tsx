@@ -14,6 +14,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
   window.history.replaceState(null, '', '/');
 });
+function returnToApp() {
+  fireEvent(document, new Event('visibilitychange'));
+  fireEvent(window, new Event('focus'));
+}
+function listLoads(fetcher: ReturnType<typeof vi.fn>) {
+  return fetcher.mock.calls.filter(
+    ([url, options]) =>
+      String(url).startsWith('/api/v1/events') && options === undefined,
+  ).length;
+}
 const row = {
   id: 'synthetic',
   version: 1,
@@ -143,7 +153,7 @@ test('events show invalid dates, conflicts, server and transport failures while 
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
   await screen.findByText(/Verbindung fehlgeschlagen/);
-  fireEvent.click(screen.getByRole('button', { name: 'Events aktualisieren' }));
+  returnToApp();
   await screen.findByText(/Events konnten nicht geladen/);
   cleanup();
   vi.stubGlobal(
@@ -267,7 +277,12 @@ test('event filters restore URL values, combine and clear filters, and show empt
       ? Response.json({ timeZone: 'Europe/Berlin', events: [] })
       : Response.json([]),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Events aktualisieren' }));
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
+    ).toBe('false'),
+  );
+  returnToApp();
   await screen.findByText('Keine Events gefunden.');
 });
 
@@ -405,17 +420,13 @@ test('direct record links hide list controls and an unknown link never keeps an 
   );
   render(<EventPanel csrfToken="csrf" />);
   await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
-  expect(
-    screen.queryByRole('button', { name: 'Events aktualisieren' }),
-  ).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Event anlegen' })).toBeNull();
   window.history.replaceState(null, '', '/#event-unlisted');
   fireEvent(window, new HashChangeEvent('hashchange'));
   expect(
     screen.queryByRole('heading', { name: 'Eventakte: Synthetic event' }),
   ).toBeNull();
-  expect(
-    screen.getByRole('button', { name: 'Events aktualisieren' }),
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Event anlegen' })).toBeTruthy();
 });
 
 test('opening, closing and editing a record returns to the correct list and editor controls', async () => {
@@ -897,6 +908,7 @@ test('a confirmed save closes the editor and survives a failed list reload', asy
   expect(
     screen.queryByText(/Liste konnte nicht neu geladen werden/),
   ).toBeNull();
+  expect(mutations).toBe(1);
 });
 
 test('the normal editor keeps advanced values in Weitere Angaben and preserves them', async () => {
@@ -1316,7 +1328,8 @@ test('a successful list refresh clears a stale reload warning', async () => {
   );
   await screen.findByText(/Liste konnte nicht neu geladen werden/);
   listFails = false;
-  fireEvent.click(screen.getByRole('button', { name: 'Events aktualisieren' }));
+  fireEvent(window, new Event('blur'));
+  returnToApp();
   await screen.findByText('Synthetic saved event – Ohne Datum – Anfrage');
   expect(
     screen.queryByText(/Liste konnte nicht neu geladen werden/),
@@ -1392,4 +1405,285 @@ test('a confirmed resource save stays visible in the list when the parent refres
   expect(puts).toBe(1);
   expect(availability).toBe(2);
   expect(screen.queryByText(/Speichern fehlgeschlagen/)).toBeNull();
+});
+
+test('the event list refreshes automatically on return without a manual control', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  expect(
+    screen.queryByRole('button', { name: 'Events aktualisieren' }),
+  ).toBeNull();
+  const before = listLoads(fetcher);
+  returnToApp();
+  await vi.waitFor(() => expect(listLoads(fetcher)).toBe(before + 1));
+  expect(
+    screen.queryByRole('button', { name: 'Events aktualisieren' }),
+  ).toBeNull();
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  expect(listLoads(fetcher)).toBe(before + 1);
+});
+
+test('a dirty event editor survives an automatic list refresh and never confirms', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  const confirm = vi.spyOn(window, 'confirm');
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic retained edit' },
+  });
+  const before = listLoads(fetcher);
+  returnToApp();
+  await vi.waitFor(() => expect(listLoads(fetcher)).toBe(before + 1));
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic retained edit',
+  );
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+test('a dirty create dialog keeps its values across an automatic list refresh', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  const confirm = vi.spyOn(window, 'confirm');
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  fireEvent.change(within(dialog).getByLabelText('Eventname'), {
+    target: { value: 'Synthetic retained creation' },
+  });
+  const before = listLoads(fetcher);
+  returnToApp();
+  await vi.waitFor(() => expect(listLoads(fetcher)).toBe(before + 1));
+  expect(
+    (within(dialog).getByLabelText('Eventname') as HTMLInputElement).value,
+  ).toBe('Synthetic retained creation');
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+test('a failed automatic list refresh keeps the prior rows and retries without mutation', async () => {
+  let failList = false,
+    refreshed = false,
+    mutations = 0;
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) {
+      mutations += 1;
+      return Response.json(row);
+    }
+    if (url.startsWith('/api/v1/events')) {
+      if (failList) return new Response(null, { status: 503 });
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: [
+          refreshed ? { ...row, name: 'Synthetic refreshed event' } : row,
+        ],
+      });
+    }
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  failList = true;
+  returnToApp();
+  await screen.findByText(/Events konnten nicht geladen werden/);
+  expect(
+    screen.getByText('Synthetic event – Ohne Datum – Anfrage'),
+  ).toBeTruthy();
+  failList = false;
+  refreshed = true;
+  fireEvent.click(screen.getByRole('button', { name: 'Events erneut laden' }));
+  await screen.findByText('Synthetic refreshed event – Ohne Datum – Anfrage');
+  expect(mutations).toBe(0);
+});
+
+test('a cancelled editor is refreshed automatically on the next return', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic cancelled edit' },
+  });
+  const before = listLoads(fetcher);
+  returnToApp();
+  await vi.waitFor(() => expect(listLoads(fetcher)).toBe(before + 1));
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
+    ).toBe('false'),
+  );
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic cancelled edit',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
+  fireEvent(window, new Event('blur'));
+  returnToApp();
+  await vi.waitFor(() => expect(listLoads(fetcher)).toBe(before + 2));
+  expect(screen.queryByLabelText('Eventname')).toBeNull();
+});
+
+test('a newer list revision loads an open event file exactly once on return', async () => {
+  let listVersion = 1,
+    rowName = 'Synthetic event';
+  const pendingDetail: ((response: Response) => void)[] = [];
+  let detailCalls = 0;
+  const fetcher = vi.fn((url: string, options?: RequestInit) => {
+    if (options) return Promise.resolve(Response.json(row));
+    if (url === '/api/v1/events')
+      return Promise.resolve(
+        Response.json({
+          timeZone: 'Europe/Berlin',
+          events: [{ ...row, version: listVersion, name: rowName }],
+        }),
+      );
+    if (url === '/api/v1/events/synthetic') {
+      detailCalls += 1;
+      return new Promise<Response>((resolve) => pendingDetail.push(resolve));
+    }
+    if (url === '/api/v1/statuses')
+      return Promise.resolve(
+        Response.json([{ code: 'inquiry', label: 'Anfrage' }]),
+      );
+    return Promise.resolve(Response.json([]));
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Eventakte öffnen: Synthetic event',
+    }),
+  );
+  await vi.waitFor(() => expect(pendingDetail).toHaveLength(1));
+  await act(async () =>
+    pendingDetail[0]!(
+      Response.json({
+        event: { ...row, name: 'Synthetic event' },
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      }),
+    ),
+  );
+  await screen.findByRole('heading', { name: 'Eventakte: Synthetic event' });
+  listVersion = 2;
+  rowName = 'Synthetic newer event';
+  returnToApp();
+  await vi.waitFor(() => expect(pendingDetail).toHaveLength(2));
+  await act(async () =>
+    pendingDetail[1]!(
+      Response.json({
+        event: { ...row, version: 2, name: 'Synthetic newer event' },
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      }),
+    ),
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic newer event',
+  });
+  expect(detailCalls).toBe(2);
+  expect(screen.queryByText(/Eventakte konnte nicht geladen/)).toBeNull();
+});
+
+test('a failed return is retried by the next return without a manual control', async () => {
+  let failList = false,
+    refreshed = false;
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) return Response.json(row);
+    if (url.startsWith('/api/v1/events')) {
+      if (failList) return new Response(null, { status: 503 });
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: [
+          refreshed ? { ...row, name: 'Synthetic another return' } : row,
+        ],
+      });
+    }
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  failList = true;
+  returnToApp();
+  await screen.findByText(/Events konnten nicht geladen werden/);
+  failList = false;
+  refreshed = true;
+  fireEvent(window, new Event('blur'));
+  returnToApp();
+  await screen.findByText('Synthetic another return – Ohne Datum – Anfrage');
+  expect(screen.queryByText(/Events konnten nicht geladen werden/)).toBeNull();
+});
+
+test('a return during a running create mutation keeps the draft and reports one save', async () => {
+  let resolvePost: ((response: Response) => void) | undefined,
+    posts = 0;
+  const fetcher = vi.fn((url: string, options?: RequestInit) => {
+    if (options) {
+      posts += 1;
+      return new Promise<Response>((resolve) => {
+        resolvePost = resolve;
+      });
+    }
+    if (url.startsWith('/api/v1/events'))
+      return Promise.resolve(
+        Response.json({ timeZone: 'Europe/Berlin', events: [row] }),
+      );
+    if (url === '/api/v1/statuses')
+      return Promise.resolve(
+        Response.json([{ code: 'inquiry', label: 'Anfrage' }]),
+      );
+    return Promise.resolve(Response.json([]));
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  fireEvent.change(within(dialog).getByLabelText('Eventname'), {
+    target: { value: 'Synthetic pending create' },
+  });
+  fireEvent.submit(
+    within(dialog)
+      .getByRole('button', { name: 'Event speichern' })
+      .closest('form')!,
+  );
+  await vi.waitFor(() => expect(posts).toBe(1));
+  returnToApp();
+  expect(
+    (within(dialog).getByLabelText('Eventname') as HTMLInputElement).value,
+  ).toBe('Synthetic pending create');
+  expect(screen.queryByRole('dialog')).toBeTruthy();
+  await act(async () =>
+    resolvePost!(
+      Response.json({ ...row, name: 'Synthetic pending create', version: 2 }),
+    ),
+  );
+  await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await screen.findByText('Event gespeichert.');
+  expect(posts).toBe(1);
+  expect(screen.queryByText(/Speichern fehlgeschlagen/)).toBeNull();
+  expect(screen.queryByText(/Verbindung fehlgeschlagen/)).toBeNull();
 });

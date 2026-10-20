@@ -10,6 +10,7 @@ import { useEffect, useState, useRef } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
 import { EventTimeField } from './EventTimeField.js';
 import { EventCreateDialog } from './EventCreateDialog.js';
+import { useAutoRefresh } from './auto-refresh.js';
 type Choice = { id: string; name: string; state: string };
 export type EventRow = {
   id: string;
@@ -121,11 +122,19 @@ export function EventPanel({
       if (current === sequence.current) setLoading(false);
     }
   }
+  function refreshOnReturn() {
+    void refresh().catch(() => {});
+  }
+  useAutoRefresh(refreshOnReturn, () => loading || busy || saving.current);
   useEffect(() => {
-    void refresh().catch(() =>
-      setMessage('Events konnten nicht geladen werden.'),
-    );
+    void refresh().catch(() => {});
   }, [urlSearch, revision]);
+  useEffect(
+    () => () => {
+      ++sequence.current;
+    },
+    [],
+  );
   useEffect(() => {
     const changed = () => {
       const id = window.location.hash.slice(1);
@@ -317,7 +326,7 @@ export function EventPanel({
         const error = (await response.json()) as { error: string };
         setMessage(
           error.error === 'conflict'
-            ? 'Inzwischen geändert. Events aktualisieren und erneut bearbeiten.'
+            ? 'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.'
             : error.error === 'import_review_required'
               ? 'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.'
               : error.error === 'reservations_need_review'
@@ -389,17 +398,6 @@ export function EventPanel({
         <div className="section-heading">
           <h2>Events</h2>
           <div className="section-actions">
-            <button
-              className="secondary-action"
-              disabled={busy}
-              onClick={() =>
-                void refresh().catch(() =>
-                  setMessage('Events konnten nicht geladen werden.'),
-                )
-              }
-            >
-              Events aktualisieren
-            </button>
             <button
               ref={createTrigger}
               disabled={busy || editing || Boolean(draft)}
@@ -771,6 +769,24 @@ export function EventPanel({
               setReloadWarning(false);
               void refresh().catch(() => setReloadWarning(true));
             }}
+          >
+            Events erneut laden
+          </button>
+        </div>
+      )}
+      {loadFailed && !reloadWarning && (
+        <div className="reload-warning">
+          <p role="alert">
+            Events konnten nicht geladen werden.{' '}
+            {rows.length
+              ? 'Der zuletzt geladene Stand bleibt sichtbar.'
+              : 'Bitte erneut versuchen.'}
+          </p>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={busy || loading}
+            onClick={() => void refresh().catch(() => {})}
           >
             Events erneut laden
           </button>

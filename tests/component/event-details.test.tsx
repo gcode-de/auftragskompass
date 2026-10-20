@@ -12,6 +12,18 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+function returnToApp() {
+  fireEvent(document, new Event('visibilitychange'));
+  fireEvent(window, new Event('focus'));
+}
+function detailLoads(fetcher: ReturnType<typeof vi.fn>) {
+  return fetcher.mock.calls.filter(
+    ([url, options]) =>
+      String(url).startsWith('/api/v1/events/') &&
+      !String(url).endsWith('/availability') &&
+      options === undefined,
+  ).length;
+}
 const statuses = [
   { code: 'inquiry', label: 'Anfrage' },
   { code: 'option', label: 'Option' },
@@ -181,8 +193,13 @@ test('event detail errors preserve loaded data and allow retries', async () => {
   );
   await screen.findByText(/Verbindung fehlgeschlagen/);
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  returnToApp();
+  await screen.findByText(/Aktualisierung steht aus/);
+  expect(confirm).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Eventakte aktualisieren' }),
+    screen.getByRole('button', {
+      name: 'Neu laden und Eingaben verwerfen',
+    }),
   );
   expect(confirm).toHaveBeenCalledWith(
     'Ungespeicherte Eingaben verwerfen und neu laden?',
@@ -294,13 +311,16 @@ test('a confirmed status save is reported even when the reload fails and can be 
     ).toBeNull(),
   );
   expect(changed).toHaveBeenCalledOnce();
+  expect(puts).toBe(1);
 });
 
 test('a slower older event file response never overwrites the newer state', async () => {
   const pending: ((reply: Response) => void)[] = [];
-  const fetcher = vi.fn((_url: string, options?: RequestInit) => {
+  const fetcher = vi.fn((url: string, options?: RequestInit) => {
     if (options) return Promise.resolve(Response.json(event));
-    return new Promise<Response>((resolve) => pending.push(resolve));
+    if (url === '/api/v1/events/synthetic-event')
+      return new Promise<Response>((resolve) => pending.push(resolve));
+    return Promise.resolve(Response.json([]));
   });
   vi.stubGlobal('fetch', fetcher);
   const props = {
@@ -314,6 +334,17 @@ test('a slower older event file response never overwrites the newer state', asyn
   const view = render(<EventDetails {...props} revision={1} />);
   await waitFor(() => expect(pending).toHaveLength(1));
   view.rerender(<EventDetails {...props} revision={2} />);
+  // The running request is not duplicated; the newer revision is loaded
+  // immediately after it instead.
+  expect(pending).toHaveLength(1);
+  await act(async () =>
+    pending[0]!(
+      Response.json({
+        ...detail,
+        event: { ...event, name: 'Synthetic stale state', version: 1 },
+      }),
+    ),
+  );
   await waitFor(() => expect(pending).toHaveLength(2));
   pending[1]!(
     Response.json({
@@ -324,17 +355,6 @@ test('a slower older event file response never overwrites the newer state', asyn
   await screen.findByRole('heading', {
     name: 'Eventakte: Synthetic newer state',
   });
-  await act(async () =>
-    pending[0]!(
-      Response.json({
-        ...detail,
-        event: { ...event, name: 'Synthetic stale state', version: 1 },
-      }),
-    ),
-  );
-  expect(
-    screen.getByRole('heading', { name: 'Eventakte: Synthetic newer state' }),
-  ).toBeTruthy();
   expect(screen.queryByText(/Synthetic stale state/)).toBeNull();
 });
 
@@ -415,5 +435,240 @@ test('a retry keeps a dirty status selection until discarding it is confirmed', 
   expect(JSON.parse(String(puts.at(-1)![1]!.body))).toMatchObject({
     status: 'inquiry',
     version: 2,
+  });
+});
+
+test('a clean detail refreshes on return, while a dirty detail defers without a background confirmation', async () => {
+  let server = { ...event, version: 1 };
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options) {
+      server = {
+        ...server,
+        ...JSON.parse(String(options.body)),
+        version: server.version + 1,
+      };
+      return Response.json(server);
+    }
+    return Response.json({ ...detail, event: server });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const confirm = vi.spyOn(window, 'confirm');
+  const props = {
+    statuses,
+    id: 'synthetic-event',
+    csrfToken: 'csrf',
+    onChanged: vi.fn(),
+    onEdit: vi.fn(),
+    onClose: vi.fn(),
+  };
+  const view = render(<EventDetails {...props} />);
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  expect(
+    screen.queryByRole('button', { name: 'Eventakte aktualisieren' }),
+  ).toBeNull();
+  const loads = detailLoads(fetcher);
+  returnToApp();
+  await vi.waitFor(() => expect(detailLoads(fetcher)).toBe(loads + 1));
+  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+    target: { value: 'option' },
+  });
+  server = { ...server, name: 'Synthetic newer detail', version: 2 };
+  const dirtyLoads = detailLoads(fetcher);
+  view.rerender(<EventDetails {...props} revision={2} />);
+  await screen.findByText(/Aktualisierung steht aus/);
+  expect(detailLoads(fetcher)).toBe(dirtyLoads);
+  expect(confirm).not.toHaveBeenCalled();
+  expect(
+    (screen.getByLabelText('Status in der Eventakte') as HTMLSelectElement)
+      .value,
+  ).toBe('option');
+  confirm.mockReturnValue(true);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Neu laden und Eingaben verwerfen',
+    }),
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic newer detail',
+  });
+  fireEvent.change(screen.getByLabelText('Status in der Eventakte'), {
+    target: { value: 'inquiry' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText('Status gespeichert.');
+  const puts = fetcher.mock.calls.filter(([, options]) => options);
+  expect(JSON.parse(String(puts.at(-1)![1]!.body))).toMatchObject({
+    version: 2,
+  });
+});
+
+test('a failed background detail load keeps the prior data and retries without a mutation', async () => {
+  let fail = false,
+    puts = 0,
+    name = 'Synthetic detail event';
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options) {
+      puts += 1;
+      return Response.json(event);
+    }
+    if (fail) return new Response(null, { status: 503 });
+    return Response.json({
+      ...detail,
+      event: { ...event, name, version: name === event.name ? 1 : 2 },
+    });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  fail = true;
+  returnToApp();
+  await screen.findByText(/Eventakte konnte nicht geladen werden/);
+  expect(
+    screen.getByRole('heading', { name: 'Eventakte: Synthetic detail event' }),
+  ).toBeTruthy();
+  fail = false;
+  name = 'Synthetic retried detail';
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventakte erneut laden' }),
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic retried detail',
+  });
+  expect(puts).toBe(0);
+});
+
+test('dirty resource assignment values survive the automatic background refresh', async () => {
+  const unit = {
+    unitId: 'synthetic-unit',
+    resourceId: 'synthetic-resource',
+    name: 'Fictional box',
+    code: 'SYNTH',
+    category: 'Fotobox',
+    ordinal: 1,
+    selected: false,
+    periodSource: 'event',
+    baseStart: event.startsAt,
+    baseEnd: event.endsAt,
+    beforeDays: 0,
+    afterDays: 0,
+    startsAt: null,
+    endsAt: null,
+    available: true,
+    reason: null,
+    conflicts: [],
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) return Response.json(event);
+    if (url.endsWith('/availability')) return Response.json([unit]);
+    if (url.startsWith('/api/v1/documents')) return Response.json([]);
+    if (url === '/api/v1/document-templates') return Response.json([]);
+    if (url === '/api/v1/events/synthetic-event') return Response.json(detail);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const confirm = vi.spyOn(window, 'confirm');
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  const start = screen.getByLabelText('Eventbeginn', {
+    exact: true,
+  }) as HTMLInputElement;
+  fireEvent.change(start, { target: { value: '2026-10-18T18:00' } });
+  const loads = detailLoads(fetcher);
+  returnToApp();
+  await screen.findByText(/Aktualisierung steht aus/);
+  expect(detailLoads(fetcher)).toBe(loads);
+  expect(start.value).toBe('2026-10-18T18:00');
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+test('an older version returned by the server does not create a request loop', async () => {
+  let detailLoadsCounter = 0;
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) return Response.json(event);
+    if (url === '/api/v1/events/synthetic-event') {
+      detailLoadsCounter += 1;
+      return Response.json({ ...detail, event: { ...event, version: 1 } });
+    }
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const props = {
+    statuses,
+    id: 'synthetic-event',
+    csrfToken: 'csrf',
+    onChanged: vi.fn(),
+    onEdit: vi.fn(),
+    onClose: vi.fn(),
+  };
+  const view = render(<EventDetails {...props} revision={1} />);
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  view.rerender(<EventDetails {...props} revision={2} />);
+  await vi.waitFor(() => expect(detailLoadsCounter).toBe(2));
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  expect(detailLoadsCounter).toBe(2);
+});
+
+test('changing the event id with the same version still loads the other file', async () => {
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) return Response.json(event);
+    if (url === '/api/v1/events/synthetic-event') return Response.json(detail);
+    if (url === '/api/v1/events/synthetic-other')
+      return Response.json({
+        ...detail,
+        event: {
+          ...event,
+          id: 'synthetic-other',
+          name: 'Synthetic other file',
+        },
+      });
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const props = {
+    statuses,
+    csrfToken: 'csrf',
+    onChanged: vi.fn(),
+    onEdit: vi.fn(),
+    onClose: vi.fn(),
+  };
+  const view = render(
+    <EventDetails {...props} id="synthetic-event" revision={1} />,
+  );
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic detail event',
+  });
+  view.rerender(<EventDetails {...props} id="synthetic-other" revision={1} />);
+  await screen.findByRole('heading', {
+    name: 'Eventakte: Synthetic other file',
   });
 });

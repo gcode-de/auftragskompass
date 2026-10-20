@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { emptyEventFilters, updateUrlSearch } from './url-state.js';
+import { useAutoRefresh } from './auto-refresh.js';
 type Day = { date: string; startsAt: string; endsAt: string };
 type Calendar = {
   pendingPromises: number;
@@ -75,42 +76,49 @@ export function CalendarPanel() {
     [view, setView] = useState('week'),
     [data, setData] = useState<Calendar | null>(null),
     [loading, setLoading] = useState(true),
-    [message, setMessage] = useState(''),
+    [loadFailed, setLoadFailed] = useState(false),
     [revision, setRevision] = useState(0);
   const sequence = useRef(0);
-  useEffect(() => {
+  async function refresh() {
     const current = ++sequence.current;
     setLoading(true);
-    setMessage('');
     const query = new URLSearchParams({ view, ...(date ? { date } : {}) });
-    void fetch('/api/v1/calendar?' + query)
-      .then(async (response) => {
-        if (!response.ok) throw Error('load');
-        const result = (await response.json()) as Calendar;
-        if (
-          !Number.isInteger(result.pendingPromises) ||
-          result.pendingPromises < 0 ||
-          !Array.isArray(result.days) ||
-          !Array.isArray(result.events) ||
-          !Array.isArray(result.reservations) ||
-          !Array.isArray(result.units)
-        )
-          throw Error('load');
-        if (current === sequence.current) setData(result);
-      })
-      .catch(() => {
-        if (current === sequence.current)
-          setMessage(
-            'Kalender konnte nicht geladen werden. Bitte erneut aktualisieren.',
-          );
-      })
-      .finally(() => {
-        if (current === sequence.current) setLoading(false);
-      });
-    return () => {
-      ++sequence.current;
-    };
+    try {
+      const response = await fetch('/api/v1/calendar?' + query);
+      if (!response.ok) throw Error('load');
+      const result = (await response.json()) as Calendar;
+      if (
+        !Number.isInteger(result.pendingPromises) ||
+        result.pendingPromises < 0 ||
+        !Array.isArray(result.days) ||
+        !Array.isArray(result.events) ||
+        !Array.isArray(result.reservations) ||
+        !Array.isArray(result.units)
+      )
+        throw Error('load');
+      if (current === sequence.current) {
+        setData(result);
+        setLoadFailed(false);
+      }
+    } catch {
+      if (current === sequence.current) setLoadFailed(true);
+    } finally {
+      if (current === sequence.current) setLoading(false);
+    }
+  }
+  function refreshOnReturn() {
+    void refresh();
+  }
+  useAutoRefresh(refreshOnReturn, () => loading);
+  useEffect(() => {
+    void refresh();
   }, [date, view, revision]);
+  useEffect(
+    () => () => {
+      ++sequence.current;
+    },
+    [],
+  );
   function time(value: string) {
     return new Intl.DateTimeFormat('de-DE', {
       dateStyle: 'short',
@@ -139,8 +147,25 @@ export function CalendarPanel() {
   return (
     <section id="calendar" aria-label="Kalender" aria-busy={loading}>
       <h2>Event- und Ressourcenkalender</h2>
-      <p role="status">{message}</p>
-      <fieldset disabled={loading}>
+      {loadFailed && (
+        <div className="reload-warning">
+          <p role="alert">
+            Kalender konnte nicht geladen werden.{' '}
+            {data
+              ? 'Der zuletzt geladene Stand bleibt sichtbar.'
+              : 'Bitte erneut versuchen.'}
+          </p>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={loading}
+            onClick={() => void refresh()}
+          >
+            Kalender erneut laden
+          </button>
+        </div>
+      )}
+      <fieldset disabled={loading && !data}>
         <legend>Kalenderzeitraum</legend>
         <label>
           Kalenderdatum
@@ -181,12 +206,9 @@ export function CalendarPanel() {
         >
           Nächster Zeitraum
         </button>
-        <button type="button" onClick={() => setRevision((value) => value + 1)}>
-          Kalender aktualisieren
-        </button>
       </fieldset>
       {loading && <p>Kalender wird geladen …</p>}
-      {data && !loading && !message && (
+      {data && (
         <>
           <p>
             {data.from} bis {data.to}. Verfügbarkeiten werden beim Buchen erneut

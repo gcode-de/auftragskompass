@@ -5,6 +5,15 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+function returnToApp() {
+  fireEvent(document, new Event('visibilitychange'));
+  fireEvent(window, new Event('focus'));
+}
+function calendarLoads(fetcher: ReturnType<typeof vi.fn>) {
+  return fetcher.mock.calls.filter(([url]) =>
+    String(url).startsWith('/api/v1/calendar'),
+  ).length;
+}
 const data = {
   pendingPromises: 0,
   date: '2030-10-27',
@@ -114,19 +123,19 @@ test('calendar navigation, empty views, free and unavailable resources, and refr
   await screen.findByText('Keine Events in diesem Zeitraum.');
   expect(fetcher.mock.calls.at(-1)![0]).toContain('date=2030-12-01');
   fetcher.mockResolvedValue(new Response(null, { status: 500 }));
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Kalender aktualisieren' }),
-  );
+  returnToApp();
   await screen.findByText(/Kalender konnte nicht geladen/);
-  expect(screen.queryByRole('table')).toBeNull();
+  expect(
+    screen.getByRole('table', { name: 'Ressourcen-Zeitleiste' }),
+  ).toBeTruthy();
   fetcher.mockImplementation(async () => Response.json([]));
   fireEvent.click(
-    screen.getByRole('button', { name: 'Kalender aktualisieren' }),
+    screen.getByRole('button', { name: 'Kalender erneut laden' }),
   );
   await screen.findByText(/Kalender konnte nicht geladen/);
   fetcher.mockRejectedValue(Error('offline'));
   fireEvent.click(
-    screen.getByRole('button', { name: 'Kalender aktualisieren' }),
+    screen.getByRole('button', { name: 'Kalender erneut laden' }),
   );
   await screen.findByText(/Kalender konnte nicht geladen/);
   cleanup();
@@ -209,4 +218,59 @@ test('unreviewed imported promises prevent any unqualified free-capacity display
   await screen.findByText(/2 ungeprüfte Bestandszusagen/);
   expect(screen.queryByText('Frei', { exact: true })).toBeNull();
   expect(screen.getAllByText('Bestand ungeprüft').length).toBeGreaterThan(0);
+});
+
+test('the calendar refreshes on return without a manual control and does not loop', async () => {
+  const fetcher = vi.fn(async () => Response.json(data));
+  vi.stubGlobal('fetch', fetcher);
+  render(<CalendarPanel />);
+  await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
+  expect(
+    screen.queryByRole('button', { name: 'Kalender aktualisieren' }),
+  ).toBeNull();
+  const before = calendarLoads(fetcher);
+  returnToApp();
+  await vi.waitFor(() => expect(calendarLoads(fetcher)).toBe(before + 1));
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  expect(calendarLoads(fetcher)).toBe(before + 1);
+});
+
+test('a failed first calendar load offers an error-only retry that works', async () => {
+  let fail = true;
+  const fetcher = vi.fn(async () =>
+    fail ? new Response(null, { status: 503 }) : Response.json(data),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<CalendarPanel />);
+  await screen.findByText(/Kalender konnte nicht geladen werden/);
+  expect(screen.queryByRole('table')).toBeNull();
+  fail = false;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Kalender erneut laden' }),
+  );
+  await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
+});
+
+test('a slower earlier calendar response cannot overwrite the newer period', async () => {
+  const pending: ((response: Response) => void)[] = [];
+  const fetcher = vi.fn(
+    () => new Promise<Response>((resolve) => pending.push(resolve)),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<CalendarPanel />);
+  await vi.waitFor(() => expect(pending).toHaveLength(1));
+  fireEvent.change(screen.getByLabelText('Kalenderansicht'), {
+    target: { value: 'month' },
+  });
+  await vi.waitFor(() => expect(pending).toHaveLength(2));
+  pending[1]!(
+    Response.json({ ...data, events: [{ ...data.events[0]!, name: 'Newer' }] }),
+  );
+  await screen.findByText('Newer');
+  pending[0]!(
+    Response.json({ ...data, events: [{ ...data.events[0]!, name: 'Older' }] }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(screen.queryByText('Older')).toBeNull();
+  expect(screen.getAllByText('Newer').length).toBeGreaterThan(0);
 });
