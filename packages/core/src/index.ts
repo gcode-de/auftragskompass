@@ -70,6 +70,15 @@ export {
   type ChromiumOptions,
 } from './document-pdf.js';
 
+export {
+  buildDocumentSnapshot,
+  assertTransition,
+  DocumentSnapshotError,
+  type DocumentState,
+  type DocumentSnapshot,
+  type SnapshotInput,
+} from './document-snapshot.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';
