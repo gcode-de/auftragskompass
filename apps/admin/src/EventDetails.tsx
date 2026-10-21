@@ -323,10 +323,18 @@ export function EventDetails({
                   ? data.event.eventDate.split('-').reverse().join('.')
                   : 'Ohne Datum'}
               </dd>
+              {/* H037: a date-only booking says so; a real midnight start
+                  keeps its genuine clock time from the stored timestamp. */}
               <dt>Beginn</dt>
-              <dd>{time(data.event.startsAt)}</dd>
+              <dd>
+                {data.event.startsAt
+                  ? time(data.event.startsAt)
+                  : 'Tagesbuchung, ohne Uhrzeit'}
+              </dd>
               <dt>Ende</dt>
-              <dd>{time(data.event.endsAt)}</dd>
+              <dd>
+                {data.event.endsAt ? time(data.event.endsAt) : 'Ohne Uhrzeit'}
+              </dd>
               <dt>Eventart</dt>
               <dd>{data.eventType?.name ?? 'Noch offen'}</dd>
               <dt>Fotobox-Paket</dt>

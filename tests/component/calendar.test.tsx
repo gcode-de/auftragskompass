@@ -9,6 +9,25 @@ function returnToApp() {
   fireEvent(document, new Event('visibilitychange'));
   fireEvent(window, new Event('focus'));
 }
+function isInClosedDetails(node: HTMLElement) {
+  const details = node.closest('details');
+  return details !== null && !details.open;
+}
+async function openOccupancy() {
+  const summary = await screen.findByText('Ressourcenbelegung', {
+    selector: 'summary',
+  });
+  const details = summary.closest('details')!;
+  if (!details.open) {
+    fireEvent.click(summary);
+    await vi.waitFor(() => expect(details.open).toBe(true));
+  }
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole('table', { name: 'Ressourcen-Zeitleiste' }),
+    ).toBeTruthy(),
+  );
+}
 function calendarLoads(fetcher: ReturnType<typeof vi.fn>) {
   return fetcher.mock.calls.filter(([url]) =>
     String(url).startsWith('/api/v1/calendar'),
@@ -73,7 +92,7 @@ test('calendar displays events, soft conflicts and resource periods and changes 
   const fetcher = vi.fn().mockImplementation(async () => Response.json(data));
   vi.stubGlobal('fetch', fetcher);
   render(<CalendarPanel />);
-  await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
+  await openOccupancy();
   expect(screen.getByRole('group', { name: 'Kalenderlegende' })).toBeTruthy();
   expect(
     screen.getAllByText(/Fictional calendar event/).length,
@@ -83,10 +102,10 @@ test('calendar displays events, soft conflicts and resource periods and changes 
   ).toBeTruthy();
   expect(screen.getByText(/Konflikt: Vormerkung/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Kalenderansicht'), {
-    target: { value: 'month' },
+    target: { value: 'week' },
   });
-  await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
-  expect(fetcher.mock.calls.at(-1)![0]).toContain('view=month');
+  await openOccupancy();
+  expect(fetcher.mock.calls.at(-1)![0]).toContain('view=week');
 });
 
 test('calendar navigation, empty views, free and unavailable resources, and refresh failures are explicit', async () => {
@@ -114,13 +133,16 @@ test('calendar navigation, empty views, free and unavailable resources, and refr
     expect(action.getAttribute('title')).toBe(title);
     expect(action.textContent).toBe('');
   }
+  // Free/blocked cell text is part of the collapsed occupancy detail and
+  // stays fully available once the user opens it.
+  await openOccupancy();
   expect(screen.getAllByText('Frei').length).toBeGreaterThan(0);
   expect(screen.getByText('Allgemein gesperrt')).toBeTruthy();
   expect(screen.getByText('Inaktive Einheit')).toBeTruthy();
   for (const [label, expected] of [
     ['Nächster Zeitraum', 'date=2030-10-28'],
     ['Vorheriger Zeitraum', 'date=2030-10-26'],
-    ['Heute im Kalender', 'view=week'],
+    ['Heute im Kalender', 'view=month'],
   ] as const) {
     fireEvent.click(screen.getByRole('button', { name: label }));
     await screen.findByText('Keine Events in diesem Zeitraum.');
@@ -159,7 +181,10 @@ test('calendar navigation, empty views, free and unavailable resources, and refr
     }),
   );
   render(<CalendarPanel />);
-  await screen.findByText('Keine physischen Einheiten vorhanden.');
+  await openOccupancy();
+  expect(
+    screen.getByText('Keine physischen Einheiten vorhanden.'),
+  ).toBeTruthy();
   expect(
     (
       screen.getByRole('button', {
@@ -176,6 +201,7 @@ test.each(['booked', 'hold', 'blocked'])(
       vi.fn().mockImplementation(async () =>
         Response.json({
           ...data,
+          timeZone: 'UTC',
           events: [
             {
               ...data.events[0]!,
@@ -200,7 +226,7 @@ test.each(['booked', 'hold', 'blocked'])(
       ),
     );
     render(<CalendarPanel />);
-    await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
+    await openOccupancy();
     expect(screen.getByText(/Einschließlich Puffer:/)).toBeTruthy();
     if (state === 'blocked')
       expect(screen.getByText('Zeitweise Sperre')).toBeTruthy();
@@ -225,15 +251,32 @@ test('unreviewed imported promises prevent any unqualified free-capacity display
   );
   render(<CalendarPanel />);
   await screen.findByText(/2 ungeprüfte Bestandszusagen/);
+  // Booking safety stays visible with the occupancy collapsed: the alert and
+  // the legend already refuse to show plain "Frei" capacity.
+  // The mounted-but-closed disclosure content does not count as visible; only
+  // the alert and legend must be outside the disclosure.
+  expect(
+    screen
+      .getAllByText('Bestand ungeprüft')
+      .filter((node) => !isInClosedDetails(node)),
+  ).toHaveLength(1);
+  // The legend itself (which carries the pending legend entry) is outside.
+  expect(
+    screen.getByRole('group', { name: 'Kalenderlegende' }).closest('details'),
+  ).toBeNull();
   expect(screen.queryByText('Frei', { exact: true })).toBeNull();
+  // Only after actually opening the occupancy do the cells appear, and they
+  // still never claim free capacity.
+  await openOccupancy();
   expect(screen.getAllByText('Bestand ungeprüft').length).toBeGreaterThan(0);
+  expect(screen.queryByText('Frei', { exact: true })).toBeNull();
 });
 
 test('the calendar refreshes on return without a manual control and does not loop', async () => {
   const fetcher = vi.fn(async () => Response.json(data));
   vi.stubGlobal('fetch', fetcher);
   render(<CalendarPanel />);
-  await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
+  await openOccupancy();
   expect(
     screen.queryByRole('button', { name: 'Kalender aktualisieren' }),
   ).toBeNull();
@@ -257,7 +300,7 @@ test('a failed first calendar load offers an error-only retry that works', async
   fireEvent.click(
     screen.getByRole('button', { name: 'Kalender erneut laden' }),
   );
-  await screen.findByRole('table', { name: 'Ressourcen-Zeitleiste' });
+  await openOccupancy();
 });
 
 test('a slower earlier calendar response cannot overwrite the newer period', async () => {
@@ -269,7 +312,7 @@ test('a slower earlier calendar response cannot overwrite the newer period', asy
   render(<CalendarPanel />);
   await vi.waitFor(() => expect(pending).toHaveLength(1));
   fireEvent.change(screen.getByLabelText('Kalenderansicht'), {
-    target: { value: 'month' },
+    target: { value: 'week' },
   });
   await vi.waitFor(() => expect(pending).toHaveLength(2));
   pending[1]!(

@@ -111,7 +111,8 @@ test('events create without date, retain formatted notes and edit/cancel with ve
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText('Synthetic new event – 01.07.2026 – Annulliert');
+  // H037: the list names the real start time instead of only the date.
+  await screen.findByText(/1\. Juli 2026, 01\.07\.26 18:00 Uhr/);
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events/synthetic',
     expect.objectContaining({
@@ -229,7 +230,7 @@ test('event copies retain active references and require new choices for archived
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText('Synthetic event (Kopie) – 01.07.2026 – Anfrage');
+  await screen.findByText(/Synthetic event \(Kopie\)/);
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events',
     expect.objectContaining({

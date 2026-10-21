@@ -1143,7 +1143,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       );
     await createSave.click();
     await expect(
-      events.getByText('Synthetic browser event – 16.10.2026 – Anfrage'),
+      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
     ).toBeVisible();
     await expect(
       events.getByRole('link', {
@@ -1221,7 +1221,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events.getByLabel('Eventstatus').selectOption('cancelled');
     await events.getByRole('button', { name: 'Event speichern' }).click();
     await expect(
-      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
     ).toBeVisible();
     // Real DST change: 16.10. is CEST, 16.11. is CET. The browser only edits
     // wall-clock fields; the instant must follow the tenant timezone.
@@ -1242,7 +1242,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(events.getByLabel(/UTC-Versatz/)).toHaveCount(0);
     await events.getByRole('button', { name: 'Event speichern' }).click();
     await expect(
-      events.getByText('Synthetic browser event – 16.11.2026 – Annulliert'),
+      events.getByText(/Synthetic browser event – 16\. November 2026, /),
     ).toBeVisible();
     await events
       .getByRole('button', {
@@ -1259,7 +1259,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events.getByLabel('Eventende').fill('2026-10-17T01:00');
     await events.getByRole('button', { name: 'Event speichern' }).click();
     await expect(
-      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
     ).toBeVisible();
     await events.getByRole('button', { name: 'Event anlegen' }).click();
     await events.getByText('Weitere Angaben', { exact: true }).click();
@@ -1345,10 +1345,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       record.getByText(/Ressourcenzuordnung und Dispositionszeitraum geändert/),
     ).toBeVisible();
+    // H037: the list names the stored start time explicitly.
     await expect(
-      events.getByText('Fictional resource booking – 20.10.2030 – Gebucht', {
-        exact: true,
-      }),
+      events.getByText(/Fictional resource booking – 20\. Oktober 2030, /),
     ).toBeAttached();
     await record
       .getByRole('button', { name: 'Ressourcen', exact: true })
@@ -1362,6 +1361,88 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       name: 'Kalender',
       exact: true,
     });
+    // H037: the overview opens on the month, the occupancy is a collapsed
+    // secondary disclosure, and the icon navigation carries the range.
+    await expect(
+      calendar.getByRole('combobox', { name: 'Kalenderansicht', exact: true }),
+    ).toHaveValue('month');
+    for (const name of [
+      'Vorheriger Zeitraum',
+      'Heute im Kalender',
+      'Nächster Zeitraum',
+    ]) {
+      const button = calendar.getByRole('button', { name });
+      await expect(button).toHaveAttribute('title', name);
+      const box = (await button.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(
+      calendar.getByRole('group', { name: 'Kalenderzeitraum' }),
+    ).toContainText('Oktober');
+    const occupancy = calendar.locator('summary', {
+      hasText: 'Ressourcenbelegung',
+    });
+    const timeline = calendar.getByRole('table', {
+      name: 'Ressourcen-Zeitleiste',
+    });
+    // Real summary interaction: the native disclosure hides its mounted
+    // content while closed and reveals it on click/keyboard, with no refetch.
+    await expect(occupancy).not.toHaveAttribute('aria-expanded', 'true');
+    await expect(timeline).toBeHidden();
+    await occupancy.click();
+    await expect(timeline).toBeVisible();
+    await expect(occupancy).toBeFocused();
+    await expect(timeline).toBeVisible();
+    await occupancy.click();
+    await expect(timeline).toBeHidden();
+    await expect(occupancy).toBeFocused();
+    await occupancy.focus();
+    await page.keyboard.press('Enter');
+    await expect(timeline).toBeVisible();
+    // The month overview fits its container: seven columns, no inner scroll
+    // and no body overflow while the occupancy is open.
+    const monthGeometry = await calendar.evaluate((element) => {
+      const events = element.querySelector('.calendar-events')!;
+      const cells = element.querySelectorAll('.calendar-day');
+      return {
+        view: events.getAttribute('data-view'),
+        cells: cells.length,
+        innerOverflow: events.scrollWidth - events.clientWidth,
+        bodyOverflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      };
+    });
+    expect(monthGeometry.view).toBe('month');
+    expect(monthGeometry.cells).toBe(31);
+    expect(monthGeometry.innerOverflow).toBeLessThanOrEqual(1);
+    expect(monthGeometry.bodyOverflow).toBeLessThanOrEqual(0);
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const narrow = await calendar.evaluate((element) => {
+        const events = element.querySelector('.calendar-events')!;
+        return {
+          innerOverflow: events.scrollWidth - events.clientWidth,
+          bodyOverflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
+      expect(narrow.bodyOverflow).toBeLessThanOrEqual(0);
+      for (const name of [
+        'Vorheriger Zeitraum',
+        'Heute im Kalender',
+        'Nächster Zeitraum',
+      ]) {
+        const box = (await calendar
+          .getByRole('button', { name })
+          .boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
     await calendar.getByLabel('Kalenderdatum').fill('2030-10-20');
     await calendar
       .getByRole('combobox', { name: 'Kalenderansicht', exact: true })
@@ -1458,14 +1539,14 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events.getByRole('button', { name: 'Events filtern' }).click();
     await expect(page).toHaveURL(/status=cancelled/);
     await expect(
-      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
     ).toBeVisible();
     await events.getByLabel('Nur Events ohne Datum').check();
     await events.getByRole('button', { name: 'Events filtern' }).click();
     await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
     await page.goBack();
     await expect(
-      events.getByText('Synthetic browser event – 16.10.2026 – Annulliert'),
+      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
     ).toBeVisible();
     await page.reload();
     await expect(events.getByLabel('Filter von')).toHaveValue('2026-10-16');

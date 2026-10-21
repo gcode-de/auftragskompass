@@ -862,3 +862,32 @@ test('a deliberate clear shows no place at all in the details', async () => {
   expect(screen.queryByText('Fictional venue')).toBeNull();
   expect(screen.queryByText('Fictional city')).toBeNull();
 });
+
+test('details name a date-only booking instead of inventing a start time', async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      ...detail,
+      event: { ...event, startsAt: null, endsAt: null },
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole('heading', {
+    name: 'Event: Synthetic detail event',
+    level: 2,
+  });
+  const term = screen.getByText('Beginn', { selector: 'dt' });
+  expect(term.nextElementSibling?.textContent).toBe(
+    'Tagesbuchung, ohne Uhrzeit',
+  );
+  expect(document.body.textContent).not.toContain('Noch offen Uhr');
+});

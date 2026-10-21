@@ -8,6 +8,7 @@ import {
 } from './url-state.js';
 import { useEffect, useState, useRef } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
+import { listScheduleText } from './calendar-range.js';
 import { EventTimeField } from './EventTimeField.js';
 import { EventCreateDialog } from './EventCreateDialog.js';
 import {
@@ -409,6 +410,19 @@ export function EventPanel({
     ));
   }
   const zone = draft?.timeZone ?? timeZone;
+  function localDate(value: string) {
+    return new Intl.DateTimeFormat('de-DE', {
+      dateStyle: 'short',
+      timeZone: zone,
+    }).format(new Date(value));
+  }
+  function localTime(value: string) {
+    return new Intl.DateTimeFormat('de-DE', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: zone,
+    }).format(new Date(value));
+  }
   const MonthHeading = showHeading ? 'h3' : 'h2';
   const showingDetail = rows.some((row) => row.id === detailId);
   const groups = new Map<string, EventRow[]>();
@@ -895,10 +909,9 @@ export function EventPanel({
                       >
                         <span className="event-title">
                           {row.name} –{' '}
-                          {row.eventDate
-                            ? row.eventDate.split('-').reverse().join('.')
-                            : 'Ohne Datum'}{' '}
-                          –{' '}
+                          {/* H037: a date-only booking keeps its date without
+                              an invented clock time; a real one shows it. */}
+                          {listScheduleText(row, localDate, localTime)} –{' '}
                           {statuses.find((s) => s.code === row.status)?.label ??
                             row.status}
                         </span>

@@ -1255,6 +1255,96 @@ summary {
 .calendar-state a:focus-visible {
   outline-color: #111827;
 }
+
+/* H037: the month overview fits its container so all seven days stay
+   visible on a normal desktop. Only week/day keep an inner scroll for the
+   fixed-width occupancy columns. */
+.calendar-events {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.calendar-events[data-view='month'] {
+  overflow-x: clip;
+}
+.calendar-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.calendar-events[data-view='day'] .calendar-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.calendar-events[data-view='week'] .calendar-grid {
+  grid-template-columns: repeat(7, minmax(9rem, 1fr));
+}
+.calendar-weekday-head {
+  grid-column: 1 / -1;
+}
+.calendar-weekday-head ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.calendar-weekday-head li {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.calendar-day {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  padding: 0.35rem;
+  overflow-wrap: anywhere;
+}
+.calendar-day > h4 {
+  margin: 0 0 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.calendar-chip {
+  padding: 0.3rem;
+  margin-bottom: 0.3rem;
+  border-radius: 0.25rem;
+  color: #111827;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.calendar-chip-link {
+  display: block;
+  min-height: 44px;
+  padding: 0.15rem 0.1rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.calendar-chip p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.calendar-chip-time,
+.calendar-chip-meta,
+.calendar-chip-resources {
+  color: #1f2937;
+}
+@media (max-width: 48rem) {
+  .calendar-chip-meta,
+  .calendar-chip-resources {
+    display: none;
+  }
+}
 .menu-account [role='status']:not(.session-ready) {
   background: #294c3e;
   color: var(--sidebar-ink);
@@ -1378,4 +1468,104 @@ summary {
 .event-venue,
 .event-venue-inline {
   white-space: pre-line;
+}
+
+/* H037: one calm calendar navigation row. Icon controls stay 44px, the
+   context is the only visible date label, and the row wraps before it can
+   cause horizontal overflow at 320/390px. */
+.calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  margin-block: 0.5rem 1rem;
+}
+.calendar-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+.calendar-toolbar .icon-action {
+  align-self: center;
+}
+.calendar-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+  margin: 0 0 0 0.35rem;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.calendar-context strong {
+  font-size: 1.05rem;
+}
+.calendar-context span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.calendar-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.calendar-view-field select,
+.calendar-date-field input {
+  min-width: 0;
+  max-width: 100%;
+}
+.calendar-date-field input {
+  width: 10.5rem;
+}
+.calendar-hint {
+  color: var(--muted);
+  max-width: 70ch;
+}
+.calendar-note {
+  font-variant-numeric: tabular-nums;
+}
+/* Secondary disclosure: quiet summary, visible focus, full-width content. */
+.calendar-resources {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.calendar-resources > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.45rem;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+.calendar-resources > summary:hover {
+  background: var(--hover-surface);
+}
+.calendar-resources > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.calendar-resources[open] > summary {
+  margin-bottom: 0.5rem;
+}
+@media (max-width: 30rem) {
+  .calendar-toolbar {
+    align-items: stretch;
+  }
+  .calendar-navigation {
+    flex-basis: 100%;
+  }
+  .calendar-date-field input {
+    width: 100%;
+  }
 }

@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { emptyEventFilters, updateUrlSearch } from './url-state.js';
+import {
+  emptyEventFilters,
+  updateUrlSearch,
+  useUrlSearch,
+} from './url-state.js';
 import { useAutoRefresh } from './auto-refresh.js';
+import {
+  calendarHeading,
+  calendarViewFromUrl,
+  eventDateLabel,
+  eventSpanText,
+  plainDateText,
+  viewLabel,
+  type CalendarView,
+} from './calendar-range.js';
 type Day = { date: string; startsAt: string; endsAt: string };
 type Calendar = {
   pendingPromises: number;
@@ -16,7 +29,7 @@ type Calendar = {
     id: string;
     name: string;
     status: string;
-    eventDate: string;
+    eventDate: string | null;
     startsAt: string | null;
     endsAt: string | null;
     eventType: string | null;
@@ -72,8 +85,9 @@ function overlap(start: string, end: string, day: Day) {
   );
 }
 export function CalendarPanel() {
+  const search = useUrlSearch();
   const [date, setDate] = useState(''),
-    [view, setView] = useState('week'),
+    [view, setView] = useState<CalendarView>(() => calendarViewFromUrl(search)),
     [data, setData] = useState<Calendar | null>(null),
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
@@ -119,10 +133,13 @@ export function CalendarPanel() {
     },
     [],
   );
-  function time(value: string) {
+  function selectedDate() {
+    return date || data?.date || '';
+  }
+  function clockTime(value: string) {
     return new Intl.DateTimeFormat('de-DE', {
-      dateStyle: 'short',
-      timeStyle: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
       timeZone: data!.timeZone,
     }).format(new Date(value));
   }
@@ -144,6 +161,42 @@ export function CalendarPanel() {
       </a>
     );
   }
+  // Tenant-local calendar day of an instant; en-CA yields YYYY-MM-DD.
+  function eventDay(value: string) {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: data!.timeZone,
+    }).format(new Date(value));
+  }
+  function slotPeriod(start: string, end: string) {
+    return (
+      new Intl.DateTimeFormat('de-DE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: data!.timeZone,
+      }).format(new Date(start)) +
+      ' – ' +
+      new Intl.DateTimeFormat('de-DE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: data!.timeZone,
+      }).format(new Date(end))
+    );
+  }
+  // H037: only the stored (nullable) start/end decide whether a time exists.
+  // A date-only booking never gets a synthetic 00:00; a genuine midnight
+  // booking keeps its real clock time. Multi-day bookings show their original
+  // interval in every cell they occupy instead of being re-dated per cell.
+  function eventScheduleText(event: Calendar['events'][number]) {
+    return event.startsAt && event.endsAt
+      ? eventSpanText(event, eventDay, clockTime, plainDateText)
+      : eventDateLabel(event);
+  }
+  // The grid always renders the view that the displayed data actually
+  // belongs to. After a failed view/date change the previous data stays on
+  // screen, so its own grid (and weekday padding) must stay too instead of
+  // dressing month data as a day grid.
+  const loadedView = (data?.view as CalendarView | undefined) ?? view;
+  const heading = data ? calendarHeading(data.from, data.to, loadedView) : null;
   return (
     <section id="calendar" aria-label="Kalender" aria-busy={loading}>
       <h2>Event- und Ressourcenkalender</h2>
@@ -165,93 +218,110 @@ export function CalendarPanel() {
           </button>
         </div>
       )}
-      <fieldset disabled={loading && !data}>
-        <legend>Kalenderzeitraum</legend>
-        <label>
-          Kalenderdatum
-          <input
-            type="date"
-            value={date || data?.date || ''}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
-        <label>
+      <div className="calendar-toolbar">
+        <div
+          className="calendar-navigation"
+          role="group"
+          aria-label="Kalenderzeitraum"
+        >
+          <button
+            type="button"
+            className="icon-action"
+            aria-label="Vorheriger Zeitraum"
+            title="Vorheriger Zeitraum"
+            disabled={!data?.previousDate || (loading && !data)}
+            onClick={() => setDate(data!.previousDate!)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M15 6l-6 6 6 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="icon-action"
+            aria-label="Heute im Kalender"
+            title="Heute im Kalender"
+            disabled={loading && !data}
+            onClick={() => {
+              setDate('');
+              setRevision((value) => value + 1);
+            }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM12 14v4" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="icon-action"
+            aria-label="Nächster Zeitraum"
+            title="Nächster Zeitraum"
+            disabled={!data?.nextDate || (loading && !data)}
+            onClick={() => setDate(data!.nextDate!)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
+          <p className="calendar-context" aria-live="polite">
+            <strong>{heading ? heading.title : viewLabel(view)}</strong>{' '}
+            <span>
+              {heading ? heading.range : plainDateText(selectedDate())}
+            </span>
+          </p>
+        </div>
+        <label className="calendar-view-field">
           Kalenderansicht
-          <select value={view} onChange={(e) => setView(e.target.value)}>
+          <select
+            value={view}
+            disabled={loading && !data}
+            onChange={(e) => setView(e.target.value as CalendarView)}
+          >
             <option value="day">Tag</option>
             <option value="week">Woche</option>
             <option value="month">Monat</option>
           </select>
         </label>
-        <button
-          type="button"
-          className="icon-action"
-          aria-label="Vorheriger Zeitraum"
-          title="Vorheriger Zeitraum"
-          disabled={!data?.previousDate}
-          onClick={() => setDate(data!.previousDate!)}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M15 6l-6 6 6 6" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="icon-action"
-          aria-label="Heute im Kalender"
-          title="Heute im Kalender"
-          onClick={() => {
-            setDate('');
-            setRevision((value) => value + 1);
-          }}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM12 14v4" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="icon-action"
-          aria-label="Nächster Zeitraum"
-          title="Nächster Zeitraum"
-          disabled={!data?.nextDate}
-          onClick={() => setDate(data!.nextDate!)}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </button>
-      </fieldset>
+        <label className="calendar-date-field">
+          Kalenderdatum
+          <input
+            type="date"
+            value={selectedDate()}
+            disabled={loading && !data}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+      </div>
       {loading && <p>Kalender wird geladen …</p>}
       {data && (
         <>
-          <p>
-            {data.from} bis {data.to}. Verfügbarkeiten werden beim Buchen erneut
-            geprüft. Events ohne Datum stehen in der Eventliste.
+          <p className="calendar-hint">
+            Verfügbarkeiten werden beim Buchen erneut geprüft. Events ohne Datum
+            stehen in der Eventliste.
           </p>
           {data.pendingPromises > 0 && (
             <p role="alert">
@@ -289,24 +359,14 @@ export function CalendarPanel() {
           <h3>Events</h3>
           {!data.events.length && <p>Keine Events in diesem Zeitraum.</p>}
           <div
+            className="calendar-events"
             role="region"
             aria-label="Eventkalender"
             tabIndex={0}
-            style={{ overflowX: 'auto' }}
+            data-view={loadedView}
           >
-            <ol
-              style={{
-                listStyle: 'none',
-                padding: 0,
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(' +
-                  (view === 'day' ? 1 : 7) +
-                  ', minmax(10rem, 1fr))',
-                gap: '0.5rem',
-              }}
-            >
-              {view === 'month' &&
+            <ol className="calendar-grid">
+              {loadedView === 'month' &&
                 Array.from(
                   {
                     length:
@@ -316,167 +376,193 @@ export function CalendarPanel() {
                   },
                   (_, index) => <li key={'pad-' + index} aria-hidden="true" />,
                 )}
-              {data.days.map((day) => (
-                <li
-                  key={day.date}
-                  style={{
-                    border: '1px solid #6b7280',
-                    padding: '0.5rem',
-                    overflowWrap: 'anywhere',
-                  }}
-                >
-                  <h4>{dayName(day.date)}</h4>
-                  {data.events
-                    .filter((event) =>
-                      event.startsAt && event.endsAt
-                        ? overlap(event.startsAt, event.endsAt, day)
-                        : event.eventDate === day.date,
-                    )
-                    .map((event) => (
-                      <article
-                        className="calendar-state"
-                        key={event.id}
-                        style={{
-                          padding: '0.4rem',
-                          marginBottom: '0.4rem',
-                          backgroundColor: colors[event.status],
-                          color: '#111827',
-                        }}
-                      >
-                        {link(event.id, event.name)}
-                        <p>
-                          {labels[event.status]} ·{' '}
-                          {event.startsAt && event.endsAt
-                            ? time(event.startsAt) + ' – ' + time(event.endsAt)
-                            : 'Uhrzeit offen'}
-                        </p>
-                        <p>
-                          {event.eventType ?? 'Eventart offen'} ·{' '}
-                          {event.contact ?? 'Kontakt offen'} ·{' '}
-                          {event.location ?? 'Ort offen'}
-                        </p>
-                        <p>
-                          Ressourcen:{' '}
-                          {data.reservations
-                            .filter((slot) => slot.eventId === event.id)
-                            .map((slot) => {
-                              const unit = data.units.find(
-                                (unit) => unit.id === slot.unitId,
-                              )!;
-                              return unit.code + ' #' + unit.ordinal;
-                            })
-                            .join(', ') || 'Keine zugewiesen'}
-                        </p>
-                      </article>
+              {loadedView === 'month' && (
+                <li className="calendar-weekday-head" aria-hidden="true">
+                  <ol>
+                    {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((label) => (
+                      <li key={label}>{label}</li>
                     ))}
+                  </ol>
                 </li>
-              ))}
-            </ol>
-          </div>
-          <div
-            role="region"
-            aria-label="Horizontale Ressourcen-Zeitleiste"
-            tabIndex={0}
-            style={{ overflowX: 'auto' }}
-          >
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <caption>Ressourcen-Zeitleiste</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Physische Einheit</th>
-                  {data.days.map((day) => (
-                    <th scope="col" key={day.date}>
-                      {dayName(day.date)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.units.map((unit) => (
-                  <tr key={unit.id}>
-                    <th scope="row">
-                      {unit.name} · Einheit {unit.ordinal} ({unit.code})
-                    </th>
-                    {data.days.map((day) => {
-                      const slots = data.reservations.filter(
-                        (slot) =>
-                          slot.unitId === unit.id &&
-                          overlap(slot.startsAt, slot.endsAt, day),
-                      );
-                      const unavailable = !unit.enabled || unit.blocked;
-                      const kind = slots.some((slot) => slot.conflict)
-                        ? 'conflict'
-                        : unavailable
-                          ? 'blocked'
-                          : slots.some((slot) => slot.state === 'booked')
-                            ? 'booked'
-                            : slots.some((slot) => slot.state === 'blocked')
-                              ? 'blocked'
-                              : slots.length
-                                ? 'hold'
-                                : data.pendingPromises
-                                  ? 'hold'
-                                  : 'free';
+              )}
+              {data.days.map((day) => {
+                const dayEvents = data.events.filter((event) =>
+                  event.startsAt && event.endsAt
+                    ? overlap(event.startsAt, event.endsAt, day)
+                    : event.eventDate === day.date,
+                );
+                return (
+                  <li key={day.date} className="calendar-day">
+                    <h4>
+                      <time dateTime={day.date}>{dayName(day.date)}</time>
+                    </h4>
+                    {dayEvents.map((event) => {
+                      const schedule = eventScheduleText(event);
                       return (
-                        <td
-                          className="calendar-state"
-                          key={day.date}
-                          style={{
-                            border: '1px solid #6b7280',
-                            padding: '0.5rem',
-                            minWidth: '10rem',
-                            verticalAlign: 'top',
-                            backgroundColor: colors[kind],
-                            color: '#111827',
-                          }}
+                        <article
+                          className="calendar-state calendar-chip"
+                          key={event.id}
+                          style={{ backgroundColor: colors[event.status] }}
                         >
-                          {unavailable && (
-                            <p>
-                              {unit.blocked
-                                ? 'Allgemein gesperrt'
-                                : 'Inaktive Einheit'}
-                            </p>
-                          )}
-                          {!slots.length && !unavailable && (
-                            <p>
-                              {data.pendingPromises
-                                ? 'Bestand ungeprüft'
-                                : 'Frei'}
-                            </p>
-                          )}
-                          {slots.map((slot) => (
-                            <div key={slot.id}>
-                              <strong>
-                                {slot.conflict ? 'Konflikt: ' : ''}
-                                {labels[slot.state]}
-                              </strong>
-                              <p>
-                                {slot.eventId
-                                  ? link(
-                                      slot.eventId,
-                                      slot.eventName ?? 'Eventreservierung',
-                                    )
-                                  : slot.reason || 'Zeitweise Sperre'}
-                              </p>
-                              <p>
-                                Einschließlich Puffer: {time(slot.startsAt)} –{' '}
-                                {time(slot.endsAt)}
-                              </p>
-                              <p>
-                                Basiszeitraum: {time(slot.baseStart)} –{' '}
-                                {time(slot.baseEnd)}
-                              </p>
-                            </div>
-                          ))}
-                        </td>
+                          <a
+                            className="calendar-chip-link"
+                            href={'#event-' + event.id}
+                            title={
+                              event.name +
+                              ' – ' +
+                              (labels[event.status] ?? event.status) +
+                              ' – ' +
+                              schedule
+                            }
+                            onClick={() => updateUrlSearch(emptyEventFilters)}
+                          >
+                            {event.name}
+                          </a>
+                          <p className="calendar-chip-time calendar-note">
+                            {schedule}
+                          </p>
+                          <p className="calendar-chip-meta">
+                            {labels[event.status]} ·{' '}
+                            {event.eventType ?? 'Eventart offen'} ·{' '}
+                            {event.contact ?? 'Kontakt offen'}
+                            {event.location ? ' · ' + event.location : ''}
+                          </p>
+                          <p className="calendar-chip-resources">
+                            Ressourcen:{' '}
+                            {data.reservations
+                              .filter((slot) => slot.eventId === event.id)
+                              .map((slot) => {
+                                const unit = data.units.find(
+                                  (unit) => unit.id === slot.unitId,
+                                )!;
+                                return unit.code + ' #' + unit.ordinal;
+                              })
+                              .join(', ') || 'Keine zugewiesen'}
+                          </p>
+                        </article>
                       );
                     })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
-          {!data.units.length && <p>Keine physischen Einheiten vorhanden.</p>}
+          {/* H037: native, uncontrolled disclosure. The browser owns the
+              open state, so mouse, keyboard, programmatic `open` and the
+              `toggle` event all agree; the content stays mounted and is
+              hidden by the native closed behaviour. Toggling is pure DOM
+              work and never triggers a fetch. */}
+          <details className="calendar-resources">
+            <summary>Ressourcenbelegung</summary>
+            <p className="calendar-hint">
+              Zeitleiste je physischer Einheit mit Reservierungszeitraum,
+              Puffern und Konflikten.
+            </p>
+            <div
+              role="region"
+              aria-label="Horizontale Ressourcen-Zeitleiste"
+              tabIndex={0}
+              style={{ overflowX: 'auto' }}
+            >
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <caption>Ressourcen-Zeitleiste</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Physische Einheit</th>
+                    {data.days.map((day) => (
+                      <th scope="col" key={day.date}>
+                        {dayName(day.date)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.units.map((unit) => (
+                    <tr key={unit.id}>
+                      <th scope="row">
+                        {unit.name} · Einheit {unit.ordinal} ({unit.code})
+                      </th>
+                      {data.days.map((day) => {
+                        const slots = data.reservations.filter(
+                          (slot) =>
+                            slot.unitId === unit.id &&
+                            overlap(slot.startsAt, slot.endsAt, day),
+                        );
+                        const unavailable = !unit.enabled || unit.blocked;
+                        const kind = slots.some((slot) => slot.conflict)
+                          ? 'conflict'
+                          : unavailable
+                            ? 'blocked'
+                            : slots.some((slot) => slot.state === 'booked')
+                              ? 'booked'
+                              : slots.some((slot) => slot.state === 'blocked')
+                                ? 'blocked'
+                                : slots.length
+                                  ? 'hold'
+                                  : data.pendingPromises
+                                    ? 'hold'
+                                    : 'free';
+                        return (
+                          <td
+                            className="calendar-state"
+                            key={day.date}
+                            style={{
+                              border: '1px solid #6b7280',
+                              padding: '0.5rem',
+                              minWidth: '10rem',
+                              verticalAlign: 'top',
+                              backgroundColor: colors[kind],
+                              color: '#111827',
+                            }}
+                          >
+                            {unavailable && (
+                              <p>
+                                {unit.blocked
+                                  ? 'Allgemein gesperrt'
+                                  : 'Inaktive Einheit'}
+                              </p>
+                            )}
+                            {!slots.length && !unavailable && (
+                              <p>
+                                {data.pendingPromises
+                                  ? 'Bestand ungeprüft'
+                                  : 'Frei'}
+                              </p>
+                            )}
+                            {slots.map((slot) => (
+                              <div key={slot.id}>
+                                <strong>
+                                  {slot.conflict ? 'Konflikt: ' : ''}
+                                  {labels[slot.state]}
+                                </strong>
+                                <p>
+                                  {slot.eventId
+                                    ? link(
+                                        slot.eventId,
+                                        slot.eventName ?? 'Eventreservierung',
+                                      )
+                                    : slot.reason || 'Zeitweise Sperre'}
+                                </p>
+                                <p>
+                                  Einschließlich Puffer:{' '}
+                                  {slotPeriod(slot.startsAt, slot.endsAt)}
+                                </p>
+                                <p>
+                                  Basiszeitraum:{' '}
+                                  {slotPeriod(slot.baseStart, slot.baseEnd)}
+                                </p>
+                              </div>
+                            ))}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!data.units.length && <p>Keine physischen Einheiten vorhanden.</p>}
+          </details>
         </>
       )}
     </section>
