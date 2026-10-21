@@ -7,6 +7,7 @@ import { CalendarPanel } from './CalendarPanel.js';
 import {
   Navigation,
   SettingsNavigation,
+  isSettingsRoute,
   useWorkspaceRoute,
 } from './Navigation.js';
 import { EventPanel } from './EventPanel.js';
@@ -23,16 +24,7 @@ import { useEffect, useState } from 'react';
 export type CurrentUser = { email: string; csrfToken: string };
 export function AuthPanel() {
   const route = useWorkspaceRoute();
-  const inSettings = [
-    'settings',
-    'subscriptions',
-    'import',
-    'security',
-    'export',
-    'inquiry',
-    'templates',
-    'numbers',
-  ].includes(route);
+  const inSettings = isSettingsRoute(route);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState('Anmeldung wird geprüft …');
   const [mode, setMode] = useState('google');
@@ -188,12 +180,6 @@ export function AuthPanel() {
               showHeading={route === 'search'}
             />
           </div>
-          <div className="workspace-page" hidden={route !== 'products'}>
-            <ProductPanel csrfToken={user.csrfToken} />
-          </div>
-          <div className="workspace-page" hidden={route !== 'resources'}>
-            <ResourcePanel csrfToken={user.csrfToken} />
-          </div>
           <section
             id="settings"
             aria-label="Einstellungen"
@@ -202,6 +188,12 @@ export function AuthPanel() {
             <SettingsNavigation />
             <div hidden={route !== 'settings'}>
               <MasterDataSettings csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'resources'}>
+              <ResourcePanel csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'products'}>
+              <ProductPanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'subscriptions'}>
               <CalendarFeedsPanel csrfToken={user.csrfToken} />

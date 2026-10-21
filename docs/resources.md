@@ -23,6 +23,11 @@ Session, Origin und CSRF-Schutz gelten auch hier. Schreibberechtigung wird unter
 Mandantensperre innerhalb der Transaktion erneut geprüft. Änderungen und Audit
 (`resource.created`/`resource.updated`) sind atomar; Audit enthält nur interne IDs.
 
+Die Verwaltung liegt seit H033 unter Einstellungen (`#settings-resources`) und
+nicht mehr in der Hauptnavigation. Der alte Deep Link `#resources` öffnet
+denselben Abschnitt ohne Neuladen; Ressourcenzuweisung in Event-Details und
+Kalender bleibt unverändert erreichbar.
+
 Archivierung erhält die Ressourcen-ID; ein Löschendpunkt existiert nicht. Historische
 Verweise können den zusammengesetzten Fremdschlüssel `(tenant_id, id)` verwenden.
 Die Oberfläche hält Eingaben bei Fehlern vor und meldet Versionskonflikte.

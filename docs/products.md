@@ -7,6 +7,11 @@ Produkt verändern das Original nicht. Archivierte Produkte behalten ihre ID.
 Der echte Bestandskatalog wird im Migrationsschritt übernommen; die Installation
 legt keine erfundenen verkaufbaren Positionen oder Preise an.
 
+Die Verwaltung liegt seit H033 unter Einstellungen (`#settings-products`) und
+nicht mehr in der Hauptnavigation. Der alte Deep Link `#products` öffnet
+denselben Abschnitt ohne Neuladen; die Produktauswahl in Angeboten und Events
+bleibt unverändert erreichbar.
+
 Preise werden ausschließlich als ganze Euro-Centwerte (`priceMinor`) gespeichert.
 Die Datenbank begrenzt sie auf 0 bis 9007199254740991, damit auch die JSON-/JavaScript-
 Darstellung exakt bleibt. `taxBasisPoints` enthält Hundertstel-Prozentwerte

@@ -149,9 +149,12 @@ Stufe.
 
 ## 10. Bewusste Abweichungen
 
-1. **Ressourcen unter Einstellungen** statt Hauptnavigation. Bookitup belegt mit
-   `/settings/resources` und dem Ausblendschalter, dass dies ein legitimer Modus
-   ist.
+1. **Ressourcen und Produkte unter Einstellungen** statt Hauptnavigation (H033).
+   Bookitup belegt mit `/settings/resources` und dem Ausblendschalter, dass dies
+   ein legitimer Modus ist. AuftragsKompass führt beide selten bearbeiteten
+   Stammdaten als Einstellungsabschnitte `#settings-resources` und
+   `#settings-products`; die alten Links `#resources` und `#products` bleiben
+   als Aliase gültig.
 2. **Keine Orts-Stammdaten in der Oberfläche**: Bookitup führt „Location“ als
    eigene Combobox/Stammdaten; AuftragsKompass behält vorhandene Ortsdaten und
    API, nimmt die Stammdatenpflege aber aus dem normalen UX-Pfad.

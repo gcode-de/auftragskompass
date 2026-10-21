@@ -520,8 +520,26 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('button', { name: 'Speichern', exact: true })
       .click();
     await expect(reasons.getByText('Termin belegt – Archiviert')).toBeVisible();
-    await navigate('Ressourcen');
-    const resources = page.getByRole('region', { name: 'Ressourcen' });
+    await navigate('Einstellungen', 'Ressourcen');
+    const settingsNavigation = page.getByRole('navigation', {
+      name: 'Einstellungen',
+      exact: true,
+    });
+    await expect(
+      settingsNavigation.getByRole('link', {
+        name: 'Ressourcen',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .getByRole('link', { name: 'Ressourcen', exact: true }),
+    ).toHaveCount(0);
+    const resources = page.getByRole('region', {
+      name: 'Ressourcen',
+      exact: true,
+    });
     await resources
       .getByRole('button', { name: 'Ressource bearbeiten: FB1', exact: true })
       .click();
@@ -559,8 +577,68 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       blocks.getByText(/Fictional browser maintenance.*Freigegeben/),
     ).toBeVisible();
-    await navigate('Produkte');
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      expect(
+        await resources.evaluate(
+          (section) => section.scrollWidth <= section.clientWidth + 1,
+        ),
+      ).toBe(true);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+        ),
+      ).toBe(true);
+      await expect(
+        settingsNavigation.getByRole('link', {
+          name: 'Ressourcen',
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(
+        await settingsNavigation.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const resourcesTimeOrigin = await page.evaluate(
+      () => performance.timeOrigin,
+    );
+    await page.evaluate(() => {
+      window.location.hash = 'resources';
+    });
+    await expect(page).toHaveURL(/#resources$/);
+    await expect(resources).toBeVisible();
+    await expect(
+      settingsNavigation.getByRole('link', {
+        name: 'Ressourcen',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(
+      resourcesTimeOrigin,
+    );
+    await navigate('Einstellungen', 'Produkte');
+    await expect(
+      settingsNavigation.getByRole('link', {
+        name: 'Produkte',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .getByRole('link', { name: 'Produkte', exact: true }),
+    ).toHaveCount(0);
     const products = page.getByRole('region', { name: 'Produkte' });
+    await expect(
+      products.getByRole('heading', {
+        level: 2,
+        name: 'Produkte',
+        exact: true,
+      }),
+    ).toHaveCount(1);
     await products
       .getByLabel('Produktname', { exact: true })
       .fill('Synthetic browser product');
@@ -571,6 +649,147 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         exact: true,
       }),
     ).toBeVisible();
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      expect(
+        await products.evaluate(
+          (section) => section.scrollWidth <= section.clientWidth + 1,
+        ),
+      ).toBe(true);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+        ),
+      ).toBe(true);
+      expect(
+        await settingsNavigation.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const productsTimeOrigin = await page.evaluate(
+      () => performance.timeOrigin,
+    );
+    await page.evaluate(() => {
+      window.location.hash = 'products';
+    });
+    await expect(page).toHaveURL(/#products$/);
+    await expect(products).toBeVisible();
+    await expect(
+      settingsNavigation.getByRole('link', {
+        name: 'Produkte',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(
+      productsTimeOrigin,
+    );
+
+    // Keyboard activation and focus of the settings sub-navigation.
+    await settingsNavigation
+      .getByRole('link', { name: 'Stammdaten', exact: true })
+      .click();
+    await expect(page).toHaveURL(/#settings$/);
+    const resourceLink = settingsNavigation.getByRole('link', {
+      name: 'Ressourcen',
+      exact: true,
+    });
+    await resourceLink.focus();
+    await expect(resourceLink).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await expect(resourceLink).toBeFocused();
+    await expect(resources).toBeVisible();
+
+    // Back and Forward across canonical and legacy hashes keep query, drafts
+    // and the single mounted panels.
+    const historyTimeOrigin = await page.evaluate(() => performance.timeOrigin);
+    const queryBeforeHistory = await page.evaluate(() => location.search);
+    let productApiRequests = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/v1/products')
+        productApiRequests += 1;
+    });
+    await settingsNavigation
+      .getByRole('link', { name: 'Produkte', exact: true })
+      .click();
+    await expect(page).toHaveURL(/#settings-products$/);
+    await products
+      .getByLabel('Produktname', { exact: true })
+      .fill('Synthetic draft product');
+    await settingsNavigation
+      .getByRole('link', { name: 'Ressourcen', exact: true })
+      .click();
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await resources
+      .getByLabel('Bezeichnung', { exact: true })
+      .fill('Synthetic draft box');
+    await page.evaluate(() => {
+      window.location.hash = 'resources';
+    });
+    await expect(page).toHaveURL(/#resources$/);
+    await expect(
+      resources.getByLabel('Bezeichnung', { exact: true }),
+    ).toHaveValue('Synthetic draft box');
+    await page.goBack();
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await expect(
+      resources.getByLabel('Bezeichnung', { exact: true }),
+    ).toHaveValue('Synthetic draft box');
+    await page.goForward();
+    await expect(page).toHaveURL(/#resources$/);
+    await expect(
+      resources.getByLabel('Bezeichnung', { exact: true }),
+    ).toHaveValue('Synthetic draft box');
+    await page.goBack();
+    await settingsNavigation
+      .getByRole('link', { name: 'Produkte', exact: true })
+      .click();
+    await expect(page).toHaveURL(/#settings-products$/);
+    await expect(
+      products.getByLabel('Produktname', { exact: true }),
+    ).toHaveValue('Synthetic draft product');
+    expect(productApiRequests).toBe(0);
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(
+      historyTimeOrigin,
+    );
+    expect(await page.evaluate(() => location.search)).toBe(queryBeforeHistory);
+
+    // The same sub-navigation is keyboard reachable from the mobile drawer.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Menü öffnen' }).click();
+    const mobileDrawer = page.getByRole('dialog', {
+      name: 'Menü',
+      exact: true,
+    });
+    await expect(
+      mobileDrawer.getByRole('link', { name: 'Ressourcen', exact: true }),
+    ).toHaveCount(0);
+    await mobileDrawer
+      .getByRole('link', { name: 'Einstellungen', exact: true })
+      .click();
+    await expect(mobileDrawer).toBeHidden();
+    const mobileProductsLink = settingsNavigation.getByRole('link', {
+      name: 'Produkte',
+      exact: true,
+    });
+    await mobileProductsLink.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#settings-products$/);
+    await expect(mobileProductsLink).toBeFocused();
+    await expect(products).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+    ).toBe(true);
+    expect(
+      await settingsNavigation.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
     await navigate('Kontakte');
     const contacts = page.getByRole('region', { name: 'Kontakte' });
     await expect(contacts.locator('ul.contact-list')).toBeAttached();
@@ -1726,6 +1945,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await expect(
         menu.getByRole('button', { name: 'Abmelden', exact: true }),
       ).toBeVisible();
+      await expect(
+        menu.getByRole('link', { name: 'Ressourcen', exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        menu.getByRole('link', { name: 'Produkte', exact: true }),
+      ).toHaveCount(0);
       await expect(menu).toHaveCSS('opacity', '1');
       expect(
         await menu.evaluate((el) =>

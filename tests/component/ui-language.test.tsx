@@ -127,17 +127,37 @@ test('visible screens keep one page title and the detail uses Event language', a
     ).toBeNull(),
   );
 
-  await go('/#products');
+  await go('/#settings-products');
   await screen.findByRole('region', { name: 'Produkte' });
   expect(
     screen.getByRole('heading', {
       level: 1,
-      name: 'Produkte – zur Eventübersicht',
+      name: 'Einstellungen – zur Eventübersicht',
     }),
   ).toBeTruthy();
   expect(
-    screen.queryByRole('heading', { level: 2, name: 'Produkte' }),
+    screen.getAllByRole('heading', { level: 2, name: 'Produkte' }),
+  ).toHaveLength(1);
+  expect(screen.queryByRole('region', { name: 'Ressourcen' })).toBeNull();
+  expect(document.querySelectorAll('#products')).toHaveLength(1);
+  const productsSettings = screen.getByRole('navigation', {
+    name: 'Einstellungen',
+  });
+  expect(
+    within(productsSettings)
+      .getByRole('link', { name: 'Produkte' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
+  expect(
+    within(productsSettings)
+      .getByRole('link', { name: 'Ressourcen' })
+      .getAttribute('aria-current'),
   ).toBeNull();
+  expect(
+    within(screen.getByLabelText('Arbeitsbereiche'))
+      .getByRole('link', { name: 'Einstellungen' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
 
   await go('/#calendar');
   expect(
@@ -179,11 +199,105 @@ test('search keeps distinct section headings and resources keep a valid outline'
   await screen.findByRole('region', { name: 'Ressourcen' });
   expect(
     screen.getByRole('heading', {
+      level: 1,
+      name: 'Einstellungen – zur Eventübersicht',
+    }),
+  ).toBeTruthy();
+  expect(
+    screen.getAllByRole('heading', { level: 2, name: 'Ressourcen' }),
+  ).toHaveLength(1);
+  expect(
+    screen.getByRole('heading', {
       level: 2,
       name: 'Zeitweise Ressourcensperren',
     }),
   ).toBeTruthy();
   expect(screen.queryByRole('heading', { level: 3 })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Produkte' })).toBeNull();
+  expect(document.querySelectorAll('#resources')).toHaveLength(1);
+
+  await go('/#settings-resources');
+  await screen.findByRole('region', { name: 'Ressourcen' });
+  expect(
+    within(screen.getByRole('navigation', { name: 'Einstellungen' }))
+      .getByRole('link', { name: 'Ressourcen' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
+});
+
+test('settings keep resource and product panels mounted once and retain drafts across canonical and legacy hashes', async () => {
+  const base = fetcher();
+  const requested: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      requested.push(url);
+      return base(url);
+    }),
+  );
+  render(<AuthPanel />);
+  await screen.findByRole('region', { name: 'Events' });
+  const initialProducts = requested.filter(
+    (url) => url === '/api/v1/products',
+  ).length;
+  const initialResources = requested.filter(
+    (url) => url === '/api/v1/resources',
+  ).length;
+  const initialBlocks = requested.filter(
+    (url) => url === '/api/v1/resource-blocks',
+  ).length;
+
+  await go('/?q=Synthetic#settings-products');
+  const products = await screen.findByRole('region', { name: 'Produkte' });
+  const productName = within(products).getByLabelText(
+    'Produktname',
+  ) as HTMLInputElement;
+  fireEvent.change(productName, {
+    target: { value: 'Synthetic draft product' },
+  });
+  expect(requested.filter((url) => url === '/api/v1/products')).toHaveLength(
+    initialProducts,
+  );
+  expect(window.location.search).toBe('?q=Synthetic');
+
+  await go('/?q=Synthetic#products');
+  expect(
+    (
+      within(screen.getByRole('region', { name: 'Produkte' })).getByLabelText(
+        'Produktname',
+      ) as HTMLInputElement
+    ).value,
+  ).toBe('Synthetic draft product');
+  expect(window.location.search).toBe('?q=Synthetic');
+
+  await go('/?q=Synthetic#settings-resources');
+  const resources = await screen.findByRole('region', { name: 'Ressourcen' });
+  expect(screen.queryByRole('region', { name: 'Produkte' })).toBeNull();
+  fireEvent.change(within(resources).getByLabelText('Bezeichnung'), {
+    target: { value: 'Synthetic draft box' },
+  });
+  expect(
+    (within(resources).getByLabelText('Bezeichnung') as HTMLInputElement).value,
+  ).toBe('Synthetic draft box');
+
+  await go('/?q=Synthetic#resources');
+  expect(
+    (
+      within(screen.getByRole('region', { name: 'Ressourcen' })).getByLabelText(
+        'Bezeichnung',
+      ) as HTMLInputElement
+    ).value,
+  ).toBe('Synthetic draft box');
+  expect(requested.filter((url) => url === '/api/v1/resources')).toHaveLength(
+    initialResources,
+  );
+  expect(
+    requested.filter((url) => url === '/api/v1/resource-blocks'),
+  ).toHaveLength(initialBlocks);
+  expect(requested.filter((url) => url === '/api/v1/products')).toHaveLength(
+    initialProducts,
+  );
+  expect(window.location.search).toBe('?q=Synthetic');
 });
 
 test('theme stays reachable and singular before and after login', async () => {

@@ -43,8 +43,6 @@ const links = [
     'Kontakte',
     'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-4M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7-8a4 4 0 0 1 0 8',
   ],
-  ['resources', 'Ressourcen', 'M3 7h18v14H3ZM7 7V3h10v4m-7 4h4v4h-4Z'],
-  ['products', 'Produkte', 'm3 7 9-5 9 5v10l-9 5-9-5ZM3 7l9 5 9-5m-9 5v10'],
   [
     'locations',
     'Locations',
@@ -54,6 +52,8 @@ const links = [
 ] as const;
 const settingsLinks = [
   ['settings', 'Stammdaten'],
+  ['settings-resources', 'Ressourcen'],
+  ['settings-products', 'Produkte'],
   ['settings-calendar', 'Kalender-Abos'],
   ['import-review', 'Datenimport'],
   ['settings-export', 'Datenexport'],
@@ -71,9 +71,42 @@ export type WorkspaceRoute =
   | 'export'
   | 'templates'
   | 'numbers'
-  | 'search';
+  | 'search'
+  | 'resources'
+  | 'products';
+export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
+  'settings',
+  'subscriptions',
+  'import',
+  'security',
+  'export',
+  'inquiry',
+  'templates',
+  'numbers',
+  'resources',
+  'products',
+]);
+export function isSettingsRoute(route: WorkspaceRoute) {
+  return settingsRoutes.has(route);
+}
+const settingsHashes = {
+  settings: 'settings',
+  subscriptions: 'settings-calendar',
+  import: 'import-review',
+  security: 'settings-security',
+  export: 'settings-export',
+  inquiry: 'settings-inquiry',
+  templates: 'settings-templates',
+  numbers: 'settings-numbers',
+  resources: 'settings-resources',
+  products: 'settings-products',
+} satisfies Partial<Record<WorkspaceRoute, string>>;
 function readRoute(): WorkspaceRoute {
   const hash = window.location.hash.slice(1);
+  if (hash === 'resources') return 'resources';
+  if (hash === 'products') return 'products';
+  if (hash === 'settings-resources') return 'resources';
+  if (hash === 'settings-products') return 'products';
   if (hash === 'import-review') return 'import';
   if (hash === 'settings-calendar') return 'subscriptions';
   if (hash === 'settings-inquiry') return 'inquiry';
@@ -101,26 +134,7 @@ export function useWorkspaceRoute() {
 }
 export function SettingsNavigation() {
   const route = useWorkspaceRoute();
-  const current = {
-    settings: 'settings',
-    subscriptions: 'settings-calendar',
-    import: 'import-review',
-    security: 'settings-security',
-    export: 'settings-export',
-    inquiry: 'settings-inquiry',
-    templates: 'settings-templates',
-    numbers: 'settings-numbers',
-  }[
-    route as
-      | 'settings'
-      | 'subscriptions'
-      | 'import'
-      | 'security'
-      | 'export'
-      | 'inquiry'
-      | 'templates'
-      | 'numbers'
-  ];
+  const current = settingsHashes[route as keyof typeof settingsHashes];
   return (
     <nav className="settings-navigation" aria-label="Einstellungen">
       {settingsLinks.map(([hash, label]) => (
@@ -139,16 +153,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
   const search = useUrlSearch(),
     q = new URLSearchParams(search).get('q') ?? '';
   const route = useWorkspaceRoute();
-  const settings = [
-    'settings',
-    'subscriptions',
-    'import',
-    'security',
-    'export',
-    'inquiry',
-    'templates',
-    'numbers',
-  ].includes(route);
+  const settings = isSettingsRoute(route);
   const title =
     route === 'search'
       ? 'Suchergebnisse'

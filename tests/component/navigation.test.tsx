@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react';
 import {
   Navigation,
+  SettingsNavigation,
   useWorkspaceRoute,
 } from '../../apps/admin/src/Navigation.js';
 import {
@@ -83,6 +84,8 @@ test('resolves deep links, settings and browser history without losing search', 
     ['#settings-security', 'security'],
     ['#settings-export', 'export'],
     ['#settings-inquiry', 'inquiry'],
+    ['#settings-resources', 'resources'],
+    ['#settings-products', 'products'],
     ['#contact-synthetic', 'contacts'],
     ['#unknown', 'events'],
   ]) {
@@ -94,6 +97,93 @@ test('resolves deep links, settings and browser history without losing search', 
   fireEvent(window, new PopStateEvent('popstate'));
   expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('resources');
   expect(window.location.search).toBe('?q=Fictional');
+  window.history.replaceState(null, '', '/?q=Fictional#settings-products');
+  fireEvent(window, new PopStateEvent('popstate'));
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('products');
+  expect(window.location.search).toBe('?q=Fictional');
+});
+
+test('settings own resource and product management in desktop and mobile navigation', () => {
+  window.history.replaceState(null, '', '/#resources');
+  HTMLDialogElement.prototype.showModal = vi.fn(function (
+    this: HTMLDialogElement,
+  ) {
+    this.open = true;
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.open = false;
+  });
+  render(
+    <>
+      <Navigation />
+      <SettingsNavigation />
+    </>,
+  );
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  expect(
+    within(sidebar).queryByRole('link', { name: 'Ressourcen' }),
+  ).toBeNull();
+  expect(within(sidebar).queryByRole('link', { name: 'Produkte' })).toBeNull();
+  expect(
+    within(sidebar)
+      .getByRole('link', { name: 'Einstellungen' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
+  const settingsNavigation = screen.getByRole('navigation', {
+    name: 'Einstellungen',
+  });
+  const resourcesLink = within(settingsNavigation).getByRole('link', {
+    name: 'Ressourcen',
+  });
+  const productsLink = within(settingsNavigation).getByRole('link', {
+    name: 'Produkte',
+  });
+  expect(resourcesLink.getAttribute('href')).toBe('#settings-resources');
+  expect(productsLink.getAttribute('href')).toBe('#settings-products');
+  expect(resourcesLink.getAttribute('aria-current')).toBe('page');
+  expect(productsLink.getAttribute('aria-current')).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
+  const drawer = screen.getByRole('dialog', { name: 'Menü' });
+  expect(
+    within(drawer).queryByRole('link', {
+      name: 'Ressourcen',
+      hidden: true,
+    }),
+  ).toBeNull();
+  expect(
+    within(drawer).queryByRole('link', { name: 'Produkte', hidden: true }),
+  ).toBeNull();
+  expect(
+    within(drawer)
+      .getByRole('link', { name: 'Einstellungen' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
+
+  for (const [hash, current, other] of [
+    ['#settings-products', 'Produkte', 'Ressourcen'],
+    ['#products', 'Produkte', 'Ressourcen'],
+    ['#resources', 'Ressourcen', 'Produkte'],
+    ['#settings-resources', 'Ressourcen', 'Produkte'],
+  ] as const) {
+    window.history.replaceState(null, '', '/' + hash);
+    fireEvent(window, new HashChangeEvent('hashchange'));
+    expect(
+      within(settingsNavigation)
+        .getByRole('link', { name: current })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    expect(
+      within(settingsNavigation)
+        .getByRole('link', { name: other })
+        .getAttribute('aria-current'),
+    ).toBeNull();
+    expect(
+      within(sidebar)
+        .getByRole('link', { name: 'Einstellungen' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+  }
 });
 test('mobile menu opens as a modal and closes on selection or Escape', () => {
   HTMLDialogElement.prototype.showModal = vi.fn(function (

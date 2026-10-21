@@ -655,6 +655,7 @@ a.workspace-title:hover {
 .settings-navigation a {
   color: var(--muted);
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 .settings-navigation a[aria-current] {
   background: var(--selected-surface);
