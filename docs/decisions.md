@@ -102,3 +102,17 @@ abgeleitet.
 Der künftige Eingang neuer Website-Anfragen ist laut Betreiber noch unklar.
 Bestehende Formulare oder Kundenlinks werden deshalb nicht abgeschaltet oder
 ungeprüft ersetzt. E004 und die Produktivumschaltung bleiben offen.
+
+## Ort als Zusatzinfo der Buchung, Locations nur noch Bestand (21.10.2026)
+
+Der Betreiber hat entschieden, dass Buchungen keinen Ortsstammdatensatz und keinen
+eigenen Menüpunkt benötigen: Der Ort ist eine optionale Freitextangabe am Event.
+Die Umsetzung ergänzt `events.venue` (höchstens 1.000 Zeichen, mehrzeilig) und
+`events.venue_override` additiv; Tabelle, Zeilen, IDs und API der bisherigen
+Locations bleiben unverändert, werden aber nicht mehr in der Oberfläche verwaltet.
+Das bewusste Leeren eines Ortes bleibt leer und fällt nicht auf einen Bestandsort
+zurück. Bestandsorte werden weiterhin unverändert angezeigt, solange kein Freitext
+gilt, und ein alter Client, der nur die Bestandsreferenz ändert, setzt die
+wirksame Quelle auf den Bestand zurück, ohne den Freitext zu löschen. Es findet
+keine Adressprüfung, -zerlegung oder Rückfüllung statt. Diese Entscheidung ersetzt
+die frühere Annahme, H034 sei ohne Migration möglich.

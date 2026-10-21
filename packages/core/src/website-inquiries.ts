@@ -190,11 +190,8 @@ export async function receiveWebsiteInquiry(
           .find((field) => field.type === 'select')!
           .options.find((option) => option.value === fields.package)?.label ??
         'Nicht angegeben';
-      const summary =
-        'Veranstaltungsort: ' +
-        (fields.location ?? 'Nicht angegeben') +
-        '\nPaketwunsch: ' +
-        packageLabel;
+      const summary = 'Paketwunsch: ' + packageLabel;
+      const place = fields.location?.trim();
       const comment = '\nKommentar: ' + (fields.comment ?? 'Nicht angegeben');
       const description =
         Array.from(summary + comment).length <= 4000
@@ -206,6 +203,9 @@ export async function receiveWebsiteInquiry(
         eventTypeId: null,
         packageId: null,
         locationId: null,
+        // H034: the customer's own place becomes the booking's effective
+        // venue; the original submission stays in the inquiry payload.
+        ...(place ? { venue: place, venueOverride: true } : {}),
         primaryContactId: contactId,
         additionalContactIds: [],
         source: 'Website: ' + source,

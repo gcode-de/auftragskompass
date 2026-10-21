@@ -2,6 +2,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import type { Pool } from 'pg';
 import type { FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { effectiveVenue } from './venue.js';
 import { and, asc, eq, gte, lte, lt, gt, sql, isNull } from 'drizzle-orm';
 import {
   tenants,
@@ -94,7 +95,9 @@ export function calendarRepository(pool: Pool, tenantId: string) {
               endsAt: events.endsAt,
               eventType: masterData.name,
               contact: contacts.name,
-              location: locations.name,
+              legacyLocation: locations.name,
+              venue: events.venue,
+              venueOverride: events.venueOverride,
             })
             .from(events)
             .leftJoin(
@@ -207,11 +210,18 @@ export function calendarRepository(pool: Pool, tenantId: string) {
           return {
             ...window,
             pendingPromises: pending!.count,
-            events: rows.map((row) => ({
-              ...row,
-              startsAt: row.startsAt?.toISOString() ?? null,
-              endsAt: row.endsAt?.toISOString() ?? null,
-            })),
+            events: rows.map(
+              ({ venue, venueOverride, legacyLocation, ...row }) => ({
+                ...row,
+                // H034: one effective place; legacy formatting is unchanged.
+                location: effectiveVenue(
+                  { venue, venueOverride },
+                  legacyLocation,
+                ),
+                startsAt: row.startsAt?.toISOString() ?? null,
+                endsAt: row.endsAt?.toISOString() ?? null,
+              }),
+            ),
             units: units.filter(
               (unit) =>
                 unit.enabled || slots.some((slot) => slot.unitId === unit.id),

@@ -1374,3 +1374,8 @@ summary {
     justify-content: flex-start;
   }
 }
+
+.event-venue,
+.event-venue-inline {
+  white-space: pre-line;
+}

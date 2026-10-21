@@ -10,8 +10,16 @@ import { useEffect, useState, useRef } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
 import { EventTimeField } from './EventTimeField.js';
 import { EventCreateDialog } from './EventCreateDialog.js';
+import {
+  initialVenueText,
+  legacyPlaceText,
+  shownVenue,
+  venueMaxLength,
+  venuePayload,
+  type VenueChoice,
+} from './venue.js';
 import { useAutoRefresh } from './auto-refresh.js';
-type Choice = { id: string; name: string; state: string };
+type Choice = VenueChoice;
 export type EventRow = {
   id: string;
   version: number;
@@ -20,6 +28,8 @@ export type EventRow = {
   eventTypeId: string | null;
   packageId: string | null;
   locationId: string | null;
+  venue: string | null;
+  venueOverride: boolean;
   primaryContactId: string | null;
   additionalContactIds: string[];
   source: string;
@@ -56,6 +66,8 @@ export function EventPanel({
     [types, setTypes] = useState<Choice[]>([]),
     [packages, setPackages] = useState<Choice[]>([]),
     [locations, setLocations] = useState<Choice[]>([]),
+    [venue, setVenue] = useState(''),
+    [venueEdited, setVenueEdited] = useState(false),
     [contacts, setContacts] = useState<Choice[]>([]),
     [statuses, setStatuses] = useState<Status[]>([]),
     [message, setMessage] = useState(''),
@@ -124,6 +136,14 @@ export function EventPanel({
       if (current === sequence.current) setLoading(false);
     }
   }
+  useEffect(() => {
+    if (!draft || venueEdited) return;
+    const next = initialVenueText(
+      draft,
+      locations.find((choice) => choice.id === draft.locationId),
+    );
+    setVenue((current) => (current === next ? current : next));
+  }, [draft, locations, venueEdited]);
   function refreshOnReturn() {
     void refresh().catch(() => {});
   }
@@ -302,7 +322,8 @@ export function EventPanel({
         status: value('status'),
         eventTypeId: value('eventTypeId') || null,
         packageId: value('packageId') || null,
-        locationId: value('locationId') || null,
+        locationId: draft?.locationId ?? null,
+        ...venuePayload(venue, venueEdited),
         primaryContactId: value('primaryContactId') || null,
         additionalContactIds: data.getAll('additionalContactIds').map(String),
         source: value('source'),
@@ -347,6 +368,8 @@ export function EventPanel({
       setDateDerived(false);
       setPrimaryContactId('');
       setAdditionalContactIds([]);
+      setVenue('');
+      setVenueEdited(false);
       form.reset();
       saved = true;
       setMessage('Event gespeichert.');
@@ -681,15 +704,22 @@ export function EventPanel({
                       </select>
                     </label>
                     <label>
-                      Veranstaltungsort
-                      <select
-                        name="locationId"
-                        defaultValue={draft?.locationId ?? ''}
-                      >
-                        <option value="">Noch offen</option>
-                        {options(locations, draft?.locationId ?? null)}
-                      </select>
+                      Ort / Adresse
+                      <textarea
+                        name="venue"
+                        maxLength={venueMaxLength}
+                        value={venue}
+                        aria-describedby="event-venue-help"
+                        onChange={(event) => {
+                          setVenue(event.currentTarget.value);
+                          setVenueEdited(true);
+                        }}
+                      />
                     </label>
+                    <p id="event-venue-help">
+                      Optional und frei eintragbar. Ein vorhandener Bestandsort
+                      bleibt erhalten, solange das Feld unverändert bleibt.
+                    </p>
                     <label>
                       Anfragequelle
                       <input
@@ -759,6 +789,8 @@ export function EventPanel({
                     onClick={() => {
                       setDraft(null);
                       setEditing(false);
+                      setVenue('');
+                      setVenueEdited(false);
                       restoreEditorFocus();
                     }}
                   >
@@ -877,7 +909,12 @@ export function EventPanel({
                             contacts.find((c) => c.id === row.primaryContactId)
                               ?.name
                           }{' '}
-                          {locations.find((l) => l.id === row.locationId)?.name}
+                          <span className="event-venue-inline">
+                            {shownVenue(
+                              row,
+                              locations.find((l) => l.id === row.locationId),
+                            )}
+                          </span>
                         </span>
                       </a>
                       <p className="event-resource-hint">
@@ -903,9 +940,16 @@ export function EventPanel({
                               ? id
                               : null;
                           const duplicatePrimary = active(
-                            contacts,
-                            row.primaryContactId,
-                          );
+                              contacts,
+                              row.primaryContactId,
+                            ),
+                            legacyPlace = locations.find(
+                              (choice) => choice.id === row.locationId,
+                            ),
+                            copyLegacy =
+                              legacyPlace?.state === 'active'
+                                ? row.locationId
+                                : null;
                           openCreate({
                             ...row,
                             name: row.name.slice(0, 192) + ' (Kopie)',
@@ -919,7 +963,17 @@ export function EventPanel({
                               : row.eventDate,
                             eventTypeId: active(types, row.eventTypeId),
                             packageId: active(packages, row.packageId),
-                            locationId: active(locations, row.locationId),
+                            locationId: copyLegacy,
+                            // An archived legacy place cannot be referenced by
+                            // a new booking; keep what the operator sees as text.
+                            venue: row.venueOverride
+                              ? row.venue
+                              : !copyLegacy && legacyPlace
+                                ? legacyPlaceText(legacyPlace)
+                                : null,
+                            venueOverride:
+                              row.venueOverride ||
+                              Boolean(!copyLegacy && legacyPlace),
                             primaryContactId: duplicatePrimary,
                             additionalContactIds:
                               row.additionalContactIds.filter(
@@ -952,6 +1006,15 @@ export function EventPanel({
                           editReturnFocus.current = event.currentTarget;
                           setCreating(false);
                           setCreateInitial(null);
+                          setVenue(
+                            initialVenueText(
+                              row,
+                              locations.find(
+                                (choice) => choice.id === row.locationId,
+                              ),
+                            ),
+                          );
+                          setVenueEdited(false);
                           setDraft(row);
                           setEditing(true);
                         }}
@@ -990,6 +1053,15 @@ export function EventPanel({
                       onEdit={(event) => {
                         setCreating(false);
                         setCreateInitial(null);
+                        setVenue(
+                          initialVenueText(
+                            event,
+                            locations.find(
+                              (choice) => choice.id === event.locationId,
+                            ),
+                          ),
+                        );
+                        setVenueEdited(false);
                         setDraft(event);
                         setEditing(true);
                         setDetailId(null);

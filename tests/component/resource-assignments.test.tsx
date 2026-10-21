@@ -22,6 +22,8 @@ const event = {
   eventTypeId: null,
   packageId: null,
   locationId: null,
+  venue: null,
+  venueOverride: false,
   primaryContactId: null,
   additionalContactIds: [],
   source: 'Synthetic',
@@ -838,4 +840,48 @@ test('editor and event file keep their own time error ids at the same time', asy
   expect(editor.contains(described(editorEnd))).toBe(true);
   expect(document.querySelectorAll('#assignment-endsAt-error')).toHaveLength(1);
   expect(document.querySelectorAll('#event-endsAt-error')).toHaveLength(1);
+});
+
+test('a booking write keeps the effective place untouched', async () => {
+  const placed = {
+      ...event,
+      locationId: 'fictional-location',
+      venue: 'Fictional Booking Hall',
+      venueOverride: true,
+    },
+    bodies: Record<string, unknown>[] = [],
+    fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options) {
+        bodies.push(
+          JSON.parse(String(options.body)) as Record<string, unknown>,
+        );
+        return Response.json(placed);
+      }
+      return Response.json([resource]);
+    });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <ResourceAssignments
+      event={placed}
+      csrfToken="csrf"
+      onChanged={vi.fn().mockResolvedValue(undefined)}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByLabelText('Fictional box · Einheit 1 zuweisen'),
+  );
+  fireEvent.change(screen.getByLabelText('Buchungsstatus'), {
+    target: { value: 'booked' },
+  });
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  expect(bodies[0]).toMatchObject({
+    venue: 'Fictional Booking Hall',
+    venueOverride: true,
+    locationId: 'fictional-location',
+  });
 });

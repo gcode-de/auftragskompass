@@ -240,3 +240,36 @@ test('resource timeline includes buffers and soft conflicts, ignores expired hol
   ).toBe(false);
   expect(history.reservations[0].state).toBe('blocked');
 });
+
+test('the calendar returns the effective place and never the hidden legacy address', async () => {
+  const location = randomUUID(),
+    replaced = randomUUID(),
+    cleared = randomUUID();
+  await pool.query(
+    "INSERT INTO locations(tenant_id,id,name,street,postal_code,city,country,state) VALUES($1,$2,'Fictional Calendar Hall','Fictional Calendar Street','00000','Fictional Calendar Town','DE','active')",
+    [tenantId, location],
+  );
+  for (const [id, name, venue, override] of [
+    [replaced, 'Fictional replaced place', 'Fictional Terrace', true],
+    [cleared, 'Fictional cleared place', '', true],
+  ] as const)
+    await pool.query(
+      "INSERT INTO events(tenant_id,id,name,status,source,event_date,starts_at,ends_at,time_zone,description,notes_html,location_id,venue,venue_override) VALUES($1,$2,$3,'option','Synthetic fixture','2030-10-27','2030-10-27T20:00:00Z','2030-10-27T22:00:00Z','Europe/Berlin','','',$4,$5,$6)",
+      [tenantId, id, name, location, venue, override],
+    );
+  const response = await app.inject({
+      url: '/api/v1/calendar?date=2030-10-27&view=day',
+      cookies,
+    }),
+    events = response.json().events as {
+      name: string;
+      location: string | null;
+    }[];
+  expect(
+    events.find((entry) => entry.name === 'Fictional replaced place')!.location,
+  ).toBe('Fictional Terrace');
+  expect(
+    events.find((entry) => entry.name === 'Fictional cleared place')!.location,
+  ).toBeNull();
+  expect(JSON.stringify(events)).not.toContain('Fictional Calendar Hall');
+});

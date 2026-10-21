@@ -2,8 +2,14 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
 import { EventTimeField } from './EventTimeField.js';
 import type { EventRow } from './EventPanel.js';
+import {
+  initialVenueText,
+  venueMaxLength,
+  venuePayload,
+  type VenueChoice,
+} from './venue.js';
 
-type Choice = { id: string; name: string; state: string };
+type Choice = VenueChoice;
 type Status = { code: string; label: string };
 type ScheduleErrors = {
   startsAt?: string;
@@ -68,7 +74,24 @@ export function EventCreateDialog({
     ),
     [name, setName] = useState(initial?.name ?? ''),
     [eventStatus, setEventStatus] = useState(initial?.status ?? 'inquiry'),
+    [venue, setVenue] = useState(() =>
+      initialVenueText(
+        initial,
+        locations.find((choice) => choice.id === initial?.locationId),
+      ),
+    ),
+    [venueEdited, setVenueEdited] = useState(false),
     [scheduleErrors, setScheduleErrors] = useState<ScheduleErrors>({});
+  // Locations may arrive after the dialog opened. Hydration only fills an
+  // untouched field and never overwrites text the operator already entered.
+  useEffect(() => {
+    if (venueEdited) return;
+    const next = initialVenueText(
+      initial,
+      locations.find((choice) => choice.id === initial?.locationId),
+    );
+    setVenue((current) => (current === next ? current : next));
+  }, [initial, locations, venueEdited]);
   const generated = generatedEventName(
     eventTypeId,
     primaryContactId,
@@ -196,7 +219,13 @@ export function EventCreateDialog({
           status: eventStatus,
           eventTypeId: typeId || null,
           packageId: value('packageId') || null,
-          locationId: value('locationId') || null,
+          locationId: initial?.locationId ?? null,
+          ...(venueEdited
+            ? venuePayload(venue, true)
+            : initial?.venueOverride
+              ? // Copying keeps the raw cleared value instead of inventing one.
+                { venue: initial.venue, venueOverride: true }
+              : {}),
           primaryContactId: contactId || null,
           additionalContactIds: data
             .getAll('additionalContactIds')
@@ -400,14 +429,16 @@ export function EventCreateDialog({
                   </select>
                 </label>
                 <label>
-                  Veranstaltungsort
-                  <select
-                    name="locationId"
-                    defaultValue={initial?.locationId ?? ''}
-                  >
-                    <option value="">Noch offen</option>
-                    {options(locations, initial?.locationId ?? null)}
-                  </select>
+                  Ort / Adresse
+                  <textarea
+                    name="venue"
+                    maxLength={venueMaxLength}
+                    value={venue}
+                    onChange={(event) => {
+                      setVenue(event.currentTarget.value);
+                      setVenueEdited(true);
+                    }}
+                  />
                 </label>
                 <label>
                   Anfragequelle

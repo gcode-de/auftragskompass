@@ -16,7 +16,7 @@ Die Oberfläche fragt für Anlegen, Bearbeiten und Duplizieren nur lokales Datum
 
 ## Vereinfachter Editor und Terminprüfung
 
-Der übliche Weg zeigt nur Eventname, Status, Hauptkontakt und den Termin. Eventart, Fotobox-Paket, Veranstaltungsort, Anfragequelle, weitere Kontakte, Beschreibung und interne Notizen liegen im aufklappbaren Bereich „Weitere Angaben“, der die volle Formularbreite nutzt und seine Felder in einem responsiven Raster anordnet (auf schmalen Geräten eine Spalte). Beim Öffnen bleiben alle gespeicherten Werte und die bestehende HTML-Eingabe samt serverseitiger Bereinigung unverändert; ein Rich-Text-Editor kommt nicht hinzu. Ein gebuchtes Event behält beim Bearbeiten seinen Status, solange er nicht bewusst geändert wird.
+Der übliche Weg zeigt nur Eventname, Status, Hauptkontakt und den Termin. Eventart, Fotobox-Paket, Ort / Adresse, Anfragequelle, weitere Kontakte, Beschreibung und interne Notizen liegen im aufklappbaren Bereich „Weitere Angaben“, der die volle Formularbreite nutzt und seine Felder in einem responsiven Raster anordnet (auf schmalen Geräten eine Spalte). Beim Öffnen bleiben alle gespeicherten Werte und die bestehende HTML-Eingabe samt serverseitiger Bereinigung unverändert; ein Rich-Text-Editor kommt nicht hinzu. Ein gebuchtes Event behält beim Bearbeiten seinen Status, solange er nicht bewusst geändert wird.
 
 Die Terminprüfung ist feldbezogen und erklärt jeden Fehler am betroffenen Feld: Beginn und Ende werden nur gemeinsam oder gar nicht gespeichert, das Ende muss nach dem Beginn liegen, und eine unvollständige oder umgekehrte Eingabe blockiert das Speichern, ohne den Entwurf zu verwerfen. Sobald ein Beginn vorliegt, übernimmt die Oberfläche das fachliche Eventdatum aus dessen lokalem Starttag und macht das Datumsfeld schreibgeschützt; ein Hinweis erklärt die Ableitung. Das gilt auch über Mitternacht und an Zeitumstellungstagen. Wird der Beginn wieder geleert, ist das Datum erneut eingebbar. Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event möglich (EV-05). In den Event-Details verschwindet ein Feldfehler samt `aria-invalid`, sobald das betroffene Feld korrigiert wird, ohne dass erneut gespeichert werden muss; Partnerfehler von Beginn und Ende beziehungsweise eines eigenen Dispositionszeitraums löschen sich mit, während eine weiterhin unmögliche lokale Uhrzeit ihren aktuellen Feldfehler behält. Termin-Editor und Event-Details halten ihre Fehlerkennungen eindeutig, damit `aria-describedby` jeweils den eigenen Text nennt. Der Hauptkontakt wird in den weiteren Kontakten nicht angeboten; ein Wechsel des Hauptkontakts entfernt ihn dort. Eine gespeicherte oder duplizierte doppelte Zuordnung bereinigt die Oberfläche beim Laden beziehungsweise beim Duplizieren, sodass kein unsichtbarer Zustand das Speichern blockiert; die Serverprüfung gegen doppelte Zuordnungen bleibt unverändert.
 
@@ -41,9 +41,13 @@ Die Ressourcenzuweisung bearbeitet Termin, Buchungsstatus und Einheiten in einem
 - `PUT /api/v1/events/:id`: vollständige Änderung mit aktueller `version`.
 - `GET /api/v1/contacts/:id/events`: Events mit diesem Haupt- oder weiteren Kontakt im aktuellen Mandanten.
 
-Der Schreibdatensatz enthält `name`, `status`, `eventTypeId`, `packageId`, `locationId`, `primaryContactId`, `additionalContactIds`, `source`, `eventDate`, `startsAt`, `endsAt`, `description`, `notesHtml`. Nicht bekannte Einzelzuordnungen und Termine sind `null`, weitere Kontakte ein Array. Datum ist `YYYY-MM-DD`; Zeitpunkte sind ISO-Zeitpunkte mit Zeitzonenversatz und höchstens Millisekunden. Antworten enthalten zusätzlich `id`, `version`, `timeZone`; interne Mandanten- und Vergleichsfelder werden nicht ausgegeben.
+Der Schreibdatensatz enthält `name`, `status`, `eventTypeId`, `packageId`, `locationId`, `primaryContactId`, `additionalContactIds`, `source`, `eventDate`, `startsAt`, `endsAt`, `description`, `notesHtml`. Zusätzlich und optional sind `venue` (freier Ort/Adresse, höchstens 1.000 Zeichen, mehrzeilig erlaubt) und `venueOverride` (boolesch) zulässig; beide fehlen bei alten Clients und sind dann nicht erforderlich. `locationId` bleibt unverändert bestehen und darf bei neuen Buchungen `null` sein. Nicht bekannte Einzelzuordnungen und Termine sind `null`, weitere Kontakte ein Array. Datum ist `YYYY-MM-DD`; Zeitpunkte sind ISO-Zeitpunkte mit Zeitzonenversatz und höchstens Millisekunden. Antworten enthalten zusätzlich `id`, `version`, `timeZone`; interne Mandanten- und Vergleichsfelder werden nicht ausgegeben.
 
 Admin-Sitzung ist erforderlich, Änderungen brauchen Origin und CSRF-Token. Fehler: 400 bei ungültigem Termin oder Zuordnungen, 403 bei fehlenden Rechten, 404 bei unbekannter/fremder Event-ID, 409 bei veralteter Version oder vorzeitiger Buchung. Such- und Fachdaten gehören nicht in Proxy-Logs.
+
+## Freier Ort/Adresse (H034)
+
+Der Ort ist eine Zusatzangabe der Buchung, kein Stammdatensatz. `venueOverride` bestimmt die wirksame Quelle: `true` zeigt ausschließlich `venue` (ein leerer Wert bedeutet bewusst „kein Ort“), `false` zeigt unverändert den Bestandsort aus `locationId` mit der bisherigen Formatierung. Beim Anlegen ohne `venue` bleiben beide Felder `null`/`false`; neue Buchungen senden keine `locationId`. Ein `PUT` ohne beide Eigenschaften erhält den gespeicherten Stand; nur ein tatsächlich geänderter `locationId` setzt `venueOverride` auf `false`, ohne den gespeicherten Freitext zu löschen. `venue` wird getrimmt, nicht geparst und nicht in Straße/PLZ/Ort zerlegt. Bestehende Locations, IDs und `/api/v1/locations` bleiben unverändert; die Oberfläche verwaltet sie nicht mehr. Migration `0032_event_venue.sql` ergänzt ausschließlich die beiden Spalten ohne Rückfüllung.
 
 ## Referenzen, Notizen und Migration
 
@@ -67,6 +71,11 @@ zur offenen Weiterverwendung bestimmt, nicht als verlustfreier Rückimportvertra
 Enthalten sind ID, Version, Name, Statuscode, Datum, Beginn/Ende in UTC,
 Eventzeitzone, IDs der Eventart, des Pakets, Orts und Hauptkontakts, zusätzliche
 Kontakt-IDs als JSON-Array, Anfragequelle, Beschreibung und bereinigte HTML-Notizen.
+Die Spalte `locationName` enthält den wirksamen Ort (Freitext oder Bestandsname),
+`locationId` die wirksame Bestandsreferenz (leer, solange ein Freitext gilt). Ein
+bewusst geleerter Ort exportiert somit leer und gibt die verdeckte Bestandsadresse
+nicht preis; Bestandszeilen ohne Freitext exportieren unverändert. Spaltennamen und
+-reihenfolge bleiben gleich.
 Leere Einzelwerte bleiben leer. Die Referenz-IDs bleiben erhalten; zusätzlich
 folgen seit E005.10 `eventTypeName`, `packageName`, `locationName`,
 `primaryContactName` und `additionalContactNames`. Weitere Kontaktnamen sind ein

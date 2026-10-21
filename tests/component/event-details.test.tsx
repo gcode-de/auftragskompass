@@ -47,6 +47,8 @@ const event = {
   eventTypeId: null,
   packageId: null,
   locationId: null,
+  venue: null as string | null,
+  venueOverride: false,
   primaryContactId: null,
   additionalContactIds: [],
 };
@@ -772,4 +774,91 @@ test('global search asks before leaving a dirty event detail', async () => {
   confirm.mockReturnValue(true);
   fireEvent.submit(form);
   expect(window.location.hash).toBe('#search');
+});
+
+test('the details show only the effective place and keep it on a status save', async () => {
+  const replaced = {
+    ...detail,
+    event: {
+      ...event,
+      locationId: 'synthetic-location',
+      venue: 'Fictional Terrace\nNebeneingang',
+      venueOverride: true,
+    },
+  };
+  const bodies: Record<string, unknown>[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options) {
+        bodies.push(
+          JSON.parse(String(options.body)) as Record<string, unknown>,
+        );
+        return Response.json({
+          ...replaced.event,
+          status: 'option',
+          version: 2,
+        });
+      }
+      return Response.json(replaced);
+    }),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  expect(screen.getByRole('heading', { name: 'Ort / Adresse' })).toBeTruthy();
+  expect(screen.getByText(/Fictional Terrace/)).toBeTruthy();
+  expect(screen.queryByText('Fictional venue')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
+    target: { value: 'option' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText('Status gespeichert.');
+  expect(bodies[0]).toMatchObject({
+    status: 'option',
+    venue: 'Fictional Terrace\nNebeneingang',
+    venueOverride: true,
+    locationId: 'synthetic-location',
+  });
+});
+
+test('a deliberate clear shows no place at all in the details', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({
+        ...detail,
+        event: {
+          ...event,
+          locationId: 'synthetic-location',
+          venue: '',
+          venueOverride: true,
+        },
+      }),
+    ),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  expect(screen.getByText('Kein Veranstaltungsort hinterlegt.')).toBeTruthy();
+  expect(screen.queryByText('Fictional venue')).toBeNull();
+  expect(screen.queryByText('Fictional city')).toBeNull();
 });

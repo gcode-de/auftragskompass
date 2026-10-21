@@ -445,8 +445,14 @@ export function EventDetails({
                 </li>
               ))}
             </ul>
-            <h3>Location</h3>
-            {data.location ? (
+            <h3>Ort / Adresse</h3>
+            {data.event.venueOverride ? (
+              data.event.venue?.trim() ? (
+                <p className="event-venue">{data.event.venue}</p>
+              ) : (
+                <p>Kein Veranstaltungsort hinterlegt.</p>
+              )
+            ) : data.location ? (
               <>
                 <p>{data.location.name}</p>
                 <p>

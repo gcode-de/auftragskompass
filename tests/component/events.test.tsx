@@ -38,6 +38,8 @@ const row = {
   eventTypeId: null,
   packageId: null,
   locationId: null,
+  venue: null as string | null,
+  venueOverride: false,
   primaryContactId: null,
   additionalContactIds: [],
   source: '',
@@ -50,7 +52,7 @@ function mocker(errors: string[] = [], supplied: Record<string, unknown> = {}) {
     if (options) {
       if (errors.length)
         return Response.json({ error: errors.shift() }, { status: 409 });
-      rows = [{ ...row, ...JSON.parse(String(options.body)) }];
+      rows = [{ ...row, ...supplied, ...JSON.parse(String(options.body)) }];
       return Response.json(rows[0]);
     }
     if (url.startsWith('/api/v1/events'))
@@ -1078,8 +1080,8 @@ test('the normal editor keeps advanced values in Weitere Angaben and preserves t
     (screen.getByLabelText('Fotobox-Paket') as HTMLSelectElement).value,
   ).toBe('fictional-option');
   expect(
-    (screen.getByLabelText('Veranstaltungsort') as HTMLSelectElement).value,
-  ).toBe('fictional-option');
+    (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
+  ).toBe('Synthetic choice');
   expect(
     (screen.getByLabelText('Anfragequelle') as HTMLInputElement).value,
   ).toBe('Synthetic source');
@@ -1096,7 +1098,8 @@ test('the normal editor keeps advanced values in Weitere Angaben and preserves t
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
   await screen.findByText('Event gespeichert.');
-  expect(savedBody(fetcher)).toMatchObject({
+  const saved = savedBody(fetcher);
+  expect(saved).toMatchObject({
     name: 'Synthetic edited name',
     eventTypeId: 'fictional-option',
     packageId: 'fictional-option',
@@ -1106,6 +1109,16 @@ test('the normal editor keeps advanced values in Weitere Angaben and preserves t
     description: 'Synthetic description',
     notesHtml: '<strong>Fictional</strong>',
   });
+  // The prefilled legacy place is displayed, never promoted by an unrelated
+  // edit, and no location master data is written.
+  expect(saved).not.toHaveProperty('venue');
+  expect(saved).not.toHaveProperty('venueOverride');
+  expect(
+    fetcher.mock.calls
+      .filter(([, options]) => options)
+      .map(([url]) => String(url))
+      .filter((url) => url.includes('/locations')),
+  ).toEqual([]);
 });
 
 test('the business date is derived from the local start across midnight and the DST day', async () => {
@@ -1401,8 +1414,8 @@ test('duplicating an event preserves every advanced value for editing', async ()
     (screen.getByLabelText('Fotobox-Paket') as HTMLSelectElement).value,
   ).toBe('fictional-option');
   expect(
-    (screen.getByLabelText('Veranstaltungsort') as HTMLSelectElement).value,
-  ).toBe('fictional-option');
+    (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
+  ).toBe('Synthetic choice');
   expect(
     (screen.getByLabelText('Anfragequelle') as HTMLInputElement).value,
   ).toBe('Synthetic source');
@@ -1430,6 +1443,114 @@ test('duplicating an event preserves every advanced value for editing', async ()
     description: 'Synthetic description',
     notesHtml: '<strong>Fictional</strong>',
   });
+});
+
+test('clearing a free-form place sends an explicit empty value without resurrection', async () => {
+  const fetcher = mocker([], {
+    locationId: 'fictional-option',
+    venue: 'Fictional Hall',
+    venueOverride: true,
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  const field = screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement;
+  expect(field.value).toBe('Fictional Hall');
+  fireEvent.change(field, { target: { value: '' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    venue: '',
+    venueOverride: true,
+    locationId: 'fictional-option',
+  });
+});
+
+test('editing the prefilled legacy place promotes it to a free-form value', async () => {
+  const fetcher = mocker([], { locationId: 'fictional-option' });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  fireEvent.change(screen.getByLabelText('Ort / Adresse'), {
+    target: { value: 'Fictional Terrace\nNebeneingang' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(savedBody(fetcher)).toMatchObject({
+    venue: 'Fictional Terrace\nNebeneingang',
+    venueOverride: true,
+    locationId: 'fictional-option',
+  });
+});
+
+test('the list shows the effective place without the hidden legacy name', async () => {
+  const fetcher = mocker([], {
+    locationId: 'fictional-option',
+    venue: 'Fictional Terrace',
+    venueOverride: true,
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  const summary = (
+    await screen.findByText('Synthetic event – Ohne Datum – Anfrage')
+  ).closest('a')!;
+  expect(summary.textContent).toContain('Fictional Terrace');
+  expect(summary.textContent).not.toContain('Synthetic choice');
+});
+
+test('an untouched free-form place keeps its raw value and resets between drafts', async () => {
+  const fetcher = mocker([], {
+    locationId: 'fictional-option',
+    venue: null,
+    venueOverride: true,
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  const field = screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement;
+  expect(field.value).toBe('');
+  expect(field.maxLength).toBe(1000);
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic untouched venue' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText('Event gespeichert.');
+  const saved = savedBody(fetcher);
+  expect(saved).not.toHaveProperty('venue');
+  expect(saved).not.toHaveProperty('venueOverride');
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic untouched venue',
+    }),
+  );
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  expect(
+    (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
+  ).toBe('');
 });
 
 test('a successful list refresh clears a stale reload warning', async () => {

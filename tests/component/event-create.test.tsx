@@ -5,8 +5,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
+import { EventCreateDialog } from '../../apps/admin/src/EventCreateDialog.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -24,6 +26,8 @@ const row = {
   eventTypeId: null,
   packageId: null,
   locationId: null,
+  venue: null as string | null,
+  venueOverride: false,
   primaryContactId: null,
   additionalContactIds: [],
   source: '',
@@ -41,9 +45,13 @@ const contacts = [
 function setup({
   supplied = {},
   listFailsAfter = 0,
+  locationChoices = [
+    { id: 'location-main', name: 'Synthetic venue', state: 'active' },
+  ],
 }: {
   supplied?: Record<string, unknown>;
   listFailsAfter?: number;
+  locationChoices?: Record<string, unknown>[];
 } = {}) {
   let listLoads = 0,
     rows = [{ ...row, ...supplied }];
@@ -71,10 +79,7 @@ function setup({
       return Response.json([
         { id: 'package-main', name: 'Synthetic package', state: 'active' },
       ]);
-    if (url === '/api/v1/locations')
-      return Response.json([
-        { id: 'location-main', name: 'Synthetic venue', state: 'active' },
-      ]);
+    if (url === '/api/v1/locations') return Response.json(locationChoices);
     return Response.json([]);
   });
   vi.stubGlobal('fetch', fetcher);
@@ -212,8 +217,8 @@ test('advanced values survive collapsing and expanding without autosave', async 
   fireEvent.change(screen.getByLabelText('Fotobox-Paket'), {
     target: { value: 'package-main' },
   });
-  fireEvent.change(screen.getByLabelText('Veranstaltungsort'), {
-    target: { value: 'location-main' },
+  fireEvent.change(screen.getByLabelText('Ort / Adresse'), {
+    target: { value: 'Fictional Hall\nSide entrance' },
   });
   fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
   expect(advanced.open).toBe(false);
@@ -232,14 +237,16 @@ test('advanced values survive collapsing and expanding without autosave', async 
     (screen.getByLabelText('Fotobox-Paket') as HTMLSelectElement).value,
   ).toBe('package-main');
   expect(
-    (screen.getByLabelText('Veranstaltungsort') as HTMLSelectElement).value,
-  ).toBe('location-main');
+    (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
+  ).toBe('Fictional Hall\nSide entrance');
   expect(posts).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
   await screen.findByText('Event gespeichert.');
   expect(posts[0]).toMatchObject({
     packageId: 'package-main',
-    locationId: 'location-main',
+    locationId: null,
+    venue: 'Fictional Hall\nSide entrance',
+    venueOverride: true,
     source: 'Synthetic source',
     description: 'Synthetic description',
     notesHtml: '<strong>Fictional</strong>',
@@ -426,4 +433,237 @@ test('a failed pending create keeps the dialog open and closeable', async () => 
   expect((close as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(close);
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('a duplicate keeps the visible free-form place and raw legacy link', async () => {
+  const { posts } = setup({
+    supplied: {
+      locationId: 'location-main',
+      venue: 'Fictional Copy Hall',
+      venueOverride: true,
+    },
+  });
+  await ready();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Event duplizieren: Synthetic stored event',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  fireEvent.click(within(dialog).getByText('Weitere Angaben', { exact: true }));
+  expect(
+    (within(dialog).getByLabelText('Ort / Adresse') as HTMLTextAreaElement)
+      .value,
+  ).toBe('Fictional Copy Hall');
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Event speichern' }),
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(posts[0]).toMatchObject({
+    locationId: 'location-main',
+    venue: 'Fictional Copy Hall',
+    venueOverride: true,
+  });
+});
+
+test('a fresh booking never sends a hidden location reference', async () => {
+  const { posts } = setup();
+  await ready();
+  await openCreate();
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2027-06-01' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
+  await screen.findByText('Event gespeichert.');
+  expect(posts[0]).toMatchObject({ locationId: null });
+  expect(posts[0]).not.toHaveProperty('venue');
+});
+
+test('a duplicate of an archived legacy place keeps the visible place as text', async () => {
+  const { posts } = setup({
+    supplied: {
+      locationId: 'location-archived',
+      venue: null,
+      venueOverride: false,
+    },
+    locationChoices: [
+      {
+        id: 'location-archived',
+        name: 'Synthetic archived hall',
+        state: 'archived',
+        street: 'Fictional Street 1',
+        postalCode: '12345',
+        city: 'Fictional Town',
+        country: 'DE',
+      },
+    ],
+  });
+  await ready();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Event duplizieren: Synthetic stored event',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  fireEvent.click(within(dialog).getByText('Weitere Angaben', { exact: true }));
+  expect(
+    (within(dialog).getByLabelText('Ort / Adresse') as HTMLTextAreaElement)
+      .value,
+  ).toBe(
+    'Synthetic archived hall\nFictional Street 1\n12345 Fictional Town\nDE',
+  );
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Event speichern' }),
+  );
+  await screen.findByText('Event gespeichert.');
+  expect(posts[0]).toMatchObject({
+    locationId: null,
+    venue:
+      'Synthetic archived hall\nFictional Street 1\n12345 Fictional Town\nDE',
+    venueOverride: true,
+  });
+});
+
+test('the dialog prefills the complete legacy address and honours the text bound', async () => {
+  const { posts } = setup({
+    supplied: { locationId: 'location-main' },
+    locationChoices: [
+      {
+        id: 'location-main',
+        name: 'Synthetic venue',
+        state: 'active',
+        street: 'Fictional Street 5',
+        postalCode: '12345',
+        city: 'Fictional Town',
+        country: 'DE',
+      },
+    ],
+  });
+  await ready();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Event duplizieren: Synthetic stored event',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  fireEvent.click(within(dialog).getByText('Weitere Angaben', { exact: true }));
+  const field = within(dialog).getByLabelText(
+    'Ort / Adresse',
+  ) as HTMLTextAreaElement;
+  expect(field.value).toBe(
+    'Synthetic venue\nFictional Street 5\n12345 Fictional Town\nDE',
+  );
+  expect(field.maxLength).toBe(1000);
+  expect(field.tagName).toBe('TEXTAREA');
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Event speichern' }),
+  );
+  await screen.findByText('Event gespeichert.');
+  // Untouched legacy stays legacy: no free-form copy is written.
+  expect(posts[0]).toMatchObject({ locationId: 'location-main' });
+  expect(posts[0]).not.toHaveProperty('venue');
+  expect(posts[0]).not.toHaveProperty('venueOverride');
+});
+
+test('a duplicate of an inactive legacy place keeps custom or cleared text and drops the id', async () => {
+  const archived = [
+    {
+      id: 'location-archived',
+      name: 'Synthetic archived hall',
+      state: 'archived',
+      street: 'Fictional Street 1',
+      postalCode: '12345',
+      city: 'Fictional Town',
+      country: 'DE',
+    },
+  ];
+  for (const [venue, expected] of [
+    ['Fictional Custom Hall', 'Fictional Custom Hall'],
+    ['', ''],
+  ] as const) {
+    const { posts } = setup({
+      supplied: {
+        locationId: 'location-archived',
+        venue,
+        venueOverride: true,
+      },
+      locationChoices: archived,
+    });
+    await ready();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Event duplizieren: Synthetic stored event',
+      }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+    fireEvent.click(
+      within(dialog).getByText('Weitere Angaben', { exact: true }),
+    );
+    expect(
+      (within(dialog).getByLabelText('Ort / Adresse') as HTMLTextAreaElement)
+        .value,
+    ).toBe(expected);
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Event speichern' }),
+    );
+    await screen.findByText('Event gespeichert.');
+    expect(posts[0]).toMatchObject({
+      locationId: null,
+      venue: expected,
+      venueOverride: true,
+    });
+    cleanup();
+  }
+});
+
+test('late location data hydrates an untouched field but never typed text', async () => {
+  const late = {
+    id: 'location-main',
+    name: 'Synthetic late venue',
+    state: 'active',
+    street: 'Fictional Street 5',
+    postalCode: '12345',
+    city: 'Fictional Town',
+    country: 'DE',
+  };
+  const initial = {
+    ...row,
+    locationId: 'location-main',
+    venue: null,
+    venueOverride: false,
+  };
+  const props = {
+    csrfToken: 'csrf',
+    timeZone: 'Europe/Berlin',
+    statuses: [{ code: 'inquiry', label: 'Anfrage' }],
+    types,
+    packages: [],
+    contacts,
+    initial,
+    onClose: vi.fn(),
+    onCreated: vi.fn().mockResolvedValue(undefined),
+  };
+  const { rerender } = render(<EventCreateDialog {...props} locations={[]} />);
+  expect(
+    (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
+  ).toBe('');
+  rerender(<EventCreateDialog {...props} locations={[late]} />);
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
+    ).toBe(
+      'Synthetic late venue\nFictional Street 5\n12345 Fictional Town\nDE',
+    ),
+  );
+  cleanup();
+  const typed = render(<EventCreateDialog {...props} locations={[]} />);
+  fireEvent.change(screen.getByLabelText('Ort / Adresse'), {
+    target: { value: 'Synthetic typed place' },
+  });
+  typed.rerender(<EventCreateDialog {...props} locations={[late]} />);
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
+    ).toBe('Synthetic typed place'),
+  );
 });

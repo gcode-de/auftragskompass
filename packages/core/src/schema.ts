@@ -181,6 +181,8 @@ export const events = pgTable('events', {
   eventTypeId: uuid('event_type_id'),
   packageId: uuid('package_id'),
   locationId: uuid('location_id'),
+  venue: text('venue'),
+  venueOverride: boolean('venue_override').notNull().default(false),
   source: text('source').notNull(),
   eventDate: date('event_date', { mode: 'string' }),
   startsAt: timestamp('starts_at', { withTimezone: true }),

@@ -87,6 +87,7 @@ test('resolves deep links, settings and browser history without losing search', 
     ['#settings-resources', 'resources'],
     ['#settings-products', 'products'],
     ['#contact-synthetic', 'contacts'],
+    ['#locations', 'events'],
     ['#unknown', 'events'],
   ]) {
     window.history.replaceState(null, '', '/?q=Fictional' + hash);
@@ -101,6 +102,36 @@ test('resolves deep links, settings and browser history without losing search', 
   fireEvent(window, new PopStateEvent('popstate'));
   expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('products');
   expect(window.location.search).toBe('?q=Fictional');
+});
+
+test('the retired locations link redirects to events without a new history entry or query loss', () => {
+  window.history.replaceState(null, '', '/?q=Fictional#locations');
+  const before = window.history.length;
+  render(<Workspace />);
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('events');
+  expect(window.location.hash).toBe('#events');
+  expect(window.location.search).toBe('?q=Fictional');
+  expect(window.history.length).toBe(before);
+  expect(
+    screen
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .querySelector('a[href="#locations"]'),
+  ).toBeNull();
+  // A later hash change is normalized too, not only the first mount.
+  window.history.replaceState(null, '', '/?q=Fictional#calendar');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('calendar');
+  window.history.replaceState(null, '', '/?q=Fictional#locations');
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('events');
+  expect(window.location.hash).toBe('#events');
+  expect(window.location.search).toBe('?q=Fictional');
+  expect(window.history.length).toBe(before);
+  // Browser back/forward follows the same rule.
+  window.history.replaceState(null, '', '/?q=Fictional#locations');
+  fireEvent(window, new PopStateEvent('popstate'));
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('events');
+  expect(window.location.hash).toBe('#events');
 });
 
 test('settings own resource and product management in desktop and mobile navigation', () => {

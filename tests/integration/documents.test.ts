@@ -957,3 +957,55 @@ test('a configured logo is embedded into the final html', async () => {
     reason: 'missing_reference',
   });
 });
+
+test('a free-form place feeds {{location}}, clears honestly and never rewrites final documents', async () => {
+  const run = dependencies(),
+    png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('synthetic place logo'),
+    ]),
+    repo = documentRepository(pool, tenantId, run.deps),
+    place = (venue: string | null, venueOverride: boolean) =>
+      pool.query(
+        'UPDATE events SET venue=$1, venue_override=$2 WHERE tenant_id=$3 AND id=$4',
+        [venue, venueOverride, tenantId, eventId],
+      );
+  await documentLayoutRepository(pool, tenantId, run.deps.store).saveLogo(
+    actorId,
+    png,
+    'image/png',
+  );
+  await place('Fictional <b>Garden</b>\nZweiter Eingang', true);
+  const draft = await repo.createDraft(actorId, {
+      templateId,
+      eventId,
+      contactId,
+    }),
+    finalized = await repo.finalize(actorId, draft.id),
+    html = run.rendered[0]!;
+  expect(html).toContain(
+    'Fictional &lt;b&gt;Garden&lt;/b&gt;<br>Zweiter Eingang',
+  );
+  expect(html).not.toContain('Fictional Hall');
+  expect(html).not.toContain('<b>Garden</b>');
+  const frozen = (await repo.get(finalized.id))!;
+  expect(frozen.snapshotHash).toBe(finalized.snapshotHash);
+  const pdfBefore = await readDocumentPdf(run.deps.store, finalized.pdfHash!);
+  await place('Fictional Later Hall', true);
+  const after = (await repo.get(finalized.id))!;
+  expect(after.snapshotHash).toBe(finalized.snapshotHash);
+  expect(after.pdfHash).toBe(finalized.pdfHash);
+  expect(await readDocumentPdf(run.deps.store, after.pdfHash!)).toEqual(
+    pdfBefore,
+  );
+  await place('', true);
+  const cleared = await repo.createDraft(actorId, {
+    templateId,
+    eventId,
+    contactId,
+  });
+  await expect(repo.finalize(actorId, cleared.id)).rejects.toMatchObject({
+    reason: 'invalid_content',
+  });
+  await place(null, false);
+});

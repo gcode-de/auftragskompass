@@ -431,6 +431,24 @@ test('undated rows are absent and day-only rows survive without fabricated times
   expect(body).toContain('Fictional day-only');
 });
 
+test('the effective place keeps ics escaping and folding for hostile text', async () => {
+  const saved = (await create()).json(),
+    venue =
+      'Synthetic \\ Hall; Ort, "Zwei"\nZweite Zeile mit einem sehr langen Zusatz, der die Zeile sicher umbricht';
+  await pool.query(
+    'UPDATE events SET venue=$1, venue_override=true WHERE tenant_id=$2 AND id=$3',
+    [venue, tenant, event],
+  );
+  const body = (await feed(saved.url)).body,
+    flat = body.replace(/\r\n /g, '');
+  expect(flat).toContain(
+    'LOCATION:Synthetic \\\\ Hall\\; Ort\\, "Zwei"\\nZweite Zeile mit einem sehr langen Zusatz\\, der die Zeile sicher umbricht',
+  );
+  expect(flat).not.toContain('Synthetic \\ Hall;');
+  // The logical line exceeds 75 bytes and is folded, not truncated.
+  expect(body).toMatch(/LOCATION:[^\r]*\r\n /);
+});
+
 test('token route throttles repeated invalid reads without a session', async () => {
   for (let i = 0; i < 60; i++)
     await app.inject({
@@ -447,4 +465,27 @@ test('token route throttles repeated invalid reads without a session', async () 
       })
     ).statusCode,
   ).toBe(429);
+});
+
+test('the ics location is the effective place only', async () => {
+  const saved = (await create()).json(),
+    block = async () => {
+      const body = (await feed(saved.url)).body.split('BEGIN:VEVENT');
+      return body.find((entry) => entry.includes('Fictional changed event'))!;
+    };
+  await pool.query(
+    "UPDATE events SET venue='Fictional Freeform Hall, Side entrance', venue_override=true WHERE tenant_id=$1 AND id=$2",
+    [tenant, event],
+  );
+  let entry = await block();
+  expect(entry).toContain('LOCATION:Fictional Freeform Hall\\, Side entrance');
+  expect(entry).not.toContain('Fictional street');
+  await pool.query(
+    "UPDATE events SET venue='', venue_override=true WHERE tenant_id=$1 AND id=$2",
+    [tenant, event],
+  );
+  entry = await block();
+  expect(entry).toContain('LOCATION:\r\n');
+  expect(entry).not.toContain('Fictional renamed hall');
+  expect(entry).not.toContain('Fictional street');
 });

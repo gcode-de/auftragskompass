@@ -1,12 +1,12 @@
 # Event-Details und Logbuch
 
-C020 öffnet aus der Eventliste Event-Details mit Termin, Status, Eventart, Paket, Quelle, Beschreibung, Haupt-/weiteren Kontakten, Kommunikationslinks, Location, bereinigten Notizen und Logbuch. Der Status kann hier direkt geändert werden. „Stammdaten bearbeiten“ übernimmt den frisch geladenen Stand in das bestehende Bearbeitungsformular. Buchungen bleiben bis zur Ressourcenzuweisung C023 gesperrt.
+C020 öffnet aus der Eventliste Event-Details mit Termin, Status, Eventart, Paket, Quelle, Beschreibung, Haupt-/weiteren Kontakten, Kommunikationslinks, Ort/Adresse, bereinigten Notizen und Logbuch. Der Status kann hier direkt geändert werden. „Stammdaten bearbeiten“ übernimmt den frisch geladenen Stand in das bestehende Bearbeitungsformular. Buchungen bleiben bis zur Ressourcenzuweisung C023 gesperrt.
 
 Die Akte bündelt die bereits verfügbaren Fachmodelle. Ressourcen, E-Mails, Dokumente, Dateien und Erinnerungen kommen mit ihren jeweiligen Implementierungsschritten hinzu. Es werden keine noch nicht vorhandenen Inhalte oder Links vorgetäuscht.
 
 ## API und Konsistenz
 
-`GET /api/v1/events/:id` benötigt eine Admin-Sitzung und liefert `{event, contacts, location, eventType, package, activities}`. Einzelne noch offene Zuordnungen sind `null`. Kontakte enthalten Name/Ansprechpartner, Rolle, E-Mail und Telefonnummern; Location enthält die Anschrift. Mandantenfelder werden auch aus verschachtelten Objekten entfernt. Ungültige UUIDs ergeben 400, fehlende oder fremde Events 404.
+`GET /api/v1/events/:id` benötigt eine Admin-Sitzung und liefert `{event, contacts, location, eventType, package, activities}`. Einzelne noch offene Zuordnungen sind `null`. Kontakte enthalten Name/Ansprechpartner, Rolle, E-Mail und Telefonnummern; `location` enthält die unveränderte Bestandsanschrift. Der wirksame Ort steht in `event.venue`/`event.venueOverride`: Bei `venueOverride=true` zeigt die Akte ausschließlich den Freitext (leer bedeutet „Kein Veranstaltungsort hinterlegt.“), sonst die bisherige Bestandsanschrift. Die Akte zeigt nie beides gleichzeitig. Mandantenfelder werden auch aus verschachtelten Objekten entfernt. Ungültige UUIDs ergeben 400, fehlende oder fremde Events 404.
 
 Event, Zuordnungen und Logbuch werden aus demselben konsistenten Datenbank-Snapshot gelesen. Ein Statuswechsel verwendet das bestehende `PUT /api/v1/events/:id` mit aktuellem vollständigem Eventdatensatz, Version, Origin und CSRF-Token. Veraltete Versionen ergeben 409; die Oberfläche erhält ihre Eingabe und verlangt eine erneute Prüfung. Änderungen, Audit und fachlicher Logeintrag werden in einer Transaktion gespeichert. Beim Fehlschlag bleibt der bisherige Stand erhalten.
 

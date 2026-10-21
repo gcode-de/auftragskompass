@@ -1013,24 +1013,26 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('link', { name: 'Kontakte als CSV exportieren' })
       .click();
     expect((await download).suggestedFilename()).toBe('contacts.csv');
-    await navigate('Locations');
-    const locations = page.getByRole('region', { name: 'Locations' });
-    await locations.getByLabel('Locationname').fill('Synthetic browser venue');
-    await locations.getByLabel('Locationort').fill('Fictional city');
-    await locations.getByRole('button', { name: 'Location speichern' }).click();
+    // H034: locations are no longer an area of their own. The retired deep
+    // link lands on the events overview with the same query and no new entry.
+    await page.evaluate(() => {
+      window.location.hash = 'locations';
+    });
+    // Navigating to the retired hash itself may add one entry; the
+    // normalization must not add another.
+    const historyAfterRetiredHash = await page.evaluate(() => history.length);
     await expect(
-      locations.getByText('Synthetic browser venue', { exact: true }),
-    ).toBeVisible();
-    await locations
-      .getByRole('button', {
-        name: 'Location bearbeiten: Synthetic browser venue',
-      })
-      .click();
-    await locations.getByLabel('Locationzustand').selectOption('archived');
-    await locations.getByRole('button', { name: 'Location speichern' }).click();
-    await expect(
-      locations.getByText('Synthetic browser venue – Archiviert'),
-    ).toBeVisible();
+      page
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .getByRole('link', { name: 'Events', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => location.hash)).toBe('#events');
+    expect(await page.evaluate(() => history.length)).toBe(
+      historyAfterRetiredHash,
+    );
+    await expect(page.getByRole('region', { name: 'Locations' })).toHaveCount(
+      0,
+    );
     await navigate('Kontakte');
     await contactEdit.click();
     await contacts.getByLabel('Kontaktzustand').selectOption('active');
@@ -1112,7 +1114,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByLabel('Eventbeginn', { exact: true }),
     ).toBeHidden();
-    await expect(events.getByLabel('Veranstaltungsort')).toBeHidden();
+    await expect(events.getByLabel('Ort / Adresse')).toBeHidden();
     await expect(events.getByLabel('Interne Notizen')).toBeHidden();
     await expect(
       events.getByRole('combobox', { name: 'Eventart', exact: true }),
@@ -1132,6 +1134,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events.getByLabel('Eventbeginn').fill('2026-10-16T18:00');
     await events.getByLabel('Eventende').fill('2026-10-17T01:00');
     await events
+      .getByLabel('Ort / Adresse')
+      .fill('Synthetic Browser Hall\nSide entrance');
+    await events
       .getByLabel('Interne Notizen')
       .fill(
         '<strong>Fictional browser note</strong><script>window.syntheticBad=true</script>',
@@ -1145,6 +1150,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         name: /Synthetic browser event/,
       }),
     ).toHaveAttribute('href', /#event-/);
+    await expect(
+      events.getByRole('link', { name: /Synthetic browser event/ }),
+    ).toContainText('Synthetic Browser Hall');
     const editIcon = events.getByRole('button', {
       name: 'Event bearbeiten: Synthetic browser event',
     });

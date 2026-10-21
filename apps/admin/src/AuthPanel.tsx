@@ -11,7 +11,6 @@ import {
   useWorkspaceRoute,
 } from './Navigation.js';
 import { EventPanel } from './EventPanel.js';
-import { LocationPanel } from './LocationPanel.js';
 import { ContactPanel } from './ContactPanel.js';
 import { ProductPanel } from './ProductPanel.js';
 import { DocumentTemplatesPanel } from './DocumentTemplatesPanel.js';
@@ -167,9 +166,6 @@ export function AuthPanel() {
           </div>
           <div className="workspace-page" hidden={route !== 'calendar'}>
             <CalendarPanel key={importRevision} />
-          </div>
-          <div className="workspace-page" hidden={route !== 'locations'}>
-            <LocationPanel csrfToken={user.csrfToken} />
           </div>
           <div
             className="workspace-page"

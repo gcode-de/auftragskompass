@@ -115,9 +115,11 @@ export function calendarFeedRepository(
           >(
             sql`SELECT e.id, e.name, e.status, e.event_date AS "eventDate",
               e.starts_at AS "startsAt", e.ends_at AS "endsAt", e.description, t.name AS "eventType",
-              concat_ws(', ',NULLIF(l.name,''),NULLIF(l.street,''),
-                NULLIF(concat_ws(' ',NULLIF(l.postal_code,''),NULLIF(l.city,'')),''),
-                NULLIF(l.country,'')) AS location,
+              CASE WHEN e.venue_override THEN COALESCE(NULLIF(btrim(e.venue),''),'')
+                ELSE concat_ws(', ',NULLIF(l.name,''),NULLIF(l.street,''),
+                  NULLIF(concat_ws(' ',NULLIF(l.postal_code,''),NULLIF(l.city,'')),''),
+                  NULLIF(l.country,''))
+              END AS location,
               COALESCE((
                 SELECT array_agg(DISTINCT r.code||' #'||u.ordinal ORDER BY r.code||' #'||u.ordinal)
                 FROM reservations s

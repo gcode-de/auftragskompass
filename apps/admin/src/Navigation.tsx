@@ -43,11 +43,6 @@ const links = [
     'Kontakte',
     'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-4M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7-8a4 4 0 0 1 0 8',
   ],
-  [
-    'locations',
-    'Locations',
-    'M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
-  ],
   ['settings', 'Einstellungen', 'M4 7h16M4 17h16M8 4v6m8 4v6'],
 ] as const;
 const settingsLinks = [
@@ -103,6 +98,9 @@ const settingsHashes = {
 } satisfies Partial<Record<WorkspaceRoute, string>>;
 function readRoute(): WorkspaceRoute {
   const hash = window.location.hash.slice(1);
+  // H034: locations are no longer a separate area; the old deep link leads to
+  // the events overview instead of a blank or hidden master-data page.
+  if (hash === 'locations') return 'events';
   if (hash === 'resources') return 'resources';
   if (hash === 'products') return 'products';
   if (hash === 'settings-resources') return 'resources';
@@ -119,10 +117,27 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'search') return 'search';
   return links.find(([id]) => id === hash)?.[0] ?? 'events';
 }
+// H034: `#locations` is retired. Rewriting it keeps the address honest without
+// a reload, a new history entry or losing the query, on cold start and on any
+// later hashchange/popstate.
+function normalizeLocationsHash() {
+  if (window.location.hash !== '#locations') return;
+  window.history.replaceState(
+    null,
+    '',
+    window.location.pathname + window.location.search + '#events',
+  );
+}
 export function useWorkspaceRoute() {
   const [route, setRoute] = useState(readRoute);
   useEffect(() => {
-    const changed = () => setRoute(readRoute());
+    normalizeLocationsHash();
+  }, []);
+  useEffect(() => {
+    const changed = () => {
+      normalizeLocationsHash();
+      setRoute(readRoute());
+    };
     window.addEventListener('hashchange', changed);
     window.addEventListener('popstate', changed);
     return () => {

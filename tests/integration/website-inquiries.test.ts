@@ -141,8 +141,15 @@ test('atomically creates a dated inquiry and contact, preserving every source fi
     eventTypeId: null,
     packageId: null,
     locationId: null,
+    venue: 'Fictional venue',
+    venueOverride: true,
     source: 'Website: fotobox-bw-main (v1)',
   });
+  // H034: the customer's place is a field of the booking, so the generated
+  // description must not repeat it. The original payload above stays intact.
+  expect(event!.description).not.toContain('Veranstaltungsort');
+  expect(event!.description).toContain('Paketwunsch:');
+  expect(event!.description).toContain('Kommentar:');
   const snapshot = (
     await pool.query('SELECT * FROM website_inquiries WHERE tenant_id=$1', [
       tenantId,
@@ -1211,4 +1218,20 @@ test('website inbox routes fail closed without guards or valid own permissions a
   } finally {
     await unavailable.close();
   }
+});
+
+test('an inquiry without a place stores no venue and no duplicate description line', async () => {
+  const value = entry();
+  delete (value.submission.fields as Record<string, unknown>).location;
+  const result = await receive(value);
+  const event = (await eventRepository(pool, tenantId).list()).find(
+    (row) => row.id === result.eventId,
+  )!;
+  expect(event).toMatchObject({
+    locationId: null,
+    venue: null,
+    venueOverride: false,
+  });
+  expect(event.description).toContain('Paketwunsch:');
+  expect(event.description).not.toContain('Veranstaltungsort');
 });

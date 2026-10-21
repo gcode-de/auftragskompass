@@ -41,12 +41,20 @@ import {
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 import { eventStatuses } from './master-data.js';
+import {
+  effectiveVenue,
+  resolveVenueWrite,
+  VenueError,
+  venueMaxLength,
+} from './venue.js';
 export type EventInput = {
   name: string;
   status: 'inquiry' | 'option' | 'booked' | 'unavailable' | 'cancelled';
   eventTypeId: string | null;
   packageId: string | null;
   locationId: string | null;
+  venue?: string | null;
+  venueOverride?: boolean;
   primaryContactId: string | null;
   additionalContactIds: string[];
   source: string;
@@ -156,24 +164,30 @@ async function readRows(
               ...[events.name, events.description, events.source].map((field) =>
                 ilike(field, pattern),
               ),
-              inArray(
-                events.locationId,
-                db
-                  .select({ id: locations.id })
-                  .from(locations)
-                  .where(
-                    and(
-                      eq(locations.tenantId, tenantId),
-                      or(
-                        ...[
-                          locations.name,
-                          locations.street,
-                          locations.city,
-                          locations.postalCode,
-                        ].map((field) => ilike(field, pattern)),
+              // The effective place only: a free-form booking is found by its
+              // own text, a legacy booking by its master-data address.
+              and(eq(events.venueOverride, true), ilike(events.venue, pattern)),
+              and(
+                eq(events.venueOverride, false),
+                inArray(
+                  events.locationId,
+                  db
+                    .select({ id: locations.id })
+                    .from(locations)
+                    .where(
+                      and(
+                        eq(locations.tenantId, tenantId),
+                        or(
+                          ...[
+                            locations.name,
+                            locations.street,
+                            locations.city,
+                            locations.postalCode,
+                          ].map((field) => ilike(field, pattern)),
+                        ),
                       ),
                     ),
-                  ),
+                ),
               ),
               inArray(
                 events.id,
@@ -290,7 +304,11 @@ export function eventRepository(pool: Connection, tenantId: string) {
             ...row,
             eventTypeName: kindNames.get(row.eventTypeId ?? '') ?? '',
             packageName: kindNames.get(row.packageId ?? '') ?? '',
-            locationName: venueNames.get(row.locationId ?? '') ?? '',
+            // Effective place: a free-form booking exports its own text and no
+            // legacy id, so a deliberate clear never leaks the old address.
+            locationId: row.venueOverride ? '' : (row.locationId ?? ''),
+            locationName:
+              effectiveVenue(row, venueNames.get(row.locationId ?? '')) ?? '',
             primaryContactName:
               contactNames.get(row.primaryContactId ?? '') ?? '',
             additionalContactNames: row.additionalContactIds.map((id) =>
@@ -517,9 +535,19 @@ export function eventRepository(pool: Connection, tenantId: string) {
               throw new EventError('invalid_reference');
           }
 
+          let venueState: ReturnType<typeof resolveVenueWrite>;
+          try {
+            venueState = resolveVenueWrite(input, old);
+          } catch (error) {
+            if (error instanceof VenueError)
+              throw new EventError('invalid_fields');
+            throw error;
+          }
           const eventId = id ?? randomUUID(),
             values = {
               ...fields,
+              venue: venueState.venue,
+              venueOverride: venueState.venueOverride,
               name: input.name.trim(),
               timeZone,
               notesHtml: sanitizeNotes(input.notesHtml),
@@ -642,6 +670,14 @@ export const eventFields = {
   description: { type: 'string', maxLength: 4000 },
   notesHtml: { type: 'string', maxLength: 20000 },
 };
+// H034: additive, optional request properties. Keep `eventFields` unchanged so
+// the import manifest and import-review contracts keep their required keys.
+export const eventVenueFields = {
+  // A union type keeps an explicit JSON null distinct from an empty string;
+  // AJV would coerce null into '' for an anyOf of separate branches.
+  venue: { type: ['string', 'null'], maxLength: venueMaxLength },
+  venueOverride: { type: 'boolean' },
+};
 export const resourceAssignmentSchema = {
   type: 'object',
   additionalProperties: false,
@@ -728,9 +764,16 @@ export function registerEventRoutes(
     row = {
       type: 'object',
       additionalProperties: false,
-      required: [...Object.keys(fields), 'id', 'version', 'timeZone'],
+      required: [
+        ...Object.keys(fields),
+        ...Object.keys(eventVenueFields),
+        'id',
+        'version',
+        'timeZone',
+      ],
       properties: {
         ...fields,
+        ...eventVenueFields,
         id: { type: 'string', format: 'uuid' },
         version,
         timeZone: { type: 'string' },
@@ -1059,7 +1102,7 @@ export function registerEventRoutes(
           type: 'object',
           additionalProperties: false,
           required: Object.keys(fields),
-          properties: fields,
+          properties: { ...fields, ...eventVenueFields },
         },
         response: { 201: row },
       },
@@ -1092,6 +1135,7 @@ export function registerEventRoutes(
           required: [...Object.keys(fields), 'version'],
           properties: {
             ...fields,
+            ...eventVenueFields,
             version,
             assignments: {
               type: 'array',

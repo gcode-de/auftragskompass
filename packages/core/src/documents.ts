@@ -447,7 +447,12 @@ export function documentRepository(
               new Date(event.eventDate + 'T12:00:00Z'),
               tenant.timezone,
             );
-          if (event.locationId) {
+          // H034: the effective place only. A deliberate clear leaves the
+          // placeholder unset instead of resurrecting the legacy address.
+          if (event.venueOverride) {
+            const place = event.venue?.trim();
+            if (place) values.location = place;
+          } else if (event.locationId) {
             const [location] = await tx
               .select({ name: locations.name })
               .from(locations)

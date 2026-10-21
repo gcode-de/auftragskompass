@@ -41,7 +41,10 @@ bleibt Entwurf, die Nummer bleibt unverbraucht. Ein zweites Finalisieren wird
 mit `409 invalid_state` abgewiesen; die Zeile bleibt unverändert.
 
 Der Empfänger kommt aus dem verknüpften Kontakt, die Platzhalter `{{contact}}`,
-`{{event}}`, `{{date}}`, `{{location}}`, `{{eventType}}`, `{{package}}`,
+`{{event}}`, `{{date}}`, `{{location}}` (wirksamer Ort: Freitext bei
+`venueOverride=true`, sonst der Bestandsname; ein bewusst geleerter Ort lässt den
+Platzhalter leer und die Erstellung mit `invalid_content` scheitern),
+`{{eventType}}`, `{{package}}`,
 `{{total}}` und `{{documentLink}}` aus Kontakt, Event und Summen. Fehlt ein
 verwendeter Wert, schlägt das Finalisieren mit `400 invalid_content` fehl statt
 ein unvollständiges Dokument zu erzeugen.

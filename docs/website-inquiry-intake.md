@@ -44,10 +44,14 @@ mit einem unveränderten Empfangsbeleg bestehen bleiben.
 - Das Event startet ausschließlich als `inquiry`, mit dem angegebenen Datum und
   ohne Uhrzeiten, Reservierungen oder feste Buchung. Name aus Vor-/Nachname und
   Formular-ID/Version als Quelle sind nachvollziehbar abgeleitet.
-- Veranstaltungsort und Paketwunsch werden als Originalangaben erhalten. Es gibt
-  keine automatische Location-/Paket-Stammdatenzuordnung. Kurze Kommentare stehen
-  zusätzlich als reiner Text in der Eventbeschreibung; überschreiten sie deren
-  Grenze, verweist diese auf die vollständig gespeicherte Originalanfrage.
+- Veranstaltungsort und Paketwunsch werden als Originalangaben erhalten. Der Ort
+  wird seit H034 als Freitext (`venue`, `venueOverride=true`) am Event geführt,
+  nicht als Location-Stammdatensatz; es gibt weiterhin keine automatische
+  Location-/Paket-Stammdatenzuordnung. Die generierte Eventbeschreibung enthält
+  deshalb keine Zeile „Veranstaltungsort“ mehr, nur Paketwunsch und Kommentar.
+  Alte Beschreibungen bleiben unverändert; die vollständige Originalanfrage steht
+  unabhängig davon im Anfrage-Payload. Überschreitet der Kommentar die Grenze der
+  Beschreibung, verweist diese auf die vollständig gespeicherte Originalanfrage.
 
 ## Betriebsgrenzen
 
