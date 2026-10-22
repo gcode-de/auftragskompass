@@ -1342,6 +1342,105 @@ const settle = async (drain: { stop: () => Promise<void> }) => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await drain.stop();
 };
+// A running drain keeps ticking (drainWith uses 50 ms); this waits for the
+// effect of a later tick without restarting the process under test.
+const until = async (check: () => boolean | Promise<boolean>, ms = 5000) => {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('condition not reached within ' + ms + ' ms');
+};
+
+// BKP003: the tick pages through the whole pending backlog behind a
+// (staged_at,id) cursor. Ten permanently invalid old entries must not hide the
+// eleventh one, which the former fixed LIMIT 10 plus process-wide set did.
+test('BKP003: ten permanently invalid entries do not starve the eleventh pending entry', async () => {
+  const broken = Array.from({ length: 10 }, (_, index) => {
+    const value = entry();
+    return { value, at: new Date(now.getTime() + index * 1000) };
+  });
+  for (const { value, at } of broken)
+    await stageWebsiteInquiry(pool, tenantId, actorId, value, at);
+  // A stored original that no longer matches its row is a durable input error:
+  // the import refuses it with 'invalid' on every attempt.
+  await pool.query(
+    "UPDATE website_inquiry_deliveries SET received_at = received_at + interval '5 seconds' WHERE tenant_id=$1",
+    [tenantId],
+  );
+  const good = entry();
+  await stageWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    good,
+    new Date(now.getTime() + 60000),
+  );
+  const codes: string[] = [],
+    reports: string[] = [],
+    drain = drainWith(pool, 'DE', tenantId, actorId, codes, reports);
+  await settle(drain);
+  expect(codes).toEqual(
+    Array.from({ length: 10 }, () => 'website_option_invalid'),
+  );
+  expect(reports).toEqual([]);
+  expect(drain.ready()).toBe(true);
+  const events = (await eventRepository(pool, tenantId).list()).filter(
+    (row) => row.source !== null,
+  );
+  expect(events).toHaveLength(1);
+  expect(events[0]!.status).toBe('option');
+  expect(
+    (
+      await pool.query<{ id: string }>(
+        'SELECT id FROM website_inquiries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows.map((row) => row.id),
+  ).toEqual([good.id]);
+  // The ten broken deliveries stay pending and visible instead of being lost.
+  expect(
+    (
+      await pool.query<{ count: string }>(
+        'SELECT count(*) FROM website_inquiry_deliveries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0]!.count,
+  ).toBe('11');
+});
+
+// BKP003: a temporary infrastructure failure is no process-wide verdict. The
+// same running drain attempts the entry again on its next tick and exactly one
+// Option results, because the import stays idempotent.
+test('BKP003: a temporary failure is retried on the next tick without a restart', async () => {
+  await stageWebsiteInquiry(pool, tenantId, actorId, entry(), now);
+  await pool.query(`CREATE OR REPLACE FUNCTION fictional_bkp003_fail() RETURNS trigger
+    LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; END $$`);
+  await pool.query(`CREATE TRIGGER fictional_bkp003_fail BEFORE INSERT ON events
+    FOR EACH ROW EXECUTE FUNCTION fictional_bkp003_fail()`);
+  const codes: string[] = [],
+    reports: string[] = [],
+    drain = drainWith(pool, 'DE', tenantId, actorId, codes, reports);
+  try {
+    await until(() => reports.length === 1);
+    expect(drain.ready()).toBe(false);
+    expect(codes).toEqual([]);
+    expect(await counts()).toMatchObject({ events: 0, website_inquiries: 0 });
+  } finally {
+    await pool.query('DROP TRIGGER fictional_bkp003_fail ON events');
+    await pool.query('DROP FUNCTION fictional_bkp003_fail()');
+  }
+  await until(async () => (await counts()).events === 1);
+  await drain.stop();
+  expect(codes).toEqual([]);
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 1,
+    website_inquiries: 1,
+    reservations: 0,
+  });
+});
 
 test('A: an ordinary new entry becomes an Option without times or reservations, with one receipt and an exact source', async () => {
   const value = entry();
@@ -1469,6 +1568,22 @@ test('C: duplicate ids, restarts and five parallel drains still yield one Option
     await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
   ).toMatchObject({ status: 'duplicate' });
   expect(await counts()).toMatchObject({ events: 1, contacts: 1 });
+  // BKP003: a later tick in the same process replays the pending set without a
+  // second event, receipt or failure code; the receipt already settled the entry.
+  const replayCodes: string[] = [],
+    replayReports: string[] = [];
+  await settle(
+    drainWith(pool, 'DE', tenantId, actorId, replayCodes, replayReports),
+  );
+  expect({ replayCodes, replayReports }).toEqual({
+    replayCodes: [],
+    replayReports: [],
+  });
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 1,
+    website_inquiries: 1,
+  });
 });
 
 test('D: the drain stays inside its tenant and foreign entries stay invisible', async () => {

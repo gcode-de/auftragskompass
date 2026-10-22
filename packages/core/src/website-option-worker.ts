@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { asc, notExists, eq, and } from 'drizzle-orm';
+import { and, asc, eq, gt, notExists, or } from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import { websiteInquiryDeliveries, websiteInquiries } from './schema.js';
 import { importStagedWebsiteInquiry } from './website-inquiry-deliveries.js';
@@ -13,10 +13,19 @@ export type WebsiteOptionConfig = {
   intervalMs: number;
 };
 
+// One bounded page of the pending backlog in (staged_at, id) order; the cursor
+// continues that order so a tick can reach entries behind a full page.
+export type WebsiteOptionPendingEntry = { id: string; stagedAt: Date };
+export type WebsiteOptionCursor = { stagedAt: Date; id: string };
+
 // Both calls receive the worker's transaction-capable connection so that a
 // single entry still commits or rolls back atomically.
 export type WebsiteOptionDrainDependencies = {
-  listPending(connection: Connection, tenantId: string): Promise<string[]>;
+  listPending(
+    connection: Connection,
+    tenantId: string,
+    after?: WebsiteOptionCursor,
+  ): Promise<WebsiteOptionPendingEntry[]>;
   processPending(
     connection: Connection,
     tenantId: string,
@@ -68,33 +77,44 @@ export function loadWebsiteOptionConfig(
 }
 
 export const websiteOptionDependencies: WebsiteOptionDrainDependencies = {
-  async listPending(connection, tenantId) {
-    return (
-      await database(connection)
-        .select({ id: websiteInquiryDeliveries.id })
-        .from(websiteInquiryDeliveries)
-        .where(
-          and(
-            eq(websiteInquiryDeliveries.tenantId, tenantId),
-            notExists(
-              database(connection)
-                .select({ id: websiteInquiries.id })
-                .from(websiteInquiries)
-                .where(
-                  and(
-                    eq(websiteInquiries.tenantId, tenantId),
-                    eq(websiteInquiries.id, websiteInquiryDeliveries.id),
-                  ),
+  async listPending(connection, tenantId, after) {
+    const db = database(connection);
+    return db
+      .select({
+        id: websiteInquiryDeliveries.id,
+        stagedAt: websiteInquiryDeliveries.stagedAt,
+      })
+      .from(websiteInquiryDeliveries)
+      .where(
+        and(
+          eq(websiteInquiryDeliveries.tenantId, tenantId),
+          notExists(
+            db
+              .select({ id: websiteInquiries.id })
+              .from(websiteInquiries)
+              .where(
+                and(
+                  eq(websiteInquiries.tenantId, tenantId),
+                  eq(websiteInquiries.id, websiteInquiryDeliveries.id),
                 ),
-            ),
+              ),
           ),
-        )
-        .orderBy(
-          asc(websiteInquiryDeliveries.stagedAt),
-          asc(websiteInquiryDeliveries.id),
-        )
-        .limit(batchSize)
-    ).map((row) => row.id);
+          after
+            ? or(
+                gt(websiteInquiryDeliveries.stagedAt, after.stagedAt),
+                and(
+                  eq(websiteInquiryDeliveries.stagedAt, after.stagedAt),
+                  gt(websiteInquiryDeliveries.id, after.id),
+                ),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(
+        asc(websiteInquiryDeliveries.stagedAt),
+        asc(websiteInquiryDeliveries.id),
+      )
+      .limit(batchSize);
   },
   processPending(connection, tenantId, actorId, inquiryId, options) {
     return importStagedWebsiteInquiry(
@@ -107,8 +127,9 @@ export const websiteOptionDependencies: WebsiteOptionDrainDependencies = {
   },
 };
 
-// One bounded batch per tick; each entry is its own transaction, so a broken
-// entry cannot roll back its neighbours and simply stays pending.
+// Each tick works through the whole pending backlog page by page; every entry is
+// its own transaction, so a broken entry cannot roll back its neighbours and
+// stays pending for a later attempt.
 export function startWebsiteOptionDrain(
   // Only the real dependencies use this pool; tests may pass a stub.
   connection: Pool,
@@ -117,49 +138,63 @@ export function startWebsiteOptionDrain(
   reportEntryFailure: (code: string) => void,
   reportError: () => void,
 ) {
-  const attempted = new Set<string>();
+  // Entries whose own data is wrong are reported once and then held back for
+  // this process instead of being retried on every tick. Everything else is
+  // retried by the next tick without a restart.
+  const held = new Set<string>();
   let stopping = false,
     healthy = false,
     pending: Promise<void> | null = null;
   const drain = async () => {
-    // Infrastructure failures leave readiness false; they are retried next tick.
-    const ids = await dependencies
-      .listPending(connection, config.tenantId)
-      .catch((error: unknown) => {
-        healthy = false;
-        reportError();
-        throw error;
-      });
-    let infrastructureFailure = false;
-    for (const id of ids) {
-      if (attempted.has(id)) continue;
-      attempted.add(id);
+    let after: WebsiteOptionCursor | undefined,
+      infrastructureFailure = false;
+    for (;;) {
+      let page: WebsiteOptionPendingEntry[];
       try {
-        await dependencies.processPending(
+        page = await dependencies.listPending(
           connection,
           config.tenantId,
-          config.actorId,
-          id,
-          {
-            ...(config.newContactCountry === undefined
-              ? {}
-              : { newContactCountry: config.newContactCountry }),
-          },
+          after,
         );
-      } catch (error) {
-        const reason = (error as Partial<WebsiteInquiryError> | null)?.reason;
-        if (reason && entryReasons.has(reason))
-          reportEntryFailure('website_option_' + reason);
-        else {
-          infrastructureFailure = true;
-          reportError();
+      } catch {
+        // Infrastructure failures leave readiness false; they are retried next tick.
+        healthy = false;
+        reportError();
+        return;
+      }
+      if (page.length === 0) break;
+      for (const { id } of page) {
+        if (held.has(id)) continue;
+        try {
+          await dependencies.processPending(
+            connection,
+            config.tenantId,
+            config.actorId,
+            id,
+            {
+              ...(config.newContactCountry === undefined
+                ? {}
+                : { newContactCountry: config.newContactCountry }),
+            },
+          );
+        } catch (error) {
+          const reason = (error as Partial<WebsiteInquiryError> | null)?.reason;
+          if (reason && entryReasons.has(reason)) {
+            held.add(id);
+            reportEntryFailure('website_option_' + reason);
+          } else if (!infrastructureFailure) {
+            infrastructureFailure = true;
+            reportError();
+          }
         }
       }
+      const last = page[page.length - 1]!;
+      after = { stagedAt: last.stagedAt, id: last.id };
     }
     if (!infrastructureFailure) healthy = true;
   };
   const run = () => {
-    // After stop() no new listing or batch may begin.
+    // After stop() no new listing or page may begin.
     if (stopping || pending) return;
     const work = Promise.resolve()
       .then(drain)

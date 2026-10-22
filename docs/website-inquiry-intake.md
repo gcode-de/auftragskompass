@@ -171,18 +171,26 @@ Kontaktzuordnung, Event, Herkunftsbeleg und Logbucheintrag
 Reservierung, keine Mail und keine Paket-/Eventartzuordnung. Das Original bleibt
 unverändert in `website_inquiries.payload` gespeichert.
 
-`startWebsiteOptionDrain` (`packages/core/src/website-option-worker.ts`) liest
-pro Takt höchstens zehn noch nicht übernommene Eingänge (`NOT EXISTS`, sortiert
-nach lokalem Eingang und ID) und verarbeitet jeden Eintrag in einer eigenen
-Transaktion. Ein fachlich scheiternder Eintrag beendet den Lauf nicht: er wird
-mit einem festen Code (`website_option_contact_review` und ähnlich) protokolliert
-und bleibt als Ausnahme in der Ablage sichtbar. Nur ein
-Infrastruktur-/Datenbankfehler setzt die Ready-Anzeige auf „nicht bereit“.
-Ein prozesslokaler Satz merkt sich jeden versuchten Eintrag: derselbe Eingang
-wird im laufenden Prozess genau einmal versucht und danach nicht mehr
-taktweise wiederholt; ein Neustart oder die manuelle Übernahme in der
-Oberfläche setzt den Versuch zurück. Einen persistenten Versuchszähler oder
-Backoff gibt es bewusst nicht. Der Worker startet in `apps/worker/src/worker-start.ts`; beim
+`startWebsiteOptionDrain` (`packages/core/src/website-option-worker.ts`) arbeitet
+pro Takt den **vollständigen** noch nicht übernommenen Bestand ab: Seiten von
+höchstens zehn Eingängen (`NOT EXISTS`, sortiert nach lokalem Eingang und ID),
+fortgesetzt über einen Keyset-Cursor `(staged_at, id)` bis eine leere Seite
+kommt. Jeder Eintrag läuft in einer eigenen Transaktion; ein scheiternder
+Eintrag beendet den Lauf nicht und blockiert seine Nachbarn nicht, auch wenn
+zehn ältere Eingänge dauerhaft fehlschlagen. Scheitert ein Eintrag an seinen
+eigenen Daten (`contact_review`, `expired`, `conflict`, `invalid`), wird er
+genau einmal mit einem festen Code (`website_option_contact_review` und
+ähnlich) protokolliert und danach im laufenden Prozess zurückgehalten, statt
+taktweise heiß wiederholt zu werden; ein Neustart setzt den Rückhalt zurück, und
+eine manuelle Übernahme in der Oberfläche nimmt den Eingang aus dem
+Pending-Bestand. Vorübergehende und Infrastrukturfehler werden im nächsten
+zulässigen Takt erneut versucht, ohne Neustart; ein Listen- oder
+Infrastrukturfehler setzt die Ready-Anzeige für diesen Takt auf „nicht bereit“.
+`ready` meldet damit nur die Gesundheit des Laufs, nicht einen erledigten
+Geschäftseingang. Einen persistenten Versuchszähler, Sperrtabelle oder Backoff
+gibt es bewusst nicht; höchstens ein Takt läuft gleichzeitig, `stop()` wartet
+ihn ab, und ein Abbruch hinterlässt über den Pending-Bestand einen
+wiederaufnehmbaren Zustand. Der Worker startet in `apps/worker/src/worker-start.ts`; beim
 Herunterfahren stoppt zuerst dieser Lauf, dann Abfrage/Quittierung, Ablaufjob
 und zuletzt der Datenbankpool.
 
