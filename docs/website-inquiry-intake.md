@@ -158,6 +158,72 @@ dauerhafte Originalablage. Der Gateway-Eingang bleibt danach absichtlich
 unquittiert. Netzwerktransport, persistente Quittierungs-Outbox und sichtbare
 Bearbeitung ausstehender Eingänge bleiben nächste Schritte vor Freischaltung.
 
+## Automatische Option statt manueller Anfrage (H032)
+
+Seit H032 wandelt der Worker gesicherte Eingänge selbstständig in eine
+unverbindliche **Option** um. Der interne Dienst `receiveWebsiteInquiry` erhält
+dafür einen optionalen Status `'inquiry' | 'option'` (Standard `'inquiry'` für
+bestehende direkte Aufrufe). Beide Werte durchlaufen exakt denselben Pfad:
+Inhaltsprüfung, Fingerabdruck, Mandantensperre, Betreiberfreigabe,
+Kontaktzuordnung, Event, Herkunftsbeleg und Logbucheintrag
+`website_received`, jeweils in einer Transaktion. Unterschiedlich sind nur
+`events.status` und `nextStatus`. Uhrzeiten bleiben leer, es entsteht keine
+Reservierung, keine Mail und keine Paket-/Eventartzuordnung. Das Original bleibt
+unverändert in `website_inquiries.payload` gespeichert.
+
+`startWebsiteOptionDrain` (`packages/core/src/website-option-worker.ts`) liest
+pro Takt höchstens zehn noch nicht übernommene Eingänge (`NOT EXISTS`, sortiert
+nach lokalem Eingang und ID) und verarbeitet jeden Eintrag in einer eigenen
+Transaktion. Ein fachlich scheiternder Eintrag beendet den Lauf nicht: er wird
+mit einem festen Code (`website_option_contact_review` und ähnlich) protokolliert
+und bleibt als Ausnahme in der Ablage sichtbar. Nur ein
+Infrastruktur-/Datenbankfehler setzt die Ready-Anzeige auf „nicht bereit“.
+Ein prozesslokaler Satz merkt sich jeden versuchten Eintrag: derselbe Eingang
+wird im laufenden Prozess genau einmal versucht und danach nicht mehr
+taktweise wiederholt; ein Neustart oder die manuelle Übernahme in der
+Oberfläche setzt den Versuch zurück. Einen persistenten Versuchszähler oder
+Backoff gibt es bewusst nicht. Der Worker startet in `apps/worker/src/worker-start.ts`; beim
+Herunterfahren stoppt zuerst dieser Lauf, dann Abfrage/Quittierung, Ablaufjob
+und zuletzt der Datenbankpool.
+
+**Land für neue Kontakte:** Ohne ausdrückliche Konfiguration wird kein Land
+erfunden. `loadWebsiteOptionConfig` liest `AK_INQUIRY_DEFAULT_CONTACT_COUNTRY`
+(Muster `^[A-Z]{2}$`) und `AK_INQUIRY_OPTION_INTERVAL_MS` (5.000–600.000 ms,
+Standard 30.000). Fehlt die Landvariable, bleibt jeder Eingang mit neu
+anzulegendem Kontakt als sichtbare Ausnahme `contact_review` stehen; bestehende
+exakte Kontakte werden weiterhin automatisch wiederverwendet. Die Entscheidung
+vom 19.10.2026 (Deutschland als Vorbelegung) ist damit eine
+Betriebseinstellung des Deployments, kein fest verdrahteter Domänenwert und
+keine Formularangabe: `AK_INQUIRY_DEFAULT_CONTACT_COUNTRY=DE` ist der
+beabsichtigte Betreiberstandard, steht aber bewusst nicht im Domänencode.
+
+**Ohne Mandanten-/Betreiberkennung schläft der Lauf, der Worker bleibt gesund.**
+`AK_INQUIRY_TENANT_ID` und `AK_INQUIRY_OPERATOR_ID` sind optional. Fehlen beide
+(oder sind beide leer), liefert `loadWebsiteOptionConfig` `null`: Der Worker
+startet dann **keinen** Takt, protokolliert einmal `website_option_drain_unconfigured`
+als Warnung (kein Fehler) und bleibt bereit; Ablaufjob und Inquiry-Sync laufen
+unverändert weiter. Alle Website-Eingänge bleiben dadurch als Ausnahmen in der
+Eingangsliste sichtbar und lassen sich weiterhin von Hand übernehmen. Das ist
+der sichere Zustand für eine frische Installation oder eine Wiederherstellung,
+in der die Betreiber-ID (ein Bootstrap-Benutzer dieser Installation) nicht
+bekannt ist - die Bereitschaftsanzeige darf nicht an einer optionalen
+Einstellung hängen.
+
+Ist genau eine der beiden Kennungen gesetzt oder eine vorhandene Kennung keine
+UUID, gilt das als Konfigurationsfehler: `website_option_config_invalid`, der
+Lauf bleibt aus und die Bereitschaft sinkt bewusst, weil hier ein Tippfehler
+sonst unbemerkt bliebe. Die Bereitschaft lautet jetzt
+`expiry && (!drain || drain.ready()) && (!sync || sync.ready())`. Eine kaputte
+Sync-Konfiguration kann den Start nicht mehr abbrechen: Sie meldet
+`inquiry_sync_config_invalid` und lässt nur den Transport aus.
+
+Die manuelle Route `POST /api/v1/website-inquiries/:id/import` bleibt
+unverändert erreichbar (Sitzung, Origin, CSRF, Mandant) und erzeugt jetzt
+ebenfalls eine Option – dieselben Semantiken wie der Automatikpfad, damit ein
+wiederholter Aufruf idempotent dieselbe Event-/Kontaktzuordnung liefert. Der
+Webseiten-Eingang gilt damit nicht mehr als „Anfrage“, sondern als Option; das
+ist eine bewusste Verhaltensänderung von API und Oberfläche, keine
+Buchungsbestätigung und keine Quittierung im Gateway.
 ## Weiterbearbeitung des lokalen Eingangs (E004.12)
 
 `importStagedWebsiteInquiry` liest einen bereits gesicherten Eingang im eigenen
@@ -179,12 +245,15 @@ Gateway und wird noch nicht automatisch oder per HTTP ausgelöst.
 ## Sichtbare Prüfung und manuelle Übernahme (E004.13)
 
 Im bestehenden Eventbereich steht der zunächst geschlossene Bereich
-„Website-Eingänge prüfen“. Erst beim Öffnen lädt er offene lokale Eingänge.
+„Website-Eingänge (Ausnahmen)“ (bis H032: „Website-Eingänge prüfen“). Er zeigt
+nur noch Eingänge, die nicht automatisch angelegt wurden, und erklärt, dass
+normale Eingänge ohne Klick zur Option werden. Das Land ist leer; es ist nur für
+einen neu anzulegenden Kontakt nötig. Erst beim Öffnen lädt er offene lokale Eingänge.
 Jeder Eintrag lässt sich einzeln mit seinen acht Originalangaben und dem damaligen
 Datenschutzhinweis öffnen. Das Länderfeld bleibt leer: nur für einen neu
 anzulegenden Kontakt muss der Betreiber ausdrücklich einen zweistelligen Code
 angeben. Eine bewusste Übernahme erzeugt ausschließlich eine unverbindliche
-Anfrage. Vorhandene Kontakte werden nicht überschrieben und Ressourcen nicht
+Option (H032). Vorhandene Kontakte werden nicht überschrieben und Ressourcen nicht
 reserviert. Nicht auflösbare Zuordnungen bleiben unverändert gespeichert und
 können nach Prüfung erneut versucht werden. Erfolg wird erst nach bestätigter
 Antwort angezeigt; ein anschließender Listenfehler behauptet keinen Rollback.

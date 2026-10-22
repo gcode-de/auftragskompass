@@ -1,5 +1,10 @@
 export const applicationName: string = 'AuftragsKompass';
-export { loadRuntimeConfig, createHealthServer } from './runtime.js';
+export {
+  loadRuntimeConfig,
+  createHealthServer,
+  type RuntimeConfig,
+  type Probes,
+} from './runtime.js';
 export { migrate, identityRepository } from './identity.js';
 export { loadAuthConfig } from './auth-config.js';
 export { googleProvider } from './oidc.js';
@@ -158,6 +163,14 @@ export {
 } from './inquiry-config.js';
 
 export { startWebsiteInquirySync } from './inquiry-sync-worker.js';
+
+export {
+  loadWebsiteOptionConfig,
+  startWebsiteOptionDrain,
+  websiteOptionDependencies,
+  type WebsiteOptionConfig,
+  type WebsiteOptionDrainDependencies,
+} from './website-option-worker.js';
 
 export {
   receiveWebsiteInquiry,

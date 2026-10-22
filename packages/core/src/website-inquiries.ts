@@ -95,19 +95,26 @@ export async function receiveWebsiteInquiry(
   actorId: string,
   input: unknown,
   at: Date,
-  options: { newContactCountry?: string },
+  options: {
+    newContactCountry?: string;
+    // The auto path and the authorized manual recovery are Options (H032);
+    // 'inquiry' stays the default for every existing direct caller.
+    status?: 'inquiry' | 'option';
+  },
 ): Promise<{
   status: 'created' | 'duplicate';
   eventId: string;
   contactId: string;
 }> {
-  const country = options.newContactCountry;
+  const country = options.newContactCountry,
+    eventStatus = options.status ?? 'inquiry';
   if (
     !uuid.test(tenantId) ||
     !uuid.test(actorId) ||
     !(at instanceof Date) ||
     !Number.isFinite(at.getTime()) ||
     (country !== undefined && !/^[A-Z]{2}$/.test(country)) ||
+    (eventStatus !== 'inquiry' && eventStatus !== 'option') ||
     !isWebsiteInquiry(input)
   )
     throw new WebsiteInquiryError('invalid');
@@ -199,7 +206,7 @@ export async function receiveWebsiteInquiry(
           : summary + '\nKommentar in der vollständigen Anfrage erhalten.';
       const event = await eventRepository(tx, tenantId).save(actorId, {
         name,
-        status: 'inquiry',
+        status: eventStatus,
         eventTypeId: null,
         packageId: null,
         locationId: null,
@@ -232,7 +239,7 @@ export async function receiveWebsiteInquiry(
         eventVersion: 1,
         kind: 'website_received',
         source,
-        nextStatus: 'inquiry',
+        nextStatus: eventStatus,
       });
       return { status: 'created' as const, eventId: event.id, contactId };
     });

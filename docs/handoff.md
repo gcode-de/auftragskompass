@@ -227,6 +227,51 @@ Keine Skill-Texte unkontrolliert ins Repo kopieren. Auf anderem Rechner müssen 
 - Der Taste-Browserinspektor sah nur die Vorschauhülle außerhalb des Shadow DOM. Das ist **kein** automatischer Komponenten-Prüfnachweis. Separate Captures und Chromium/axe decken die Komponente ab. Physische iOS-/Android-Geräte und echte WordPress-Einbettung bleiben offen.
 - Der Impeccable-Launcher war nicht direkt ausführbar; Kontext wurde direkt gelesen, spätere Launcher-Aufrufe über `sh` funktionierten. Tatsächlichen Zustand neu prüfen; keinen erfolgreichen automatischen Kontextlauf behaupten. Details im [Formularvertrag](website-inquiry-intake.md).
 
+### Arbeitsstand 22.10.2026 (H032 Website-Eingänge als Option, Code uncommittet)
+
+Arbeitskopie auf `codex/ux-event-simplification`, Basis-HEAD `9984cbf`. Nicht
+committet, nicht gepusht, nicht deployt. Die unabhängige Prüfung bestätigte
+genau einen deployment-kritischen Defekt (Bereitschaft hing an einer optionalen
+Einstellung); er ist behoben, siehe „Optionale Konfiguration“ unten.
+
+- Gesicherte Website-Eingänge werden automatisch als unverbindliche Option
+  angelegt: `receiveWebsiteInquiry` hat einen optionalen Status (Standard
+  `inquiry` für bestehende Aufrufe), Automatikpfad und autorisierte manuelle
+  Wiederholung erzeugen `option`. Keine Uhrzeiten, keine Reservierung, keine Mail,
+  kein Paket; Herkunft, Original-Payload und Logbuch `website_received` bleiben.
+- Der Worker startet den Lauf `startWebsiteOptionDrain` über
+  `apps/worker/src/worker-start.ts`; fachliche Ausnahmen bleiben sichtbar, nur
+  Infrastrukturfehler machen den Worker „nicht bereit“.
+- **Optionale Konfiguration:** `AK_INQUIRY_TENANT_ID` und
+  `AK_INQUIRY_OPERATOR_ID` sind optional. Fehlen beide, startet kein Takt, der
+  Worker protokolliert einmal `website_option_drain_unconfigured` als Warnung
+  und bleibt gesund; alle Eingänge bleiben als Ausnahmen sichtbar. Genau eine
+  der Kennungen oder eine Nicht-UUID gilt weiterhin als Fehler
+  (`website_option_config_invalid`, nicht bereit). Eine kaputte
+  Sync-Konfiguration bricht den Start nicht mehr ab
+  (`inquiry_sync_config_invalid`, Transport bleibt aus). Bereitschaft:
+  `expiry && (!drain || drain.ready()) && (!sync || sync.ready())`.
+- **Vor dem nächsten Deployment:** Das Quadlet
+  `infrastructure/podman/ak-test-worker.container` setzt Platzhalterwerte für
+  Mandant und Betreiber. Die Betreiber-ID ist die Benutzer-ID des
+  Bootstrap-Kontos dieser Installation und ändert sich bei Neuinstallation oder
+  Wiederherstellung. Der Betreiber muss echte Werte eintragen oder beide Zeilen
+  entfernen (dann nur Ausnahmen, Worker bleibt gesund).
+- Land für neue Kontakte ist eine Deployment-Einstellung
+  (`AK_INQUIRY_DEFAULT_CONTACT_COUNTRY`), kein Domänenwert. Ohne sie bleibt ein
+  Eingang mit neuem Kontakt als `contact_review`-Ausnahme stehen. Die
+  Vorbelegung DE aus der Entscheidung vom 19.10.2026 wird nur gesetzt, wenn die
+  Umgebung sie vorgibt; in `.env.example` ist sie auskommentiert dokumentiert.
+- Die Oberfläche heißt „Website-Eingänge (Ausnahmen)“ und listet nur noch nicht
+  automatisch angelegte Eingänge.
+- Lokal grün: 226 Unit-, 315 Komponenten-, 274 Integrationstests (39 davon
+  Website-Eingänge), Chromium-Passwortablauf, Format, Lint, Typen, Build und
+  Dokumentationsprüfung. Coverage, vollständige Chromium-Suite, CI und
+  Testbetrieb werden nach dem Push belegt; H036 bleibt offen, H035 ist bereits
+  released.
+- Der Linux-CI-Befund zum lokalen macOS-`RLIMIT_FSIZE`-Backuptest bleibt
+  unverändert bestehen; diese Sitzung hat ihn nicht angefasst.
+
 ## Wichtige Benutzerentscheidungen
 
 - Eigener Login mit E-Mail/Benutzername und Passwort. Authentik oder Google nicht ungefragt aktivieren; Google-OIDC bleibt optional. Kein Ändern des echten Inhaberpassworts im Rahmen normaler Entwicklungsarbeit.

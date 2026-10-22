@@ -21,6 +21,11 @@ import { inquiryFormV1 } from '../../packages/core/src/inquiry-form.js';
 import { contactRepository } from '../../packages/core/src/contacts.js';
 import { eventRepository } from '../../packages/core/src/events.js';
 import { readEventActivities } from '../../packages/core/src/event-activity.js';
+import {
+  loadWebsiteOptionConfig,
+  startWebsiteOptionDrain,
+  websiteOptionDependencies,
+} from '../../packages/core/src/index.js';
 import Fastify from 'fastify';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerEventRoutes } from '../../packages/core/src/events.js';
@@ -130,6 +135,8 @@ test('atomically creates a dated inquiry and contact, preserving every source fi
     country: 'DE',
   });
   const [event] = await eventRepository(pool, tenantId).list();
+  // A direct internal call keeps the legacy status; the drain and the manual
+  // recovery request an Option explicitly (see the H032 cases below).
   expect(event).toMatchObject({
     id: result.eventId,
     status: 'inquiry',
@@ -1119,6 +1126,31 @@ test('website inbox API paginates pending originals and requires CSRF for an exp
     });
     expect(imported.statusCode).toBe(200);
     expect(imported.json().status).toBe('created');
+    // The recovered entry is an Option; the API contract itself is unchanged.
+    expect(
+      (
+        await pool.query(
+          'SELECT e.status FROM events e JOIN website_inquiries i ON i.event_id=e.id AND i.tenant_id=e.tenant_id WHERE i.tenant_id=$1 AND i.id=$2',
+          [tenantId, value.id],
+        )
+      ).rows[0].status,
+    ).toBe('option');
+    // The manual route writes the same audit line as the automatic drain.
+    expect(
+      (
+        await pool.query(
+          'SELECT next_status AS "nextStatus", source, actor_id AS "actorId", previous_status AS "previousStatus" FROM event_activities WHERE tenant_id=$1 AND event_id=$2 AND kind=\'website_received\'',
+          [tenantId, imported.json().eventId],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        nextStatus: 'option',
+        source: 'fotobox-bw-main (v1)',
+        actorId,
+        previousStatus: null,
+      },
+    ]);
     expect(
       (await app.inject({ method: 'POST', url, headers, payload: {} })).json(),
     ).toEqual({ ...imported.json(), status: 'duplicate' });
@@ -1234,4 +1266,497 @@ test('an inquiry without a place stores no venue and no duplicate description li
   });
   expect(event.description).toContain('Paketwunsch:');
   expect(event.description).not.toContain('Veranstaltungsort');
+});
+
+// H032: one contract, one transaction. The auto path reuses the same function
+// as the manual recovery; it runs through the real drain wiring below.
+// Runs the real drain wiring with this database's own pool.
+const drainWith = (
+  pool_: Pool,
+  country: string | undefined,
+  tenant = tenantId,
+  actor = actorId,
+  codes: string[] = [],
+  reports: string[] = [],
+) =>
+  startWebsiteOptionDrain(
+    pool_,
+    websiteOptionDependencies,
+    {
+      tenantId: tenant,
+      actorId: actor,
+      intervalMs: 50,
+      ...(country === undefined ? {} : { newContactCountry: country }),
+    },
+    (code) => codes.push(code),
+    () => reports.push('error'),
+  );
+// stop() waits for the current tick, so a single drain call acts as one run.
+const settle = async (drain: { stop: () => Promise<void> }) => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await drain.stop();
+};
+
+test('A: an ordinary new entry becomes an Option without times or reservations, with one receipt and an exact source', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  const codes: string[] = [],
+    reports: string[] = [];
+  await settle(drainWith(pool, 'DE', tenantId, actorId, codes, reports));
+  expect({ codes, reports }).toEqual({ codes: [], reports: [] });
+  const [event] = await eventRepository(pool, tenantId).list();
+  expect(event).toMatchObject({
+    status: 'option',
+    eventDate: '2030-10-27',
+    startsAt: null,
+    endsAt: null,
+    source: 'Website: fotobox-bw-main (v1)',
+    venue: 'Fictional venue',
+    venueOverride: true,
+    eventTypeId: null,
+    packageId: null,
+    locationId: null,
+    name: 'Fictional Example',
+  });
+  const [contact] = await contactRepository(pool, tenantId).list();
+  expect(contact).toMatchObject({
+    name: 'Fictional Example',
+    email: 'fictional@example.invalid',
+    country: 'DE',
+    kind: 'private',
+    state: 'active',
+  });
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 1,
+    website_inquiries: 1,
+    reservations: 0,
+  });
+  expect(
+    (
+      await pool.query(
+        'SELECT contact_id AS "contactId", event_id AS "eventId", payload FROM website_inquiries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0],
+  ).toEqual({
+    contactId: contact!.id,
+    eventId: event!.id,
+    payload: value,
+  });
+  expect(
+    (
+      await pool.query(
+        'SELECT kind, next_status AS "nextStatus", source, actor_id AS "actorId", previous_status AS "previousStatus" FROM event_activities WHERE tenant_id=$1 AND kind=\'website_received\'',
+        [tenantId],
+      )
+    ).rows,
+  ).toEqual([
+    {
+      kind: 'website_received',
+      nextStatus: 'option',
+      source: 'fotobox-bw-main (v1)',
+      actorId,
+      previousStatus: null,
+    },
+  ]);
+  expect(
+    (await readEventActivities(drizzle(pool), tenantId, event!.id)).filter(
+      (row) => row.kind === 'website_received',
+    ),
+  ).toEqual([
+    expect.objectContaining({
+      nextStatus: 'option',
+      description: 'Website-Anfrage empfangen: fotobox-bw-main (v1).',
+    }),
+  ]);
+});
+
+test('B: an entry staged before gateway expiry is still turned into an Option after it', async () => {
+  const value = {
+    ...entry(),
+    receivedAt: '2020-10-26T10:00:00.000Z',
+    expiresAt: '2020-10-27T10:00:00.000Z',
+  };
+  await stageWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    value,
+    new Date(value.receivedAt),
+  );
+  await settle(drainWith(pool, 'DE'));
+  expect((await eventRepository(pool, tenantId).list())[0]).toMatchObject({
+    status: 'option',
+    eventDate: '2030-10-27',
+  });
+  expect((await counts()).reservations).toBe(0);
+});
+
+test('C: duplicate ids, restarts and five parallel drains still yield one Option and one contact', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  expect(
+    await stageWebsiteInquiry(pool, tenantId, actorId, value, now),
+  ).toEqual({ status: 'duplicate' });
+  const restarted = new Pool({
+    connectionString: container.getConnectionUri(),
+  });
+  try {
+    await Promise.all([
+      settle(drainWith(pool, 'DE')),
+      settle(drainWith(restarted, 'DE')),
+      settle(drainWith(pool, 'DE')),
+      settle(drainWith(restarted, 'DE')),
+      settle(drainWith(pool, 'DE')),
+    ]);
+  } finally {
+    await restarted.end();
+  }
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 1,
+    website_inquiries: 1,
+    reservations: 0,
+  });
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+  ).toMatchObject({ status: 'duplicate' });
+  expect(await counts()).toMatchObject({ events: 1, contacts: 1 });
+});
+
+test('D: the drain stays inside its tenant and foreign entries stay invisible', async () => {
+  const foreign = randomUUID();
+  await bootstrapAccess(
+    pool,
+    foreign,
+    'foreign@example.invalid',
+    'Fictional foreign business',
+    'Europe/Berlin',
+  );
+  // A staged entry is authenticated by an active operator of its own tenant.
+  await accessRepository(pool, foreign).issueSession(
+    { subject: 'foreign', email: 'foreign@example.invalid' },
+    digest(randomUUID()),
+  );
+  const foreignActor = (await accessRepository(pool, foreign).list())[0]!
+    .userId!;
+  const base = entry(),
+    mine = base,
+    theirs = {
+      ...base,
+      id: randomUUID(),
+      submission: {
+        ...base.submission,
+        fields: { ...base.submission.fields, email: 'other@example.invalid' },
+      },
+    };
+  await stageWebsiteInquiry(pool, tenantId, actorId, mine, now);
+  await stageWebsiteInquiry(pool, foreign, foreignActor, theirs, now);
+  await settle(drainWith(pool, 'DE'));
+  const events = await pool.query<{ tenant_id: string; source: string }>(
+    "SELECT tenant_id, source FROM events WHERE source LIKE 'Website:%' AND tenant_id=$1",
+    [tenantId],
+  );
+  expect(events.rows).toEqual([
+    { tenant_id: tenantId, source: 'Website: fotobox-bw-main (v1)' },
+  ]);
+  expect(
+    (
+      await pool.query('SELECT 1 FROM website_inquiries WHERE tenant_id=$1', [
+        foreign,
+      ])
+    ).rowCount,
+  ).toBe(0);
+  expect(
+    (
+      await pool.query(
+        'SELECT 1 FROM website_inquiry_deliveries WHERE tenant_id=$1',
+        [foreign],
+      )
+    ).rowCount,
+  ).toBe(1);
+  await expect(
+    importStagedWebsiteInquiry(pool, foreign, foreignActor, mine.id, {
+      newContactCountry: 'DE',
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+});
+
+test('E: unsigned or malformed deliveries have no effect even after a successful auto path', async () => {
+  const value = entry();
+  await expect(
+    stageWebsiteInquiry(
+      pool,
+      tenantId,
+      actorId,
+      { ...value, signature: 'x' },
+      now,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  await settle(drainWith(pool, 'DE'));
+  const before = await counts();
+  for (const broken of [
+    { ...value, id: randomUUID(), extra: true },
+    { ...value, id: randomUUID(), payload: 'x' },
+    {
+      ...value,
+      id: randomUUID(),
+      submission: { ...value.submission, status: 'booked' },
+    },
+    {
+      ...value,
+      id: randomUUID(),
+      privacyUrl: 'http://fictional.example.invalid/privacy',
+    },
+  ])
+    await expect(
+      stageWebsiteInquiry(pool, tenantId, actorId, broken, now),
+    ).rejects.toMatchObject({ reason: 'invalid' });
+  expect(await counts()).toEqual(before);
+  expect((await eventRepository(pool, tenantId).list())[0]!.status).toBe(
+    'option',
+  );
+});
+
+test('F: an ambiguous contact stays an exception while other pending entries in the same run become Options', async () => {
+  const base = entry(),
+    ambiguous = base,
+    plain = {
+      ...base,
+      id: randomUUID(),
+      submission: {
+        ...base.submission,
+        fields: {
+          ...base.submission.fields,
+          firstName: 'Second',
+          email: 'second@example.invalid',
+        },
+      },
+    };
+  await contactRepository(pool, tenantId).save(actorId, person);
+  await contactRepository(pool, tenantId).save(actorId, {
+    ...person,
+    name: 'Fictional Other Person',
+  });
+  await stageWebsiteInquiry(pool, tenantId, actorId, ambiguous, now);
+  await stageWebsiteInquiry(pool, tenantId, actorId, plain, now);
+  const codes: string[] = [],
+    reports: string[] = [],
+    drain = drainWith(pool, 'DE', tenantId, actorId, codes, reports);
+  await settle(drain);
+  expect(codes).toEqual(['website_option_contact_review']);
+  expect(reports).toEqual([]);
+  expect(drain.ready()).toBe(true);
+  expect(
+    (
+      await pool.query<{ id: string }>(
+        'SELECT id FROM website_inquiry_deliveries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows
+      .map((row) => row.id)
+      .sort(),
+  ).toEqual([ambiguous.id, plain.id].sort());
+  expect(
+    (
+      await pool.query('SELECT id FROM website_inquiries WHERE tenant_id=$1', [
+        tenantId,
+      ])
+    ).rowCount,
+  ).toBe(1);
+  expect(
+    (await eventRepository(pool, tenantId).list()).filter(
+      (row) => row.source !== null,
+    ),
+  ).toEqual([expect.objectContaining({ status: 'option' })]);
+  expect(
+    await contactRepository(pool, tenantId)
+      .list()
+      .then(
+        (rows) =>
+          rows.find((row) => row.email === 'second@example.invalid')?.name,
+      ),
+  ).toBe('Second Example');
+  // Still a visible exception after the run; no silent merge happened.
+  expect(
+    (await contactRepository(pool, tenantId).list()).map((row) => row.name),
+  ).toEqual(['Fictional Example', 'Fictional Other Person', 'Second Example']);
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, actorId, ambiguous.id, {}),
+  ).rejects.toMatchObject({ reason: 'contact_review' });
+});
+
+test('G: a failure after the event was written leaves no event, receipt, logbook entry or reservation', async () => {
+  await contactRepository(pool, tenantId).save(actorId, person);
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  await pool.query(`CREATE OR REPLACE FUNCTION fictional_h032_fail() RETURNS trigger
+    LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; END $$`);
+  await pool.query(`CREATE TRIGGER fictional_h032_fail BEFORE INSERT ON event_activities
+    FOR EACH ROW EXECUTE FUNCTION fictional_h032_fail()`);
+  try {
+    await expect(
+      importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+    ).rejects.toMatchObject({ reason: 'failed' });
+  } finally {
+    await pool.query('DROP TRIGGER fictional_h032_fail ON event_activities');
+    await pool.query('DROP FUNCTION fictional_h032_fail()');
+  }
+  expect(await counts()).toMatchObject({
+    events: 0,
+    contacts: 1,
+    website_inquiries: 0,
+    event_activities: 0,
+    reservations: 0,
+  });
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+  ).toMatchObject({ status: 'created' });
+  expect(await counts()).toMatchObject({ events: 1, website_inquiries: 1 });
+});
+
+test('J: without a configured country the auto path keeps new contacts in review, with one it becomes an Option', async () => {
+  const base = entry(),
+    // No saved contact matches these details, so only the country decides.
+    unknown = {
+      ...base,
+      id: randomUUID(),
+      submission: {
+        ...base.submission,
+        fields: {
+          ...base.submission.fields,
+          firstName: 'Unknown',
+          email: 'unknown@example.invalid',
+        },
+      },
+    },
+    known = {
+      ...base,
+      id: randomUUID(),
+      submission: {
+        ...base.submission,
+        fields: {
+          ...base.submission.fields,
+          firstName: 'Known',
+          email: 'known@example.invalid',
+        },
+      },
+    };
+  expect(
+    loadWebsiteOptionConfig({
+      AK_INQUIRY_TENANT_ID: tenantId,
+      AK_INQUIRY_OPERATOR_ID: actorId,
+    })?.newContactCountry,
+  ).toBeUndefined();
+  expect(
+    loadWebsiteOptionConfig({
+      AK_INQUIRY_TENANT_ID: tenantId,
+      AK_INQUIRY_OPERATOR_ID: actorId,
+      AK_INQUIRY_DEFAULT_CONTACT_COUNTRY: 'DE',
+    })?.newContactCountry,
+  ).toBe('DE');
+  // The known entry must find this exact active private contact, or the case
+  // would silently test a new contact instead of reuse. It only matches
+  // `known`: name and e-mail differ from the unknown entry.
+  await contactRepository(pool, tenantId).save(actorId, {
+    ...person,
+    name: 'Known Example',
+    email: 'known@example.invalid',
+  });
+  await stageWebsiteInquiry(pool, tenantId, actorId, unknown, now);
+  await stageWebsiteInquiry(pool, tenantId, actorId, known, now);
+  const codes: string[] = [],
+    reports: string[] = [],
+    drain = drainWith(pool, undefined, tenantId, actorId, codes, reports);
+  await settle(drain);
+  // Without a country only the unknown entry is refused; the known one reuses
+  // its exact contact and becomes an Option without inventing a settlement.
+  expect(codes).toEqual(['website_option_contact_review']);
+  expect(reports).toEqual([]);
+  expect(
+    (await eventRepository(pool, tenantId).list()).map((row) => row.status),
+  ).toEqual(['option']);
+  // No new contact: the exception created none, the known entry reused one.
+  expect(
+    (await contactRepository(pool, tenantId).list()).map((row) => ({
+      name: row.name,
+      country: row.country,
+    })),
+  ).toEqual([{ name: 'Known Example', country: 'DE' }]);
+  // The refused entry stays visible and only a country would turn it into a
+  // new contact, which is the documented deployment opt-in.
+  expect(
+    (
+      await pool.query('SELECT id FROM website_inquiries WHERE tenant_id=$1', [
+        tenantId,
+      ])
+    ).rowCount,
+  ).toBe(1);
+});
+
+test('K: the manual recovery is idempotent and yields the same Option semantics as the auto path', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+  ).rejects.toMatchObject({ reason: 'contact_review' });
+  const created = await importStagedWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    value.id,
+    { newContactCountry: 'DE' },
+  );
+  expect(created.status).toBe('created');
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+  ).toEqual({ ...created, status: 'duplicate' });
+  const detail = await eventRepository(pool, tenantId).detail(created.eventId);
+  expect(detail.event).toMatchObject({
+    status: 'option',
+    startsAt: null,
+    endsAt: null,
+  });
+  expect(detail.activities).toEqual([
+    expect.objectContaining({ kind: 'created' }),
+    expect.objectContaining({
+      kind: 'website_received',
+      nextStatus: 'option',
+      actorId,
+    }),
+  ]);
+  expect(await counts()).toMatchObject({ events: 1, reservations: 0 });
+});
+
+test('a direct receive call keeps the legacy inquiry status unless it asks for an Option', async () => {
+  const legacy = await receiveWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    entry(),
+    now,
+    { newContactCountry: 'DE' },
+  );
+  expect(
+    (await eventRepository(pool, tenantId).detail(legacy.eventId)).event.status,
+  ).toBe('inquiry');
+  const second = entry();
+  const option = await receiveWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    second,
+    now,
+    { newContactCountry: 'DE', status: 'option' },
+  );
+  expect(
+    (await eventRepository(pool, tenantId).detail(option.eventId)).event.status,
+  ).toBe('option');
+  await expect(
+    receiveWebsiteInquiry(pool, tenantId, actorId, entry(), now, {
+      status: 'booked',
+    } as never),
+  ).rejects.toMatchObject({ reason: 'invalid' });
 });

@@ -18,7 +18,10 @@ import type { AddressInfo } from 'node:net';
 import Fastify from 'fastify';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
-import { stageWebsiteInquiry } from '../../packages/core/src/website-inquiry-deliveries.js';
+import {
+  stageWebsiteInquiry,
+  importStagedWebsiteInquiry,
+} from '../../packages/core/src/website-inquiry-deliveries.js';
 import { inquiryFormV1 } from '../../packages/core/src/inquiry-form.js';
 import {
   bootstrapAccess,
@@ -2502,16 +2505,30 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     );
     await page.goto(origin + '/?q=Fictional%20Website%20Browser#events');
     const websiteInbox = page.locator('details.website-inbox');
+    await expect(
+      websiteInbox.locator('summary').filter({
+        hasText: 'Website-Eingänge (Ausnahmen)',
+      }),
+    ).toBeVisible();
+    // H032: the exceptions view keeps the unresolved entry visible and states
+    // that normal entries need no manual click.
     await websiteInbox.locator('summary').first().focus();
     await websiteInbox.locator('summary').first().press('Enter');
     const inboxEntry = websiteInbox.locator('details.website-inquiry');
     await expect(inboxEntry).toHaveCount(1);
+    await expect(
+      websiteInbox.getByText(/automatisch als Option angelegt/).first(),
+    ).toBeVisible();
+    await expect(
+      websiteInbox.getByText(/nicht automatisch angelegt/).first(),
+    ).toBeVisible();
     await inboxEntry.locator('summary').focus();
     await inboxEntry.locator('summary').press('Enter');
     const country = inboxEntry.getByLabel(
       'Land für einen neuen Kontakt (2-Buchstaben-Code)',
     );
-    await expect(country).toHaveValue('DE');
+    // The country stays an operator decision; nothing is prefilled.
+    await expect(country).toHaveValue('');
     await expect(inboxEntry.locator('dt')).toHaveCount(8);
     if (mode === 'password') {
       for (const [width, theme] of [
@@ -2545,20 +2562,42 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(inboxEntry).not.toHaveAttribute('open', '');
     await inboxEntry.locator('summary').press('Enter');
     await expect(country).toBeVisible();
-    await country.fill('');
+    await page.setViewportSize({ width: 1280, height: 720 });
     await inboxEntry
-      .getByRole('button', { name: 'Als Anfrage übernehmen' })
+      .getByRole('button', { name: 'Als Option übernehmen' })
       .click();
+    // Without a country the server keeps the entry as a visible exception and
+    // the authorized recovery stays available for a second, identical try.
     await expect(inboxEntry.getByRole('alert')).toContainText(
       'Kontaktzuordnung bitte prüfen',
     );
+    await expect(inboxEntry).toHaveCount(1);
     await country.fill('DE');
     await inboxEntry
-      .getByRole('button', { name: 'Als Anfrage übernehmen' })
+      .getByRole('button', { name: 'Als Option übernehmen' })
       .click();
     await expect(
-      websiteInbox.getByText('Keine offenen Website-Eingänge vorhanden.'),
+      websiteInbox.getByText(/Keine offenen Ausnahmen/),
     ).toBeVisible();
+    // A second identical recovery is idempotent: same assignments, no error.
+    const recovered = (
+      await pool.query<{ eventId: string; contactId: string }>(
+        'SELECT event_id AS "eventId", contact_id AS "contactId" FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, websiteInquiryId],
+      )
+    ).rows[0]!;
+    const repeat = await importStagedWebsiteInquiry(
+      pool,
+      config.tenantId,
+      owner,
+      websiteInquiryId,
+      {},
+    );
+    expect(repeat).toEqual({
+      status: 'duplicate',
+      eventId: recovered.eventId,
+      contactId: recovered.contactId,
+    });
     await expect(
       page.getByRole('link', {
         name: /Fictional Website Browser/,
@@ -2593,6 +2632,18 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         hasText: 'Website-Anfrage empfangen: fotobox-bw-main (v1).',
       }),
     ).toBeVisible();
+    // The recovered website entry is an Option, never a booking.
+    await expect(websiteRecord.getByLabel('Status des Events')).toHaveValue(
+      'option',
+    );
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*) FROM reservations r JOIN events e ON e.id=r.event_id AND e.tenant_id=r.tenant_id WHERE e.source=$1',
+          ['Website: fotobox-bw-main (v1)'],
+        )
+      ).rows[0].count,
+    ).toBe('0');
     await audit('website-inquiry-event');
     await websiteRecord
       .getByRole('button', { name: 'Übersicht', exact: true })

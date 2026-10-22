@@ -82,6 +82,7 @@ export async function importStagedWebsiteInquiry(
   inquiryId: string,
   options: { newContactCountry?: string },
 ) {
+  // H032: the same auto semantics as the drain, so recovery also yields an Option.
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   if (![tenantId, actorId, inquiryId].every((value) => uuid.test(value)))
     throw new WebsiteInquiryError('invalid');
@@ -114,7 +115,10 @@ export async function importStagedWebsiteInquiry(
         actorId,
         row.payload,
         row.stagedAt,
-        country === undefined ? {} : { newContactCountry: country },
+        {
+          status: 'option',
+          ...(country === undefined ? {} : { newContactCountry: country }),
+        },
       );
     });
   } catch (error) {

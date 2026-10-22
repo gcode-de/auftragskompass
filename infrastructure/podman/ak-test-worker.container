@@ -21,8 +21,16 @@ Environment=AK_TIMEZONE=Europe/Berlin
 Environment=AK_BUILD_REVISION=REPLACE_REVISION
 Environment=AK_GATEWAY_ORIGIN=https://auftragskompass.samuelgesang.de
 Environment=AK_GATEWAY_REQUEST_KEY_ID=core-to-gateway-1
+# Optional website option drain. These two values must be the real tenant and
+# bootstrap-operator ids of THIS installation; the placeholders below are the
+# current test values and go stale after a fresh install or restore. Leave both
+# lines out to run exceptions-only: the worker stays healthy, no drain timer
+# starts, and every website entry waits in the exceptions inbox.
 Environment=AK_INQUIRY_TENANT_ID=1e73789f-b7a1-4445-bf15-652ff34b5ee2
 Environment=AK_INQUIRY_OPERATOR_ID=1d21afb6-0b57-4c77-a47b-7a67a0b85716
+# Operator decision 19.10.2026: DE for new website contacts. Deployment value
+# only; the domain does not hardcode it. Uncomment to enable.
+# Environment=AK_INQUIRY_DEFAULT_CONTACT_COUNTRY=DE
 Environment=AK_INQUIRY_SYNC_KEYS_FILE=/run/secrets/gateway_sync_keys
 Exec=node apps/worker/dist/main.js
 RunInit=true

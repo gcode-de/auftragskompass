@@ -1,4 +1,5 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useAutoRefresh } from './auto-refresh.js';
 import {
   OriginalInquiryContents,
   type OriginalInquiry,
@@ -14,7 +15,8 @@ export function WebsiteInbox({
   timeZone: string;
   onImported: () => Promise<void>;
 }) {
-  const sequence = useRef(0);
+  const sequence = useRef(0),
+    panel = useRef<HTMLDetailsElement>(null);
   const [page, setPage] = useState<Page | null>(null),
     [loading, setLoading] = useState(false),
     [failed, setFailed] = useState(false),
@@ -36,18 +38,34 @@ export function WebsiteInbox({
       if (current === sequence.current) setLoading(false);
     }
   }
+  // Load on open and on return; never poll. Late answers of an older read are
+  // discarded by the sequence guard below.
+  useAutoRefresh(
+    () => {
+      if (panel.current?.open) void load();
+    },
+    () => loading,
+  );
+  useEffect(() => {
+    return () => {
+      ++sequence.current;
+    };
+  }, []);
   return (
     <details
+      ref={panel}
       className="website-inbox"
       onToggle={(event) => {
-        if (event.currentTarget.open && !page && !loading && !failed)
-          void load();
+        if (event.currentTarget.open && !loading) void load();
       }}
     >
-      <summary>Website-Eingänge prüfen</summary>
+      <summary>Website-Eingänge (Ausnahmen)</summary>
       <p>
-        Hier prüfst du bereits lokal gesicherte Eingänge. Die Übernahme erzeugt
-        eine Anfrage und keine feste Buchung.
+        Neue Website-Eingänge werden automatisch als Option angelegt, ohne
+        Uhrzeit und ohne Reservierung. Hier erscheinen nur noch Eingänge, die
+        nicht automatisch angelegt wurden – etwa bei unklarer Kontaktzuordnung
+        oder fehlendem Land. Die Prüfung und Übernahme erzeugt eine Option und
+        keine feste Buchung.
       </p>
       <button
         type="button"
@@ -68,13 +86,18 @@ export function WebsiteInbox({
       {page && (
         <>
           {page.total === 0 ? (
-            <p>Keine offenen Website-Eingänge vorhanden.</p>
+            <p>
+              Keine offenen Ausnahmen. Neue Website-Eingänge werden automatisch
+              als Option angelegt.
+            </p>
           ) : (
             <>
               <p>
                 {page.total}{' '}
-                {page.total === 1 ? 'offener Eingang' : 'offene Eingänge'} ·
-                angezeigt {page.offset + 1}–
+                {page.total === 1
+                  ? 'Eingang nicht automatisch angelegt'
+                  : 'Eingänge nicht automatisch angelegt'}{' '}
+                · angezeigt {page.offset + 1}–
                 {Math.min(page.offset + page.items.length, page.total)}
               </p>
               <ul>
@@ -86,7 +109,7 @@ export function WebsiteInbox({
                       timeZone={timeZone}
                       onSuccess={() => {
                         setMessage(
-                          'Als unverbindliche Anfrage übernommen. Du findest den Vorgang in der Eventliste.',
+                          'Als Option übernommen. Du findest den Vorgang in der Eventliste.',
                         );
                         setPage((current) =>
                           current
@@ -102,7 +125,7 @@ export function WebsiteInbox({
                         void load();
                         void onImported().catch(() =>
                           setMessage(
-                            'Anfrage übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
+                            'Als Option übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
                           ),
                         );
                       }}
@@ -148,8 +171,10 @@ function InboxEntry({
   timeZone: string;
   onSuccess: () => void;
 }) {
+  // The country is the operator's decision; the inbox never guesses one. It is
+  // only needed when the recovery creates a new contact.
   const id = useId(),
-    [country, setCountry] = useState('DE'),
+    [country, setCountry] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   async function submit() {
@@ -199,7 +224,8 @@ function InboxEntry({
         {fields[0]!.value} {fields[1]!.value} · {fields[3]!.value}
       </summary>
       <p>
-        Originalangaben beim Absenden. Bestehende Kontaktangaben werden nicht
+        Originalangaben beim Absenden. Nicht automatisch angelegt – bitte
+        Kontaktzuordnung prüfen. Bestehende Kontaktangaben werden nicht
         überschrieben.
       </p>
       <OriginalInquiryContents original={item.original} timeZone={timeZone} />
@@ -223,12 +249,12 @@ function InboxEntry({
           onChange={(event) => setCountry(event.target.value)}
         />
         <p id={id + '-hint'}>
-          Für neue Kontakte ist Deutschland vorbelegt; für andere Länder den
-          Code ändern. Bestehende Kontakte werden nicht geändert.
+          Nur für einen neu anzulegenden Kontakt. Ein bestehender Kontakt wird
+          wiederverwendet, ohne das Land zu ändern.
         </p>
         {error && <p role="alert">{error}</p>}
         <button type="submit" disabled={busy}>
-          {busy ? 'Wird übernommen …' : 'Als Anfrage übernehmen'}
+          {busy ? 'Wird übernommen …' : 'Als Option übernehmen'}
         </button>
       </form>
     </details>
