@@ -14,6 +14,7 @@ import {
 import { appVersionLabel } from './revision.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import {
+  discardForFilesMessage,
   discardForHomeMessage,
   discardForSearchMessage,
   hasUnsavedChanges,
@@ -37,6 +38,11 @@ const links = [
     'calendar',
     'Kalender',
     'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM7 14h3m4 0h3m-10 3h3',
+  ],
+  [
+    'files',
+    'Dateien',
+    'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Zm-1 1v4h4M9 13h6m-6 3h6',
   ],
   [
     'contacts',
@@ -115,6 +121,7 @@ function readRoute(): WorkspaceRoute {
   if (hash.startsWith('event-')) return 'events';
   if (hash.startsWith('contact-')) return 'contacts';
   if (hash === 'search') return 'search';
+  if (hash === 'files') return 'files';
   return links.find(([id]) => id === hash)?.[0] ?? 'events';
 }
 // H034: `#locations` is retired. Rewriting it keeps the address honest without
@@ -311,7 +318,24 @@ export function Navigation({ account }: { account?: ReactNode }) {
               aria-current={
                 id === (settings ? 'settings' : route) ? 'page' : undefined
               }
-              onClick={() => {
+              onClick={(event) => {
+                // H035: only the new Dateien entry asks, because leaving the
+                // event area unmounts its details and their registered draft.
+                // A modifier click opens a new tab and must change nothing.
+                if (
+                  id === 'files' &&
+                  route !== 'files' &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.shiftKey &&
+                  !event.altKey &&
+                  event.button === 0 &&
+                  hasUnsavedChanges() &&
+                  !window.confirm(discardForFilesMessage)
+                ) {
+                  event.preventDefault();
+                  return;
+                }
                 if (dialog.current?.open) closeMenu();
               }}
             >

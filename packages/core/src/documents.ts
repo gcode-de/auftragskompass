@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { Temporal } from '@js-temporal/polyfill';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import {
   contacts,
@@ -56,7 +57,8 @@ export class DocumentError extends Error {
       | 'missing_reference'
       | 'number_not_configured'
       | 'invalid_content'
-      | 'artifact_failed',
+      | 'artifact_failed'
+      | 'invalid_filter',
   ) {
     super('Document rejected');
   }
@@ -79,6 +81,37 @@ export type DocumentFilters = {
   eventId?: string;
   kind?: DocumentKind;
   state?: DocumentState;
+  /** Inclusive tenant-local issue days, `YYYY-MM-DD`, on `issued_at`. */
+  from?: string;
+  to?: string;
+  /** Explicit page size; omitted keeps the full, unbounded list. */
+  limit?: number;
+  offset?: number;
+  /** Opt-in projection for the Dateien overview; omitted keeps the old shape. */
+  include?: 'metadata';
+};
+export type DocumentListRow = {
+  id: string;
+  kind: DocumentKind;
+  templateId: string;
+  eventId: string | null;
+  contactId: string | null;
+  number: string | null;
+  state: DocumentState;
+  issuedAt: Date;
+  finalizedAt: Date | null;
+  netMinor: number;
+  taxMinor: number;
+  grossMinor: number;
+  version: number;
+};
+export type DocumentMetadataRow = DocumentListRow & {
+  /** Tenant-scoped event name; null while unlinked or for a foreign id. */
+  eventName: string | null;
+  /** `issued_at` as a tenant-local plain date, the same basis as the filters. */
+  issuedDate: string;
+  /** Exactly the eligibility of `GET /api/v1/documents/:id/pdf`. */
+  pdfAvailable: boolean;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -161,6 +194,45 @@ function translate(error: unknown): never {
   throw error;
 }
 
+const maxOffset = 1_000_000;
+// A real calendar day, not a rollover such as 2031-02-30.
+const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+function plainDate(day: string): Temporal.PlainDate | null {
+  if (!isoDatePattern.test(day)) return null;
+  try {
+    return Temporal.PlainDate.from(day);
+  } catch {
+    return null;
+  }
+}
+// The route schema already rejects malformed values; this keeps the repository
+// honest for direct callers and names the one rule JSON Schema cannot express.
+export function assertDocumentFilters(filters: DocumentFilters): void {
+  const from = filters.from === undefined ? null : plainDate(filters.from),
+    to = filters.to === undefined ? null : plainDate(filters.to);
+  if (
+    (filters.from !== undefined && !from) ||
+    (filters.to !== undefined && !to)
+  )
+    throw new DocumentError('invalid_filter');
+  if (from && to && Temporal.PlainDate.compare(from, to) > 0)
+    throw new DocumentError('invalid_filter');
+  if (
+    filters.limit !== undefined &&
+    (!Number.isInteger(filters.limit) ||
+      filters.limit < 1 ||
+      filters.limit > 100)
+  )
+    throw new DocumentError('invalid_filter');
+  if (
+    filters.offset !== undefined &&
+    (!Number.isInteger(filters.offset) ||
+      filters.offset < 0 ||
+      filters.offset > maxOffset)
+  )
+    throw new DocumentError('invalid_filter');
+}
+
 export function documentRepository(
   pool: Pool,
   tenantId: string,
@@ -213,35 +285,114 @@ export function documentRepository(
       return readOne(db, id);
     },
     // The overview only needs the header fields; lines stay per document.
+    // Filters narrow the whole result in SQL: the UI never filters one page.
     async list(filters: DocumentFilters = {}) {
-      return db
+      assertDocumentFilters(filters);
+      const include = filters.include === 'metadata';
+      const columns = {
+        id: documents.id,
+        kind: documents.kind,
+        templateId: documents.templateId,
+        eventId: documents.eventId,
+        contactId: documents.contactId,
+        number: documents.number,
+        state: documents.state,
+        issuedAt: documents.issuedAt,
+        finalizedAt: documents.finalizedAt,
+        netMinor: documents.netMinor,
+        taxMinor: documents.taxMinor,
+        grossMinor: documents.grossMinor,
+        version: documents.version,
+      };
+      const where = and(
+        scope,
+        filters.eventId ? eq(documents.eventId, filters.eventId) : undefined,
+        filters.kind ? eq(documents.kind, filters.kind) : undefined,
+        filters.state ? eq(documents.state, filters.state) : undefined,
+      );
+      // Without pagination and projection the query stays the plain select the
+      // established clients already rely on.
+      if (
+        !include &&
+        filters.limit === undefined &&
+        filters.offset === undefined &&
+        !filters.from &&
+        !filters.to
+      )
+        return db
+          .select(columns)
+          .from(documents)
+          .where(where)
+          .orderBy(desc(documents.issuedAt), desc(documents.id));
+      // One fixed tenant context query, never per row.
+      const [tenant] = await db
+        .select({ timezone: tenants.timezone })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId));
+      if (!tenant) throw new DocumentError('missing_reference');
+      const zone = tenant.timezone;
+      // Inclusive local days become a half-open instant window. The upper bound
+      // is the next local midnight, so a 23- or 25-hour DST day stays exact.
+      // One offset per boundary comes from `Intl`, not from a fixed +01/+02.
+      const localMidnight = (day: string) =>
+        Temporal.PlainDate.from(day)
+          .toZonedDateTime({ timeZone: zone, plainTime: '00:00' })
+          .toInstant();
+      const lower = filters.from ? localMidnight(filters.from) : null,
+        upper = filters.to
+          ? localMidnight(
+              Temporal.PlainDate.from(filters.to).add({ days: 1 }).toString(),
+            )
+          : null;
+      const narrowed = and(
+        where,
+        lower
+          ? gte(documents.issuedAt, new Date(lower.epochMilliseconds))
+          : undefined,
+        upper
+          ? lt(documents.issuedAt, new Date(upper.epochMilliseconds))
+          : undefined,
+      );
+      if (!include)
+        return db
+          .select(columns)
+          .from(documents)
+          .where(narrowed)
+          .orderBy(desc(documents.issuedAt), desc(documents.id))
+          .limit(filters.limit ?? Number.MAX_SAFE_INTEGER)
+          .offset(filters.offset ?? 0);
+      // One left join, never a lookup per row; the join is tenant-scoped, so a
+      // foreign event id yields no name instead of leaking one.
+      const rows = await db
         .select({
-          id: documents.id,
-          kind: documents.kind,
-          templateId: documents.templateId,
-          eventId: documents.eventId,
-          contactId: documents.contactId,
-          number: documents.number,
-          state: documents.state,
-          issuedAt: documents.issuedAt,
-          finalizedAt: documents.finalizedAt,
-          netMinor: documents.netMinor,
-          taxMinor: documents.taxMinor,
-          grossMinor: documents.grossMinor,
-          version: documents.version,
+          ...columns,
+          pdfHash: documents.pdfHash,
+          eventName: sql<string | null>`${events.name}`.as('event_name'),
         })
         .from(documents)
-        .where(
-          and(
-            scope,
-            filters.eventId
-              ? eq(documents.eventId, filters.eventId)
-              : undefined,
-            filters.kind ? eq(documents.kind, filters.kind) : undefined,
-            filters.state ? eq(documents.state, filters.state) : undefined,
-          ),
+        .leftJoin(
+          events,
+          and(eq(events.tenantId, tenantId), eq(events.id, documents.eventId)),
         )
-        .orderBy(desc(documents.issuedAt), desc(documents.id));
+        .where(narrowed)
+        .orderBy(desc(documents.issuedAt), desc(documents.id))
+        .limit(filters.limit ?? Number.MAX_SAFE_INTEGER)
+        .offset(filters.offset ?? 0);
+
+      return rows.map(({ pdfHash, ...row }) => ({
+        ...row,
+        issuedDate: Temporal.Instant.fromEpochMilliseconds(
+          row.issuedAt.getTime(),
+        )
+          .toZonedDateTimeISO(zone)
+          .toPlainDate()
+          .toString(),
+        // The PDF route also needs a number and the artefact hash; a final row
+        // whose metadata was lost must not offer a download that 404s.
+        // Only the boolean leaves the server; the artefact key never does.
+        pdfAvailable:
+          row.state === 'final' && pdfHash !== null && row.number !== null,
+      }));
     },
     // Only a final document has an artefact; the hash names it, so the bytes
     // always belong to the recorded snapshot.
@@ -780,12 +931,53 @@ export function registerDocumentRoutes(
             eventId: { type: 'string', format: 'uuid' },
             kind: { type: 'string', enum: [...documentKinds] },
             state: { type: 'string', enum: ['draft', 'final', 'withdrawn'] },
+            // H035: all new parameters are optional, so an old request keeps the
+            // complete, unpaged array with exactly the old fields.
+            from: { type: 'string', format: 'date' },
+            to: { type: 'string', format: 'date' },
+            limit: { type: 'integer', minimum: 1, maximum: 100 },
+            offset: { type: 'integer', minimum: 0, maximum: 1_000_000 },
+            include: { type: 'string', enum: ['metadata'] },
           },
         },
-        response: { 200: { type: 'array', items: listRow } },
+        response: {
+          200: {
+            type: 'array',
+            items: {
+              anyOf: [
+                listRow,
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    ...listRow.required,
+                    'eventName',
+                    'issuedDate',
+                    'pdfAvailable',
+                  ],
+                  properties: {
+                    ...listRow.properties,
+                    eventName: nullableText,
+                    issuedDate: {
+                      type: 'string',
+                      pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+                    },
+                    pdfAvailable: { type: 'boolean' },
+                  },
+                },
+              ],
+            },
+          },
+        },
       },
     },
-    (request) => repo.list(request.query),
+    async (request, reply) => {
+      try {
+        return await repo.list(request.query);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
   );
   app.get<{ Params: { id: string } }>(
     '/api/v1/documents/:id',

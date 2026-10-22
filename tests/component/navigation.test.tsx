@@ -75,6 +75,7 @@ test('resolves deep links, settings and browser history without losing search', 
   render(<Workspace />);
   expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('events');
   for (const [hash, section] of [
+    ['#files', 'files'],
     ['#calendar', 'calendar'],
     ['#settings-calendar', 'subscriptions'],
     ['#settings', 'settings'],
@@ -544,4 +545,51 @@ test('shrinking to the mobile breakpoint moves focused sidebar controls to the m
   viewport.matches = false;
   act(changed);
   expect(document.activeElement).toBe(input);
+});
+
+test('Dateien is a first-class main entry with quiet, labelled icon controls', () => {
+  window.history.replaceState(null, '', '/?q=Fictional#files');
+  render(<Workspace />);
+  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('files');
+  const sidebar = within(screen.getByLabelText('Arbeitsbereiche'));
+  const link = sidebar.getByRole('link', { name: 'Dateien' });
+  expect(link.getAttribute('href')).toBe('#files');
+  expect(link.getAttribute('title')).toBe('Dateien');
+  expect(link.getAttribute('aria-current')).toBe('page');
+  const heading = screen.getByRole('link', {
+    name: 'Dateien – zur Eventübersicht',
+  });
+  expect(heading.textContent).toBe('Dateien');
+  // Settings stays a separate area and never claims the file page.
+  expect(
+    sidebar
+      .getByRole('link', { name: 'Einstellungen' })
+      .getAttribute('aria-current'),
+  ).toBeNull();
+  // Mobile dialog exposes the same entry and closes on click.
+  fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
+  const drawer = within(screen.getByRole('dialog', { name: 'Menü' }));
+  const mobile = drawer.getByRole('link', { name: 'Dateien' });
+  expect(mobile.getAttribute('aria-current')).toBe('page');
+  clickLink(mobile);
+  // The unrelated query survives navigating into the new area.
+  expect(window.location.search).toBe('?q=Fictional');
+});
+
+test('the collapsed sidebar keeps Dateien active, labelled and keyboard reachable', () => {
+  localStorage.setItem('ak-sidebar', 'collapsed');
+  window.history.replaceState(null, '', '/?q=keep#files');
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  expect(sidebar.className).toContain('collapsed');
+  const link = within(sidebar).getByRole('link', { name: 'Dateien' });
+  // The icon-only state keeps the accessible name and adds a local title.
+  expect(link.getAttribute('aria-label')).toBe('Dateien');
+  expect(link.getAttribute('title')).toBe('Dateien');
+  expect(link.getAttribute('aria-current')).toBe('page');
+  expect(link.getAttribute('href')).toBe('#files');
+  link.focus();
+  expect(document.activeElement).toBe(link);
+  expect(clickLink(link)).toBe(false);
+  expect(window.location.search).toBe('?q=keep');
 });

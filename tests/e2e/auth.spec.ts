@@ -32,6 +32,7 @@ import { registerProductRoutes } from '../../packages/core/src/products.js';
 import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
+import { registerDocumentRoutes } from '../../packages/core/src/documents.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 async function signInScenario(browser: Browser, mode: 'google' | 'password') {
   test.setTimeout(180000);
@@ -177,6 +178,20 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     registerContactRoutes(app, pool, config.tenantId);
     registerLocationRoutes(app, pool, config.tenantId);
     registerEventRoutes(app, pool, config.tenantId);
+    // H035: the Dateien area reads the real, protected document list; the steps
+    // below intercept its metadata request with synthetic rows instead of
+    // touching any document, PDF or storage key.
+    registerDocumentRoutes(app, pool, config.tenantId, {
+      origin,
+      store: {
+        async put() {},
+        async read() {
+          throw new Error('synthetic');
+        },
+        async remove() {},
+      },
+      render: async () => Buffer.from('%PDF-1.4 synthetic'),
+    });
     registerImportRoutes(app, pool, config.tenantId);
     registerInquiryPreviewRoute(app);
     registerWebsiteInquiryRoutes(app, pool, config.tenantId);
@@ -257,6 +272,72 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         });
     };
 
+    // H035: Dateien is a real main area over the existing document list. The
+    // metadata request is answered with synthetic rows, so no business data is
+    // read and the real PDF route is never called.
+    const syntheticFiles = [
+      {
+        id: '77777777-7777-4777-8777-777777777777',
+        kind: 'offer',
+        templateId: '22222222-2222-4222-8222-222222222222',
+        eventId: '33333333-3333-4333-8333-333333333333',
+        contactId: null,
+        number: null,
+        state: 'draft',
+        issuedAt: '2031-05-01T20:30:00.000Z',
+        finalizedAt: null,
+        netMinor: 0,
+        taxMinor: 0,
+        grossMinor: 0,
+        version: 1,
+        eventName: 'Synthetic browser wedding',
+        issuedDate: '2031-05-01',
+        pdfAvailable: false,
+      },
+      {
+        id: '88888888-8888-4888-8888-888888888888',
+        kind: 'invoice',
+        templateId: '22222222-2222-4222-8222-222222222222',
+        eventId: null,
+        contactId: null,
+        number: 'RE-2031-0001',
+        state: 'final',
+        issuedAt: '2031-05-02T10:00:00.000Z',
+        finalizedAt: '2031-05-02T10:00:00.000Z',
+        netMinor: 123456,
+        taxMinor: 0,
+        grossMinor: 9007199254740991,
+        version: 1,
+        eventName: null,
+        issuedDate: '2031-05-02',
+        pdfAvailable: true,
+      },
+    ];
+    const filesRequested: string[] = [];
+    const documentsRoute = async (route: Route) => {
+      filesRequested.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(syntheticFiles),
+      });
+    };
+    // A pathname matcher, not a URL regex: the real request carries
+    // ?include=metadata&limit=… and must never fall through to the server. It is
+    // installed before the first page load because the panel can mount from a
+    // restored hash, not only from a click.
+    await page.route(
+      (url) =>
+        url.pathname === '/api/v1/documents' &&
+        url.searchParams.get('include') === 'metadata',
+      documentsRoute,
+    );
+    // A network observer from the very first request, to prove no PDF is fetched.
+    const pdfRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/api/v1/documents/'))
+        pdfRequests.push(request.url());
+    });
     const loadedDocument = await page.goto(origin);
     expect(loadedDocument!.headers()['content-security-policy']).toContain(
       "frame-ancestors 'none'",
@@ -386,6 +467,120 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       ).toHaveAttribute('aria-current', 'page');
       await audit(label + (setting ?? ''));
     };
+    // The linked event is real so its details can really open; it exists only
+    // for this step and is removed again before the later import assertions.
+    await pool.query(
+      "INSERT INTO events(tenant_id,id,name,status,source,event_date,time_zone,description,notes_html) VALUES ($1::uuid,'33333333-3333-4333-8333-333333333333','Synthetic browser wedding','option','Fictional browser files fixture',DATE '2031-05-01','Europe/Berlin','','') ON CONFLICT DO NOTHING",
+      [config.tenantId],
+    );
+    await navigate('Dateien');
+    const files = page.getByRole('region', { name: 'Dateien' });
+    await expect(files).toBeVisible();
+
+    // Exactly one page heading in the whole document, owned by the shell; the
+    // panel itself adds none and repeats no visible "Dateien" title.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    await expect(
+      page.getByRole('heading', {
+        level: 1,
+        name: 'Dateien – zur Eventübersicht',
+      }),
+    ).toBeVisible();
+    await expect(files.getByRole('heading')).toHaveCount(0);
+    await expect(files.getByText('Angebot · Entwurf')).toBeVisible();
+    await expect(files.getByText('01.05.2031')).toBeVisible();
+    await expect(files.getByText('0,00 €')).toBeVisible();
+    // The largest exact amount would print ,90 if it were divided by 100.
+    await expect(files.getByText('90.071.992.547.409,91 €')).toBeVisible();
+    await expect(
+      files.getByRole('button', { name: 'Vorherige Seite' }),
+    ).toBeDisabled();
+    await expect(
+      files.getByRole('link', { name: 'Rechnung RE-2031-0001 als PDF öffnen' }),
+    ).toHaveAttribute(
+      'href',
+      '/api/v1/documents/88888888-8888-4888-8888-888888888888/pdf',
+    );
+    expect(filesRequested.some((url) => url.includes('/pdf'))).toBe(false);
+    await files.getByLabel('Dokumentart').selectOption('invoice');
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .toContain('kind=invoice');
+    expect(new URL(filesRequested.at(-1)!).searchParams.get('limit')).toBe(
+      '26',
+    );
+    const resetButton = files.getByRole('button', {
+      name: 'Filter zurücksetzen',
+    });
+    expect((await resetButton.boundingBox())!.height).toBeGreaterThanOrEqual(
+      44,
+    );
+    await resetButton.click();
+    await expect.poll(() => filesRequested.at(-1) ?? '').not.toContain('kind=');
+    const pdfLink = files.getByRole('link', {
+      name: 'Rechnung RE-2031-0001 als PDF öffnen',
+    });
+    await pdfLink.focus();
+    expect(
+      await pdfLink.evaluate((element) => element === document.activeElement),
+    ).toBe(true);
+    for (const [width, height] of [
+      [1280, 720],
+      [390, 844],
+      [320, 740],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await audit('dateien');
+    // A real Event filter that would hide the linked event, plus a file filter.
+    const filesUrlBefore = page.url();
+    await page.evaluate(() => {
+      const url = new URL(location.href);
+      // An Event filter that really would hide the linked event.
+      url.searchParams.set('status', 'option');
+      url.searchParams.set('df_kind', 'offer');
+      history.pushState(null, '', url);
+      dispatchEvent(new PopStateEvent('popstate'));
+    });
+    const eventLink = files.getByRole('link', {
+      name: 'Synthetic browser wedding',
+    });
+    const targetHref = await eventLink.getAttribute('href');
+    const target = new URL(targetHref!, origin);
+    expect(target.searchParams.get('status')).toBeNull();
+    expect(target.searchParams.get('df_kind')).toBe('offer');
+    expect(target.hash).toBe('#event-33333333-3333-4333-8333-333333333333');
+    // Modifier clicks never change the current route or filters.
+    await eventLink.click({ modifiers: ['ControlOrMeta'] });
+    expect(new URL(page.url()).hash).toBe('#files');
+    // A plain click is ordinary SPA navigation and opens the event details.
+    await eventLink.click();
+    await expect(page).toHaveURL(
+      /#event-33333333-3333-4333-8333-333333333333$/,
+    );
+    await expect(
+      page.locator('#event-33333333-3333-4333-8333-333333333333'),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/status=option/);
+    await page.goBack();
+    await expect(page).toHaveURL(filesUrlBefore);
+    await expect(files.getByText('Angebot · Entwurf')).toBeVisible();
+    await expect(files.getByLabel('Dokumentart')).toHaveValue('');
+    // The document list never downloaded a PDF on its own.
+    expect(pdfRequests).toEqual([]);
+    await pool.query(
+      "DELETE FROM event_contacts WHERE tenant_id=$1::uuid AND event_id='33333333-3333-4333-8333-333333333333'",
+      [config.tenantId],
+    );
+    await pool.query(
+      "DELETE FROM events WHERE tenant_id=$1::uuid AND id='33333333-3333-4333-8333-333333333333'",
+      [config.tenantId],
+    );
     await navigate('Einstellungen', 'Konto & Zugriff');
     if (mode === 'google') {
       await page

@@ -12,6 +12,7 @@ import {
 } from './Navigation.js';
 import { EventPanel } from './EventPanel.js';
 import { ContactPanel } from './ContactPanel.js';
+import { FilesPanel } from './FilesPanel.js';
 import { ProductPanel } from './ProductPanel.js';
 import { DocumentTemplatesPanel } from './DocumentTemplatesPanel.js';
 import { DocumentNumbersPanel } from './DocumentNumbersPanel.js';
@@ -163,6 +164,9 @@ export function AuthPanel() {
               revision={importRevision}
               showHeading={route === 'search'}
             />
+          </div>
+          <div className="workspace-page" hidden={route !== 'files'}>
+            <FilesPanel active={route === 'files'} />
           </div>
           <div className="workspace-page" hidden={route !== 'calendar'}>
             <CalendarPanel key={importRevision} />

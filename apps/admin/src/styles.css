@@ -1569,3 +1569,89 @@ summary {
     width: 100%;
   }
 }
+
+/* H035: Dateien. The scroll container stays inside the page so the body never
+   scrolls sideways, even with the widest table at 320 px. */
+.files-subtitle {
+  color: var(--muted);
+  max-width: 70ch;
+  margin: 0 0 1rem;
+}
+.files-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+.files-filters label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.files-filters select,
+.files-filters input {
+  min-height: 44px;
+  padding: 0 0.5rem;
+  color: var(--ink);
+  background: var(--field-surface);
+  border: 1px solid var(--field-border);
+  border-radius: 0.375rem;
+}
+.files-filters .icon-action {
+  min-width: 44px;
+  min-height: 44px;
+}
+.files-table-shell {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+.files-table {
+  width: 100%;
+  min-width: 40rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.files-table caption {
+  text-align: left;
+}
+.files-table th,
+.files-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.files-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.files-table tbody th {
+  font-weight: 600;
+}
+.files-table .numeric {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.files-table .muted {
+  color: var(--muted);
+}
+.files-pager {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.files-pager .icon-action {
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (max-width: 900px) {
+  .files-table {
+    min-width: 32rem;
+  }
+}

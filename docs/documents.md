@@ -67,7 +67,7 @@ Containerbenutzer gehörend an, damit ein frisches Volume nicht root gehört.
 |---|---|---|
 | `POST /api/v1/documents` | `201` Dokument | `400` ungültige Positionen/Vorlage, `404` fremde Referenz |
 | `POST /api/v1/documents/:id/finalize` | `200` finales Dokument | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler |
-| `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`) | `400` ungültiger Filter |
+| `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`, optional `from`/`to`, `limit`, `offset`, `include=metadata`) | `400` ungültiger Filter |
 | `GET /api/v1/documents/:id` | `200` Dokument | `404` |
 | `GET /api/v1/documents/:id/pdf` | `200` PDF (`application/pdf`) | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler |
 | `PUT /api/v1/document-layout/logo` | `200` Layout mit Logo | `400` falsche Bildbytes, `404` kein Layout, `413` zu groß, `415` fremder Typ |
@@ -89,6 +89,37 @@ alte Datei entfernt. Beim Finalisieren liest der Dokumentdienst das Logo und
 bettet es als `data:`-URI in das HTML ein, damit die PDF ohne externe Quelle
 deterministisch bleibt. Fehlt ein eingetragenes Logo, bricht das Finalisieren
 mit `missing_reference` ab, statt still ohne Marke zu drucken.
+
+## Liste: Filter, Seiten und Metadaten (H035)
+
+Alle neuen Parameter sind optional. Ohne `limit`, `offset` und `include` bleibt
+der Abruf unverändert: ein Array mit genau den bisherigen Feldern, ohne
+Pagination, neueste zuerst (`issued_at` absteigend, dann `id` absteigend).
+
+- `from`/`to` (`YYYY-MM-DD`, echte Kalendertage) filtern `issued_at` über
+  inklusive Tage in der Zeitzone des Mandanten. Die Obergrenze ist der nächste
+  lokale Mitternachtspunkt (halboffen), damit 23- und 25-Stunden-Tage der
+  Zeitumstellung exakt bleiben. `from > to` ist `400`.
+- `limit` ist eine Obergrenze von 1 bis 100 und liefert höchstens genau so
+  viele Zeilen; `offset` ist ≥ 0. Beide sind Integer, sonst `400`. Ohne `limit`
+  wird nichts abgeschnitten. Eine Gesamtzahl gibt es bewusst nicht; einen
+  „es gibt mehr“-Hinweis leitet die Oberfläche aus einer zusätzlich
+  angeforderten Zeile ab.
+- `include=metadata` ergänzt je Zeile `eventName` (mandantengebundener
+  Left Join, nie eine Abfrage pro Zeile), `issuedDate` (dasselbe `issued_at`
+  als lokales `YYYY-MM-DD`) und `pdfAvailable`. `pdfAvailable` folgt exakt der
+  PDF-Route: `final` **und** Nummer **und** pdf-Hash. Hashes, Snapshot-HTML und
+  Ablageschlüssel verlassen den Server nicht.
+- `issued_at` ist das Dokumentdatum (Entwurf: Anlagezeitpunkt, final:
+  Ausgabezeitpunkt). Ein `created_at` existiert nicht, deshalb filtern und
+  sortieren Liste und Oberfläche ausschließlich über dieses Feld.
+
+Die Oberfläche unter „Dateien“ (`#files`) nutzt die Projektion, zeigt Art und
+Nummer, Datum, Eventname, Status und den exakten Bruttobetrag. Eine PDF wird
+nur für `pdfAvailable` verlinkt und erst beim Klick geladen; Entwürfe verweisen
+auf ihr Event. Es gibt keinen Upload, keinen Portalstatus und keine
+Gesamtsumme. Hochgeladene Dateien, Standarddateien und Eventdateien bleiben
+offen und brauchen eine eigene Ablage samt Prüfung.
 
 ## Oberfläche
 

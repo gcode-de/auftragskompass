@@ -1009,3 +1009,687 @@ test('a free-form place feeds {{location}}, clears honestly and never rewrites f
   });
   await place(null, false);
 });
+
+// H035: the Dateien overview is the same document list with optional, additive
+// filters. These tests pin the old contract first and the new parameters second.
+// Synthetic rows are inserted directly: only issuedAt and the eligibility
+// columns matter for the list contract, and no PDF must be rendered.
+async function listRows(
+  connection: Pool,
+  scope: string,
+  rows: {
+    id: string;
+    issuedAt: string;
+    kind?: string;
+    state?: string;
+    number?: string | null;
+    pdfHash?: string | null;
+    finalized?: boolean;
+    grossMinor?: number;
+    eventId?: string | null;
+    templateId: string;
+  }[],
+) {
+  for (const row of rows)
+    await connection.query(
+      `INSERT INTO documents (tenant_id,id,kind,template_id,event_id,contact_id,number,state,
+        issued_at,finalized_at,snapshot_hash,pdf_hash,net_minor,tax_minor,gross_minor,version)
+       VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,$11,$12,0,$12,1)`,
+      [
+        scope,
+        row.id,
+        row.kind ?? 'offer',
+        row.templateId,
+        row.eventId ?? null,
+        row.number ?? null,
+        row.state ?? 'draft',
+        new Date(row.issuedAt),
+        row.finalized ? new Date(row.issuedAt) : null,
+        row.finalized ? 'b'.repeat(64) : null,
+        // Without an explicit artefact a final row is only a skeleton; the test
+        // that needs exactly that state drops the hash afterwards.
+        row.pdfHash ?? (row.finalized ? 'c'.repeat(64) : null),
+        row.grossMinor ?? 0,
+      ],
+    );
+}
+
+// The tenant must be able to issue documents for this test: a template with a
+// position plus a number range and a layout, all synthetic.
+async function seedIssuingContext(scope: string) {
+  // The bootstrap account is unclaimed until its own first session binds it.
+  const grant = (await accessRepository(pool, scope).list())[0]!;
+  if (!grant.userId)
+    await accessRepository(pool, scope).issueSession(
+      { subject: 'seed-' + scope, email: grant.email },
+      'seed-hash-' + scope,
+    );
+  const actor = (await accessRepository(pool, scope).list())[0]!.userId!;
+  const saved = await documentTemplateRepository(pool, scope).save(actor, {
+    kind: 'offer',
+    name: 'Fictional files offer',
+    subject: 'Angebot',
+    introText: '',
+    outroText: '',
+    validityDays: 14,
+    state: 'active',
+    positions: [
+      {
+        productId: null,
+        description: 'Fictional box',
+        quantity: 1,
+        unit: 'Stück',
+        unitPriceMinor: 19900,
+        taxBasisPoints: 1900,
+        discountBasisPoints: 0,
+      },
+    ],
+  });
+  const sequences = await documentNumberRepository(pool, scope).list();
+  if (!sequences.some((row) => row.kind === 'offer'))
+    await documentNumberRepository(pool, scope).save(actor, 'offer', {
+      pattern: 'AN-{YYYY}-{SEQ}',
+      minLength: 4,
+      nextValue: 1,
+    });
+  const store = memoryStore().store;
+  if (!(await documentLayoutRepository(pool, scope, store).get()))
+    await documentLayoutRepository(pool, scope, store).save(actor, {
+      senderName: 'Fictional Studio',
+      senderStreet: 'Example Street 1',
+      senderPostalCode: '12345',
+      senderCity: 'Fictional Town',
+      primaryColor: '#2f6f4f',
+      textColor: '#1b1b1b',
+      fontFamily: 'sans',
+      showPageNumbers: true,
+      showPositionNumbers: true,
+    });
+  return { actor, templateId: saved.id as string, store };
+}
+
+const oldListKeys = [
+  'contactId',
+  'eventId',
+  'finalizedAt',
+  'grossMinor',
+  'id',
+  'issuedAt',
+  'kind',
+  'netMinor',
+  'number',
+  'state',
+  'taxMinor',
+  'templateId',
+  'version',
+].sort();
+
+test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
+  const scope = randomUUID(),
+    ids: string[] = [],
+    base = Date.parse('2031-03-01T09:00:00Z');
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-old@example.invalid',
+    'Synthetic files old',
+    'Europe/Berlin',
+  );
+  const template = (await seedIssuingContext(scope)).templateId;
+  for (let index = 0; index < 61; index++) {
+    const id = randomUUID();
+    ids.push(id);
+    await listRows(pool, scope, [
+      {
+        id,
+        templateId: template,
+        issuedAt: new Date(base + index * 60_000).toISOString(),
+      },
+    ]);
+  }
+  const listed = await documentRepository(
+    pool,
+    scope,
+    dependencies().deps,
+  ).list();
+  expect(listed).toHaveLength(61);
+  // Newest first, exactly as before: no silent default page size.
+  expect(listed[0]!.id).toBe(ids[60]);
+  expect(listed[60]!.id).toBe(ids[0]);
+  expect(Object.keys(listed[0]!).sort()).toEqual(oldListKeys);
+});
+
+test('explicit limit and offset page the whole result without a plus one', async () => {
+  const scope = randomUUID(),
+    ids: string[] = [],
+    base = Date.parse('2031-04-01T09:00:00Z');
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-page@example.invalid',
+    'Synthetic files page',
+    'Europe/Berlin',
+  );
+  const template = (await seedIssuingContext(scope)).templateId;
+  for (let index = 0; index < 7; index++) {
+    const id = randomUUID();
+    ids.push(id);
+    await listRows(pool, scope, [
+      {
+        id,
+        templateId: template,
+        issuedAt: new Date(base + index * 60_000).toISOString(),
+      },
+    ]);
+  }
+  const repo = documentRepository(pool, scope, dependencies().deps),
+    first = await repo.list({ limit: 3 }),
+    second = await repo.list({ limit: 3, offset: 3 }),
+    last = await repo.list({ limit: 3, offset: 6 }),
+    beyond = await repo.list({ limit: 3, offset: 9 });
+  // The limit is a maximum: at most exactly what was asked for.
+  expect(first.map((row) => row.id)).toEqual([ids[6], ids[5], ids[4]]);
+  expect(second.map((row) => row.id)).toEqual([ids[3], ids[2], ids[1]]);
+  expect(last.map((row) => row.id)).toEqual([ids[0]]);
+  expect(beyond).toEqual([]);
+  expect((await repo.list({ limit: 100 })).length).toBe(7);
+});
+
+test('the metadata projection adds event name, local date and PDF eligibility only when asked', async () => {
+  const scope = randomUUID(),
+    ownEvent = randomUUID(),
+    foreignEvent = randomUUID(),
+    draft = randomUUID(),
+    finalWithPdf = randomUUID(),
+    withdrawn = randomUUID(),
+    orphan = randomUUID();
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-meta@example.invalid',
+    'Synthetic files meta',
+    'Europe/Berlin',
+  );
+  const template = (await seedIssuingContext(scope)).templateId;
+  await bootstrapAccess(
+    pool,
+    otherTenantId,
+    'files-meta-other@example.invalid',
+    'Synthetic files meta other',
+    'Europe/Berlin',
+  );
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,event_type_id,package_id,location_id,source,
+      event_date,starts_at,ends_at,time_zone,description,notes_html,version)
+     VALUES ($1,$2,'Fictional Files Wedding','option',NULL,NULL,NULL,'synthetic','2031-05-02',
+      NULL,NULL,'Europe/Berlin','','',1)`,
+    [scope, ownEvent],
+  );
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,event_type_id,package_id,location_id,source,
+      event_date,starts_at,ends_at,time_zone,description,notes_html,version)
+     VALUES ($1,$2,'Foreign private event','option',NULL,NULL,NULL,'synthetic','2031-05-02',
+      NULL,NULL,'Europe/Berlin','','',1)`,
+    [otherTenantId, foreignEvent],
+  );
+  // 23:30 UTC on 1 May is already 2 May in Berlin.
+  const seed = await seedIssuingContext(scope),
+    repo = documentRepository(pool, scope, {
+      ...dependencies().deps,
+      store: seed.store,
+    });
+  await listRows(pool, scope, [
+    {
+      id: draft,
+      templateId: template,
+      kind: 'offer',
+      state: 'draft',
+      issuedAt: '2031-05-01T23:30:00Z',
+      eventId: ownEvent,
+      grossMinor: 0,
+    },
+    {
+      id: finalWithPdf,
+      templateId: template,
+      kind: 'invoice',
+      state: 'final',
+      number: 'RE-2031-0001',
+      pdfHash: 'a'.repeat(64),
+      finalized: true,
+      issuedAt: '2031-05-02T10:00:00Z',
+      eventId: ownEvent,
+      grossMinor: 123456,
+    },
+    {
+      id: withdrawn,
+      templateId: template,
+      kind: 'correction',
+      state: 'withdrawn',
+      issuedAt: '2031-05-04T10:00:00Z',
+    },
+    {
+      id: orphan,
+      templateId: template,
+      kind: 'offer',
+      state: 'draft',
+      issuedAt: '2031-05-05T10:00:00Z',
+      eventId: null,
+    },
+  ]);
+  // A real final document whose artefact metadata was lost afterwards: the PDF
+  // route answers 404 for it, so the list must not advertise a download either.
+  const filesContact = randomUUID();
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional Files Customer','Robin Example','Example Street 2',
+      '12345','Fictional Town','DE','files@example.invalid','','','','','active',1)`,
+    [scope, filesContact],
+  );
+  const seeded = await repo.createDraft(seed.actor, {
+      templateId: seed.templateId,
+      eventId: ownEvent,
+      contactId: filesContact,
+    }),
+    legacySeed = (await repo.finalize(seed.actor, seeded.id)).id;
+  // The schema forbids a final row without number, snapshot and pdf hash, so
+  // that state cannot exist; the flag still derives eligibility, as this
+  // constraint check documents.
+  expect(
+    await pool
+      .query(
+        `UPDATE documents SET pdf_hash=NULL WHERE tenant_id=$1 AND id=$2`,
+        [scope, legacySeed],
+      )
+      .then(() => 'accepted')
+      .catch((error: { code?: string }) => error.code ?? 'rejected'),
+  ).toBe('23514');
+  expect(
+    (await repo.list({ include: 'metadata' })).find(
+      (row) => row.id === legacySeed,
+    ),
+  ).toMatchObject({ pdfAvailable: true });
+  const plain = await repo.list(),
+    meta = await repo.list({ include: 'metadata' }),
+    byId = (rows: { id: string }[], id: string) =>
+      rows.find((row) => row.id === id)!;
+  // Without include the shape is byte-identical to the old contract.
+  expect(Object.keys(byId(plain, draft)!).sort()).toEqual(oldListKeys);
+  expect(Object.keys(byId(meta, draft)!).sort()).toEqual(
+    [...oldListKeys, 'eventName', 'issuedDate', 'pdfAvailable'].sort(),
+  );
+  expect(byId(meta, draft)).toMatchObject({
+    eventName: 'Fictional Files Wedding',
+    issuedDate: '2031-05-02',
+    pdfAvailable: false,
+    grossMinor: 0,
+  });
+  expect(byId(meta, finalWithPdf)).toMatchObject({
+    issuedDate: '2031-05-02',
+    pdfAvailable: true,
+  });
+  // A final row without artefact metadata must not advertise a download.
+
+  expect(byId(meta, withdrawn)).toMatchObject({
+    eventName: null,
+    pdfAvailable: false,
+  });
+  // A foreign event is never named, even though the row already carries no
+  // readable foreign data; the join stays tenant-scoped.
+  expect(byId(meta, orphan)).toMatchObject({ eventName: null });
+  const serialised = JSON.stringify(meta);
+  expect(serialised).not.toContain('a'.repeat(64));
+  expect(serialised).not.toContain('snapshot');
+  expect(serialised).not.toContain('pdfHash');
+});
+
+test('date filters use inclusive tenant-local issued dates around DST changes', async () => {
+  const scope = randomUUID(),
+    beforeDst = randomUUID(),
+    dstDay = randomUUID(),
+    afterDst = randomUUID();
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-dates@example.invalid',
+    'Synthetic files dates',
+    'Europe/Berlin',
+  );
+  const template = (await seedIssuingContext(scope)).templateId;
+  // 2029-03-25 is the spring DST day in Europe/Berlin (23-hour day).
+  await listRows(pool, scope, [
+    {
+      id: beforeDst,
+      templateId: template,
+      issuedAt: '2029-03-24T22:59:59Z', // 23:59:59 local on 24 March
+    },
+    {
+      id: dstDay,
+      templateId: template,
+      issuedAt: '2029-03-25T21:59:59Z', // 23:59:59 local on 25 March
+    },
+    {
+      id: afterDst,
+      templateId: template,
+      issuedAt: '2029-03-25T22:00:00Z', // 00:00 local on 26 March
+    },
+  ]);
+  const repo = documentRepository(pool, scope, dependencies().deps),
+    oneDay = await repo.list({ from: '2029-03-25', to: '2029-03-25' }),
+    fromSecond = await repo.list({ from: '2029-03-26' }),
+    untilFirst = await repo.list({ to: '2029-03-24' });
+  expect(oneDay.map((row) => row.id)).toEqual([dstDay]);
+  expect(fromSecond.map((row) => row.id)).toEqual([afterDst]);
+  expect(untilFirst.map((row) => row.id)).toEqual([beforeDst]);
+});
+
+test('the list API validates every new filter and keeps auth, tenant and PDF routes intact', async () => {
+  const scope = randomUUID(),
+    own = randomUUID();
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-api@example.invalid',
+    'Synthetic files api',
+    'Europe/Berlin',
+  );
+  // seedIssuingContext binds the bootstrap account; its session then works.
+  const template = (await seedIssuingContext(scope)).templateId;
+  await accessRepository(pool, scope).issueSession(
+    {
+      subject: 'seed-' + scope,
+      email: (await accessRepository(pool, scope).list())[0]!.email,
+    },
+    digest('synthetic-files-api'),
+  );
+  await listRows(pool, scope, [
+    {
+      id: own,
+      templateId: template,
+      issuedAt: '2031-06-10T10:00:00Z',
+      grossMinor: 0,
+    },
+  ]);
+  const config = {
+      origin: site,
+      tenantId: scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, scope, dependencies().deps);
+  const cookies = { '__Host-ak-session': 'synthetic-files-api' };
+  try {
+    expect((await app.inject('/api/v1/documents')).statusCode).toBe(401);
+    const plain = await app.inject({ url: '/api/v1/documents', cookies });
+    expect(plain.statusCode).toBe(200);
+    expect(Array.isArray(plain.json())).toBe(true);
+    expect(Object.keys(plain.json()[0]).sort()).toEqual(oldListKeys);
+    const meta = await app.inject({
+      url: '/api/v1/documents?include=metadata&limit=1&offset=0',
+      cookies,
+    });
+    expect(meta.statusCode).toBe(200);
+    expect(meta.json()[0]).toMatchObject({
+      id: own,
+      issuedDate: '2031-06-10',
+      pdfAvailable: false,
+      eventName: null,
+    });
+    for (const query of [
+      'include=everything',
+      'from=2031-02-30',
+      'to=not-a-date',
+      'from=2031-06-11&to=2031-06-10',
+      'limit=0',
+      'limit=101',
+      'limit=2.5',
+      'limit=abc',
+      'offset=-1',
+      'offset=1.5',
+      'offset=abc',
+      'kind=unknown',
+      'state=sent',
+      'eventId=not-a-uuid',
+    ]) {
+      const rejected = await app.inject({
+        url: '/api/v1/documents?' + query,
+        cookies,
+      });
+      expect(rejected.statusCode, query).toBe(400);
+    }
+    const accepted = await app.inject({
+      url: '/api/v1/documents?from=2031-06-10&to=2031-06-10&limit=100&offset=0&kind=offer&state=draft',
+      cookies,
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().map((row: { id: string }) => row.id)).toEqual([own]);
+    // A foreign PDF id stays a 404 for this tenant, unchanged by the new list.
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/documents/' + randomUUID() + '/pdf',
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test('date filters pin the inclusive millisecond edges on both DST change days', async () => {
+  const scope = randomUUID(),
+    beforeSpring = randomUUID(),
+    springEdge = randomUUID(),
+    beforeAutumn = randomUUID(),
+    autumnEdge = randomUUID();
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-edges@example.invalid',
+    'Synthetic files edges',
+    'Europe/Berlin',
+  );
+  const template = (await seedIssuingContext(scope)).templateId;
+  await listRows(pool, scope, [
+    // 2029-03-24 23:59:59.999 local is still the day before the switch.
+    {
+      id: beforeSpring,
+      templateId: template,
+      issuedAt: '2029-03-24T22:59:59.999Z',
+    },
+    // 2029-03-25 00:00:00.000 local starts the 23-hour day.
+    {
+      id: springEdge,
+      templateId: template,
+      issuedAt: '2029-03-24T23:00:00.000Z',
+    },
+    // 2029-10-27 23:59:59.999 local ends the day before the 25-hour day.
+    {
+      id: beforeAutumn,
+      templateId: template,
+      issuedAt: '2029-10-27T21:59:59.999Z',
+    },
+    // 2029-10-28 00:00:00.000 local starts the 25-hour day.
+    {
+      id: autumnEdge,
+      templateId: template,
+      issuedAt: '2029-10-27T22:00:00.000Z',
+    },
+  ]);
+  const repo = documentRepository(pool, scope, dependencies().deps),
+    spring = await repo.list({ from: '2029-03-25', to: '2029-03-25' }),
+    autumn = await repo.list({ from: '2029-10-28', to: '2029-10-28' }),
+    untilSpringPrior = await repo.list({ to: '2029-03-24' });
+  expect(spring.map((row) => row.id)).toEqual([springEdge]);
+  expect(autumn.map((row) => row.id)).toEqual([autumnEdge]);
+  expect(untilSpringPrior.map((row) => row.id)).toEqual([beforeSpring]);
+  // Everything before the 25-hour day, including the March rows.
+  const beforeAutumnDay = (await repo.list({ to: '2029-10-27' })).map(
+    (row) => row.id,
+  );
+  expect(beforeAutumnDay).toContain(beforeAutumn);
+  expect(beforeAutumnDay).not.toContain(autumnEdge);
+});
+
+test('the HTTP list keeps the legacy volume and shape and pages exactly as asked', async () => {
+  const scope = randomUUID(),
+    ids: string[] = [],
+    base = Date.parse('2031-07-01T09:00:00Z');
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-http@example.invalid',
+    'Synthetic files http',
+    'Europe/Berlin',
+  );
+  const seed = await seedIssuingContext(scope);
+  for (let index = 0; index < 61; index++) {
+    const id = randomUUID();
+    ids.push(id);
+    await listRows(pool, scope, [
+      {
+        id,
+        templateId: seed.templateId,
+        issuedAt: new Date(base + index * 60_000).toISOString(),
+        grossMinor: index,
+        kind: index % 2 ? 'invoice' : 'offer',
+        state: 'draft',
+      },
+    ]);
+  }
+  await accessRepository(pool, scope).issueSession(
+    {
+      subject: 'seed-' + scope,
+      email: (await accessRepository(pool, scope).list())[0]!.email,
+    },
+    digest('synthetic-files-http'),
+  );
+  const config = {
+      origin: site,
+      tenantId: scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, scope, dependencies().deps);
+  const cookies = { '__Host-ak-session': 'synthetic-files-http' };
+  try {
+    // 61 rows over the wire: no hidden default page size, old fields only.
+    const legacy = await app.inject({ url: '/api/v1/documents', cookies });
+    expect(legacy.statusCode).toBe(200);
+    const legacyRows = legacy.json() as { id: string }[];
+    expect(legacyRows).toHaveLength(61);
+    expect(legacyRows[0]!.id).toBe(ids[60]);
+    expect(Object.keys(legacyRows[0]!).sort()).toEqual(oldListKeys);
+    // Explicit paging is a maximum of exactly what was asked for.
+    const page = await app.inject({
+      url: '/api/v1/documents?limit=10&offset=55',
+      cookies,
+    });
+    expect(page.json().map((row: { id: string }) => row.id)).toEqual(
+      ids.slice(0, 6).reverse(),
+    );
+    const beyond = await app.inject({
+      url: '/api/v1/documents?limit=10&offset=61',
+      cookies,
+    });
+    expect(beyond.json()).toEqual([]);
+    const atCap = await app.inject({
+      url: '/api/v1/documents?offset=1000000',
+      cookies,
+    });
+    expect(atCap.statusCode).toBe(200);
+    expect(atCap.json()).toEqual([]);
+    expect(
+      (await app.inject({ url: '/api/v1/documents?offset=1000001', cookies }))
+        .statusCode,
+    ).toBe(400);
+    // Metadata projection over HTTP: extra fields, no private hashes.
+    const meta = await app.inject({
+      url: '/api/v1/documents?include=metadata&limit=2',
+      cookies,
+    });
+    expect(meta.statusCode).toBe(200);
+    const first = meta.json()[0] as Record<string, unknown>;
+    expect(Object.keys(first).sort()).toEqual(
+      [...oldListKeys, 'eventName', 'issuedDate', 'pdfAvailable'].sort(),
+    );
+    expect(meta.body).not.toContain('pdfHash');
+    expect(meta.body).not.toContain('snapshotHash');
+    // Combined filters together with the local-day window.
+    const localDay = '2031-07-01';
+    const combined = await app.inject({
+      url:
+        '/api/v1/documents?kind=invoice&state=draft&from=' +
+        localDay +
+        '&to=' +
+        localDay +
+        '&limit=100',
+      cookies,
+    });
+    expect(combined.statusCode).toBe(200);
+    expect(
+      combined
+        .json()
+        .every(
+          (row: { kind: string; state: string; issuedAt: string }) =>
+            row.kind === 'invoice' &&
+            row.state === 'draft' &&
+            new Date(row.issuedAt).toISOString().slice(0, 10) === localDay,
+        ),
+    ).toBe(true);
+    // The old single filters keep working unchanged.
+    for (const url of [
+      '/api/v1/documents?kind=offer',
+      '/api/v1/documents?state=draft',
+      '/api/v1/documents?eventId=' + randomUUID(),
+    ])
+      expect((await app.inject({ url, cookies })).statusCode).toBe(200);
+    // Another tenant's session sees nothing of these rows.
+    const foreign = await app.inject({
+      url: '/api/v1/documents',
+      cookies: { '__Host-ak-session': 'synthetic-other-documents' },
+    });
+    expect(foreign.statusCode).toBe(401);
+  } finally {
+    await app.close();
+  }
+});

@@ -5,6 +5,9 @@ const checks = new Set<DirtyCheck>();
 export const discardForHomeMessage =
   'Ungespeicherte Eingaben verwerfen und zur Eventübersicht wechseln?';
 
+export const discardForFilesMessage =
+  'Ungespeicherte Eingaben verwerfen und zu den Dateien wechseln?';
+
 export const discardForSearchMessage =
   'Ungespeicherte Eingaben verwerfen und zur Suche wechseln?';
 
