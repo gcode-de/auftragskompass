@@ -303,7 +303,9 @@ test('the Dateien area renders in the shell with exactly one page heading', asyn
       });
     if (url.startsWith('/api/v1/documents'))
       requested.push(url.replace(/^.*\/api\/v1\/documents/, ''));
-    if (url === '/api/v1/events')
+    // Any filtered variant of the event list must answer with the real shape,
+    // otherwise a refetch during navigation reads an array as the payload.
+    if (url === '/api/v1/events' || url.startsWith('/api/v1/events?'))
       return Response.json({ timeZone: 'Europe/Berlin', events: [] });
     if (url.startsWith('/api/')) return Response.json([]);
     return new Response(null, { status: 204 });
@@ -354,7 +356,9 @@ test('leaving a dirty event for Dateien asks first and keeps the draft when canc
         { code: 'option', label: 'Option', state: 'active' },
         { code: 'booked', label: 'Gebucht', state: 'active' },
       ]);
-    if (url === '/api/v1/events')
+    // Any filtered variant of the event list must answer with the real shape,
+    // otherwise a refetch during navigation reads an array as the payload.
+    if (url === '/api/v1/events' || url.startsWith('/api/v1/events?'))
       return Response.json({
         timeZone: 'Europe/Berlin',
         events: [
@@ -456,7 +460,9 @@ test('the Dateien guard also covers the mobile menu and never triggers on a new-
         { code: 'inquiry', label: 'Anfrage', state: 'active' },
         { code: 'option', label: 'Option', state: 'active' },
       ]);
-    if (url === '/api/v1/events')
+    // Any filtered variant of the event list must answer with the real shape,
+    // otherwise a refetch during navigation reads an array as the payload.
+    if (url === '/api/v1/events' || url.startsWith('/api/v1/events?'))
       return Response.json({
         timeZone: 'Europe/Berlin',
         events: [
