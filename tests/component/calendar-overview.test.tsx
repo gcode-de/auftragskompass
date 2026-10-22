@@ -370,6 +370,141 @@ test('the month grid uses the loaded view for columns after a failed change', as
   );
 });
 
+test('the month grid puts the weekday head before the leading pads and days', async () => {
+  stub(fixture());
+  render(<CalendarPanel />);
+  await findRange('Oktober 2030');
+  const grid = document.querySelector('.calendar-grid')!;
+  const children = Array.from(grid.children);
+  // 26 Oct 2030 is a Saturday, so the Monday-based offset is five pads.
+  const offset = (new Date('2030-10-26T12:00:00Z').getUTCDay() + 6) % 7;
+  expect(offset).toBe(5);
+  // DOM order matters, not the child count: a column-spanning head placed
+  // after the pads starts a row of its own and shifts day 1 back to Monday.
+  expect(children[0]!.className).toBe('calendar-weekday-head');
+  expect(children[0]!.querySelectorAll('ol > li')).toHaveLength(7);
+  expect(children[1]!.className).not.toBe('calendar-weekday-head');
+  const pads = children.slice(1, 1 + offset);
+  expect(pads).toHaveLength(offset);
+  expect(
+    pads.every(
+      (node) =>
+        node.tagName === 'LI' &&
+        node.getAttribute('aria-hidden') === 'true' &&
+        node.className === '',
+    ),
+  ).toBe(true);
+  const days = children.slice(1 + offset);
+  expect(days.map((node) => node.className)).toEqual([
+    'calendar-day',
+    'calendar-day',
+    'calendar-day',
+  ]);
+  expect(
+    days.map((node) => node.querySelector('time')!.getAttribute('datetime')),
+  ).toEqual(['2030-10-26', '2030-10-27', '2030-10-28']);
+  expect(
+    children.filter((node) => node.className === 'calendar-weekday-head'),
+  ).toHaveLength(1);
+});
+
+function monthGridOrder() {
+  const children = Array.from(
+    document.querySelector('.calendar-grid')!.children,
+  );
+  return {
+    first: children[0]!.className,
+    heads: children.filter((node) => node.className === 'calendar-weekday-head')
+      .length,
+    pads: children.filter(
+      (node) =>
+        node.tagName === 'LI' &&
+        node.getAttribute('aria-hidden') === 'true' &&
+        node.className === '',
+    ).length,
+    dayDates: children
+      .filter((node) => node.className === 'calendar-day')
+      .map((node) => node.querySelector('time')!.getAttribute('datetime')),
+  };
+}
+
+function expectHeadBeforePadsAndDays() {
+  const order = monthGridOrder();
+  expect(order.first).toBe('calendar-weekday-head');
+  expect(order.heads).toBe(1);
+  // The Monday-based offset is derived from the first rendered day itself.
+  expect(order.pads).toBe(
+    (new Date(order.dayDates[0]! + 'T12:00:00Z').getUTCDay() + 6) % 7,
+  );
+  expect(order.dayDates).toHaveLength(3);
+}
+
+test('the weekday head stays first after range navigation and a view switch', async () => {
+  const fetcher = stub(fixture());
+  render(<CalendarPanel />);
+  await findRange('Oktober 2030');
+  await vi.waitFor(() =>
+    expect(document.querySelector('time[datetime="2030-10-26"]')).toBeTruthy(),
+  );
+  expectHeadBeforePadsAndDays();
+  // Next month: the grid is rebuilt from new data and keeps its order.
+  fetcher.mockImplementation(async () =>
+    Response.json(
+      fixture({
+        date: '2030-11-26',
+        from: '2030-11-01',
+        to: '2030-11-30',
+        days: [26, 27, 28].map((day) => ({
+          date: `2030-11-${day}`,
+          startsAt: `2030-11-${day}T00:00:00.000Z`,
+          endsAt: `2030-11-${day}T23:00:00.000Z`,
+        })),
+      }),
+    ),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Nächster Zeitraum' }));
+  await vi.waitFor(() =>
+    expect(document.querySelector('time[datetime="2030-11-26"]')).toBeTruthy(),
+  );
+  expectHeadBeforePadsAndDays();
+  // And back again.
+  fetcher.mockImplementation(async () => Response.json(fixture()));
+  fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Zeitraum' }));
+  await vi.waitFor(() =>
+    expect(document.querySelector('time[datetime="2030-10-26"]')).toBeTruthy(),
+  );
+  expectHeadBeforePadsAndDays();
+  // A week round trip renders the month grid again with the same order.
+  fetcher.mockImplementation(async () =>
+    Response.json(
+      fixture({
+        view: 'week',
+        date: '2030-10-27',
+        from: '2030-10-26',
+        to: '2030-11-01',
+      }),
+    ),
+  );
+  fireEvent.change(screen.getByLabelText('Kalenderansicht'), {
+    target: { value: 'week' },
+  });
+  await vi.waitFor(() =>
+    expect(
+      document.querySelector('.calendar-events')!.getAttribute('data-view'),
+    ).toBe('week'),
+  );
+  fetcher.mockImplementation(async () => Response.json(fixture()));
+  fireEvent.change(screen.getByLabelText('Kalenderansicht'), {
+    target: { value: 'month' },
+  });
+  await vi.waitFor(() =>
+    expect(
+      document.querySelector('.calendar-events')!.getAttribute('data-view'),
+    ).toBe('month'),
+  );
+  expectHeadBeforePadsAndDays();
+});
+
 test('a multi-day booking is not re-dated to the later day cell', async () => {
   stub(
     fixture({

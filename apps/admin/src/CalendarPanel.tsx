@@ -366,6 +366,15 @@ export function CalendarPanel() {
             data-view={loadedView}
           >
             <ol className="calendar-grid">
+              {loadedView === 'month' && (
+                <li className="calendar-weekday-head" aria-hidden="true">
+                  <ol>
+                    {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((label) => (
+                      <li key={label}>{label}</li>
+                    ))}
+                  </ol>
+                </li>
+              )}
               {loadedView === 'month' &&
                 Array.from(
                   {
@@ -376,15 +385,6 @@ export function CalendarPanel() {
                   },
                   (_, index) => <li key={'pad-' + index} aria-hidden="true" />,
                 )}
-              {loadedView === 'month' && (
-                <li className="calendar-weekday-head" aria-hidden="true">
-                  <ol>
-                    {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((label) => (
-                      <li key={label}>{label}</li>
-                    ))}
-                  </ol>
-                </li>
-              )}
               {data.days.map((day) => {
                 const dayEvents = data.events.filter((event) =>
                   event.startsAt && event.endsAt

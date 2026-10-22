@@ -1,6 +1,6 @@
 # Tickets: Kalender, Navigation, Theme und Filter
 
-Alle Tickets **offen**. Gemeinsame Ausführung/Done: [Agentenregeln](agent-playbook.md), [Zielvertrag](design-contract.md). Pfade sind repository-relativ; Zeilen beziehen sich auf cf68f1e und sind vor Änderung zu verifizieren. Jede Aufgabe bekommt einen eigenen aktiven Slice im Implementierungsplan. Keine echten Daten für Screenshots verwenden.
+Alle Tickets bis auf **BKP001** sind **offen**; BKP001 ist am 22.10.2026 umgesetzt ([Implementierungsplan](../../IMPLEMENTATION_PLAN.md), Commit `fix: align month calendar days with weekday headings`). Gemeinsame Ausführung/Done: [Agentenregeln](agent-playbook.md), [Zielvertrag](design-contract.md). Pfade sind repository-relativ; Zeilen beziehen sich auf cf68f1e und sind vor Änderung zu verifizieren. Jede Aufgabe bekommt einen eigenen aktiven Slice im Implementierungsplan. Keine echten Daten für Screenshots verwenden.
 
 ## BKP001 — Monatskalender nach Wochentagen korrekt ausrichten
 
