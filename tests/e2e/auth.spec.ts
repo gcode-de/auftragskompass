@@ -761,6 +761,8 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await blocks
       .getByLabel('Sperrende', { exact: true })
       .fill('2030-11-11T18:00');
+    // H040: the block form takes local times only; no offset fields remain.
+    await expect(blocks.getByText(/UTC-Versatz/)).toHaveCount(0);
     await blocks
       .getByRole('button', { name: 'Zeitraum sperren', exact: true })
       .click();

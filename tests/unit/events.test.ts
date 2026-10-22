@@ -233,3 +233,38 @@ test('an unparsable original timestamp never rejects a valid wall clock', () => 
     savedAmbiguousChoice('2026-10-25T02:30', 'Europe/Berlin', 'broken'),
   ).toBe('');
 });
+
+test('resource block times resolve over a date change without reusing an offset', () => {
+  // Same helpers as the event form; blocks are only wall clocks plus a zone.
+  expect(
+    resolveEventTime('2026-11-10T10:00', 'Europe/Berlin', {
+      originalInstant: '2026-10-16T16:00:00Z',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-11-10T09:00:00Z' });
+  expect(
+    resolveEventTime('2026-07-16T10:00', 'Europe/Berlin', {
+      originalInstant: '2026-11-10T09:00:00Z',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-07-16T08:00:00Z' });
+  // A stored block in the repeated hour keeps its exact second-boundary
+  // instant and still preselects the saved occurrence for a deliberate switch.
+  expect(
+    resolveEventTime('2026-10-25T02:30:00', 'Europe/Berlin', {
+      originalInstant: '2026-10-25T00:30:00Z',
+    }),
+  ).toEqual({
+    kind: 'unique',
+    instant: '2026-10-25T00:30:00Z',
+    preserved: true,
+  });
+  expect(
+    savedAmbiguousChoice(
+      '2026-10-25T02:30:00',
+      'Europe/Berlin',
+      '2026-10-25T00:30:00Z',
+    ),
+  ).toBe('earlier');
+  expect(resolveLocalTime('2026-03-29T02:30', 'Europe/Berlin')).toEqual({
+    kind: 'nonexistent',
+  });
+});

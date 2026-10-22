@@ -131,7 +131,7 @@ Ein Nachtrag nach der unabhängigen Prüfung behebt zwei Befunde: Ein korrigiert
 
 Lokal grün: Format, Lint, Typen, Build, 187 Unit-, 197 Komponenten- und 237 Integrationstests, der Chromium-Passwort- und -Google-Ablauf, Coverage 97,68 % Zeilen und 94,57 % Zweige (`ResourceAssignments.tsx` 100 % Zeilen und 93,8 % Zweige, `EventTimeField.tsx` 100 % Zeilen und 89,7 % Zweige). Die tatsächliche DOM-Geometrie wurde mit dem gebauten Admin-Bundle und erfundenen Daten in Chromium gemessen: bei 1280 px stehen Datum, Beginn und Ende in einer Zeile, bei 390 px gestapelt, jeweils ohne horizontalen Überlauf; „Erweitert“ öffnet über den echten Summary-Klick. **Kein Testbetriebs-Update, kein Deployment, kein Merge nach `main`.**
 
-Offen und bewusst nicht in diesem Slice: die manuellen UTC-Versatzfelder der zeitweisen Ressourcensperren (`ResourceBlocks.tsx`) und eine eigene Führung für gleichzeitige 409-Konflikte in der Akte.
+Offen und bewusst nicht in diesem Slice: eine eigene Führung für gleichzeitige 409-Konflikte in der Akte. Die manuellen UTC-Versatzfelder der zeitweisen Ressourcensperren (`ResourceBlocks.tsx`) sind mit H040 erledigt: Der Bereich fragt nur lokale Sperrzeiten ab, löst den Versatz automatisch auf und behält gespeicherte Zeitpunkte exakt.
 
 ### Arbeitsnachtrag 20.10.2026 (H025: Härtung des Event-Editors nach der Prüfung)
 
@@ -139,7 +139,7 @@ Branch `codex/ux-event-simplification`. Der Slice behebt ausschließlich bestät
 
 Lokal grün: Format, Lint, Typen, Build, 187 Unit-, 187 Komponenten- und 237 Integrationstests, alle vier Chromium-Abläufe, Coverage 97,64 % Zeilen und 94,66 % Zweige. Der Chromium-Ablauf prüft die Schreibsperre des Datums und den Datumswechsel 16.10.→16.11. über den Beginn. **Kein Testbetriebs-Update, kein Deployment, kein Merge nach `main`.**
 
-Offen und bewusst nicht in diesem Slice: die UTC-Versatzfelder der Ressourcen- und Sperrdisposition (weiterhin manuelle Versätze; die Ressourcendisposition der Eventakte wurde in H026 ohne Versatzfelder umgesetzt, die zeitweisen Sperren bleiben offen) und eine eigene Führung für gleichzeitige 409-Konflikte in der Akte, die heute nur eine Meldung mit Aufforderung zum Neuladen erzeugt.
+Offen und bewusst nicht in diesem Slice: die UTC-Versatzfelder der Ressourcen- und Sperrdisposition, die H026/H040 inzwischen ohne Versatzfelder umgesetzt haben (Eventakte und zeitweise Sperren; done in H040), und eine eigene Führung für gleichzeitige 409-Konflikte in der Akte, die heute nur eine Meldung mit Aufforderung zum Neuladen erzeugt.
 
 ### Arbeitsnachtrag 20.10.2026 (H022: Zeitumstellung ohne UTC-Versatzfelder)
 
