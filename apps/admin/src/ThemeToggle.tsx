@@ -44,7 +44,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className="theme-toggle tertiary-action"
       aria-label={nextAction}
       title={nextAction}
       aria-pressed={theme === 'dark'}

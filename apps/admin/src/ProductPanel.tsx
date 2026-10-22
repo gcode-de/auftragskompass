@@ -166,10 +166,11 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               <option value="archived">Archiviert</option>
             </select>
           </label>
-          <button>Produkt speichern</button>
+          <button className="primary-action">Produkt speichern</button>
           {draft && (
             <button
               type="button"
+              className="tertiary-action"
               onClick={() => {
                 setDraft(null);
                 setEditing(false);
@@ -181,6 +182,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
         </fieldset>
       </form>
       <button
+        className="tertiary-action"
         disabled={busy}
         onClick={() =>
           void refresh().catch(() =>
@@ -200,6 +202,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               {row.state === 'archived' ? ' – Archiviert' : ''}
             </span>{' '}
             <button
+              className="secondary-action"
               disabled={busy}
               aria-label={`Produkt bearbeiten: ${row.name}`}
               onClick={() => {
@@ -210,6 +213,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               Bearbeiten
             </button>
             <button
+              className="secondary-action"
               disabled={busy}
               aria-label={`Produkt duplizieren: ${row.name}`}
               onClick={() => {

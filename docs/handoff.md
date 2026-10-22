@@ -51,6 +51,15 @@ Gefundener und behobener Fehler: Die erste Zeilenprüfung rief `String(entry.iss
 
 Lokal mit Node 24.15.0 (`pnpm --use-node-version=24.15.0`, Shell-Node ist v23.11.0) grün: Format, Lint, Typecheck, Build, Workspace- und Dokumentationsprüfung, 209 Unit-, 300 Komponenten- und 262 Integrationstests sowie 6/6 Chromium-Abläufe inklusive neuem Dateien-Schritt (Navigation, eine H1, Filter-Request mit `limit=26`, 44-px-Ziel, Tastaturfokus, PDF-Link ohne Vorabladen, kein Body-Überlauf bei 1280/390/320, axe-Audit). Coverage und Linux-CI folgen nach dem Commit; der macOS-`RLIMIT_FSIZE`-Backuptest bleibt unverändert lokal rot. **Kein Commit/Push/Deploy in Phase 1.**
 
+### Arbeitsnachtrag 22.10.2026 (H036 Phase 2: Prüfbefunde eingearbeitet)
+
+Die unabhängige Prüfung bestätigte Kontrast (0 Verstöße bei 840 gemessenen Bedienelementen, beide Themes), Fokus 3 px/3 px, 44 px, keine Layout-/Wortlaut-/Funktionsänderung und die H031-Icons. Sie fand eine echte Abdeckungslücke und zwei Testlücken; alle drei sind zuerst fehlschlagend, dann grün repariert:
+
+- `PasswordPanel` hatte gar keine Stufe („Passwort ändern“ ohne Klasse) — jetzt `.primary-action`. Ausdrücklich zu H036 gehören als gewöhnliche Flächen außerdem Import (`ImportPanel`/`ImportOverview`/`ImportPromiseReview`), Dokumentvorlagen und Nummernkreise.
+- Ein neuer Test rendert die **echte Hülle** (`AuthPanel`/`Navigation` mit den `[hidden]`-Workspace-Seiten) über alle 13 Routen und verlangt dort 0 oder 1 *sichtbare* primäre Aktion. Er deckte drei gleichzeitige „Speichern“ auf der Einstellungsseite auf: `MasterDataPanel` hat dafür ein optionales `primary`, die Nummernkreise tragen die primary am gerade bearbeiteten Kreis, Zeilen- und Such-Icons sind `tier-quiet-icon`.
+- Event-Details behält zwei primaries in getrennten Frames; geprüft wird je Frame ≤ 1 statt „genau 2 offene Frames“.
+- Die Zahl der Komponententests wächst auf 346 (17 davon in `action-hierarchy`). Vorbestehend und **nicht** H036: fokussierbare Bedienelemente in `[hidden]`-Seiten und der doppelte „Bearbeiten“-Knopf in Ressourcen — beides als eigene Scheibe führen.
+
 H037 ist mit `c744fd7` released (CI-Lauf 39569637148, quality und images success, CT114 per Auto-Updater auf gleicher Revision, alle drei Container healthy, öffentliche Seite 200). H032 (Website-Option) bleibt offen.
 
 
@@ -218,6 +227,18 @@ Lokale Basis auf dem bisherigen Rechner: `~/.codex/skills/`.
 | **design-taste-frontend-v1** | Lokal vorhandene Altversion, kein pauschaler Standard. Nur bei begründetem Bedarf an genau dieser Fassung. | `taste-skill-v1/SKILL.md` |
 
 Keine Skill-Texte unkontrolliert ins Repo kopieren. Auf anderem Rechner müssen diese Installationen gesondert verfügbar gemacht werden. Spezialisierte Review-/Documenter-Rollen waren zuletzt nicht verfügbar; Impeccable-Rollen wurden durch frische generische Ersatzagenten erfüllt und als solche dokumentiert. Agenten nicht grundsätzlich parallel starten, sondern nur gemäß aktuellen Benutzer-/Skill-/Agentenregeln.
+
+### Arbeitsnachtrag 22.10.2026 (H036: eine primäre Aktion je Fläche, Phase 1 ohne Commit)
+
+Branch `codex/ux-event-simplification`, Basis `c52e4ca`. Reine Darstellungs-Hierarchie im Admin-Bundle: kein Layout-, kein Positions-, kein Wortlaut- und kein Funktionswechsel, keine API-/Datenbank-/Auth-Änderung.
+
+`apps/admin/src/styles.css` hat jetzt einen kleinen gemeinsamen Satz statt „alle Knöpfe grün": `--action`/`--action-hover`/`--action-border` für die eine gefüllte Primäraktion, `--quiet-ink`/`--quiet-action-border` für Sekundär und Tertiär, dazu `.primary-action`, `.secondary-action`, `.tertiary-action`, `.nav-action` sowie die Icon-Modifikatoren `.tier-primary-icon` (einziges anlegenden Icon je Bereich) und `.tier-quiet-icon`. Die Stufen unterscheiden sich in Füllung, Rand **und** Schriftgewicht, nie nur in der Farbe; deaktivierte Aktionen haben Deckkraft plus gestrichelten Rand; `:focus-visible` bleibt 3 px bei 3 px Offset, und alle Stufen halten 44 px, auch die ruhigste.
+
+Angewendet auf Anmeldung/Abmelden/Theme, Events-Liste, -Filter und -Editor, Anlegen-Dialog, Event-Details, Ressourcenzuweisung, Sperren, Kalender, Kontakte inkl. Dialog, Dateien, Website-Eingänge, Angebote, Stammdaten, Ressourcen, Produkte, Kalender-Abos und Konto/Zugriff. H031s Icon-Aktionen bleiben unverändert benannt und ruhig; sie werden nur in denselben Satz einsortiert. Die Event-Detailflächen (Übersicht, Angebote, Ressourcen) behalten je eine eigene primäre Aktion, weil sie eigenständige Bereiche sind.
+
+Fail-first belegt: `tests/component/action-hierarchy.test.tsx` (12 Tests) lief zuerst komplett rot und prüft je Fläche genau eine primäre Aktion, benannte Stufen für jede sichtbare Aktion, Icon-Stufen, den Stylesheet-Vertrag (Tokenpaare, 44 px, Fokus, deaktiviert) und WCAG-AA-Kontrast in Hell und Dunkel. `tests/component/ui-language.test.tsx` bekam eine Mount-Reihenfolge-Härtung, weil die Grundlinie der Abrufzähler den abgeschlossenen Erstaufbau voraussetzt — ohne sie war der Test sporadisch rot, auf dem Basisstand nicht.
+
+Lokal mit Node 24.15.0 (`pnpm --use-node-version=24.15.0`, seriell): 227 Unit-, 341 Komponenten- (achtmal hintereinander stabil), Format, Lint, Typen, Build, Workspace- und Dokumentationsprüfung sowie alle sechs Chromium-Abläufe grün. Zusätzlich im echten Chromium gegen das gebaute Bundle mit synthetischen Antworten: 246 sichtbare Aktionen auf sechs angemeldeten Flächen in beiden Themen bei 1280/390/320 px ohne Kontrast- und ohne 44-px-Verstoß, ohne Body-Überlauf; die Anmeldeseite ebenso; Fokusrahmen 3 px/Offset 3 px in beiden Themen. Coverage, Linux-CI und Testbetrieb folgen nach dem Commit; der macOS-`RLIMIT_FSIZE`-Backuptest bleibt unverändert lokal rot. **Kein Commit/Push/Deploy in Phase 1.**
 
 ### Bestehende Gestaltungsgrundlage und Prüfgrenzen
 

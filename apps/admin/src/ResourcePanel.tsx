@@ -134,15 +134,20 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
             />
             Gesperrt
           </label>
-          <button>Ressource speichern</button>
+          <button className="primary-action">Ressource speichern</button>
           {editing && (
-            <button type="button" onClick={() => setEditing(null)}>
+            <button
+              type="button"
+              className="tertiary-action"
+              onClick={() => setEditing(null)}
+            >
               Abbrechen
             </button>
           )}
         </fieldset>
       </form>
       <button
+        className="tertiary-action"
         disabled={busy}
         onClick={() =>
           void refresh().catch(() =>
@@ -160,6 +165,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
             {row.blocked ? ' – Gesperrt' : ''}
             {row.state === 'archived' ? ' – Archiviert' : ''}{' '}
             <button
+              className="secondary-action"
               disabled={busy}
               aria-label={`Ressource bearbeiten: ${row.name}`}
               onClick={() => setEditing(row)}

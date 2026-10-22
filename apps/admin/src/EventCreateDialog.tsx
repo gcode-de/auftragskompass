@@ -300,7 +300,7 @@ export function EventCreateDialog({
           </div>
           <button
             type="button"
-            className="secondary-action event-create-close"
+            className="tertiary-action event-create-close"
             aria-label="Dialog schließen"
             title="Dialog schließen"
             disabled={busy}
@@ -526,7 +526,9 @@ export function EventCreateDialog({
               </p>
             )}
             <div className="event-create-footer">
-              <button>{busy ? 'Wird gespeichert …' : 'Event speichern'}</button>
+              <button className="primary-action">
+                {busy ? 'Wird gespeichert …' : 'Event speichern'}
+              </button>
             </div>
           </fieldset>
         </form>

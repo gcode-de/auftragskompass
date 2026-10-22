@@ -139,7 +139,7 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
             <input type="checkbox" name="internalLink" />
             Internen Eventlink aufnehmen
           </label>
-          <button>Abo erstellen</button>
+          <button className="primary-action">Abo erstellen</button>
         </fieldset>
       </form>
       {!busy && !feeds.length && <p>Keine aktiven Kalender-Abos.</p>}
@@ -152,6 +152,7 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
               : 'Alle Events'}{' '}
             · läuft nicht ab
             <button
+              className="tertiary-action"
               disabled={busy}
               onClick={() =>
                 void change(
@@ -169,6 +170,7 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
               Link erneuern
             </button>
             <button
+              className="secondary-action"
               disabled={busy}
               onClick={() => void change('DELETE', undefined, feed.id)}
             >
@@ -178,6 +180,7 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
         ))}
       </ul>
       <button
+        className="tertiary-action"
         disabled={busy}
         onClick={() => {
           setBusy(true);

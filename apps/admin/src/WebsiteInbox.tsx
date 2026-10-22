@@ -69,7 +69,7 @@ export function WebsiteInbox({
       </p>
       <button
         type="button"
-        className="secondary-action"
+        className="tertiary-action"
         disabled={loading}
         onClick={() => void load()}
       >
@@ -136,7 +136,7 @@ export function WebsiteInbox({
               <div className="form-actions">
                 <button
                   type="button"
-                  className="secondary-action"
+                  className="tertiary-action"
                   disabled={loading || page.offset === 0}
                   onClick={() =>
                     void load(Math.max(0, page.offset - page.limit))
@@ -146,7 +146,7 @@ export function WebsiteInbox({
                 </button>
                 <button
                   type="button"
-                  className="secondary-action"
+                  className="tertiary-action"
                   disabled={loading || page.offset + page.limit >= page.total}
                   onClick={() => void load(page.offset + page.limit)}
                 >
@@ -253,7 +253,7 @@ function InboxEntry({
           wiederverwendet, ohne das Land zu ändern.
         </p>
         {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={busy}>
+        <button type="submit" className="primary-action" disabled={busy}>
           {busy ? 'Wird übernommen …' : 'Als Option übernehmen'}
         </button>
       </form>

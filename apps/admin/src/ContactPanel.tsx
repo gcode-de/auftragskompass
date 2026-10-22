@@ -395,7 +395,7 @@ export function ContactPanel({
             />
           </label>
           <button
-            className="icon-action"
+            className="icon-action tier-quiet-icon"
             aria-label="Kontakte durchsuchen"
             title="Kontakte durchsuchen"
             disabled={busy}
@@ -414,13 +414,17 @@ export function ContactPanel({
           </button>
         </form>
         <div className="section-actions">
-          <a href="/api/v1/contacts/export.csv" download>
+          <a
+            className="secondary-action"
+            href="/api/v1/contacts/export.csv"
+            download
+          >
             Kontakte als CSV exportieren
           </a>
           <button
             ref={createTrigger}
             type="button"
-            className="icon-action"
+            className="icon-action tier-primary-icon"
             aria-label="Kontakt anlegen"
             title="Kontakt anlegen"
             disabled={busy}
@@ -472,7 +476,7 @@ export function ContactPanel({
             )}{' '}
             <button
               type="button"
-              className="icon-action"
+              className="icon-action tier-quiet-icon"
               disabled={busy}
               title="Events anzeigen"
               aria-label={`Events anzeigen: ${row.name}`}
@@ -492,7 +496,7 @@ export function ContactPanel({
             </button>
             <button
               type="button"
-              className="icon-action"
+              className="icon-action tier-quiet-icon"
               disabled={busy}
               title="Kontakt bearbeiten"
               aria-label={`Kontakt bearbeiten: ${row.name}`}
@@ -519,6 +523,7 @@ export function ContactPanel({
           <p role="status">{reloadFailureMessage}</p>
           <button
             type="button"
+            className="tertiary-action"
             disabled={busy}
             onClick={() => void retryList()}
           >
@@ -527,7 +532,12 @@ export function ContactPanel({
         </div>
       )}
       {!reloadFailed && loadFailed && (
-        <button type="button" disabled={busy} onClick={() => void retryList()}>
+        <button
+          type="button"
+          className="tertiary-action"
+          disabled={busy}
+          onClick={() => void retryList()}
+        >
           Kontakte erneut laden
         </button>
       )}
@@ -560,7 +570,7 @@ export function ContactPanel({
               <h3 id="contact-dialog-title">{title}</h3>
               <button
                 type="button"
-                className="secondary-action form-dialog-close"
+                className="tertiary-action form-dialog-close"
                 aria-label="Dialog schließen"
                 title="Dialog schließen"
                 disabled={busy}
@@ -652,7 +662,7 @@ export function ContactPanel({
                 >
                   Kontakt abbrechen
                 </button>
-                <button disabled={busy}>
+                <button className="primary-action" disabled={busy}>
                   {busy ? 'Wird gespeichert …' : 'Kontakt speichern'}
                 </button>
               </div>

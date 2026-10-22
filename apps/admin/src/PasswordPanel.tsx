@@ -103,7 +103,7 @@ export function PasswordPanel({
               onChange={(event) => setConfirmation(event.target.value)}
             />
           </label>
-          <button>Passwort ändern</button>
+          <button className="primary-action">Passwort ändern</button>
         </fieldset>
       </form>
       <p role="status">{message}</p>

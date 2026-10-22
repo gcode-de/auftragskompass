@@ -210,7 +210,7 @@ export function CalendarPanel() {
           </p>
           <button
             type="button"
-            className="secondary-action"
+            className="tertiary-action"
             disabled={loading}
             onClick={() => void refresh()}
           >
@@ -226,7 +226,7 @@ export function CalendarPanel() {
         >
           <button
             type="button"
-            className="icon-action"
+            className="icon-action tier-quiet-icon"
             aria-label="Vorheriger Zeitraum"
             title="Vorheriger Zeitraum"
             disabled={!data?.previousDate || (loading && !data)}
@@ -246,7 +246,7 @@ export function CalendarPanel() {
           </button>
           <button
             type="button"
-            className="icon-action"
+            className="icon-action tier-quiet-icon"
             aria-label="Heute im Kalender"
             title="Heute im Kalender"
             disabled={loading && !data}
@@ -269,7 +269,7 @@ export function CalendarPanel() {
           </button>
           <button
             type="button"
-            className="icon-action"
+            className="icon-action tier-quiet-icon"
             aria-label="Nächster Zeitraum"
             title="Nächster Zeitraum"
             disabled={!data?.nextDate || (loading && !data)}

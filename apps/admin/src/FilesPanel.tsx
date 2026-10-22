@@ -252,7 +252,7 @@ export function FilesPanel({
         </label>
         <button
           type="button"
-          className="icon-action"
+          className="icon-action tier-quiet-icon"
           aria-label="Filter zurücksetzen"
           title="Filter zurücksetzen"
           onClick={reset}
@@ -277,7 +277,7 @@ export function FilesPanel({
           </p>
           <button
             type="button"
-            className="secondary-action"
+            className="tertiary-action"
             onClick={() => void load()}
           >
             Dateien erneut laden
@@ -352,7 +352,7 @@ export function FilesPanel({
       <div className="files-pager">
         <button
           type="button"
-          className="icon-action"
+          className="icon-action tier-quiet-icon"
           aria-label="Vorherige Seite"
           title="Vorherige Seite"
           disabled={page === 0 || loading}
@@ -372,7 +372,7 @@ export function FilesPanel({
         <span aria-live="polite">Seite {page + 1}</span>
         <button
           type="button"
-          className="icon-action"
+          className="icon-action tier-quiet-icon"
           aria-label="Nächste Seite"
           title="Nächste Seite"
           disabled={!hasNext || loading}

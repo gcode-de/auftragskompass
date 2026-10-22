@@ -440,7 +440,7 @@ export function EventPanel({
           <div className="section-actions">
             <button
               ref={createTrigger}
-              className="icon-action"
+              className="icon-action tier-primary-icon"
               aria-label="Event anlegen"
               title="Event anlegen"
               disabled={busy || editing || Boolean(draft)}
@@ -554,9 +554,10 @@ export function EventPanel({
                 />
               </label>
               <p>Ohne Datum setzt die Datumsgrenzen zurück.</p>
-              <button>Events filtern</button>
+              <button className="secondary-action">Events filtern</button>
               <button
                 type="button"
+                className="tertiary-action"
                 onClick={() => updateUrlSearch(emptyEventFilters)}
               >
                 Eventfilter zurücksetzen
@@ -791,7 +792,7 @@ export function EventPanel({
                     </p>
                   </div>
                 </details>
-                <button>Event speichern</button>
+                <button className="primary-action">Event speichern</button>
                 {editing && draft?.id && (
                   <a className="secondary-action" href={'#event-' + draft.id}>
                     Ressourcen zuweisen
@@ -800,6 +801,7 @@ export function EventPanel({
                 {draft && (
                   <button
                     type="button"
+                    className="tertiary-action"
                     onClick={() => {
                       setDraft(null);
                       setEditing(false);
@@ -825,7 +827,7 @@ export function EventPanel({
           </p>
           <button
             type="button"
-            className="secondary-action"
+            className="tertiary-action"
             disabled={busy}
             onClick={() => {
               setReloadWarning(false);
@@ -846,7 +848,7 @@ export function EventPanel({
           </p>
           <button
             type="button"
-            className="secondary-action"
+            className="tertiary-action"
             disabled={busy || loading}
             onClick={() => void refresh().catch(() => {})}
           >
@@ -937,7 +939,7 @@ export function EventPanel({
                     <div className="event-actions">
                       <button
                         type="button"
-                        className="icon-action"
+                        className="icon-action tier-quiet-icon"
                         disabled={busy || editing}
                         aria-label={`Event duplizieren: ${row.name}`}
                         title="Event duplizieren"
@@ -1011,7 +1013,7 @@ export function EventPanel({
                       </button>
                       <button
                         type="button"
-                        className="icon-action"
+                        className="icon-action tier-quiet-icon"
                         disabled={busy}
                         aria-label={`Event bearbeiten: ${row.name}`}
                         title="Event bearbeiten"

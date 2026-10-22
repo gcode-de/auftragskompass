@@ -11,10 +11,14 @@ export function MasterDataPanel({
   kind,
   title,
   csrfToken,
+  primary = true,
 }: {
   kind: string;
   title: string;
   csrfToken: string;
+  /** H036: the settings entry stacks several catalogs, so only the first one
+   * carries that page's single dominant save action. */
+  primary?: boolean;
 }) {
   const [rows, setRows] = useState<Entry[]>([]),
     [draft, setDraft] = useState(empty);
@@ -113,10 +117,13 @@ export function MasterDataPanel({
             <option value="inactive">Inaktiv</option>
             <option value="archived">Archiviert</option>
           </select>
-          <button>Speichern</button>
+          <button className={primary ? 'primary-action' : 'secondary-action'}>
+            Speichern
+          </button>
           {editing && (
             <button
               type="button"
+              className="tertiary-action"
               onClick={() => {
                 setEditing(null);
                 setDraft(empty);
@@ -128,6 +135,7 @@ export function MasterDataPanel({
         </fieldset>
       </form>
       <button
+        className="tertiary-action"
         disabled={busy}
         onClick={() =>
           void refresh().catch(() =>
@@ -148,6 +156,7 @@ export function MasterDataPanel({
                 ? 'Inaktiv'
                 : 'Archiviert'}{' '}
             <button
+              className="secondary-action"
               disabled={busy}
               aria-label={`Bearbeiten: ${row.name}`}
               onClick={() => {
@@ -194,11 +203,13 @@ export function MasterDataSettings({ csrfToken }: { csrfToken: string }) {
         kind="package"
         title="Paketwerte"
         csrfToken={csrfToken}
+        primary={false}
       />
       <MasterDataPanel
         kind="cancellation_reason"
         title="Absagegründe"
         csrfToken={csrfToken}
+        primary={false}
       />
       <section aria-label="Auftragsstatus">
         <h2>Auftragsstatus</h2>

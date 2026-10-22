@@ -421,7 +421,7 @@ export function ResourceAssignments({
           </p>
           <button
             type="button"
-            className="secondary-action"
+            className="tertiary-action"
             disabled={busy}
             onClick={retryLoad}
           >
@@ -560,7 +560,11 @@ export function ResourceAssignments({
                   </li>
                 ))}
               </ul>
-              <button type="button" onClick={() => void preview(unit)}>
+              <button
+                type="button"
+                className="secondary-action"
+                onClick={() => void preview(unit)}
+              >
                 Verfügbarkeit prüfen: {label}
               </button>
               <details>
@@ -612,7 +616,10 @@ export function ResourceAssignments({
             </fieldset>
           );
         })}
-        <button disabled={busy || loading || !loaded}>
+        <button
+          className="primary-action"
+          disabled={busy || loading || !loaded}
+        >
           {importReview
             ? 'Geprüfte Bestandszusage übernehmen'
             : 'Zuweisung und Termin speichern'}

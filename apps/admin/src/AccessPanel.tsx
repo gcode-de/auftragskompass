@@ -94,7 +94,9 @@ export function AccessPanel({
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
-          <button disabled={busy}>Konto freigeben</button>
+          <button className="primary-action" disabled={busy}>
+            Konto freigeben
+          </button>
         </form>
       )}
       <p role="status">{message}</p>
@@ -110,6 +112,7 @@ export function AccessPanel({
                 : 'Gesperrt'}
             </span>{' '}
             <button
+              className="secondary-action"
               disabled={busy}
               aria-label={`${account.active ? 'Sperren' : 'Freigeben'}: ${account.email}`}
               onClick={() => void save(account.id, !account.active)}

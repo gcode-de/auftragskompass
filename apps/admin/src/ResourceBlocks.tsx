@@ -120,7 +120,7 @@ function BlockForm({
           instant={prefill?.endsAt ?? null}
           error={errorsByField.end}
         />
-        <button>Zeitraum sperren</button>
+        <button className="primary-action">Zeitraum sperren</button>
       </fieldset>
     </form>
   );
@@ -325,13 +325,19 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
             Sperre gespeichert, aber die Sperrliste konnte nicht neu geladen
             werden. Nicht erneut speichern.
           </p>
-          <button type="button" disabled={busy} onClick={retryLoad}>
+          <button
+            type="button"
+            className="tertiary-action"
+            disabled={busy}
+            onClick={retryLoad}
+          >
             Sperrliste erneut laden
           </button>
         </div>
       )}
       <button
         type="button"
+        className="tertiary-action"
         disabled={busy || loading}
         onClick={() => {
           setLoading(true);
@@ -379,6 +385,7 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
                   {block.state === 'released' ? 'Freigegeben' : 'Gesperrt'}{' '}
                   <button
                     type="button"
+                    className="tertiary-action"
                     disabled={busy || loading}
                     onClick={() => {
                       // Looking at a stored window never replaces the draft on its
@@ -402,6 +409,7 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
                   {block.state === 'blocked' && (
                     <button
                       type="button"
+                      className="secondary-action"
                       disabled={busy || loading}
                       onClick={() => void release(block.id)}
                     >

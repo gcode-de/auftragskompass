@@ -331,7 +331,9 @@ export function ImportPanel({
             }}
           />
         </label>
-        <button disabled={busy}>Importvorschau prüfen</button>
+        <button className="secondary-action" disabled={busy}>
+          Importvorschau prüfen
+        </button>
       </form>
       <fieldset disabled={busy}>
         <legend>Geprüfte Daten übernehmen</legend>
@@ -353,6 +355,7 @@ export function ImportPanel({
         </p>
         <button
           type="button"
+          className="secondary-action"
           disabled={!report?.valid}
           onClick={() => void run('dry_run')}
         >
@@ -370,6 +373,7 @@ export function ImportPanel({
         </label>
         <button
           type="button"
+          className="primary-action"
           disabled={!dryRunReady || !confirmed}
           onClick={() => void run('apply')}
         >
@@ -385,6 +389,7 @@ export function ImportPanel({
           </p>
           {conflict.candidates.map((candidate) => (
             <button
+              className="secondary-action"
               disabled={busy || !candidate.name}
               key={candidate.id}
               onClick={() => decide('bind', candidate)}
@@ -394,7 +399,11 @@ export function ImportPanel({
               {candidate.version})
             </button>
           ))}
-          <button disabled={busy} onClick={() => decide('create')}>
+          <button
+            className="secondary-action"
+            disabled={busy}
+            onClick={() => decide('create')}
+          >
             Bewusst eigenständig anlegen
           </button>
         </div>

@@ -366,6 +366,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               </label>
               <button
                 type="button"
+                className="secondary-action"
                 disabled={positions.length === 1}
                 onClick={() =>
                   setPositions((current) =>
@@ -379,16 +380,18 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           ))}
           <button
             type="button"
+            className="secondary-action"
             onClick={() =>
               setPositions((current) => [...current, emptyPosition()])
             }
           >
             Position hinzufügen
           </button>
-          <button>Vorlage speichern</button>
+          <button className="primary-action">Vorlage speichern</button>
           {draft && (
             <button
               type="button"
+              className="tertiary-action"
               onClick={() => {
                 setDraft(null);
                 setEditing(false);
@@ -410,6 +413,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               {row.state === 'archived' ? ' – Archiviert' : ''}
             </span>{' '}
             <button
+              className="secondary-action"
               disabled={busy}
               aria-label={`Vorlage bearbeiten: ${row.name}`}
               onClick={() => begin(row)}
@@ -417,6 +421,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               Bearbeiten
             </button>
             <button
+              className="secondary-action"
               disabled={busy}
               aria-label={`Vorlage duplizieren: ${row.name}`}
               onClick={() => begin(row, true)}
@@ -424,6 +429,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               Duplizieren
             </button>
             <button
+              className="tertiary-action"
               disabled={busy || row.state === 'archived'}
               aria-label={`Vorlage archivieren: ${row.name}`}
               onClick={() =>

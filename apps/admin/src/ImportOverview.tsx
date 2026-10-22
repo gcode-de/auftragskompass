@@ -107,7 +107,10 @@ export function ImportOverview({
       aria-label="Importbestand und Ressourcen-Prüfliste"
     >
       <h3>Importbestand und Ressourcen-Prüfliste</h3>
-      <button onClick={() => setRefresh((value) => value + 1)}>
+      <button
+        className="tertiary-action"
+        onClick={() => setRefresh((value) => value + 1)}
+      >
         Importbestand aktualisieren
       </button>
       <p role="status">{message}</p>
@@ -121,7 +124,9 @@ export function ImportOverview({
             Vor Produktivstart müssen alle zugesagten Boxen und Zubehörteile
             abgeglichen sein. Diese Liste bestätigt keine Ressourcen.
           </p>
-          <button onClick={download}>Privaten Prüfbericht herunterladen</button>
+          <button className="secondary-action" onClick={download}>
+            Privaten Prüfbericht herunterladen
+          </button>
           <p>
             Der Bericht enthält personenbezogene Daten. Im privaten
             Sicherungsbestand aufbewahren.

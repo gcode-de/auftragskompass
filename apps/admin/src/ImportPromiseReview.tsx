@@ -77,10 +77,14 @@ export function ImportPromiseReview({
   return (
     <section aria-label="Bestandszusage prüfen">
       <h4>Bestandszusage prüfen{detail ? ': ' + detail.event.name : ''}</h4>
-      <button disabled={busy} onClick={onClose}>
+      <button className="tertiary-action" disabled={busy} onClick={onClose}>
         Prüfung schließen
       </button>
-      <button disabled={busy} onClick={() => setRevision((value) => value + 1)}>
+      <button
+        className="tertiary-action"
+        disabled={busy}
+        onClick={() => setRevision((value) => value + 1)}
+      >
         Bestandszusage aktualisieren
       </button>
       <p role="status">{message}</p>
@@ -132,7 +136,11 @@ export function ImportPromiseReview({
                   Termin und Originalauftrag geprüft: nicht mehr operativ
                   übernehmen
                 </label>
-                <button disabled={!exclude} onClick={() => void excludePast()}>
+                <button
+                  className="secondary-action"
+                  disabled={!exclude}
+                  onClick={() => void excludePast()}
+                >
                   Vergangene Zusage mit Nachweis ausschließen
                 </button>
               </fieldset>

@@ -191,7 +191,7 @@ export function EventDocuments({
           </p>
           <button
             type="button"
-            className="secondary-action"
+            className="tertiary-action"
             disabled={busy !== ''}
             onClick={retryLoad}
           >
@@ -287,7 +287,7 @@ export function EventDocuments({
                   ))}
                 </select>
               </label>
-              <button>Entwurf anlegen</button>
+              <button className="primary-action">Entwurf anlegen</button>
             </fieldset>
           </form>
         </>

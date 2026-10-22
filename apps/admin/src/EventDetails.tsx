@@ -235,7 +235,7 @@ export function EventDetails({
       aria-label="Event-Details"
       aria-busy={loading}
     >
-      <button className="secondary-action" type="button" onClick={onClose}>
+      <button className="tertiary-action" type="button" onClick={onClose}>
         Event-Details schließen
       </button>
       <p role="status">{message}</p>
@@ -305,6 +305,7 @@ export function EventDetails({
               <button
                 key={value}
                 type="button"
+                className="nav-action"
                 aria-current={section === value ? 'location' : undefined}
                 onClick={() => {
                   setSection(value!);
@@ -373,12 +374,12 @@ export function EventDetails({
                     ))}
                   </select>
                 </label>
-                <button>Status speichern</button>
+                <button className="primary-action">Status speichern</button>
               </fieldset>
             </form>
             <button
               type="button"
-              className="icon-action"
+              className="icon-action tier-quiet-icon"
               aria-label={`Stammdaten bearbeiten: ${data.event.name}`}
               title="Event bearbeiten"
               disabled={busy || loading}

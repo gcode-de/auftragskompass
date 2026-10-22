@@ -455,7 +455,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
               />
               <button
                 type="submit"
-                className="icon-action"
+                className="icon-action tier-quiet-icon"
                 aria-label="Events und Kontakte suchen"
                 title="Events und Kontakte suchen"
               >
@@ -473,7 +473,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
               </button>
               <button
                 type="button"
-                className="icon-action"
+                className="icon-action tier-quiet-icon"
                 aria-label="Suche schließen"
                 title="Suche schließen"
                 onClick={closeSearch}
@@ -494,7 +494,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
             <button
               ref={searchTrigger}
               type="button"
-              className="search-shortcut icon-action"
+              className="search-shortcut icon-action tier-quiet-icon"
               aria-label="Suche öffnen"
               title="Suche öffnen"
               aria-expanded={false}

@@ -85,6 +85,18 @@ components:
     rounded: "{rounded.control}"
     padding: "0.6rem 1rem"
     typography: "{typography.button}"
+  button-secondary:
+    backgroundColor: "transparent"
+    textColor: "#134d3b / #b2e5cb"
+    border: "1px solid #9facbb / #738a7b"
+    rounded: "{rounded.control}"
+    padding: "0.6rem 1rem"
+  button-tertiary:
+    backgroundColor: "transparent"
+    textColor: "#134d3b / #b2e5cb"
+    border: "none"
+    rounded: "{rounded.control}"
+    padding: "0.6rem 1rem"
   button-primary-hover:
     backgroundColor: "{colors.action-hover}"
   button-account:
@@ -94,7 +106,8 @@ components:
     padding: "0.6rem 1rem"
   theme-toggle:
     backgroundColor: "transparent"
-    textColor: "{colors.accent}"
+    textColor: "#134d3b / #b2e5cb"
+    border: "1px solid #9facbb / #738a7b"
     rounded: "{rounded.control}"
     padding: "0.6rem 1rem"
   theme-toggle-pressed:
@@ -102,7 +115,7 @@ components:
     textColor: "{colors.selected-ink}"
   record-navigation:
     backgroundColor: "transparent"
-    textColor: "{colors.muted}"
+    textColor: "#134d3b / #b2e5cb"
     padding: "0 0 1rem"
   record-navigation-current:
     backgroundColor: "{colors.selected-surface}"
@@ -184,7 +197,7 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 - **Event-Details:** eigenständiger h2-Titel „Event: Name“ mit der Größe `record-heading` aus der Frontmatter, `margin-block: 1em` und `scroll-margin-top: 5rem`, programmatisch fokussierbar über `tabIndex=-1`. Unterbereiche einschließlich Ressourcenzuweisung verwenden h3; ihre bisherige Darstellung bleibt mit `1rem` und `margin-block: 1.33em` erhalten. Beim Öffnen erhält der Titel Fokus. Schließen führt zur auslösenden Eventzeile zurück; Bearbeiten öffnet das zentrale Eventformular und fokussiert das Namensfeld. Die Auswahl „Übersicht“, „Ressourcen“, „Notizen“, „Logbuch“ besteht aus gewöhnlichen Knöpfen in einer beschrifteten Navigation; `aria-current="location"` kennzeichnet den Bereich. Inaktive Bereiche bleiben mit `hidden` eingehängt, damit ungespeicherte Ressourceneingaben beim Bereichswechsel erhalten bleiben. Der ausgewählte Bereich bleibt bei Versionsaktualisierungen erhalten: Die Detailansicht behält ihre stabile Eventidentität und lädt Daten über `revision` nach. Die Navigation verwendet keine ARIA-Tabrollen. Inaktive Knöpfe sind transparent mit `muted`-Schrift; aktive und überfahrene Knöpfe nutzen `selected-surface` und `selected-ink`.
 - **Eventfilter und Editor:** native `<details>`/`<summary>` mit oberen und unteren `border`-Trennern und `1rem` Außenabstand. Summary ist mindestens `48px` hoch, mit Akzentschrift, Gewicht 600 und `0.75rem 0.25rem` Innenabstand. Filter sind bei vorhandenen Eventfiltern in der URL anfänglich geöffnet und tragen „Filter · aktiv“. Der Editor beginnt geschlossen. Bearbeiten oder Duplizieren öffnet ihn, scrollt zum Formular und fokussiert den Namen. Erfolgreiches Speichern oder ausdrückliches Abbrechen schließt ihn und fokussiert die Summary. Bloßes Einklappen erhält den Formularentwurf; Fehler lassen die Eingaben bestehen. Der Abbrechen-Knopf erscheint bei einem geladenen Bearbeitungs- oder Duplikatentwurf.
 - **Eventzeilen:** Monatsüberschrift `1.1rem`, Anzahl `0.8rem` mit Gewicht 400 und `muted`; erste Zeile mit Name, Datum und Status `1.05rem` mit Gewicht 650. Zweite Zeile, Zeitzone und Ressourcenhinweis verwenden `0.875rem` und `muted`. Aktionen stehen darunter mit `0.5rem` Abstand nach oben und rechts. Aktualisieren sowie Duplizieren/Bearbeiten verwenden transparente Sekundäraktionen mit Akzenttext und `hover-surface`. Die Zeilen erhalten keine eigenen Kartenflächen oder Schatten.
-- **Aktionen:** grüne Knöpfe, Gewicht 600; deaktiviert mit Deckkraft 0.65 und `not-allowed`. Die Abmeldung im Navigationsfuß ist transparent mit `sidebar-ink`-Schrift und `#779386`-Rand; beim Überfahren verwendet sie fest `#294c3e`. Allgemeiner Fokus: `3px solid var(--focus)`, Abstand `3px`.
+- **Aktionen (H036):** jede Fläche hat genau eine gefüllte `.primary-action`; `.secondary-action` bleibt transparent mit Rand und Gewicht 600, `.tertiary-action` ist randlos mit Gewicht 500 und Unterstreichung erst bei Hover; die Bereichsnavigation der Detailansicht ist `.nav-action`, ihr aktiver Eintrag zusätzlich fett mit Rand. Icon-Aktionen bleiben 44-px-Ziele und markieren mit `.tier-primary-icon` das einzige anlegende Icon eines Bereichs, mit `.tier-quiet-icon` Filter, Suche, Navigation und Zeilenaktionen. Keine Stufe unterscheidet sich nur in der Farbe: Füllung, Rand und Schriftgewicht tragen den Unterschied; deaktivierte Aktionen erhalten Deckkraft 0.6 **und** einen gestrichelten Rand mit `not-allowed`. Die frühere Deckkraft 0.65 gilt nicht mehr. Die Abmeldung im Navigationsfuß ist transparent mit `sidebar-ink`-Schrift und `#779386`-Rand; beim Überfahren verwendet sie fest `#294c3e`. Allgemeiner Fokus: `3px solid var(--focus)`, Abstand `3px`.
 - **Darstellungsumschalter:** „Dunkelmodus“ ist vor der Anmeldung in der Anmeldekarte und nach der Anmeldung in der Werkzeugleiste verfügbar, mit dekorativem Mond-SVG und `aria-pressed` für den Dunkelzustand. Gespeichert wird ausschließlich `light` oder `dark` unter `localStorage["ak-theme"]`; ungültige oder nicht lesbare Werte fallen auf die Systempräferenz zurück. Ohne explizite Wahl werden Systemänderungen übernommen. Ein Klick setzt eine explizite Wahl; Änderungen anderer Tabs sowie gelöschte Präferenzen werden über das `storage`-Ereignis übernommen. Bei gesperrtem Speicher funktioniert die Wahl für die laufende Sitzung. Das aktuelle Schema wird per Layout-Effekt als `data-theme` am Dokumentwurzelelement gesetzt; Farben wechseln ohne Übergangsanimation. Der Umschalter bietet keine eigene Funktion zum Zurücksetzen auf die Systempräferenz.
 - **Formulare:** sichtbare Labels, Felder mit `surface`-Hintergrund und `field-border`-Rand; Textflächen und Mehrfachauswahl mindestens `7rem` hoch. Checkboxen/Radios verwenden die Akzentfarbe.
 - **Kontobereich:** Kontoidentität, Abmeldung und Anmeldestatus liegen im Navigationsfuß: auf dem Desktop in der Seitenleiste, mobil nur im geöffneten Dialog. Das einspaltige Kontogrid hat `0.6rem` Abstand. Sichtbare Rückmeldungen verwenden `#294c3e` und `sidebar-ink`, einschließlich fehlgeschlagener Abmeldung; ihre Statusrolle bleibt innerhalb des modalen Kontexts erreichbar. Im abgemeldeten Zustand steht die Statusmeldung ausschließlich direkt in der Anmeldung.

@@ -34,6 +34,12 @@ export function DocumentNumbersPanel({ csrfToken }: { csrfToken: string }) {
     [previews, setPreviews] = useState<Record<string, string>>({}),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
+  // H036: one dominant action per surface. The save primary sits on the range
+  // the reader is currently editing (the first not yet configured one, else the
+  // first range); every other range keeps a quiet, equally usable save.
+  const activeKind =
+    kinds.find(([kind]) => !rows.some((entry) => entry.kind === kind))?.[0] ??
+    kinds[0]![0];
   function draftFor(kind: string) {
     const row = rows.find((entry) => entry.kind === kind);
     return (
@@ -177,11 +183,18 @@ export function DocumentNumbersPanel({ csrfToken }: { csrfToken: string }) {
                 }
               />
             </label>
-            <button type="button" onClick={() => void save(kind)}>
+            <button
+              type="button"
+              className={
+                kind === activeKind ? 'primary-action' : 'secondary-action'
+              }
+              onClick={() => void save(kind)}
+            >
               Nummernkreis speichern ({label})
             </button>
             <button
               type="button"
+              className="secondary-action"
               disabled={!configured}
               onClick={() => void preview(kind)}
             >

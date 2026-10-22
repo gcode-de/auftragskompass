@@ -134,6 +134,7 @@ export function AuthPanel() {
                 </p>
                 <p className="account-email">{user.email}</p>
                 <button
+                  className="icon-action tier-quiet-icon"
                   aria-label="Abmelden"
                   title="Abmelden"
                   onClick={() => void logout()}
@@ -268,7 +269,9 @@ export function AuthPanel() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <button disabled={busy}>Anmelden</button>
+          <button className="primary-action" disabled={busy}>
+            Anmelden
+          </button>
         </form>
       ) : ready ? (
         <a href="/auth/login">Mit Google anmelden</a>
