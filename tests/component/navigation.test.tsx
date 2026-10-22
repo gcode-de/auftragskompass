@@ -21,9 +21,24 @@ import {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   localStorage.clear();
   window.history.replaceState(null, '', '/');
 });
+// jsdom has no dialog implementation; the established shim opens it. A test
+// that replaces it with a bare `vi.fn()` would leave every later mobile-menu
+// test in this file with a closed dialog, so every shim is reset after each
+// test and the drawer tests re-apply the opening shim themselves.
+function shimDialog() {
+  HTMLDialogElement.prototype.showModal = vi.fn(function (
+    this: HTMLDialogElement,
+  ) {
+    this.open = true;
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.open = false;
+  });
+}
 function Result() {
   return <p>{useUrlSearch()}</p>;
 }
@@ -137,14 +152,7 @@ test('the retired locations link redirects to events without a new history entry
 
 test('settings own resource and product management in desktop and mobile navigation', () => {
   window.history.replaceState(null, '', '/#resources');
-  HTMLDialogElement.prototype.showModal = vi.fn(function (
-    this: HTMLDialogElement,
-  ) {
-    this.open = true;
-  });
-  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
-    this.open = false;
-  });
+  shimDialog();
   render(
     <>
       <Navigation />
@@ -218,14 +226,7 @@ test('settings own resource and product management in desktop and mobile navigat
   }
 });
 test('mobile menu opens as a modal and closes on selection or Escape', () => {
-  HTMLDialogElement.prototype.showModal = vi.fn(function (
-    this: HTMLDialogElement,
-  ) {
-    this.open = true;
-  });
-  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
-    this.open = false;
-  });
+  shimDialog();
   render(<Workspace />);
   const trigger = screen.getByRole('button', { name: 'Menü öffnen' });
   expect(trigger.getAttribute('title')).toBe('Menü öffnen');
@@ -267,14 +268,7 @@ test('mobile menu opens as a modal and closes on selection or Escape', () => {
 });
 
 test('keeps account actions in the menu and reveals the mobile copy only while open', () => {
-  HTMLDialogElement.prototype.showModal = vi.fn(function (
-    this: HTMLDialogElement,
-  ) {
-    this.open = true;
-  });
-  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
-    this.open = false;
-  });
+  shimDialog();
   render(<Navigation account={<button>Fictional logout</button>} />);
   expect(screen.getAllByText('Fictional logout')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
@@ -548,6 +542,7 @@ test('shrinking to the mobile breakpoint moves focused sidebar controls to the m
 });
 
 test('Dateien is a first-class main entry with quiet, labelled icon controls', () => {
+  shimDialog();
   window.history.replaceState(null, '', '/?q=Fictional#files');
   render(<Workspace />);
   expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('files');
