@@ -108,7 +108,11 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           });
           res.end(result.rawPayload);
         } else {
-          const result = await fetch('http://127.0.0.1:14873' + req.url!);
+          const result = await fetch(
+            'http://127.0.0.1:' +
+              (process.env.AK_E2E_PORT ?? '14873') +
+              req.url!,
+          );
           res.writeHead(result.status, {
             'content-type': result.headers.get('content-type')!,
             ...adminHeaders,
@@ -2637,26 +2641,23 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await inboxEntry
       .getByRole('button', { name: 'Als Option übernehmen' })
       .click();
-    // Without a country the server keeps the entry as a visible exception and
-    // the authorized recovery stays available for a second, identical try.
-    await expect(inboxEntry.getByRole('alert')).toContainText(
-      'Kontaktzuordnung bitte prüfen',
-    );
-    await expect(inboxEntry).toHaveCount(1);
-    await country.fill('DE');
-    await inboxEntry
-      .getByRole('button', { name: 'Als Option übernehmen' })
-      .click();
+    // BKP002: a valid entry without an operator country becomes a contactless
+    // Option at once; "Kontakt noch offen" is a normal open state, not an
+    // exception, and the untouched country field stays an operator decision.
+    await expect(websiteInbox.getByText(/Kontakt noch offen/)).toBeVisible();
+    await expect(inboxEntry).toHaveCount(0);
     await expect(
       websiteInbox.getByText(/Keine offenen Ausnahmen/),
     ).toBeVisible();
-    // A second identical recovery is idempotent: same assignments, no error.
+    // A second identical recovery is idempotent: same assignment, and the
+    // receipt contact stays null even though the event exists.
     const recovered = (
-      await pool.query<{ eventId: string; contactId: string }>(
+      await pool.query<{ eventId: string; contactId: string | null }>(
         'SELECT event_id AS "eventId", contact_id AS "contactId" FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
         [config.tenantId, websiteInquiryId],
       )
     ).rows[0]!;
+    expect(recovered.contactId).toBeNull();
     const repeat = await importStagedWebsiteInquiry(
       pool,
       config.tenantId,
