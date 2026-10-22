@@ -416,7 +416,10 @@ test('leaving a dirty event for Dateien asks first and keeps the draft when canc
     .getByRole('navigation', { name: 'Hauptnavigation' })
     .querySelector<HTMLAnchorElement>('a[href="#files"]')!;
   // Cancel: the hash, the draft and the focus stay exactly where they were.
-  const cancelled = vi.fn(() => false);
+  const cancelled = vi.fn((message?: string) => {
+    void message;
+    return false;
+  });
   vi.stubGlobal('confirm', cancelled);
   fireEvent.click(filesLink);
   expect(cancelled).toHaveBeenCalledTimes(1);
