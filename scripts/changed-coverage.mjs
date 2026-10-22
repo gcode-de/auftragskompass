@@ -68,6 +68,17 @@ export function changedCoverage(diff, lcov) {
     throw new Error('Changed branches below 80%');
   return totals;
 }
+// Deterministic coverage thresholds need one consistent base revision: CI
+// reviews the pushed range, while COVERAGE_DIFF=worktree reviews HEAD plus the
+// working copy (untracked sources made visible with intent-to-add).
+export function diffArgs(revision, worktree = false) {
+  if (worktree)
+    return [
+      ['add', '--intent-to-add', '--', 'apps', 'packages'],
+      ['diff', '--unified=0', 'HEAD'],
+    ];
+  return [['diff', '--unified=0', revision ?? 'HEAD^', 'HEAD']];
+}
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
@@ -75,9 +86,11 @@ if (
   const base = process.env.BASE_REVISION;
   // First push of a branch: compare with its first parent, not an all-zero SHA.
   const revision = base && !/^0+$/.test(base) ? base : 'HEAD^';
-  const diff = execFileSync('git', ['diff', '--unified=0', revision, 'HEAD'], {
-    encoding: 'utf8',
-  });
+  const worktree = process.env.COVERAGE_DIFF === 'worktree';
+  const commands = diffArgs(worktree ? undefined : revision, worktree);
+  let diff = '';
+  for (const command of commands)
+    diff = execFileSync('git', command, { encoding: 'utf8' });
   console.log(
     changedCoverage(diff, readFileSync('coverage/lcov.info', 'utf8')),
   );

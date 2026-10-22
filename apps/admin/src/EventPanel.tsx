@@ -20,6 +20,14 @@ import {
   type VenueChoice,
 } from './venue.js';
 import { useAutoRefresh } from './auto-refresh.js';
+import {
+  activeDatePreset,
+  datePresetRange,
+  datePresets,
+  eventFilterCounts,
+  monthGroups,
+  type PresetId,
+} from './event-filters.js';
 type Choice = VenueChoice;
 export type EventRow = {
   id: string;
@@ -51,6 +59,7 @@ export function EventPanel({
   revision?: number;
   showHeading?: boolean;
 }) {
+  const [now, setNow] = useState(() => new Date().toISOString());
   const urlSearch = useUrlSearch(),
     filters = new URLSearchParams(urlSearch),
     sequence = useRef(0),
@@ -152,6 +161,13 @@ export function EventPanel({
   useEffect(() => {
     void refresh().catch(() => {});
   }, [urlSearch, revision]);
+  // H041: presets are calendar ranges, so a stale clock would make a range
+  // look wrong after midnight. A slow tick keeps them honest without polling
+  // data.
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date().toISOString()), 60_000);
+    return () => clearInterval(tick);
+  }, []);
   useEffect(
     () => () => {
       ++sequence.current;
@@ -425,12 +441,34 @@ export function EventPanel({
   }
   const MonthHeading = showHeading ? 'h3' : 'h2';
   const showingDetail = rows.some((row) => row.id === detailId);
-  const groups = new Map<string, EventRow[]>();
-  for (const row of rows) {
-    const month = row.eventDate?.slice(0, 7) ?? '';
-    const group = groups.get(month);
-    if (group) group.push(row);
-    else groups.set(month, [row]);
+  // The undated sort is a view of the loaded list; dates and the other filters
+  // already went to the server.
+  const undatedOnly = filters.get('undated') === 'true',
+    shown = undatedOnly ? rows.filter((row) => !row.eventDate) : rows,
+    counts = eventFilterCounts(rows, urlSearch),
+    preset = activeDatePreset(urlSearch, now, timeZone),
+    groups = monthGroups(shown);
+  function applyPreset(id: PresetId) {
+    const range = datePresetRange(id, now, timeZone);
+    if (!range) return;
+    updateUrlSearch({
+      from: range.from,
+      to: range.to,
+      undated: '',
+      q: filters.get('q') ?? '',
+      status: filters.get('status') ?? '',
+      eventTypeId: filters.get('eventTypeId') ?? '',
+    });
+  }
+  function applySort(undated: boolean) {
+    updateUrlSearch({
+      q: filters.get('q') ?? '',
+      status: filters.get('status') ?? '',
+      eventTypeId: filters.get('eventTypeId') ?? '',
+      from: undated ? '' : (filters.get('from') ?? ''),
+      to: undated ? '' : (filters.get('to') ?? ''),
+      undated: undated ? 'true' : '',
+    });
   }
   return (
     <section id="events" aria-label="Events" aria-busy={loading}>
@@ -479,16 +517,13 @@ export function EventPanel({
             key={urlSearch + ':' + timeZone}
             onSubmit={(event) => {
               event.preventDefault();
-              const data = new FormData(event.currentTarget),
-                undated = data.get('undated') === 'on';
-              updateUrlSearch({
-                q: String(data.get('q') ?? ''),
-                status: String(data.get('status') ?? ''),
-                eventTypeId: String(data.get('eventTypeId') ?? ''),
-                from: undated ? '' : String(data.get('from') ?? ''),
-                to: undated ? '' : String(data.get('to') ?? ''),
-                undated: undated ? 'true' : '',
-              });
+              const data = new FormData(event.currentTarget);
+              // The sort radios live outside this form, so a submitted custom
+              // range is always chronological.
+              const values: Record<string, string> = { undated: '' };
+              for (const key of ['q', 'status', 'eventTypeId', 'from', 'to'])
+                values[key] = [data.get(key)].filter(Boolean).join('');
+              updateUrlSearch(values);
             }}
           >
             <fieldset disabled={busy || !timeZone}>
@@ -501,22 +536,126 @@ export function EventPanel({
                   defaultValue={filters.get('q') ?? ''}
                 />
               </label>
-              <label>
-                Filter von
-                <input
-                  name="from"
-                  type="date"
-                  defaultValue={filters.get('from') ?? ''}
-                />
-              </label>
-              <label>
-                Filter bis
-                <input
-                  name="to"
-                  type="date"
-                  defaultValue={filters.get('to') ?? ''}
-                />
-              </label>
+              {/* H041: the presets cover the common cases; the exact bounds
+                  stay available inside „Eigener Zeitraum“. */}
+              <details
+                className="custom-range"
+                open={
+                  !preset && Boolean(filters.get('from') || filters.get('to'))
+                }
+              >
+                <summary>Eigener Zeitraum</summary>
+                <label>
+                  Filter von
+                  <input
+                    name="from"
+                    type="date"
+                    defaultValue={filters.get('from') ?? ''}
+                  />
+                </label>
+                <label>
+                  Filter bis
+                  <input
+                    name="to"
+                    type="date"
+                    defaultValue={filters.get('to') ?? ''}
+                  />
+                </label>
+              </details>
+              <fieldset className="event-sorting">
+                <legend>Sortieren</legend>
+                {[
+                  { undated: false, label: 'Chronologisch', count: null },
+                  { undated: true, label: 'Ohne Datum', count: counts.undated },
+                ].map((choice) => {
+                  const selected = choice.undated === undatedOnly;
+                  return (
+                    <label
+                      key={choice.label}
+                      className={
+                        selected
+                          ? 'sort-choice sort-choice-active'
+                          : 'sort-choice'
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="sort"
+                        checked={selected}
+                        onChange={() => applySort(choice.undated)}
+                      />
+                      {choice.label}
+                      {choice.count === null ? null : (
+                        <span
+                          className="event-count"
+                          data-testid="undated-count"
+                        >
+                          {choice.count}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </fieldset>
+              <div className="date-presets" role="group" aria-label="Zeitraum">
+                {(datePresets as { id: PresetId; label: string }[]).map(
+                  (choice) => {
+                    const selected = preset === choice.id;
+                    return (
+                      <button
+                        key={choice.id}
+                        type="button"
+                        className={
+                          selected
+                            ? 'secondary-action date-preset date-preset-active'
+                            : 'secondary-action date-preset'
+                        }
+                        aria-pressed={selected}
+                        onClick={() => applyPreset(choice.id)}
+                      >
+                        {choice.label}
+                      </button>
+                    );
+                  },
+                )}
+              </div>
+              {/* „Anfragen“ is the existing status filter, not a sort: it only
+                  sets `status` and keeps date range, search and event type. */}
+              {(() => {
+                const selected = filters.get('status') === 'inquiry';
+                return (
+                  <div
+                    className="event-quick-filters"
+                    role="group"
+                    aria-label="Schnellfilter"
+                  >
+                    <button
+                      type="button"
+                      className={
+                        selected
+                          ? 'secondary-action quick-filter quick-filter-active'
+                          : 'secondary-action quick-filter'
+                      }
+                      aria-pressed={selected}
+                      onClick={() =>
+                        updateUrlSearch({
+                          q: filters.get('q') ?? '',
+                          status: selected ? '' : 'inquiry',
+                          eventTypeId: filters.get('eventTypeId') ?? '',
+                          from: filters.get('from') ?? '',
+                          to: filters.get('to') ?? '',
+                          undated: filters.get('undated') ?? '',
+                        })
+                      }
+                    >
+                      Anfragen
+                      <span className="event-count" data-testid="inquiry-count">
+                        {counts.inquiries}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })()}
               <label>
                 Filterstatus
                 <select
@@ -545,15 +684,6 @@ export function EventPanel({
                   ))}
                 </select>
               </label>
-              <label>
-                Nur Events ohne Datum
-                <input
-                  name="undated"
-                  type="checkbox"
-                  defaultChecked={filters.get('undated') === 'true'}
-                />
-              </label>
-              <p>Ohne Datum setzt die Datumsgrenzen zurück.</p>
               <button className="secondary-action">Events filtern</button>
               <button
                 type="button"
@@ -857,8 +987,10 @@ export function EventPanel({
         </div>
       )}
       {loading && <p role="status">Events werden geladen …</p>}
-      {!loading && !loadFailed && !rows.length && <p>Keine Events gefunden.</p>}
-      {[...groups].map(([month, entries]) => {
+      {!loading && !loadFailed && !shown.length && (
+        <p>Keine Events gefunden.</p>
+      )}
+      {groups.map(({ month, entries }) => {
         const label = month
           ? new Intl.DateTimeFormat('de-DE', {
               month: 'long',
@@ -877,7 +1009,8 @@ export function EventPanel({
           >
             <MonthHeading hidden={showingDetail}>
               {label}{' '}
-              <span>
+              <span className="event-month-count">
+                {'\u00b7 '}
                 {entries.length} {entries.length === 1 ? 'Event' : 'Events'}
               </span>
             </MonthHeading>

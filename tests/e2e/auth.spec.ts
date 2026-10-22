@@ -1731,6 +1731,8 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await navigate('Events');
     await events.getByText('Filter', { exact: true }).click();
     await events.getByLabel('Events suchen', { exact: true }).fill('browser');
+    // H041: the exact bounds live in the collapsible custom range.
+    await events.getByText('Eigener Zeitraum', { exact: true }).click();
     await events.getByLabel('Filter von').fill('2026-10-16');
     await events.getByLabel('Filter bis').fill('2026-10-16');
     await events
@@ -1741,9 +1743,73 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
     ).toBeVisible();
-    await events.getByLabel('Nur Events ohne Datum').check();
-    await events.getByRole('button', { name: 'Events filtern' }).click();
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+        ),
+      ).toBe(true);
+      expect(
+        await events.evaluate(
+          (section) => section.scrollWidth <= section.clientWidth + 1,
+        ),
+      ).toBe(true);
+      // Every preset and sort row keeps a 44px target.
+      for (const target of await events
+        .locator(
+          '.date-presets button, .event-sorting label, .event-quick-filters button',
+        )
+        .all())
+        expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    // The quick preset is a single history entry with the tenant month.
+    await events.getByRole('button', { name: 'Dieser Monat' }).click();
+    await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
+    await expect(page).toHaveURL(/to=\d{4}-\d{2}-\d{2}/);
+    await expect(page).toHaveURL(/status=cancelled/);
+    await expect(
+      events.getByRole('button', { name: 'Dieser Monat' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await page.goBack();
+    await expect(events.getByLabel('Filter von', { exact: true })).toHaveValue(
+      '2026-10-16',
+    );
+    // The undated sort replaces the old checkbox and keeps `undated=true`.
+    await events.getByRole('radio', { name: /^Ohne Datum/ }).check();
+    await expect(page).toHaveURL(/undated=true/);
+    await expect(page).not.toHaveURL(/from=/);
     await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
+    // „Anfragen“ is a quick filter outside the sort group: it keeps the range.
+    await events.getByRole('button', { name: 'Dieser Monat' }).click();
+    await expect(
+      events.getByRole('button', { name: 'Dieser Monat' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await events
+      .getByRole('group', { name: 'Schnellfilter' })
+      .getByRole('button', { name: /^Anfragen/ })
+      .click();
+    await expect(page).toHaveURL(/status=inquiry/);
+    await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
+    await expect(
+      events
+        .getByRole('group', { name: 'Schnellfilter' })
+        .getByRole('button', { name: /^Anfragen/ }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(
+      events.getByRole('group', { name: 'Sortieren' }).getByRole('radio'),
+    ).toHaveCount(2);
+    await expect(
+      events.getByRole('button', { name: 'Dieser Monat' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    // Two history entries were added (preset, then quick filter); the earlier
+    // custom range is still three steps back. Back returns through them.
+    await page.goBack();
+    await expect(page).not.toHaveURL(/status=inquiry/);
+    await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
+    await expect(page).toHaveURL(/status=cancelled/);
+    await page.goBack();
     await page.goBack();
     await expect(
       events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
@@ -1753,6 +1819,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByRole('combobox', { name: 'Filterstatus', exact: true }),
     ).toHaveValue('cancelled');
+    // The month heading names its own count in muted text.
+    await expect(
+      events.getByRole('heading', { name: /Oktober 2026 · \d+ Events?/ }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Suche öffnen' }).click();
     await expect(page.getByLabel('Globale Suche')).toBeFocused();
     await page.getByLabel('Globale Suche').fill('Synthetic missing search');
@@ -1768,8 +1838,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
-    await events.getByLabel('Nur Events ohne Datum').check();
-    await events.getByRole('button', { name: 'Events filtern' }).click();
+    await events.getByRole('radio', { name: /^Ohne Datum/ }).check();
     await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
     await contacts
       .getByRole('button', {

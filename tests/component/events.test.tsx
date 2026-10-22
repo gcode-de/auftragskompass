@@ -267,9 +267,15 @@ test('event filters restore URL values, combine and clear filters, and show empt
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events?q=Synthetic&from=2026-07-01&to=2026-07-31&status=inquiry',
   );
-  fireEvent.click(screen.getByLabelText('Nur Events ohne Datum'));
-  fireEvent.submit(
-    screen.getByRole('button', { name: 'Events filtern' }).closest('form')!,
+  // H041: the undated switch is the sort choice; it replaces the old checkbox
+  // and keeps the same `undated=true` URL meaning.
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Sortieren' })).getByRole(
+      'radio',
+      {
+        name: /^Ohne Datum/,
+      },
+    ),
   );
   expect(window.location.search).toContain('undated=true');
   expect(window.location.search).not.toContain('from=');
@@ -396,12 +402,12 @@ test('groups multiple events in the same month and keeps undated events separate
     ),
   );
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByRole('heading', { name: 'Oktober 2026 2 Events' });
+  await screen.findByRole('heading', { name: 'Oktober 2026 · 2 Events' });
   expect(
-    screen.getByRole('heading', { name: 'November 2026 1 Event' }),
+    screen.getByRole('heading', { name: 'November 2026 · 1 Event' }),
   ).toBeTruthy();
   expect(
-    screen.getByRole('heading', { name: 'Ohne Datum 1 Event' }),
+    screen.getByRole('heading', { name: 'Ohne Datum · 1 Event' }),
   ).toBeTruthy();
 });
 
@@ -2022,4 +2028,466 @@ test('an already-home brand click keeps a dirty event editor unchanged', async (
   );
   expect(confirm).not.toHaveBeenCalled();
   expect(fetcher.mock.calls.filter(([, options]) => options)).toHaveLength(0);
+});
+
+// H041: bookitup-inspired list filters. Presets are one history entry, the
+// custom range is a collapsible detail, the undated switch became a sort
+// choice and the month heading names its own count.
+// The browser clock and zone are pinned so every range is deterministic; the
+// 2026-10-22 12:00 UTC instant is the same tenant-local day in Berlin.
+function pinClock(
+  instant = '2026-10-22T12:00:00.000Z',
+  zone = 'Europe/Berlin',
+) {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(instant));
+  const listed = vi.fn(async (url: string) =>
+    url.startsWith('/api/v1/events')
+      ? Response.json({
+          timeZone: zone,
+          events: [{ ...row, eventDate: '2026-10-24' }],
+        })
+      : Response.json([]),
+  );
+  vi.stubGlobal('fetch', listed);
+  return listed;
+}
+afterEach(() => vi.useRealTimers());
+test('a quick date preset writes from/to in one history entry and refetches', async () => {
+  const fetcher = pinClock();
+  const pushes = vi.spyOn(window.history, 'pushState');
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText(/Synthetic event – /);
+  const before = pushes.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Dieser Monat' }));
+  // Exact tenant-local month of the pinned instant, written atomically.
+  const search = new URLSearchParams(window.location.search);
+  expect(search.get('from')).toBe('2026-10-01');
+  expect(search.get('to')).toBe('2026-10-31');
+  expect(search.get('undated')).toBeNull();
+  expect(pushes.mock.calls.length - before).toBe(1);
+  await vi.waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).includes('from=2026-10-01'),
+      ),
+    ).not.toHaveLength(0),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Nächste Events' }));
+  expect(window.location.search).toContain('from=2026-10-22');
+  expect(window.location.search).not.toContain('to=');
+});
+
+// The follow-up month is the next tenant-local calendar month, clamped to its
+// real last day (31 -> 30), and it keeps the other filters.
+test('the next month preset writes the following tenant-local month', async () => {
+  const fetcher = pinClock();
+  const pushes = vi.spyOn(window.history, 'pushState');
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText(/Synthetic event – /);
+  window.history.replaceState(
+    null,
+    '',
+    '/?q=browser&eventTypeId=fictional-type',
+  );
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await vi.waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Nächster Monat' })).toBeTruthy(),
+  );
+  const before = pushes.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }));
+  const search = new URLSearchParams(window.location.search);
+  expect(search.get('from')).toBe('2026-11-01');
+  expect(search.get('to')).toBe('2026-11-30');
+  expect(search.get('q')).toBe('browser');
+  expect(search.get('eventTypeId')).toBe('fictional-type');
+  expect(search.get('undated')).toBeNull();
+  expect(pushes.mock.calls.length - before).toBe(1);
+  const active = screen.getByRole('button', { name: 'Nächster Monat' });
+  expect(active.getAttribute('aria-pressed')).toBe('true');
+  expect(active.className).toContain('date-preset-active');
+  expect(
+    screen
+      .getByRole('button', { name: 'Dieser Monat' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+  await vi.waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).includes('from=2026-11-01'),
+      ),
+    ).not.toHaveLength(0),
+  );
+});
+
+test('the active preset is marked selected without relying on colour only', async () => {
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText(/Synthetic event – Ohne Datum – Anfrage/);
+  expect(
+    screen
+      .getByRole('button', { name: 'Nächste Events' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Nächste Events' }));
+  const active = screen.getByRole('button', { name: 'Nächste Events' });
+  expect(active.getAttribute('aria-pressed')).toBe('true');
+  expect(active.className).toContain('date-preset-active');
+  expect(
+    screen
+      .getByRole('button', { name: 'Dieser Monat' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+  // A custom range selects no preset (a reload enters through the URL).
+  window.history.pushState(null, '', '/?from=2030-01-02&to=2030-01-03');
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await vi.waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Nächste Events' })
+        .getAttribute('aria-pressed'),
+    ).toBe('false'),
+  );
+});
+
+test('the custom range is a closed detail that reveals the date inputs', async () => {
+  vi.stubGlobal('fetch', mocker([], { eventDate: '2031-11-09' }));
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText(/Synthetic event – /);
+  const detail = screen
+    .getByText('Eigener Zeitraum')
+    .closest('details') as HTMLDetailsElement;
+  expect(detail.open).toBe(false);
+  expect(screen.getByLabelText('Filter von')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Filter von'), {
+    target: { value: '2030-05-01' },
+  });
+  fireEvent.change(screen.getByLabelText('Filter bis'), {
+    target: { value: '2030-05-31' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Events filtern' }).closest('form')!,
+  );
+  expect(window.location.search).toContain('from=2030-05-01');
+  expect(window.location.search).toContain('to=2030-05-31');
+});
+
+test('the sort choice replaces the undated checkbox and its explanation', async () => {
+  vi.stubGlobal('fetch', mocker([], { eventDate: '2031-11-09' }));
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText(/Synthetic event – /);
+  expect(screen.queryByLabelText('Nur Events ohne Datum')).toBeNull();
+  expect(
+    screen.queryByText('Ohne Datum setzt die Datumsgrenzen zurück.'),
+  ).toBeNull();
+  window.history.replaceState(null, '', '/?from=2031-11-01&to=2031-11-30');
+  const group = screen.getByRole('group', { name: 'Sortieren' });
+  const chronological = within(group).getByRole('radio', {
+    name: /Chronologisch/,
+  });
+  const undatedChoice = within(group).getByRole('radio', {
+    name: /^Ohne Datum/,
+  });
+  expect((chronological as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(undatedChoice);
+  expect(window.location.search).toContain('undated=true');
+  expect(window.location.search).not.toContain('from=');
+  expect(window.location.search).not.toContain('to=');
+  await vi.waitFor(() =>
+    expect(
+      (
+        within(screen.getByRole('group', { name: 'Sortieren' })).getByRole(
+          'radio',
+          {
+            name: /^Ohne Datum/,
+          },
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(true),
+  );
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Sortieren' })).getByRole(
+      'radio',
+      {
+        name: /Chronologisch/,
+      },
+    ),
+  );
+  expect(window.location.search).not.toContain('undated=');
+});
+
+test('the counters count the loaded list without an extra fetch and follow filters', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (url === '/api/v1/events?status=booked')
+        return Response.json({
+          timeZone: 'Europe/Berlin',
+          events: [{ ...row, id: 'fictional-booked', status: 'booked' }],
+        });
+      if (url === '/api/v1/events')
+        return Response.json({
+          timeZone: 'Europe/Berlin',
+          events: [
+            { ...row, id: 'fictional-undated-a' },
+            { ...row, id: 'fictional-undated-b' },
+            { ...row, id: 'fictional-dated', eventDate: '2031-11-09' },
+            {
+              ...row,
+              id: 'fictional-booked',
+              status: 'booked',
+              eventDate: '2031-11-10',
+            },
+          ],
+        });
+      return fetcher(url, options);
+    }),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await vi.waitFor(() =>
+    expect(screen.queryByTestId('undated-count')).not.toBeNull(),
+  );
+  const undatedCount = () => screen.getByTestId('undated-count').textContent,
+    inquiryCount = () => screen.getByTestId('inquiry-count').textContent,
+    loads = () =>
+      (
+        fetcher as unknown as { mock: { calls: unknown[][] } }
+      ).mock.calls.filter(
+        ([url, options]) =>
+          String(url).startsWith('/api/v1/events') && options === undefined,
+      ).length;
+  await vi.waitFor(() => expect(undatedCount()).toBe('2'));
+  expect(inquiryCount()).toBe('3');
+  const before = loads();
+  fireEvent.change(screen.getByLabelText('Events suchen'), {
+    target: { value: 'nothing matches' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Events filtern' }).closest('form')!,
+  );
+  await vi.waitFor(() => expect(undatedCount()).toBe('0'));
+  window.history.replaceState(null, '', '/?q=nothing+matches');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventfilter zurücksetzen' }),
+  );
+  await vi.waitFor(() => expect(undatedCount()).toBe('2'));
+  expect(loads()).toBeGreaterThan(before);
+  // Switching the filter to undated keeps the counters on the same loaded set.
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Sortieren' })).getByRole(
+      'radio',
+      {
+        name: /^Ohne Datum/,
+      },
+    ),
+  );
+  await vi.waitFor(() => expect(undatedCount()).toBe('2'));
+});
+
+test('each month group heading names its own event count', async () => {
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/events'
+        ? Response.json({
+            timeZone: 'Europe/Berlin',
+            events: [
+              { ...row, id: 'fictional-oct-a', eventDate: '2026-10-24' },
+              { ...row, id: 'fictional-oct-b', eventDate: '2026-10-31' },
+              { ...row, id: 'fictional-nov', eventDate: '2026-11-05' },
+            ],
+          })
+        : base(url),
+    ),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  const october = await screen.findByRole('heading', { name: /Oktober 2026/ });
+  expect(october.textContent).toContain('· 2 Events');
+  expect(
+    screen.getByRole('heading', { name: /November 2026/ }).textContent,
+  ).toContain('· 1 Event');
+  // The suffix is muted text, not a new heading or link.
+  expect(october.querySelector('span')?.className).toContain(
+    'event-month-count',
+  );
+});
+
+test('the filter area stays inside a 320px viewport', async () => {
+  vi.stubGlobal('fetch', mocker([], { eventDate: '2031-11-09' }));
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText(/Synthetic event – /);
+  const filters = document.querySelector('.event-filters') as HTMLElement;
+  // jsdom does no layout; the contract is that no control claims a fixed
+  // width and every preset row may wrap.
+  const controls = Array.from(
+    filters.querySelectorAll<HTMLElement>(
+      '.date-presets, .date-presets button, .event-sorting label, .event-count',
+    ),
+  );
+  expect(controls.length).toBeGreaterThan(6);
+  for (const element of controls)
+    expect(element.getAttribute('style') ?? '').not.toContain('width');
+  expect(getComputedStyle(filters).overflowX === 'visible').toBe(true);
+});
+
+// „Anfragen“ is a quick filter, not a sort: it sets status=inquiry, keeps the
+// current from/to/q/eventTypeId and stays out of the sort radio group.
+test('the inquiry quick filter sets only the status and keeps the date range', async () => {
+  const fetcher = vi.fn(async (url: string) => {
+    if (String(url).startsWith('/api/v1/events'))
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: [
+          { ...row, id: 'fictional-inquiry', eventDate: '2026-10-24' },
+          {
+            ...row,
+            id: 'fictional-booked',
+            status: 'booked',
+            eventDate: '2026-10-25',
+          },
+        ],
+      });
+    if (url === '/api/v1/statuses')
+      return Response.json([
+        { code: 'inquiry', label: 'Anfrage' },
+        { code: 'booked', label: 'Gebucht' },
+      ]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const pushes = vi.spyOn(window.history, 'pushState');
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await vi.waitFor(() =>
+    expect(screen.getByTestId('inquiry-count').textContent).toBe('1'),
+  );
+  // A date preset plus a search term is already active.
+  window.history.replaceState(
+    null,
+    '',
+    '/?from=2026-10-01&to=2026-10-31&q=browser&eventTypeId=fictional-type',
+  );
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await vi.waitFor(() =>
+    expect(
+      (
+        screen.getByRole('combobox', {
+          name: 'Filterstatus',
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe(''),
+  );
+  const requests = screen.getByRole('button', { name: /^Anfragen/ });
+  expect(requests.getAttribute('aria-pressed')).toBe('false');
+  const before = pushes.mock.calls.length;
+  fireEvent.click(requests);
+  expect(pushes.mock.calls.length - before).toBe(1);
+  const search = new URLSearchParams(window.location.search);
+  expect(search.get('status')).toBe('inquiry');
+  expect(search.get('from')).toBe('2026-10-01');
+  expect(search.get('to')).toBe('2026-10-31');
+  expect(search.get('q')).toBe('browser');
+  expect(search.get('eventTypeId')).toBe('fictional-type');
+  expect(search.get('undated')).toBeNull();
+  await vi.waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: /^Anfragen/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true'),
+  );
+  // The counters answer the filters already applied, then follow the status.
+  await vi.waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).includes('status=inquiry'),
+      ),
+    ).not.toHaveLength(0),
+  );
+  // The sort group holds only the two sort choices and hears no inquiry row.
+  const sortGroup = screen.getByRole('group', { name: 'Sortieren' });
+  const radios = within(sortGroup).getAllByRole('radio');
+  expect(radios).toHaveLength(2);
+  expect(radios.map((radio) => (radio as HTMLInputElement).name)).toEqual([
+    'sort',
+    'sort',
+  ]);
+  // The undated counter answers the applied status: no inquiry is undated.
+  expect(
+    radios.map((radio) => radio.closest('label')!.textContent!.trim()),
+  ).toEqual(['Chronologisch', 'Ohne Datum0']);
+  expect(within(sortGroup).queryByText(/Anfragen/)).toBeNull();
+  expect(within(sortGroup).queryByRole('button')).toBeNull();
+  // The chosen quick filter survives a reload through the URL.
+  window.history.replaceState(null, '', '/?status=inquiry');
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await vi.waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: /^Anfragen/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true'),
+  );
+});
+
+// The quick filter also releases the status when it is already selected, and
+// works on a bare URL without inventing filter keys.
+test('the inquiry quick filter toggles off on a bare url', async () => {
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await vi.waitFor(() =>
+    expect(screen.getByTestId('inquiry-count').textContent).toBe('1'),
+  );
+  expect(window.location.search).toBe('');
+  fireEvent.click(screen.getByRole('button', { name: /^Anfragen/ }));
+  expect(window.location.search).toBe('?status=inquiry');
+  await vi.waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: /^Anfragen/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true'),
+  );
+  // Clearing the status must not leave an empty `status=` behind.
+  fireEvent.click(screen.getByRole('button', { name: /^Anfragen/ }));
+  expect(window.location.search).toBe('');
+  expect(
+    screen
+      .getByRole('button', { name: /^Anfragen/ })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+});
+
+// Without a loaded tenant zone no preset may guess a range; the click is inert.
+test('a preset without a tenant zone neither writes nor marks anything', async () => {
+  const fetcher = vi.fn(async (url: string) =>
+    String(url).startsWith('/api/v1/events')
+      ? Response.json({ timeZone: '', events: [row] })
+      : Response.json([]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const pushes = vi.spyOn(window.history, 'pushState');
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await screen.findByText(/Synthetic event – /);
+  const before = pushes.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }));
+  expect(pushes.mock.calls.length).toBe(before);
+  expect(window.location.search).toBe('');
+  expect(
+    screen
+      .getByRole('button', { name: 'Nächster Monat' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+  expect(screen.getByText('Zeitzone: Wird geladen')).toBeTruthy();
 });
