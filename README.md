@@ -2,6 +2,8 @@
 
 Lokal betriebene Verwaltungsanwendung für einen Fotobox-Betrieb, mit einer später erweiterbaren Mandantenstruktur.
 
+**Neuer Auftrag (22.10.2026):** [Umfassende Bookitup-Parität mit detaillierten Agententickets](docs/bookitup-parity/README.md). Dort stehen der aktuelle Browser-/Source-Abgleich, mobile UI-/Flow-Vorgaben, offene Funktionslücken und die verwendeten Skills. Der folgende MVP-Überblick ist keine Vollständigkeitsbehauptung; aktuelle datierte Stände stehen in der Übergabe.
+
 **Stand:** C001–C026 sowie vorgezogen C076 sind umgesetzt: lokaler Containerbetrieb,
 CI, Datenbankmigrationen, Mandanten, eigener Passwortlogin oder Google-OIDC,
 Kontofreigaben und Auditlog. Kontakte, Veranstaltungsorte, Produkte, Ressourcen und

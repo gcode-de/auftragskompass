@@ -6,6 +6,17 @@
 
 **Neue Session:** Zuerst die [Projektübergabe mit Funktionsstand und Skill-Vorgaben](docs/handoff.md) lesen und den tatsächlichen Repository-/Betriebsstand verifizieren.
 
+## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
+
+Der neue Benutzerauftrag erweitert das Ziel auf möglichst vollständige Funktions-/Bedienparität mit Bookitup und vorsichtige Vereinfachung. [Spezifikation und Einstieg](docs/bookitup-parity/README.md), [konkrete Agentenanleitung](docs/bookitup-parity/agent-playbook.md). Die ältere verkürzte Lieferfolge bleibt Betriebs-/Historienkontext; neue Paritätstickets werden einzeln hier aktiviert. Sicherheits-/Daten-/Testregeln bleiben verbindlich. Keine pauschale Wiederaufnahme aller früher verschobenen Module und kein Produktions-Cutover.
+
+- [x] **R001 — `docs: specify comprehensive Bookitup parity work for agents`**: rein lesender UI-/Source-Vergleich auf `cf68f1e`, anonymisierte Befunde, exakte Skill-/Beweisgrenzen, Interaktionsvertrag, BKP001–BKP030 mit Abhängigkeiten, Source-/Testpfaden und Akzeptanzfällen, discoverable Übergabe. Abnahme: bestehende Dokumentationsprüfungen, rekursive Links/Sourcepfade der neuen Doku, vollständiger explizit gestagter Diff ohne PII/Secrets; Commit und sofortiger Push. Keine App-Verhaltensänderung und kein Deployment. Lokal grün: Plan-/Link-/Anforderungsprüfung, 3 Dokumentationstests, rekursive Prüfung aller 8 neuen Auditdateien einschließlich Sourcepfaden und 30 eindeutiger Ticketüberschriften sowie `git diff --check`. Fachlicher Source-Gegencheck durch drei getrennte Leser eingearbeitet; Runtime-/Skillgrenzen explizit dokumentiert. Commit/Push im selben Dokumentationsabschluss, Remote-SHA separat prüfen.
+- [ ] **Nächster vorgeschlagener Implementierungsslice: BKP001** — Monatskalender korrekt unter Mo–So ausrichten. Scope/Tests in [UI-Tickets](docs/bookitup-parity/tasks-ui.md). Vor Start aktivieren und einen echten fehlschlagenden Geometrietest ergänzen.
+- [ ] **Danach BKP002/BKP003/BKP004** — kontaktlose Website-Option, fairer Retry, Ausnahmebereich entfernen; Aktivierungsgrenze vor Deployment beachten. Details [Core-Tickets](docs/bookitup-parity/tasks-core.md).
+- [ ] **Weitere BKP005–BKP030** — offen, einzeln konkretisieren; Übersicht/Abhängigkeiten im Paritätseinstieg. Nummern sind keine Behauptung bereits implementierter Funktionen.
+
+Prüfbasis: `cf68f1e` ist im gelesenen Remote-Source und der geöffneten App vorhanden; ältere H041-Notiz „Commit/Push ausstehend“ darunter ist ein historischer Zwischenstand. CI-/Container-/Produktivabnahme wurden für R001 nicht wiederholt.
+
 ## 1. Lieferstrategie
 
 **Neue Priorität vom 16.10.2026:** Für einen früheren Bookitup-Ausstieg gilt die

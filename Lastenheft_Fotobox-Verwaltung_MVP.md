@@ -12,6 +12,12 @@ Ersatzprozessen M2/M3/M4 folgen später. Der Vollumfang unten bleibt Ausbauziel.
 Historische Daten dürfen für diesen Ausstieg nicht mehr ausschließlich im
 Altsystem verbleiben; Sicherung und operativer Datenbankimport sind getrennt.
 
+## Nachtrag zum Benutzerauftrag vom 22.10.2026
+
+Das Ausbauziel ist jetzt ein möglichst vollständiger Bookitup-Klon in Funktionen und Bedienlogik, mit vorsichtiger Vereinfachung. Der [Paritätsauftrag](docs/bookitup-parity/README.md) dokumentiert die neue Priorität, beobachtete Abweichungen und noch offene Beweise. Frühere MVP-Ausschlüsse bleiben historische Lieferstufen, nicht das endgültige Ausbauziel. Vor Umsetzung genau einen nummerierten Slice im Hauptplan aktivieren; bestehende Sicherheits-/Betriebsgrenzen bleiben.
+
+**Präzisierung AN-02/AN-06:** Jeder gültige authentische Website-Eingang wird automatisch ein Event im Status **Option**, auch ohne auflösbaren Kontakt oder Land. Kontaktanreicherung darf die Eventanlage nicht verhindern; keine erfundenen Kontakte, keine bestätigte Ressourcenbuchung. Die ursprüngliche gemeinsame Kontaktpflicht unten gilt für diesen automatischen Optionpfad nicht mehr. Originaleingang, Idempotenz und Audit bleiben. Der Ausnahmebereich unter Events entfällt erst nach funktionierender Pipeline; echte Rückstände vor Aktivierung gesondert prüfen. Fehlendes Land neuer Website-Kontakte darf mit DE vorbelegt werden, bekannte Angaben nicht überschreiben.
+
 ## 1. Ziel
 
 Es soll eine schnelle, übersichtliche Webanwendung entstehen, mit der ein einzelner Fotobox-Anbieter Anfragen, Kunden, Aufträge, E-Mails, Angebote und Rechnungen ohne parallele Listen verwalten kann.

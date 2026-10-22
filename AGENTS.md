@@ -8,6 +8,8 @@ Build the application described in `Lastenheft_Fotobox-Verwaltung_MVP.md` increm
 
 The authoritative implementation sequence is `IMPLEMENTATION_PLAN.md`. The complete competitive research in `Bookitup_Funktionsinventar_vollstaendig.md` is reference material, not automatic scope.
 
+The user’s 22 October 2026 direction is a comprehensive Bookitup functional and interaction clone with cautious simplification. Read [the parity specification](docs/bookitup-parity/README.md), its evidence limits and detailed tickets before related changes. It supersedes older MVP omissions for the target backlog, not the safety rules or one-slice workflow. Activate one concrete parity ticket in the implementation plan before coding; do not treat the whole backlog as one slice.
+
 ## Required reading before changes
 
 1. Read this file completely.
@@ -58,6 +60,7 @@ This Git root also contains private customer and print-layout material that is i
 - Use **Impeccable** for frontend design, changes and reviews. Read its current `SKILL.md` and applicable workflow; preserve the existing design system and complete its required finish review/documentation.
 - For interface polish and motion, use **emil-design-eng** and, when implementing animation, **animate** as appropriate. Respect keyboard use and reduced motion.
 - Use **design-taste-frontend** for surfaces within its supported scope. Its current version excludes dashboards/app screens; do not force a new marketing direction onto the administration. Follow its component exception for narrow extensions where applicable.
+- Use **REA** (`reverse-engineer-anything`) for the requested Bookitup/runtime comparison and further reference evidence. Read its installed skill and actual available tool schemas; distinguish browser/source observations from REA Evidence. Installation does not register MCP. Availability and known capture limitations are recorded in the parity specification.
 - These are explicit user preferences carried forward from this project chat. Before first use in a session, locate and read the installed skill and announce its use. Skill names, local locations and previous review limitations are recorded in [the handoff](docs/handoff.md). If a required skill is unavailable, report that and resolve its availability rather than silently claiming to have used it. Do not claim that documentation alone installs a skill.
 
 ### Slice workflow

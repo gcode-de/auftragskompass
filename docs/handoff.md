@@ -2,6 +2,20 @@
 
 Stand: **21.10.2026**, nach C051.3, H026, H029, H030, H031, H038, H039 (released) sowie H033 (umgesetzt, lokale Abnahme grün; Push/CI/Testbetrieb nach dem Commit). Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Neuer verbindlicher Arbeitsauftrag und Prüfbasis: 22.10.2026
+
+Der Benutzer verlangt jetzt einen möglichst vollständigen funktionalen und in der Bedienlogik nahen Bookitup-Klon mit vorsichtiger Vereinfachung. Der ausführliche [Paritätsauftrag](bookitup-parity/README.md) mit [Beobachtungen](bookitup-parity/observations.md), [UI-Vertrag](bookitup-parity/design-contract.md), [Agentenanleitung](bookitup-parity/agent-playbook.md) und BKP001–BKP030 ist der neue Einstieg für diese Arbeiten. Alte M5/M6-Auslassungen beschreiben den früheren verkürzten Start, nicht mehr das vollständige Ausbauziel. Sie autorisieren weiterhin keinen ungeprüften Produktivwechsel oder echte Daten-/Mailaktionen.
+
+Neu ausdrücklich: neutraleres Grün in beiden Themes, kompakte ausgerichtete Controls, Collapse-Schalter versetzen, Filter wie Bookitup positionieren, mobile Kalenderbedienung verbessern; jeder gültige Website-Eingang wird Option auch ohne Kontakt/Land, Ausnahmebereich unter Events entfällt erst nach abgesicherter Datenlogik. Die DE-Vorbelegung bleibt für fehlende Länder neuer Website-Kontakte erlaubt. Bekannte andere Länder bleiben; das öffentliche v1-Schema erhält nicht beiläufig ein zusätzliches Landfeld.
+
+**Verifizierte Basis dieser Analyse:** Remote-Source `cf68f1e` auf `codex/ux-event-simplification` und gleiche Buildkennung im authentifizierten Chrome. Der ältere lokale Checkout `codex/local-runtime-ci` bei `414fa33` war nicht aktuell. Dokumentation auf `codex/bookitup-parity-audit`, eigener verwalteter Worktree. Die folgenden älteren „ohne Commit“-Notizen sind historische Zwischenstände; insbesondere H041 ist im geprüften Source bereits committed und im Browser vorhanden. Die Analyse hat CI, Containerhealth und Betreiber-Konfiguration nicht neu abgenommen und keinen App-Code/deployment verändert.
+
+Bestätigte Korrekturpunkte: Monatsgrid hat Pads vor vollbreitem Wochentagskopf (falsche Spalte für Tag1), zu enge mobile Datumszellen, Zähler auf bereits serverseitig gefilterten Zeilen, Kontaktzwang bei Website-Optionen und unfairer Option-Worker (älteste zehn/attempted-Set). Zu jedem Befund gibt es konkrete Source-/Testpfade. Keine Aussage über einen tatsächlich eingetretenen Kundenausfall.
+
+REA vom ausdrücklich genannten [Repository](https://github.com/morluto/rea/tree/main) installiert: `~/.codex/skills/reverse-engineer-anything/SKILL.md` (v45); npm-CLI beim Check 6.7.0. MCP war nicht aktiv/Registrierung abweichend, Chrome ohne bekannten CDP-Endpunkt. Kein erfolgreicher REA-Runtimecapture; UI-Belege stammen aus Chrome-Steuerung, AK-Verträge aus Source. Die genaue Bookitup-Mobilkalenderansicht und Trial-gesperrte Ressourcenbearbeitung bleiben offen. Diese Grenzen nicht als vollständige REA-Abdeckung ausgeben. Keine MCP-/Chrome-Konfiguration geändert.
+
+Alle Rohbilder/AX-Bäume nur privat unter `~/Documents/AuftragsKompass-Sicherung/bookitup-audit-2026-10-22/`; niemals in das öffentliche Repo kopieren. Die ausführliche Doku enthält ausschließlich abstrahierte Beobachtungen und Anweisungen. R001 ist ein Dokumentationsslice, BKP-Tickets sind noch nicht umgesetzt. Nächster kleiner unabhängiger Fix: BKP001; Website-Semantik erst mit vorheriger Aktivierungsgrenze aus BKP004 ausrollen, da der bestehende Auto-Updater/Worker sonst echte Rückstände selbst verarbeitet.
+
 ## In der nächsten Session zuerst
 
 1. [AGENTS.md](../AGENTS.md) vollständig lesen; dann diese Übergabe, den relevanten Abschnitt des [Lastenhefts](../Lastenheft_Fotobox-Verwaltung_MVP.md) und den aktuellen Slice im [Implementierungsplan](../IMPLEMENTATION_PLAN.md).
