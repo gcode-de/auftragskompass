@@ -29,6 +29,7 @@ import {
 } from '../../packages/core/src/gateway-message.js';
 import { inquiryFormV1 } from '../../packages/core/src/inquiry-form.js';
 import { receiveWebsiteInquiryBatch } from '../../packages/core/src/website-inquiry-sync.js';
+import { importStagedWebsiteInquiry } from '../../packages/core/src/website-inquiry-deliveries.js';
 let container: StartedPostgreSqlContainer,
   pool: Pool,
   tenantId: string,
@@ -966,4 +967,55 @@ test('the loop requires an active administrator and pulls nothing otherwise', as
   } finally {
     await loop.stop();
   }
+});
+
+test('a contactless receipt keeps its open relation across signed retries and a restart', async () => {
+  const inquiry = entry(),
+    value = batch([inquiry]);
+  expect(await receive(value)).toEqual({ status: 'applied', count: 1 });
+  // BKP002: a valid entry without a resolvable contact is still a durable
+  // Option; the receipt records contact_id null instead of refusing it.
+  const imported = await importStagedWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    inquiry.id,
+    {},
+  );
+  expect(imported).toMatchObject({ status: 'created', contactId: null });
+  const retry = batch(
+    value.message.payload.inquiries,
+    value.requestId,
+    value.message.operationId,
+  );
+  const restarted = new Pool({
+    connectionString: container.getConnectionUri(),
+  });
+  try {
+    expect(await receive(retry, actorId, restarted)).toEqual({
+      status: 'duplicate',
+      count: 1,
+    });
+  } finally {
+    await restarted.end();
+  }
+  expect(await counts()).toMatchObject({
+    website_inquiry_deliveries: 1,
+    // The signed retry is a fresh transport message for the same operation.
+    ak_gateway_messages: 2,
+    ak_gateway_operations: 1,
+    contacts: 0,
+    events: 1,
+  });
+  const receipt = (
+    await pool.query(
+      'SELECT contact_id,payload FROM website_inquiries WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows[0];
+  expect(receipt.contact_id).toBeNull();
+  expect(receipt.payload).toEqual(inquiry);
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, inquiry.id, {}),
+  ).toEqual({ ...imported, status: 'duplicate' });
 });

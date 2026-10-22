@@ -63,9 +63,9 @@ export function WebsiteInbox({
       <p>
         Neue Website-Eingänge werden automatisch als Option angelegt, ohne
         Uhrzeit und ohne Reservierung. Hier erscheinen nur noch Eingänge, die
-        nicht automatisch angelegt wurden – etwa bei unklarer Kontaktzuordnung
-        oder fehlendem Land. Die Prüfung und Übernahme erzeugt eine Option und
-        keine feste Buchung.
+        noch nicht übernommen wurden – etwa nach einem vorübergehenden Fehler.
+        Die Prüfung und Übernahme erzeugt eine Option und keine feste Buchung;
+        ohne passenden Kontakt bleibt der Vorgang bewusst ohne Kontaktzuordnung.
       </p>
       <button
         type="button"
@@ -107,9 +107,11 @@ export function WebsiteInbox({
                       item={item}
                       csrfToken={csrfToken}
                       timeZone={timeZone}
-                      onSuccess={() => {
+                      onSuccess={(contactId) => {
                         setMessage(
-                          'Als Option übernommen. Du findest den Vorgang in der Eventliste.',
+                          contactId === null
+                            ? 'Als Option übernommen. Kontakt noch offen – du kannst ihn später am Event zuordnen. Du findest den Vorgang in der Eventliste.'
+                            : 'Als Option übernommen. Du findest den Vorgang in der Eventliste.',
                         );
                         setPage((current) =>
                           current
@@ -125,7 +127,9 @@ export function WebsiteInbox({
                         void load();
                         void onImported().catch(() =>
                           setMessage(
-                            'Als Option übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
+                            contactId === null
+                              ? 'Als Option übernommen. Kontakt noch offen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.'
+                              : 'Als Option übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
                           ),
                         );
                       }}
@@ -169,7 +173,7 @@ function InboxEntry({
   item: Item;
   csrfToken: string;
   timeZone: string;
-  onSuccess: () => void;
+  onSuccess: (contactId: string | null) => void;
 }) {
   // The country is the operator's decision; the inbox never guesses one. It is
   // only needed when the recovery creates a new contact.
@@ -205,10 +209,13 @@ function InboxEntry({
         );
         return;
       }
-      const result = (await response.json()) as { status?: string };
+      const result = (await response.json()) as {
+        status?: string;
+        contactId?: string | null;
+      };
       if (!['created', 'duplicate'].includes(result.status ?? ''))
         throw new Error();
-      onSuccess();
+      onSuccess(result.contactId ?? null);
     } catch {
       setError(
         'Übernahme fehlgeschlagen. Bitte Anmeldung und Verbindung prüfen und erneut versuchen.',
@@ -224,9 +231,10 @@ function InboxEntry({
         {fields[0]!.value} {fields[1]!.value} · {fields[3]!.value}
       </summary>
       <p>
-        Originalangaben beim Absenden. Nicht automatisch angelegt – bitte
-        Kontaktzuordnung prüfen. Bestehende Kontaktangaben werden nicht
-        überschrieben.
+        Originalangaben beim Absenden. Noch nicht übernommen – ein bestehender
+        Kontakt wird wiederverwendet und nicht überschrieben. Ohne passenden
+        Kontakt bleibt die Option ohne Kontaktzuordnung und kann später am Event
+        ergänzt werden.
       </p>
       <OriginalInquiryContents original={item.original} timeZone={timeZone} />
       <form

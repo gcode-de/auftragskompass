@@ -159,7 +159,7 @@ export function registerWebsiteInboxRoutes(
             properties: {
               status: { enum: ['created', 'duplicate'] },
               eventId: { type: 'string', format: 'uuid' },
-              contactId: { type: 'string', format: 'uuid' },
+              contactId: { type: ['string', 'null'], format: 'uuid' },
             },
           },
         },

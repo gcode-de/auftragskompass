@@ -177,7 +177,10 @@ test('failed and malformed import responses keep values; a confirmed duplicate s
       if (attempt === 4)
         return Response.json({ error: 'conflict' }, { status: 409 });
       imported = true;
-      return Response.json({ status: 'duplicate' });
+      return Response.json({
+        status: 'duplicate',
+        contactId: 'fictional-contact',
+      });
     }),
   );
   const onImported = vi.fn().mockRejectedValue(new Error('event list offline'));
@@ -226,7 +229,11 @@ test('an older read cannot reintroduce an entry after confirmed import and a new
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: string, options?: RequestInit) => {
-      if (options) return Response.json({ status: 'created' });
+      if (options)
+        return Response.json({
+          status: 'created',
+          contactId: 'fictional-contact',
+        });
       reads++;
       if (reads === 2)
         return new Promise<Response>((resolve) => {
@@ -336,6 +343,46 @@ test('without a country field the operator can retry an identity exception uncha
   const writes = fetcher.mock.calls.filter((call) => call[1]);
   expect(writes).toHaveLength(1);
   expect(JSON.parse(writes[0]![1]!.body as string)).toEqual({});
+});
+
+test('a contactless import is reported as an open contact instead of an undefined value', async () => {
+  let imported = false;
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (!options)
+      return Response.json({
+        items: imported ? [] : [item],
+        total: imported ? 0 : 1,
+        offset: 0,
+        limit: 25,
+      });
+    imported = true;
+    return Response.json({
+      status: 'created',
+      eventId: 'fictional-event',
+      contactId: null,
+    });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const onImported = vi.fn().mockResolvedValue(undefined);
+  render(
+    <WebsiteInbox
+      csrfToken="fictional-csrf"
+      timeZone="UTC"
+      onImported={onImported}
+    />,
+  );
+  open();
+  await screen.findByText(/Fictional Inbox/);
+  const row = screen.getByText(/Fictional Inbox/).closest('details')!;
+  row.open = true;
+  fireEvent(row, new Event('toggle'));
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Als Option übernehmen' }),
+  );
+  // A missing contact is a calm normal state, never an "undefined" artefact.
+  await screen.findByText(/Kontakt noch offen/);
+  expect(screen.queryByText(/undefined/)).toBeNull();
+  expect(onImported).toHaveBeenCalledOnce();
 });
 
 test('returning to the window refreshes only an open exceptions view', async () => {

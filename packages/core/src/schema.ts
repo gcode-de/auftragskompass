@@ -297,7 +297,7 @@ export const calendarFeeds = pgTable('calendar_feeds', {
 export const websiteInquiries = pgTable('website_inquiries', {
   tenantId: uuid('tenant_id').notNull(),
   id: uuid('id').notNull(),
-  contactId: uuid('contact_id').notNull(),
+  contactId: uuid('contact_id'),
   eventId: uuid('event_id').notNull(),
   payload: jsonb('payload').notNull(),
   payloadHash: text('payload_hash').notNull(),

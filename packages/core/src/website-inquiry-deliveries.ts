@@ -81,7 +81,11 @@ export async function importStagedWebsiteInquiry(
   actorId: string,
   inquiryId: string,
   options: { newContactCountry?: string },
-) {
+): Promise<{
+  status: 'created' | 'duplicate';
+  eventId: string;
+  contactId: string | null;
+}> {
   // H032: the same auto semantics as the drain, so recovery also yields an Option.
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   if (![tenantId, actorId, inquiryId].every((value) => uuid.test(value)))

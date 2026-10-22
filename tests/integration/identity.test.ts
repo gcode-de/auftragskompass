@@ -40,8 +40,11 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
+  // BKP002 adds the optional contact reference as the current last migration.
+  expect(applied.at(-1)!.name).toBe(
+    '0033_website_inquiry_optional_contact.sql',
+  );
   // H034 adds the optional place without touching existing data.
-  expect(applied.at(-1)!.name).toBe('0032_event_venue.sql');
   const columns = (
     await pool.query<{
       column_name: string;

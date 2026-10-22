@@ -104,10 +104,13 @@ export async function receiveWebsiteInquiry(
 ): Promise<{
   status: 'created' | 'duplicate';
   eventId: string;
-  contactId: string;
+  contactId: string | null;
 }> {
   const country = options.newContactCountry,
-    eventStatus = options.status ?? 'inquiry';
+    eventStatus = options.status ?? 'inquiry',
+    // BKP002: the Option path accepts a valid message without a resolvable
+    // contact. The direct legacy 'inquiry' call keeps its strict review.
+    permissive = eventStatus === 'option';
   if (
     !uuid.test(tenantId) ||
     !uuid.test(actorId) ||
@@ -162,7 +165,7 @@ export async function receiveWebsiteInquiry(
           mobile: '',
           country: country ?? '',
         });
-      let contactId: string;
+      let contactId: string | null;
       if (candidates.length) {
         const match = candidates[0]!;
         if (
@@ -171,11 +174,18 @@ export async function receiveWebsiteInquiry(
           match.state !== 'active' ||
           match.email !== email ||
           match.name.trim().toLowerCase() !== name.toLowerCase()
-        )
-          throw new WebsiteInquiryError('contact_review');
-        contactId = match.id;
+        ) {
+          if (!permissive) throw new WebsiteInquiryError('contact_review');
+          // Ambiguous, archived, wrong-kind or colliding identities are never
+          // guessed or merged; the Option stays without a contact.
+          contactId = null;
+        } else contactId = match.id;
+      } else if (!country) {
+        if (!permissive) throw new WebsiteInquiryError('contact_review');
+        // Without an operator/deployment country there is no honest new
+        // contact; the public input never carries a country.
+        contactId = null;
       } else {
-        if (!country) throw new WebsiteInquiryError('contact_review');
         contactId = (await repo.save(actorId, {
           kind: 'private',
           name,

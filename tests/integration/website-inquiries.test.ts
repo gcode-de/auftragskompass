@@ -78,6 +78,16 @@ const receive = (
   receiveWebsiteInquiry(pool, tenantId, actorId, value, at, {
     newContactCountry: country,
   });
+// BKP002: the Option path is what the drain and the manual recovery use.
+const receiveOption = (
+  value: unknown,
+  country: string | undefined = undefined,
+  at = now,
+) =>
+  receiveWebsiteInquiry(pool, tenantId, actorId, value, at, {
+    status: 'option',
+    ...(country === undefined ? {} : { newContactCountry: country }),
+  });
 const counts = async () => {
   const result: Record<string, number> = {};
   for (const table of [
@@ -509,7 +519,7 @@ test('original inquiry endpoint is tenant-scoped, read-only and keeps complete s
         name: 'Fictional edited contact',
         email: 'edited@example.invalid',
       },
-      result.contactId,
+      result.contactId!,
       1,
     );
     const response = await app.inject({
@@ -870,7 +880,7 @@ test('staging snapshots callers before lock waits, supports outer rollback and e
   ).toBe(1);
 });
 
-test('a durably received inquiry can be processed after its gateway deadline and retried without changing the original', async () => {
+test('a durably received inquiry becomes a contactless Option after its gateway deadline and keeps that receipt on retry', async () => {
   const value = {
     ...entry(),
     receivedAt: '2020-10-26T10:00:00.000Z',
@@ -883,18 +893,24 @@ test('a durably received inquiry can be processed after its gateway deadline and
     value,
     new Date(value.receivedAt),
   );
-  await expect(
-    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
-  ).rejects.toMatchObject({ reason: 'contact_review' });
-  expect((await counts()).events).toBe(0);
+  // BKP002: without a country the valid message still becomes an Option; the
+  // missing contact is an enrichment task, not a reason to refuse the entry.
   const imported = await importStagedWebsiteInquiry(
     pool,
     tenantId,
     actorId,
     value.id,
-    { newContactCountry: 'DE' },
+    {},
   );
-  expect(imported.status).toBe('created');
+  expect(imported).toMatchObject({ status: 'created', contactId: null });
+  expect((await counts()).events).toBe(1);
+  expect((await counts()).contacts).toBe(0);
+  // A later country must not rewrite the original receipt or invent a contact.
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {
+      newContactCountry: 'DE',
+    }),
+  ).toEqual({ ...imported, status: 'duplicate' });
   const restarted = new Pool({
     connectionString: container.getConnectionUri(),
   });
@@ -923,11 +939,11 @@ test('a durably received inquiry can be processed after its gateway deadline and
   expect(
     (
       await pool.query(
-        'SELECT payload FROM website_inquiries WHERE tenant_id=$1',
+        'SELECT payload,contact_id FROM website_inquiries WHERE tenant_id=$1',
         [tenantId],
       )
-    ).rows[0].payload,
-  ).toEqual(value);
+    ).rows[0],
+  ).toEqual({ payload: value, contact_id: null });
 });
 
 test('concurrent staged processing reuses an exact contact without overwriting it', async () => {
@@ -949,20 +965,32 @@ test('concurrent staged processing reuses an exact contact without overwriting i
   expect((await counts()).reservations).toBe(0);
 });
 
-test('staged processing keeps ambiguous originals and rejects missing, foreign or corrupted inputs', async () => {
+test('staged processing keeps an ambiguous identity contactless and rejects missing, foreign or corrupted inputs', async () => {
   const value = entry();
   await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
   await contactRepository(pool, tenantId).save(actorId, {
     ...person,
     name: 'Fictional other person',
   });
+  const imported = await importStagedWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    value.id,
+    { newContactCountry: 'DE' },
+  );
+  expect(imported).toMatchObject({ status: 'created', contactId: null });
+  const [receiptRow] = (
+    await pool.query(
+      'SELECT contact_id FROM website_inquiries WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows;
+  expect(receiptRow.contact_id).toBeNull();
+  expect(
+    (await contactRepository(pool, tenantId).list()).map((row) => row.name),
+  ).toEqual(['Fictional other person']);
   const before = await counts();
-  await expect(
-    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {
-      newContactCountry: 'DE',
-    }),
-  ).rejects.toMatchObject({ reason: 'contact_review' });
-  expect(await counts()).toEqual(before);
   await expect(
     importStagedWebsiteInquiry(pool, tenantId, actorId, randomUUID(), {}),
   ).rejects.toMatchObject({ reason: 'not_found' });
@@ -1105,9 +1133,22 @@ test('website inbox API paginates pending originals and requires CSRF for an exp
         })
       ).statusCode,
     ).toBe(403);
+    // BKP002: without an operator country the valid entry still becomes an
+    // Option; the receipt and the response carry contactId null explicitly.
+    const imported = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: {},
+    });
+    expect(imported.statusCode).toBe(200);
+    expect(imported.json()).toMatchObject({
+      status: 'created',
+      contactId: null,
+    });
     expect(
       (await app.inject({ method: 'POST', url, headers, payload: {} })).json(),
-    ).toEqual({ error: 'contact_review' });
+    ).toEqual({ ...imported.json(), status: 'duplicate' });
     expect(
       (
         await app.inject({
@@ -1118,14 +1159,19 @@ test('website inbox API paginates pending originals and requires CSRF for an exp
         })
       ).statusCode,
     ).toBe(400);
-    const imported = await app.inject({
-      method: 'POST',
-      url,
-      headers,
-      payload: { newContactCountry: 'DE' },
-    });
-    expect(imported.statusCode).toBe(200);
-    expect(imported.json().status).toBe('created');
+    // A later country is a replay only: it neither adds a contact nor rewrites
+    // the stored receipt.
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers,
+          payload: { newContactCountry: 'DE' },
+        })
+      ).json(),
+    ).toEqual({ ...imported.json(), status: 'duplicate' });
+    expect((await counts()).contacts).toBe(0);
     // The recovered entry is an Option; the API contract itself is unchanged.
     expect(
       (
@@ -1520,7 +1566,7 @@ test('E: unsigned or malformed deliveries have no effect even after a successful
   );
 });
 
-test('F: an ambiguous contact stays an exception while other pending entries in the same run become Options', async () => {
+test('F: an ambiguous contact yields a contactless Option while other pending entries in the same run become Options', async () => {
   const base = entry(),
     ambiguous = base,
     plain = {
@@ -1546,7 +1592,9 @@ test('F: an ambiguous contact stays an exception while other pending entries in 
     reports: string[] = [],
     drain = drainWith(pool, 'DE', tenantId, actorId, codes, reports);
   await settle(drain);
-  expect(codes).toEqual(['website_option_contact_review']);
+  // BKP002: the ambiguous identity is no longer a refused exception; it is an
+  // Option without a contact.
+  expect(codes).toEqual([]);
   expect(reports).toEqual([]);
   expect(drain.ready()).toBe(true);
   expect(
@@ -1559,33 +1607,39 @@ test('F: an ambiguous contact stays an exception while other pending entries in 
       .map((row) => row.id)
       .sort(),
   ).toEqual([ambiguous.id, plain.id].sort());
+  const receipts = (
+    await pool.query<{ id: string; contact_id: string | null }>(
+      'SELECT id,contact_id FROM website_inquiries WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows;
+  expect(receipts.map((row) => row.id).sort()).toEqual(
+    [ambiguous.id, plain.id].sort(),
+  );
   expect(
-    (
-      await pool.query('SELECT id FROM website_inquiries WHERE tenant_id=$1', [
-        tenantId,
-      ])
-    ).rowCount,
-  ).toBe(1);
+    receipts.find((row) => row.id === ambiguous.id)!.contact_id,
+  ).toBeNull();
   expect(
-    (await eventRepository(pool, tenantId).list()).filter(
-      (row) => row.source !== null,
-    ),
-  ).toEqual([expect.objectContaining({ status: 'option' })]);
+    receipts.find((row) => row.id === plain.id)!.contact_id,
+  ).not.toBeNull();
+  const events = (await eventRepository(pool, tenantId).list()).filter(
+    (row) => row.source !== null,
+  );
+  expect(events.map((row) => row.status)).toEqual(['option', 'option']);
   expect(
-    await contactRepository(pool, tenantId)
-      .list()
-      .then(
-        (rows) =>
-          rows.find((row) => row.email === 'second@example.invalid')?.name,
-      ),
-  ).toBe('Second Example');
-  // Still a visible exception after the run; no silent merge happened.
+    events.find((row) => row.name === 'Fictional Example')!.primaryContactId,
+  ).toBeNull();
+  expect(
+    events.find((row) => row.name === 'Second Example')!.primaryContactId,
+  ).not.toBeNull();
+  // No silent merge happened; the existing two contacts stay untouched.
   expect(
     (await contactRepository(pool, tenantId).list()).map((row) => row.name),
   ).toEqual(['Fictional Example', 'Fictional Other Person', 'Second Example']);
-  await expect(
-    importStagedWebsiteInquiry(pool, tenantId, actorId, ambiguous.id, {}),
-  ).rejects.toMatchObject({ reason: 'contact_review' });
+  // The manual retry returns the stored receipt instead of resolving a contact.
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, ambiguous.id, {}),
+  ).toMatchObject({ status: 'duplicate', contactId: null });
 });
 
 test('G: a failure after the event was written leaves no event, receipt, logbook entry or reservation', async () => {
@@ -1617,7 +1671,7 @@ test('G: a failure after the event was written leaves no event, receipt, logbook
   expect(await counts()).toMatchObject({ events: 1, website_inquiries: 1 });
 });
 
-test('J: without a configured country the auto path keeps new contacts in review, with one it becomes an Option', async () => {
+test('J: without an operator country the auto path keeps the Option contactless, with the deployment default it creates the contact', async () => {
   const base = entry(),
     // No saved contact matches these details, so only the country decides.
     unknown = {
@@ -1641,6 +1695,18 @@ test('J: without a configured country the auto path keeps new contacts in review
           ...base.submission.fields,
           firstName: 'Known',
           email: 'known@example.invalid',
+        },
+      },
+    },
+    defaulted = {
+      ...base,
+      id: randomUUID(),
+      submission: {
+        ...base.submission,
+        fields: {
+          ...base.submission.fields,
+          firstName: 'Defaulted',
+          email: 'defaulted@example.invalid',
         },
       },
     };
@@ -1671,45 +1737,65 @@ test('J: without a configured country the auto path keeps new contacts in review
     reports: string[] = [],
     drain = drainWith(pool, undefined, tenantId, actorId, codes, reports);
   await settle(drain);
-  // Without a country only the unknown entry is refused; the known one reuses
-  // its exact contact and becomes an Option without inventing a settlement.
-  expect(codes).toEqual(['website_option_contact_review']);
+  // BKP002: without a country both entries become Options; the unknown one
+  // simply has no contact, while the known one reuses its exact contact.
+  expect(codes).toEqual([]);
   expect(reports).toEqual([]);
+  const events = await eventRepository(pool, tenantId).list();
+  expect(events.map((row) => row.status)).toEqual(['option', 'option']);
   expect(
-    (await eventRepository(pool, tenantId).list()).map((row) => row.status),
-  ).toEqual(['option']);
-  // No new contact: the exception created none, the known entry reused one.
+    events.find((row) => row.name === 'Unknown Example')!.primaryContactId,
+  ).toBeNull();
+  expect(
+    events.find((row) => row.name === 'Known Example')!.primaryContactId,
+  ).not.toBeNull();
   expect(
     (await contactRepository(pool, tenantId).list()).map((row) => ({
       name: row.name,
       country: row.country,
     })),
   ).toEqual([{ name: 'Known Example', country: 'DE' }]);
-  // The refused entry stays visible and only a country would turn it into a
-  // new contact, which is the documented deployment opt-in.
+  const receipts = (
+    await pool.query<{ id: string; contact_id: string | null }>(
+      'SELECT id,contact_id FROM website_inquiries WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows;
+  expect(receipts).toHaveLength(2);
+  expect(receipts.find((row) => row.id === unknown.id)!.contact_id).toBeNull();
   expect(
-    (
-      await pool.query('SELECT id FROM website_inquiries WHERE tenant_id=$1', [
-        tenantId,
-      ])
-    ).rowCount,
-  ).toBe(1);
+    receipts.find((row) => row.id === known.id)!.contact_id,
+  ).not.toBeNull();
+  // The deployment opt-in only helps entries that are not yet imported; it
+  // creates a new contact with exactly that country.
+  await stageWebsiteInquiry(pool, tenantId, actorId, defaulted, now);
+  await settle(drainWith(pool, 'DE'));
+  expect(
+    (await contactRepository(pool, tenantId).list()).map((row) => ({
+      name: row.name,
+      country: row.country,
+    })),
+  ).toEqual([
+    { name: 'Defaulted Example', country: 'DE' },
+    { name: 'Known Example', country: 'DE' },
+  ]);
+  const [defaultedEvent] = (
+    await eventRepository(pool, tenantId).list()
+  ).filter((row) => row.name === 'Defaulted Example');
+  expect(defaultedEvent!.primaryContactId).not.toBeNull();
 });
 
-test('K: the manual recovery is idempotent and yields the same Option semantics as the auto path', async () => {
+test('K: the manual recovery is idempotent and yields a contactless Option just like the auto path', async () => {
   const value = entry();
   await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
-  await expect(
-    importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
-  ).rejects.toMatchObject({ reason: 'contact_review' });
   const created = await importStagedWebsiteInquiry(
     pool,
     tenantId,
     actorId,
     value.id,
-    { newContactCountry: 'DE' },
+    {},
   );
-  expect(created.status).toBe('created');
+  expect(created).toMatchObject({ status: 'created', contactId: null });
   expect(
     await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
   ).toEqual({ ...created, status: 'duplicate' });
@@ -1719,6 +1805,8 @@ test('K: the manual recovery is idempotent and yields the same Option semantics 
     startsAt: null,
     endsAt: null,
   });
+  expect(detail.event.primaryContactId).toBeNull();
+  expect(detail.contacts).toEqual([]);
   expect(detail.activities).toEqual([
     expect.objectContaining({ kind: 'created' }),
     expect.objectContaining({
@@ -1727,7 +1815,11 @@ test('K: the manual recovery is idempotent and yields the same Option semantics 
       actorId,
     }),
   ]);
-  expect(await counts()).toMatchObject({ events: 1, reservations: 0 });
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 0,
+    reservations: 0,
+  });
 });
 
 test('a direct receive call keeps the legacy inquiry status unless it asks for an Option', async () => {
@@ -1759,4 +1851,317 @@ test('a direct receive call keeps the legacy inquiry status unless it asks for a
       status: 'booked',
     } as never),
   ).rejects.toMatchObject({ reason: 'invalid' });
+});
+
+// BKP002: a valid website message becomes an Option even when no contact can
+// be resolved. The direct 'inquiry' call above keeps its strict review.
+test('BKP002: an Option without a candidate and without an operator country stays contactless with its exact receipt', async () => {
+  const input = entry(),
+    result = await receiveOption(input);
+  expect(result).toMatchObject({ status: 'created', contactId: null });
+  const detail = await eventRepository(pool, tenantId).detail(result.eventId);
+  expect(detail.event).toMatchObject({
+    status: 'option',
+    eventDate: '2030-10-27',
+    startsAt: null,
+    endsAt: null,
+    primaryContactId: null,
+    source: 'Website: fotobox-bw-main (v1)',
+    venue: 'Fictional venue',
+  });
+  expect(detail.contacts).toEqual([]);
+  expect(detail.activities).toEqual([
+    expect.objectContaining({ kind: 'created' }),
+    expect.objectContaining({
+      kind: 'website_received',
+      nextStatus: 'option',
+      description: 'Website-Anfrage empfangen: fotobox-bw-main (v1).',
+    }),
+  ]);
+  const receipt = (
+    await pool.query(
+      'SELECT contact_id,event_id,payload,payload_hash FROM website_inquiries WHERE tenant_id=$1',
+      [tenantId],
+    )
+  ).rows[0];
+  expect(receipt).toMatchObject({
+    contact_id: null,
+    event_id: result.eventId,
+    payload: input,
+  });
+  expect(receipt.payload_hash).toMatch(/^[0-9a-f]{64}$/);
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 0,
+    website_inquiries: 1,
+    event_activities: 2,
+    reservations: 0,
+  });
+  // A country on a later retry is a replay only: no contact, no rewrite.
+  expect(await receiveOption(input, 'DE')).toEqual({
+    ...result,
+    status: 'duplicate',
+  });
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 0,
+    website_inquiries: 1,
+  });
+});
+
+test('BKP002: the operator country creates only a genuinely new contact and never overwrites an existing one', async () => {
+  const existing = await contactRepository(pool, tenantId).save(actorId, {
+    ...person,
+    country: 'AT',
+    phone: '+49 555 99999',
+  });
+  const reused = await receiveOption(entry(), 'DE');
+  expect(reused.contactId).toBe(existing!.id);
+  // The known AT contact keeps its country and every other field.
+  expect((await contactRepository(pool, tenantId).list())[0]).toEqual(existing);
+  const base = entry(),
+    fresh = {
+      ...base,
+      id: randomUUID(),
+      submission: {
+        ...base.submission,
+        fields: {
+          ...base.submission.fields,
+          firstName: 'Fresh',
+          lastName: 'Person',
+          email: 'fresh@example.invalid',
+          phone: '',
+        },
+      },
+    };
+  const created = await receiveOption(fresh, 'AT');
+  expect(created.contactId).not.toBeNull();
+  expect(
+    (await contactRepository(pool, tenantId).list()).find(
+      (row) => row.id === created.contactId,
+    ),
+  ).toMatchObject({
+    name: 'Fresh Person',
+    email: 'fresh@example.invalid',
+    country: 'AT',
+  });
+  // The contact database still requires a country; no empty contact exists.
+  await expect(
+    pool.query(
+      "INSERT INTO contacts(tenant_id,id,kind,name,contact_person,street,postal_code,city,email,phone,mobile,phone_key,mobile_key,state) VALUES($1,$2,'private','Fictional No Country','','','','','no-country@example.invalid','','','','','active')",
+      [tenantId, randomUUID()],
+    ),
+  ).rejects.toMatchObject({ code: '23502' });
+});
+
+test('BKP002: archived, ambiguous, wrong-kind and phone-colliding candidates never merge or guess a contact', async () => {
+  for (const candidates of [
+    [{ ...person, state: 'archived' as const }],
+    [{ ...person, kind: 'company' as const }],
+    [{ ...person, name: 'Fictional Other' }],
+    [
+      {
+        ...person,
+        name: 'Fictional Other',
+        email: 'other@example.invalid',
+        phone: '+49 555 01000',
+      },
+    ],
+  ]) {
+    const tenant = randomUUID();
+    await bootstrapAccess(
+      pool,
+      tenant,
+      'fictional.owner@example.invalid',
+      'Fictional',
+      'UTC',
+    );
+    await accessRepository(pool, tenant).issueSession(
+      { subject: 'fictional', email: 'fictional.owner@example.invalid' },
+      digest(randomUUID()),
+    );
+    const actor = (await accessRepository(pool, tenant).list())[0]!.userId!;
+    for (const candidate of candidates)
+      await contactRepository(pool, tenant).save(actor, candidate);
+    const [before] = (
+      await pool.query<{ count: string }>(
+        'SELECT count(*) FROM contacts WHERE tenant_id=$1',
+        [tenant],
+      )
+    ).rows;
+    const result = await receiveWebsiteInquiry(
+      pool,
+      tenant,
+      actor,
+      entry(),
+      now,
+      { status: 'option', newContactCountry: 'DE' },
+    );
+    expect(result).toMatchObject({ status: 'created', contactId: null });
+    const [after] = (
+      await pool.query<{ count: string }>(
+        'SELECT count(*) FROM contacts WHERE tenant_id=$1',
+        [tenant],
+      )
+    ).rows;
+    expect(after!.count).toBe(before!.count);
+    expect(
+      (
+        await pool.query<{ contact_id: string | null }>(
+          'SELECT contact_id FROM website_inquiries WHERE tenant_id=$1',
+          [tenant],
+        )
+      ).rows[0]!.contact_id,
+    ).toBeNull();
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          "SELECT count(*) FROM events WHERE tenant_id=$1 AND status='option'",
+          [tenant],
+        )
+      ).rows[0]!.count,
+    ).toBe('1');
+  }
+});
+
+test('BKP002: parallel replays of an unresolved Option create exactly one event and one contactless receipt', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+    ),
+  );
+  expect(results.filter((row) => row.status === 'created')).toHaveLength(1);
+  expect(new Set(results.map((row) => row.eventId)).size).toBe(1);
+  expect(results.every((row) => row.contactId === null)).toBe(true);
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 0,
+    website_inquiries: 1,
+    reservations: 0,
+  });
+});
+
+test('BKP002: a failing receipt insert rolls the whole contactless Option back', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  await pool.query(`CREATE FUNCTION fictional_bkp002_fail() RETURNS trigger
+    LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; END $$`);
+  await pool.query(`CREATE TRIGGER fictional_bkp002_fail BEFORE INSERT ON website_inquiries
+    FOR EACH ROW EXECUTE FUNCTION fictional_bkp002_fail()`);
+  try {
+    await expect(
+      importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+    ).rejects.toMatchObject({ reason: 'failed' });
+  } finally {
+    await pool.query('DROP TRIGGER fictional_bkp002_fail ON website_inquiries');
+    await pool.query('DROP FUNCTION fictional_bkp002_fail()');
+  }
+  expect(await counts()).toMatchObject({
+    events: 0,
+    contacts: 0,
+    website_inquiries: 0,
+    event_activities: 0,
+    reservations: 0,
+  });
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {}),
+  ).toMatchObject({ status: 'created', contactId: null });
+});
+
+test('BKP002: a retry does not reset a manually edited Option status or contact and keeps the receipt open', async () => {
+  const value = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, value, now);
+  const created = await importStagedWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    value.id,
+    {},
+  );
+  expect(created.contactId).toBeNull();
+  const manual = await contactRepository(pool, tenantId).save(actorId, {
+    ...person,
+    name: 'Fictional Manual',
+    email: 'manual@example.invalid',
+  });
+  await pool.query(
+    "INSERT INTO event_contacts(tenant_id,event_id,contact_id,role) VALUES($1,$2,$3,'primary')",
+    [tenantId, created.eventId, manual!.id],
+  );
+  await pool.query(
+    "UPDATE events SET status='cancelled', version=version+1 WHERE tenant_id=$1 AND id=$2",
+    [tenantId, created.eventId],
+  );
+  expect(
+    await importStagedWebsiteInquiry(pool, tenantId, actorId, value.id, {
+      newContactCountry: 'DE',
+    }),
+  ).toEqual({ ...created, status: 'duplicate' });
+  const detail = await eventRepository(pool, tenantId).detail(created.eventId);
+  expect(detail.event).toMatchObject({
+    status: 'cancelled',
+    primaryContactId: manual!.id,
+  });
+  expect(
+    (
+      await pool.query(
+        'SELECT contact_id FROM website_inquiries WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0].contact_id,
+  ).toBeNull();
+  expect(await counts()).toMatchObject({ events: 1, contacts: 1 });
+});
+
+test('BKP002: the Option path keeps schema, hash and tenant protection', async () => {
+  const before = await counts(),
+    withCountry = entry();
+  (withCountry.submission.fields as Record<string, unknown>).country = 'DE';
+  await expect(receiveOption(withCountry)).rejects.toMatchObject({
+    reason: 'invalid',
+  });
+  await expect(
+    receiveOption({ ...entry(), unknown: 'fictional' }),
+  ).rejects.toMatchObject({ reason: 'invalid' });
+  expect(await counts()).toEqual(before);
+  const value = entry(),
+    first = await receiveOption(value);
+  await expect(
+    receiveOption({
+      ...value,
+      privacyNotice: 'Fictional changed privacy notice',
+    }),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(first.contactId).toBeNull();
+  const staged = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, staged, now);
+  await expect(
+    importStagedWebsiteInquiry(pool, tenantId, randomUUID(), staged.id, {}),
+  ).rejects.toMatchObject({ reason: 'forbidden' });
+  const foreign = randomUUID();
+  await bootstrapAccess(
+    pool,
+    foreign,
+    'foreign@example.invalid',
+    'Fictional foreign',
+    'Europe/Berlin',
+  );
+  await accessRepository(pool, foreign).issueSession(
+    { subject: 'foreign', email: 'foreign@example.invalid' },
+    digest(randomUUID()),
+  );
+  const foreignActor = (await accessRepository(pool, foreign).list())[0]!
+    .userId!;
+  await expect(
+    importStagedWebsiteInquiry(pool, foreign, foreignActor, staged.id, {
+      newContactCountry: 'DE',
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  expect(await counts()).toMatchObject({
+    events: 1,
+    contacts: 0,
+    website_inquiries: 1,
+  });
 });

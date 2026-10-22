@@ -189,9 +189,12 @@ und zuletzt der Datenbankpool.
 **Land für neue Kontakte:** Ohne ausdrückliche Konfiguration wird kein Land
 erfunden. `loadWebsiteOptionConfig` liest `AK_INQUIRY_DEFAULT_CONTACT_COUNTRY`
 (Muster `^[A-Z]{2}$`) und `AK_INQUIRY_OPTION_INTERVAL_MS` (5.000–600.000 ms,
-Standard 30.000). Fehlt die Landvariable, bleibt jeder Eingang mit neu
-anzulegendem Kontakt als sichtbare Ausnahme `contact_review` stehen; bestehende
-exakte Kontakte werden weiterhin automatisch wiederverwendet. Die Entscheidung
+Standard 30.000). Seit BKP002 erzeugt der Optionpfad auch ohne Landvariable
+eine Option ohne Kontaktzuordnung („Kontakt noch offen“) statt einer Ausnahme;
+ein neuer Kontakt entsteht nur mit der Betreiber-/Deployment-Vorgabe. Der
+direkte Legacy-Aufruf (`status: 'inquiry'`) lässt fehlendes Land weiterhin als
+sichtbare Ausnahme `contact_review` stehen; bestehende exakte Kontakte werden in
+beiden Modi automatisch wiederverwendet. Die Entscheidung
 vom 19.10.2026 (Deutschland als Vorbelegung) ist damit eine
 Betriebseinstellung des Deployments, kein fest verdrahteter Domänenwert und
 keine Formularangabe: `AK_INQUIRY_DEFAULT_CONTACT_COUNTRY=DE` ist der
@@ -235,12 +238,17 @@ Damit verhindert ein inzwischen abgelaufener Gateway-Termin keine spätere
 Kontaktprüfung. Die ursprüngliche Frist wird weder verschoben noch neu erfunden.
 
 Neue Kontakte benötigen weiterhin das ausdrücklich übergebene Land; bei exaktem
-bestehendem Kontakt ist kein Land erforderlich. Unklare Zuordnungen scheitern
-mit `contact_review`, ohne Teilanlage oder Veränderung des gesicherten Originals.
-Eine spätere Wiederholung kann nach Klärung erneut ausgeführt werden. Parallele
-Verarbeitung und Wiederanlauf ergeben dasselbe Event mit demselben Kontakt.
-Die ursprüngliche Ablage bleibt erhalten; dieser Dienst quittiert nicht im
-Gateway und wird noch nicht automatisch oder per HTTP ausgelöst.
+bestehendem Kontakt ist kein Land erforderlich. Unklare Zuordnungen werden im
+Optionpfad (BKP002) nicht geraten oder zusammengeführt: die Option entsteht
+ohne Kontakt, ohne Teilanlage und ohne Veränderung des gesicherten Originals;
+der direkte Legacy-Aufruf scheitert weiterhin mit `contact_review`. Eine
+spätere Zuordnung erfolgt bewusst am Event; der
+[Rückgabe- und Replayvertrag](website-inquiries.md) beschreibt, dass ein anfangs
+offenes Receipt auch dann offen bleibt. Parallele
+Verarbeitung und Wiederanlauf ergeben dasselbe Event mit derselben
+Kontaktzuordnung. Die ursprüngliche Ablage bleibt erhalten; dieser Dienst
+quittiert nicht im Gateway und wird noch nicht automatisch oder per HTTP
+ausgelöst.
 
 ## Sichtbare Prüfung und manuelle Übernahme (E004.13)
 
@@ -266,8 +274,10 @@ Antwort angezeigt; ein anschließender Listenfehler behauptet keinen Rollback.
 - `POST /api/v1/website-inquiries/:id/import` erwartet ein JSON-Objekt mit optionalem
   `newContactCountry` (zwei Großbuchstaben). Die echte API verlangt Sitzung,
   korrekten Origin und CSRF. Zusätzliche Felder werden abgewiesen. Gleiche
-  Wiederholung liefert dieselbe Event-/Kontaktzuordnung; ein Zuordnungskonflikt
-  bleibt als `contact_review` sichtbar. Unbekannte IDs liefern 404 und
+  Wiederholung liefert `duplicate` mit derselben Eventzuordnung und dem
+  unveränderten Receipt; die Option kann dabei bewusst ohne Kontakt bleiben
+  („Kontakt noch offen“). Nur der direkte Legacy-Aufruf meldet einen
+  Zuordnungskonflikt weiterhin als `contact_review`. Unbekannte IDs liefern 404 und
   Speicherfehler eine neutrale 503-Antwort.
 
 Die Darstellung übernimmt die vorhandenen nativen Disclosure-, Formular- und

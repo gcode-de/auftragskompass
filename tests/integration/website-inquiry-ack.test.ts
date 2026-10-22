@@ -26,7 +26,10 @@ import {
   type GatewayKey,
 } from '../../packages/core/src/gateway-message.js';
 import { inquiryFormV1 } from '../../packages/core/src/inquiry-form.js';
-import { stageWebsiteInquiry } from '../../packages/core/src/website-inquiry-deliveries.js';
+import {
+  importStagedWebsiteInquiry,
+  stageWebsiteInquiry,
+} from '../../packages/core/src/website-inquiry-deliveries.js';
 import {
   prepareWebsiteInquiryAcknowledgement,
   receiveWebsiteInquiryAcknowledgement,
@@ -570,4 +573,47 @@ test('ACK timeout and signature expiry during transfer preserve the durable job 
   ).rejects.toMatchObject({ reason: 'unauthorized' });
   expect((await prepare())!.operationId).toBe(job.operationId);
   expect(await pending()).toBe('1');
+});
+
+test('a contactless Option is acknowledged without inventing a contact and keeps its receipt', async () => {
+  const original = entry();
+  await stageWebsiteInquiry(pool, tenantId, actorId, original, now);
+  const imported = await importStagedWebsiteInquiry(
+    pool,
+    tenantId,
+    actorId,
+    original.id,
+    {},
+  );
+  expect(imported).toMatchObject({ status: 'created', contactId: null });
+  const job = (await prepare())!;
+  expect(job.inquiryIds).toEqual([original.id]);
+  expect(await receive(receipt(job.messageId))).toEqual({
+    status: 'applied',
+    count: 1,
+  });
+  expect(await pending()).toBe('0');
+  // The gateway receipt and the local Option keep the open relation untouched.
+  expect(
+    (
+      await pool.query('SELECT count(*) FROM contacts WHERE tenant_id=$1', [
+        tenantId,
+      ])
+    ).rows[0].count,
+  ).toBe('0');
+  const row = (
+    await pool.query(
+      'SELECT contact_id,payload FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
+      [tenantId, original.id],
+    )
+  ).rows[0];
+  expect(row.contact_id).toBeNull();
+  expect(row.payload).toEqual(original);
+  expect(
+    (
+      await pool.query('SELECT count(*) FROM events WHERE tenant_id=$1', [
+        tenantId,
+      ])
+    ).rows[0].count,
+  ).toBe('1');
 });

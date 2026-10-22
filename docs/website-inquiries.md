@@ -121,3 +121,46 @@ noch keinen Formular-Editor und keine automatische Paketzuordnung.
 Die [lokale atomare Übernahme](website-inquiry-intake.md) ist als interner Dienst
 synthetisch geprüft. Netzwerkabholung, sichtbarer Anfrageeingang und echte
 Übernahme sind damit noch nicht aktiviert.
+
+## Option ohne auflösbaren Kontakt (BKP002)
+
+Der automatische Optionpfad (`status: 'option'`, also Drain und manuelle
+Wiederholung über `importStagedWebsiteInquiry`) nimmt eine gültige,
+authentische Nachricht dauerhaft an und legt genau ein Event im Status `option`
+an, auch wenn kein Kontakt aufgelöst werden kann. Der direkte Legacy-Aufruf
+(`status: 'inquiry'`, Standard) behält seine strenge Kontaktprüfung samt
+`contact_review`.
+
+- Genau ein aktiver privater Exakttreffer (E-Mail und Name) wird zugeordnet.
+  Felder und Land des bestehenden Kontakts werden nie überschrieben.
+- Ohne Kandidaten entsteht ein neuer privater Kontakt nur, wenn die
+  Betreiber-/Deployment-Vorgabe ein Land liefert (`newContactCountry` der
+  manuellen Route bzw. `AK_INQUIRY_DEFAULT_CONTACT_COUNTRY`). Das öffentliche
+  v1-Eingabeschema bleibt unverändert und hat kein Landfeld; ein `country`-Feld
+  in der Eingabe ist ungültig. Es gibt keinen neuen hart kodierten
+  Domänen-Default.
+- Mehrdeutige, nur archivierte, falsch klassifizierte (Firma/Privat) oder über
+  Name, E-Mail oder Telefon kollidierende Kandidaten werden nie geraten oder
+  zusammengeführt: Das Event bleibt ohne Kontakt, `website_inquiries.contact_id`
+  und der Event-Hauptkontakt sind `null`.
+- Original-Payload, Payload-Hash, Receipt, Herkunft (`source`) und der
+  Logbucheintrag `website_received` bleiben unverändert. Eine Option reserviert
+  keine Ressource, setzt keine Uhrzeit und versendet keine Mail.
+
+Migration `0033_website_inquiry_optional_contact.sql` macht
+`website_inquiries.contact_id` nullable. Bestandszeilen bleiben unverändert; der
+mandantenbezogene Fremdschlüssel, `UNIQUE(tenant_id, event_id)`, die
+Hash-Prüfungen und die Idempotenzregeln bleiben bestehen.
+
+**Rückgabe- und Replayvertrag.** `receiveWebsiteInquiry` und
+`importStagedWebsiteInquiry` liefern `contactId` ausdrücklich als
+`string | null`; die Import-Route erlaubt `contactId: null` im Response. Eine
+Wiederholung derselben ID liefert `duplicate` mit der ursprünglichen `eventId`
+und dem ursprünglichen Receipt-Kontakt. Ein anfänglich `null` gespeicherter
+Receipt-Kontakt bleibt dauerhaft `null`, auch wenn der Vorgang später am Event
+manuell einem Kontakt zugeordnet wird – der aktuelle Kontakt ergibt sich aus der
+Eventbeziehung, nicht aus dem Receipt. Ein Replay setzt weder einen inzwischen
+manuell geänderten Event-Status noch dessen Kontakt auf `option`/`null` zurück
+und schreibt das Receipt nicht neu. Abweichender Inhalt derselben ID bleibt
+`conflict`. Die Oberfläche zeigt einen fehlenden Kontakt als ruhigen normalen
+Zustand („Kontakt noch offen“), nicht als Fehler.
