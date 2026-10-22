@@ -16,6 +16,10 @@ REA vom ausdrücklich genannten [Repository](https://github.com/morluto/rea/tree
 
 Alle Rohbilder/AX-Bäume nur privat unter `~/Documents/AuftragsKompass-Sicherung/bookitup-audit-2026-10-22/`; niemals in das öffentliche Repo kopieren. Die ausführliche Doku enthält ausschließlich abstrahierte Beobachtungen und Anweisungen. R001 ist ein Dokumentationsslice, BKP-Tickets sind noch nicht umgesetzt. Nächster kleiner unabhängiger Fix: BKP001; Website-Semantik erst mit vorheriger Aktivierungsgrenze aus BKP004 ausrollen, da der bestehende Auto-Updater/Worker sonst echte Rückstände selbst verarbeitet.
 
+### Hermes-Übergabe vorbereitet
+
+Der Benutzer hat die Übermittlung eines Implementierungsauftrags per Computer Use in das offene Hermes-Fenster ausdrücklich beauftragt. Der [vollständige Prompt](bookitup-parity/hermes-handoff.md) verwendet MiMo als Koordinator und DeepSeek-Coding-Subagents mit getrenntem Dateibesitz, soweit diese in Hermes tatsächlich verfügbar sind. Erste Arbeitswelle BKP001–BKP008; keine automatische Fortsetzung des gesamten Backlogs. Zum Zeitpunkt der Vorbereitung meldete Computer Use einen gesperrten Mac; **keine erfolgreiche GUI-Übermittlung und kein Hermes-Arbeitsbeginn verifiziert**. Nach manuellem Entsperren offene Session prüfen, Prompt vollständig einfügen, absenden und sichtbaren Arbeitsbeginn kontrollieren; nicht als erledigt melden, solange nur der Prompt gespeichert ist.
+
 ## In der nächsten Session zuerst
 
 1. [AGENTS.md](../AGENTS.md) vollständig lesen; dann diese Übergabe, den relevanten Abschnitt des [Lastenhefts](../Lastenheft_Fotobox-Verwaltung_MVP.md) und den aktuellen Slice im [Implementierungsplan](../IMPLEMENTATION_PLAN.md).

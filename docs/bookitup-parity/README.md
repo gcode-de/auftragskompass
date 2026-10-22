@@ -27,6 +27,10 @@ Explizite neue Vorgaben:
 4. [Ausführungsanleitung für Agenten](agent-playbook.md): genau ein Ticket auswählen, Voraussetzungen prüfen, Tests zuerst, Review, Commit, Push.
 5. Ticketgruppen: [Kalender, Oberfläche und Filter](tasks-ui.md), [Website, Stammdaten und Events](tasks-core.md), [Dokumente, Dateien und Mails](tasks-documents-mail.md), [weitere Parität und Abnahme](tasks-completion.md).
 
+## Übergabe an Hermes
+
+Der [fertige Übergabeprompt](hermes-handoff.md) enthält MiMo-Koordination, klar abgegrenzte DeepSeek-Coding-Aufgaben, den ersten begrenzten Arbeitsabschnitt und die vollständigen Abschlussregeln. Er kann als erste Hermes-Nachricht verwendet werden. Seine Speicherung ist kein Nachweis, dass Hermes bereits gestartet wurde.
+
 ## Reihenfolge, Status und Bedeutung der Ticketnummern
 
 **R001** ist ausschließlich diese Analyse/Dokumentation. **BKP001–BKP030 sind offene Arbeitspakete**, keine fertigen Features. Sie bilden keine zweite konkurrierende Commitfolge: vor Start wird genau ein BKP-Ticket mit seinem Scope und Abnahmetest im Implementierungsplan aktiviert. Ein Paket mit mehreren notwendigen vertikalen Schritten wird dort in Unter-Slices aufgeteilt; nicht als riesigen Sammelcommit umsetzen.
