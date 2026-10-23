@@ -891,3 +891,84 @@ test('details name a date-only booking instead of inventing a start time', async
   );
   expect(document.body.textContent).not.toContain('Noch offen Uhr');
 });
+
+test('a contactless website option shows an open contact and its original request as escaped text', async () => {
+  const edit = vi.fn();
+  const websiteOriginal = {
+    formId: 'fotobox-bw-main',
+    formVersion: 1,
+    receivedAt: '2030-10-26T10:00:00.000Z',
+    fields: [
+      { label: 'Vorname', value: 'Fictional' },
+      { label: 'Nachname', value: 'Website' },
+      { label: 'E-Mail', value: 'fictional.website@example.invalid' },
+      { label: 'Veranstaltungsdatum', value: '27.10.2030' },
+      { label: 'Telefonnummer', value: '' },
+      { label: 'Veranstaltungsort', value: 'Fictional hall' },
+      { label: 'Gewünschtes Fotobox-Paket', value: 'easy print+' },
+      {
+        label: 'Kommentar',
+        value: '<script>fictional</script>\n' + 'x'.repeat(300),
+      },
+    ],
+    privacyNotice: 'Fictional original privacy notice',
+    privacyUrl: 'https://fictional.example.invalid/privacy',
+  };
+  const contactless = {
+    ...detail,
+    event: {
+      ...event,
+      status: 'option',
+      source: 'Website: fotobox-bw-main (v1)',
+      primaryContactId: null,
+    },
+    contacts: [],
+    websiteInquiryAvailable: true,
+  };
+  const fetcher = vi.fn(async (url: string) =>
+    String(url).endsWith('/website-inquiry')
+      ? Response.json(websiteOriginal)
+      : Response.json(contactless),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={edit}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  // A missing link is a normal open state, never an error or a blocked step.
+  expect(screen.getByText('Kontakt noch offen.')).toBeTruthy();
+  const request = screen.getByText('Website-Anfrage').closest('details')!;
+  expect(request.open).toBe(false);
+  request.open = true;
+  fireEvent(request, new Event('toggle'));
+  await screen.findByText('Fictional original privacy notice');
+  expect(within(request).getAllByRole('definition')).toHaveLength(8);
+  expect(within(request).getByText(/<script>fictional/)).toBeTruthy();
+  expect(view.container.querySelector('script')).toBeNull();
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/events/synthetic-event/website-inquiry',
+  );
+  // Later assignment stays the normal, deliberate event edit.
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Stammdaten bearbeiten: Synthetic detail event',
+    }),
+  );
+  expect(edit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      id: 'synthetic-event',
+      // The shared fixture keeps the version of its last confirmed save; the
+      // point here is that editing starts from the stored status and version.
+      version: contactless.event.version,
+      status: 'option',
+      primaryContactId: null,
+    }),
+  );
+});

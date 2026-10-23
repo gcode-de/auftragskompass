@@ -12,11 +12,10 @@ export function WebsiteInbox({
   onImported,
 }: {
   csrfToken: string;
-  timeZone: string;
+  timeZone?: string | undefined;
   onImported: () => Promise<void>;
 }) {
-  const sequence = useRef(0),
-    panel = useRef<HTMLDetailsElement>(null);
+  const sequence = useRef(0);
   const [page, setPage] = useState<Page | null>(null),
     [loading, setLoading] = useState(false),
     [failed, setFailed] = useState(false),
@@ -38,12 +37,14 @@ export function WebsiteInbox({
       if (current === sequence.current) setLoading(false);
     }
   }
-  // Load on open and on return; never poll. Late answers of an older read are
-  // discarded by the sequence guard below.
+  // The diagnosis section is its own settings surface and reads on mount. Later
+  // returns re-read once; late answers of an older read are discarded by the
+  // sequence guard below.
+  useEffect(() => {
+    void load();
+  }, []);
   useAutoRefresh(
-    () => {
-      if (panel.current?.open) void load();
-    },
+    () => void load(),
     () => loading,
   );
   useEffect(() => {
@@ -52,20 +53,20 @@ export function WebsiteInbox({
     };
   }, []);
   return (
-    <details
-      ref={panel}
+    <section
+      id="website-inbox"
       className="website-inbox"
-      onToggle={(event) => {
-        if (event.currentTarget.open && !loading) void load();
-      }}
+      aria-label="Website-Eingänge (Diagnose)"
     >
-      <summary>Website-Eingänge (Ausnahmen)</summary>
+      <h2>Website-Eingänge (Diagnose)</h2>
       <p>
-        Neue Website-Eingänge werden automatisch als Option angelegt, ohne
-        Uhrzeit und ohne Reservierung. Hier erscheinen nur noch Eingänge, die
-        noch nicht übernommen wurden – etwa nach einem vorübergehenden Fehler.
-        Die Prüfung und Übernahme erzeugt eine Option und keine feste Buchung;
-        ohne passenden Kontakt bleibt der Vorgang bewusst ohne Kontaktzuordnung.
+        Technische Diagnose: Hier stehen nur Eingänge, deren automatische
+        Übernahme als Option noch aussteht – etwa nach einem vorübergehenden
+        Zustell- oder Verarbeitungsfehler. Normale Eingänge werden ohne Klick
+        zur Option und erscheinen in der Eventliste. Die manuelle Übernahme
+        erzeugt eine Option und keine feste Buchung; ohne passenden Kontakt
+        bleibt der Vorgang bewusst ohne Kontaktzuordnung. Ein Rückstand ist ein
+        Betriebszustand, kein Pflichtschritt vor der Eventanlage.
       </p>
       <button
         type="button"
@@ -161,7 +162,7 @@ export function WebsiteInbox({
           )}
         </>
       )}
-    </details>
+    </section>
   );
 }
 function InboxEntry({
@@ -172,7 +173,7 @@ function InboxEntry({
 }: {
   item: Item;
   csrfToken: string;
-  timeZone: string;
+  timeZone?: string | undefined;
   onSuccess: (contactId: string | null) => void;
 }) {
   // The country is the operator's decision; the inbox never guesses one. It is

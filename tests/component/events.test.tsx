@@ -7,6 +7,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
@@ -2490,4 +2491,103 @@ test('a preset without a tenant zone neither writes nor marks anything', async (
       .getAttribute('aria-pressed'),
   ).toBe('false');
   expect(screen.getByText('Zeitzone: Wird geladen')).toBeTruthy();
+});
+
+test('the event list carries website options with a quiet origin label and no exceptions queue', async () => {
+  const websiteRow = {
+    ...row,
+    id: 'fictional-website',
+    name: 'Fictional website option',
+    status: 'option',
+    source: 'Website: fotobox-bw-main (v1)',
+    primaryContactId: null,
+  };
+  let rows = [websiteRow];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options) {
+      rows = [{ ...websiteRow, ...JSON.parse(String(options.body)) }];
+      return Response.json(rows[0]);
+    }
+    if (url === '/api/v1/events/fictional-website')
+      return Response.json({
+        event: websiteRow,
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+        websiteInquiryAvailable: true,
+      });
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({ timeZone: 'Europe/Berlin', events: rows });
+    if (url === '/api/v1/statuses')
+      return Response.json([
+        { code: 'option', label: 'Option' },
+        { code: 'booked', label: 'Gebucht' },
+      ]);
+    if (url.startsWith('/api/v1/contacts'))
+      return Response.json([
+        {
+          id: 'fictional-contact',
+          name: 'Fictional Contact',
+          state: 'active',
+        },
+      ]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  // The exceptions inbox no longer lives under Events.
+  expect(screen.queryByText(/Website-Eingänge/)).toBeNull();
+  const link = await screen.findByRole('link', {
+    name: /Fictional website option/,
+  });
+  const badge = screen.getByText('Website');
+  // A quiet origin label, not a status: plain text in the row meta.
+  expect(badge.getAttribute('class')).toBe('event-source-quiet');
+  expect(badge.getAttribute('role')).toBeNull();
+  expect(badge.closest('.event-meta')).not.toBeNull();
+  expect(badge.closest('.event-title')).toBeNull();
+  // A contactless option opens like every other event.
+  fireEvent.click(link);
+  const card = await screen.findByRole('region', { name: 'Event-Details' });
+  expect(
+    within(card).getByRole('heading', {
+      name: 'Event: Fictional website option',
+    }),
+  ).toBeTruthy();
+  expect(within(card).getByText('Kontakt noch offen.')).toBeTruthy();
+  // Later assignment is the normal deliberate edit and keeps status/version.
+  fireEvent.click(
+    within(card).getByRole('button', {
+      name: 'Stammdaten bearbeiten: Fictional website option',
+    }),
+  );
+  fireEvent.change(await screen.findByLabelText('Hauptkontakt'), {
+    target: { value: 'fictional-contact' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(
+        ([url, options]) =>
+          String(url) === '/api/v1/events/fictional-website' &&
+          options !== undefined,
+      ).length,
+    ).toBe(1),
+  );
+  const write = fetcher.mock.calls.find(
+    ([, options]) => options !== undefined,
+  )!;
+  const body = JSON.parse(String(write[1]!.body));
+  expect(body).toMatchObject({
+    primaryContactId: 'fictional-contact',
+    status: 'option',
+    version: 1,
+  });
+  expect(
+    await screen.findByText(/Fictional website option – .* – Option/),
+  ).toBeTruthy();
 });

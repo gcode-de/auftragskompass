@@ -102,6 +102,7 @@ test('resolves deep links, settings and browser history without losing search', 
     ['#settings-inquiry', 'inquiry'],
     ['#settings-resources', 'resources'],
     ['#settings-products', 'products'],
+    ['#settings-website', 'website'],
     ['#contact-synthetic', 'contacts'],
     ['#locations', 'events'],
     ['#unknown', 'events'],
@@ -182,6 +183,12 @@ test('settings own resource and product management in desktop and mobile navigat
   expect(productsLink.getAttribute('href')).toBe('#settings-products');
   expect(resourcesLink.getAttribute('aria-current')).toBe('page');
   expect(productsLink.getAttribute('aria-current')).toBeNull();
+  // The website diagnosis is a settings section of its own, not an event block.
+  const websiteLink = within(settingsNavigation).getByRole('link', {
+    name: 'Website-Eingänge',
+  });
+  expect(websiteLink.getAttribute('href')).toBe('#settings-website');
+  expect(websiteLink.getAttribute('aria-current')).toBeNull();
 
   fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
   const drawer = screen.getByRole('dialog', { name: 'Menü' });
@@ -205,6 +212,7 @@ test('settings own resource and product management in desktop and mobile navigat
     ['#products', 'Produkte', 'Ressourcen'],
     ['#resources', 'Ressourcen', 'Produkte'],
     ['#settings-resources', 'Ressourcen', 'Produkte'],
+    ['#settings-website', 'Website-Eingänge', 'Ressourcen'],
   ] as const) {
     window.history.replaceState(null, '', '/' + hash);
     fireEvent(window, new HashChangeEvent('hashchange'));

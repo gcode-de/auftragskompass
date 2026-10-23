@@ -1,4 +1,3 @@
-import { WebsiteInbox } from './WebsiteInbox.js';
 import { EventDetails } from './EventDetails.js';
 import {
   useUrlSearch,
@@ -498,11 +497,6 @@ export function EventPanel({
             </button>
           </div>
         </div>
-        <WebsiteInbox
-          csrfToken={csrfToken}
-          timeZone={timeZone || 'Europe/Berlin'}
-          onImported={refresh}
-        />
         <details
           className="event-filters"
           open={Object.keys(emptyEventFilters).some((key) => filters.get(key))}
@@ -1063,6 +1057,11 @@ export function EventPanel({
                               locations.find((l) => l.id === row.locationId),
                             )}
                           </span>
+                          {/* A quiet origin label, not a status: the automatic
+                              website option stays an ordinary event row. */}
+                          {row.source.startsWith('Website:') && (
+                            <span className="event-source-quiet">Website</span>
+                          )}
                         </span>
                       </a>
                       <p className="event-resource-hint">

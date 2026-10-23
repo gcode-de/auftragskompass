@@ -177,3 +177,38 @@ manuell geänderten Event-Status noch dessen Kontakt auf `option`/`null` zurück
 und schreibt das Receipt nicht neu. Abweichender Inhalt derselben ID bleibt
 `conflict`. Die Oberfläche zeigt einen fehlenden Kontakt als ruhigen normalen
 Zustand („Kontakt noch offen“), nicht als Fehler.
+
+## Arbeitsablauf in der Oberfläche (BKP004.2)
+
+Website-Eingänge haben keinen eigenen Arbeitsbereich mehr neben den Events:
+
+1. **Option in der normalen Eventliste.** Eine gültige Anfrage erzeugt ohne
+   Zutun eine Option, die wie jedes andere Event gesucht, gefiltert und geöffnet
+   wird. Ein ruhiges Quellenlabel „Website“ (`event-source-quiet`, Farbe und
+   Rahmen aus den bestehenden Quiet-Tokens) kennzeichnet die Herkunft in der
+   Eventzeile. Es ist eine Herkunftsangabe, kein Status; der Status bleibt
+   `option`. Fehlt die Verknüpfung, zeigt die Kontaktkarte „Kontakt noch offen.“
+   als normalen offenen Zustand – keine blockierende Vorstufe, keine
+   Fehlerfarbe.
+2. **Original im Event.** In der Eventakte heißt die geschlossene Offenlegung
+   „Website-Anfrage“. Sie ist für jedes Event mit hinterlegtem Original
+   erreichbar – auch ohne Kontakt – und lädt den unveränderten Originaleingang
+   als Text (escaped, kein HTML). Der Endpunkt
+   `GET /api/v1/events/:id/website-inquiry` bleibt unverändert.
+3. **Diagnose in den Einstellungen.** `Einstellungen → Website-Eingänge`
+   (`#settings-website`, Bereich „Website-Eingänge (Diagnose)“) listet
+   ausschließlich Eingänge, die noch nicht als Option übernommen wurden, mit
+   ihren acht Originalangaben. Die Überschrift rahmt den Bereich als technische
+   Diagnose: ein Rückstand ist ein Betriebszustand, kein Pflichtschritt vor der
+   Eventanlage. Die manuelle Übernahme („Als Option übernehmen“) bleibt eine
+   autorisierte Wiederholung; das Land bleibt Betreiberentscheid und nur für
+   einen neu anzulegenden Kontakt nötig. Leerzustand: „Keine offenen Ausnahmen“.
+4. **Kontakt später zuordnen.** Die Zuordnung erfolgt über die normale
+   Eventbearbeitung (Hauptkontakt) und lässt Version und Status unverändert
+   nebeneinander bestehen. Ein bestätigtes Speichern erhöht die Version um eins,
+   der Status bleibt `option`.
+
+Aufbewahrungs-, Quittungs- und Originaldaten bleiben unverändert gespeichert;
+das Entfernen der alten Ausnahmeoberfläche löscht nichts und braucht keine
+Migration. Der automatische Drain bleibt hinter der Aktivierungsgrenze aus
+BKP004.1 pausiert.

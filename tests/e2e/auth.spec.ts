@@ -2578,22 +2578,22 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       },
       receivedAt,
     );
-    await page.goto(origin + '/?q=Fictional%20Website%20Browser#events');
-    const websiteInbox = page.locator('details.website-inbox');
+    // BKP004.2: the diagnosis of technical delivery backlog lives in settings,
+    // not as a second queue under Events.
+    await navigate('Einstellungen', 'Website-Eingänge');
+    const websiteInbox = page.getByRole('region', {
+      name: 'Website-Eingänge (Diagnose)',
+    });
     await expect(
-      websiteInbox.locator('summary').filter({
-        hasText: 'Website-Eingänge (Ausnahmen)',
+      websiteInbox.getByRole('heading', {
+        level: 2,
+        name: 'Website-Eingänge (Diagnose)',
       }),
     ).toBeVisible();
-    // H032: the exceptions view keeps the unresolved entry visible and states
-    // that normal entries need no manual click.
-    await websiteInbox.locator('summary').first().focus();
-    await websiteInbox.locator('summary').first().press('Enter');
+    await expect(websiteInbox.getByText(/Technische Diagnose/)).toBeVisible();
+    // The unresolved entry stays visible with its statement of the backlog.
     const inboxEntry = websiteInbox.locator('details.website-inquiry');
     await expect(inboxEntry).toHaveCount(1);
-    await expect(
-      websiteInbox.getByText(/automatisch als Option angelegt/).first(),
-    ).toBeVisible();
     await expect(
       websiteInbox.getByText(/nicht automatisch angelegt/).first(),
     ).toBeVisible();
@@ -2624,9 +2624,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           await page.evaluate(() => document.documentElement.scrollWidth),
         ).toBeLessThanOrEqual(width + 1);
         await page.evaluate(() => window.scrollTo(0, 0));
-        await audit(`website-inbox-${width}-${theme}`);
+        await audit(`website-diagnosis-${width}-${theme}`);
         await page.screenshot({
-          path: `tests/test-results/website-inbox-${width}-${theme}.png`,
+          path: `tests/test-results/website-diagnosis-${width}-${theme}.png`,
           fullPage: true,
           animations: 'disabled',
         });
@@ -2670,22 +2670,53 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       eventId: recovered.eventId,
       contactId: recovered.contactId,
     });
-    await expect(
-      page.getByRole('link', {
-        name: /Fictional Website Browser/,
-      }),
-    ).toBeVisible();
-    const websiteInquiry = (
-      await pool.query<{ eventId: string }>(
-        'SELECT event_id AS "eventId" FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
-        [config.tenantId, websiteInquiryId],
-      )
-    ).rows[0]!;
-    await page.goto(
-      origin +
-        '/?q=Fictional%20Website%20Browser#event-' +
-        websiteInquiry.eventId,
+    // The later contact is created before the list reload so the normal event
+    // editor can offer it; the assignment itself stays a normal event edit.
+    const laterContact = randomUUID();
+    await pool.query(
+      "INSERT INTO contacts(tenant_id,id,kind,name,contact_person,street,postal_code,city,country,email,phone,mobile,phone_key,mobile_key,state) VALUES ($1::uuid,$2::uuid,'private','Fictional later contact','','','','','DE','fictional.later@example.invalid','','','','','active')",
+      [config.tenantId, laterContact],
     );
+    // The option itself is a normal event row; its origin is a quiet label.
+    await navigate('Events');
+    await page.goto(origin + '/?q=Fictional%20Website%20Browser#events');
+    const eventList = page.getByRole('region', {
+      name: 'Events',
+      exact: true,
+    });
+    const websiteOptionLink = eventList.getByRole('link', {
+      name: /Fictional Website Browser/,
+    });
+    await expect(websiteOptionLink).toBeVisible();
+    const originLabel = eventList.locator('.event-source-quiet');
+    await expect(originLabel).toHaveCount(1);
+    await expect(originLabel).toHaveText('Website');
+    // No exceptions queue survives under Events.
+    await expect(eventList.getByText('Website-Eingänge')).toHaveCount(0);
+    if (mode === 'password') {
+      for (const [width, theme] of [
+        [1280, 'light'],
+        [1280, 'dark'],
+        [390, 'dark'],
+        [390, 'light'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width + 1);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await audit(`website-option-list-${width}-${theme}`);
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+    await websiteOptionLink.click();
     const websiteRecord = page.getByRole('region', {
       name: 'Event-Details',
       exact: true,
@@ -2696,13 +2727,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         exact: true,
       }),
     ).toBeVisible();
-    await websiteRecord
-      .getByRole('button', { name: 'Logbuch', exact: true })
-      .click();
+    // A missing link is the normal open state, not an error or a blocked step.
     await expect(
-      websiteRecord.getByRole('listitem').filter({
-        hasText: 'Website-Anfrage empfangen: fotobox-bw-main (v1).',
-      }),
+      websiteRecord.getByText('Kontakt noch offen.', { exact: true }),
     ).toBeVisible();
     // The recovered website entry is an Option, never a booking.
     await expect(websiteRecord.getByLabel('Status des Events')).toHaveValue(
@@ -2716,11 +2743,20 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         )
       ).rows[0].count,
     ).toBe('0');
-    await audit('website-inquiry-event');
+    await audit('website-option-event');
+    await websiteRecord
+      .getByRole('button', { name: 'Logbuch', exact: true })
+      .click();
+    await expect(
+      websiteRecord.getByRole('listitem').filter({
+        hasText: 'Website-Anfrage empfangen: fotobox-bw-main (v1).',
+      }),
+    ).toBeVisible();
     await websiteRecord
       .getByRole('button', { name: 'Übersicht', exact: true })
       .click();
     const original = websiteRecord.locator('details.website-inquiry');
+    await expect(original.locator('summary')).toHaveText('Website-Anfrage');
     await expect(original).not.toHaveAttribute('open', '');
     await original.locator('summary').click();
     await expect(
@@ -2764,6 +2800,67 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       }
       await page.setViewportSize({ width: 1280, height: 720 });
     }
+
+    // The later contact arrives through the normal event edit; status and
+    // version stay as they are, and the stored receipt keeps its null contact.
+    const beforeAssignment = (
+      await pool.query<{ version: number }>(
+        'SELECT version FROM events WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, recovered.eventId],
+      )
+    ).rows[0]!;
+    await websiteRecord
+      .getByRole('button', {
+        name: 'Stammdaten bearbeiten: Fictional Website Browser',
+      })
+      .click();
+    await page.getByLabel('Hauptkontakt').selectOption(laterContact);
+    await page
+      .locator('#event-editor')
+      .getByRole('button', { name: 'Event speichern', exact: true })
+      .click();
+    await expect(
+      page.getByText('Event gespeichert.', { exact: true }),
+    ).toBeVisible();
+    const afterAssignment = (
+      await pool.query<{
+        version: number;
+        status: string;
+        contactId: string | null;
+      }>(
+        'SELECT e.version, e.status, (SELECT c.contact_id FROM event_contacts c WHERE c.tenant_id=e.tenant_id AND c.event_id=e.id AND c.role=$3) AS "contactId" FROM events e WHERE e.tenant_id=$1 AND e.id=$2',
+        [config.tenantId, recovered.eventId, 'primary'],
+      )
+    ).rows[0]!;
+    expect(afterAssignment).toMatchObject({
+      status: 'option',
+      contactId: laterContact,
+    });
+    expect(afterAssignment.version).toBe(beforeAssignment.version + 1);
+    expect(
+      (
+        await pool.query<{ contactId: string | null }>(
+          'SELECT contact_id AS "contactId" FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
+          [config.tenantId, websiteInquiryId],
+        )
+      ).rows[0]!.contactId,
+    ).toBeNull();
+    await page.goto(
+      origin + '/?q=Fictional%20Website%20Browser#event-' + recovered.eventId,
+    );
+    await expect(
+      websiteRecord.getByRole('heading', {
+        name: 'Event: Fictional Website Browser',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      websiteRecord.getByText('Hauptkontakt: Fictional later contact'),
+    ).toBeVisible();
+    await expect(
+      websiteRecord.getByText('Kontakt noch offen.', { exact: true }),
+    ).toHaveCount(0);
+    await audit('website-option-contact');
 
     // H031: the brand is a real fragment link. It must not reload the
     // document, and a dirty event detail asks before discarding its input.

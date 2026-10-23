@@ -29,19 +29,18 @@ const original = {
   privacyUrl: 'https://fictional.example.invalid/privacy',
 };
 function open() {
-  const details = screen
-    .getByText('Originalanfrage der Website')
-    .closest('details')!;
+  const details = screen.getByText('Website-Anfrage').closest('details')!;
   details.open = true;
   fireEvent(details, new Event('toggle'));
   return details;
 }
-test('loads only when opened and preserves long original values as text without writes', async () => {
+test('the website request loads only when opened and preserves long original values as text without writes', async () => {
   const fetcher = vi.fn().mockResolvedValue(Response.json(original));
   vi.stubGlobal('fetch', fetcher);
   const view = render(
     <WebsiteInquiry eventId="fictional-event" timeZone="Europe/Berlin" />,
   );
+  expect(screen.getByText('Website-Anfrage')).toBeTruthy();
   expect(fetcher).not.toHaveBeenCalled();
   open();
   await screen.findByText('Fictional original privacy notice');

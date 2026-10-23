@@ -762,19 +762,21 @@ test('website inbox keeps the adoption action primary', async () => {
       onImported={vi.fn()}
     />,
   );
-  const details = screen
-    .getByText('Website-Eingänge (Ausnahmen)')
-    .closest('details')!;
-  details.open = true;
-  fireEvent(details, new Event('toggle'));
-  await screen.findByText(/Fictional Inbox/);
-  expectHierarchy(details, 'Website-Eingänge');
+  // The former exceptions block is a settings section now; its action tiers
+  // travel with it.
+  const region = screen.getByRole('region', {
+    name: 'Website-Eingänge (Diagnose)',
+  });
+  await within(region).findByText(/Fictional Inbox/);
+  expectHierarchy(region, 'Website-Eingänge');
   expect(
-    tier(screen.getByRole('button', { name: 'Als Option übernehmen' })),
+    tier(within(region).getByRole('button', { name: 'Als Option übernehmen' })),
   ).toBe('primary-action');
   expect(
     tier(
-      screen.getByRole('button', { name: 'Website-Eingänge aktualisieren' }),
+      within(region).getByRole('button', {
+        name: 'Website-Eingänge aktualisieren',
+      }),
     ),
   ).toBe('tertiary-action');
 });
@@ -1141,6 +1143,11 @@ test('each mounted workspace route shows at most one primary action in the real 
       'Daten exportieren',
     ],
     ['/#settings-security', 'Einstellungen – zur Eventübersicht'],
+    [
+      '/#settings-website',
+      'Einstellungen – zur Eventübersicht',
+      'Website-Eingänge (Diagnose)',
+    ],
   ];
 
   // Only displayed controls count: the shipped `[hidden]{display:none!important}`

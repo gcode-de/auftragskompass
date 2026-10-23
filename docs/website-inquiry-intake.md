@@ -332,13 +332,15 @@ Kontaktzuordnung. Die ursprüngliche Ablage bleibt erhalten; dieser Dienst
 quittiert nicht im Gateway und wird noch nicht automatisch oder per HTTP
 ausgelöst.
 
-## Sichtbare Prüfung und manuelle Übernahme (E004.13)
+## Sichtbare Prüfung und manuelle Übernahme (E004.13, Heimat seit BKP004.2)
 
-Im bestehenden Eventbereich steht der zunächst geschlossene Bereich
-„Website-Eingänge (Ausnahmen)“ (bis H032: „Website-Eingänge prüfen“). Er zeigt
-nur noch Eingänge, die nicht automatisch angelegt wurden, und erklärt, dass
-normale Eingänge ohne Klick zur Option werden. Das Land ist leer; es ist nur für
-einen neu anzulegenden Kontakt nötig. Erst beim Öffnen lädt er offene lokale Eingänge.
+Seit BKP004.2 steht die Prüfoberfläche nicht mehr im Eventbereich, sondern als
+ruhiger Einstellungsabschnitt `Einstellungen → Website-Eingänge`
+(`#settings-website`, Bereich „Website-Eingänge (Diagnose)“). Sie zeigt nur noch
+Eingänge, die nicht automatisch angelegt wurden, und erklärt, dass normale
+Eingänge ohne Klick zur Option werden. Das Land ist leer; es ist nur für einen
+neu anzulegenden Kontakt nötig. Der Bereich lädt beim Öffnen der Einstellungsseite
+selbst und bei der Rückkehr in das Fenster einmal neu, ohne Polling.
 Jeder Eintrag lässt sich einzeln mit seinen acht Originalangaben und dem damaligen
 Datenschutzhinweis öffnen. Das Länderfeld bleibt leer: nur für einen neu
 anzulegenden Kontakt muss der Betreiber ausdrücklich einen zweistelligen Code

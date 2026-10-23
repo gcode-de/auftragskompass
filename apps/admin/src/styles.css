@@ -1152,6 +1152,18 @@ summary {
 .event-resource-hint {
   margin: 0.35rem 0 0;
 }
+/* A quiet origin label: the automatic website option stays an ordinary row. */
+.event-source-quiet {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--quiet-action-border);
+  border-radius: 0.3rem;
+  color: var(--quiet-ink);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
 .event-summary:hover .event-title,
 .event-summary:focus-visible .event-title {
   text-decoration: underline;
@@ -1614,9 +1626,6 @@ summary {
 }
 .website-inbox input {
   max-width: 7rem;
-}
-.website-inbox summary {
-  overflow-wrap: anywhere;
 }
 
 /* Icon-only controls: a 44px hit area with the glyph centred. */

@@ -12,7 +12,7 @@ export function WebsiteInquiry({
   timeZone,
 }: {
   eventId: string;
-  timeZone: string;
+  timeZone?: string | undefined;
 }) {
   const [original, setOriginal] = useState<OriginalInquiry | null>(null),
     [loading, setLoading] = useState(false),
@@ -40,7 +40,7 @@ export function WebsiteInquiry({
           void load();
       }}
     >
-      <summary>Originalanfrage der Website</summary>
+      <summary>Website-Anfrage</summary>
       <p>
         Die Angaben beim Absenden. Spätere Änderungen am Kontakt oder Event
         verändern diese Originalanfrage nicht.
@@ -69,7 +69,7 @@ export function OriginalInquiryContents({
   timeZone,
 }: {
   original: OriginalInquiry;
-  timeZone: string;
+  timeZone?: string | undefined;
 }) {
   return (
     <>

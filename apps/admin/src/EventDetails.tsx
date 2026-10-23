@@ -428,7 +428,11 @@ export function EventDetails({
               />
             )}
             <h3>Kontakte</h3>
-            {!data.contacts.length && <p>Noch keine Kontakte zugeordnet.</p>}
+            {/* A missing link is a normal open state of an option, not an error
+                and not a blocking step before the event may exist. */}
+            {!data.contacts.some((person) => person.role === 'primary') && (
+              <p>Kontakt noch offen.</p>
+            )}
             <ul>
               {data.contacts.map((person) => (
                 <li key={person.id}>

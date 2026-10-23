@@ -84,3 +84,19 @@ Bereinigung, Sicherung der Gateway-Datenbank und separate Schlüsselverwahrung
 festzulegen und zu testen. Nicht abgeholte Anfragen dürfen nicht unbemerkt die
 Maximalfrist erreichen. Lokale Kontakt-/Eventanlage, fachliche Dublettenprüfung,
 WordPress-Einbindung und Website-Umschaltung bleiben separate Schritte.
+
+## Sichtbarkeit für den Betreiber (BKP004.2)
+
+Der Zwischenspeicher hat keine eigene Arbeitsfläche. Noch nicht übernommene
+Eingänge erscheinen ausschließlich in der ruhigen Diagnose unter
+`Einstellungen → Website-Eingänge` (`#settings-website`, Bereich
+„Website-Eingänge (Diagnose)“). Sie zeigt technische Zustellstände und den
+Rückstand, nicht einen Pflicht-Arbeitsablauf vor der Eventanlage: gültige
+Eingänge werden ohne Klick zur Option und stehen als normales Event in der
+Eventliste. Die manuelle Übernahme bleibt eine bewusste, autorisierte
+Wiederholung für Einzelfälle; das Land ist Betreiberentscheid.
+
+Aufbewahrungsdauer, Quittierung, Chiffrat und technischer Wiederholbeleg bleiben
+von dieser Oberfläche unberührt. Das Entfernen des alten Ausnahmebereichs aus
+dem Event-Arbeitsbereich löscht keine Daten und ändert weder `pending`,
+`acknowledge` noch `prune`.

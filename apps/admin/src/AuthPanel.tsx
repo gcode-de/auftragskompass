@@ -17,6 +17,7 @@ import { ProductPanel } from './ProductPanel.js';
 import { DocumentTemplatesPanel } from './DocumentTemplatesPanel.js';
 import { DocumentNumbersPanel } from './DocumentNumbersPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
+import { WebsiteInbox } from './WebsiteInbox.js';
 import { MasterDataSettings } from './MasterDataPanel.js';
 import { PasswordPanel } from './PasswordPanel.js';
 import { AccessPanel } from './AccessPanel.js';
@@ -206,6 +207,15 @@ export function AuthPanel() {
               />
             </div>
             {route === 'inquiry' && <InquiryPreview />}
+            {route === 'website' && (
+              <WebsiteInbox
+                csrfToken={user.csrfToken}
+                onImported={async () => {
+                  // The option appears in the normal event list; refresh it.
+                  setImportRevision((value) => value + 1);
+                }}
+              />
+            )}
             <div hidden={route !== 'templates'}>
               <DocumentTemplatesPanel csrfToken={user.csrfToken} />
             </div>

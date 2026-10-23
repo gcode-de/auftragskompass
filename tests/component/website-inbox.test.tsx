@@ -35,14 +35,18 @@ const item = {
     ],
   },
 };
-function open() {
-  const d = screen
-    .getByText('Website-Eingänge (Ausnahmen)')
-    .closest('details')!;
-  d.open = true;
-  fireEvent(d, new Event('toggle'));
+function panel() {
+  return screen.getByRole('region', { name: 'Website-Eingänge (Diagnose)' });
 }
-test('inbox loads on demand, leaves the new-contact country to the operator and preserves a review failure until the retry succeeds', async () => {
+function openEntry() {
+  const row = within(panel())
+    .getByText(/Fictional Inbox/)
+    .closest('details')!;
+  row.open = true;
+  fireEvent(row, new Event('toggle'));
+  return row;
+}
+test('the diagnosis section loads itself, leaves the new-contact country to the operator and preserves a review failure until the retry succeeds', async () => {
   let imported = false,
     attempt = 0;
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
@@ -72,12 +76,10 @@ test('inbox loads on demand, leaves the new-contact country to the operator and 
       onImported={onImported}
     />,
   );
-  expect(fetcher).not.toHaveBeenCalled();
-  open();
-  await screen.findByText(/Fictional Inbox/);
-  const row = screen.getByText(/Fictional Inbox/).closest('details')!;
-  row.open = true;
-  fireEvent(row, new Event('toggle'));
+  // The settings section is its own diagnosis surface: it reads on mount.
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await within(panel()).findByText(/Fictional Inbox/);
+  const row = openEntry();
   expect(
     (
       within(row).getByLabelText(
@@ -93,7 +95,7 @@ test('inbox loads on demand, leaves the new-contact country to the operator and 
       .closest('form')!,
   );
   await screen.findByRole('alert');
-  expect(screen.getByText(/Fictional Inbox/)).toBeTruthy();
+  expect(within(panel()).getByText(/Fictional Inbox/)).toBeTruthy();
   expect(onImported).not.toHaveBeenCalled();
   fireEvent.change(
     within(row).getByLabelText(
@@ -121,7 +123,7 @@ test('inbox loads on demand, leaves the new-contact country to the operator and 
     'x-csrf-token': 'fictional-csrf',
   });
 });
-test('inbox retries failed reads and pages through bounded results', async () => {
+test('the diagnosis section retries failed reads and pages through bounded results', async () => {
   let requests = 0;
   const fetcher = vi.fn(async (url: string) => {
     requests++;
@@ -137,19 +139,24 @@ test('inbox retries failed reads and pages through bounded results', async () =>
   render(
     <WebsiteInbox csrfToken="fictional" timeZone="UTC" onImported={vi.fn()} />,
   );
-  open();
   await screen.findByRole('alert');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Website-Eingänge aktualisieren' }),
+    within(panel()).getByRole('button', {
+      name: 'Website-Eingänge aktualisieren',
+    }),
   );
-  await screen.findByText(/Fictional Inbox/);
-  fireEvent.click(screen.getByRole('button', { name: 'Weitere Eingänge' }));
+  await within(panel()).findByText(/Fictional Inbox/);
+  fireEvent.click(
+    within(panel()).getByRole('button', { name: 'Weitere Eingänge' }),
+  );
   await waitFor(() =>
     expect(fetcher).toHaveBeenLastCalledWith(
       '/api/v1/website-inquiries?offset=25',
     ),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Vorherige Eingänge' }));
+  fireEvent.click(
+    within(panel()).getByRole('button', { name: 'Vorherige Eingänge' }),
+  );
   await waitFor(() =>
     expect(fetcher).toHaveBeenLastCalledWith(
       '/api/v1/website-inquiries?offset=0',
@@ -191,11 +198,8 @@ test('failed and malformed import responses keep values; a confirmed duplicate s
       onImported={onImported}
     />,
   );
-  open();
-  await screen.findByText(/Fictional Inbox/);
-  const row = screen.getByText(/Fictional Inbox/).closest('details')!;
-  row.open = true;
-  fireEvent(row, new Event('toggle'));
+  await within(panel()).findByText(/Fictional Inbox/);
+  const row = openEntry();
   const country = within(row).getByLabelText(
     'Land für einen neuen Kontakt (2-Buchstaben-Code)',
   );
@@ -254,13 +258,12 @@ test('an older read cannot reintroduce an entry after confirmed import and a new
       onImported={vi.fn().mockResolvedValue(undefined)}
     />,
   );
-  open();
-  await screen.findByText(/Fictional Inbox/);
-  const row = screen.getByText(/Fictional Inbox/).closest('details')!;
-  row.open = true;
-  fireEvent(row, new Event('toggle'));
+  await within(panel()).findByText(/Fictional Inbox/);
+  const row = openEntry();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Website-Eingänge aktualisieren' }),
+    within(panel()).getByRole('button', {
+      name: 'Website-Eingänge aktualisieren',
+    }),
   );
   fireEvent.submit(
     within(row)
@@ -273,7 +276,7 @@ test('an older read cannot reintroduce an entry after confirmed import and a new
   resolveOld(Response.json({ items: [item], total: 1, offset: 0, limit: 25 }));
 });
 
-test('the exceptions view explains that normal entries need no click and only lists what still needs review', async () => {
+test('the diagnosis section explains that normal entries need no click and only lists what still needs review', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () =>
@@ -283,22 +286,25 @@ test('the exceptions view explains that normal entries need no click and only li
   render(
     <WebsiteInbox csrfToken="fictional" timeZone="UTC" onImported={vi.fn()} />,
   );
-  const panel = screen
-    .getByText('Website-Eingänge (Ausnahmen)')
-    .closest('details')!;
   expect(
-    within(panel).getByText(/automatisch als Option angelegt/),
+    screen.getByRole('heading', {
+      level: 2,
+      name: 'Website-Eingänge (Diagnose)',
+    }),
   ).toBeTruthy();
-  // Only the recovery button changes entries; loading is triggered by opening.
+  const view = panel();
+  expect(within(view).getByText(/Technische Diagnose/)).toBeTruthy();
+  expect(within(view).getByText(/ohne Klick zur Option/)).toBeTruthy();
+  expect(within(view).getByText(/kein Pflichtschritt/)).toBeTruthy();
+  await within(view).findByText(
+    'Keine offenen Ausnahmen. Neue Website-Eingänge werden automatisch als Option angelegt.',
+  );
+  // Only the diagnosis refresh changes entries; the section reads on mount.
   expect(
-    within(panel)
+    within(view)
       .getAllByRole('button')
       .map((button) => button.textContent),
   ).toEqual(['Website-Eingänge aktualisieren']);
-  open();
-  await screen.findByText(
-    'Keine offenen Ausnahmen. Neue Website-Eingänge werden automatisch als Option angelegt.',
-  );
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
@@ -328,11 +334,8 @@ test('without a country field the operator can retry an identity exception uncha
       onImported={onImported}
     />,
   );
-  open();
-  await screen.findByText(/Fictional Inbox/);
-  const row = screen.getByText(/Fictional Inbox/).closest('details')!;
-  row.open = true;
-  fireEvent(row, new Event('toggle'));
+  await within(panel()).findByText(/Fictional Inbox/);
+  const row = openEntry();
   fireEvent.click(
     within(row).getByRole('button', { name: 'Als Option übernehmen' }),
   );
@@ -371,11 +374,8 @@ test('a contactless import is reported as an open contact instead of an undefine
       onImported={onImported}
     />,
   );
-  open();
-  await screen.findByText(/Fictional Inbox/);
-  const row = screen.getByText(/Fictional Inbox/).closest('details')!;
-  row.open = true;
-  fireEvent(row, new Event('toggle'));
+  await within(panel()).findByText(/Fictional Inbox/);
+  const row = openEntry();
   fireEvent.click(
     within(row).getByRole('button', { name: 'Als Option übernehmen' }),
   );
@@ -385,7 +385,7 @@ test('a contactless import is reported as an open contact instead of an undefine
   expect(onImported).toHaveBeenCalledOnce();
 });
 
-test('returning to the window refreshes only an open exceptions view', async () => {
+test('returning to the window refreshes the diagnosis view without polling', async () => {
   let reads = 0;
   vi.stubGlobal(
     'fetch',
@@ -406,13 +406,9 @@ test('returning to the window refreshes only an open exceptions view', async () 
     configurable: true,
     get: () => 'visible',
   });
-  // Closed: a foreground return does not read anything.
-  fireEvent(document, new Event('visibilitychange'));
-  fireEvent(window, new Event('focus'));
-  expect(reads).toBe(0);
-  open();
-  await screen.findByText(/Fictional Inbox/);
-  // Open: the same return re-reads once, without polling.
+  await within(panel()).findByText(/Fictional Inbox/);
+  // The single mount read is enough until the operator returns.
+  expect(reads).toBe(1);
   fireEvent.blur(window);
   fireEvent(window, new Event('focus'));
   await waitFor(() => expect(reads).toBe(2));

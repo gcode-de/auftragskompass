@@ -59,6 +59,7 @@ const settingsLinks = [
   ['import-review', 'Datenimport'],
   ['settings-export', 'Datenexport'],
   ['settings-inquiry', 'Website-Formular'],
+  ['settings-website', 'Website-Eingänge'],
   ['settings-templates', 'Dokumentvorlagen'],
   ['settings-numbers', 'Nummernkreise'],
   ['settings-security', 'Konto & Zugriff'],
@@ -74,7 +75,8 @@ export type WorkspaceRoute =
   | 'numbers'
   | 'search'
   | 'resources'
-  | 'products';
+  | 'products'
+  | 'website';
 export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'settings',
   'subscriptions',
@@ -86,6 +88,7 @@ export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'numbers',
   'resources',
   'products',
+  'website',
 ]);
 export function isSettingsRoute(route: WorkspaceRoute) {
   return settingsRoutes.has(route);
@@ -101,6 +104,7 @@ const settingsHashes = {
   numbers: 'settings-numbers',
   resources: 'settings-resources',
   products: 'settings-products',
+  website: 'settings-website',
 } satisfies Partial<Record<WorkspaceRoute, string>>;
 function readRoute(): WorkspaceRoute {
   const hash = window.location.hash.slice(1);
@@ -111,6 +115,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'products') return 'products';
   if (hash === 'settings-resources') return 'resources';
   if (hash === 'settings-products') return 'products';
+  if (hash === 'settings-website') return 'website';
   if (hash === 'import-review') return 'import';
   if (hash === 'settings-calendar') return 'subscriptions';
   if (hash === 'settings-inquiry') return 'inquiry';
