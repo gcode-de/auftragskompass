@@ -293,24 +293,28 @@ export function Navigation({ account }: { account?: ReactNode }) {
     if (hasUnsavedChanges() && !window.confirm(discardForHomeMessage))
       event.preventDefault();
   }
+  function brand() {
+    return (
+      <a
+        className="menu-brand"
+        href="#events"
+        aria-label="AuftragsKompass – zur Eventübersicht"
+        title="AuftragsKompass – zur Eventübersicht"
+        onClick={(event) => {
+          followHome(event);
+          if (dialog.current?.open) closeMenu();
+        }}
+      >
+        <span className="brand-name">AuftragsKompass</span>
+        <span className="brand-mark" aria-hidden="true">
+          AK
+        </span>
+      </a>
+    );
+  }
   function menu(showAccount = true) {
     return (
       <>
-        <a
-          className="menu-brand"
-          href="#events"
-          aria-label="AuftragsKompass – zur Eventübersicht"
-          title="AuftragsKompass – zur Eventübersicht"
-          onClick={(event) => {
-            followHome(event);
-            if (dialog.current?.open) closeMenu();
-          }}
-        >
-          <span className="brand-name">AuftragsKompass</span>
-          <span className="brand-mark" aria-hidden="true">
-            AK
-          </span>
-        </a>
         <p className="menu-caption">Dein Büro für Events</p>
         <p className="menu-caption">Version {appVersionLabel}</p>
         <nav aria-label="Hauptnavigation">
@@ -372,28 +376,33 @@ export function Navigation({ account }: { account?: ReactNode }) {
         className={'desktop-sidebar' + (collapsed ? ' collapsed' : '')}
         aria-label="Arbeitsbereiche"
       >
-        <button
-          type="button"
-          className="sidebar-toggle"
-          aria-label={
-            collapsed ? 'Navigation ausklappen' : 'Navigation einklappen'
-          }
-          title={collapsed ? 'Navigation ausklappen' : 'Navigation einklappen'}
-          aria-expanded={!collapsed}
-          onClick={toggleSidebar}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+        <div className="sidebar-brand-row">
+          {brand()}
+          <button
+            type="button"
+            className="sidebar-toggle"
+            aria-label={
+              collapsed ? 'Navigation ausklappen' : 'Navigation einklappen'
+            }
+            title={
+              collapsed ? 'Navigation ausklappen' : 'Navigation einklappen'
+            }
+            aria-expanded={!collapsed}
+            onClick={toggleSidebar}
           >
-            <path d={collapsed ? 'M10 6l6 6-6 6' : 'M14 6l-6 6 6 6'} />
-          </svg>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d={collapsed ? 'M10 6l6 6-6 6' : 'M14 6l-6 6 6 6'} />
+            </svg>
+          </button>
+        </div>
         {menu()}
       </aside>
       <div className="workspace-toolbar">
@@ -562,6 +571,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
             <path d="M6 6l12 12M18 6 6 18" />
           </svg>
         </button>
+        {brand()}
         {menu(open)}
       </dialog>
     </>

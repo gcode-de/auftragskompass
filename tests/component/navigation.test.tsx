@@ -596,3 +596,131 @@ test('the collapsed sidebar keeps Dateien active, labelled and keyboard reachabl
   expect(clickLink(link)).toBe(false);
   expect(window.location.search).toBe('?q=keep');
 });
+
+// BKP006: the desktop collapse control belongs to the compact brand row, so it
+// must share one line with the home link instead of owning a row above it.
+function brandRow(sidebar: HTMLElement) {
+  return sidebar.firstElementChild as HTMLElement;
+}
+
+test('the collapse control shares one compact row with the home link', () => {
+  window.history.replaceState(null, '', '/#calendar');
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  const brand = within(sidebar).getByRole('link', {
+    name: 'AuftragsKompass – zur Eventübersicht',
+  });
+  const toggle = within(sidebar).getByRole('button', {
+    name: 'Navigation einklappen',
+  });
+  const row = brandRow(sidebar);
+  expect(row.contains(toggle)).toBe(true);
+  expect(row.contains(brand)).toBe(true);
+  // Brand first, control second: one logical position in every state.
+  expect(row.firstElementChild).toBe(brand);
+  // A sibling, never nested: the home link stays independently operable and
+  // the control can never become a link target.
+  expect(brand.contains(toggle)).toBe(false);
+  expect(toggle.tagName).toBe('BUTTON');
+  expect(toggle.getAttribute('type')).toBe('button');
+  // Nothing of the sort exists as an extra leading row above the row itself.
+  expect(sidebar.children[0]).toBe(row);
+  expect(sidebar.querySelectorAll('.sidebar-toggle')).toHaveLength(1);
+});
+
+test('the collapse control keeps its row and its focus node in both states', () => {
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  const brand = within(sidebar).getByRole('link', {
+    name: 'AuftragsKompass – zur Eventübersicht',
+  });
+  const toggle = within(sidebar).getByRole('button', {
+    name: 'Navigation einklappen',
+  });
+  const row = brandRow(sidebar);
+  toggle.focus();
+  fireEvent.click(toggle);
+  expect(sidebar.className).toContain('collapsed');
+  // The same DOM node keeps focus; a remount would silently drop the target.
+  expect(document.activeElement).toBe(toggle);
+  expect(toggle.parentElement).toBe(row);
+  expect(brandRow(sidebar)).toBe(row);
+  expect(row.firstElementChild).toBe(brand);
+  expect(toggle.getAttribute('aria-label')).toBe('Navigation ausklappen');
+  expect(toggle.getAttribute('title')).toBe('Navigation ausklappen');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(toggle);
+  expect(document.activeElement).toBe(toggle);
+  expect(brandRow(sidebar)).toBe(row);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+});
+
+test('a stored preference change keeps focus on the collapse control', () => {
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  const toggle = within(sidebar).getByRole('button', {
+    name: 'Navigation einklappen',
+  });
+  toggle.focus();
+  localStorage.setItem('ak-sidebar', 'collapsed');
+  fireEvent(window, new StorageEvent('storage', { key: 'ak-sidebar' }));
+  expect(sidebar.className).toContain('collapsed');
+  expect(document.activeElement).toBe(toggle);
+  expect(toggle.getAttribute('aria-label')).toBe('Navigation ausklappen');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  localStorage.setItem('ak-sidebar', 'expanded');
+  fireEvent(window, new StorageEvent('storage', { key: 'ak-sidebar' }));
+  expect(sidebar.className).not.toContain('collapsed');
+  expect(document.activeElement).toBe(toggle);
+});
+
+test('the mobile drawer keeps exactly one menu access and no desktop collapse', () => {
+  shimDialog();
+  render(<Workspace />);
+  expect(screen.getAllByRole('button', { name: 'Menü öffnen' })).toHaveLength(
+    1,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
+  const drawer = screen.getByRole('dialog', { name: 'Menü' });
+  expect(
+    within(drawer).queryByRole('button', {
+      name: /Navigation (ein|aus)klappen/,
+    }),
+  ).toBeNull();
+  expect(drawer.querySelector('.sidebar-toggle')).toBeNull();
+  expect(
+    within(drawer).getByRole('link', {
+      name: 'AuftragsKompass – zur Eventübersicht',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(drawer).getByRole('button', { name: 'Menü schließen' }),
+  ).toBeTruthy();
+});
+
+test('the collapse control never hijacks the home link or its native clicks', () => {
+  window.history.replaceState(null, '', '/?q=keep#calendar');
+  const confirm = vi.spyOn(window, 'confirm');
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  const toggle = within(sidebar).getByRole('button', {
+    name: 'Navigation einklappen',
+  });
+  fireEvent.click(toggle);
+  expect(confirm).not.toHaveBeenCalled();
+  expect(window.location.hash).toBe('#calendar');
+  expect(localStorage.getItem('ak-sidebar')).toBe('collapsed');
+  const brand = within(sidebar).getByRole('link', {
+    name: 'AuftragsKompass – zur Eventübersicht',
+  });
+  expect(brand.getAttribute('href')).toBe('#events');
+  // A modifier click opens a new tab: the app must not cancel it.
+  expect(clickLink(brand, 1, { metaKey: true })).toBe(false);
+  expect(window.location.hash).toBe('#calendar');
+  expect(
+    clickLink(within(sidebar).getByRole('link', { name: 'Events' }), 1, {
+      metaKey: true,
+    }),
+  ).toBe(false);
+  expect(within(sidebar).getByRole('link', { name: 'Events' })).toBeTruthy();
+});

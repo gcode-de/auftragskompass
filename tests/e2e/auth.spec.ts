@@ -445,6 +445,247 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeFocused();
     await page.setViewportSize({ width: 1280, height: 720 });
     await resizeToggle.focus();
+    // BKP006: real browser geometry instead of a class assertion — the brand
+    // and the collapse control must share one compact row, never overlap, wrap
+    // or cover a link, at desktop widths and at a 200 % zoom layout viewport.
+    const brandRowOrder = () =>
+      page.evaluate(() => {
+        const row = document.querySelector(
+          '.desktop-sidebar .sidebar-brand-row',
+        );
+        return row
+          ? Array.from(row.children).map(
+              (child) => child.getAttribute('class') ?? '',
+            )
+          : [];
+      });
+    const brandRowReport = () =>
+      page.evaluate(() => {
+        const shown = (element: Element | null): element is HTMLElement => {
+          if (!element) return false;
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            getComputedStyle(element).visibility !== 'hidden'
+          );
+        };
+        const box = (element: Element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+          };
+        };
+        const covered = (element: Element) => {
+          const rect = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+          );
+          return hit !== element && !element.contains(hit);
+        };
+        const sidebar = document.querySelector('.desktop-sidebar');
+        const row = document.querySelector(
+          '.desktop-sidebar .sidebar-brand-row',
+        );
+        const brand = document.querySelector(
+          '.desktop-sidebar .sidebar-brand-row a.menu-brand',
+        );
+        const toggle = document.querySelector(
+          '.desktop-sidebar .sidebar-brand-row .sidebar-toggle',
+        );
+        const name = document.querySelector(
+          '.desktop-sidebar .sidebar-brand-row .brand-name',
+        );
+        const mark = document.querySelector(
+          '.desktop-sidebar .sidebar-brand-row .brand-mark',
+        );
+        return {
+          sidebarVisible: shown(sidebar),
+          sidebar: shown(sidebar) ? box(sidebar) : null,
+          row: shown(row) ? box(row) : null,
+          brand: shown(brand) ? box(brand) : null,
+          toggle: shown(toggle) ? box(toggle) : null,
+          name: shown(name)
+            ? {
+                ...box(name),
+                clipped: name.scrollWidth > name.clientWidth + 1,
+                whiteSpace: getComputedStyle(name).whiteSpace,
+              }
+            : null,
+          mark: shown(mark) ? box(mark) : null,
+          brandCovered: shown(brand) ? covered(brand) : null,
+          toggleCovered: shown(toggle) ? covered(toggle) : null,
+          linksCovered: Array.from(
+            document.querySelectorAll('.desktop-sidebar nav a'),
+          )
+            .filter(shown)
+            .map((link) => covered(link)),
+          overflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
+    const expectSharedBrandRow = async () => {
+      const report = await brandRowReport();
+      expect(report.row).not.toBeNull();
+      const row = report.row!;
+      const brand = report.brand!;
+      const toggle = report.toggle!;
+      const name = report.name;
+      // Both controls stay inside the one shared row box.
+      for (const part of [brand, toggle]) {
+        expect(part.top).toBeGreaterThanOrEqual(row.top - 1);
+        expect(part.bottom).toBeLessThanOrEqual(row.bottom + 1);
+      }
+      // No label may sit on top of the control, in either state.
+      const horizontal =
+        Math.min(brand.right, toggle.right) - Math.max(brand.left, toggle.left);
+      const vertical =
+        Math.min(brand.bottom, toggle.bottom) - Math.max(brand.top, toggle.top);
+      expect(horizontal > 0 && vertical > 0).toBe(false);
+      expect(toggle.left).toBeGreaterThanOrEqual(report.sidebar!.left);
+      expect(toggle.right).toBeLessThanOrEqual(report.sidebar!.right);
+      expect(toggle.width).toBeGreaterThanOrEqual(44);
+      expect(toggle.height).toBeGreaterThanOrEqual(44);
+      // The wordmark stays on one line; collapsed it gives way to the AK mark.
+      if (name) {
+        expect(name.whiteSpace).toBe('nowrap');
+        expect(name.height).toBeLessThanOrEqual(30);
+      } else expect(report.mark).not.toBeNull();
+      expect(report.brandCovered).toBe(false);
+      expect(report.toggleCovered).toBe(false);
+      expect(report.linksCovered.every((value) => value === false)).toBe(true);
+      expect(report.overflow).toBeLessThanOrEqual(0);
+      return report;
+    };
+
+    // Expanded at 1280 light: mark at the row start, control at its end.
+    const expandedRow = await expectSharedBrandRow();
+    expect(expandedRow.brand!.left).toBeLessThanOrEqual(
+      expandedRow.row!.left + 1,
+    );
+    expect(expandedRow.toggle!.right).toBeGreaterThanOrEqual(
+      expandedRow.row!.right - 1,
+    );
+    expect(expandedRow.name!.clipped).toBe(false);
+    expect(await brandRowOrder()).toEqual(['menu-brand', 'sidebar-toggle']);
+
+    // Keyboard only: Enter collapses, Space expands, same node keeps focus.
+    await page.keyboard.press('Enter');
+    await expect(sidebar).toHaveClass(/collapsed/);
+    const collapsedRow = await expectSharedBrandRow();
+    expect(collapsedRow.toggle!.top).toBeGreaterThanOrEqual(
+      collapsedRow.brand!.bottom - 1,
+    );
+    expect(
+      collapsedRow.toggle!.left + collapsedRow.toggle!.width / 2,
+    ).toBeCloseTo(collapsedRow.brand!.left + collapsedRow.brand!.width / 2, 0);
+    expect(await brandRowOrder()).toEqual(['menu-brand', 'sidebar-toggle']);
+    await expect(
+      sidebar.getByRole('button', { name: 'Navigation ausklappen' }),
+    ).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(sidebar).not.toHaveClass(/collapsed/);
+    await expect(
+      sidebar.getByRole('button', { name: 'Navigation einklappen' }),
+    ).toBeFocused();
+
+    // 1920 px at 200 % zoom leaves 960 CSS px, 2048 px leaves 1024.
+    for (const width of [960, 1024]) {
+      await page.setViewportSize({ width, height: 720 });
+      await expectSharedBrandRow();
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expectSharedBrandRow();
+
+    // A preference change from another tab keeps the control as focus target.
+    await resizeToggle.focus();
+    await page.evaluate(() => {
+      localStorage.setItem('ak-sidebar', 'collapsed');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ak-sidebar' }));
+    });
+    await expect(sidebar).toHaveClass(/collapsed/);
+    await expect(
+      sidebar.getByRole('button', { name: 'Navigation ausklappen' }),
+    ).toBeFocused();
+    await page.evaluate(() => {
+      localStorage.setItem('ak-sidebar', 'expanded');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ak-sidebar' }));
+    });
+    await expect(sidebar).not.toHaveClass(/collapsed/);
+
+    // Dark theme keeps the same row geometry and a visible control.
+    await page.getByRole('button', { name: /modus aktivieren/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expectSharedBrandRow();
+    expect(
+      await sidebar
+        .locator('.sidebar-toggle')
+        .evaluate((element) => getComputedStyle(element).color),
+    ).not.toBe('rgba(0, 0, 0, 0)');
+    await page.getByRole('button', { name: /modus aktivieren/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+    // 768, 640 (1280 at 200 %), 390 and 320: one menu access, no collapse.
+    for (const width of [768, 640, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(
+        page.getByRole('button', { name: 'Menü öffnen' }),
+      ).toHaveCount(1);
+      await expect(sidebar).toBeHidden();
+      await expect(
+        page.getByRole('button', { name: /Navigation (ein|aus)klappen/ }),
+      ).toBeHidden();
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(0);
+      await page.getByRole('button', { name: 'Menü öffnen' }).click();
+      const menu = page.getByRole('dialog', { name: 'Menü' });
+      await expect(menu).toBeVisible();
+      await expect(
+        menu.getByRole('button', { name: /Navigation (ein|aus)klappen/ }),
+      ).toHaveCount(0);
+      await expect(menu.locator('.sidebar-toggle')).toHaveCount(0);
+      const drawerBrand = menu.getByRole('link', {
+        name: 'AuftragsKompass – zur Eventübersicht',
+      });
+      await expect(drawerBrand).toBeVisible();
+      const drawerBrandBox = await drawerBrand.boundingBox();
+      const closeBox = await menu
+        .getByRole('button', { name: 'Menü schließen' })
+        .boundingBox();
+      // The drawer shares one line with its close control: neither may cover
+      // the other, and the brand must stay inside the narrow viewport.
+      const drawerOverlapX =
+        Math.min(
+          drawerBrandBox!.x + drawerBrandBox!.width,
+          closeBox!.x + closeBox!.width,
+        ) - Math.max(drawerBrandBox!.x, closeBox!.x);
+      const drawerOverlapY =
+        Math.min(
+          drawerBrandBox!.y + drawerBrandBox!.height,
+          closeBox!.y + closeBox!.height,
+        ) - Math.max(drawerBrandBox!.y, closeBox!.y);
+      expect(drawerOverlapX > 0 && drawerOverlapY > 0).toBe(false);
+      expect(drawerBrandBox!.x + drawerBrandBox!.width).toBeLessThanOrEqual(
+        width,
+      );
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar).not.toHaveClass(/collapsed/);
     expect(
       (await context.cookies()).find((c) => c.name === '__Host-ak-session'),
     ).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });

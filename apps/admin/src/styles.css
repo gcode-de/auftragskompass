@@ -488,11 +488,24 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* BKP006: the brand and the collapse control share one compact row, so the
+   control no longer owns a leading line above the mark. The row reaches into
+   the rail's right padding instead of narrowing the brand down to an ellipsis. */
+.sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 -0.5rem 0 0.75rem;
+  min-width: 0;
+}
+.sidebar-brand-row a.menu-brand {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
 .sidebar-toggle {
-  position: absolute;
-  top: 1.5rem;
-  right: 0.75rem;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   width: 44px;
@@ -515,18 +528,23 @@ textarea {
   width: 4.75rem;
   padding: 1.5rem 0.5rem;
 }
-.desktop-sidebar.collapsed .sidebar-toggle {
-  position: static;
-  align-self: center;
-  margin: 0 auto 1rem;
+/* Collapsed, the same row stacks: the mark above, expand directly beneath it,
+   so the control keeps its logical place and its focus target. */
+.desktop-sidebar.collapsed .sidebar-brand-row {
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 1.25rem;
 }
-.desktop-sidebar.collapsed a.menu-brand {
+.desktop-sidebar.collapsed .sidebar-brand-row a.menu-brand {
   align-self: center;
   justify-content: center;
   width: 44px;
   min-height: 44px;
-  margin: 0 auto 1.25rem;
+  margin: 0;
   padding: 0;
+}
+.desktop-sidebar.collapsed .sidebar-toggle {
+  align-self: center;
 }
 .desktop-sidebar.collapsed .brand-name,
 .desktop-sidebar.collapsed .menu-caption,
