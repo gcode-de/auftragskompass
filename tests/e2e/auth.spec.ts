@@ -1491,6 +1491,20 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeVisible();
     await navigate('Events');
     const events = page.getByRole('region', { name: 'Events' });
+    // BKP014.1: a dated card names its day, its short month and its real time
+    // window. These assertions replace the former flat name–date–status string.
+    const expectEventCard = async (
+      day: string,
+      month: string,
+      time = '18:00–01:00 Uhr',
+    ) => {
+      const card = events.getByRole('link', {
+        name: /Synthetic browser event/,
+      });
+      await expect(card.locator('.event-date-day')).toHaveText(day);
+      await expect(card.locator('.event-date-label')).toHaveText(month);
+      await expect(card.locator('.event-time')).toHaveText(time);
+    };
     // A real tab return refreshes the list without a manual control. Stammdaten
     // created earlier must be available in the create dialog afterwards.
     let eventListRequests = 0;
@@ -1591,9 +1605,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         '<strong>Fictional browser note</strong><script>window.syntheticBad=true</script>',
       );
     await createSave.click();
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Fr / Okt');
     await expect(
       events.getByRole('link', {
         name: /Synthetic browser event/,
@@ -1622,6 +1634,110 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         name: /Synthetic browser event/,
       }),
     ).toBeVisible();
+    // BKP014.1: the overview reads as cards. On desktop and mobile, in both
+    // themes, date/status/type/name/place are separate blocks in that reading
+    // order, the month heading keeps its count, and the one open action still
+    // opens the record and comes back.
+    for (const [width, theme] of [
+      [1280, 'light'],
+      [1280, 'dark'],
+      [390, 'dark'],
+      [390, 'light'],
+    ] as const) {
+      await page.setViewportSize({ width, height: 844 });
+      const themeToggle = page.getByRole('button', {
+        name: /modus aktivieren/,
+      });
+      if (
+        (await themeToggle.getAttribute('aria-pressed')) !==
+        String(theme === 'dark')
+      )
+        await themeToggle.click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const card = events
+        .locator('li.event-card')
+        .filter({
+          has: page.getByRole('link', { name: /Synthetic browser event/ }),
+        })
+        .first();
+      await expect(card).toBeVisible();
+      const day = card.locator('.event-date-day');
+      const status = card.locator('.event-status');
+      const type = card.locator('.event-type');
+      const name = card.locator('.event-title');
+      const place = card.locator('.event-place');
+      for (const part of [day, status, type, name, place])
+        await expect(part).toHaveCount(1);
+      const [dayBox, statusBox, typeBox, nameBox, placeBox] = await Promise.all(
+        [day, status, type, name, place].map((part) => part.boundingBox()),
+      );
+      // The date column sits left of the text block; status, type and name
+      // stack above the place instead of being one glued string.
+      expect(dayBox!.x + dayBox!.width).toBeLessThanOrEqual(nameBox!.x);
+      expect(statusBox!.y).toBeLessThan(typeBox!.y);
+      expect(typeBox!.y).toBeLessThan(nameBox!.y);
+      expect(nameBox!.y + nameBox!.height).toBeLessThanOrEqual(placeBox!.y);
+      await expect(name).toHaveText('Synthetic browser event');
+      await expect(name).toHaveCSS('white-space', 'normal');
+      await expect(status).toHaveText('Anfrage');
+      await expect(day).toHaveText('16');
+      await expect(card.locator('.event-date-label')).toHaveText('Fr / Okt');
+      await expect(type).toHaveText('Hochzeit');
+      await expect(place).toContainText('Synthetic Browser Hall');
+      // No technical resource instruction survives in a row.
+      await expect(events.locator('.event-resource-hint')).toHaveCount(0);
+      await expect(
+        events.getByRole('heading', { name: /Oktober 2026/ }),
+      ).toContainText(/· \d+ Events?/);
+      // One primary link per row, no button inside it, and the row's quiet
+      // actions stay outside the link.
+      await expect(card.locator('a')).toHaveCount(1);
+      expect(await card.locator('a button').count()).toBe(0);
+      await expect(
+        card.getByRole('button', {
+          name: 'Event bearbeiten: Synthetic browser event',
+        }),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+      await audit(`event-cards-${width}-${theme}`);
+      await card
+        .getByRole('link', { name: /Öffnen: .*Synthetic browser event/ })
+        .click();
+      await expect(
+        events.getByRole('region', { name: 'Event-Details' }),
+      ).toBeVisible();
+      await page.goBack();
+      await expect(
+        events.getByRole('region', { name: 'Event-Details' }),
+      ).toHaveCount(0);
+      await expect(card).toBeVisible();
+    }
+    // The card keeps its shape across the supported range: no page overflow,
+    // the date column stays left of a wrapping title.
+    for (const width of [320, 768, 1440]) {
+      await page.setViewportSize({ width, height: 844 });
+      const card = events
+        .locator('li.event-card')
+        .filter({
+          has: page.getByRole('link', { name: /Synthetic browser event/ }),
+        })
+        .first();
+      const [dateBox, titleBox, cardBox] = await Promise.all([
+        card.locator('.event-date-day').boundingBox(),
+        card.locator('.event-title').boundingBox(),
+        card.boundingBox(),
+      ]);
+      expect(dateBox!.x + dateBox!.width).toBeLessThanOrEqual(titleBox!.x);
+      expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(
+        cardBox!.x + cardBox!.width + 1,
+      );
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
     await events
       .getByRole('link', {
         name: /Synthetic browser event/,
@@ -1669,9 +1785,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .click();
     await events.getByLabel('Eventstatus').selectOption('cancelled');
     await events.getByRole('button', { name: 'Event speichern' }).click();
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Fr / Okt');
     // Real DST change: 16.10. is CEST, 16.11. is CET. The browser only edits
     // wall-clock fields; the instant must follow the tenant timezone.
     await events
@@ -1690,9 +1804,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events.getByLabel('Eventende').fill('2026-11-17T01:00');
     await expect(events.getByLabel(/UTC-Versatz/)).toHaveCount(0);
     await events.getByRole('button', { name: 'Event speichern' }).click();
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. November 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Mo / Nov');
     await events
       .getByRole('button', {
         name: 'Event bearbeiten: Synthetic browser event',
@@ -1707,9 +1819,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events.getByLabel('Eventbeginn').fill('2026-10-16T18:00');
     await events.getByLabel('Eventende').fill('2026-10-17T01:00');
     await events.getByRole('button', { name: 'Event speichern' }).click();
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Fr / Okt');
     await events.getByRole('button', { name: 'Event anlegen' }).click();
     await events.getByText('Weitere Angaben', { exact: true }).click();
     await events
@@ -1794,10 +1904,17 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       record.getByText(/Ressourcenzuordnung und Dispositionszeitraum geändert/),
     ).toBeVisible();
-    // H037: the list names the stored start time explicitly.
-    await expect(
-      events.getByText(/Fictional resource booking – 20\. Oktober 2030, /),
-    ).toBeAttached();
+    // H037/BKP014.1: the card names the stored day and time window explicitly.
+    const resourceRow = events
+      .locator('li.event-card')
+      .filter({ hasText: 'Fictional resource booking' });
+    await expect(resourceRow.locator('.event-date-day')).toHaveText('20');
+    await expect(resourceRow.locator('.event-date-label')).toHaveText(
+      'So / Okt',
+    );
+    await expect(resourceRow.locator('.event-time')).toHaveText(
+      '18:00–20:00 Uhr',
+    );
     await record
       .getByRole('button', { name: 'Ressourcen', exact: true })
       .click();
@@ -1998,9 +2115,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .selectOption('cancelled');
     await events.getByRole('button', { name: 'Events filtern' }).click();
     await expect(page).toHaveURL(/status=cancelled/);
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Fr / Okt');
     // The column is the desktop frame, the compact access with its sheet the
     // narrow one; both read the same applied filter, and neither overflows.
     for (const width of [1280, 1024, 768, 390, 320]) {
@@ -2164,9 +2279,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         await expect(darkSheet).toHaveCount(0);
         await expect(filterAccess).toBeFocused();
         expect(page.url()).toBe(darkDraftUrl);
-        await expect(
-          events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-        ).toBeVisible();
+        await expectEventCard('16', 'Fr / Okt');
       }
     }
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -2199,9 +2312,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(filterAccess).toBeFocused();
     expect(page.url()).toBe(appliedBeforeDraft);
     // The results never listened to the draft.
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Fr / Okt');
     // Reopening starts from the applied filter, not from the abandoned draft.
     await filterAccess.click();
     await expect(draftSheet.getByLabel('Events suchen')).toHaveValue('browser');
@@ -2237,9 +2348,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     // A single back returns to exactly the URL applied before the draft.
     await page.goBack();
     await expect(page).toHaveURL(appliedBeforeDraft);
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Fr / Okt');
     await expect(events).toHaveAttribute('aria-busy', 'false');
     expect(
       await page.evaluate(
@@ -2301,9 +2410,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(page).toHaveURL(/status=cancelled/);
     await page.goBack();
     await page.goBack();
-    await expect(
-      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
-    ).toBeVisible();
+    await expectEventCard('16', 'Fr / Okt');
     await page.reload();
     await expect(events.getByLabel('Filter von')).toHaveValue('2026-10-16');
     await expect(

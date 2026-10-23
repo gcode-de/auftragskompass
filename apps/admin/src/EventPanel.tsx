@@ -7,7 +7,12 @@ import {
 } from './url-state.js';
 import { useEffect, useState, useRef, type FormEvent } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
-import { listScheduleText } from './calendar-range.js';
+import {
+  calendarDayNumber,
+  calendarMonthShort,
+  calendarWeekdayShort,
+  eventDateLabel,
+} from './calendar-range.js';
 import { EventTimeField } from './EventTimeField.js';
 import { EventCreateDialog } from './EventCreateDialog.js';
 import {
@@ -81,6 +86,24 @@ function useWideFilterLayout() {
     return () => viewport.removeEventListener('change', changed);
   }, []);
   return wide;
+}
+// BKP014.1: the overview row reads as a card. Its date column, the written
+// status and the effective place use the same fields as before; nothing is
+// derived that the server did not state.
+export function eventCardTime(
+  event: {
+    eventDate: string | null;
+    startsAt: string | null;
+    endsAt: string | null;
+  },
+  localTime: (instant: string) => string,
+) {
+  if (!event.eventDate) return '';
+  if (event.startsAt && event.endsAt)
+    return localTime(event.startsAt) + '–' + localTime(event.endsAt) + ' Uhr';
+  if (event.startsAt) return 'ab ' + localTime(event.startsAt) + ' Uhr';
+  // The stored schedule decides; a date-only booking keeps its honest label.
+  return eventDateLabel(event) ?? '';
 }
 export function EventPanel({
   csrfToken,
@@ -474,18 +497,38 @@ export function EventPanel({
     ));
   }
   const zone = draft?.timeZone ?? timeZone;
-  function localDate(value: string) {
-    return new Intl.DateTimeFormat('de-DE', {
-      dateStyle: 'short',
-      timeZone: zone,
-    }).format(new Date(value));
-  }
   function localTime(value: string) {
     return new Intl.DateTimeFormat('de-DE', {
       hour: '2-digit',
       minute: '2-digit',
       timeZone: zone,
     }).format(new Date(value));
+  }
+  // BKP014.1: the card fields, each from the data the server sent.
+  function cardStatus(row: EventRow) {
+    return (
+      statuses.find((status) => status.code === row.status)?.label ?? row.status
+    );
+  }
+  function cardType(row: EventRow) {
+    return (
+      types.find((type) => type.id === row.eventTypeId)?.name ?? 'Art offen'
+    );
+  }
+  function cardPlace(row: EventRow) {
+    return (
+      shownVenue(
+        row,
+        locations.find((location) => location.id === row.locationId),
+      ) || 'Ort offen'
+    );
+  }
+  function cardTime(row: EventRow) {
+    return eventCardTime(row, localTime);
+  }
+  function cardContact(row: EventRow) {
+    return contacts.find((contact) => contact.id === row.primaryContactId)
+      ?.name;
   }
   const MonthHeading = showHeading ? 'h3' : 'h2';
   const showingDetail = rows.some((row) => row.id === detailId);
@@ -853,9 +896,9 @@ export function EventPanel({
                 aria-expanded={filtersOpen}
                 aria-controls="event-filter-panel"
                 aria-label={
-                  activeCriteria
-                    ? `Filter, ${activeCriteria} aktive Kriterien`
-                    : 'Filter'
+                  // The visible count is part of the name (WCAG 2.5.3), so the
+                  // trigger never shows a number its label leaves out.
+                  `Filter, ${activeCriteria} aktive Kriterien`
                 }
                 onClick={() => openFilters()}
               >
@@ -870,7 +913,9 @@ export function EventPanel({
                 >
                   <path d="M4 5h16l-6 7v6l-4 2v-8Z" />
                 </svg>
-                Filter
+                {/* The space keeps the visible label "Filter 0"; the written
+                name carries the same words (WCAG 2.5.3). */}
+                Filter{' '}
                 <span className="event-count" data-testid="active-filter-count">
                   {activeCriteria}
                 </span>
@@ -1255,66 +1300,95 @@ export function EventPanel({
                     <li
                       key={row.id}
                       id={'event-' + row.id}
+                      className="event-card"
+                      data-status={row.status}
                       hidden={showingDetail && row.id !== detailId}
                     >
                       <div className="event-row" hidden={showingDetail}>
-                        <div className="event-summary-block">
-                          <a
-                            className="event-summary"
-                            href={'#event-' + row.id}
-                            onClick={(event) => {
-                              if (
-                                event.button !== 0 ||
-                                event.metaKey ||
-                                event.ctrlKey ||
-                                event.shiftKey ||
-                                event.altKey
-                              )
-                                return;
-                              if (window.getSelection?.()?.toString()) {
-                                event.preventDefault();
-                                return;
-                              }
-                              setDetailId(row.id);
-                            }}
-                          >
-                            <span className="event-title">
-                              {row.name} –{' '}
-                              {/* H037: a date-only booking keeps its date without
-                              an invented clock time; a real one shows it. */}
-                              {listScheduleText(row, localDate, localTime)} –{' '}
-                              {statuses.find((s) => s.code === row.status)
-                                ?.label ?? row.status}
+                        <a
+                          className="event-summary"
+                          href={'#event-' + row.id}
+                          onClick={(event) => {
+                            if (
+                              event.button !== 0 ||
+                              event.metaKey ||
+                              event.ctrlKey ||
+                              event.shiftKey ||
+                              event.altKey
+                            )
+                              return;
+                            if (window.getSelection?.()?.toString()) {
+                              event.preventDefault();
+                              return;
+                            }
+                            setDetailId(row.id);
+                          }}
+                        >
+                          {/* The one open action of the row names itself; the
+                          visible card keeps its own reading order. */}
+                          <span className="sr-only">Öffnen: </span>
+                          <span className="event-date">
+                            {row.eventDate ? (
+                              <>
+                                <span className="event-date-day">
+                                  {calendarDayNumber(row.eventDate)}
+                                </span>
+                                <span className="event-date-label">
+                                  {calendarWeekdayShort(row.eventDate) +
+                                    ' / ' +
+                                    calendarMonthShort(row.eventDate)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span
+                                  className="event-date-day"
+                                  aria-hidden="true"
+                                >
+                                  –
+                                </span>
+                                <span className="event-date-label">
+                                  ohne Datum
+                                </span>
+                              </>
+                            )}
+                          </span>
+                          <span className="event-body">
+                            <span className="event-status">
+                              <span
+                                className="event-status-mark"
+                                aria-hidden="true"
+                              />
+                              {cardStatus(row)}
+                            </span>
+                            <span className="event-type">{cardType(row)}</span>
+                            <span className="event-title">{row.name}</span>
+                            <span className="event-place">
+                              {cardPlace(row)}
                             </span>
                             <span className="event-meta">
-                              {types.find((type) => type.id === row.eventTypeId)
-                                ?.name ?? 'Eventart offen'}{' '}
-                              {
-                                contacts.find(
-                                  (c) => c.id === row.primaryContactId,
-                                )?.name
-                              }{' '}
-                              <span className="event-venue-inline">
-                                {shownVenue(
-                                  row,
-                                  locations.find(
-                                    (l) => l.id === row.locationId,
-                                  ),
-                                )}
-                              </span>
+                              {/* H037: a date-only booking keeps its date
+                              without an invented clock time. */}
+                              {cardTime(row) && (
+                                <span className="event-time">
+                                  {cardTime(row)}
+                                </span>
+                              )}
+                              {cardContact(row) && (
+                                <span className="event-contact">
+                                  {cardContact(row)}
+                                </span>
+                              )}
                               {/* A quiet origin label, not a status: the automatic
-                              website option stays an ordinary event row. */}
+                              website option stays an ordinary event card. */}
                               {row.source.startsWith('Website:') && (
                                 <span className="event-source-quiet">
                                   Website
                                 </span>
                               )}
                             </span>
-                          </a>
-                          <p className="event-resource-hint">
-                            Ressourcen in den Event-Details prüfen.
-                          </p>
-                        </div>
+                          </span>
+                        </a>
                         <div className="event-actions">
                           <button
                             type="button"

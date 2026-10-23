@@ -91,7 +91,8 @@ async function openCreate() {
 }
 async function ready() {
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic stored event – Ohne Datum – Anfrage');
+  // BKP014.1: the row is a card with one open action.
+  await screen.findByRole('link', { name: /Synthetic stored event/ });
 }
 test('a date-only create stores the business date and never invents midnight', async () => {
   const { posts } = setup();

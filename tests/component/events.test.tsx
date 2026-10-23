@@ -77,6 +77,13 @@ function mocker(errors: string[] = [], supplied: Record<string, unknown> = {}) {
     ]);
   });
 }
+// BKP014.1: every row is a card with one open action, so a test waits for the
+// row's link instead of the former flat name–date–status string.
+async function findRow(name: string | RegExp = /Synthetic event/) {
+  const links = await screen.findAllByRole('link', { name });
+  return links[0]!;
+}
+
 function showForms() {
   fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
 }
@@ -85,14 +92,14 @@ test('events create without date, retain formatted notes and edit/cancel with ve
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic new event' },
   });
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText('Synthetic new event – Ohne Datum – Anfrage');
+  await findRow(/Synthetic new event/);
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic new event',
@@ -119,8 +126,19 @@ test('events create without date, retain formatted notes and edit/cancel with ve
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  // H037: the list names the real start time instead of only the date.
-  await screen.findByText(/1\. Juli 2026, 01\.07\.26 18:00 Uhr/);
+  // H037/BKP014.1: the card names the real start and end time in its meta
+  // line instead of only the date. A newly dated row moves into its month
+  // group, so the card is queried again after the refresh.
+  await vi.waitFor(() => {
+    const timed = screen.getByRole('link', { name: /Synthetic new event/ });
+    expect(timed.querySelector('.event-time')?.textContent).toBe(
+      '18:00–01:00 Uhr',
+    );
+    expect(timed.querySelector('.event-date-day')?.textContent).toBe('1');
+    expect(timed.querySelector('.event-date-label')?.textContent).toBe(
+      'Mi / Jul',
+    );
+  });
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events/synthetic',
     expect.objectContaining({
@@ -139,7 +157,7 @@ test('events show invalid dates, conflicts, server and transport failures while 
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventbeginn'), {
     target: { value: '2026-03-29T02:30' },
   });
@@ -193,7 +211,7 @@ test('duplicating an event creates a new inquiry and does not update its source'
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText('Synthetic event (Kopie) – Ohne Datum – Anfrage');
+  await findRow(/Synthetic event \(Kopie\)/);
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events',
     expect.objectContaining({
@@ -238,7 +256,7 @@ test('event copies retain active references and require new choices for archived
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
-  await screen.findByText(/Synthetic event \(Kopie\)/);
+  await findRow(/Synthetic event \(Kopie\)/);
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events',
     expect.objectContaining({
@@ -258,7 +276,7 @@ test('event filters restore URL values, combine and clear filters, and show empt
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   expect(
     (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
   ).toBe('Synthetic');
@@ -328,15 +346,13 @@ test('older event search responses and failures cannot overwrite a newer result'
     render(<EventPanel csrfToken="csrf" />);
     fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
     act(() => updateUrlSearch({ q: 'fresh' }));
-    await screen.findByText('Synthetic fresh – Ohne Datum – inquiry');
+    await findRow(/Synthetic fresh/);
     await act(async () => {
       if (fail) rejectOld(Error('stale offline'));
       else
         resolveOld(Response.json({ timeZone: 'Europe/Berlin', events: [row] }));
     });
-    expect(
-      screen.queryByText('Synthetic event – Ohne Datum – inquiry'),
-    ).toBeNull();
+    expect(screen.queryByRole('link', { name: /Synthetic event/ })).toBeNull();
     expect(screen.queryByText(/Events konnten nicht geladen/)).toBeNull();
     cleanup();
     window.history.replaceState(null, '', '/');
@@ -348,7 +364,7 @@ test('a completed import refreshes visible events without discarding an unfinish
   vi.stubGlobal('fetch', fetcher);
   const view = render(<EventPanel csrfToken="fictional" revision={0} />);
   fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname', { exact: true }), {
     target: { value: 'Fictional retained draft' },
   });
@@ -710,7 +726,7 @@ test('a repeated fall-back hour offers both daylight and standard time choices',
     vi.stubGlobal('fetch', fetcher);
     render(<EventPanel csrfToken="csrf" />);
     showForms();
-    await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+    await findRow();
     fireEvent.change(screen.getByLabelText('Eventdatum'), {
       target: { value: '2026-10-25' },
     });
@@ -746,7 +762,7 @@ test('a nonexistent spring-gap time shows a field error and is never submitted',
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic gap event' },
   });
@@ -808,7 +824,7 @@ test('a new repeated start hour requires an explicit choice before saving', asyn
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic ambiguous start' },
   });
@@ -845,7 +861,7 @@ test('a repeated end hour also requires its own explicit choice', async () => {
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic ambiguous end' },
   });
@@ -883,7 +899,7 @@ test('a spring gap in the end time is reported on the end field and blocks savin
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic gap end' },
   });
@@ -1034,7 +1050,7 @@ test('a confirmed save closes the editor and survives a failed list reload', asy
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic saved event' },
   });
@@ -1049,7 +1065,7 @@ test('a confirmed save closes the editor and survives a failed list reload', asy
   expect(screen.queryByRole('dialog')).toBeNull();
   failReload = false;
   fireEvent.click(screen.getByRole('button', { name: 'Events erneut laden' }));
-  await screen.findByText('Synthetic reloaded event – Ohne Datum – Anfrage');
+  await findRow(/Synthetic reloaded event/);
   expect(
     screen.queryByText(/Liste konnte nicht neu geladen werden/),
   ).toBeNull();
@@ -1137,7 +1153,7 @@ test('the business date is derived from the local start across midnight and the 
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic midnight event' },
   });
@@ -1184,7 +1200,7 @@ test('partial and reversed times keep the draft and explain the affected field',
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic invalid schedule' },
   });
@@ -1242,7 +1258,7 @@ test('the main contact is excluded from further contacts and changing it clears 
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic contact event' },
   });
@@ -1332,7 +1348,7 @@ test('a start makes the business date read-only and derived while date-only and 
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   const date = () => screen.getByLabelText('Eventdatum') as HTMLInputElement;
   expect(date().readOnly).toBe(false);
   expect(
@@ -1518,9 +1534,7 @@ test('the list shows the effective place without the hidden legacy name', async 
   });
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
-  const summary = (
-    await screen.findByText('Synthetic event – Ohne Datum – Anfrage')
-  ).closest('a')!;
+  const summary = await findRow();
   expect(summary.textContent).toContain('Fictional Terrace');
   expect(summary.textContent).not.toContain('Synthetic choice');
 });
@@ -1582,7 +1596,7 @@ test('a successful list refresh clears a stale reload warning', async () => {
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   listFails = true;
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic saved event' },
@@ -1594,7 +1608,7 @@ test('a successful list refresh clears a stale reload warning', async () => {
   listFails = false;
   fireEvent(window, new Event('blur'));
   returnToApp();
-  await screen.findByText('Synthetic saved event – Ohne Datum – Anfrage');
+  await findRow(/Synthetic saved event/);
   expect(
     screen.queryByText(/Liste konnte nicht neu geladen werden/),
   ).toBeNull();
@@ -1675,7 +1689,7 @@ test('the event list refreshes automatically on return without a manual control'
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   expect(
     screen.queryByRole('button', { name: 'Events aktualisieren' }),
   ).toBeNull();
@@ -1695,7 +1709,7 @@ test('a dirty event editor survives an automatic list refresh and never confirms
   const confirm = vi.spyOn(window, 'confirm');
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1756,17 +1770,15 @@ test('a failed automatic list refresh keeps the prior rows and retries without m
   });
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   failList = true;
   returnToApp();
   await screen.findByText(/Events konnten nicht geladen werden/);
-  expect(
-    screen.getByText('Synthetic event – Ohne Datum – Anfrage'),
-  ).toBeTruthy();
+  expect(screen.getByRole('link', { name: /Synthetic event/ })).toBeTruthy();
   failList = false;
   refreshed = true;
   fireEvent.click(screen.getByRole('button', { name: 'Events erneut laden' }));
-  await screen.findByText('Synthetic refreshed event – Ohne Datum – Anfrage');
+  await findRow(/Synthetic refreshed event/);
   expect(mutations).toBe(0);
 });
 
@@ -1775,7 +1787,7 @@ test('a cancelled editor is refreshed automatically on the next return', async (
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1890,7 +1902,7 @@ test('a failed return is retried by the next return without a manual control', a
   });
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await findRow();
   failList = true;
   returnToApp();
   await screen.findByText(/Events konnten nicht geladen werden/);
@@ -1898,7 +1910,7 @@ test('a failed return is retried by the next return without a manual control', a
   refreshed = true;
   fireEvent(window, new Event('blur'));
   returnToApp();
-  await screen.findByText('Synthetic another return – Ohne Datum – Anfrage');
+  await findRow(/Synthetic another return/);
   expect(screen.queryByText(/Events konnten nicht geladen werden/)).toBeNull();
 });
 
@@ -2062,7 +2074,7 @@ test('a quick date preset writes from/to in one history entry and refetches', as
   const pushes = vi.spyOn(window.history, 'pushState');
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText(/Synthetic event – /);
+  await findRow();
   const before = pushes.mock.calls.length;
   fireEvent.click(screen.getByRole('button', { name: 'Dieser Monat' }));
   // Exact tenant-local month of the pinned instant, written atomically.
@@ -2090,7 +2102,7 @@ test('the next month preset writes the following tenant-local month', async () =
   const pushes = vi.spyOn(window.history, 'pushState');
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText(/Synthetic event – /);
+  await findRow();
   window.history.replaceState(
     null,
     '',
@@ -2130,7 +2142,7 @@ test('the active preset is marked selected without relying on colour only', asyn
   vi.stubGlobal('fetch', mocker());
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText(/Synthetic event – Ohne Datum – Anfrage/);
+  await findRow();
   expect(
     screen
       .getByRole('button', { name: 'Nächste Events' })
@@ -2161,7 +2173,7 @@ test('the custom range is a closed detail that reveals the date inputs', async (
   vi.stubGlobal('fetch', mocker([], { eventDate: '2031-11-09' }));
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText(/Synthetic event – /);
+  await findRow();
   const detail = screen
     .getByText('Eigener Zeitraum')
     .closest('details') as HTMLDetailsElement;
@@ -2184,7 +2196,7 @@ test('the sort choice replaces the undated checkbox and its explanation', async 
   vi.stubGlobal('fetch', mocker([], { eventDate: '2031-11-09' }));
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText(/Synthetic event – /);
+  await findRow();
   expect(screen.queryByLabelText('Nur Events ohne Datum')).toBeNull();
   expect(
     screen.queryByText('Ohne Datum setzt die Datumsgrenzen zurück.'),
@@ -2372,7 +2384,7 @@ test('the filter area stays inside a 320px viewport', async () => {
   vi.stubGlobal('fetch', mocker([], { eventDate: '2031-11-09' }));
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText(/Synthetic event – /);
+  await findRow();
   const filters = document.querySelector('.event-filters') as HTMLElement;
   // jsdom does no layout; the contract is that no control claims a fixed
   // width and every preset row may wrap.
@@ -2529,7 +2541,7 @@ test('a preset without a tenant zone neither writes nor marks anything', async (
   const pushes = vi.spyOn(window.history, 'pushState');
   render(<EventPanel csrfToken="csrf" />);
   showForms();
-  await screen.findByText(/Synthetic event – /);
+  await findRow();
   const before = pushes.mock.calls.length;
   fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }));
   expect(pushes.mock.calls.length).toBe(before);
@@ -2636,7 +2648,10 @@ test('the event list carries website options with a quiet origin label and no ex
     status: 'option',
     version: 1,
   });
-  expect(
-    await screen.findByText(/Fictional website option – .* – Option/),
-  ).toBeTruthy();
+  const saved = await screen.findByRole('link', {
+    name: /Fictional website option/,
+  });
+  expect(saved.querySelector('.event-status')?.textContent?.trim()).toBe(
+    'Option',
+  );
 });

@@ -51,6 +51,17 @@
   --backdrop: #0b0a09aa;
   --scrim: light-dark(#1b1a1866, #0b0a09cc);
   --calendar-ink: #111827;
+  /* BKP014.1: one calm tone per event status for the card stripe and dot. The
+     status name is always written out beside the marker, so colour is only the
+     second cue. Cancelled/blocked/unavailable share the quiet grey tone. */
+  --status-inquiry: light-dark(#6b665f, #a9a29a);
+  --status-option: light-dark(#8a5a12, #e0b45c);
+  --status-booked: light-dark(#2f5749, #9dc1af);
+  --status-hold: light-dark(#6a4b8a, #c9aee6);
+  --status-cancelled: light-dark(#8f8a82, #7d776f);
+  --status-blocked: light-dark(#8f8a82, #7d776f);
+  --status-unavailable: light-dark(#8f8a82, #7d776f);
+  --status-conflict: light-dark(#a3312a, #f6bcb2);
   /* H036: one action hierarchy for every surface. The accent stays reserved
      for the single primary action of a section; secondary and tertiary
      actions share a text-ink that is readable on every light or dark
@@ -1294,40 +1305,136 @@ summary {
   margin: 0;
   border-bottom: 1px solid var(--border);
 }
+/* BKP014.1: one calm card per event. The status stripe and the written status
+   name sit on the same card; the date column stays the left anchor. */
+.event-card {
+  --event-status-tone: var(--muted);
+}
+.event-list > li.event-card {
+  padding: 1rem 0 1rem 0.85rem;
+  border-inline-start: 3px solid var(--event-status-tone);
+}
+.event-card[data-status='inquiry'] {
+  --event-status-tone: var(--status-inquiry);
+}
+.event-card[data-status='option'] {
+  --event-status-tone: var(--status-option);
+}
+.event-card[data-status='booked'] {
+  --event-status-tone: var(--status-booked);
+}
+.event-card[data-status='hold'] {
+  --event-status-tone: var(--status-hold);
+}
+.event-card[data-status='cancelled'] {
+  --event-status-tone: var(--status-cancelled);
+}
+.event-card[data-status='blocked'] {
+  --event-status-tone: var(--status-blocked);
+}
+.event-card[data-status='unavailable'] {
+  --event-status-tone: var(--status-unavailable);
+}
+.event-card[data-status='conflict'] {
+  --event-status-tone: var(--status-conflict);
+}
 .event-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 1rem;
 }
-.event-summary-block {
-  min-width: 0;
-}
 .event-summary {
-  display: block;
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.35rem 1rem;
   min-width: 0;
+  min-height: 44px;
   color: inherit;
   text-decoration: none;
   border-radius: 0.35rem;
 }
+/* The day number is the dominant figure; weekday and month stay small. */
+.event-date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.event-date-day {
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.event-date-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.event-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.event-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.event-status-mark {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--event-status-tone);
+}
+.event-type {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* Full titles wrap instead of being clipped; there is no ellipsis here. */
 .event-title {
   display: block;
   font-weight: 650;
   font-size: 1.05rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
-.event-meta,
-.event-resource-hint {
+.event-place {
   display: block;
   color: var(--muted);
   font-size: 0.875rem;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
-.event-resource-hint {
-  margin: 0.35rem 0 0;
+.event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.75rem;
+  row-gap: 0.1rem;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.event-time {
+  font-variant-numeric: tabular-nums;
 }
 /* A quiet origin label: the automatic website option stays an ordinary row. */
 .event-source-quiet {
   display: inline-block;
-  margin-left: 0.35rem;
   padding: 0.05rem 0.4rem;
   border: 1px solid var(--quiet-action-border);
   border-radius: 0.3rem;
@@ -1340,6 +1447,10 @@ summary {
 .event-summary:focus-visible .event-title {
   text-decoration: underline;
   text-underline-offset: 0.15em;
+}
+.event-summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 .event-actions {
   display: flex;

@@ -187,7 +187,7 @@ test('search keeps distinct section headings and resources keep a valid outline'
   ).toBeTruthy();
   // H041: the list is already rendered from the previous load, so wait for
   // the searched result before reading the grouped heading.
-  await screen.findByText(/^Synthetic event – Ohne Datum – Anfrage$/);
+  await screen.findByRole('link', { name: /Synthetic event/ });
   expect(
     screen.getByRole('heading', { level: 2, name: 'Events' }),
   ).toBeTruthy();

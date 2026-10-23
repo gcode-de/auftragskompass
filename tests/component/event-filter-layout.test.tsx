@@ -101,7 +101,7 @@ function sheet() {
 test('the filter groups form one context column left of the results', async () => {
   vi.stubGlobal('fetch', mocker());
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByText(/Synthetic event – /);
+  await screen.findByRole('link', { name: /Synthetic event/ });
   const context = document.querySelector<HTMLElement>('.event-context')!;
   expect(context).toBeTruthy();
   expect(context.getAttribute('aria-label')).toBe('Eventfilter');
@@ -638,7 +638,7 @@ test('the desktop column keeps writing each choice immediately', async () => {
   window.history.replaceState(null, '', '/?q=Synthetic');
   vi.stubGlobal('fetch', mocker());
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByText(/Synthetic event – /);
+  await screen.findByRole('link', { name: /Synthetic event/ });
   const context = document.querySelector<HTMLElement>('.event-context')!;
   const pushes = vi.spyOn(window.history, 'pushState');
   fireEvent.click(

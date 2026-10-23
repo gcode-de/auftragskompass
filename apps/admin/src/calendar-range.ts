@@ -55,6 +55,15 @@ export function calendarWeekdayMonthLabel(date: string) {
     format(date, { month: 'long', year: 'numeric' })
   );
 }
+// BKP014.1: the event card shows the day number as the dominant figure and a
+// short weekday/month beside it. Both come from the same plain-date formatter,
+// so there is no second date arithmetic in the admin.
+export function calendarWeekdayShort(date: string) {
+  return format(date, { weekday: 'short' }).replace(/\.$/, '');
+}
+export function calendarMonthShort(date: string) {
+  return format(date, { month: 'short' }).replace(/\.$/, '');
+}
 export function calendarRangeText(from: string, to: string) {
   if (from === to) return plainDateText(from);
   const { year: fromYear, month: fromMonth } = parts(from);

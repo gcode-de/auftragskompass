@@ -460,7 +460,7 @@ test('event list, editor and filter block share one primary action', async () =>
     }),
   );
   render(<EventPanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic event – Ohne Datum – Anfrage');
+  await screen.findByRole('link', { name: /Synthetic event/ });
   const section = document.querySelector('section')!;
   expectHierarchy(section, 'Events');
   expect(
