@@ -1,6 +1,6 @@
 # Tickets: Website-Optionen, Stammdaten und Eventablauf
 
-Alle Tickets **offen**. [Ausführungsregeln](agent-playbook.md) und [Zielvertrag](design-contract.md) sind Teil jedes Tickets. FK-/Versions-/Mandanten-/Konfliktschutz immer erhalten. Abhängigkeiten sind verbindlich.
+**Status (23.10.2026, maßgeblich [Implementierungsplan](../../IMPLEMENTATION_PLAN.md) und [Statusmatrix](delivery-workflow.md)):** BKP002, BKP003 und BKP004 (004.1/.2) sind implementiert (Stand `eef40bd`, Auslieferung siehe Statusmatrix); BKP013.1/BKP014.1 sind die nächsten sichtbaren Unter-Slices; **offen** sind BKP009–BKP012 im Kernumfang, BKP013.2+/BKP014.2+ sowie alle weiteren Pakete. Keine vollständige Parität. [Ausführungsregeln](agent-playbook.md) und [Zielvertrag](design-contract.md) sind Teil jedes Tickets. FK-/Versions-/Mandanten-/Konfliktschutz immer erhalten. Abhängigkeiten sind verbindlich.
 
 ## BKP002 — Gültige Website-Eingänge auch ohne Kontakt als Option anlegen
 

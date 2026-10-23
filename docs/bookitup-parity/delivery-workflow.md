@@ -1,0 +1,79 @@
+# Lieferworkflow und Statusmatrix
+
+Stand 23.10.2026. Dieses Dokument fasst zusammen, **wie** ein geprüfter Stand in den
+Home-Lab-Testbetrieb gelangt und **in welchem Zustand** jedes sichtbare Ergebnis
+gerade steht. Es ersetzt keine Einzelbefunde; es ist die kompakte Matrix statt
+weiterer Chronik. Drei Zustände sind streng getrennt und nie gleichbedeutend:
+
+| Zustand | Bedeutung | Nachweis |
+| --- | --- | --- |
+| **IMPLEMENTIERT** | Quellstand auf `codex/bkp-wave1` mit Tests, Gates und grünem CI-Lauf | Commit-SHA + CI-Run |
+| **VISUELL ABGENOMMEN** | Im gebauten/ausgelieferten Build bei 320/390/768/1280(1440) in beiden Themes angesehen; Kriterien des jeweiligen Auftrags erfüllt | Build-SHA + Datum + knappe Belege (Screenshots nur in privater Ablage) |
+| **IM TESTBETRIEB AUSGELIEFERT** | Läuft im bestehenden Testbetrieb (ak-test-\* auf CT114) mit geprüfter Checkpoint-Sicherung | Ausgelieferter SHA (OCI-Label + sichtbare Buildkennung) + Datum + Beleg |
+
+Ein grüner `quality`-Lauf ist **kein** Image- und kein Deploynachweis. Erst die
+Dreizustandskette gilt als geliefert.
+
+## Genau ein Auslieferungsweg (Testbetrieb)
+
+Der Testbetrieb folgt der freigegebenen Branch `codex/ux-event-simplification`
+(Konfiguration `/etc/auftragskompass-update.json`); die Veröffentlichung der
+Images ist auf `main`, `codex/local-runtime-ci` und `codex/ux-event-simplification`
+beschränkt (Allowlist in `.github/workflows/quality.yml`). Der einzige
+Auslieferungsweg ist der automatische, koordinierte Updater `ak-test-update.timer`
+auf dem Proxmox-Host (Dokumentation: [automatic-updates.md](../automatic-updates.md)):
+
+1. Geprüfter Stand liegt auf `codex/bkp-wave1` vor (Tests, Review, CI).
+2. Die freigegebene UX-Branch wird **nur nach erneut geprüfter
+   Fast-forward-Beziehung** auf den geprüften Stand vorgezogen (Historie erhalten,
+   kein Force-Push, `main` bleibt unangetastet).
+3. **Vollständig grüne CI einschließlich `images` exakt zum freigegebenen SHA**
+   auf der UX-Branch abwarten (`runtime-<sha>` und `admin-<sha>` werden gepusht).
+4. Der Updater zieht digest-gepinnte Images, prüft die OCI-Revision, sichert
+   Quadlets und `needs-attention`-Marker, pausiert die App-Dienste, erstellt und
+   verifiziert einen Datenbank-Checkpoint (Dump im CT **zusätzliche Hostkopie**
+   mit identischem SHA-256), ersetzt die Quadlets atomar und startet die
+   Administration mit ihren Abhängigkeiten. Erst bei drei gesunden Containern
+   mit exakt der Zielrevision entsteht `last-success.json`; ein Fehler nach dem
+   Marker sperrt weitere automatische Updates dauerhaft.
+5. Der Betreiberausgleich zur Hostkopie (identischer SHA-256 auf den
+   Betreiberrechner) wird im Lieferbeleg notiert. Genau ein Updateweg: keine
+   parallelen manuellen/automatischen Updates; beide nutzen
+   `/run/lock/auftragskompass-update.lock`. Bei manueller Koordination gilt:
+   Timerzustand bewahren, laufenden Service abwarten, nie gewaltsam stoppen.
+6. Nach dem Update: alle drei Container gesund, exakte OCI-Revision, sichtbare
+   Buildkennung, Browser neu laden (ohne ungespeicherte Eingaben zu verwerfen),
+   Assets/Filterposition/Theme prüfen, Desktop- und Mobilansicht direkt ansehen.
+
+**Randbedingungen jeder Auslieferung:** kein Produktiv-Cutover; keine echten
+Datenimporte/Mails/Passwörter; der automatische Website-Option-Drain bleibt
+ausdrücklich **off** (Variable `AK_INQUIRY_OPTION_DRAIN` nicht gesetzt bzw.
+`off`; der Worker meldet dann `website_option_drain_inactive` und bleibt bereit —
+der Gateway-Empfang läuft weiter); keine Massenübernahme echter Rückstände.
+Echte Referenzdaten, Rohscreenshots und Kundenbezüge bleiben ausschließlich in
+privater Ablage und kommen nie ins Repository.
+
+## Statusmatrix
+
+Aktualisieren bei jedem Zustandswechsel; Datum und Beleg nennen, nichts ohne
+Nachweis hochstufen. Offene Restlücken in der letzten Spalte ehrlich halten —
+es wird keine vollständige Funktions- oder visuelle Parität behauptet.
+
+| Ergebnis | IMPLEMENTIERT | VISUELL ABGENOMMEN | IM TESTBETRIEB AUSGELIEFERT | Offene Restlücken |
+| --- | --- | --- | --- | --- |
+| Paritätswelle BKP001–BKP008 inkl. BKP007.3 (Kalender, Website-Optionen, Themes, Filter, mobiler Kalender) | Ja — `eef40bd` (CI 39981521693, 23.10.2026) | Ausstehend | Ausstehend (Live ist `cf68f1e`) | Filterparität nur erste Unter-Slices; Monat/Jahr, Ansichten, Mehrfachwahl, Solo/Agentur offen; Kalender-Touchbreite 32,9 px bei 320; keine Geräte-/Zoom-Abnahme |
+| BKP014.1 — lesbare Eventübersicht (Datumsspalte/Status/Art/Ort, Monatskopf) | — | — | — | echte Ressourcenprojektion separat (BKP014.2) |
+| BKP013.1 — zusammenhängende Eventakte (Kopf, Details/Ressourcen/Dateien) | — | — | — | Mailbereich ohne Mailfunktion bewusst ohne Reiter |
+
+## Abnahme der sichtbaren Flächen
+
+Vor Coding einer Fläche: Referenz **und** aktuelles gebautes Ergebnis direkt
+betrachten. Vergleich bei identischen 320/390/768/1280(1440) CSS-Pixeln in beiden
+Themes mit synthetischem Bestand (≥ 6 Events über 2 Monate, 0/1/mehrere
+Ressourcen, Tagesbuchung und Zeitfenster, fehlender Kontakt/Ort, sehr lange
+Namen, Leer-/Keine-Treffer-/Fehlerzustand). Geprüft wird: erste Events ohne
+Filterwand sichtbar; Datum/Status/Name/Ort sofort scanbar; gleichartige Controls
+ausgerichtet; kein Body-Overflow; vollständige Titel/Details erreichbar; klare
+Hierarchie statt Dekoration. Vorher/Nachher/Warum knapp belegen und bestehende
+Abweichungen benennen; ein Bericht mit vielen Tests ersetzt keine visuelle Abnahme.
+Screenshots betreffen stets den fertigen Build-SHA des ausgelieferten Servers.

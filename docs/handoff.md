@@ -22,7 +22,7 @@ Der Benutzer hat die Übermittlung eines Implementierungsauftrags per Computer U
 
 ## In der nächsten Session zuerst
 
-1. [AGENTS.md](../AGENTS.md) vollständig lesen; dann diese Übergabe, den relevanten Abschnitt des [Lastenhefts](../Lastenheft_Fotobox-Verwaltung_MVP.md) und den aktuellen Slice im [Implementierungsplan](../IMPLEMENTATION_PLAN.md).
+1. [AGENTS.md](../AGENTS.md) vollständig lesen; dann diese Übergabe, den relevanten Abschnitt des [Lastenhefts](../Lastenheft_Fotobox-Verwaltung_MVP.md) und den aktuellen Slice im [Implementierungsplan](../IMPLEMENTATION_PLAN.md). Für Auslieferung und den tatsächlichen Stand der sichtbaren Ergebnisse gilt der [Lieferworkflow mit Statusmatrix](bookitup-parity/delivery-workflow.md) (IMPLEMENTIERT / VISUELL ABGENOMMEN / IM TESTBETRIEB AUSGELIEFERT).
 2. `git status`, Branch, Remote und letzte Commits prüfen. Arbeitsbranch seit H022: `codex/ux-event-simplification` (Basis `codex/local-runtime-ci`), Remote: [gcode-de/auftragskompass](https://github.com/gcode-de/auftragskompass). Nicht automatisch zu `main` wechseln oder gepushte Commits umschreiben.
 3. Angeforderte Skills unten lokalisieren und vor ihrer Anwendung lesen. Der bestehende Entwurf ist eine Verwaltungs-App, keine neue Marketingseite.
 4. Für Betriebsarbeit zusätzlich die private Betreiberübergabe lesen: außerhalb Git unter `AuftragsKompass-Sicherung/uebergabe-2026-10-19/README.md` im Dokumente-Verzeichnis des bisherigen Betreiberrechners. Auf einem anderen Rechner ist sie nicht automatisch verfügbar. Keine Secrets in den Chat oder Git übernehmen.

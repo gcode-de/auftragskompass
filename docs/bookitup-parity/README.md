@@ -19,6 +19,10 @@ Explizite neue Vorgaben:
 
 „Alle Eingänge“ hebt Spam-, Schema-, Signatur- und Autorisierungsprüfung nicht auf. Eine kaputte oder nicht authentische HTTP-Anfrage wird kein Event. Ein gültiger Geschäftseingang darf dagegen nicht an fehlender Kontaktanreicherung scheitern.
 
+## Lieferung und Status
+
+[Lieferworkflow und Statusmatrix](delivery-workflow.md): drei getrennte Zustände IMPLEMENTIERT / VISUELL ABGENOMMEN / IM TESTBETRIEB AUSGELIEFERT mit SHA und Beleg; genau ein Auslieferungsweg in den Testbetrieb, kein Produktiv-Cutover.
+
 ## Lesereihenfolge für einen neuen Agenten
 
 1. [AGENTS.md](../../AGENTS.md), [Projektübergabe](../handoff.md), relevante Anforderungen im [Lastenheft](../../Lastenheft_Fotobox-Verwaltung_MVP.md), aktuellen [Implementierungsplan](../../IMPLEMENTATION_PLAN.md).
