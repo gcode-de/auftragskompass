@@ -1,5 +1,366 @@
 import { expect, test } from '@playwright/test';
 
+// BKP005: one small synthetic reference surface (list, form, legend, dialog)
+// rendered with the shipped classes in both themes at 390 and 1280. It carries
+// no business data and proves the neutral palette in a real browser.
+const referenceSurface = `
+<div class="workspace-page" data-synthetic="theme-reference">
+  <section aria-label="Synthetische Referenzfläche">
+    <div class="section-heading">
+      <h2>Synthetische Referenzfläche</h2>
+      <div class="section-actions">
+        <button type="button" class="primary-action">Eintrag speichern</button>
+        <button type="button" class="secondary-action">Eingabe verwerfen</button>
+        <button type="button" class="tertiary-action">Liste aktualisieren</button>
+      </div>
+    </div>
+    <p class="files-subtitle">Fiktive Angaben für die Theme-Abnahme, keine echten Daten.</p>
+    <ul class="event-list">
+      <li>
+        <div class="event-row">
+          <div class="event-summary-block">
+            <span class="event-title">Fiktives Event am Monatsanfang</span>
+            <span class="event-meta">Gebucht · Hochzeit · Fiktive Kundin</span>
+            <span class="event-resource-hint">Ressourcen: FB1 #1</span>
+          </div>
+          <div class="event-actions">
+            <button type="button" class="icon-action tier-quiet-icon" aria-label="Event bearbeiten">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16v4Z"/><path d="M13.5 6.5 17.5 10.5"/></svg>
+            </button>
+          </div>
+        </div>
+      </li>
+      <li>
+        <div class="event-row">
+          <div class="event-summary-block">
+            <span class="event-title">Fiktives Event ohne Datum</span>
+            <span class="event-meta">Anfrage · Firmenfeier · Kontakt offen</span>
+            <span class="event-source-quiet">Website</span>
+          </div>
+        </div>
+      </li>
+    </ul>
+    <fieldset>
+      <legend>Fiktive Buchungsangaben</legend>
+      <label>Eventname<input value="Fiktives Event am Monatsanfang" readonly></label>
+      <label>Buchungsstatus<select><option>Gebucht</option><option>Option</option></select></label>
+      <label><input type="checkbox" checked> Fiktive Zusatzleistung</label>
+      <p role="alert">Fiktiver Konflikt: Die Einheit ist bereits gebucht.</p>
+      <button type="button" class="secondary-action" disabled>Gesperrte Aktion</button>
+    </fieldset>
+    <div role="group" aria-label="Kalenderlegende">
+      <ul>
+        <li><span class="event-source-quiet">Gebucht</span> Bestätigte Buchung, Einheit reserviert</li>
+        <li><span class="event-source-quiet">Option</span> Vorgemerkt, noch nicht bestätigt</li>
+        <li><span class="event-source-quiet">Sperre</span> Zeitweise nicht verfügbar</li>
+        <li><span class="event-source-quiet">Konflikt</span> Überschneidung mit einer Buchung</li>
+      </ul>
+    </div>
+  </section>
+</div>`;
+
+const referenceDialog = `
+<div class="form-dialog-backdrop" data-synthetic="theme-dialog">
+  <div class="form-dialog" role="dialog" aria-modal="true" aria-labelledby="synthetic-dialog-title">
+    <div class="form-dialog-header">
+      <h3 id="synthetic-dialog-title">Fiktiven Eintrag bearbeiten</h3>
+      <button type="button" class="form-dialog-close tertiary-action" aria-label="Dialog schließen">×</button>
+    </div>
+    <form>
+      <fieldset>
+        <legend>Angaben</legend>
+        <label>Bezeichnung<input value="Fiktiver Eintrag"></label>
+      </fieldset>
+      <div class="form-dialog-footer">
+        <button type="button" class="primary-action">Speichern</button>
+        <button type="button" class="secondary-action">Abbrechen</button>
+      </div>
+    </form>
+  </div>
+</div>`;
+
+const referenceSidebar = `
+<aside class="desktop-sidebar" data-synthetic="theme-sidebar">
+  <nav aria-label="Fiktive Arbeitsbereiche">
+    <a href="#events" aria-current="page">Events</a>
+    <a href="#contacts">Kontakte</a>
+  </nav>
+</aside>`;
+
+/** How far a colour leans green: the green channel above the red/blue mean. */
+function greenness(value: string) {
+  const [r, g, b] = value
+    .match(/[\d.]+/g)!
+    .slice(0, 3)
+    .map(Number);
+  return g! - (r! + b!) / 2;
+}
+
+type ComputedStyle = {
+  background: string;
+  color: string;
+  border: string;
+  text: string;
+};
+type ReferenceMeasurement = {
+  canvas: string;
+  panel: ComputedStyle;
+  primary: ComputedStyle;
+  disabled: ComputedStyle;
+  alert: ComputedStyle;
+  input: ComputedStyle;
+  ring: { width: string; style: string; offset: string; color: string };
+  legend: string[];
+  overflow: number;
+};
+type RailMeasurement = {
+  background: string;
+  activeBackground: string;
+  activeColor: string;
+  linkColor: string;
+};
+
+function contrast(a: string, b: string) {
+  const luminance = (value: string) => {
+    const [r, g, b] = value
+      .match(/[\d.]+/g)!
+      .slice(0, 3)
+      .map(Number)
+      .map((channel) => {
+        const v = channel / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  };
+  const first = luminance(a);
+  const second = luminance(b);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+test('both themes keep a neutral reference surface readable at 390 and 1280', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await page.addInitScript(() => {
+    localStorage.setItem('ak-theme', 'light');
+  });
+  await page.goto('/');
+  const results: {
+    label: string;
+    width: number;
+    rail: RailMeasurement;
+    measured: ReferenceMeasurement;
+    dialog: {
+      box: { x: number; y: number; width: number; height: number };
+      background: string;
+    };
+  }[] = [];
+
+  for (const theme of ['light', 'dark'] as const) {
+    const toggle = page.getByRole('button', { name: /modus aktivieren/ });
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+      await toggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
+    for (const width of [390, 1280] as const) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+
+      // The rail is measured on its own: it is a fixed overlay and would cover
+      // the reference surface.
+      await page.evaluate((markup) => {
+        document.body.insertAdjacentHTML('beforeend', markup);
+      }, referenceSidebar);
+      const rail = await page.evaluate(() => {
+        const sidebar = document.querySelector<HTMLElement>(
+          '[data-synthetic="theme-sidebar"]',
+        )!;
+        const active = sidebar.querySelector<HTMLElement>('a[aria-current]')!;
+        const link = sidebar.querySelectorAll<HTMLElement>('a')[1]!;
+        return {
+          background: getComputedStyle(sidebar).backgroundColor,
+          activeBackground: getComputedStyle(active).backgroundColor,
+          activeColor: getComputedStyle(active).color,
+          linkColor: getComputedStyle(link).color,
+        };
+      });
+      await page.evaluate(() => {
+        document.querySelector('[data-synthetic="theme-sidebar"]')!.remove();
+      });
+
+      await page.evaluate((markup) => {
+        document.body.insertAdjacentHTML('beforeend', markup);
+      }, referenceSurface);
+      const reference = page.locator('[data-synthetic="theme-reference"]');
+      await expect(
+        reference.getByRole('heading', {
+          name: 'Synthetische Referenzfläche',
+        }),
+      ).toBeVisible();
+      await expect(
+        reference.getByText('Fiktives Event am Monatsanfang').first(),
+      ).toBeVisible();
+      await expect(reference.getByLabel('Buchungsstatus')).toBeVisible();
+      const legend = reference.getByRole('group', { name: 'Kalenderlegende' });
+      await expect(legend.getByRole('listitem')).toHaveCount(4);
+      for (const label of ['Gebucht', 'Option', 'Sperre', 'Konflikt'])
+        await expect(legend.getByText(label, { exact: true })).toBeVisible();
+
+      // A real key press first: Chromium only matches :focus-visible for a
+      // programmatic focus once the last interaction was the keyboard.
+      await page.keyboard.press('Tab');
+      await reference.locator('.primary-action').focus();
+      const measured = await page.evaluate(() => {
+        const style = (selector: string) => {
+          const element = document.querySelector<HTMLElement>(selector)!;
+          const computed = getComputedStyle(element);
+          return {
+            background: computed.backgroundColor,
+            color: computed.color,
+            border: computed.borderTopStyle,
+            text: element.textContent ?? '',
+          };
+        };
+        const focused = document.activeElement as HTMLElement;
+        const ring = getComputedStyle(focused);
+        return {
+          canvas: getComputedStyle(document.documentElement).backgroundColor,
+          panel: style('[data-synthetic="theme-reference"] section'),
+          primary: style('[data-synthetic="theme-reference"] .primary-action'),
+          disabled: style(
+            '[data-synthetic="theme-reference"] .secondary-action:disabled',
+          ),
+          alert: style('[data-synthetic="theme-reference"] [role="alert"]'),
+          input: style('[data-synthetic="theme-reference"] input:not([type])'),
+          ring: {
+            width: ring.outlineWidth,
+            style: ring.outlineStyle,
+            offset: ring.outlineOffset,
+            color: ring.outlineColor,
+          },
+          legend: Array.from(
+            document.querySelectorAll(
+              '[data-synthetic="theme-reference"] [role="group"] li',
+            ),
+          ).map((item) => item.textContent?.trim() ?? ''),
+          overflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
+
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `tests/test-results/theme-reference-${width}-${theme}.png`,
+        fullPage: true,
+        animations: 'disabled',
+      });
+
+      await page.evaluate((markup) => {
+        document.body.insertAdjacentHTML('beforeend', markup);
+      }, referenceDialog);
+      const dialog = page.getByRole('dialog', {
+        name: 'Fiktiven Eintrag bearbeiten',
+      });
+      await expect(dialog).toBeVisible();
+      const dialogBox = (await dialog.boundingBox())!;
+      const dialogBackground = await dialog.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      );
+      await dialog.screenshot({
+        path: `tests/test-results/theme-reference-dialog-${width}-${theme}.png`,
+        animations: 'disabled',
+      });
+      await page.evaluate(() => {
+        document.querySelector('[data-synthetic="theme-dialog"]')!.remove();
+        document.querySelector('[data-synthetic="theme-reference"]')!.remove();
+      });
+
+      results.push({
+        label: `${theme} ${width}`,
+        rail,
+        measured,
+        dialog: { box: dialogBox, background: dialogBackground },
+        width,
+      });
+    }
+  }
+
+  // Assert after both themes and both widths have been captured, so one run
+  // always leaves the full before/after screenshot set behind.
+  for (const { label, rail, measured, dialog, width } of results) {
+    expect(
+      greenness(rail.background),
+      `${label}: the navigation rail is anthracite`,
+    ).toBeLessThanOrEqual(4);
+    expect(
+      greenness(rail.activeBackground),
+      `${label}: the active row stays a whisper`,
+    ).toBeLessThanOrEqual(12);
+    expect(
+      contrast(rail.activeColor, rail.activeBackground),
+      `${label}: the active navigation label is readable`,
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrast(rail.linkColor, rail.background),
+      `${label}: quiet navigation links are readable`,
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(measured.overflow, `${label}: no body overflow`).toBeLessThanOrEqual(
+      0,
+    );
+    expect(
+      greenness(measured.canvas),
+      `${label}: canvas neutral`,
+    ).toBeLessThanOrEqual(4);
+    expect(
+      greenness(measured.panel.background),
+      `${label}: panel neutral`,
+    ).toBeLessThanOrEqual(4);
+    expect(
+      greenness(measured.input.background),
+      `${label}: field neutral`,
+    ).toBeLessThanOrEqual(4);
+    expect(
+      greenness(measured.primary.background),
+      `${label}: the primary action keeps the brand accent`,
+    ).toBeGreaterThanOrEqual(8);
+    expect(measured.ring.style, `${label}: focus ring is drawn`).toBe('solid');
+    expect(measured.ring.width, `${label}: focus ring width`).toBe('3px');
+    expect(measured.ring.offset, `${label}: focus ring offset`).toBe('3px');
+    expect(
+      contrast(measured.ring.color, measured.panel.background),
+      `${label}: focus ring contrast`,
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      measured.disabled.border,
+      `${label}: disabled stays labelled with a dashed border`,
+    ).toBe('dashed');
+    expect(
+      contrast(measured.disabled.color, measured.panel.background),
+      `${label}: disabled label contrast`,
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrast(measured.alert.color, measured.alert.background),
+      `${label}: alert text contrast`,
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      measured.legend.every((line) => line.length > 8),
+      `${label}: every status names itself in words`,
+    ).toBe(true);
+    expect(
+      dialog.box.x,
+      `${label}: dialog starts inside the viewport`,
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      dialog.box.x + dialog.box.width,
+      `${label}: dialog fits the viewport`,
+    ).toBeLessThanOrEqual(width + 1);
+    expect(
+      greenness(dialog.background),
+      `${label}: dialog surface neutral`,
+    ).toBeLessThanOrEqual(4);
+  }
+});
+
 test('built React shell loads in Chromium without runtime errors', async ({
   page,
 }) => {

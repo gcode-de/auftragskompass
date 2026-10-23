@@ -1444,3 +1444,94 @@ test('quiet tiers keep a hover and stacking state that pairs colour with weight'
     expect(rule(selector), selector).toContain('min-height: 44px');
   expect(waitFor).toBeTypeOf('function');
 });
+
+// BKP005: the neutral palette has to hold its contrast in both themes, not
+// only look calmer. The pairs below are the surfaces the reader actually meets:
+// body and muted text, the quiet tiers, focus rings, disabled controls, the
+// alert surface, status surfaces and the dark navigation rail.
+function palette(name: string) {
+  const raw = new RegExp(`--${name}\\s*:\\s*([^;]+);`).exec(
+    tokens().light,
+  )?.[1];
+  expect(raw, `token --${name}`).toBeTruthy();
+  const pairMatch =
+    /^light-dark\(\s*(#[0-9a-f]{6})\s*,\s*(#[0-9a-f]{6})\s*\)$/i.exec(
+      raw!.trim(),
+    );
+  if (pairMatch)
+    return {
+      light: pairMatch[1]!.toLowerCase(),
+      dark: pairMatch[2]!.toLowerCase(),
+    };
+  const single = /^(#[0-9a-f]{6})$/i.exec(raw!.trim());
+  expect(single, `--${name} is a colour`).not.toBeNull();
+  return { light: single![1]!.toLowerCase(), dark: single![1]!.toLowerCase() };
+}
+
+test('the neutral palette keeps AA text and 3:1 boundaries in both themes', () => {
+  const pairs: [string, string, number][] = [
+    ['ink', 'surface', 4.5],
+    ['ink', 'canvas', 4.5],
+    ['ink', 'field-surface', 4.5],
+    ['ink', 'table-surface', 4.5],
+    ['ink', 'status-surface', 4.5],
+    ['muted', 'surface', 4.5],
+    ['muted', 'canvas', 4.5],
+    ['accent', 'surface', 4.5],
+    ['accent', 'canvas', 4.5],
+    ['accent', 'hover-surface', 4.5],
+    ['quiet-ink', 'surface', 4.5],
+    ['quiet-ink', 'hover-surface', 4.5],
+    ['quiet-ink', 'field-surface', 4.5],
+    ['action-ink', 'action', 4.5],
+    ['action-ink', 'action-hover', 4.5],
+    ['selected-ink', 'selected-surface', 4.5],
+    ['selection-ink', 'selection', 4.5],
+    ['alert-ink', 'alert-surface', 4.5],
+    ['disabled-ink', 'disabled-surface', 4.5],
+    ['disabled-ink', 'surface', 4.5],
+    ['sidebar-ink', 'sidebar', 4.5],
+    ['sidebar-link', 'sidebar', 4.5],
+    ['sidebar-muted', 'sidebar', 4.5],
+    ['sidebar-ink', 'sidebar-active', 4.5],
+    ['sidebar-ink', 'sidebar-hover', 4.5],
+    ['focus', 'surface', 3],
+    ['focus', 'canvas', 3],
+    ['focus', 'field-surface', 3],
+    ['sidebar-focus', 'sidebar', 3],
+    ['quiet-action-border', 'surface', 3],
+    ['field-border', 'surface', 3],
+    ['menu-close-border', 'sidebar', 3],
+  ];
+  for (const [foreground, background, minimum] of pairs) {
+    const text = palette(foreground);
+    const surface = palette(background);
+    for (const theme of ['light', 'dark'] as const)
+      expect(
+        contrast(text[theme], surface[theme]),
+        `${foreground} on ${background} (${theme})`,
+      ).toBeGreaterThanOrEqual(minimum);
+  }
+});
+
+test('the disabled tier states its own readable colours instead of a veil', () => {
+  // A 0.6 opacity veil halved the label contrast; the palette now carries the
+  // state with a neutral fill and a readable label, while the dashed border and
+  // the 44px target of the original tier rule stay in force.
+  expect(rule('.primary-action:disabled')).toContain(
+    'background: var(--disabled-surface)',
+  );
+  expect(rule('.primary-action:disabled')).toContain(
+    'color: var(--disabled-ink)',
+  );
+  const quiet = rule(
+    '.tertiary-action:disabled, .icon-action:disabled, .secondary-action:disabled',
+  );
+  expect(quiet).toContain('color: var(--disabled-ink)');
+  expect(quiet).toContain('border-color: var(--quiet-action-border)');
+  const disabled = rule(
+    '.primary-action:disabled, .secondary-action:disabled, .tertiary-action:disabled, .icon-action:disabled',
+  );
+  expect(disabled).toContain('border-style: dashed');
+  expect(disabled).toContain('cursor: not-allowed');
+});

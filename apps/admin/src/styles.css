@@ -10,36 +10,55 @@
   color-scheme: light dark;
   color: var(--ink);
   background: var(--canvas);
-  --surface: light-dark(#ffffff, #202824);
-  --canvas: light-dark(#f4f6f5, #151d19);
-  --ink: light-dark(#202d29, #e4ede7);
-  --muted: light-dark(#596b64, #afc2b6);
-  --accent: light-dark(#176b52, #91d3b4);
-  --border: light-dark(#d6dfda, #43564a);
-  --action-ink: light-dark(#ffffff, #11291e);
-  --action-hover: light-dark(#0b5144, #b2e5cb);
-  --hover-surface: light-dark(#e8f4ef, #2e493b);
-  --field-surface: light-dark(#fafcfd, #1b241f);
-  --field-border: light-dark(#9facbb, #738a7b);
-  --focus: light-dark(#137a69, #a4e4c1);
-  --status-surface: light-dark(#eaf2f7, #293e36);
-  --alert-surface: light-dark(#fff0ed, #482a28);
-  --alert-ink: light-dark(#a62c22, #f3b2a8);
-  --table-surface: light-dark(#edf3f6, #293a30);
-  --selection: light-dark(#c6e7d8, #315d46);
-  --selection-ink: light-dark(#172e27, #e4ede7);
-  --selected-surface: light-dark(#e3f0e8, #2e493b);
-  --selected-ink: light-dark(#155d46, #b2e5cb);
-  --sidebar: #172e27;
-  --sidebar-ink: #eaf2ee;
+  /* BKP005: neutral surfaces in both themes. The dark theme is a warm
+     anthracite instead of the former green-black; the green survives as one
+     restrained accent for links, the single primary action and the active
+     navigation row. Contrast values are checked in the component and
+     Chromium tests. */
+  --surface: light-dark(#ffffff, #1e1d1b);
+  --canvas: light-dark(#f5f4f1, #141312);
+  --ink: light-dark(#20211f, #e8e4df);
+  --muted: light-dark(#5d5c58, #b0aaa2);
+  --accent: light-dark(#3d6b58, #9dc1af);
+  --border: light-dark(#dbd8d2, #3b3833);
+  --action-ink: light-dark(#ffffff, #12201b);
+  --action-hover: light-dark(#2f5749, #b2d2c1);
+  --hover-surface: light-dark(#efede8, #2a2825);
+  --field-surface: light-dark(#fbfaf8, #191817);
+  --field-border: light-dark(#8f8a82, #7d776f);
+  --focus: light-dark(#20695a, #9fd3ba);
+  --status-surface: light-dark(#f1efec, #242220);
+  --alert-surface: light-dark(#fdf0ed, #3d2523);
+  --alert-ink: light-dark(#a3312a, #f6bcb2);
+  --table-surface: light-dark(#f3f1ed, #242220);
+  --selection: light-dark(#dcd9d3, #3a3733);
+  --selection-ink: light-dark(#1d1c1a, #f0ece7);
+  --selected-surface: light-dark(#eeece7, #302d29);
+  --selected-ink: light-dark(#33544a, #e8e4df);
+  --disabled-surface: light-dark(#e9e6e0, #262421);
+  --disabled-ink: light-dark(#6b665f, #a9a29a);
+  /* The rail is anthracite in both themes; its active row is the only tinted
+     surface left in the navigation and stays a desaturated green. */
+  --sidebar: #1b1a18;
+  --sidebar-ink: #eae6e0;
+  --sidebar-link: #c6c1ba;
+  --sidebar-muted: #a8a29a;
+  --sidebar-active: #2f3a34;
+  --sidebar-hover: #2a2825;
+  --sidebar-focus: #cfd8d0;
+  --sidebar-selected-ink: #ffffff;
+  --menu-close-border: #6f6a63;
+  --backdrop: #0b0a09aa;
+  --scrim: light-dark(#1b1a1866, #0b0a09cc);
+  --calendar-ink: #111827;
   /* H036: one action hierarchy for every surface. The accent stays reserved
      for the single primary action of a section; secondary and tertiary
      actions share a text-ink that is readable on every light or dark
      surface. */
-  --action: light-dark(#176b52, #91d3b4);
-  --action-border: light-dark(#176b52, #b2e5cb);
-  --quiet-ink: light-dark(#134d3b, #b2e5cb);
-  --quiet-action-border: light-dark(#9facbb, #738a7b);
+  --action: light-dark(#3d6b58, #9dc1af);
+  --action-border: light-dark(#3d6b58, #b2d2c1);
+  --quiet-ink: light-dark(#33544a, #cdc7bf);
+  --quiet-action-border: light-dark(#8f8a82, #757067);
   --layer-sticky: 5;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -384,7 +403,7 @@ pre {
   }
 }
 
-/* Workspace chrome uses the same green action language as the existing forms. */
+/* Workspace chrome uses the same restrained action accent as the forms. */
 ::selection {
   background: var(--selection);
   color: var(--selection-ink);
@@ -459,7 +478,7 @@ textarea {
 .desktop-sidebar a.menu-brand:hover,
 .mobile-menu a.menu-brand:hover {
   background: transparent;
-  color: #fff;
+  color: var(--sidebar-selected-ink);
 }
 .brand-mark {
   display: none;
@@ -482,11 +501,11 @@ textarea {
   padding: 0.5rem;
   color: var(--sidebar-ink);
   background: transparent;
-  border: 1px solid #779386;
+  border: 1px solid var(--menu-close-border);
   border-radius: 0.4rem;
 }
 .sidebar-toggle:hover:not(:disabled) {
-  background: #294c3e;
+  background: var(--sidebar-hover);
 }
 .sidebar-toggle svg {
   width: 1.1rem;
@@ -540,7 +559,7 @@ textarea {
 .menu-caption {
   margin: 0.35rem 0.75rem 2rem;
   font-size: 0.8rem;
-  color: #b0c8bd;
+  color: var(--sidebar-muted);
 }
 .desktop-sidebar nav,
 .mobile-menu nav {
@@ -555,7 +574,7 @@ textarea {
 }
 .desktop-sidebar a,
 .mobile-menu nav a {
-  color: #c5d6ce;
+  color: var(--sidebar-link);
   display: flex;
   gap: 0.85rem;
   font-weight: 500;
@@ -569,18 +588,18 @@ nav svg {
 }
 .desktop-sidebar a[aria-current],
 .mobile-menu a[aria-current] {
-  color: #fff;
-  background: #315a48;
+  color: var(--sidebar-selected-ink);
+  background: var(--sidebar-active);
   font-weight: 650;
 }
 .desktop-sidebar a:hover,
 .mobile-menu nav a:hover {
-  color: #fff;
-  background: #294c3e;
+  color: var(--sidebar-ink);
+  background: var(--sidebar-hover);
 }
 .desktop-sidebar a:focus-visible,
 .mobile-menu a:focus-visible {
-  outline-color: #c0e7ce;
+  outline-color: var(--sidebar-focus);
 }
 
 .workspace-toolbar {
@@ -687,13 +706,13 @@ a.workspace-title:hover {
   color: var(--sidebar-ink);
 }
 .mobile-menu::backdrop {
-  background: #0b1813aa;
+  background: var(--backdrop);
 }
 .menu-close {
   display: block;
   margin: 0 0 1.5rem auto;
   background: transparent;
-  border-color: #779386;
+  border-color: var(--menu-close-border);
   font-size: 0.875rem;
 }
 button {
@@ -839,7 +858,7 @@ time {
 }
 
 .menu-close:hover:not(:disabled) {
-  background: #294c3e;
+  background: var(--sidebar-hover);
 }
 
 .section-actions {
@@ -892,7 +911,7 @@ time {
   place-items: center;
   padding: 1rem;
   overflow-y: auto;
-  background: light-dark(#172e2780, #0b120fcc);
+  background: var(--scrim);
 }
 .event-create-dialog,
 .form-dialog {
@@ -1279,6 +1298,25 @@ summary {
 .icon-action.tier-quiet-icon:focus-visible {
   opacity: 1;
 }
+/* BKP005: the palette states the disabled tier instead of veiling it. The
+   former 0.6 opacity halved the label contrast (2.6:1 in the light theme); the
+   neutral fill and label keep 4.5:1 while the dashed border, the 44px target
+   and `not-allowed` above stay unchanged. `opacity: 1` clears that veil on the
+   tiers only; plain inputs and buttons keep it. */
+.primary-action:disabled {
+  opacity: 1;
+  background: var(--disabled-surface);
+  color: var(--disabled-ink);
+  border-color: var(--quiet-action-border);
+}
+.tertiary-action:disabled,
+.icon-action:disabled,
+.secondary-action:disabled {
+  opacity: 1;
+  background: transparent;
+  color: var(--disabled-ink);
+  border-color: var(--quiet-action-border);
+}
 #event-editor {
   scroll-margin-top: 5rem;
 }
@@ -1445,10 +1483,10 @@ summary {
 .menu-account .account-bar button {
   background: transparent;
   color: var(--sidebar-ink);
-  border-color: #779386;
+  border-color: var(--menu-close-border);
 }
 .menu-account .account-bar button:hover:not(:disabled) {
-  background: #294c3e;
+  background: var(--sidebar-hover);
 }
 .menu-trigger {
   width: 44px;
@@ -1465,7 +1503,7 @@ summary {
   color: inherit;
 }
 .calendar-state a:focus-visible {
-  outline-color: #111827;
+  outline-color: var(--calendar-ink);
 }
 
 /* H037: the month overview fits its container so all seven days stay
@@ -1527,7 +1565,7 @@ summary {
   padding: 0.3rem;
   margin-bottom: 0.3rem;
   border-radius: 0.25rem;
-  color: #111827;
+  color: var(--calendar-ink);
   font-size: 0.78rem;
   line-height: 1.35;
 }
@@ -1549,7 +1587,7 @@ summary {
 .calendar-chip-time,
 .calendar-chip-meta,
 .calendar-chip-resources {
-  color: #1f2937;
+  color: var(--calendar-ink);
 }
 @media (max-width: 48rem) {
   .calendar-chip-meta,
@@ -1558,7 +1596,7 @@ summary {
   }
 }
 .menu-account [role='status']:not(.session-ready) {
-  background: #294c3e;
+  background: var(--sidebar-hover);
   color: var(--sidebar-ink);
 }
 

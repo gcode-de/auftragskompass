@@ -6,6 +6,8 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { ThemeToggle } from '../../apps/admin/src/ThemeToggle.js';
 afterEach(() => {
   cleanup();
@@ -106,3 +108,81 @@ test.each(['light', 'dark'])(
     expect(document.documentElement.dataset.theme).toBe(saved);
   },
 );
+
+// BKP005: the palette is one shared token block. jsdom has no cascade, so the
+// shipped stylesheet is read directly; the browser measurement of the same
+// contract lives in tests/e2e/shell.spec.ts.
+const css = readFileSync(
+  resolve(process.cwd(), 'apps/admin/src/styles.css'),
+  'utf8',
+);
+const rootBlock = /(?:^|\n):root\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+
+function themed(name: string) {
+  const raw = new RegExp(`--${name}\\s*:\\s*([^;]+);`).exec(rootBlock)?.[1];
+  expect(raw, `token --${name}`).toBeTruthy();
+  const pair =
+    /^light-dark\(\s*(#[0-9a-f]{6})\s*,\s*(#[0-9a-f]{6})\s*\)$/i.exec(
+      raw!.trim(),
+    );
+  expect(pair, `--${name} is one light-dark pair`).not.toBeNull();
+  return { light: pair![1]!.toLowerCase(), dark: pair![2]!.toLowerCase() };
+}
+
+function fixed(name: string) {
+  const raw = new RegExp(`--${name}\\s*:\\s*([^;]+);`).exec(rootBlock)?.[1];
+  expect(raw, `token --${name}`).toBeTruthy();
+  const value = /^(#[0-9a-f]{6})$/i.exec(raw!.trim());
+  expect(value, `--${name} is a plain colour`).not.toBeNull();
+  return value![1]!.toLowerCase();
+}
+
+/** How far a colour leans green: the green channel above the red/blue mean. */
+function greenness(value: string) {
+  const channels = [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
+  return channels[1]! - (channels[0]! + channels[2]!) / 2;
+}
+
+test('neutral surfaces carry no green cast in either theme', () => {
+  // The canvases, panels and tints the reader works on every day.
+  for (const name of [
+    'surface',
+    'canvas',
+    'field-surface',
+    'table-surface',
+    'status-surface',
+    'hover-surface',
+    'selected-surface',
+    'selection',
+    'disabled-surface',
+  ]) {
+    const palette = themed(name);
+    for (const theme of ['light', 'dark'] as const)
+      expect(
+        greenness(palette[theme]),
+        `--${name} (${theme}) stays neutral`,
+      ).toBeLessThanOrEqual(4);
+  }
+  for (const name of ['sidebar', 'sidebar-hover']) {
+    expect(
+      greenness(fixed(name)),
+      `--${name} is an anthracite`,
+    ).toBeLessThanOrEqual(4);
+  }
+});
+
+test('the restrained green survives only as a tinted accent', () => {
+  // Removing every green would flatten the brand; these are the deliberate
+  // small accents: links/actions, the pressed nav row and the focus tint.
+  for (const name of ['accent', 'action', 'focus']) {
+    const palette = themed(name);
+    for (const theme of ['light', 'dark'] as const)
+      expect(
+        greenness(palette[theme]),
+        `--${name} (${theme}) keeps a green accent`,
+      ).toBeGreaterThanOrEqual(8);
+  }
+  // The active navigation row is the one tinted surface left in the rail, and
+  // it stays a whisper rather than a green block.
+  expect(greenness(fixed('sidebar-active'))).toBeLessThanOrEqual(12);
+});

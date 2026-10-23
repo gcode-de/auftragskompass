@@ -2,36 +2,39 @@
 name: AuftragsKompass
 description: Interne Verwaltungsoberfläche für den lokalen Fotobox-Betrieb
 colors:
-  surface: "light-dark(#ffffff, #202824)"
-  canvas: "light-dark(#f4f6f5, #151d19)"
-  ink: "light-dark(#202d29, #e4ede7)"
-  muted: "light-dark(#596b64, #afc2b6)"
-  accent: "light-dark(#176b52, #91d3b4)"
-  border: "light-dark(#d6dfda, #43564a)"
-  action-ink: "light-dark(#ffffff, #11291e)"
-  action-hover: "light-dark(#0b5144, #b2e5cb)"
-  hover-surface: "light-dark(#e8f4ef, #2e493b)"
-  field-surface: "light-dark(#fafcfd, #1b241f)"
-  field-border: "light-dark(#9facbb, #738a7b)"
-  focus: "light-dark(#137a69, #a4e4c1)"
-  status-surface: "light-dark(#eaf2f7, #293e36)"
-  alert-surface: "light-dark(#fff0ed, #482a28)"
-  alert-ink: "light-dark(#a62c22, #f3b2a8)"
-  table-surface: "light-dark(#edf3f6, #293a30)"
-  selection: "light-dark(#c6e7d8, #315d46)"
-  selection-ink: "light-dark(#172e27, #e4ede7)"
-  selected-surface: "light-dark(#e3f0e8, #2e493b)"
-  selected-ink: "light-dark(#155d46, #b2e5cb)"
-  sidebar: "#172e27"
-  sidebar-ink: "#eaf2ee"
-  sidebar-focus: "#c0e7ce"
-  sidebar-active: "#315a48"
-  sidebar-hover: "#294c3e"
-  sidebar-link: "#c5d6ce"
-  sidebar-muted: "#b0c8bd"
+  surface: "light-dark(#ffffff, #1e1d1b)"
+  canvas: "light-dark(#f5f4f1, #141312)"
+  ink: "light-dark(#20211f, #e8e4df)"
+  muted: "light-dark(#5d5c58, #b0aaa2)"
+  accent: "light-dark(#3d6b58, #9dc1af)"
+  border: "light-dark(#dbd8d2, #3b3833)"
+  action-ink: "light-dark(#ffffff, #12201b)"
+  action-hover: "light-dark(#2f5749, #b2d2c1)"
+  hover-surface: "light-dark(#efede8, #2a2825)"
+  field-surface: "light-dark(#fbfaf8, #191817)"
+  field-border: "light-dark(#8f8a82, #7d776f)"
+  focus: "light-dark(#20695a, #9fd3ba)"
+  status-surface: "light-dark(#f1efec, #242220)"
+  alert-surface: "light-dark(#fdf0ed, #3d2523)"
+  alert-ink: "light-dark(#a3312a, #f6bcb2)"
+  table-surface: "light-dark(#f3f1ed, #242220)"
+  selection: "light-dark(#dcd9d3, #3a3733)"
+  selection-ink: "light-dark(#1d1c1a, #f0ece7)"
+  selected-surface: "light-dark(#eeece7, #302d29)"
+  selected-ink: "light-dark(#33544a, #e8e4df)"
+  disabled-surface: "light-dark(#e9e6e0, #262421)"
+  disabled-ink: "light-dark(#6b665f, #a9a29a)"
+  sidebar: "#1b1a18"
+  sidebar-ink: "#eae6e0"
+  sidebar-focus: "#cfd8d0"
+  sidebar-active: "#2f3a34"
+  sidebar-hover: "#2a2825"
+  sidebar-link: "#c6c1ba"
+  sidebar-muted: "#a8a29a"
   sidebar-selected-ink: "#ffffff"
-  backdrop: "#0b1813aa"
-  menu-close-border: "#779386"
+  backdrop: "#0b0a09aa"
+  scrim: "light-dark(#1b1a1866, #0b0a09cc)"
+  menu-close-border: "#6f6a63"
   calendar-ink: "#111827"
 typography:
   body:
@@ -87,14 +90,20 @@ components:
     typography: "{typography.button}"
   button-secondary:
     backgroundColor: "transparent"
-    textColor: "#134d3b / #b2e5cb"
-    border: "1px solid #9facbb / #738a7b"
+    textColor: "#33544a / #cdc7bf"
+    border: "1px solid #8f8a82 / #757067"
     rounded: "{rounded.control}"
     padding: "0.6rem 1rem"
   button-tertiary:
     backgroundColor: "transparent"
-    textColor: "#134d3b / #b2e5cb"
+    textColor: "#33544a / #cdc7bf"
     border: "none"
+    rounded: "{rounded.control}"
+    padding: "0.6rem 1rem"
+  button-disabled:
+    backgroundColor: "{colors.disabled-surface}"
+    textColor: "{colors.disabled-ink}"
+    border: "1px dashed #8f8a82 / #757067"
     rounded: "{rounded.control}"
     padding: "0.6rem 1rem"
   button-primary-hover:
@@ -106,8 +115,8 @@ components:
     padding: "0.6rem 1rem"
   theme-toggle:
     backgroundColor: "transparent"
-    textColor: "#134d3b / #b2e5cb"
-    border: "1px solid #9facbb / #738a7b"
+    textColor: "#33544a / #cdc7bf"
+    border: "1px solid #8f8a82 / #757067"
     rounded: "{rounded.control}"
     padding: "0.6rem 1rem"
   theme-toggle-pressed:
@@ -115,7 +124,7 @@ components:
     textColor: "{colors.selected-ink}"
   record-navigation:
     backgroundColor: "transparent"
-    textColor: "#134d3b / #b2e5cb"
+    textColor: "#33544a / #cdc7bf"
     padding: "0 0 1rem"
   record-navigation-current:
     backgroundColor: "{colors.selected-surface}"
@@ -145,7 +154,7 @@ components:
 
 ## Overview
 
-Die interne Verwaltungsoberfläche unterstützt den Inhaber eines lokal betriebenen Fotobox-Unternehmens. Das bestehende System verwendet grüne Aktionen, eine dunkle Seitennavigation und voneinander getrennte Arbeitsbereiche in heller oder dunkler Darstellung. Diese Dokumentation beschreibt den implementierten Zustand; sie legt keine neue Markenrichtung fest.
+Die interne Verwaltungsoberfläche unterstützt den Inhaber eines lokal betriebenen Fotobox-Unternehmens. Die Oberfläche verwendet neutrale Flächen in einem hellen Offwhite beziehungsweise einem dunklen Anthrazit, eine anthrazitfarbene Seitennavigation und ein entsättigtes Grün ausschließlich als kleinen Marken- und Aktionsakzent. Diese Dokumentation beschreibt den implementierten Zustand; sie legt keine neue Markenrichtung fest.
 
 **Key Characteristics:**
 
@@ -158,11 +167,14 @@ Die interne Verwaltungsoberfläche unterstützt den Inhaber eines lokal betriebe
 
 Maßgeblich ist der eine `:root`-Block in `src/styles.css`. Die Frontmatter bewahrt die exakten Farbpaare als `light-dark(Hellwert, Dunkelwert)`; die erste Farbe gehört zum Hellmodus, die zweite zum Dunkelmodus. `color-scheme: light dark` übernimmt zunächst die Systempräferenz; `data-theme="light"` beziehungsweise `"dark"` setzt das explizite Farbschema. Native Formelemente folgen diesem Schema.
 
-- `surface`, `canvas`, `ink`, `muted` und `border` steuern Arbeitsflächen, Hintergrund, Text und Trennung in beiden Darstellungen.
-- `accent`, `action-ink` und `action-hover` bilden Aktionen ab; im Dunkelmodus sind Aktionen hellgrün mit dunkler Schrift. `hover-surface` dient zurückhaltenden Hoverflächen.
-- `field-surface`, `field-border`, `status-surface`, `alert-surface`, `alert-ink` und `table-surface` erhalten Form-, Rückmeldungs- und Tabellenkontraste. `alert-ink` wird als Fehlerrand verwendet; der Fehlertext erbt `ink`.
-- `focus`, `selection`, `selection-ink`, `selected-surface` und `selected-ink` steuern Fokus, Textauswahl und aktive Einstellungen beziehungsweise den gedrückten Umschalter.
-- Die Seitennavigation bleibt in beiden Darstellungen dunkelgrün; ihre festen Farben und die Hintergrundabdunklung stehen ebenfalls unverändert in der Frontmatter.
+Die Palette wurde in BKP005 neutralisiert. Die folgenden Werte sind die tatsächlich ausgelieferten; Kontraste prüfen `tests/component/action-hierarchy.test.tsx` und `tests/e2e/shell.spec.ts` für beide Themes.
+
+- `surface`, `canvas`, `ink`, `muted` und `border` steuern Arbeitsflächen, Hintergrund, Text und Trennung. Der Hellmodus ist ein neutrales Offwhite mit klaren Flächenstufen (`surface` `#ffffff`, `canvas` `#f5f4f1`, `field-surface` `#fbfaf8`, `table-surface` `#f3f1ed`), der Dunkelmodus ein neutrales Anthrazit (`canvas` `#141312`, `surface` `#1e1d1b`, `field-surface` `#191817`, `hover-surface` `#2a2825`, `table-surface` `#242220`). Keiner dieser Werte trägt einen Grünstich.
+- `accent`, `action`, `action-border`, `action-ink` und `action-hover` bilden Aktionen ab. Das Grün ist entsättigt (`#3d6b58` im Hellmodus, `#9dc1af` im Dunkelmodus mit dunkler Schrift `#12201b`) und bleibt auf Links, die eine primäre Aktion, den Fokus und die aktive Navigationszeile beschränkt. `hover-surface`, `status-surface`, `selected-surface`/`selected-ink` und `selection`/`selection-ink` sind neutrale Tönungen.
+- `field-surface`, `field-border`, `alert-surface` und `alert-ink` erhalten Form- und Rückmeldungskontraste. `alert-ink` bleibt die rote Fehlerfarbe und dient auch als Fehlerrand. `status-surface` ist neutral, damit eine Rückmeldung nicht allein über die Flächenfarbe wirkt. `disabled-surface`/`disabled-ink` tragen den deaktivierten Zustand mit lesbarer Schrift.
+- `focus`, `sidebar-focus`, `quiet-ink`, `quiet-action-border`, `field-border` und `menu-close-border` halten Fokusringe und Bediengrenzen bei mindestens 3:1 zur angrenzenden Fläche; `quiet-ink` erreicht auf allen Flächen mindestens 4,5:1.
+- Die Seitennavigation ist in beiden Darstellungen ein Anthrazit (`#1b1a18`) mit neutralen Links (`#c6c1ba`) und neutralem Hover (`#2a2825`). Nur die aktive Zeile bleibt leicht grün getönt (`#2f3a34`) und wird zusätzlich durch Gewicht und `aria-current` getragen. `backdrop` (mobiles Menü, `#0b0a09aa`) und `scrim` (Dialoge, `light-dark(#1b1a1866, #0b0a09cc)`) sind neutrale Abdunklungen.
+- `--calendar-ink` (`#111827`) bleibt die feste dunkle Schrift auf den pastellfarbenen Kalender- und Belegungszuständen beider Darstellungen; die Zustände selbst bleiben semantisch getrennt und werden stets zusätzlich benannt.
 
 ## Typography
 
@@ -186,7 +198,7 @@ Bis einschließlich 600px liegt die Aktennavigation unten fest: vier gleich brei
 
 ## Elevation & Depth
 
-Arbeitsflächen und Seitennavigation verwenden keine Schatten. Umrandungen und Flächenfarben schaffen Trennung. Die Anmeldung behält `0 0.25rem 1rem #20304408`; der generische Navigationsstil enthält `0 0.25rem 1rem #2030440d`, während Haupt- und Einstellungsnavigation diesen Schatten abschalten. Das native modale Menü liegt im Top Layer mit Hintergrundabdunklung `#0b1813aa`.
+Arbeitsflächen und Seitennavigation verwenden keine Schatten. Umrandungen und Flächenfarben schaffen Trennung. Die Anmeldung behält `0 0.25rem 1rem #20304408`; der generische Navigationsstil enthält `0 0.25rem 1rem #2030440d`, während Haupt- und Einstellungsnavigation diesen Schatten abschalten. Das native modale Menü liegt im Top Layer mit der neutralen Hintergrundabdunklung `backdrop` (`#0b0a09aa`); die Formulardialoge verwenden `scrim` (`light-dark(#1b1a1866, #0b0a09cc)`).
 
 ## Shapes
 
@@ -197,14 +209,14 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 - **Event-Details:** eigenständiger h2-Titel „Event: Name“ mit der Größe `record-heading` aus der Frontmatter, `margin-block: 1em` und `scroll-margin-top: 5rem`, programmatisch fokussierbar über `tabIndex=-1`. Unterbereiche einschließlich Ressourcenzuweisung verwenden h3; ihre bisherige Darstellung bleibt mit `1rem` und `margin-block: 1.33em` erhalten. Beim Öffnen erhält der Titel Fokus. Schließen führt zur auslösenden Eventzeile zurück; Bearbeiten öffnet das zentrale Eventformular und fokussiert das Namensfeld. Die Auswahl „Übersicht“, „Ressourcen“, „Notizen“, „Logbuch“ besteht aus gewöhnlichen Knöpfen in einer beschrifteten Navigation; `aria-current="location"` kennzeichnet den Bereich. Inaktive Bereiche bleiben mit `hidden` eingehängt, damit ungespeicherte Ressourceneingaben beim Bereichswechsel erhalten bleiben. Der ausgewählte Bereich bleibt bei Versionsaktualisierungen erhalten: Die Detailansicht behält ihre stabile Eventidentität und lädt Daten über `revision` nach. Die Navigation verwendet keine ARIA-Tabrollen. Inaktive Knöpfe sind transparent mit `muted`-Schrift; aktive und überfahrene Knöpfe nutzen `selected-surface` und `selected-ink`.
 - **Eventfilter und Editor:** native `<details>`/`<summary>` mit oberen und unteren `border`-Trennern und `1rem` Außenabstand. Summary ist mindestens `48px` hoch, mit Akzentschrift, Gewicht 600 und `0.75rem 0.25rem` Innenabstand. Filter sind bei vorhandenen Eventfiltern in der URL anfänglich geöffnet und tragen „Filter · aktiv“. Der Editor beginnt geschlossen. Bearbeiten oder Duplizieren öffnet ihn, scrollt zum Formular und fokussiert den Namen. Erfolgreiches Speichern oder ausdrückliches Abbrechen schließt ihn und fokussiert die Summary. Bloßes Einklappen erhält den Formularentwurf; Fehler lassen die Eingaben bestehen. Der Abbrechen-Knopf erscheint bei einem geladenen Bearbeitungs- oder Duplikatentwurf.
 - **Eventzeilen:** Monatsüberschrift `1.1rem`, Anzahl `0.8rem` mit Gewicht 400 und `muted`; erste Zeile mit Name, Datum und Status `1.05rem` mit Gewicht 650. Zweite Zeile, Zeitzone und Ressourcenhinweis verwenden `0.875rem` und `muted`. Aktionen stehen darunter mit `0.5rem` Abstand nach oben und rechts. Aktualisieren sowie Duplizieren/Bearbeiten verwenden transparente Sekundäraktionen mit Akzenttext und `hover-surface`. Die Zeilen erhalten keine eigenen Kartenflächen oder Schatten.
-- **Aktionen (H036):** jede Fläche hat genau eine gefüllte `.primary-action`; `.secondary-action` bleibt transparent mit Rand und Gewicht 600, `.tertiary-action` ist randlos mit Gewicht 500 und Unterstreichung erst bei Hover; die Bereichsnavigation der Detailansicht ist `.nav-action`, ihr aktiver Eintrag zusätzlich fett mit Rand. Icon-Aktionen bleiben 44-px-Ziele und markieren mit `.tier-primary-icon` das einzige anlegende Icon eines Bereichs, mit `.tier-quiet-icon` Filter, Suche, Navigation und Zeilenaktionen. Keine Stufe unterscheidet sich nur in der Farbe: Füllung, Rand und Schriftgewicht tragen den Unterschied; deaktivierte Aktionen erhalten Deckkraft 0.6 **und** einen gestrichelten Rand mit `not-allowed`. Die frühere Deckkraft 0.65 gilt nicht mehr. Die Abmeldung im Navigationsfuß ist transparent mit `sidebar-ink`-Schrift und `#779386`-Rand; beim Überfahren verwendet sie fest `#294c3e`. Allgemeiner Fokus: `3px solid var(--focus)`, Abstand `3px`.
+- **Aktionen (H036):** jede Fläche hat genau eine gefüllte `.primary-action`; `.secondary-action` bleibt transparent mit Rand und Gewicht 600, `.tertiary-action` ist randlos mit Gewicht 500 und Unterstreichung erst bei Hover; die Bereichsnavigation der Detailansicht ist `.nav-action`, ihr aktiver Eintrag zusätzlich fett mit Rand. Icon-Aktionen bleiben 44-px-Ziele und markieren mit `.tier-primary-icon` das einzige anlegende Icon eines Bereichs, mit `.tier-quiet-icon` Filter, Suche, Navigation und Zeilenaktionen. Keine Stufe unterscheidet sich nur in der Farbe: Füllung, Rand und Schriftgewicht tragen den Unterschied; deaktivierte Aktionen erhalten eine neutrale Füllung (`disabled-surface`), die lesbare Schrift `disabled-ink` (mindestens 4,5:1), Deckkraft 1 **und** einen gestrichelten Rand mit `not-allowed`. Die frühere Deckkraft 0.65/0.6 gilt nur noch für generische Eingaben und für Knöpfe ohne Stufe. Die Abmeldung im Navigationsfuß ist transparent mit `sidebar-ink`-Schrift und `menu-close-border`-Rand; beim Überfahren verwendet sie `sidebar-hover`. Allgemeiner Fokus: `3px solid var(--focus)`, Abstand `3px`.
 - **Darstellungsumschalter:** „Dunkelmodus“ ist vor der Anmeldung in der Anmeldekarte und nach der Anmeldung in der Werkzeugleiste verfügbar, mit dekorativem Mond-SVG und `aria-pressed` für den Dunkelzustand. Gespeichert wird ausschließlich `light` oder `dark` unter `localStorage["ak-theme"]`; ungültige oder nicht lesbare Werte fallen auf die Systempräferenz zurück. Ohne explizite Wahl werden Systemänderungen übernommen. Ein Klick setzt eine explizite Wahl; Änderungen anderer Tabs sowie gelöschte Präferenzen werden über das `storage`-Ereignis übernommen. Bei gesperrtem Speicher funktioniert die Wahl für die laufende Sitzung. Das aktuelle Schema wird per Layout-Effekt als `data-theme` am Dokumentwurzelelement gesetzt; Farben wechseln ohne Übergangsanimation. Der Umschalter bietet keine eigene Funktion zum Zurücksetzen auf die Systempräferenz.
 - **Formulare:** sichtbare Labels, Felder mit `surface`-Hintergrund und `field-border`-Rand; Textflächen und Mehrfachauswahl mindestens `7rem` hoch. Checkboxen/Radios verwenden die Akzentfarbe.
-- **Kontobereich:** Kontoidentität, Abmeldung und Anmeldestatus liegen im Navigationsfuß: auf dem Desktop in der Seitenleiste, mobil nur im geöffneten Dialog. Das einspaltige Kontogrid hat `0.6rem` Abstand. Sichtbare Rückmeldungen verwenden `#294c3e` und `sidebar-ink`, einschließlich fehlgeschlagener Abmeldung; ihre Statusrolle bleibt innerhalb des modalen Kontexts erreichbar. Im abgemeldeten Zustand steht die Statusmeldung ausschließlich direkt in der Anmeldung.
+- **Kontobereich:** Kontoidentität, Abmeldung und Anmeldestatus liegen im Navigationsfuß: auf dem Desktop in der Seitenleiste, mobil nur im geöffneten Dialog. Das einspaltige Kontogrid hat `0.6rem` Abstand. Sichtbare Rückmeldungen verwenden `sidebar-hover` und `sidebar-ink`, einschließlich fehlgeschlagener Abmeldung; ihre Statusrolle bleibt innerhalb des modalen Kontexts erreichbar. Im abgemeldeten Zustand steht die Statusmeldung ausschließlich direkt in der Anmeldung.
 - **Datenexport:** Unter Einstellungen → Datenexport (`#settings-export`) stehen drei native Downloadlinks für Kontakte, alle Events und den Produktkatalog in einer semantischen Liste (`ul`/`li`). Links sind als `inline-flex` ausgerichtet, mindestens 44px hoch und mit Gewicht 600 gesetzt; bestehende Link- und Fokusfarben gelten. Erläuterungen verwenden `muted` und `margin: 0 0 0.75rem`; sämtliche Absätze im Exportbereich bleiben auf `70ch` begrenzt. Der Text erklärt den vollständigen Bestand unabhängig von Filtern, die enthaltenen archivierten beziehungsweise annullierten Einträge und die Abgrenzung zur vollständigen Datensicherung.
-- **Kalenderzustände:** Die Kalenderlegende ist eine mit „Kalenderlegende“ benannte Gruppe (`role="group"`); ihre sichtbare Darstellung bleibt unverändert. Pastellfarbene Eventartikel und Ressourcenzellen (`calendar-state`) behalten in beiden Darstellungen die feste dunkle Schrift `#111827`. Links erben diese Farbe statt des allgemeinen Akzents; ihr Fokusrahmen verwendet ebenfalls `#111827`.
+- **Kalenderzustände:** Die Kalenderlegende ist eine mit „Kalenderlegende“ benannte Gruppe (`role="group"`); ihre sichtbare Darstellung bleibt unverändert. Pastellfarbene Eventartikel und Ressourcenzellen (`calendar-state`) behalten in beiden Darstellungen die feste dunkle Schrift `--calendar-ink` (`#111827`) und benennen ihren Zustand zusätzlich als Text. Links erben diese Farbe statt des allgemeinen Akzents; ihr Fokusrahmen verwendet ebenfalls `--calendar-ink`.
 - **Navigation:** aktive Links tragen `aria-current="page"`; dekorative SVGs sind `aria-hidden`. Einstellungen gruppieren Stammdaten, Kalender-Abos, Datenimport, Datenexport und Konto/Zugriff.
-- **Mobiles Menü:** natives `<dialog>` über `showModal()`, beschriftet mit „Menü“. Der Auslöser zeigt ein dekoratives 22 × 22px Hamburger-SVG auf transparenter Fläche; sein zugänglicher Name bleibt „Menü öffnen“. Breite `min(21rem, calc(100% - 2rem))`, Höhe `100dvh`. Der Schließen-Knopf behält helle Seitennavigationsschrift; sein Hoverhintergrund ist in beiden Darstellungen fest `#294c3e`. Schließen über Knopf, Navigation oder native Escape-Behandlung; explizites Schließen setzt Fokus auf den Auslöser zurück. Der Browser übernimmt modalen Fokus und Hintergrundinertheit. Klicks außerhalb des Dialogrechtecks schließen das Menü ebenfalls. Beim Wechsel auf Desktopbreite (`min-width: 901px`) schließt ein `matchMedia`-Listener den geöffneten nativen Dialog und setzt `aria-expanded` zurück. Der Fokus wechselt auf den aktuellen Link der Desktop-Seitenleiste; fehlt dieser, etwa in der Suche, auf den Suchlink der Werkzeugleiste. Beim Unmount wird der Listener entfernt.
+- **Mobiles Menü:** natives `<dialog>` über `showModal()`, beschriftet mit „Menü“. Der Auslöser zeigt ein dekoratives 22 × 22px Hamburger-SVG auf transparenter Fläche; sein zugänglicher Name bleibt „Menü öffnen“. Breite `min(21rem, calc(100% - 2rem))`, Höhe `100dvh`. Der Schließen-Knopf behält helle Seitennavigationsschrift; sein Hoverhintergrund ist in beiden Darstellungen `sidebar-hover` (`#2a2825`). Schließen über Knopf, Navigation oder native Escape-Behandlung; explizites Schließen setzt Fokus auf den Auslöser zurück. Der Browser übernimmt modalen Fokus und Hintergrundinertheit. Klicks außerhalb des Dialogrechtecks schließen das Menü ebenfalls. Beim Wechsel auf Desktopbreite (`min-width: 901px`) schließt ein `matchMedia`-Listener den geöffneten nativen Dialog und setzt `aria-expanded` zurück. Der Fokus wechselt auf den aktuellen Link der Desktop-Seitenleiste; fehlt dieser, etwa in der Suche, auf den Suchlink der Werkzeugleiste. Beim Unmount wird der Listener entfernt.
 - **Bewegung:** Knöpfe skalieren bei Aktivierung auf `0.98` mit `150ms cubic-bezier(0.23, 1, 0.32, 1)`. Nur die Transformation wird animiert; Farben wechseln sofort, damit beim Darstellungswechsel keine gemischten Farbzustände entstehen. Bei `prefers-reduced-motion: reduce` entfallen Transition und Skalierung. Das Menü erhält nur bei Zeigeraufruf und `no-preference` eine Eintrittsbewegung über `220ms`, Ausgangsposition `translateX(-1rem)` und Deckkraft 0 via `@starting-style`. Tastaturaufruf und reduzierte Bewegung haben keine Menübewegung; keine eigene Austrittsanimation.
 - **Rückmeldungen:** `role="status"` für Status, `role="alert"` für Fehler. Leere Statusfelder verschwinden; „Angemeldet“ bleibt visuell verborgen für assistive Technik erhalten.
 
