@@ -456,24 +456,27 @@ export function ContactPanel({
               {row.state === 'archived' ? ' – Archiviert' : ''}
             </span>{' '}
             {row.contactPerson && <span>{row.contactPerson} </span>}
-            {row.email && (
-              <a
-                aria-label={`E-Mail: ${row.name}`}
-                href={'mailto:' + encodeURIComponent(row.email)}
-              >
-                E-Mail
-              </a>
-            )}{' '}
-            {(row.phone || row.mobile) && (
-              <a
-                aria-label={`Anrufen: ${row.name}`}
-                href={
-                  'tel:' + (row.phone || row.mobile).replace(/[^+0-9]/g, '')
-                }
-              >
-                Anrufen
-              </a>
-            )}{' '}
+            <span className="contact-actions">
+              {' '}
+              {row.email && (
+                <a
+                  aria-label={`E-Mail: ${row.name}`}
+                  href={'mailto:' + encodeURIComponent(row.email)}
+                >
+                  E-Mail
+                </a>
+              )}{' '}
+              {(row.phone || row.mobile) && (
+                <a
+                  aria-label={`Anrufen: ${row.name}`}
+                  href={
+                    'tel:' + (row.phone || row.mobile).replace(/[^+0-9]/g, '')
+                  }
+                >
+                  Anrufen
+                </a>
+              )}
+            </span>
             <button
               type="button"
               className="icon-action tier-quiet-icon"

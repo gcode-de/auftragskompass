@@ -868,6 +868,23 @@ time {
 .contact-list > li {
   scroll-margin-top: 6rem;
 }
+/* H042: the mail and phone links are the main action per contact row and in
+   the event record. One rule raises both surfaces to a 44px tap target without
+   changing the surrounding layout. */
+.contact-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.5rem;
+}
+.contact-actions a,
+.event-record li > a[href^='mailto:'],
+.event-record li > a[href^='tel:'] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 0.1rem;
+}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -948,10 +965,25 @@ time {
 .event-create-dialog .event-advanced-fields {
   padding-bottom: 1rem;
 }
-.event-create-footer {
+/* H042: with "Weitere Angaben" open the create form is ~2000px tall at 320px
+   and the save button sat two screens below the fold. The footer sticks to the
+   scroll container so save stays reachable while the fields scroll. */
+.event-create-dialog form {
   display: flex;
+  flex-direction: column;
+}
+.event-create-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 0.5rem;
   margin-top: 0.25rem;
+  padding-block: 0.75rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 .form-dialog-footer {
   display: flex;
@@ -1009,12 +1041,15 @@ summary {
   margin-bottom: 0.25rem;
   font-weight: 600;
 }
-.event-sorting label {
+/* H042: the radio box stays 18x20; the whole row is the 44px tap target. */
+.event-sorting label.sort-choice {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-height: 44px;
+  padding-block: 0.25rem;
   font-weight: 400;
+  cursor: pointer;
 }
 .event-sorting label.sort-choice-active {
   font-weight: 700;
@@ -1483,6 +1518,23 @@ summary {
 .calendar-weekday-head {
   grid-column: 1 / -1;
 }
+/* H042: seven hair-thin columns are unreadable at phone widths (31px cells at
+   320px, 9px chip links). The month becomes one day list whose chips span the
+   full cell; the weekday header is meaningless there. Week and day keep their
+   own layouts. */
+@media (max-width: 600px) {
+  .calendar-events[data-view='month'] .calendar-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .calendar-events[data-view='month'] .calendar-weekday-head,
+  .calendar-events[data-view='month'] .calendar-grid > li[aria-hidden='true'] {
+    display: none;
+  }
+  /* Only days that hold an event stay visible in the list. */
+  .calendar-events[data-view='month'] .calendar-day:not(:has(article)) {
+    display: none;
+  }
+}
 .calendar-weekday-head ol {
   list-style: none;
   margin: 0;
@@ -1503,7 +1555,7 @@ summary {
   border: 1px solid var(--border);
   border-radius: 0.35rem;
   padding: 0.35rem;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .calendar-day > h4 {
   margin: 0 0 0.3rem;
@@ -1521,6 +1573,8 @@ summary {
 }
 .calendar-chip-link {
   display: block;
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
   padding: 0.15rem 0.1rem;
   font-weight: 600;
@@ -1538,6 +1592,14 @@ summary {
 .calendar-chip-meta,
 .calendar-chip-resources {
   color: #1f2937;
+}
+/* H042: full-width chips cannot ellipsis a whole date range down to a few
+   pixels; the time wraps inside the day row instead. */
+@media (max-width: 600px) {
+  .calendar-events[data-view='month'] .calendar-chip-time {
+    white-space: normal;
+    overflow: visible;
+  }
 }
 @media (max-width: 48rem) {
   .calendar-chip-meta,
