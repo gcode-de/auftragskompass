@@ -1974,7 +1974,16 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     });
 
     await navigate('Events');
-    await events.getByText('Filter', { exact: true }).click();
+    // BKP007: the H041 filters sit in a context column left of the list, so
+    // nothing has to be opened before they are used.
+    const filterContext = events.locator('.event-context');
+    const filterAccess = events.getByRole('button', { name: /^Filter(,|$)/ });
+    await expect(filterContext).toBeVisible();
+    const column = (await filterContext.boundingBox())!;
+    expect(column.width).toBeGreaterThanOrEqual(238);
+    expect(column.width).toBeLessThanOrEqual(282);
+    const list = (await events.locator('.event-month').first().boundingBox())!;
+    expect(column.x + column.width).toBeLessThanOrEqual(list.x + 1);
     await events.getByLabel('Events suchen', { exact: true }).fill('browser');
     // H041: the exact bounds live in the collapsible custom range.
     await events.getByText('Eigener Zeitraum', { exact: true }).click();
@@ -1988,8 +1997,114 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
     ).toBeVisible();
-    for (const width of [1280, 390, 320]) {
+    // The column is the desktop frame, the compact access with its sheet the
+    // narrow one; both read the same applied filter, and neither overflows.
+    for (const width of [1280, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
+      if (width >= 1024) {
+        await expect(filterContext).toBeVisible();
+        await expect(filterAccess).toHaveCount(0);
+        const box = (await filterContext.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(238);
+        expect(box.width).toBeLessThanOrEqual(282);
+        const month = (await events
+          .locator('.event-month')
+          .first()
+          .boundingBox())!;
+        expect(box.x + box.width).toBeLessThanOrEqual(month.x + 1);
+        await expect(
+          events.getByLabel('Events suchen', { exact: true }),
+        ).toBeVisible();
+        // Every preset and sort row keeps a 44px target.
+        for (const target of await filterContext
+          .locator(
+            '.date-presets button, .event-sorting label, .event-quick-filters button',
+          )
+          .all())
+          expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(
+            44,
+          );
+        await page.screenshot({
+          path: `tests/test-results/event-context-${width}.png`,
+          animations: 'disabled',
+        });
+      } else {
+        await expect(filterContext).toHaveCount(0);
+        await expect(filterAccess).toBeVisible();
+        await expect(filterAccess).toHaveAttribute('aria-expanded', 'false');
+        // The list comes first: no filter form before the results.
+        await expect(
+          events.getByLabel('Events suchen', { exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          events.getByRole('button', { name: 'Event anlegen' }),
+        ).toBeVisible();
+        await filterAccess.click();
+        await expect(filterAccess).toHaveAttribute('aria-expanded', 'true');
+        const sheet = events.getByRole('dialog', { name: 'Eventfilter' });
+        await expect(sheet).toBeVisible();
+        const sheetBox = (await sheet.boundingBox())!;
+        expect(sheetBox.width).toBeLessThanOrEqual(width);
+        expect(sheetBox.height).toBeLessThanOrEqual(844);
+        // The same groups and the same applied values, no horizontal strip.
+        await expect(sheet.getByLabel('Events suchen')).toHaveValue('browser');
+        expect(
+          await sheet.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+        ).toBe(true);
+        for (const target of await sheet
+          .locator(
+            '.date-presets button, .event-sorting label, .event-quick-filters button',
+          )
+          .all())
+          expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(
+            44,
+          );
+        await page.screenshot({
+          path: `tests/test-results/event-filter-drawer-${width}.png`,
+          animations: 'disabled',
+        });
+        // The modal keeps Tab inside the sheet: no focus escapes to the list.
+        for (let step = 0; step < 24; step += 1)
+          await page.keyboard.press('Tab');
+        expect(
+          await page.evaluate(() =>
+            Boolean(
+              document
+                .querySelector('dialog.event-filter-drawer')
+                ?.contains(document.activeElement),
+            ),
+          ),
+        ).toBe(true);
+        // Escape closes the sheet and focuses the access again.
+        await page.keyboard.press('Escape');
+        await expect(sheet).toHaveCount(0);
+        await expect(filterAccess).toBeFocused();
+        // Cancelling discards the draft and keeps the applied filter.
+        await filterAccess.click();
+        await sheet.getByLabel('Events suchen').fill('Synthetic draft');
+        await sheet.getByRole('button', { name: 'Filter schließen' }).click();
+        await expect(sheet).toHaveCount(0);
+        await expect(page).toHaveURL(/q=browser/);
+        await expect(filterAccess).toBeFocused();
+        // One completion is one history entry: the applied filter is recorded
+        // once, so a single back returns to exactly the previous URL.
+        const appliedUrl = page.url();
+        await filterAccess.click();
+        await sheet.getByLabel('Events suchen').fill('Synthetic mobile filter');
+        await sheet
+          .getByRole('button', { name: 'Ergebnisse anzeigen' })
+          .click();
+        await expect(page).toHaveURL(/q=Synthetic\+mobile\+filter/);
+        await expect(sheet).toHaveCount(0);
+        await expect(filterAccess).toBeFocused();
+        // Back restores the previous applied filter in the same sheet.
+        await page.goBack();
+        await expect(page).toHaveURL(appliedUrl);
+        await filterAccess.click();
+        await expect(sheet.getByLabel('Events suchen')).toHaveValue('browser');
+        await page.keyboard.press('Escape');
+        await expect(sheet).toHaveCount(0);
+      }
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= window.innerWidth + 1,
@@ -2000,15 +2115,33 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           (section) => section.scrollWidth <= section.clientWidth + 1,
         ),
       ).toBe(true);
-      // Every preset and sort row keeps a 44px target.
-      for (const target of await events
-        .locator(
-          '.date-presets button, .event-sorting label, .event-quick-filters button',
-        )
-        .all())
-        expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    // Both themes keep the column and the sheet intact.
+    await page.getByRole('button', { name: /modus aktivieren/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.screenshot({
+      path: 'tests/test-results/event-context-1280-dark.png',
+      animations: 'disabled',
+    });
+    for (const width of [768, 390, 320]) {
+      await page.setViewportSize({ width, height: 740 });
+      await filterAccess.click();
+      const darkSheet = events.getByRole('dialog', { name: 'Eventfilter' });
+      await expect(darkSheet).toBeVisible();
+      await page.screenshot({
+        path: `tests/test-results/event-filter-drawer-${width}-dark.png`,
+        animations: 'disabled',
+      });
+      await page.keyboard.press('Escape');
+      await expect(darkSheet).toHaveCount(0);
     }
     await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByRole('button', { name: /modus aktivieren/ }).click();
+    await expect(page.locator('html')).not.toHaveAttribute(
+      'data-theme',
+      'dark',
+    );
     // The quick preset is a single history entry with the tenant month.
     await events.getByRole('button', { name: 'Dieser Monat' }).click();
     await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
@@ -2657,9 +2790,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await menuButton.click();
       await menu.getByRole('link', { name: 'Events', exact: true }).click();
       await expect(events).toBeVisible();
-      const filters = events.locator('.event-filters');
-      if ((await filters.getAttribute('open')) !== null)
-        await filters.locator('summary').click();
+      // BKP007: the narrow frame starts with the compact filter access, so the
+      // list is the first thing on screen.
+      await expect(
+        events.getByRole('button', { name: /^Filter(,|$)/ }),
+      ).toBeVisible();
+      await expect(events.getByLabel('Events suchen')).toHaveCount(0);
       await page.getByRole('heading', { level: 1 }).scrollIntoViewIfNeeded();
       await expect(contacts).not.toBeVisible();
       await expect(calendar).not.toBeVisible();
@@ -3131,7 +3267,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     expect(
       await page.evaluate(() => document.documentElement.dataset.fictionalH031),
     ).toBe('kept');
-    await page.getByRole('link', { name: 'Kalender', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Kalender', exact: true })
+      .click();
     await expect(page).toHaveURL(/#calendar$/);
     await desktopBrand.focus();
     await page.keyboard.press('Shift+Tab');

@@ -110,6 +110,22 @@ export function eventFilterCounts(rows: FilterRow[], search: string) {
   };
 }
 
+// BKP007: the mobile filter access names how many filter dimensions the applied
+// URL sets. It counts criteria, not rows — the result counters above stay the
+// only place that counts events.
+const filterCriteria = [
+  ['q'],
+  ['from', 'to', 'undated'],
+  ['status'],
+  ['eventTypeId'],
+] as const;
+
+export function activeFilterCriteria(search: string) {
+  const params = new URLSearchParams(search);
+  return filterCriteria.filter((keys) => keys.some((key) => params.get(key)))
+    .length;
+}
+
 // Undated events keep their own trailing group, exactly like the server list.
 export function monthGroups<T extends { eventDate: string | null }>(rows: T[]) {
   const groups = new Map<string, T[]>();

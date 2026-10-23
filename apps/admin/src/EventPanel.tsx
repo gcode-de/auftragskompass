@@ -5,7 +5,7 @@ import {
   eventQuery,
   emptyEventFilters,
 } from './url-state.js';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type FormEvent } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
 import { listScheduleText } from './calendar-range.js';
 import { EventTimeField } from './EventTimeField.js';
@@ -21,6 +21,7 @@ import {
 import { useAutoRefresh } from './auto-refresh.js';
 import {
   activeDatePreset,
+  activeFilterCriteria,
   datePresetRange,
   datePresets,
   eventFilterCounts,
@@ -49,6 +50,26 @@ export type EventRow = {
   notesHtml: string;
 };
 type Status = { code: string; label: string };
+
+// BKP007: the filter panel is one form with one URL writer; only its frame
+// changes — a fixed context column on wide screens, a modal sheet below. The
+// query mirrors the stylesheet breakpoint; an environment without matchMedia
+// keeps the column.
+function useWideFilterLayout() {
+  const [wide, setWide] = useState(
+    () =>
+      typeof window.matchMedia !== 'function' ||
+      window.matchMedia('(min-width: 1024px)').matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const viewport = window.matchMedia('(min-width: 1024px)');
+    const changed = () => setWide(viewport.matches);
+    viewport.addEventListener('change', changed);
+    return () => viewport.removeEventListener('change', changed);
+  }, []);
+  return wide;
+}
 export function EventPanel({
   csrfToken,
   revision = 0,
@@ -59,6 +80,7 @@ export function EventPanel({
   showHeading?: boolean;
 }) {
   const [now, setNow] = useState(() => new Date().toISOString());
+  const wide = useWideFilterLayout();
   const urlSearch = useUrlSearch(),
     filters = new URLSearchParams(urlSearch),
     sequence = useRef(0),
@@ -66,7 +88,11 @@ export function EventPanel({
     editor = useRef<HTMLDetailsElement>(null),
     createTrigger = useRef<HTMLButtonElement>(null),
     createReturnFocus = useRef<HTMLElement | null>(null),
-    editReturnFocus = useRef<HTMLElement | null>(null);
+    editReturnFocus = useRef<HTMLElement | null>(null),
+    filterDrawer = useRef<HTMLDialogElement>(null),
+    filterTrigger = useRef<HTMLButtonElement>(null),
+    filterSearch = useRef<HTMLInputElement>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [rows, setRows] = useState<EventRow[]>([]),
     [draft, setDraft] = useState<EventRow | null>(null),
     [editing, setEditing] = useState(false),
@@ -445,6 +471,7 @@ export function EventPanel({
   const undatedOnly = filters.get('undated') === 'true',
     shown = undatedOnly ? rows.filter((row) => !row.eventDate) : rows,
     counts = eventFilterCounts(rows, urlSearch),
+    activeCriteria = activeFilterCriteria(urlSearch),
     preset = activeDatePreset(urlSearch, now, timeZone),
     groups = monthGroups(shown);
   function applyPreset(id: PresetId) {
@@ -469,769 +496,895 @@ export function EventPanel({
       undated: undated ? 'true' : '',
     });
   }
-  return (
-    <section id="events" aria-label="Events" aria-busy={loading}>
-      <div hidden={showingDetail}>
-        <div className="section-heading">
-          {showHeading && <h2>Events</h2>}
-          <div className="section-actions">
-            <button
-              ref={createTrigger}
-              className="icon-action tier-primary-icon"
-              aria-label="Event anlegen"
-              title="Event anlegen"
-              disabled={busy || editing || Boolean(draft)}
-              onClick={() => openCreate()}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+  // A modal sheet makes the list behind it inert, so it is opened only in the
+  // narrow frame and closes again when the column returns.
+  useEffect(() => {
+    if (!filtersOpen || wide) return;
+    const drawer = filterDrawer.current;
+    if (!drawer) return;
+    if (!drawer.open) drawer.showModal();
+    filterSearch.current?.focus({ preventScroll: true });
+  }, [filtersOpen, wide]);
+  useEffect(() => {
+    if (wide) setFiltersOpen(false);
+  }, [wide]);
+  function closeFilters() {
+    filterDrawer.current?.close();
+    setFiltersOpen(false);
+    filterTrigger.current?.focus({ preventScroll: true });
+  }
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    // The sort choice is its own control, so a submitted custom range is
+    // always chronological.
+    const values: Record<string, string> = { undated: '' };
+    for (const key of ['q', 'status', 'eventTypeId', 'from', 'to'])
+      values[key] = [data.get(key)].filter(Boolean).join('');
+    updateUrlSearch(values);
+    if (filterDrawer.current?.open) closeFilters();
+  }
+  // The same form in both frames: the applied state is the URL, so a discarded
+  // draft, a preset and a completion all keep one meaning.
+  function filterPanel(mobile: boolean) {
+    return (
+      <form
+        className="event-filter-form"
+        key={urlSearch + ':' + timeZone}
+        onSubmit={applyFilters}
+      >
+        <fieldset disabled={busy || !timeZone}>
+          <legend>Eventfilter</legend>
+          <label>
+            Events suchen
+            <input
+              ref={filterSearch}
+              name="q"
+              maxLength={200}
+              defaultValue={filters.get('q') ?? ''}
+            />
+          </label>
+          {/* A view is only offered when its route really exists; the timeline
+              has no own target yet. */}
+          <nav className="event-view-choice" aria-label="Ansicht">
+            <a href="#events" aria-current="page">
+              Liste
+            </a>
+            <a href="#calendar">Kalender</a>
+          </nav>
+          <fieldset className="event-sorting">
+            <legend>Sortieren</legend>
+            {[
+              { undated: false, label: 'Chronologisch', count: null },
+              { undated: true, label: 'Ohne Datum', count: counts.undated },
+            ].map((choice) => {
+              const selected = choice.undated === undatedOnly;
+              return (
+                <label
+                  key={choice.label}
+                  className={
+                    selected ? 'sort-choice sort-choice-active' : 'sort-choice'
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="sort"
+                    checked={selected}
+                    onChange={() => applySort(choice.undated)}
+                  />
+                  {choice.label}
+                  {choice.count === null ? null : (
+                    <span className="event-count" data-testid="undated-count">
+                      {choice.count}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </fieldset>
+          {/* „Anfragen“ is the existing status filter, not a sort: it only
+              sets `status` and keeps date range, search and event type. It
+              belongs beside the sort choice but stays outside that group. */}
+          {(() => {
+            const selected = filters.get('status') === 'inquiry';
+            return (
+              <div
+                className="event-quick-filters"
+                role="group"
+                aria-label="Schnellfilter"
               >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
+                <button
+                  type="button"
+                  className={
+                    selected
+                      ? 'secondary-action quick-filter quick-filter-active'
+                      : 'secondary-action quick-filter'
+                  }
+                  aria-pressed={selected}
+                  onClick={() =>
+                    updateUrlSearch({
+                      q: filters.get('q') ?? '',
+                      status: selected ? '' : 'inquiry',
+                      eventTypeId: filters.get('eventTypeId') ?? '',
+                      from: filters.get('from') ?? '',
+                      to: filters.get('to') ?? '',
+                      undated: filters.get('undated') ?? '',
+                    })
+                  }
+                >
+                  Anfragen
+                  <span className="event-count" data-testid="inquiry-count">
+                    {counts.inquiries}
+                  </span>
+                </button>
+              </div>
+            );
+          })()}
+          <div className="date-presets" role="group" aria-label="Zeitraum">
+            {(datePresets as { id: PresetId; label: string }[]).map(
+              (choice) => {
+                const selected = preset === choice.id;
+                return (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className={
+                      selected
+                        ? 'secondary-action date-preset date-preset-active'
+                        : 'secondary-action date-preset'
+                    }
+                    aria-pressed={selected}
+                    onClick={() => applyPreset(choice.id)}
+                  >
+                    {choice.label}
+                  </button>
+                );
+              },
+            )}
+          </div>
+          {/* H041: the presets cover the common cases; the exact bounds stay
+              available inside „Eigener Zeitraum“. */}
+          <details
+            className="custom-range"
+            open={!preset && Boolean(filters.get('from') || filters.get('to'))}
+          >
+            <summary>Eigener Zeitraum</summary>
+            <label>
+              Filter von
+              <input
+                name="from"
+                type="date"
+                defaultValue={filters.get('from') ?? ''}
+              />
+            </label>
+            <label>
+              Filter bis
+              <input
+                name="to"
+                type="date"
+                defaultValue={filters.get('to') ?? ''}
+              />
+            </label>
+          </details>
+          <label>
+            Filterstatus
+            <select name="status" defaultValue={filters.get('status') ?? ''}>
+              <option value="">Alle Status</option>
+              {statuses.map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Filtereventart
+            <select
+              name="eventTypeId"
+              defaultValue={filters.get('eventTypeId') ?? ''}
+            >
+              <option value="">Alle Eventarten</option>
+              {types.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="event-filter-actions">
+            <button className="secondary-action">
+              {mobile ? 'Ergebnisse anzeigen' : 'Events filtern'}
+            </button>
+            <button
+              type="button"
+              className="tertiary-action"
+              onClick={() => updateUrlSearch(emptyEventFilters)}
+            >
+              Eventfilter zurücksetzen
             </button>
           </div>
-        </div>
-        <details
-          className="event-filters"
-          open={Object.keys(emptyEventFilters).some((key) => filters.get(key))}
-        >
-          <summary>
-            Filter
-            {Object.keys(emptyEventFilters).some((key) => filters.get(key))
-              ? ' · aktiv'
-              : ''}
-          </summary>
-          <form
-            key={urlSearch + ':' + timeZone}
-            onSubmit={(event) => {
-              event.preventDefault();
-              const data = new FormData(event.currentTarget);
-              // The sort radios live outside this form, so a submitted custom
-              // range is always chronological.
-              const values: Record<string, string> = { undated: '' };
-              for (const key of ['q', 'status', 'eventTypeId', 'from', 'to'])
-                values[key] = [data.get(key)].filter(Boolean).join('');
-              updateUrlSearch(values);
-            }}
+        </fieldset>
+        <p className="event-timezone">Zeitzone: {zone || 'Wird geladen'}</p>
+      </form>
+    );
+  }
+  return (
+    <section id="events" aria-label="Events" aria-busy={loading}>
+      <div className="section-heading" hidden={showingDetail}>
+        {showHeading && <h2>Events</h2>}
+        <div className="section-actions">
+          <button
+            ref={createTrigger}
+            className="icon-action tier-primary-icon"
+            aria-label="Event anlegen"
+            title="Event anlegen"
+            disabled={busy || editing || Boolean(draft)}
+            onClick={() => openCreate()}
           >
-            <fieldset disabled={busy || !timeZone}>
-              <legend>Eventfilter</legend>
-              <label>
-                Events suchen
-                <input
-                  name="q"
-                  maxLength={200}
-                  defaultValue={filters.get('q') ?? ''}
-                />
-              </label>
-              {/* H041: the presets cover the common cases; the exact bounds
-                  stay available inside „Eigener Zeitraum“. */}
-              <details
-                className="custom-range"
-                open={
-                  !preset && Boolean(filters.get('from') || filters.get('to'))
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div className="event-layout">
+        {wide ? (
+          <aside
+            className="event-context event-filters"
+            aria-label="Eventfilter"
+            hidden={showingDetail}
+          >
+            {filterPanel(false)}
+          </aside>
+        ) : (
+          <>
+            <div className="event-filter-access" hidden={showingDetail}>
+              <button
+                ref={filterTrigger}
+                type="button"
+                className="secondary-action event-filter-trigger"
+                aria-haspopup="dialog"
+                aria-expanded={filtersOpen}
+                aria-controls="event-filter-panel"
+                aria-label={
+                  activeCriteria
+                    ? `Filter, ${activeCriteria} aktive Kriterien`
+                    : 'Filter'
                 }
+                onClick={() => setFiltersOpen(true)}
               >
-                <summary>Eigener Zeitraum</summary>
-                <label>
-                  Filter von
-                  <input
-                    name="from"
-                    type="date"
-                    defaultValue={filters.get('from') ?? ''}
-                  />
-                </label>
-                <label>
-                  Filter bis
-                  <input
-                    name="to"
-                    type="date"
-                    defaultValue={filters.get('to') ?? ''}
-                  />
-                </label>
-              </details>
-              <fieldset className="event-sorting">
-                <legend>Sortieren</legend>
-                {[
-                  { undated: false, label: 'Chronologisch', count: null },
-                  { undated: true, label: 'Ohne Datum', count: counts.undated },
-                ].map((choice) => {
-                  const selected = choice.undated === undatedOnly;
-                  return (
-                    <label
-                      key={choice.label}
-                      className={
-                        selected
-                          ? 'sort-choice sort-choice-active'
-                          : 'sort-choice'
-                      }
-                    >
-                      <input
-                        type="radio"
-                        name="sort"
-                        checked={selected}
-                        onChange={() => applySort(choice.undated)}
-                      />
-                      {choice.label}
-                      {choice.count === null ? null : (
-                        <span
-                          className="event-count"
-                          data-testid="undated-count"
-                        >
-                          {choice.count}
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
-              </fieldset>
-              <div className="date-presets" role="group" aria-label="Zeitraum">
-                {(datePresets as { id: PresetId; label: string }[]).map(
-                  (choice) => {
-                    const selected = preset === choice.id;
-                    return (
-                      <button
-                        key={choice.id}
-                        type="button"
-                        className={
-                          selected
-                            ? 'secondary-action date-preset date-preset-active'
-                            : 'secondary-action date-preset'
-                        }
-                        aria-pressed={selected}
-                        onClick={() => applyPreset(choice.id)}
-                      >
-                        {choice.label}
-                      </button>
-                    );
-                  },
-                )}
-              </div>
-              {/* „Anfragen“ is the existing status filter, not a sort: it only
-                  sets `status` and keeps date range, search and event type. */}
-              {(() => {
-                const selected = filters.get('status') === 'inquiry';
-                return (
-                  <div
-                    className="event-quick-filters"
-                    role="group"
-                    aria-label="Schnellfilter"
-                  >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4 5h16l-6 7v6l-4 2v-8Z" />
+                </svg>
+                Filter
+                <span className="event-count" data-testid="active-filter-count">
+                  {activeCriteria}
+                </span>
+              </button>
+              {activeCriteria > 0 && (
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  onClick={() => updateUrlSearch(emptyEventFilters)}
+                >
+                  Zurücksetzen
+                </button>
+              )}
+            </div>
+            <dialog
+              id="event-filter-panel"
+              className="event-filter-drawer"
+              aria-label="Eventfilter"
+              ref={filterDrawer}
+              onCancel={(event) => {
+                event.preventDefault();
+                closeFilters();
+              }}
+              onClose={() => {
+                setFiltersOpen(false);
+                filterTrigger.current?.focus({ preventScroll: true });
+              }}
+            >
+              {filtersOpen && (
+                <>
+                  <div className="event-filter-drawer-head">
+                    <h2>Filter</h2>
                     <button
                       type="button"
-                      className={
-                        selected
-                          ? 'secondary-action quick-filter quick-filter-active'
-                          : 'secondary-action quick-filter'
-                      }
-                      aria-pressed={selected}
-                      onClick={() =>
-                        updateUrlSearch({
-                          q: filters.get('q') ?? '',
-                          status: selected ? '' : 'inquiry',
-                          eventTypeId: filters.get('eventTypeId') ?? '',
-                          from: filters.get('from') ?? '',
-                          to: filters.get('to') ?? '',
-                          undated: filters.get('undated') ?? '',
-                        })
-                      }
+                      className="icon-action tier-quiet-icon"
+                      aria-label="Filter schließen"
+                      title="Filter schließen"
+                      onClick={closeFilters}
                     >
-                      Anfragen
-                      <span className="event-count" data-testid="inquiry-count">
-                        {counts.inquiries}
-                      </span>
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 6l12 12M18 6 6 18" />
+                      </svg>
                     </button>
                   </div>
-                );
-              })()}
-              <label>
-                Filterstatus
-                <select
-                  name="status"
-                  defaultValue={filters.get('status') ?? ''}
-                >
-                  <option value="">Alle Status</option>
-                  {statuses.map((status) => (
-                    <option key={status.code} value={status.code}>
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Filtereventart
-                <select
-                  name="eventTypeId"
-                  defaultValue={filters.get('eventTypeId') ?? ''}
-                >
-                  <option value="">Alle Eventarten</option>
-                  {types.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="secondary-action">Events filtern</button>
+                  {filterPanel(true)}
+                </>
+              )}
+            </dialog>
+          </>
+        )}
+        <div className="event-results">
+          {editing && draft && (
+            <details className="event-editor" ref={editor}>
+              <summary>Event bearbeiten</summary>
+              <form
+                id="event-editor"
+                key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void save(event.currentTarget);
+                }}
+              >
+                <fieldset disabled={busy || !timeZone}>
+                  <legend>
+                    {editing ? 'Event bearbeiten' : 'Neues Event'}
+                  </legend>
+                  <label>
+                    Eventname
+                    <input
+                      name="name"
+                      required
+                      maxLength={200}
+                      defaultValue={draft?.name ?? ''}
+                    />
+                  </label>
+                  <label>
+                    Eventstatus
+                    <select
+                      name="status"
+                      value={eventStatus}
+                      onChange={(event) =>
+                        setEventStatus(event.currentTarget.value)
+                      }
+                    >
+                      {statuses.map((option) => (
+                        <option
+                          key={option.code}
+                          value={option.code}
+                          disabled={
+                            option.code === 'booked' &&
+                            draft?.status !== 'booked'
+                          }
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p>
+                    Gebucht wird mit einer konkreten Ressourcenzuweisung
+                    verfügbar.
+                  </p>
+                  <label>
+                    Hauptkontakt
+                    <select
+                      name="primaryContactId"
+                      value={primaryContactId}
+                      onChange={(event) => {
+                        const next = event.currentTarget.value;
+                        setPrimaryContactId(next);
+                        setAdditionalContactIds((current) =>
+                          current.filter((id) => id !== next),
+                        );
+                      }}
+                    >
+                      <option value="">Noch offen</option>
+                      {options(contacts, primaryContactId || null)}
+                    </select>
+                  </label>
+                  <fieldset>
+                    <legend>Termin</legend>
+                    <label>
+                      Eventdatum
+                      <input
+                        name="eventDate"
+                        type="date"
+                        value={eventDate}
+                        readOnly={dateDerived}
+                        aria-invalid={Boolean(scheduleErrors.eventDate)}
+                        aria-describedby={
+                          scheduleErrors.eventDate
+                            ? 'event-date-help event-eventDate-error'
+                            : 'event-date-help'
+                        }
+                        onChange={(event) => {
+                          setEventDate(event.currentTarget.value);
+                          clearScheduleError('eventDate');
+                        }}
+                      />
+                    </label>
+                    <p id="event-date-help">
+                      {dateDerived
+                        ? 'Wird aus dem Beginn übernommen. Um das Datum zu ändern, den Beginn ändern.'
+                        : 'Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event möglich. Mit Beginn wird das Datum aus dessen lokalem Starttag übernommen.'}
+                    </p>
+                    {scheduleErrors.eventDate && (
+                      <p
+                        className="field-error"
+                        id="event-eventDate-error"
+                        role="alert"
+                      >
+                        {scheduleErrors.eventDate}
+                      </p>
+                    )}
+                    <EventTimeField
+                      name="startsAt"
+                      label="Eventbeginn"
+                      timeZone={zone}
+                      instant={draft?.startsAt ?? null}
+                      error={scheduleErrors.startsAt}
+                      onChange={(next) => {
+                        setDateDerived(Boolean(next));
+                        if (next) {
+                          setEventDate(next.slice(0, 10));
+                          clearScheduleError('eventDate');
+                        }
+                        clearScheduleError('startsAt');
+                      }}
+                    />
+                    <EventTimeField
+                      name="endsAt"
+                      label="Eventende"
+                      timeZone={zone}
+                      instant={draft?.endsAt ?? null}
+                      error={scheduleErrors.endsAt}
+                      onChange={() => clearScheduleError('endsAt')}
+                    />
+                    <p>
+                      Beginn und Ende gemeinsam oder gar nicht. Das Ende muss
+                      nach dem Beginn liegen.
+                    </p>
+                  </fieldset>
+                  <details className="event-advanced">
+                    <summary>Weitere Angaben</summary>
+                    <div className="event-advanced-fields">
+                      <label>
+                        Eventart
+                        <select
+                          name="eventTypeId"
+                          defaultValue={draft?.eventTypeId ?? ''}
+                        >
+                          <option value="">Noch offen</option>
+                          {options(types, draft?.eventTypeId ?? null)}
+                        </select>
+                      </label>
+                      <label>
+                        Fotobox-Paket
+                        <select
+                          name="packageId"
+                          defaultValue={draft?.packageId ?? ''}
+                        >
+                          <option value="">Noch offen</option>
+                          {options(packages, draft?.packageId ?? null)}
+                        </select>
+                      </label>
+                      <label>
+                        Ort / Adresse
+                        <textarea
+                          name="venue"
+                          maxLength={venueMaxLength}
+                          value={venue}
+                          aria-describedby="event-venue-help"
+                          onChange={(event) => {
+                            setVenue(event.currentTarget.value);
+                            setVenueEdited(true);
+                          }}
+                        />
+                      </label>
+                      <p id="event-venue-help">
+                        Optional und frei eintragbar. Ein vorhandener
+                        Bestandsort bleibt erhalten, solange das Feld
+                        unverändert bleibt.
+                      </p>
+                      <label>
+                        Anfragequelle
+                        <input
+                          name="source"
+                          maxLength={200}
+                          defaultValue={draft?.source ?? ''}
+                        />
+                      </label>
+                      <label>
+                        Weitere Kontakte
+                        <select
+                          name="additionalContactIds"
+                          multiple
+                          value={additionalContactIds}
+                          onChange={(event) =>
+                            setAdditionalContactIds(
+                              Array.from(
+                                event.currentTarget.selectedOptions,
+                                (option) => option.value,
+                              ),
+                            )
+                          }
+                        >
+                          {options(
+                            contacts.filter(
+                              (choice) => choice.id !== primaryContactId,
+                            ),
+                            additionalContactIds,
+                          )}
+                        </select>
+                      </label>
+                      <label>
+                        Eventbeschreibung
+                        <textarea
+                          name="description"
+                          maxLength={4000}
+                          defaultValue={draft?.description ?? ''}
+                        />
+                      </label>
+                      <label>
+                        Interne Notizen
+                        <textarea
+                          name="notesHtml"
+                          maxLength={20000}
+                          defaultValue={draft?.notesHtml ?? ''}
+                          aria-describedby="event-notes-help"
+                        />
+                      </label>
+                      <p id="event-notes-help">
+                        Einfache HTML-Formatierung:
+                        &lt;strong&gt;fett&lt;/strong&gt;,
+                        &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
+                        href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte
+                        Vorschau erscheint am Event.
+                      </p>
+                    </div>
+                  </details>
+                  <button className="primary-action">Event speichern</button>
+                  {editing && draft?.id && (
+                    <a className="secondary-action" href={'#event-' + draft.id}>
+                      Ressourcen zuweisen
+                    </a>
+                  )}
+                  {draft && (
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      onClick={() => {
+                        setDraft(null);
+                        setEditing(false);
+                        setVenue('');
+                        setVenueEdited(false);
+                        restoreEditorFocus();
+                      }}
+                    >
+                      Event abbrechen
+                    </button>
+                  )}
+                </fieldset>
+              </form>
+            </details>
+          )}
+          <p role="status">{message}</p>
+          {reloadWarning && (
+            <div className="reload-warning">
+              <p role="alert">
+                Gespeichert, aber die Liste konnte nicht neu geladen werden. Die
+                Eingabe wurde nicht verloren.
+              </p>
               <button
                 type="button"
                 className="tertiary-action"
-                onClick={() => updateUrlSearch(emptyEventFilters)}
+                disabled={busy}
+                onClick={() => {
+                  setReloadWarning(false);
+                  void refresh().catch(() => setReloadWarning(true));
+                }}
               >
-                Eventfilter zurücksetzen
+                Events erneut laden
               </button>
-            </fieldset>
-          </form>
-          <p className="event-timezone">Zeitzone: {zone || 'Wird geladen'}</p>
-        </details>
-
-        {editing && draft && (
-          <details className="event-editor" ref={editor}>
-            <summary>Event bearbeiten</summary>
-            <form
-              id="event-editor"
-              key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void save(event.currentTarget);
-              }}
-            >
-              <fieldset disabled={busy || !timeZone}>
-                <legend>{editing ? 'Event bearbeiten' : 'Neues Event'}</legend>
-                <label>
-                  Eventname
-                  <input
-                    name="name"
-                    required
-                    maxLength={200}
-                    defaultValue={draft?.name ?? ''}
-                  />
-                </label>
-                <label>
-                  Eventstatus
-                  <select
-                    name="status"
-                    value={eventStatus}
-                    onChange={(event) =>
-                      setEventStatus(event.currentTarget.value)
-                    }
-                  >
-                    {statuses.map((option) => (
-                      <option
-                        key={option.code}
-                        value={option.code}
-                        disabled={
-                          option.code === 'booked' && draft?.status !== 'booked'
-                        }
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <p>
-                  Gebucht wird mit einer konkreten Ressourcenzuweisung
-                  verfügbar.
-                </p>
-                <label>
-                  Hauptkontakt
-                  <select
-                    name="primaryContactId"
-                    value={primaryContactId}
-                    onChange={(event) => {
-                      const next = event.currentTarget.value;
-                      setPrimaryContactId(next);
-                      setAdditionalContactIds((current) =>
-                        current.filter((id) => id !== next),
-                      );
-                    }}
-                  >
-                    <option value="">Noch offen</option>
-                    {options(contacts, primaryContactId || null)}
-                  </select>
-                </label>
-                <fieldset>
-                  <legend>Termin</legend>
-                  <label>
-                    Eventdatum
-                    <input
-                      name="eventDate"
-                      type="date"
-                      value={eventDate}
-                      readOnly={dateDerived}
-                      aria-invalid={Boolean(scheduleErrors.eventDate)}
-                      aria-describedby={
-                        scheduleErrors.eventDate
-                          ? 'event-date-help event-eventDate-error'
-                          : 'event-date-help'
-                      }
-                      onChange={(event) => {
-                        setEventDate(event.currentTarget.value);
-                        clearScheduleError('eventDate');
-                      }}
-                    />
-                  </label>
-                  <p id="event-date-help">
-                    {dateDerived
-                      ? 'Wird aus dem Beginn übernommen. Um das Datum zu ändern, den Beginn ändern.'
-                      : 'Ohne Uhrzeiten bleibt ein Datum oder ein undatiertes Event möglich. Mit Beginn wird das Datum aus dessen lokalem Starttag übernommen.'}
-                  </p>
-                  {scheduleErrors.eventDate && (
-                    <p
-                      className="field-error"
-                      id="event-eventDate-error"
-                      role="alert"
-                    >
-                      {scheduleErrors.eventDate}
-                    </p>
-                  )}
-                  <EventTimeField
-                    name="startsAt"
-                    label="Eventbeginn"
-                    timeZone={zone}
-                    instant={draft?.startsAt ?? null}
-                    error={scheduleErrors.startsAt}
-                    onChange={(next) => {
-                      setDateDerived(Boolean(next));
-                      if (next) {
-                        setEventDate(next.slice(0, 10));
-                        clearScheduleError('eventDate');
-                      }
-                      clearScheduleError('startsAt');
-                    }}
-                  />
-                  <EventTimeField
-                    name="endsAt"
-                    label="Eventende"
-                    timeZone={zone}
-                    instant={draft?.endsAt ?? null}
-                    error={scheduleErrors.endsAt}
-                    onChange={() => clearScheduleError('endsAt')}
-                  />
-                  <p>
-                    Beginn und Ende gemeinsam oder gar nicht. Das Ende muss nach
-                    dem Beginn liegen.
-                  </p>
-                </fieldset>
-                <details className="event-advanced">
-                  <summary>Weitere Angaben</summary>
-                  <div className="event-advanced-fields">
-                    <label>
-                      Eventart
-                      <select
-                        name="eventTypeId"
-                        defaultValue={draft?.eventTypeId ?? ''}
-                      >
-                        <option value="">Noch offen</option>
-                        {options(types, draft?.eventTypeId ?? null)}
-                      </select>
-                    </label>
-                    <label>
-                      Fotobox-Paket
-                      <select
-                        name="packageId"
-                        defaultValue={draft?.packageId ?? ''}
-                      >
-                        <option value="">Noch offen</option>
-                        {options(packages, draft?.packageId ?? null)}
-                      </select>
-                    </label>
-                    <label>
-                      Ort / Adresse
-                      <textarea
-                        name="venue"
-                        maxLength={venueMaxLength}
-                        value={venue}
-                        aria-describedby="event-venue-help"
-                        onChange={(event) => {
-                          setVenue(event.currentTarget.value);
-                          setVenueEdited(true);
-                        }}
-                      />
-                    </label>
-                    <p id="event-venue-help">
-                      Optional und frei eintragbar. Ein vorhandener Bestandsort
-                      bleibt erhalten, solange das Feld unverändert bleibt.
-                    </p>
-                    <label>
-                      Anfragequelle
-                      <input
-                        name="source"
-                        maxLength={200}
-                        defaultValue={draft?.source ?? ''}
-                      />
-                    </label>
-                    <label>
-                      Weitere Kontakte
-                      <select
-                        name="additionalContactIds"
-                        multiple
-                        value={additionalContactIds}
-                        onChange={(event) =>
-                          setAdditionalContactIds(
-                            Array.from(
-                              event.currentTarget.selectedOptions,
-                              (option) => option.value,
-                            ),
-                          )
-                        }
-                      >
-                        {options(
-                          contacts.filter(
-                            (choice) => choice.id !== primaryContactId,
-                          ),
-                          additionalContactIds,
-                        )}
-                      </select>
-                    </label>
-                    <label>
-                      Eventbeschreibung
-                      <textarea
-                        name="description"
-                        maxLength={4000}
-                        defaultValue={draft?.description ?? ''}
-                      />
-                    </label>
-                    <label>
-                      Interne Notizen
-                      <textarea
-                        name="notesHtml"
-                        maxLength={20000}
-                        defaultValue={draft?.notesHtml ?? ''}
-                        aria-describedby="event-notes-help"
-                      />
-                    </label>
-                    <p id="event-notes-help">
-                      Einfache HTML-Formatierung:
-                      &lt;strong&gt;fett&lt;/strong&gt;,
-                      &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-                      href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte
-                      Vorschau erscheint am Event.
-                    </p>
-                  </div>
-                </details>
-                <button className="primary-action">Event speichern</button>
-                {editing && draft?.id && (
-                  <a className="secondary-action" href={'#event-' + draft.id}>
-                    Ressourcen zuweisen
-                  </a>
-                )}
-                {draft && (
-                  <button
-                    type="button"
-                    className="tertiary-action"
-                    onClick={() => {
-                      setDraft(null);
-                      setEditing(false);
-                      setVenue('');
-                      setVenueEdited(false);
-                      restoreEditorFocus();
-                    }}
-                  >
-                    Event abbrechen
-                  </button>
-                )}
-              </fieldset>
-            </form>
-          </details>
-        )}
-      </div>
-      <p role="status">{message}</p>
-      {reloadWarning && (
-        <div className="reload-warning">
-          <p role="alert">
-            Gespeichert, aber die Liste konnte nicht neu geladen werden. Die
-            Eingabe wurde nicht verloren.
-          </p>
-          <button
-            type="button"
-            className="tertiary-action"
-            disabled={busy}
-            onClick={() => {
-              setReloadWarning(false);
-              void refresh().catch(() => setReloadWarning(true));
-            }}
-          >
-            Events erneut laden
-          </button>
-        </div>
-      )}
-      {loadFailed && !reloadWarning && (
-        <div className="reload-warning">
-          <p role="alert">
-            Events konnten nicht geladen werden.{' '}
-            {rows.length
-              ? 'Der zuletzt geladene Stand bleibt sichtbar.'
-              : 'Bitte erneut versuchen.'}
-          </p>
-          <button
-            type="button"
-            className="tertiary-action"
-            disabled={busy || loading}
-            onClick={() => void refresh().catch(() => {})}
-          >
-            Events erneut laden
-          </button>
-        </div>
-      )}
-      {loading && <p role="status">Events werden geladen …</p>}
-      {!loading && !loadFailed && !shown.length && (
-        <p>Keine Events gefunden.</p>
-      )}
-      {groups.map(({ month, entries }) => {
-        const label = month
-          ? new Intl.DateTimeFormat('de-DE', {
-              month: 'long',
-              year: 'numeric',
-              timeZone: 'UTC',
-            }).format(new Date(month + '-01T12:00:00Z'))
-          : 'Ohne Datum';
-        return (
-          <section
-            className="event-month"
-            key={month}
-            aria-label={label}
-            hidden={
-              showingDetail && !entries.some((row) => row.id === detailId)
-            }
-          >
-            <MonthHeading hidden={showingDetail}>
-              {label}{' '}
-              <span className="event-month-count">
-                {'\u00b7 '}
-                {entries.length} {entries.length === 1 ? 'Event' : 'Events'}
-              </span>
-            </MonthHeading>
-            <ul className="event-list">
-              {entries.map((row) => (
-                <li
-                  key={row.id}
-                  id={'event-' + row.id}
-                  hidden={showingDetail && row.id !== detailId}
-                >
-                  <div className="event-row" hidden={showingDetail}>
-                    <div className="event-summary-block">
-                      <a
-                        className="event-summary"
-                        href={'#event-' + row.id}
-                        onClick={(event) => {
-                          if (
-                            event.button !== 0 ||
-                            event.metaKey ||
-                            event.ctrlKey ||
-                            event.shiftKey ||
-                            event.altKey
-                          )
-                            return;
-                          if (window.getSelection?.()?.toString()) {
-                            event.preventDefault();
-                            return;
-                          }
-                          setDetailId(row.id);
-                        }}
-                      >
-                        <span className="event-title">
-                          {row.name} –{' '}
-                          {/* H037: a date-only booking keeps its date without
-                              an invented clock time; a real one shows it. */}
-                          {listScheduleText(row, localDate, localTime)} –{' '}
-                          {statuses.find((s) => s.code === row.status)?.label ??
-                            row.status}
-                        </span>
-                        <span className="event-meta">
-                          {types.find((type) => type.id === row.eventTypeId)
-                            ?.name ?? 'Eventart offen'}{' '}
-                          {
-                            contacts.find((c) => c.id === row.primaryContactId)
-                              ?.name
-                          }{' '}
-                          <span className="event-venue-inline">
-                            {shownVenue(
-                              row,
-                              locations.find((l) => l.id === row.locationId),
-                            )}
-                          </span>
-                          {/* A quiet origin label, not a status: the automatic
-                              website option stays an ordinary event row. */}
-                          {row.source.startsWith('Website:') && (
-                            <span className="event-source-quiet">Website</span>
-                          )}
-                        </span>
-                      </a>
-                      <p className="event-resource-hint">
-                        Ressourcen in den Event-Details prüfen.
-                      </p>
-                    </div>
-                    <div className="event-actions">
-                      <button
-                        type="button"
-                        className="icon-action tier-quiet-icon"
-                        disabled={busy || editing}
-                        aria-label={`Event duplizieren: ${row.name}`}
-                        title="Event duplizieren"
-                        onClick={() => {
-                          const active = (
-                            choices: Choice[],
-                            id: string | null,
-                          ) =>
-                            choices.some(
-                              (choice) =>
-                                choice.id === id && choice.state === 'active',
-                            )
-                              ? id
-                              : null;
-                          const duplicatePrimary = active(
-                              contacts,
-                              row.primaryContactId,
-                            ),
-                            legacyPlace = locations.find(
-                              (choice) => choice.id === row.locationId,
-                            ),
-                            copyLegacy =
-                              legacyPlace?.state === 'active'
-                                ? row.locationId
-                                : null;
-                          openCreate({
-                            ...row,
-                            name: row.name.slice(0, 192) + ' (Kopie)',
-                            status: 'inquiry',
-                            timeZone,
-                            eventDate: row.startsAt
-                              ? localDateTime(row.startsAt, timeZone).slice(
-                                  0,
-                                  10,
-                                )
-                              : row.eventDate,
-                            eventTypeId: active(types, row.eventTypeId),
-                            packageId: active(packages, row.packageId),
-                            locationId: copyLegacy,
-                            // An archived legacy place cannot be referenced by
-                            // a new booking; keep what the operator sees as text.
-                            venue: row.venueOverride
-                              ? row.venue
-                              : !copyLegacy && legacyPlace
-                                ? legacyPlaceText(legacyPlace)
-                                : null,
-                            venueOverride:
-                              row.venueOverride ||
-                              Boolean(!copyLegacy && legacyPlace),
-                            primaryContactId: duplicatePrimary,
-                            additionalContactIds:
-                              row.additionalContactIds.filter(
-                                (id) =>
-                                  id !== duplicatePrimary &&
-                                  active(contacts, id),
-                              ),
-                          });
-                        }}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M9 9h10v10H9zM5 15H3V3h12v2" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-action tier-quiet-icon"
-                        disabled={busy}
-                        aria-label={`Event bearbeiten: ${row.name}`}
-                        title="Event bearbeiten"
-                        onClick={(event) => {
-                          editReturnFocus.current = event.currentTarget;
-                          setCreating(false);
-                          setCreateInitial(null);
-                          setVenue(
-                            initialVenueText(
-                              row,
-                              locations.find(
-                                (choice) => choice.id === row.locationId,
-                              ),
-                            ),
-                          );
-                          setVenueEdited(false);
-                          setDraft(row);
-                          setEditing(true);
-                        }}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  {detailId === row.id && (
-                    <EventDetails
+            </div>
+          )}
+          {loadFailed && !reloadWarning && (
+            <div className="reload-warning">
+              <p role="alert">
+                Events konnten nicht geladen werden.{' '}
+                {rows.length
+                  ? 'Der zuletzt geladene Stand bleibt sichtbar.'
+                  : 'Bitte erneut versuchen.'}
+              </p>
+              <button
+                type="button"
+                className="tertiary-action"
+                disabled={busy || loading}
+                onClick={() => void refresh().catch(() => {})}
+              >
+                Events erneut laden
+              </button>
+            </div>
+          )}
+          {loading && <p role="status">Events werden geladen …</p>}
+          {!loading && !loadFailed && !shown.length && (
+            <p>Keine Events gefunden.</p>
+          )}
+          {groups.map(({ month, entries }) => {
+            const label = month
+              ? new Intl.DateTimeFormat('de-DE', {
+                  month: 'long',
+                  year: 'numeric',
+                  timeZone: 'UTC',
+                }).format(new Date(month + '-01T12:00:00Z'))
+              : 'Ohne Datum';
+            return (
+              <section
+                className="event-month"
+                key={month}
+                aria-label={label}
+                hidden={
+                  showingDetail && !entries.some((row) => row.id === detailId)
+                }
+              >
+                <MonthHeading hidden={showingDetail}>
+                  {label}{' '}
+                  <span className="event-month-count">
+                    {'\u00b7 '}
+                    {entries.length} {entries.length === 1 ? 'Event' : 'Events'}
+                  </span>
+                </MonthHeading>
+                <ul className="event-list">
+                  {entries.map((row) => (
+                    <li
                       key={row.id}
-                      revision={row.version}
-                      id={row.id}
-                      csrfToken={csrfToken}
-                      statuses={statuses}
-                      onChanged={async (
-                        message = 'Eventstatus gespeichert.',
-                      ) => {
-                        setMessage(message);
-                        try {
-                          await refresh();
-                        } catch {
-                          setReloadWarning(true);
-                        }
-                      }}
-                      onEdit={(event) => {
-                        setCreating(false);
-                        setCreateInitial(null);
-                        setVenue(
-                          initialVenueText(
-                            event,
-                            locations.find(
-                              (choice) => choice.id === event.locationId,
-                            ),
-                          ),
-                        );
-                        setVenueEdited(false);
-                        setDraft(event);
-                        setEditing(true);
-                        setDetailId(null);
-                        window.history.replaceState(null, '', '#events');
-                      }}
-                      onClose={() => {
-                        setDetailId(null);
-                        window.location.hash = 'events';
-                        requestAnimationFrame(() =>
-                          document
-                            .getElementById('event-' + row.id)
-                            ?.querySelector<HTMLAnchorElement>('.event-summary')
-                            ?.focus(),
-                        );
-                      }}
-                    />
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+                      id={'event-' + row.id}
+                      hidden={showingDetail && row.id !== detailId}
+                    >
+                      <div className="event-row" hidden={showingDetail}>
+                        <div className="event-summary-block">
+                          <a
+                            className="event-summary"
+                            href={'#event-' + row.id}
+                            onClick={(event) => {
+                              if (
+                                event.button !== 0 ||
+                                event.metaKey ||
+                                event.ctrlKey ||
+                                event.shiftKey ||
+                                event.altKey
+                              )
+                                return;
+                              if (window.getSelection?.()?.toString()) {
+                                event.preventDefault();
+                                return;
+                              }
+                              setDetailId(row.id);
+                            }}
+                          >
+                            <span className="event-title">
+                              {row.name} –{' '}
+                              {/* H037: a date-only booking keeps its date without
+                              an invented clock time; a real one shows it. */}
+                              {listScheduleText(row, localDate, localTime)} –{' '}
+                              {statuses.find((s) => s.code === row.status)
+                                ?.label ?? row.status}
+                            </span>
+                            <span className="event-meta">
+                              {types.find((type) => type.id === row.eventTypeId)
+                                ?.name ?? 'Eventart offen'}{' '}
+                              {
+                                contacts.find(
+                                  (c) => c.id === row.primaryContactId,
+                                )?.name
+                              }{' '}
+                              <span className="event-venue-inline">
+                                {shownVenue(
+                                  row,
+                                  locations.find(
+                                    (l) => l.id === row.locationId,
+                                  ),
+                                )}
+                              </span>
+                              {/* A quiet origin label, not a status: the automatic
+                              website option stays an ordinary event row. */}
+                              {row.source.startsWith('Website:') && (
+                                <span className="event-source-quiet">
+                                  Website
+                                </span>
+                              )}
+                            </span>
+                          </a>
+                          <p className="event-resource-hint">
+                            Ressourcen in den Event-Details prüfen.
+                          </p>
+                        </div>
+                        <div className="event-actions">
+                          <button
+                            type="button"
+                            className="icon-action tier-quiet-icon"
+                            disabled={busy || editing}
+                            aria-label={`Event duplizieren: ${row.name}`}
+                            title="Event duplizieren"
+                            onClick={() => {
+                              const active = (
+                                choices: Choice[],
+                                id: string | null,
+                              ) =>
+                                choices.some(
+                                  (choice) =>
+                                    choice.id === id &&
+                                    choice.state === 'active',
+                                )
+                                  ? id
+                                  : null;
+                              const duplicatePrimary = active(
+                                  contacts,
+                                  row.primaryContactId,
+                                ),
+                                legacyPlace = locations.find(
+                                  (choice) => choice.id === row.locationId,
+                                ),
+                                copyLegacy =
+                                  legacyPlace?.state === 'active'
+                                    ? row.locationId
+                                    : null;
+                              openCreate({
+                                ...row,
+                                name: row.name.slice(0, 192) + ' (Kopie)',
+                                status: 'inquiry',
+                                timeZone,
+                                eventDate: row.startsAt
+                                  ? localDateTime(row.startsAt, timeZone).slice(
+                                      0,
+                                      10,
+                                    )
+                                  : row.eventDate,
+                                eventTypeId: active(types, row.eventTypeId),
+                                packageId: active(packages, row.packageId),
+                                locationId: copyLegacy,
+                                // An archived legacy place cannot be referenced by
+                                // a new booking; keep what the operator sees as text.
+                                venue: row.venueOverride
+                                  ? row.venue
+                                  : !copyLegacy && legacyPlace
+                                    ? legacyPlaceText(legacyPlace)
+                                    : null,
+                                venueOverride:
+                                  row.venueOverride ||
+                                  Boolean(!copyLegacy && legacyPlace),
+                                primaryContactId: duplicatePrimary,
+                                additionalContactIds:
+                                  row.additionalContactIds.filter(
+                                    (id) =>
+                                      id !== duplicatePrimary &&
+                                      active(contacts, id),
+                                  ),
+                              });
+                            }}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M9 9h10v10H9zM5 15H3V3h12v2" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-action tier-quiet-icon"
+                            disabled={busy}
+                            aria-label={`Event bearbeiten: ${row.name}`}
+                            title="Event bearbeiten"
+                            onClick={(event) => {
+                              editReturnFocus.current = event.currentTarget;
+                              setCreating(false);
+                              setCreateInitial(null);
+                              setVenue(
+                                initialVenueText(
+                                  row,
+                                  locations.find(
+                                    (choice) => choice.id === row.locationId,
+                                  ),
+                                ),
+                              );
+                              setVenueEdited(false);
+                              setDraft(row);
+                              setEditing(true);
+                            }}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {detailId === row.id && (
+                        <EventDetails
+                          key={row.id}
+                          revision={row.version}
+                          id={row.id}
+                          csrfToken={csrfToken}
+                          statuses={statuses}
+                          onChanged={async (
+                            message = 'Eventstatus gespeichert.',
+                          ) => {
+                            setMessage(message);
+                            try {
+                              await refresh();
+                            } catch {
+                              setReloadWarning(true);
+                            }
+                          }}
+                          onEdit={(event) => {
+                            setCreating(false);
+                            setCreateInitial(null);
+                            setVenue(
+                              initialVenueText(
+                                event,
+                                locations.find(
+                                  (choice) => choice.id === event.locationId,
+                                ),
+                              ),
+                            );
+                            setVenueEdited(false);
+                            setDraft(event);
+                            setEditing(true);
+                            setDetailId(null);
+                            window.history.replaceState(null, '', '#events');
+                          }}
+                          onClose={() => {
+                            setDetailId(null);
+                            window.location.hash = 'events';
+                            requestAnimationFrame(() =>
+                              document
+                                .getElementById('event-' + row.id)
+                                ?.querySelector<HTMLAnchorElement>(
+                                  '.event-summary',
+                                )
+                                ?.focus(),
+                            );
+                          }}
+                        />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      </div>
       {creating && (
         <EventCreateDialog
           key={

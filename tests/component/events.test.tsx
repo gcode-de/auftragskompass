@@ -71,7 +71,6 @@ function mocker(errors: string[] = [], supplied: Record<string, unknown> = {}) {
 }
 function showForms() {
   fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
-  screen.getByText(/^Filter(?: · aktiv)?$/).closest('details')!.open = true;
 }
 test('events create without date, retain formatted notes and edit/cancel with version checks', async () => {
   const fetcher = mocker();
@@ -320,10 +319,6 @@ test('older event search responses and failures cannot overwrite a newer result'
     );
     render(<EventPanel csrfToken="csrf" />);
     fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
-    const filter = screen
-      .getByText(/^Filter(?: · aktiv)?$/)
-      .closest('details')!;
-    filter.open = true;
     act(() => updateUrlSearch({ q: 'fresh' }));
     await screen.findByText('Synthetic fresh – Ohne Datum – inquiry');
     await act(async () => {

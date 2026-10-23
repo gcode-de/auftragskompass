@@ -1,11 +1,31 @@
 import { expect, test } from 'vitest';
 import {
   activeDatePreset,
+  activeFilterCriteria,
   datePresetRange,
   eventFilterCounts,
   filterRows,
   monthGroups,
 } from '../../apps/admin/src/event-filters.js';
+
+// BKP007: the mobile filter access names how many filter dimensions the applied
+// URL sets. It counts criteria, never rows: the result counters stay untouched.
+test('the active criteria count the filter dimensions of the applied url', () => {
+  expect(activeFilterCriteria('')).toBe(0);
+  expect(activeFilterCriteria('?other=keep&df_kind=offer')).toBe(0);
+  expect(activeFilterCriteria('?q=Synthetic')).toBe(1);
+  expect(activeFilterCriteria('?q=Synthetic&status=inquiry')).toBe(2);
+  expect(activeFilterCriteria('?status=inquiry&eventTypeId=type-a')).toBe(2);
+  // A lower bound, an upper bound and the undated sort are one criterion.
+  expect(activeFilterCriteria('?from=2026-10-01')).toBe(1);
+  expect(activeFilterCriteria('?from=2026-10-01&to=2026-10-31')).toBe(1);
+  expect(activeFilterCriteria('?undated=true')).toBe(1);
+  expect(
+    activeFilterCriteria(
+      '?q=x&from=2026-10-01&to=2026-10-31&status=inquiry&eventTypeId=type-a',
+    ),
+  ).toBe(4);
+});
 
 // H041: the quick presets are tenant-local calendar dates. The instant picks
 // the tenant day, never the browser day.
