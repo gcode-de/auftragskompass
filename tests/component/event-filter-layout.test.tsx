@@ -299,14 +299,28 @@ test('both presentations read the same applied filter state', async () => {
   expect((screen.getByLabelText('Filter von') as HTMLInputElement).value).toBe(
     '2026-10-01',
   );
-  // The applied state stays one URL: a preset inside the sheet writes the same
-  // single history entry as on the desktop.
+  // BKP007.3: the sheet reads the applied filter and edits a draft. A sort
+  // choice inside it writes no history entry and leaves the applied URL alone.
   const pushes = vi.spyOn(window.history, 'pushState');
-  fireEvent.click(within(sheet()).getByRole('radio', { name: /^Ohne Datum/ }));
-  expect(pushes).toHaveBeenCalledTimes(1);
-  expect(window.location.search).toContain('undated=true');
-  expect(window.location.search).not.toContain('from=');
+  const undated = within(sheet()).getByRole('radio', { name: /^Ohne Datum/ });
+  fireEvent.click(undated);
+  expect(pushes).not.toHaveBeenCalled();
+  expect(window.location.search).toBe(
+    '?q=Synthetic&status=inquiry&from=2026-10-01',
+  );
+  expect((undated as HTMLInputElement).checked).toBe(true);
   expect(sheet().open).toBe(true);
+  // The explicit completion is the one write: one entry, `undated=true` and no
+  // leftover date bound, then the sheet closes and returns the focus.
+  fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
+  expect(pushes).toHaveBeenCalledTimes(1);
+  const applied = new URLSearchParams(window.location.search);
+  expect(applied.get('undated')).toBe('true');
+  expect(applied.get('from')).toBeNull();
+  expect(applied.get('q')).toBe('Synthetic');
+  expect(applied.get('status')).toBe('inquiry');
+  expect(sheet().open).toBe(false);
+  expect(document.activeElement).toBe(trigger);
 });
 
 test('opening and cancelling the sheet leaves a dirty event editor alone', async () => {
@@ -350,17 +364,29 @@ test('a tenant zone different from the browser zone still decides the presets', 
   );
   render(<EventPanel csrfToken="csrf" />);
   fireEvent.click(await screen.findByRole('button', { name: /^Filter/ }));
+  const pushes = vi.spyOn(window.history, 'pushState');
   fireEvent.click(screen.getByRole('button', { name: 'Dieser Monat' }));
-  const search = new URLSearchParams(window.location.search);
-  expect(search.get('from')).toBe('2026-11-01');
-  expect(search.get('to')).toBe('2026-11-30');
-  // A preset is one applied criterion and one history entry.
-  expect(screen.getByTestId('active-filter-count').textContent).toBe('1');
+  // The draft names the month in the tenant zone; nothing is written yet.
+  expect(pushes).not.toHaveBeenCalled();
+  expect(window.location.search).toBe('');
+  expect((screen.getByLabelText('Filter von') as HTMLInputElement).value).toBe(
+    '2026-11-01',
+  );
+  expect((screen.getByLabelText('Filter bis') as HTMLInputElement).value).toBe(
+    '2026-11-30',
+  );
   expect(
     screen
       .getByRole('button', { name: 'Dieser Monat' })
       .getAttribute('aria-pressed'),
   ).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
+  const search = new URLSearchParams(window.location.search);
+  expect(search.get('from')).toBe('2026-11-01');
+  expect(search.get('to')).toBe('2026-11-30');
+  // A preset is one applied criterion and one history entry.
+  expect(pushes).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId('active-filter-count').textContent).toBe('1');
 });
 
 test('a broken custom range keeps its inputs instead of dropping the draft', async () => {
@@ -402,4 +428,242 @@ test('updateUrlSearch keeps foreign parameters while the sheet writes its own', 
   expect(search.get('other')).toBe('keep');
   updateUrlSearch({ q: '' });
   expect(window.location.search).toBe('?df_kind=offer&other=keep');
+});
+
+// BKP007.3: the reproduction of the reported regression. A sort choice in the
+// sheet is a draft: it must neither remount the form (the search would fall
+// back to the applied value) nor write the URL that a cancel cannot undo.
+test('review regression: mobile sort preserves draft and cancel leaves applied URL unchanged', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?q=Synthetic&from=2026-10-01');
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  const trigger = await screen.findByRole('button', { name: /^Filter/ });
+  fireEvent.click(trigger);
+  await screen.findByText('Zeitzone: Europe/Berlin');
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.change(screen.getByLabelText('Events suchen'), {
+    target: { value: 'Synthetic unsaved search' },
+  });
+  fireEvent.click(within(sheet()).getByRole('radio', { name: /^Ohne Datum/ }));
+  expect(
+    (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
+  ).toBe('Synthetic unsaved search');
+  expect(pushes).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter schließen' }));
+  expect(window.location.search).toBe('?q=Synthetic&from=2026-10-01');
+});
+
+test('the sheet keeps one draft across search, preset, sort and quick filter', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?q=Synthetic&from=2026-10-01');
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filter/ }));
+  await screen.findByText('Zeitzone: Europe/Berlin');
+  const pushes = vi.spyOn(window.history, 'pushState');
+  const search = screen.getByLabelText('Events suchen') as HTMLInputElement;
+  fireEvent.change(search, { target: { value: 'Synthetic mixed draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Dieser Monat' }));
+  expect(search.value).toBe('Synthetic mixed draft');
+  fireEvent.click(within(sheet()).getByRole('radio', { name: /^Ohne Datum/ }));
+  expect(search.value).toBe('Synthetic mixed draft');
+  fireEvent.click(
+    within(sheet()).getByRole('radio', { name: /^Chronologisch/ }),
+  );
+  expect(search.value).toBe('Synthetic mixed draft');
+  fireEvent.click(
+    within(
+      within(sheet()).getByRole('group', { name: 'Schnellfilter' }),
+    ).getByRole('button', { name: /^Anfragen/ }),
+  );
+  fireEvent.change(screen.getByLabelText('Filterstatus'), {
+    target: { value: 'booked' },
+  });
+  // Every mixed choice stays in the one draft; none of them wrote the URL.
+  expect(search.value).toBe('Synthetic mixed draft');
+  expect(
+    (screen.getByLabelText('Filterstatus') as HTMLSelectElement).value,
+  ).toBe('booked');
+  expect((screen.getByLabelText('Filter von') as HTMLInputElement).value).toBe(
+    '',
+  );
+  expect(pushes).not.toHaveBeenCalled();
+  expect(window.location.search).toBe('?q=Synthetic&from=2026-10-01');
+  // The counters stay the server's aggregate and the applied criteria count is
+  // still the applied URL, not the draft.
+  expect(within(sheet()).getByTestId('undated-count').textContent).toBe('1');
+  expect(within(sheet()).getByTestId('inquiry-count').textContent).toBe('1');
+  expect(screen.getByTestId('active-filter-count').textContent).toBe('2');
+});
+
+test('an undated draft survives the completion and drops the date bounds', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(
+    null,
+    '',
+    '/?q=Synthetic&from=2026-10-01&to=2026-10-31',
+  );
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  const trigger = await screen.findByRole('button', { name: /^Filter/ });
+  fireEvent.click(trigger);
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.click(within(sheet()).getByRole('radio', { name: /^Ohne Datum/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
+  expect(pushes).toHaveBeenCalledTimes(1);
+  const applied = new URLSearchParams(window.location.search);
+  expect(applied.get('undated')).toBe('true');
+  expect(applied.get('from')).toBeNull();
+  expect(applied.get('to')).toBeNull();
+  expect(applied.get('q')).toBe('Synthetic');
+  expect(sheet().open).toBe(false);
+  expect(document.activeElement).toBe(trigger);
+  // Reopening proves the applied state keeps the sort choice.
+  fireEvent.click(trigger);
+  expect(
+    (
+      within(sheet()).getByRole('radio', {
+        name: /^Ohne Datum/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+});
+
+test('a cancelled preset draft keeps the applied URL and the applied values', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?q=Synthetic&from=2026-10-01');
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  const trigger = await screen.findByRole('button', { name: /^Filter/ });
+  fireEvent.click(trigger);
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }));
+  expect(
+    screen
+      .getByRole('button', { name: 'Nächster Monat' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(pushes).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter schließen' }));
+  expect(window.location.search).toBe('?q=Synthetic&from=2026-10-01');
+  expect(document.activeElement).toBe(trigger);
+  // Reopening starts over from the applied URL, not from the preset draft.
+  fireEvent.click(trigger);
+  expect(
+    screen
+      .getByRole('button', { name: 'Nächster Monat' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+  expect((screen.getByLabelText('Filter von') as HTMLInputElement).value).toBe(
+    '2026-10-01',
+  );
+  expect(
+    (
+      within(sheet()).getByRole('radio', {
+        name: /^Chronologisch/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+});
+
+test('escape discards a sort draft and keeps the applied filter', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?q=Synthetic');
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  const trigger = await screen.findByRole('button', { name: /^Filter/ });
+  fireEvent.click(trigger);
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.click(within(sheet()).getByRole('radio', { name: /^Ohne Datum/ }));
+  expect(
+    (
+      within(sheet()).getByRole('radio', {
+        name: /^Ohne Datum/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  fireEvent(sheet(), new Event('cancel'));
+  expect(pushes).not.toHaveBeenCalled();
+  expect(window.location.search).toBe('?q=Synthetic');
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger);
+  expect(
+    (
+      within(sheet()).getByRole('radio', {
+        name: /^Chronologisch/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+});
+
+test('the in-sheet reset clears the draft without a history entry', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?q=Synthetic&status=inquiry');
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  const trigger = await screen.findByRole('button', { name: /^Filter/ });
+  fireEvent.click(trigger);
+  await screen.findByText('Zeitzone: Europe/Berlin');
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.change(screen.getByLabelText('Events suchen'), {
+    target: { value: 'Synthetic reset draft' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Eventfilter zurücksetzen' }),
+  );
+  expect(pushes).not.toHaveBeenCalled();
+  expect(window.location.search).toBe('?q=Synthetic&status=inquiry');
+  expect(
+    (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
+  ).toBe('');
+  expect(
+    (screen.getByLabelText('Filterstatus') as HTMLSelectElement).value,
+  ).toBe('');
+  expect(screen.getByTestId('active-filter-count').textContent).toBe('2');
+  // Only the completion applies the emptied draft — still one entry.
+  fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
+  expect(pushes).toHaveBeenCalledTimes(1);
+  expect(window.location.search).toBe('');
+  expect(screen.getByTestId('active-filter-count').textContent).toBe('0');
+});
+
+test('the desktop column keeps writing each choice immediately', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic');
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByText(/Synthetic event – /);
+  const context = document.querySelector<HTMLElement>('.event-context')!;
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.click(
+    within(context).getByRole('button', { name: 'Dieser Monat' }),
+  );
+  expect(pushes).toHaveBeenCalledTimes(1);
+  const month = new URLSearchParams(window.location.search);
+  expect(month.get('from')).toMatch(/^\d{4}-\d{2}-01$/);
+  fireEvent.click(within(context).getByRole('radio', { name: /^Ohne Datum/ }));
+  expect(pushes).toHaveBeenCalledTimes(2);
+  const undated = new URLSearchParams(window.location.search);
+  expect(undated.get('undated')).toBe('true');
+  expect(undated.get('from')).toBeNull();
+  fireEvent.click(
+    within(
+      within(context).getByRole('group', { name: 'Schnellfilter' }),
+    ).getByRole('button', { name: /^Anfragen/ }),
+  );
+  expect(pushes).toHaveBeenCalledTimes(3);
+  expect(new URLSearchParams(window.location.search).get('status')).toBe(
+    'inquiry',
+  );
+  fireEvent.click(
+    within(context).getByRole('button', { name: 'Eventfilter zurücksetzen' }),
+  );
+  expect(pushes).toHaveBeenCalledTimes(4);
+  expect(window.location.search).toBe('');
 });

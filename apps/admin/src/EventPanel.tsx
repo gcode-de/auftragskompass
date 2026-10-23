@@ -30,6 +30,17 @@ import {
   type PresetId,
 } from './event-filters.js';
 type Choice = VenueChoice;
+// BKP007.3: the six event filter values exist twice by design. The applied
+// copy lives in the URL (the column writes it per choice), the sheet edits a
+// local draft of the same shape and commits it once.
+type FilterValues = typeof emptyEventFilters;
+function appliedFilterValues(search: string): FilterValues {
+  const source = new URLSearchParams(search),
+    values = { ...emptyEventFilters };
+  for (const key of Object.keys(emptyEventFilters) as (keyof FilterValues)[])
+    values[key] = source.get(key) ?? '';
+  return values;
+}
 export type EventRow = {
   id: string;
   version: number;
@@ -92,8 +103,12 @@ export function EventPanel({
     editReturnFocus = useRef<HTMLElement | null>(null),
     filterDrawer = useRef<HTMLDialogElement>(null),
     filterTrigger = useRef<HTMLButtonElement>(null),
-    filterSearch = useRef<HTMLInputElement>(null);
+    filterSearch = useRef<HTMLInputElement>(null),
+    rangeDetails = useRef<HTMLDetailsElement>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // BKP007.3: the sheet's own filter copy. `null` means "no sheet open"; it is
+  // taken from the applied URL on open and thrown away on close.
+  const [filterDraft, setFilterDraft] = useState<FilterValues | null>(null);
   const [rows, setRows] = useState<EventRow[]>([]),
     // BKP007.2: the two filter counters are the server's tenant-wide aggregate of
     // this answer, not a count of the loaded rows.
@@ -479,30 +494,7 @@ export function EventPanel({
   const undatedOnly = filters.get('undated') === 'true',
     shown = undatedOnly ? rows.filter((row) => !row.eventDate) : rows,
     activeCriteria = activeFilterCriteria(urlSearch),
-    preset = activeDatePreset(urlSearch, now, timeZone),
     groups = monthGroups(shown);
-  function applyPreset(id: PresetId) {
-    const range = datePresetRange(id, now, timeZone);
-    if (!range) return;
-    updateUrlSearch({
-      from: range.from,
-      to: range.to,
-      undated: '',
-      q: filters.get('q') ?? '',
-      status: filters.get('status') ?? '',
-      eventTypeId: filters.get('eventTypeId') ?? '',
-    });
-  }
-  function applySort(undated: boolean) {
-    updateUrlSearch({
-      q: filters.get('q') ?? '',
-      status: filters.get('status') ?? '',
-      eventTypeId: filters.get('eventTypeId') ?? '',
-      from: undated ? '' : (filters.get('from') ?? ''),
-      to: undated ? '' : (filters.get('to') ?? ''),
-      undated: undated ? 'true' : '',
-    });
-  }
   // A modal sheet makes the list behind it inert, so it is opened only in the
   // narrow frame and closes again when the column returns.
   useEffect(() => {
@@ -510,18 +502,45 @@ export function EventPanel({
     const drawer = filterDrawer.current;
     if (!drawer) return;
     if (!drawer.open) drawer.showModal();
+    // An applied custom range is shown expanded, exactly like the column. The
+    // attribute is set once on open, so the operator can fold it again freely.
+    const applied = appliedFilterValues(window.location.search);
+    if (
+      rangeDetails.current &&
+      Boolean(applied.from || applied.to) &&
+      !rangeDetails.current.open
+    )
+      rangeDetails.current.open = true;
     filterSearch.current?.focus({ preventScroll: true });
   }, [filtersOpen, wide]);
   useEffect(() => {
-    if (wide) setFiltersOpen(false);
+    if (wide) {
+      setFiltersOpen(false);
+      // The draft belongs to the sheet; without a sheet it must not survive.
+      setFilterDraft(null);
+    }
   }, [wide]);
   function closeFilters() {
     filterDrawer.current?.close();
     setFiltersOpen(false);
+    // Cancel is a real cancel: the sheet's copy dies with the sheet.
+    setFilterDraft(null);
     filterTrigger.current?.focus({ preventScroll: true });
+  }
+  function openFilters() {
+    // The sheet starts from what is applied, never from an abandoned draft.
+    setFilterDraft(appliedFilterValues(urlSearch));
+    setFiltersOpen(true);
   }
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // BKP007.3: the sheet commits its whole draft in one write — one history
+    // entry, one result fetch, then the same close path as every cancel.
+    if (!wide && filterDraft) {
+      updateUrlSearch(filterDraft);
+      closeFilters();
+      return;
+    }
     const data = new FormData(event.currentTarget);
     // The sort choice is its own control, so a submitted custom range is
     // always chronological.
@@ -531,13 +550,48 @@ export function EventPanel({
     updateUrlSearch(values);
     if (filterDrawer.current?.open) closeFilters();
   }
-  // The same form in both frames: the applied state is the URL, so a discarded
-  // draft, a preset and a completion all keep one meaning.
+  // The same form in both frames, with opposite writing rules: the column
+  // applies every choice immediately (the URL is its state), the sheet keeps
+  // one draft until „Ergebnisse anzeigen“.
   function filterPanel(mobile: boolean) {
+    const drafting = mobile && filterDraft !== null,
+      values = (drafting && filterDraft) || appliedFilterValues(urlSearch);
+    const choose = (patch: Partial<FilterValues>) => {
+      if (drafting) setFilterDraft({ ...values, ...patch });
+      else updateUrlSearch({ ...values, ...patch });
+    };
+    const undatedChoice = values.undated === 'true',
+      // A draft preset is only named by the draft's own bounds.
+      viewPreset = activeDatePreset(
+        '?' + new URLSearchParams(values).toString(),
+        now,
+        timeZone,
+      );
+    function chooseSort(undated: boolean) {
+      // „Ohne Datum“ is a view of the list without dates, so the date bounds no
+      // longer apply to it; chronological keeps whatever bounds exist.
+      choose(undated ? { from: '', to: '', undated: 'true' } : { undated: '' });
+    }
+    function choosePreset(id: PresetId) {
+      const range = datePresetRange(id, now, timeZone);
+      if (!range) return;
+      choose({ from: range.from, to: range.to, undated: '' });
+    }
+    function chooseBound(key: 'from' | 'to', value: string) {
+      // A typed bound is a chronological filter; the undated sort and a date
+      // limit exclude each other here exactly as they do in the buttons.
+      choose(
+        key === 'from'
+          ? { from: value, undated: '' }
+          : { to: value, undated: '' },
+      );
+    }
     return (
       <form
         className="event-filter-form"
-        key={urlSearch + ':' + timeZone}
+        // The column re-initialises from the applied URL after every write; the
+        // sheet must not remount while its draft is being edited.
+        key={mobile ? 'event-filter-draft' : urlSearch + ':' + timeZone}
         onSubmit={applyFilters}
       >
         <fieldset disabled={busy || !timeZone}>
@@ -548,7 +602,13 @@ export function EventPanel({
               ref={filterSearch}
               name="q"
               maxLength={200}
-              defaultValue={filters.get('q') ?? ''}
+              value={drafting ? values.q : undefined}
+              defaultValue={drafting ? undefined : values.q}
+              onChange={
+                drafting
+                  ? (event) => choose({ q: event.currentTarget.value })
+                  : undefined
+              }
             />
           </label>
           {/* A view is only offered when its route really exists; the timeline
@@ -565,7 +625,7 @@ export function EventPanel({
               { undated: false, label: 'Chronologisch', count: null },
               { undated: true, label: 'Ohne Datum', count: counts.undated },
             ].map((choice) => {
-              const selected = choice.undated === undatedOnly;
+              const selected = choice.undated === undatedChoice;
               return (
                 <label
                   key={choice.label}
@@ -577,7 +637,7 @@ export function EventPanel({
                     type="radio"
                     name="sort"
                     checked={selected}
-                    onChange={() => applySort(choice.undated)}
+                    onChange={() => chooseSort(choice.undated)}
                   />
                   {choice.label}
                   {choice.count === null ? null : (
@@ -593,7 +653,7 @@ export function EventPanel({
               sets `status` and keeps date range, search and event type. It
               belongs beside the sort choice but stays outside that group. */}
           {(() => {
-            const selected = filters.get('status') === 'inquiry';
+            const selected = values.status === 'inquiry';
             return (
               <div
                 className="event-quick-filters"
@@ -608,16 +668,7 @@ export function EventPanel({
                       : 'secondary-action quick-filter'
                   }
                   aria-pressed={selected}
-                  onClick={() =>
-                    updateUrlSearch({
-                      q: filters.get('q') ?? '',
-                      status: selected ? '' : 'inquiry',
-                      eventTypeId: filters.get('eventTypeId') ?? '',
-                      from: filters.get('from') ?? '',
-                      to: filters.get('to') ?? '',
-                      undated: filters.get('undated') ?? '',
-                    })
-                  }
+                  onClick={() => choose({ status: selected ? '' : 'inquiry' })}
                 >
                   Anfragen
                   <span className="event-count" data-testid="inquiry-count">
@@ -630,7 +681,7 @@ export function EventPanel({
           <div className="date-presets" role="group" aria-label="Zeitraum">
             {(datePresets as { id: PresetId; label: string }[]).map(
               (choice) => {
-                const selected = preset === choice.id;
+                const selected = viewPreset === choice.id;
                 return (
                   <button
                     key={choice.id}
@@ -641,7 +692,7 @@ export function EventPanel({
                         : 'secondary-action date-preset'
                     }
                     aria-pressed={selected}
-                    onClick={() => applyPreset(choice.id)}
+                    onClick={() => choosePreset(choice.id)}
                   >
                     {choice.label}
                   </button>
@@ -650,10 +701,16 @@ export function EventPanel({
             )}
           </div>
           {/* H041: the presets cover the common cases; the exact bounds stay
-              available inside „Eigener Zeitraum“. */}
+              available inside „Eigener Zeitraum“. The sheet opens the group
+              imperatively so a re-render never folds it back. */}
           <details
             className="custom-range"
-            open={!preset && Boolean(filters.get('from') || filters.get('to'))}
+            ref={mobile ? rangeDetails : undefined}
+            open={
+              mobile
+                ? undefined
+                : !viewPreset && Boolean(values.from || values.to)
+            }
           >
             <summary>Eigener Zeitraum</summary>
             <label>
@@ -661,7 +718,13 @@ export function EventPanel({
               <input
                 name="from"
                 type="date"
-                defaultValue={filters.get('from') ?? ''}
+                value={drafting ? values.from : undefined}
+                defaultValue={drafting ? undefined : values.from}
+                onChange={
+                  drafting
+                    ? (event) => chooseBound('from', event.currentTarget.value)
+                    : undefined
+                }
               />
             </label>
             <label>
@@ -669,13 +732,28 @@ export function EventPanel({
               <input
                 name="to"
                 type="date"
-                defaultValue={filters.get('to') ?? ''}
+                value={drafting ? values.to : undefined}
+                defaultValue={drafting ? undefined : values.to}
+                onChange={
+                  drafting
+                    ? (event) => chooseBound('to', event.currentTarget.value)
+                    : undefined
+                }
               />
             </label>
           </details>
           <label>
             Filterstatus
-            <select name="status" defaultValue={filters.get('status') ?? ''}>
+            <select
+              name="status"
+              value={drafting ? values.status : undefined}
+              defaultValue={drafting ? undefined : values.status}
+              onChange={
+                drafting
+                  ? (event) => choose({ status: event.currentTarget.value })
+                  : undefined
+              }
+            >
               <option value="">Alle Status</option>
               {statuses.map((status) => (
                 <option key={status.code} value={status.code}>
@@ -688,7 +766,14 @@ export function EventPanel({
             Filtereventart
             <select
               name="eventTypeId"
-              defaultValue={filters.get('eventTypeId') ?? ''}
+              value={drafting ? values.eventTypeId : undefined}
+              defaultValue={drafting ? undefined : values.eventTypeId}
+              onChange={
+                drafting
+                  ? (event) =>
+                      choose({ eventTypeId: event.currentTarget.value })
+                  : undefined
+              }
             >
               <option value="">Alle Eventarten</option>
               {types.map((type) => (
@@ -705,7 +790,13 @@ export function EventPanel({
             <button
               type="button"
               className="tertiary-action"
-              onClick={() => updateUrlSearch(emptyEventFilters)}
+              // In the sheet the reset clears the draft only; the applied
+              // filter changes when the operator completes the draft.
+              onClick={() =>
+                mobile
+                  ? setFilterDraft({ ...emptyEventFilters })
+                  : updateUrlSearch(emptyEventFilters)
+              }
             >
               Eventfilter zurücksetzen
             </button>
@@ -766,7 +857,7 @@ export function EventPanel({
                     ? `Filter, ${activeCriteria} aktive Kriterien`
                     : 'Filter'
                 }
-                onClick={() => setFiltersOpen(true)}
+                onClick={() => openFilters()}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -805,6 +896,7 @@ export function EventPanel({
               }}
               onClose={() => {
                 setFiltersOpen(false);
+                setFilterDraft(null);
                 filterTrigger.current?.focus({ preventScroll: true });
               }}
             >

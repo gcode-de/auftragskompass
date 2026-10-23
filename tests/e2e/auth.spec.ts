@@ -2139,6 +2139,35 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       });
       await page.keyboard.press('Escape');
       await expect(darkSheet).toHaveCount(0);
+      if (width === 390) {
+        // BKP007.3: the draft rule holds in the dark sheet as well — mixed
+        // choices keep the typed search and write no history entry.
+        await filterAccess.click();
+        const darkDraftUrl = page.url();
+        await darkSheet
+          .getByLabel('Events suchen')
+          .fill('Synthetic dark draft');
+        await darkSheet.getByRole('button', { name: 'Nächster Monat' }).click();
+        await darkSheet.getByRole('radio', { name: /^Ohne Datum/ }).check();
+        await expect(darkSheet.getByLabel('Events suchen')).toHaveValue(
+          'Synthetic dark draft',
+        );
+        await expect(
+          darkSheet.getByRole('radio', { name: /^Ohne Datum/ }),
+        ).toBeChecked();
+        expect(page.url()).toBe(darkDraftUrl);
+        await page.screenshot({
+          path: 'tests/test-results/event-filter-drawer-390-dark-draft.png',
+          animations: 'disabled',
+        });
+        await page.keyboard.press('Escape');
+        await expect(darkSheet).toHaveCount(0);
+        await expect(filterAccess).toBeFocused();
+        expect(page.url()).toBe(darkDraftUrl);
+        await expect(
+          events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
+        ).toBeVisible();
+      }
     }
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.getByRole('button', { name: /modus aktivieren/ }).click();
@@ -2146,6 +2175,85 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       'data-theme',
       'dark',
     );
+    // BKP007.3: the sheet is one draft. Mixing search, a preset and the undated
+    // sort writes nothing, so a cancel is a real cancel and a completion is one
+    // history entry. The column below stays the contrasted immediate writer.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const appliedBeforeDraft = page.url();
+    await filterAccess.click();
+    const draftSheet = events.getByRole('dialog', { name: 'Eventfilter' });
+    await draftSheet.getByLabel('Events suchen').fill('Synthetic mixed draft');
+    await draftSheet.getByRole('button', { name: 'Dieser Monat' }).click();
+    await draftSheet.getByRole('radio', { name: /^Ohne Datum/ }).check();
+    // Neither the preset nor the sort resets the typed search, and the sheet
+    // still mirrors the draft.
+    await expect(draftSheet.getByLabel('Events suchen')).toHaveValue(
+      'Synthetic mixed draft',
+    );
+    await expect(
+      draftSheet.getByRole('radio', { name: /^Ohne Datum/ }),
+    ).toBeChecked();
+    expect(page.url()).toBe(appliedBeforeDraft);
+    await page.keyboard.press('Escape');
+    await expect(draftSheet).toHaveCount(0);
+    await expect(filterAccess).toBeFocused();
+    expect(page.url()).toBe(appliedBeforeDraft);
+    // The results never listened to the draft.
+    await expect(
+      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
+    ).toBeVisible();
+    // Reopening starts from the applied filter, not from the abandoned draft.
+    await filterAccess.click();
+    await expect(draftSheet.getByLabel('Events suchen')).toHaveValue('browser');
+    await expect(
+      draftSheet.getByRole('radio', { name: /^Chronologisch/ }),
+    ).toBeChecked();
+    const mixedFetches: string[] = [];
+    const watchMixed = (request: { url: () => string }) => {
+      if (/\/api\/v1\/events(\?|$)/.test(request.url()))
+        mixedFetches.push(request.url());
+    };
+    page.on('request', watchMixed);
+    await draftSheet.getByLabel('Events suchen').fill('Synthetic mixed draft');
+    await draftSheet.getByRole('button', { name: 'Dieser Monat' }).click();
+    await draftSheet.getByRole('radio', { name: /^Ohne Datum/ }).check();
+    await draftSheet
+      .getByRole('button', { name: 'Ergebnisse anzeigen' })
+      .click();
+    await expect(page).toHaveURL(/undated=true/);
+    const mixedUrl = new URL(page.url());
+    expect(mixedUrl.searchParams.get('undated')).toBe('true');
+    expect(mixedUrl.searchParams.get('from')).toBeNull();
+    expect(mixedUrl.searchParams.get('to')).toBeNull();
+    expect(mixedUrl.searchParams.get('q')).toBe('Synthetic mixed draft');
+    await expect(draftSheet).toHaveCount(0);
+    await expect(filterAccess).toBeFocused();
+    await expect(events).toHaveAttribute('aria-busy', 'false');
+    await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
+    page.off('request', watchMixed);
+    // One completion, one result fetch.
+    expect(mixedFetches).toHaveLength(1);
+    expect(mixedFetches[0]).toContain('undated=true');
+    // A single back returns to exactly the URL applied before the draft.
+    await page.goBack();
+    await expect(page).toHaveURL(appliedBeforeDraft);
+    await expect(
+      events.getByText(/Synthetic browser event – 16\. Oktober 2026, /),
+    ).toBeVisible();
+    await expect(events).toHaveAttribute('aria-busy', 'false');
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+    ).toBe(true);
+    expect(
+      await events.evaluate(
+        (section) => section.scrollWidth <= section.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    // The column is the contrast: each preset/sort/quick-filter choice writes
+    // exactly one history entry immediately — the draft rule is mobile only.
     // The quick preset is a single history entry with the tenant month.
     await events.getByRole('button', { name: 'Dieser Monat' }).click();
     await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
