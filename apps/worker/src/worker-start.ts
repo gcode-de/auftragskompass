@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import {
   createHealthServer,
   loadInquirySyncConfig,
+  loadWebsiteOptionDrainActivation,
   startReservationExpiry,
   startWebsiteInquirySync,
   startWebsiteOptionDrain,
@@ -29,6 +30,8 @@ export type WorkerRuntimeDependencies = {
   startExpiry(pool: Pool, report: () => void): Loop & { stop(): Promise<void> };
   // Null means the drain is deliberately unconfigured, not broken.
   loadOptionConfig(env: NodeJS.ProcessEnv): WebsiteOptionConfig | null;
+  // False means a deliberate pause of the automatic timer only.
+  optionDrainActive(env: NodeJS.ProcessEnv): boolean;
   startDrain(
     pool: Pool,
     dependencies: WebsiteOptionDrainDependencies,
@@ -55,6 +58,7 @@ export const workerRuntimeDependencies: WorkerRuntimeDependencies = {
   },
   startExpiry: (pool, report) => startReservationExpiry(pool, report),
   loadOptionConfig: (env) => loadWebsiteOptionConfig(env),
+  optionDrainActive: (env) => loadWebsiteOptionDrainActivation(env),
   startDrain: (pool, dependencies, config, entry, error) =>
     startWebsiteOptionDrain(pool, dependencies, config, entry, error),
   loadSyncConfig: (env, readSecret) => loadInquirySyncConfig(env, readSecret),
@@ -88,16 +92,35 @@ export async function startWorkerRuntime(
   // timer with one warning so entries stay visible in the inbox. A present but
   // malformed identity stays an error and keeps the drain unhealthy, because
   // that is a configuration bug nobody would notice otherwise.
+  // BKP004.1 adds a second gate: configured identities alone convert no real
+  // backlog, because an automatic image update must not decide that for the
+  // operator. That pause is a warning too, and stays a fixed error when the
+  // activation value is half or malformed.
+  const invalidOptionConfig = () => {
+    app.log.error('website_option_config_invalid');
+    return { ready: () => false, stop: async () => {} };
+  };
   const drain = (() => {
     let optionConfig: WebsiteOptionConfig | null;
     try {
       optionConfig = dependencies.loadOptionConfig(env);
     } catch {
-      app.log.error('website_option_config_invalid');
-      return { ready: () => false, stop: async () => {} };
+      return invalidOptionConfig();
     }
     if (!optionConfig) {
       app.log.warn('website_option_drain_unconfigured');
+      return null;
+    }
+    // Only the decision on the activation value is read after the identities,
+    // so a fresh install without identities keeps its existing quiet opt-out.
+    let active: boolean;
+    try {
+      active = dependencies.optionDrainActive(env);
+    } catch {
+      return invalidOptionConfig();
+    }
+    if (!active) {
+      app.log.warn('website_option_drain_inactive');
       return null;
     }
     return dependencies.startDrain(

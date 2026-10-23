@@ -136,6 +136,9 @@ async function startWorker(
         ? {
             AK_INQUIRY_TENANT_ID: env.tenantId,
             AK_INQUIRY_OPERATOR_ID: env.operatorId,
+            // BKP004.1: identities alone start no timer; this case is the
+            // "drain wired in" one, so it needs the explicit activation.
+            AK_INQUIRY_OPTION_DRAIN: 'on',
           }
         : {}),
       // No country configured: the drain must run and still leave new

@@ -166,6 +166,7 @@ export { startWebsiteInquirySync } from './inquiry-sync-worker.js';
 
 export {
   loadWebsiteOptionConfig,
+  loadWebsiteOptionDrainActivation,
   startWebsiteOptionDrain,
   websiteOptionDependencies,
   type WebsiteOptionConfig,

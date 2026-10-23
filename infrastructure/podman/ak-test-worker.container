@@ -28,6 +28,13 @@ Environment=AK_GATEWAY_REQUEST_KEY_ID=core-to-gateway-1
 # starts, and every website entry waits in the exceptions inbox.
 Environment=AK_INQUIRY_TENANT_ID=1e73789f-b7a1-4445-bf15-652ff34b5ee2
 Environment=AK_INQUIRY_OPERATOR_ID=1d21afb6-0b57-4c77-a47b-7a67a0b85716
+# BKP004.1 activation gate for the automatic drain: `off` (as shipped) keeps
+# the timer paused with one `website_option_drain_inactive` warning while
+# gateway receipt, staging, acknowledgement, sync and manual takeover keep
+# working. Change to `on` only after the read-only backlog overview documented
+# in docs/website-inquiry-intake.md ("Aktivierungsgrenze und Rollout") and only
+# with a deliberate operator decision.
+Environment=AK_INQUIRY_OPTION_DRAIN=off
 # Operator decision 19.10.2026: DE for new website contacts. Deployment value
 # only; the domain does not hardcode it. Uncomment to enable.
 # Environment=AK_INQUIRY_DEFAULT_CONTACT_COUNTRY=DE

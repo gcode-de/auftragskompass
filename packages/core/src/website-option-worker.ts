@@ -76,6 +76,21 @@ export function loadWebsiteOptionConfig(
   };
 }
 
+// The identities above only say where the drain writes. Because an automatic
+// image update can replace the binary, the automatic timer needs its own
+// operator decision as well: absent or `off` pauses only the timer, while
+// staging, acknowledgement, sync and manual takeover keep working.
+export function loadWebsiteOptionDrainActivation(
+  env: NodeJS.ProcessEnv,
+): boolean {
+  const value = env.AK_INQUIRY_OPTION_DRAIN;
+  // No trimming on purpose: `on ` is a typo the operator has to see, not a
+  // value to interpret generously.
+  if (value === undefined || value === 'off') return false;
+  if (value === 'on') return true;
+  throw new Error('Invalid AK_INQUIRY_OPTION_DRAIN');
+}
+
 export const websiteOptionDependencies: WebsiteOptionDrainDependencies = {
   async listPending(connection, tenantId, after) {
     const db = database(connection);

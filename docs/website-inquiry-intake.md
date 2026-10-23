@@ -235,6 +235,80 @@ wiederholter Aufruf idempotent dieselbe Event-/Kontaktzuordnung liefert. Der
 Webseiten-Eingang gilt damit nicht mehr als „Anfrage“, sondern als Option; das
 ist eine bewusste Verhaltensänderung von API und Oberfläche, keine
 Buchungsbestätigung und keine Quittierung im Gateway.
+
+## Aktivierungsgrenze und Rollout (BKP004.1)
+
+Der automatische Takt hat eine eigene, ausdrückliche Aktivierungsgrenze:
+`AK_INQUIRY_OPTION_DRAIN`. Die beiden Inquiry-Kennungen allein starten keine
+Arbeit mehr. Damit kann ein automatischer Updater zwar eine Version mit der
+kontaktlosen Option-Semantik (BKP002) und dem fairen Drain (BKP003) ausrollen,
+aber ein bereits konfigurierter Worker konvertiert echte Rückstände nicht ohne
+Betreiberentscheid.
+
+| Wert | Wirkung auf den automatischen Takt |
+|---|---|
+| fehlt | aus, einmalige Warnung `website_option_drain_inactive`, Worker bleibt bereit |
+| `off` | wie „fehlt“ |
+| `on` | startet wie bisher (BKP003-Semantik unverändert) |
+| jeder andere Wert (`1`, `true`, `ON`, Leerstring, `on `) | Konfigurationsfehler `website_option_config_invalid`, kein Takt, nicht bereit |
+
+Es wird bewusst nicht getrimmt und nicht groß-/kleingeschrieben ausgelegt:
+`on ` ist ein Tippfehler, den der Betreiber sehen muss, keine stillschweigende
+Pause.
+
+**Prüfreihenfolge:** zuerst die bestehende Identitätsregel, dann die
+Aktivierung. Fehlen beide Kennungen, bleibt es bei der bisherigen ruhigen
+Abwesenheit (`website_option_drain_unconfigured`, bereit) – eine frische oder
+wiederhergestellte Installation darf nicht an einer optionalen Einstellung
+scheitern. Erst wenn Identitäten vorhanden sind, wird die Aktivierung geprüft;
+ein unbrauchbarer Wert ist dann ein Fehler und senkt die Bereitschaft. Grund:
+eine Aktivierungsangabe ist nur dort entscheidungsrelevant, wo der Takt
+überhaupt laufen könnte.
+
+**Nicht betroffen:** Gateway-Empfang, signierte Abholung, dauerhafte lokale
+Ablage (`stageWebsiteInquiry`), Quittung und die manuelle Übernahme
+(`POST /api/v1/website-inquiries/:id/import`) arbeiten unabhängig von der
+Aktivierung weiter. Die Grenze pausiert ausschließlich den automatischen Takt.
+Beide Deploymentvorlagen reichen den Wert inzwischen bewusst pausiert durch
+(`compose.yaml` setzt `AK_INQUIRY_OPTION_DRAIN:-off`,
+`infrastructure/podman/ak-test-worker.container` trägt `off` explizit; Vertrag:
+`tests/ops/deployment-env.test.mjs`). Die Aktivierung `on` ist in keiner Vorlage
+vorbelegt und bleibt eine bewusste Betreiberänderung.
+
+**Rollout-Laufplan.** Vor einem Rollout gilt diese Reihenfolge:
+
+1. Zuerst eine **rein lesende** Mengen-/Fehlerübersicht der vorhandenen Eingänge
+   **außerhalb Git** und mit den echten Daten erstellen. Dieses Ticket hat eine
+   solche Übersicht nicht erstellt und keine Bestandsdaten ausgewertet.
+2. Ergebnis als Betreiber prüfen: Wie viele Eingänge liegen noch ohne
+   Übernahme, wie alt sind sie, wie viele Optionen sind ohne Kontakt?
+3. Erst danach den Takt bewusst mit `AK_INQUIRY_OPTION_DRAIN=on` aktivieren und
+   den ersten Lauf beobachten. Die UI-Änderung aus BKP004.2 autorisiert keine
+   unbeaufsichtigte Massenübernahme echter Rückstände.
+
+Beispielabfragen (nur lesend, gegen die lokale Core-Datenbank, Platzhalter für
+den Mandanten; keine Schreiboperation, keine Ergebnisse gehören ins
+Repository):
+
+```sql
+-- Eingänge gesamt, übernommen und noch offen, mit den Randzeiten des Rückstands.
+SELECT
+  count(*)                                      AS staged,
+  count(*) FILTER (WHERE i.id IS NOT NULL)      AS converted,
+  count(*) FILTER (WHERE i.id IS NULL)          AS pending,
+  min(d.staged_at) FILTER (WHERE i.id IS NULL)  AS oldest_pending_staged_at,
+  max(d.staged_at)                              AS newest_staged_at
+FROM website_inquiry_deliveries d
+LEFT JOIN website_inquiries i
+  ON i.tenant_id = d.tenant_id AND i.id = d.id
+WHERE d.tenant_id = :tenant_id;
+
+-- Übernommene Optionen ohne Kontakt: Anreicherungsbedarf, kein Fehler.
+SELECT count(*) AS options_without_contact
+FROM website_inquiries
+WHERE tenant_id = :tenant_id AND contact_id IS NULL;
+```
+
 ## Weiterbearbeitung des lokalen Eingangs (E004.12)
 
 `importStagedWebsiteInquiry` liest einen bereits gesicherten Eingang im eigenen

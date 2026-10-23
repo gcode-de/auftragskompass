@@ -78,6 +78,19 @@ Ein gültiger Vertrag ist keine Versand-, Buchungs- oder Importfreigabe. Es gibt
 hier noch keine Zukunfts-/Verfügbarkeitsprüfung, Spamkontrolle, Empfangsquittierung
 oder Wiederholsperre. Dafür folgen getrennte getestete Schritte.
 
+## Aktivierungsgrenze des automatischen Drains (BKP004.1)
+
+Der automatische Takt startet nur noch mit `AK_INQUIRY_OPTION_DRAIN=on`; ohne
+die Variable oder mit `off` bleibt er pausiert (Warnung
+`website_option_drain_inactive`, Worker weiterhin bereit), jeder andere Wert ist
+ein Konfigurationsfehler. Gateway-Empfang, Staging, Quittung, Sync und die
+manuelle Übernahme über `POST /api/v1/website-inquiries/:id/import` sind davon
+nicht betroffen. Wertetabelle, Prüfreihenfolge, Rollout-Reihenfolge und die rein
+lesenden Zählabfragen für den Rückstand stehen in
+[Aktivierungsgrenze und Rollout](website-inquiry-intake.md#aktivierungsgrenze-und-rollout-bkp0041).
+Es wurde keine Mengenübersicht echter Eingänge erstellt und kein Drain
+aktiviert.
+
 ## Nächste technische Schritte
 
 1. Authentifiziertes versioniertes Übergabeprotokoll und persistenter Wiederholschutz

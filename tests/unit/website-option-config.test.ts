@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   loadWebsiteOptionConfig,
+  loadWebsiteOptionDrainActivation,
   startWebsiteOptionDrain,
   type WebsiteOptionDrainDependencies,
 } from '../../packages/core/src/index.js';
@@ -81,6 +82,33 @@ describe('loadWebsiteOptionConfig', () => {
           AK_INQUIRY_OPTION_INTERVAL_MS: interval,
         }),
       ).toThrow(/AK_INQUIRY_OPTION_INTERVAL_MS/);
+  });
+});
+
+// BKP004.1: the identities only say where the drain would write. A real backlog
+// must not be converted because an automatic image update replaced the binary,
+// so the automatic timer has its own explicit activation.
+describe('loadWebsiteOptionDrainActivation', () => {
+  test('an absent activation keeps the automatic drain paused', () => {
+    expect(loadWebsiteOptionDrainActivation({})).toBe(false);
+  });
+  test('exactly off keeps the automatic drain paused', () => {
+    expect(
+      loadWebsiteOptionDrainActivation({ AK_INQUIRY_OPTION_DRAIN: 'off' }),
+    ).toBe(false);
+  });
+  test('exactly on activates the automatic drain', () => {
+    expect(
+      loadWebsiteOptionDrainActivation({ AK_INQUIRY_OPTION_DRAIN: 'on' }),
+    ).toBe(true);
+  });
+  test('every other value is a configuration error, never a silent pause', () => {
+    // An empty value is not "absent": someone edited the variable and expects an
+    // effect. Generous spellings would make the gate look harmless while off.
+    for (const value of ['1', 'true', 'ON', 'On', 'yes', '', ' ', 'on ', 'on!'])
+      expect(() =>
+        loadWebsiteOptionDrainActivation({ AK_INQUIRY_OPTION_DRAIN: value }),
+      ).toThrow(/AK_INQUIRY_OPTION_DRAIN/);
   });
 });
 

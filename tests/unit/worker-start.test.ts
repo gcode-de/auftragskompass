@@ -4,6 +4,7 @@ import {
   startWorkerRuntime,
   type WorkerRuntimeDependencies,
 } from '../../apps/worker/src/worker-start.js';
+import { loadWebsiteOptionDrainActivation } from '../../packages/core/src/index.js';
 
 const tenantId = '11111111-1111-4111-8111-111111111111',
   actorId = '22222222-2222-4222-8222-222222222222';
@@ -59,6 +60,7 @@ function fixture(overrides: Partial<Fixture> = {}) {
       newContactCountry: 'DE',
       intervalMs: 15000,
     }),
+    optionDrainActive: loadWebsiteOptionDrainActivation,
     startDrain: (_pool, _dependencies, config, log, report) => {
       state.calls.push('startDrain:' + String(config.newContactCountry));
       void log;
@@ -109,7 +111,10 @@ describe('worker runtime wiring', () => {
       { logLevel: 'silent' } as never,
       { query: () => 0 } as never,
       subject.dependencies,
-      { AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid' },
+      {
+        AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid',
+        AK_INQUIRY_OPTION_DRAIN: 'on',
+      },
       () => '',
       async () => {
         subject.state.calls.push('endPool');
@@ -155,7 +160,10 @@ describe('worker runtime wiring', () => {
       { logLevel: 'silent' } as never,
       { query: () => 0 } as never,
       subject.dependencies,
-      { AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid' },
+      {
+        AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid',
+        AK_INQUIRY_OPTION_DRAIN: 'on',
+      },
       () => '',
       async () => {
         subject.state.calls.push('endPool');
@@ -261,7 +269,10 @@ describe('worker runtime wiring', () => {
       { logLevel: 'silent' } as never,
       { query: () => 0 } as never,
       subject.dependencies,
-      { AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid' },
+      {
+        AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid',
+        AK_INQUIRY_OPTION_DRAIN: 'on',
+      },
       () => '',
       async () => {
         subject.state.calls.push('endPool');
@@ -272,5 +283,102 @@ describe('worker runtime wiring', () => {
     expect(subject.state.calls.filter((c) => c === 'startSync')).toEqual([]);
     expect(await checks.worker!()).toBe(true);
     await runtime.close();
+  });
+  // BKP004.1: an automatic image update replaces the binary, so configured
+  // identities alone must no longer convert a real backlog on their own.
+  test('configured identities without the explicit activation start no timer, warn once and stay ready', async () => {
+    for (const env of [{}, { AK_INQUIRY_OPTION_DRAIN: 'off' }]) {
+      const subject = fixture(),
+        checks: Record<string, () => Promise<boolean>> = {};
+      subject.dependencies.createServer = (_config, probes) => {
+        checks.worker = probes.worker;
+        return {
+          log: {
+            error: (code: string) => subject.state.calls.push('log:' + code),
+            warn: (code: string) => subject.state.calls.push('warn:' + code),
+          },
+        } as unknown as FastifyInstance;
+      };
+      const runtime = await startWorkerRuntime(
+        { logLevel: 'silent' } as never,
+        { query: () => 0 } as never,
+        subject.dependencies,
+        env,
+        () => '',
+        async () => {
+          subject.state.calls.push('endPool');
+        },
+      );
+      // Staging, acknowledgement and manual takeover are untouched: only the
+      // timer is absent, and a paused drain must not pull readiness down.
+      expect(runtime.drain).toBeNull();
+      expect(subject.state.calls).toEqual([
+        'startExpiry',
+        'warn:website_option_drain_inactive',
+      ]);
+      expect(await checks.worker!()).toBe(true);
+      await runtime.close();
+      expect(subject.state.calls).toEqual([
+        'startExpiry',
+        'warn:website_option_drain_inactive',
+        'stopExpiry',
+        'endPool',
+      ]);
+    }
+  });
+  test('an explicitly activated drain starts as before and logs no pause', async () => {
+    const subject = fixture();
+    const runtime = await startWorkerRuntime(
+      { logLevel: 'silent' } as never,
+      { query: () => 0 } as never,
+      subject.dependencies,
+      { AK_INQUIRY_OPTION_DRAIN: 'on' },
+      () => '',
+      async () => {
+        subject.state.calls.push('endPool');
+      },
+    );
+    expect(subject.state.calls).toEqual(['startExpiry', 'startDrain:DE']);
+    await runtime.close();
+    expect(subject.state.calls).toEqual([
+      'startExpiry',
+      'startDrain:DE',
+      'stopDrain',
+      'stopExpiry',
+      'endPool',
+    ]);
+  });
+  test('a malformed activation value is a configuration error instead of a pause', async () => {
+    for (const value of ['1', 'true', 'ON', '']) {
+      const subject = fixture(),
+        checks: Record<string, () => Promise<boolean>> = {};
+      subject.dependencies.createServer = (_config, probes) => {
+        checks.worker = probes.worker;
+        return {
+          log: {
+            error: (code: string) => subject.state.calls.push('log:' + code),
+            warn: (code: string) => subject.state.calls.push('warn:' + code),
+          },
+        } as unknown as FastifyInstance;
+      };
+      const runtime = await startWorkerRuntime(
+        { logLevel: 'silent' } as never,
+        { query: () => 0 } as never,
+        subject.dependencies,
+        { AK_INQUIRY_OPTION_DRAIN: value },
+        () => '',
+        async () => {
+          subject.state.calls.push('endPool');
+        },
+      );
+      // Half or malformed is a bug nobody would notice otherwise, exactly like a
+      // half-configured identity: fixed error, readiness down, no timer.
+      expect(subject.state.calls).toEqual([
+        'startExpiry',
+        'log:website_option_config_invalid',
+      ]);
+      expect(await checks.worker!()).toBe(false);
+      await runtime.close();
+    }
   });
 });

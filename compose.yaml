@@ -68,6 +68,12 @@ services:
       AK_BUILD_REVISION: ${AK_BUILD_REVISION:-development}
       AK_HOST: 0.0.0.0
       AK_PORT: 3001
+      # Optional website option drain (see .env.example). The automatic timer
+      # additionally needs the explicit AK_INQUIRY_OPTION_DRAIN=on decision;
+      # without identities the worker runs unconfigured and stays healthy.
+      AK_INQUIRY_TENANT_ID: ${AK_INQUIRY_TENANT_ID}
+      AK_INQUIRY_OPERATOR_ID: ${AK_INQUIRY_OPERATOR_ID}
+      AK_INQUIRY_OPTION_DRAIN: ${AK_INQUIRY_OPTION_DRAIN:-off}
     depends_on:
       database: { condition: service_healthy }
     healthcheck:
