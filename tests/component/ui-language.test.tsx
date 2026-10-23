@@ -240,6 +240,19 @@ test('settings keep resource and product panels mounted once and retain drafts a
   );
   render(<AuthPanel />);
   await screen.findByRole('region', { name: 'Events' });
+  // The mounted panels fetch in their own effects; the baseline must observe
+  // those first reads, or a later hash change would count them as a refetch
+  // (the pre-existing race this suite was hardened against once before).
+  await vi.waitFor(() => {
+    for (const url of [
+      '/api/v1/products',
+      '/api/v1/resources',
+      '/api/v1/resource-blocks',
+    ])
+      expect(requested.filter((seen) => seen === url).length).toBeGreaterThan(
+        0,
+      );
+  });
   const initialProducts = requested.filter(
     (url) => url === '/api/v1/products',
   ).length;
