@@ -557,6 +557,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       if (name) {
         expect(name.whiteSpace).toBe('nowrap');
         expect(name.height).toBeLessThanOrEqual(30);
+        // Layout guarantee independent of the viewer's font: the shared row
+        // leaves the wordmark link at least 168px, which also fits wide system
+        // fonts uncut (the CI Linux stack clipped it at 156px before).
+        expect(brand.width).toBeGreaterThanOrEqual(168);
       } else expect(report.mark).not.toBeNull();
       expect(report.brandCovered).toBe(false);
       expect(report.toggleCovered).toBe(false);

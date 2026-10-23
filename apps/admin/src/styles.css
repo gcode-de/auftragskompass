@@ -495,13 +495,19 @@ textarea {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  margin: 0 -0.5rem 0 0.75rem;
+  /* BKP006-Nachtrag: the row bleeds into both rail paddings so the wordmark
+     keeps its full width even where system fonts run wide (CI Linux fonts
+     clipped it at 156px). */
+  margin: 0 -1rem 0 0;
   min-width: 0;
 }
 .sidebar-brand-row a.menu-brand {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
+  /* The rail wordmark keeps one documented size that fits the shared row on
+     wide system fonts; the drawer keeps the larger brand size. */
+  font-size: 1rem;
 }
 .sidebar-toggle {
   display: inline-flex;
