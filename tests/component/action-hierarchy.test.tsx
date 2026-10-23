@@ -1161,6 +1161,10 @@ test('each mounted workspace route shows at most one primary action in the real 
   const unnamed = () =>
     shown('button, a.primary-action, a.secondary-action, a.tertiary-action')
       .filter((control) => !control.closest('.record-navigation'))
+      // BKP008: a calendar day cell is a date selector inside the month grid,
+      // not a page action; its pressed/current state is covered by the
+      // calendar component and Chromium tests.
+      .filter((control) => !control.matches('.calendar-day-button'))
       // The drawer's own open/close/collapse controls and the theme switch are
       // shell and navigation chrome, covered by the navigation and Chromium tests.
       .filter(

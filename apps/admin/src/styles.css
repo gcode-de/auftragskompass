@@ -1666,8 +1666,10 @@ summary {
   max-width: 100%;
   overflow-x: auto;
 }
+/* BKP008: the month grid must not clip its own focus rings, and it fits its
+   container at every width, so it needs no scroll box at all. */
 .calendar-events[data-view='month'] {
-  overflow-x: clip;
+  overflow: visible;
 }
 .calendar-grid {
   list-style: none;
@@ -1701,22 +1703,121 @@ summary {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+/* BKP008: a real Mo–So month grid at every width. Each cell is one native day
+   button with a one-line number and a compact count/status summary; the full
+   titles live in the agenda below the grid, so nothing is hover- or
+   ellipsis-only. */
 .calendar-day {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 0.35rem;
-  padding: 0.35rem;
+  padding: 0.15rem;
   overflow-wrap: anywhere;
 }
 .calendar-day > h4 {
-  margin: 0 0 0.3rem;
+  margin: 0.15rem 0 0.3rem;
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
 }
+.calendar-day-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  /* A cell is not a list action: the global `li > button` margin would push
+     the button out of its own track. */
+  margin: 0;
+  padding: 0.25rem 0.1rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.calendar-day .calendar-day-button:hover {
+  background: var(--hover-surface);
+}
+.calendar-day-button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+.calendar-day-button > time {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+/* Today is a named, dashed cell; the selected day is a solid, filled one.
+   Neither relies on colour alone and neither paints a large surface. */
+.calendar-day[data-today='true'] .calendar-day-button {
+  border-style: dashed;
+  border-color: var(--muted);
+}
+.calendar-day[data-selected='true'] .calendar-day-button {
+  /* Border colour plus an inset ring: a 2-px border would shift the number by
+     one pixel when the selection moves. */
+  border-color: var(--selected-ink);
+  box-shadow: inset 0 0 0 1px var(--selected-ink);
+  background: var(--selected-surface);
+}
+.calendar-day[data-selected='true'] .calendar-day-button > time {
+  font-weight: 700;
+}
+.calendar-day-markers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 0.6rem;
+}
+.calendar-day-today {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.calendar-day-count {
+  padding: 0 0.24rem;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--ink);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.calendar-day-mark {
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: none;
+  color: var(--muted);
+}
+.calendar-day-events {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.calendar-day-events li,
+.calendar-agenda-list li {
+  margin: 0;
+}
+/* Below 60rem the cells are too narrow for readable titles; the agenda holds
+   them instead of clipping them into ellipses. */
+@media (max-width: 60rem) {
+  .calendar-day-events {
+    display: none;
+  }
+}
 .calendar-chip {
   padding: 0.3rem;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.25rem;
   border-radius: 0.25rem;
   color: var(--calendar-ink);
   font-size: 0.78rem;
@@ -1727,15 +1828,18 @@ summary {
   min-height: 44px;
   padding: 0.15rem 0.1rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.calendar-events[data-view='month'] .calendar-chip-link,
+.calendar-events[data-view='month'] .calendar-chip p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .calendar-chip p {
   margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .calendar-chip-time,
 .calendar-chip-meta,
@@ -1747,6 +1851,108 @@ summary {
   .calendar-chip-resources {
     display: none;
   }
+}
+/* BKP008: complete agenda for the chosen day. Full titles wrap; time, venue,
+   status and the event link stay on every entry. */
+.calendar-agenda {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.calendar-agenda-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.75rem;
+}
+.calendar-agenda-head h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+.calendar-agenda-count {
+  margin: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.calendar-agenda-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.calendar-agenda-item {
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+.calendar-agenda-time {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.calendar-agenda-title {
+  margin: 0;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.calendar-agenda-title a {
+  display: inline-block;
+  min-height: 44px;
+  padding-block: 0.4rem;
+  color: var(--accent);
+}
+.calendar-agenda-title a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.calendar-agenda-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.calendar-agenda-resources {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.calendar-agenda-empty {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+}
+/* BKP008: the legend stays, but as one compact, quiet row instead of a wall of
+   coloured blocks before the calendar. */
+.calendar-legend {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.8rem;
+}
+.calendar-legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.85rem;
+}
+.calendar-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  /* The global `li` margin would turn the compact legend into a list of rows. */
+  margin: 0;
+  color: var(--ink);
+}
+.calendar-legend-swatch {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 0.15rem;
+}
+.calendar-events-heading {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 1rem;
 }
 .menu-account [role='status']:not(.session-ready) {
   background: var(--sidebar-hover);
@@ -1927,6 +2133,8 @@ summary {
 .calendar-hint {
   color: var(--muted);
   max-width: 70ch;
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
 }
 .calendar-note {
   font-variant-numeric: tabular-nums;
@@ -1967,6 +2175,26 @@ summary {
   }
   .calendar-date-field input {
     width: 100%;
+  }
+  /* BKP008: seven columns need every pixel at 320. The cell keeps a 44-px
+     height and fills its column; the section drops to its own quiet padding
+     instead of the generic one. */
+  #calendar {
+    padding-inline: 0.5rem;
+  }
+  .calendar-grid,
+  .calendar-weekday-head ol {
+    gap: 2px;
+  }
+  .calendar-day {
+    padding: 1px;
+  }
+  .calendar-day-button {
+    padding: 0.2rem 0;
+  }
+  .calendar-weekday-head li {
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
   }
 }
 

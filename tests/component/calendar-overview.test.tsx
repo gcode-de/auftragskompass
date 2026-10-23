@@ -281,10 +281,14 @@ test('a failed reload stays visible while the occupancy is collapsed', async () 
 test('a calendar event link opens its own details and does not bubble', async () => {
   stub(fixture());
   render(<CalendarPanel />);
-  const link = await screen.findByRole('link', {
+  // BKP008: the same event is a month-cell chip and a day-agenda entry, and
+  // both must open exactly its own record.
+  const links = await screen.findAllByRole('link', {
     name: 'Fictional day booking',
   });
-  expect(link.getAttribute('href')).toBe('#event-synthetic-date-only');
+  expect(links.length).toBeGreaterThan(0);
+  for (const link of links)
+    expect(link.getAttribute('href')).toBe('#event-synthetic-date-only');
 });
 
 test('a programmatic details.open reveals the occupancy without a toggle event', async () => {

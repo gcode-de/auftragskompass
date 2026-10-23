@@ -1,11 +1,29 @@
 import { expect, test } from 'vitest';
 import {
+  calendarDayLabel,
+  calendarDayNumber,
+  calendarWeekdayMonthLabel,
   calendarHeading,
   eventSpanText,
   calendarRangeText,
   calendarViewFromUrl,
   viewLabel,
 } from '../../apps/admin/src/calendar-range.js';
+
+// BKP008: the month cell shows the bare day number; the same cell and the day
+// agenda heading name the full local date.
+test('a month cell shows the day number and names the full day', () => {
+  expect(calendarDayNumber('2030-11-01')).toBe('1');
+  expect(calendarDayNumber('2030-11-30')).toBe('30');
+  expect(calendarDayLabel('2030-11-03')).toBe('Sonntag, 3. November 2030');
+  // Month and year boundaries keep their own day, never the neighbour's.
+  expect(calendarDayNumber('2031-01-01')).toBe('1');
+  expect(calendarDayLabel('2032-02-29')).toBe('Sonntag, 29. Februar 2032');
+  // The cell already shows the number, so its name adds weekday and month.
+  expect(calendarWeekdayMonthLabel('2030-11-03')).toBe(
+    'Sonntag, November 2030',
+  );
+});
 
 test('calendar keeps month as default unless the URL asks for another view', () => {
   expect(calendarViewFromUrl('')).toBe('month');

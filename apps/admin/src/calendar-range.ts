@@ -33,6 +33,28 @@ function format(
 export function plainDateText(date: string) {
   return format(date, { day: 'numeric', month: 'long', year: 'numeric' });
 }
+// BKP008: the narrow month grid shows a one-line day number and names the same
+// cell in full for assistive technology and the day agenda heading.
+export function calendarDayNumber(date: string) {
+  return String(parts(date).day);
+}
+export function calendarDayLabel(date: string) {
+  return format(date, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+// The month cell already shows the day number, so its name only adds the
+// weekday and month instead of repeating "23. November 2030".
+export function calendarWeekdayMonthLabel(date: string) {
+  return (
+    format(date, { weekday: 'long' }) +
+    ', ' +
+    format(date, { month: 'long', year: 'numeric' })
+  );
+}
 export function calendarRangeText(from: string, to: string) {
   if (from === to) return plainDateText(from);
   const { year: fromYear, month: fromMonth } = parts(from);

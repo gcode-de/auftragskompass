@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   emptyEventFilters,
   updateUrlSearch,
@@ -6,6 +6,9 @@ import {
 } from './url-state.js';
 import { useAutoRefresh } from './auto-refresh.js';
 import {
+  calendarDayLabel,
+  calendarDayNumber,
+  calendarWeekdayMonthLabel,
   calendarHeading,
   calendarViewFromUrl,
   eventDateLabel,
@@ -84,6 +87,77 @@ function overlap(start: string, end: string, day: Day) {
     Date.parse(end) > Date.parse(day.startsAt)
   );
 }
+// BKP008: a compact per-day summary needs one shape per status, in a stable
+// order, so a narrow cell is not a soup of dots in random order.
+const statusOrder = [
+  'conflict',
+  'blocked',
+  'unavailable',
+  'cancelled',
+  'booked',
+  'hold',
+  'option',
+  'inquiry',
+];
+function dayStatuses(events: Calendar['events']) {
+  const distinct = new Set(events.map((event) => event.status));
+  return statusOrder
+    .filter((status) => distinct.has(status))
+    .concat([...distinct].filter((status) => !statusOrder.includes(status)));
+}
+// Drawn shapes, not colour alone: filled = booked, ring = option/inquiry,
+// square = hold, bar = blocked/unavailable, cross = conflict.
+function StatusMark({ status }: { status: string }) {
+  const shape =
+    status === 'booked' ? (
+      <circle cx="4" cy="4" r="3" fill="currentColor" />
+    ) : status === 'hold' ? (
+      <rect
+        x="1"
+        y="1"
+        width="6"
+        height="6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+    ) : status === 'blocked' ||
+      status === 'unavailable' ||
+      status === 'cancelled' ? (
+      <path
+        d="M1 4h6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    ) : status === 'conflict' ? (
+      <path
+        d="M1.7 1.7l4.6 4.6M6.3 1.7l-4.6 4.6"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    ) : (
+      <circle
+        cx="4"
+        cy="4"
+        r="2.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+    );
+  return (
+    <svg
+      className="calendar-day-mark"
+      viewBox="0 0 8 8"
+      aria-hidden="true"
+      data-state={status}
+    >
+      {shape}
+    </svg>
+  );
+}
 export function CalendarPanel() {
   const search = useUrlSearch();
   const [date, setDate] = useState(''),
@@ -135,6 +209,122 @@ export function CalendarPanel() {
   );
   function selectedDate() {
     return date || data?.date || '';
+  }
+  // BKP008: choosing a day never refetches. The loaded month already carries
+  // every day, so the agenda is instant, focus stays on the pressed button and
+  // a stale response cannot move the user's selection.
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const pendingFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    document.getElementById('calendar-day-' + pendingFocus.current)?.focus();
+    pendingFocus.current = null;
+  });
+  const todayDate = data
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: data.timeZone }).format(
+        new Date(),
+      )
+    : '';
+  const agendaDate =
+    pickedDay && data?.days.some((day) => day.date === pickedDay)
+      ? pickedDay
+      : (data?.date ?? '');
+  // A grid without the selected date still needs one tab stop, otherwise the
+  // month would be unreachable by keyboard.
+  const gridHasSelection = data?.days.some((day) => day.date === agendaDate);
+  const agendaDay = data?.days.find((day) => day.date === agendaDate);
+  // A day outside the loaded range still shows its date-only bookings instead
+  // of pretending the day is empty.
+  const agendaEvents = agendaDay
+    ? eventsOn(agendaDay)
+    : (data?.events.filter((event) => event.eventDate === agendaDate) ?? []);
+  // Cursor keys move the day selection; Tab keeps a single stop in the grid.
+  function moveDay(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const step =
+      event.key === 'ArrowRight'
+        ? 1
+        : event.key === 'ArrowLeft'
+          ? -1
+          : event.key === 'ArrowDown'
+            ? 7
+            : event.key === 'ArrowUp'
+              ? -7
+              : 0;
+    const target = step ? data?.days[index + step] : undefined;
+    if (!target) return;
+    event.preventDefault();
+    pendingFocus.current = target.date;
+    setPickedDay(target.date);
+  }
+  // The visible cell shows number, today and count; the accessible name starts
+  // with exactly those words (WCAG 2.5.3) and then names the rest of the day.
+  function dayNameText(day: Day, events: Calendar['events'], isToday: boolean) {
+    const parts = [calendarDayNumber(day.date)];
+    if (isToday) parts.push('heute');
+    parts.push(
+      events.length
+        ? events.length + (events.length === 1 ? ' Event' : ' Events')
+        : 'keine Events',
+    );
+    parts.push(calendarWeekdayMonthLabel(day.date));
+    if (events.length)
+      parts.push(
+        'Status: ' +
+          dayStatuses(events)
+            .map((status) => labels[status] ?? status)
+            .join(', '),
+      );
+    return parts.join(', ');
+  }
+  function eventsOn(day: Day) {
+    return data!.events.filter((event) =>
+      event.startsAt && event.endsAt
+        ? overlap(event.startsAt, event.endsAt, day)
+        : event.eventDate === day.date,
+    );
+  }
+  function resourcesText(eventId: string) {
+    return (
+      data!.reservations
+        .filter((slot) => slot.eventId === eventId)
+        .map((slot) => {
+          const unit = data!.units.find((unit) => unit.id === slot.unitId)!;
+          return unit.code + ' #' + unit.ordinal;
+        })
+        .join(', ') || 'Keine zugewiesen'
+    );
+  }
+  // One chip for both grids. The month cell keeps the event link (the BKP001
+  // contract), while the agenda below repeats the same target with the full
+  // schedule, venue and status.
+  function chip(event: Calendar['events'][number]) {
+    return (
+      <article
+        className="calendar-state calendar-chip"
+        key={event.id}
+        style={{ backgroundColor: colors[event.status] }}
+      >
+        <a
+          className="calendar-chip-link"
+          href={'#event-' + event.id}
+          onClick={() => updateUrlSearch(emptyEventFilters)}
+        >
+          {event.name}
+        </a>
+        <p className="calendar-chip-time calendar-note">
+          {eventScheduleText(event)}
+        </p>
+        <p className="calendar-chip-meta">
+          {labels[event.status] ?? event.status} ·{' '}
+          {event.eventType ?? 'Eventart offen'} ·{' '}
+          {event.contact ?? 'Kontakt offen'}
+          {event.location ? ' · ' + event.location : ''}
+        </p>
+        <p className="calendar-chip-resources">
+          Ressourcen: {resourcesText(event.id)}
+        </p>
+      </article>
+    );
   }
   function clockTime(value: string) {
     return new Intl.DateTimeFormat('de-DE', {
@@ -331,32 +521,36 @@ export function CalendarPanel() {
               <a href="#import-review">Import-Prüfliste</a> abgleichen.
             </p>
           )}
-          <p role="group" aria-label="Kalenderlegende">
-            {[
-              [
-                data.pendingPromises ? 'hold' : 'free',
-                data.pendingPromises ? 'Bestand ungeprüft' : 'Frei',
-              ],
-              ['hold', 'Vormerkung'],
-              ['booked', 'Gebucht'],
-              ['blocked', 'Sperre'],
-              ['conflict', 'Konflikt mit Vormerkung'],
-            ].map(([key, label]) => (
-              <span
-                key={label}
-                style={{
-                  display: 'inline-block',
-                  padding: '0.25rem',
-                  marginRight: '0.5rem',
-                  backgroundColor: colors[key!],
-                  color: '#111827',
-                }}
-              >
-                {label}
-              </span>
-            ))}
-          </p>
-          <h3>Events</h3>
+          <div
+            className="calendar-legend"
+            role="group"
+            aria-label="Kalenderlegende"
+          >
+            <ul>
+              {[
+                [
+                  data.pendingPromises ? 'hold' : 'free',
+                  data.pendingPromises ? 'Bestand ungeprüft' : 'Frei',
+                ],
+                ['hold', 'Vormerkung'],
+                ['booked', 'Gebucht'],
+                ['blocked', 'Sperre'],
+                ['conflict', 'Konflikt mit Vormerkung'],
+              ].map(([key, label]) => (
+                <li key={label}>
+                  <span
+                    className="calendar-legend-swatch"
+                    style={{ backgroundColor: colors[key!] }}
+                    aria-hidden="true"
+                  />
+                  {label}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <h3 className="calendar-events-heading">
+            Events ({data.events.length})
+          </h3>
           {!data.events.length && <p>Keine Events in diesem Zeitraum.</p>}
           <div
             className="calendar-events"
@@ -385,68 +579,128 @@ export function CalendarPanel() {
                   },
                   (_, index) => <li key={'pad-' + index} aria-hidden="true" />,
                 )}
-              {data.days.map((day) => {
-                const dayEvents = data.events.filter((event) =>
-                  event.startsAt && event.endsAt
-                    ? overlap(event.startsAt, event.endsAt, day)
-                    : event.eventDate === day.date,
-                );
+              {data.days.map((day, index) => {
+                const dayEvents = eventsOn(day);
+                if (loadedView !== 'month')
+                  return (
+                    <li key={day.date} className="calendar-day">
+                      <h4>
+                        <time dateTime={day.date}>{dayName(day.date)}</time>
+                      </h4>
+                      {dayEvents.map((event) => chip(event))}
+                    </li>
+                  );
+                // BKP008: one short number per cell plus a compact summary; the
+                // full titles live in the agenda below, so a 40-px cell at 320
+                // never clips an event into unreadability.
+                const isToday = day.date === todayDate;
+                const selected = day.date === agendaDate;
+                const statuses = dayStatuses(dayEvents);
                 return (
-                  <li key={day.date} className="calendar-day">
-                    <h4>
-                      <time dateTime={day.date}>{dayName(day.date)}</time>
-                    </h4>
-                    {dayEvents.map((event) => {
-                      const schedule = eventScheduleText(event);
-                      return (
-                        <article
-                          className="calendar-state calendar-chip"
-                          key={event.id}
-                          style={{ backgroundColor: colors[event.status] }}
-                        >
-                          <a
-                            className="calendar-chip-link"
-                            href={'#event-' + event.id}
-                            title={
-                              event.name +
-                              ' – ' +
-                              (labels[event.status] ?? event.status) +
-                              ' – ' +
-                              schedule
-                            }
-                            onClick={() => updateUrlSearch(emptyEventFilters)}
-                          >
-                            {event.name}
-                          </a>
-                          <p className="calendar-chip-time calendar-note">
-                            {schedule}
-                          </p>
-                          <p className="calendar-chip-meta">
-                            {labels[event.status]} ·{' '}
-                            {event.eventType ?? 'Eventart offen'} ·{' '}
-                            {event.contact ?? 'Kontakt offen'}
-                            {event.location ? ' · ' + event.location : ''}
-                          </p>
-                          <p className="calendar-chip-resources">
-                            Ressourcen:{' '}
-                            {data.reservations
-                              .filter((slot) => slot.eventId === event.id)
-                              .map((slot) => {
-                                const unit = data.units.find(
-                                  (unit) => unit.id === slot.unitId,
-                                )!;
-                                return unit.code + ' #' + unit.ordinal;
-                              })
-                              .join(', ') || 'Keine zugewiesen'}
-                          </p>
-                        </article>
-                      );
-                    })}
+                  <li
+                    key={day.date}
+                    className="calendar-day"
+                    data-selected={String(selected)}
+                    data-today={String(isToday)}
+                  >
+                    <button
+                      type="button"
+                      id={'calendar-day-' + day.date}
+                      className="calendar-day-button"
+                      aria-pressed={selected}
+                      aria-current={isToday ? 'date' : undefined}
+                      aria-label={dayNameText(day, dayEvents, isToday)}
+                      tabIndex={
+                        selected || (!gridHasSelection && index === 0) ? 0 : -1
+                      }
+                      onClick={() => setPickedDay(day.date)}
+                      onKeyDown={(event) => moveDay(event, index)}
+                    >
+                      <time dateTime={day.date}>
+                        {calendarDayNumber(day.date)}
+                      </time>{' '}
+                      {/* The separating whitespace keeps the visible words
+                          tokenised, so the accessible name can start with the
+                          same words (WCAG 2.5.3). It creates no flex item. */}
+                      <span className="calendar-day-markers" aria-hidden="true">
+                        {isToday && (
+                          <>
+                            <span className="calendar-day-today">
+                              Heute
+                            </span>{' '}
+                          </>
+                        )}
+                        {dayEvents.length > 1 && (
+                          <>
+                            <span className="calendar-day-count">
+                              {dayEvents.length}
+                            </span>{' '}
+                          </>
+                        )}
+                        {statuses.map((status) => (
+                          <StatusMark key={status} status={status} />
+                        ))}
+                      </span>
+                    </button>
+                    <ul className="calendar-day-events">
+                      {dayEvents.map((event) => (
+                        <li key={event.id}>{chip(event)}</li>
+                      ))}
+                    </ul>
                   </li>
                 );
               })}
             </ol>
           </div>
+          {loadedView === 'month' && agendaDate && (
+            <section
+              className="calendar-agenda"
+              aria-labelledby="calendar-agenda-title"
+            >
+              <div className="calendar-agenda-head">
+                <h4 id="calendar-agenda-title">
+                  {calendarDayLabel(agendaDate)}
+                </h4>
+                <p className="calendar-agenda-count" role="status">
+                  {agendaEvents.length === 1
+                    ? '1 Event'
+                    : agendaEvents.length + ' Events'}
+                </p>
+              </div>
+              {agendaEvents.length ? (
+                <ul className="calendar-agenda-list">
+                  {agendaEvents.map((event) => (
+                    <li className="calendar-agenda-item" key={event.id}>
+                      <p className="calendar-agenda-time calendar-note">
+                        {eventScheduleText(event)}
+                      </p>
+                      <p className="calendar-agenda-title">
+                        <a
+                          href={'#event-' + event.id}
+                          onClick={() => updateUrlSearch(emptyEventFilters)}
+                        >
+                          {event.name}
+                        </a>
+                      </p>
+                      <p className="calendar-agenda-meta">
+                        {labels[event.status] ?? event.status} ·{' '}
+                        {event.eventType ?? 'Eventart offen'} ·{' '}
+                        {event.location ?? 'Ort offen'} ·{' '}
+                        {event.contact ?? 'Kontakt offen'}
+                      </p>
+                      <p className="calendar-agenda-resources">
+                        Ressourcen: {resourcesText(event.id)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="calendar-agenda-empty">
+                  Keine Events an diesem Tag.
+                </p>
+              )}
+            </section>
+          )}
           {/* H037: native, uncontrolled disclosure. The browser owns the
               open state, so mouse, keyboard, programmatic `open` and the
               `toggle` event all agree; the content stays mounted and is
