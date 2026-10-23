@@ -57,7 +57,15 @@ function mocker(errors: string[] = [], supplied: Record<string, unknown> = {}) {
       return Response.json(rows[0]);
     }
     if (url.startsWith('/api/v1/events'))
-      return Response.json({ timeZone: 'Europe/Berlin', events: rows });
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: rows,
+        // BKP007.2: the counters travel with the list as a server aggregate.
+        filterCounts: {
+          undated: rows.filter((entry) => !entry.eventDate).length,
+          inquiries: rows.filter((entry) => entry.status === 'inquiry').length,
+        },
+      });
     if (url === '/api/v1/statuses')
       return Response.json([
         { code: 'inquiry', label: 'Anfrage' },
@@ -2217,34 +2225,42 @@ test('the sort choice replaces the undated checkbox and its explanation', async 
   expect(window.location.search).not.toContain('undated=');
 });
 
-test('the counters count the loaded list without an extra fetch and follow filters', async () => {
-  const fetcher = mocker();
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, options?: RequestInit) => {
-      if (url === '/api/v1/events?status=booked')
-        return Response.json({
-          timeZone: 'Europe/Berlin',
-          events: [{ ...row, id: 'fictional-booked', status: 'booked' }],
-        });
-      if (url === '/api/v1/events')
-        return Response.json({
-          timeZone: 'Europe/Berlin',
-          events: [
-            { ...row, id: 'fictional-undated-a' },
-            { ...row, id: 'fictional-undated-b' },
-            { ...row, id: 'fictional-dated', eventDate: '2031-11-09' },
-            {
-              ...row,
-              id: 'fictional-booked',
-              status: 'booked',
-              eventDate: '2031-11-10',
-            },
-          ],
-        });
+// BKP007.2: the counters are a server aggregate beside the list, not a count of
+// the loaded rows. They name the undated events and inquiries that the applied
+// date window keeps out of the list, and they follow q/status/type because the
+// server applies those to the aggregate as well.
+test('the counters show the server aggregate and follow the applied filters', async () => {
+  const fetcher = mocker(),
+    list = vi.fn(async (url: string, options?: RequestInit) => {
+      if (String(url).startsWith('/api/v1/events'))
+        return Response.json(
+          new URLSearchParams(String(url).split('?')[1] ?? '').get('q')
+            ? {
+                timeZone: 'Europe/Berlin',
+                events: [],
+                filterCounts: { undated: 0, inquiries: 0 },
+              }
+            : {
+                timeZone: 'Europe/Berlin',
+                events: [
+                  { ...row, id: 'fictional-undated-a' },
+                  { ...row, id: 'fictional-undated-b' },
+                  { ...row, id: 'fictional-dated', eventDate: '2031-11-09' },
+                  {
+                    ...row,
+                    id: 'fictional-booked',
+                    status: 'booked',
+                    eventDate: '2031-11-10',
+                  },
+                ],
+                // Three inquiries and two undated events in the tenant: one
+                // inquiry is in December, outside every loaded month group.
+                filterCounts: { undated: 2, inquiries: 3 },
+              },
+        );
       return fetcher(url, options);
-    }),
-  );
+    });
+  vi.stubGlobal('fetch', list);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
   await vi.waitFor(() =>
@@ -2253,9 +2269,7 @@ test('the counters count the loaded list without an extra fetch and follow filte
   const undatedCount = () => screen.getByTestId('undated-count').textContent,
     inquiryCount = () => screen.getByTestId('inquiry-count').textContent,
     loads = () =>
-      (
-        fetcher as unknown as { mock: { calls: unknown[][] } }
-      ).mock.calls.filter(
+      (list as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter(
         ([url, options]) =>
           String(url).startsWith('/api/v1/events') && options === undefined,
       ).length;
@@ -2275,7 +2289,8 @@ test('the counters count the loaded list without an extra fetch and follow filte
   );
   await vi.waitFor(() => expect(undatedCount()).toBe('2'));
   expect(loads()).toBeGreaterThan(before);
-  // Switching the filter to undated keeps the counters on the same loaded set.
+  // Switching the sort to undated reloads the list; the counters still answer
+  // the whole tenant instead of the shortened rows.
   fireEvent.click(
     within(screen.getByRole('group', { name: 'Sortieren' })).getByRole(
       'radio',
@@ -2285,6 +2300,43 @@ test('the counters count the loaded list without an extra fetch and follow filte
     ),
   );
   await vi.waitFor(() => expect(undatedCount()).toBe('2'));
+  expect(inquiryCount()).toBe('3');
+});
+
+// The defect this slice fixes: the loaded rows of a date window cannot name the
+// undated events or the inquiries outside it. The counters therefore have to
+// come from the answer itself, even when they exceed every visible row.
+test('the counters name what the date window keeps out of the rows', async () => {
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/v1/events'))
+        return Response.json({
+          timeZone: 'Europe/Berlin',
+          events: [
+            {
+              ...row,
+              id: 'fictional-window',
+              status: 'booked',
+              eventDate: '2026-10-24',
+            },
+          ],
+          filterCounts: { undated: 4, inquiries: 7 },
+        });
+      return base(url);
+    }),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  await vi.waitFor(() =>
+    expect(screen.getByTestId('undated-count').textContent).toBe('4'),
+  );
+  expect(screen.getByTestId('inquiry-count').textContent).toBe('7');
+  // The single loaded row stays exactly as the server listed it.
+  expect(screen.getAllByRole('link', { name: /Synthetic event/ })).toHaveLength(
+    1,
+  );
 });
 
 test('each month group heading names its own event count', async () => {
@@ -2351,6 +2403,8 @@ test('the inquiry quick filter sets only the status and keeps the date range', a
             eventDate: '2026-10-25',
           },
         ],
+        // The tenant holds one inquiry and no undated event at all.
+        filterCounts: { undated: 0, inquiries: 1 },
       });
     if (url === '/api/v1/statuses')
       return Response.json([

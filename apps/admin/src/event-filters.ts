@@ -61,58 +61,17 @@ export function activeDatePreset(
   return candidate ?? null;
 }
 
-type FilterRow = {
-  id: string;
-  name: string;
-  description?: string;
-  source?: string;
-  status: string;
-  eventTypeId: string | null;
-  eventDate: string | null;
-};
-
-// The counters answer "how many would this option show?", so they apply the
-// narrowing filters of the query but never the option itself.
-export function filterRows<T extends FilterRow>(
-  rows: T[],
-  search: string,
-): T[] {
-  const params = new URLSearchParams(search),
-    q = (params.get('q') ?? '').toLocaleLowerCase('de-DE'),
-    status = params.get('status') ?? '',
-    eventTypeId = params.get('eventTypeId') ?? '';
-  return rows.filter(
-    (row) =>
-      (!status || row.status === status) &&
-      (!eventTypeId || row.eventTypeId === eventTypeId) &&
-      (!q ||
-        [row.name, row.description, row.source].some((field) =>
-          (field ?? '').toLocaleLowerCase('de-DE').includes(q),
-        )),
-  );
-}
-
-// Every counter answers its own option, so the undated sort and the date
-// bounds are switched off while counting; q/status/type still narrow it.
-function countable(search: string) {
-  const params = new URLSearchParams(search);
-  for (const key of ['undated', 'from', 'to']) params.delete(key);
-  return '?' + params.toString();
-}
-
-export function eventFilterCounts(rows: FilterRow[], search: string) {
-  const visible = filterRows(rows, countable(search));
-  return {
-    undated: visible.filter((row) => !row.eventDate).length,
-    // There is no separate "new inquiry" state; `inquiry` is the status of a
-    // request that has not become an option yet.
-    inquiries: visible.filter((row) => row.status === 'inquiry').length,
-  };
-}
+// BKP007.2: both result counters are the server's tenant-wide aggregate of the
+// list answer (`filterCounts`), so they also name the undated events and the
+// inquiries that the applied date bounds keep out of the loaded rows. The client
+// never counts rows itself; the only local default is the empty answer before
+// the first list arrives.
+export type FilterCounts = { undated: number; inquiries: number };
+export const emptyFilterCounts: FilterCounts = { undated: 0, inquiries: 0 };
 
 // BKP007: the mobile filter access names how many filter dimensions the applied
-// URL sets. It counts criteria, not rows — the result counters above stay the
-// only place that counts events.
+// URL sets. It counts criteria, not rows — the two result counters above come
+// from the server and stay the only place that counts events.
 const filterCriteria = [
   ['q'],
   ['from', 'to', 'undated'],

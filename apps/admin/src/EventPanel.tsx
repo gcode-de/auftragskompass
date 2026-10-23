@@ -24,8 +24,9 @@ import {
   activeFilterCriteria,
   datePresetRange,
   datePresets,
-  eventFilterCounts,
+  emptyFilterCounts,
   monthGroups,
+  type FilterCounts,
   type PresetId,
 } from './event-filters.js';
 type Choice = VenueChoice;
@@ -94,6 +95,9 @@ export function EventPanel({
     filterSearch = useRef<HTMLInputElement>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [rows, setRows] = useState<EventRow[]>([]),
+    // BKP007.2: the two filter counters are the server's tenant-wide aggregate of
+    // this answer, not a count of the loaded rows.
+    [counts, setCounts] = useState<FilterCounts>(emptyFilterCounts),
     [draft, setDraft] = useState<EventRow | null>(null),
     [editing, setEditing] = useState(false),
     [detailId, setDetailId] = useState<string | null>(null),
@@ -146,7 +150,7 @@ export function EventPanel({
       if (responses.some((response) => !response.ok)) throw Error('load');
       const [events, statuses, types, packages, locations, contacts] =
         (await Promise.all(responses.map((response) => response.json()))) as [
-          { timeZone: string; events: EventRow[] },
+          { timeZone: string; events: EventRow[]; filterCounts?: FilterCounts },
           Status[],
           Choice[],
           Choice[],
@@ -155,6 +159,10 @@ export function EventPanel({
         ];
       if (current !== sequence.current) return;
       setRows(events.events);
+      // The admin is served by the API that sends the counters with the list; a
+      // payload without them (a cached older bundle) shows the empty answer
+      // instead of inventing a number from the loaded rows.
+      setCounts(events.filterCounts ?? emptyFilterCounts);
       setTimeZone(events.timeZone);
       setStatuses(statuses);
       setTypes(types);
@@ -470,7 +478,6 @@ export function EventPanel({
   // already went to the server.
   const undatedOnly = filters.get('undated') === 'true',
     shown = undatedOnly ? rows.filter((row) => !row.eventDate) : rows,
-    counts = eventFilterCounts(rows, urlSearch),
     activeCriteria = activeFilterCriteria(urlSearch),
     preset = activeDatePreset(urlSearch, now, timeZone),
     groups = monthGroups(shown);

@@ -3,8 +3,6 @@ import {
   activeDatePreset,
   activeFilterCriteria,
   datePresetRange,
-  eventFilterCounts,
-  filterRows,
   monthGroups,
 } from '../../apps/admin/src/event-filters.js';
 
@@ -99,6 +97,20 @@ test('a preset is only selected when the URL matches its exact range', () => {
   expect(activeDatePreset('?undated=true', instant, '')).toBe('undated');
 });
 
+// BKP007.2: the two result counters are no longer counted from the loaded rows
+// — that hid every undated event and every inquiry outside the applied date
+// window. They are the server's tenant-wide aggregate of the list answer, so
+// their semantics (q/status/eventTypeId narrow, dates do not, tenancy) is
+// proven against the real repository and route in
+// tests/integration/event-search.test.ts ("the event list counters never depend
+// on the date bounds and stay tenant scoped"). The mobile criteria counter
+// below still counts criteria instead of rows and stays client-side.
+test('the criteria counter stays a count of dimensions, not of rows', () => {
+  expect(
+    activeFilterCriteria('?q=Synthetic&from=2031-11-01&to=2031-11-30'),
+  ).toBe(2);
+});
+
 // A dated row is not undated; `startsAt` stays null on purpose so only the
 // event date decides the undated bucket, exactly like the server list.
 const dated = (id: string, eventDate: string | null) => ({
@@ -110,56 +122,12 @@ const dated = (id: string, eventDate: string | null) => ({
   eventTypeId: null as string | null,
 });
 
-test('counters come from the loaded list and ignore the option itself', () => {
-  const rows = [
-    dated('a', null),
-    dated('b', null),
-    dated('c', null),
-    dated('e', '2031-11-03'),
-    { ...dated('f', '2031-11-04'), status: 'booked' },
-  ];
-  expect(eventFilterCounts(rows, '?status=inquiry')).toEqual({
-    undated: 3,
-    inquiries: 4,
-  });
-  // The undated sort and the date bounds never narrow the counters; q/status/type do.
-  expect(eventFilterCounts(rows, '?undated=true')).toEqual({
-    undated: 3,
-    inquiries: 4,
-  });
-  // q does narrow, and the date bounds of the current view do not.
-  expect(
-    eventFilterCounts(
-      [
-        { ...dated('g', null), name: 'Synthetic undated' },
-        { ...dated('h', '2031-11-03'), name: 'Other event' },
-      ],
-      '?from=2031-11-01&to=2031-11-30&q=synthetic',
-    ),
-  ).toEqual({ undated: 1, inquiries: 1 });
-  expect(
-    eventFilterCounts(
-      [
-        { ...dated('e', null), eventTypeId: 'type-a' },
-        { ...dated('f', null), eventTypeId: 'type-b' },
-      ],
-      '?eventTypeId=type-a',
-    ),
-  ).toEqual({ undated: 1, inquiries: 1 });
-});
-
-test('filter rows apply everything but the undated switch and the sort is a view', () => {
+test('month groups keep the server order and put the undated bucket last', () => {
   const rows = [
     dated('undated-1', null),
     { ...dated('undated-2', null), status: 'booked' },
     dated('month', '2031-11-03'),
   ];
-  expect(
-    filterRows(rows, '?undated=true&status=booked').map((row) => row.id),
-  ).toEqual(['undated-2']);
-  expect(filterRows(rows, '?eventTypeId=type-a').map((row) => row.id)).toEqual(
-    [],
-  );
   expect(monthGroups(rows).map((group) => [group.month, group.count])).toEqual([
     ['2031-11', 1],
     ['', 2],

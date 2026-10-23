@@ -132,25 +132,93 @@ export function validateSchedule(
     throw new EventError('invalid_schedule');
   }
 }
+type Reads = Pick<NodePgDatabase, 'select'>;
+// Search, status and event type narrow the rows and both result counters alike;
+// the date bounds, the undated sort and the order never narrow a counter (H041).
+// One shared list keeps the two answers from drifting apart.
+function narrowing(db: Reads, tenantId: string, filters: EventFilters) {
+  const pattern = '%' + (filters.q ?? '').replace(/[\\%_]/g, '\\$&') + '%';
+  return [
+    eq(events.tenantId, tenantId),
+    filters.status ? eq(events.status, filters.status) : undefined,
+    filters.eventTypeId
+      ? eq(events.eventTypeId, filters.eventTypeId)
+      : undefined,
+    filters.q
+      ? or(
+          ...[events.name, events.description, events.source].map((field) =>
+            ilike(field, pattern),
+          ),
+          // The effective place only: a free-form booking is found by its
+          // own text, a legacy booking by its master-data address.
+          and(eq(events.venueOverride, true), ilike(events.venue, pattern)),
+          and(
+            eq(events.venueOverride, false),
+            inArray(
+              events.locationId,
+              db
+                .select({ id: locations.id })
+                .from(locations)
+                .where(
+                  and(
+                    eq(locations.tenantId, tenantId),
+                    or(
+                      ...[
+                        locations.name,
+                        locations.street,
+                        locations.city,
+                        locations.postalCode,
+                      ].map((field) => ilike(field, pattern)),
+                    ),
+                  ),
+                ),
+            ),
+          ),
+          inArray(
+            events.id,
+            db
+              .select({ id: eventContacts.eventId })
+              .from(eventContacts)
+              .innerJoin(
+                contacts,
+                and(
+                  eq(eventContacts.tenantId, contacts.tenantId),
+                  eq(eventContacts.contactId, contacts.id),
+                ),
+              )
+              .where(
+                and(
+                  eq(eventContacts.tenantId, tenantId),
+                  or(
+                    ...[
+                      contacts.name,
+                      contacts.contactPerson,
+                      contacts.email,
+                      contacts.phone,
+                      contacts.mobile,
+                    ].map((field) => ilike(field, pattern)),
+                  ),
+                ),
+              ),
+          ),
+        )
+      : undefined,
+  ];
+}
 async function readRows(
-  db: Pick<NodePgDatabase, 'select'>,
+  db: Reads,
   tenantId: string,
   contactId?: string,
   id?: string,
   filters: EventFilters = {},
 ) {
   validateFilters(filters);
-  const pattern = '%' + (filters.q ?? '').replace(/[\\%_]/g, '\\$&') + '%';
   const rows = await db
     .select()
     .from(events)
     .where(
       and(
-        eq(events.tenantId, tenantId),
-        filters.status ? eq(events.status, filters.status) : undefined,
-        filters.eventTypeId
-          ? eq(events.eventTypeId, filters.eventTypeId)
-          : undefined,
+        ...narrowing(db, tenantId, filters),
         filters.undated ? isNull(events.eventDate) : undefined,
         filters.from
           ? gte(
@@ -159,65 +227,6 @@ async function readRows(
             )
           : undefined,
         filters.to ? lte(events.eventDate, filters.to) : undefined,
-        filters.q
-          ? or(
-              ...[events.name, events.description, events.source].map((field) =>
-                ilike(field, pattern),
-              ),
-              // The effective place only: a free-form booking is found by its
-              // own text, a legacy booking by its master-data address.
-              and(eq(events.venueOverride, true), ilike(events.venue, pattern)),
-              and(
-                eq(events.venueOverride, false),
-                inArray(
-                  events.locationId,
-                  db
-                    .select({ id: locations.id })
-                    .from(locations)
-                    .where(
-                      and(
-                        eq(locations.tenantId, tenantId),
-                        or(
-                          ...[
-                            locations.name,
-                            locations.street,
-                            locations.city,
-                            locations.postalCode,
-                          ].map((field) => ilike(field, pattern)),
-                        ),
-                      ),
-                    ),
-                ),
-              ),
-              inArray(
-                events.id,
-                db
-                  .select({ id: eventContacts.eventId })
-                  .from(eventContacts)
-                  .innerJoin(
-                    contacts,
-                    and(
-                      eq(eventContacts.tenantId, contacts.tenantId),
-                      eq(eventContacts.contactId, contacts.id),
-                    ),
-                  )
-                  .where(
-                    and(
-                      eq(eventContacts.tenantId, tenantId),
-                      or(
-                        ...[
-                          contacts.name,
-                          contacts.contactPerson,
-                          contacts.email,
-                          contacts.phone,
-                          contacts.mobile,
-                        ].map((field) => ilike(field, pattern)),
-                      ),
-                    ),
-                  ),
-              ),
-            )
-          : undefined,
 
         id ? eq(events.id, id) : undefined,
         contactId
@@ -268,12 +277,55 @@ async function readRows(
       .sort(),
   }));
 }
+// BKP007.2: the result counters answer "how many would this option show?" over
+// the whole tenant, so they must also see the undated events and the inquiries
+// that the applied date bounds keep out of the rows. One aggregate statement
+// beside the list keeps that at a constant cost — never one query per event and
+// never the unrestricted list itself.
+async function readFilterCounts(
+  db: Reads,
+  tenantId: string,
+  filters: EventFilters = {},
+) {
+  validateFilters(filters);
+  const [counted] = await db
+    .select({
+      undated:
+        sql<number>`count(*) filter (where ${events.eventDate} is null)`.mapWith(
+          Number,
+        ),
+      inquiries:
+        sql<number>`count(*) filter (where ${events.status} = 'inquiry')`.mapWith(
+          Number,
+        ),
+    })
+    .from(events)
+    .where(and(...narrowing(db, tenantId, filters)));
+  return {
+    undated: counted?.undated ?? 0,
+    inquiries: counted?.inquiries ?? 0,
+  };
+}
 export function eventRepository(pool: Connection, tenantId: string) {
   const db = database(pool);
   return {
     async list(contactId?: string, filters: EventFilters = {}) {
       return db.transaction(
         (tx) => readRows(tx, tenantId, contactId, undefined, filters),
+        {
+          isolationLevel: 'repeatable read',
+          accessMode: 'read only',
+        },
+      );
+    },
+    // The list and its counters come from one snapshot, so a booking between the
+    // two statements can never answer a filter with a mismatched count.
+    async listWithCounts(contactId?: string, filters: EventFilters = {}) {
+      return db.transaction(
+        async (tx) => ({
+          events: await readRows(tx, tenantId, contactId, undefined, filters),
+          filterCounts: await readFilterCounts(tx, tenantId, filters),
+        }),
         {
           isolationLevel: 'repeatable read',
           accessMode: 'read only',
@@ -941,10 +993,21 @@ export function registerEventRoutes(
           200: {
             type: 'object',
             additionalProperties: false,
-            required: ['timeZone', 'events'],
+            required: ['timeZone', 'events', 'filterCounts'],
             properties: {
               timeZone: { type: 'string' },
               events: { type: 'array', items: row },
+              // BKP007.2: additive counters for the two filter options that the
+              // rows alone cannot answer once a date window is applied.
+              filterCounts: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['undated', 'inquiries'],
+                properties: {
+                  undated: { type: 'integer', minimum: 0 },
+                  inquiries: { type: 'integer', minimum: 0 },
+                },
+              },
             },
           },
         },
@@ -952,10 +1015,11 @@ export function registerEventRoutes(
     },
     async (request, reply) => {
       try {
-        return {
-          timeZone: await repo.timeZone(),
-          events: await repo.list(undefined, request.query as EventFilters),
-        };
+        const listing = await repo.listWithCounts(
+          undefined,
+          request.query as EventFilters,
+        );
+        return { timeZone: await repo.timeZone(), ...listing };
       } catch (error) {
         return failure(error, reply);
       }

@@ -14,6 +14,19 @@ C019 sortiert Events chronologisch nach Eventdatum, Beginn und Name, bei gleiche
 
 Ungültige Daten, umgekehrte Zeiträume und ungültige Parameter werden abgewiesen. Alle Filter und Suchverknüpfungen bleiben mandantengebunden. Ausgabeformat `{timeZone, events}` und Sitzungs-/CSRF-Regeln bleiben bestehen. Lesende Suchabfragen benötigen die Admin-Sitzung. SQL-Wildcards wie `%` und `_` werden als normale Zeichen gesucht.
 
+### Zählbasis der Filterzähler (BKP007)
+
+Die Antwort enthält zusätzlich `filterCounts: {undated, inquiries}`. Beide Werte zählen mandantensicher in derselben Lesetransaktion wie die Liste und sind additiv: bestehende Felder, Bedingungen und Statuscodes bleiben unverändert, ältere Clients ignorieren das Zusatzfeld.
+
+| Zähler | Zählt | Zählt nicht hinein |
+| --- | --- | --- |
+| `undated` | alle Events mit `event_date IS NULL` | Datumsgrenzen `from`/`to`, die Sortierung „Ohne Datum“, der Statusfilter als solcher |
+| `inquiries` | alle Events mit `status = 'inquiry'` | Datumsgrenzen `from`/`to`, die Sortierung „Ohne Datum“ |
+
+Beide Zähler werden durch `q`, `status` und `eventTypeId` eingeschränkt, weil diese Filter den Bestand meint, den die jeweilige Option zeigen würde. `from`/`to` und die Sortierwahl zählen bewusst nicht hinein: sonst könnte der Zähler die undatierten Events und die Anfragen außerhalb des gewählten Zeitraums nicht nennen (H041, Beobachtung B01/A03). Der Statusfilter wirkt auch auf den Anfragenzähler; ob die Referenz das ebenso handhabt, ist nicht belegt und bleibt als offene Referenzfrage notiert.
+
+Die Zählung ist eine einzelne SQL-Aggregation (`count(*) filter (…)`) im Repository-Pfad der Liste — keine Abfrage je Event, keine ungefilterte Gesamtliste in der Antwort, kein N+1. Der Integrationstest hält das fest, indem er die Statements eines Listenabrufs mitschreibt: genau zwei Lesezugriffe auf `events` (Liste und Aggregat).
+
 ## Navigation und Zustände
 
 Filter werden beim Anwenden in die Browser-URL geschrieben. Neuladen, Zurück/Vorwärts und Kopieren der URL stellen sie wieder her. Eine persönliche Standardansicht ist noch nicht implementiert. Die globale Suche setzt die übrigen Eventfilter zurück und aktualisiert auch die Kontakte. Ein Sprung von einem Kontakt zu einem zugeordneten Event hebt Filter auf, damit das Ziel sichtbar wird.

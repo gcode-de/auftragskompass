@@ -46,7 +46,16 @@ const row = {
 function mocker(events = [row]) {
   return vi.fn(async (url: string) =>
     String(url).startsWith('/api/v1/events')
-      ? Response.json({ timeZone: 'Europe/Berlin', events })
+      ? Response.json({
+          timeZone: 'Europe/Berlin',
+          events,
+          // BKP007.2: the counters are the server aggregate of the answer.
+          filterCounts: {
+            undated: events.filter((entry) => !entry.eventDate).length,
+            inquiries: events.filter((entry) => entry.status === 'inquiry')
+              .length,
+          },
+        })
       : url === '/api/v1/statuses'
         ? Response.json([
             { code: 'inquiry', label: 'Anfrage' },
