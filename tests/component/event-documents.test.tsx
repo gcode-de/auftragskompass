@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { EventDocuments } from '../../apps/admin/src/EventDocuments.js';
 
@@ -177,7 +178,7 @@ test('a failed load is reported', async () => {
   );
   render(<EventDocuments {...props} />);
   expect(
-    await screen.findByText('Angebote konnten nicht geladen werden.'),
+    await screen.findByText('Dateien konnten nicht geladen werden.'),
   ).toBeTruthy();
 });
 
@@ -239,16 +240,60 @@ test('a confirmed draft is not recreated when the reload fails and the load can 
   fireEvent.submit(form);
   expect(await screen.findByText('Entwurf angelegt.')).toBeTruthy();
   expect(
-    await screen.findByText(/Angebotsliste konnte nicht neu geladen werden/),
+    await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
   ).toBeTruthy();
+  // BKP013.1: the confirmed success and the rows loaded before the failed
+  // reload stay readable instead of leaving an unexplained empty list.
+  expect(screen.getByText(/Angelegt am/)).toBeTruthy();
   expect(posts).toBe(1);
   failDocuments = false;
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Angebote erneut laden' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
   await waitFor(() =>
     expect(
-      screen.queryByText(/Angebotsliste konnte nicht neu geladen werden/),
+      screen.queryByText(/Dateiliste konnte nicht neu geladen werden/),
     ).toBeNull(),
   );
+});
+
+test('documents are grouped and labelled by their actual kind', async () => {
+  setup({
+    documents: [
+      draft,
+      { ...finalized, kind: 'invoice', number: 'RE-2030-0002' },
+      {
+        ...finalized,
+        id: 'doc-3',
+        kind: 'order_confirmation',
+        number: 'AB-2030-0003',
+      },
+      {
+        ...finalized,
+        id: 'doc-4',
+        kind: 'unmapped_kind',
+        number: 'XX-2030-0004',
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  expect(await screen.findByText('AB-2030-0003')).toBeTruthy();
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  const invoices = screen.getByRole('region', { name: 'Rechnungen' });
+  const orders = screen.getByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const other = screen.getByRole('region', { name: 'Weitere Dateien' });
+  expect(
+    within(offers).getByText('Entwurf', { selector: '.document-row span' }),
+  ).toBeTruthy();
+  expect(within(invoices).getByText('RE-2030-0002')).toBeTruthy();
+  expect(within(orders).getByText('AB-2030-0003')).toBeTruthy();
+  expect(within(other).getByText('XX-2030-0004')).toBeTruthy();
+  // Every row stays in exactly one card; the offer form belongs to the offers.
+  expect(within(invoices).queryAllByText('Entwurf')).toEqual([]);
+  expect(
+    within(offers).getByRole('button', { name: 'Entwurf anlegen' }),
+  ).toBeTruthy();
+  expect(
+    within(offers).queryByRole('heading', { name: 'Rechnungen' }),
+  ).toBeNull();
 });

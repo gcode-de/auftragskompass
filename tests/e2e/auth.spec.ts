@@ -1708,6 +1708,69 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await expect(
         events.getByRole('region', { name: 'Event-Details' }),
       ).toBeVisible();
+      // BKP013.1: the head names date, title and status in every work area,
+      // the documents live in Dateien instead of the details overview, and a
+      // status draft survives the area switch without being saved.
+      const openRecord = events.getByRole('region', {
+        name: 'Event-Details',
+        exact: true,
+      });
+      await expect(openRecord.locator('.event-record-date')).toHaveText(
+        '16. Oktober 2026',
+      );
+      await expect(openRecord.locator('.event-record-head h2')).toHaveText(
+        'Event: Synthetic browser event',
+      );
+      await expect(
+        openRecord.locator('.event-record-facts .event-status'),
+      ).toHaveText('Anfrage');
+      // Wide frames keep contact and place beside the main information.
+      const [mainBox, asideBox] = await Promise.all([
+        openRecord.locator('.event-detail-main').boundingBox(),
+        openRecord.locator('.event-detail-aside').boundingBox(),
+      ]);
+      if (width === 1280)
+        expect(asideBox!.x).toBeGreaterThanOrEqual(mainBox!.x + mainBox!.width);
+      else expect(asideBox!.y).toBeGreaterThan(mainBox!.y);
+      await expect(
+        openRecord.getByRole('region', { name: 'Angebote' }),
+      ).toHaveCount(0);
+      await openRecord
+        .getByRole('button', { name: 'Dateien', exact: true })
+        .click();
+      await expect(
+        openRecord.getByRole('region', { name: 'Dateien' }),
+      ).toBeVisible();
+      await expect(
+        openRecord.getByRole('region', { name: 'Angebote' }),
+      ).toBeVisible();
+      await expect(openRecord.locator('.event-record-head h2')).toHaveText(
+        'Event: Synthetic browser event',
+      );
+      await openRecord
+        .getByRole('button', { name: 'Details', exact: true })
+        .click();
+      await openRecord
+        .getByRole('combobox', { name: 'Status des Events', exact: true })
+        .selectOption('option');
+      for (const area of ['Dateien', 'Notizen', 'Logbuch', 'Details'])
+        await openRecord
+          .getByRole('button', { name: area, exact: true })
+          .click();
+      await expect(
+        openRecord.getByRole('combobox', { name: 'Status des Events' }),
+      ).toHaveValue('option');
+      // The chosen area keeps the keyboard focus for the next Tab press.
+      await openRecord
+        .getByRole('button', { name: 'Dateien', exact: true })
+        .click();
+      await expect(
+        openRecord.getByRole('region', { name: 'Dateien' }),
+      ).toBeFocused();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+      await audit(`event-record-${width}-${theme}`);
       await page.goBack();
       await expect(
         events.getByRole('region', { name: 'Event-Details' }),
@@ -1737,6 +1800,53 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(width + 1);
     }
+    // BKP013.1: the narrow frame keeps the record usable in both themes — the
+    // head stays visible, all five areas fit one row, contact and place wait
+    // behind one deliberate disclosure, and nothing overflows sideways. The
+    // loop ends in the light theme again, which the following blocks expect.
+    for (const theme of ['dark', 'light'] as const) {
+      await page.setViewportSize({ width: 320, height: 844 });
+      const toggle = page.getByRole('button', { name: /modus aktivieren/ });
+      if (
+        (await toggle.getAttribute('aria-pressed')) !== String(theme === 'dark')
+      )
+        await toggle.click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await events
+        .getByRole('link', { name: /Synthetic browser event/ })
+        .click();
+      const narrowRecord = events.getByRole('region', {
+        name: 'Event-Details',
+        exact: true,
+      });
+      await expect(narrowRecord.locator('.event-record-head h2')).toBeVisible();
+      await expect(narrowRecord.locator('.event-record-date')).toBeVisible();
+      const areaBar = narrowRecord.getByRole('navigation', {
+        name: 'Bereiche des Events',
+      });
+      await expect(areaBar.getByRole('button')).toHaveCount(5);
+      expect((await areaBar.boundingBox())!.height).toBeLessThan(100);
+      const aside = narrowRecord.locator('details.event-aside');
+      await expect(aside).not.toHaveAttribute('open', '');
+      await aside.locator('summary').click();
+      await expect(
+        aside.getByRole('heading', { name: 'Ort / Adresse' }),
+      ).toBeVisible();
+      await narrowRecord
+        .getByRole('button', { name: 'Dateien', exact: true })
+        .click();
+      await expect(
+        narrowRecord.getByRole('region', { name: 'Angebote' }),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(321);
+      await audit(`event-record-320-${theme}`);
+      await page.goBack();
+      await expect(
+        events.getByRole('region', { name: 'Event-Details' }),
+      ).toHaveCount(0);
+    }
     await page.setViewportSize({ width: 1280, height: 720 });
     await events
       .getByRole('link', {
@@ -1754,9 +1864,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       name: 'Event-Details',
       exact: true,
     });
-    await record
-      .getByRole('button', { name: 'Übersicht', exact: true })
-      .click();
+    await record.getByRole('button', { name: 'Details', exact: true }).click();
     await record
       .getByRole('combobox', { name: 'Status des Events', exact: true })
       .selectOption('option');
@@ -2620,6 +2728,24 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         .getByRole('button', { name: 'Ressourcen', exact: true })
         .click();
       await expect(dispositionStart).toHaveValue('2030-10-27T16:30');
+      // BKP013.1: the documents sit in Dateien, the head stays visible there,
+      // and the narrow frame keeps contact and place behind one disclosure.
+      await expect(
+        currentRecord.locator('details.event-aside'),
+      ).not.toHaveAttribute('open', '');
+      await currentRecord
+        .getByRole('button', { name: 'Dateien', exact: true })
+        .click();
+      await expect(
+        currentRecord.getByRole('region', { name: 'Angebote' }),
+      ).toBeVisible();
+      await expect(
+        currentRecord.locator('.event-record-head h2'),
+      ).toBeVisible();
+      await currentRecord
+        .getByRole('button', { name: 'Ressourcen', exact: true })
+        .click();
+      await expect(dispositionStart).toHaveValue('2030-10-27T16:30');
       await currentRecord
         .getByRole('heading', {
           name: 'Event: Fictional Future Event',
@@ -2642,7 +2768,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         animations: 'disabled',
       });
       await currentRecord
-        .getByRole('button', { name: 'Übersicht', exact: true })
+        .getByRole('button', { name: 'Details', exact: true })
         .click();
       await audit('admin-mobile-record-overview');
       await page.screenshot({
@@ -3349,7 +3475,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       }),
     ).toBeVisible();
     await websiteRecord
-      .getByRole('button', { name: 'Übersicht', exact: true })
+      .getByRole('button', { name: 'Details', exact: true })
       .click();
     const original = websiteRecord.locator('details.website-inquiry');
     await expect(original.locator('summary')).toHaveText('Website-Anfrage');

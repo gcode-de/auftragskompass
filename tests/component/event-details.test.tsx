@@ -123,7 +123,7 @@ test('event details collect contacts, venue, notes and activities and save statu
   expect(screen.getByText('Fictional venue')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Logbuch' }));
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Übersicht' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },
   });
@@ -815,7 +815,14 @@ test('the details show only the effective place and keep it on a status save', a
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
   expect(screen.getByRole('heading', { name: 'Ort / Adresse' })).toBeTruthy();
-  expect(screen.getByText(/Fictional Terrace/)).toBeTruthy();
+  // BKP013.1: the effective place is named in the Ort block and in the record
+  // head; the stored location name behind the override still never appears.
+  expect(
+    screen.getByText(/Fictional Terrace/, { selector: '.event-venue' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/Fictional Terrace/, { selector: '.event-record-place' }),
+  ).toBeTruthy();
   expect(screen.queryByText('Fictional venue')).toBeNull();
   fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },

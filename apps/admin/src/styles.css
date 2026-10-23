@@ -1307,35 +1307,36 @@ summary {
 }
 /* BKP014.1: one calm card per event. The status stripe and the written status
    name sit on the same card; the date column stays the left anchor. */
-.event-card {
+.event-card,
+.event-record-head {
   --event-status-tone: var(--muted);
 }
 .event-list > li.event-card {
   padding: 1rem 0 1rem 0.85rem;
   border-inline-start: 3px solid var(--event-status-tone);
 }
-.event-card[data-status='inquiry'] {
+:is(.event-card, .event-record-head)[data-status='inquiry'] {
   --event-status-tone: var(--status-inquiry);
 }
-.event-card[data-status='option'] {
+:is(.event-card, .event-record-head)[data-status='option'] {
   --event-status-tone: var(--status-option);
 }
-.event-card[data-status='booked'] {
+:is(.event-card, .event-record-head)[data-status='booked'] {
   --event-status-tone: var(--status-booked);
 }
-.event-card[data-status='hold'] {
+:is(.event-card, .event-record-head)[data-status='hold'] {
   --event-status-tone: var(--status-hold);
 }
-.event-card[data-status='cancelled'] {
+:is(.event-card, .event-record-head)[data-status='cancelled'] {
   --event-status-tone: var(--status-cancelled);
 }
-.event-card[data-status='blocked'] {
+:is(.event-card, .event-record-head)[data-status='blocked'] {
   --event-status-tone: var(--status-blocked);
 }
-.event-card[data-status='unavailable'] {
+:is(.event-card, .event-record-head)[data-status='unavailable'] {
   --event-status-tone: var(--status-unavailable);
 }
-.event-card[data-status='conflict'] {
+:is(.event-card, .event-record-head)[data-status='conflict'] {
   --event-status-tone: var(--status-conflict);
 }
 .event-row {
@@ -1585,14 +1586,101 @@ summary {
   scroll-margin-top: 5rem;
 }
 
-.event-record > h2 {
+/* BKP013.1: the record head is the first block of the event file and names the
+   stored date, title and status in every work area. It never moves into a
+   single area, so the file always says which event is open. */
+.event-record-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-block: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.event-record-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.event-record-date {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+.event-record-time {
+  font-size: 0.9rem;
+}
+.event-record-head h2 {
   scroll-margin-top: 5rem;
   font-size: 1.35rem;
-  margin-block: 1em;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.event-record-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.9rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.event-record-type {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.event-record-place {
+  overflow-wrap: anywhere;
 }
 .event-record h3 {
   font-size: 1rem;
   margin-block: 1.33em;
+}
+.event-record h4 {
+  font-size: 0.9rem;
+  font-weight: 650;
+  margin-block: 1.25em 0.35em;
+}
+/* The work areas stay mounted behind `hidden`, so an area switch never throws
+   an unsaved draft away; the chosen area receives the focus programmatically. */
+.event-record-panel:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.event-panel-hint {
+  max-width: 70ch;
+  margin-block: 0.25rem 0;
+  color: var(--muted);
+}
+.event-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem 2rem;
+}
+@media (min-width: 64rem) {
+  .event-detail-layout {
+    grid-template-columns: minmax(0, 1.6fr) minmax(17rem, 0.9fr);
+    align-items: start;
+  }
+  .event-detail-aside {
+    border-inline-start: 1px solid var(--border);
+    padding-inline-start: 1.5rem;
+  }
+}
+.event-detail-main > dl {
+  margin-block: 0.5rem 1.25rem;
+}
+.event-aside > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .event-record dl,
 .website-inbox dl {
@@ -1613,11 +1701,30 @@ summary {
 .event-record > .secondary-action {
   margin: 0 0.5rem 0.75rem 0;
 }
+/* BKP013.1: every stored kind gets its own card instead of one mixed list.
+   The offer card keeps the existing creation surface. */
 .event-documents {
-  margin-top: 2rem;
+  margin-top: 0.5rem;
 }
 .event-documents > p {
   max-width: 70ch;
+}
+.document-cards {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+.document-card {
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 0.25rem 1rem 1rem;
+}
+.document-card > h4 {
+  margin-block: 1rem 0.5rem;
+}
+.document-card-hint {
+  max-width: 70ch;
+  color: var(--muted);
 }
 .document-list {
   list-style: none;
@@ -1705,7 +1812,9 @@ summary {
     margin: 0;
     padding: 0.5rem 0.5rem max(0.5rem, env(safe-area-inset-bottom));
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* BKP013.1: five work areas stay on one row so no area is hidden behind a
+       sideways scroll; the labels may hyphenate instead of overflowing. */
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     background: var(--surface);
     border-top: 1px solid var(--border);
   }
@@ -1713,8 +1822,10 @@ summary {
     /* H036: the compact section navigation stays on the 44px floor; its own
        padding already keeps the glyphs inside the target. */
     height: 44px;
-    font-size: 0.8rem;
-    padding: 0.65rem 0.15rem;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    padding: 0.5rem 0.1rem;
+    overflow-wrap: anywhere;
   }
   .app-shell:has(.event-record) {
     padding-bottom: calc(6rem + env(safe-area-inset-bottom));

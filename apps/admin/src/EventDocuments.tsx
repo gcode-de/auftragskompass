@@ -25,6 +25,26 @@ const money = new Intl.NumberFormat('de-DE', {
   style: 'currency',
   currency: 'EUR',
 });
+// BKP013.1: the event file owns one card per document kind that actually
+// exists. The offer card is always shown because it also carries the existing
+// creation surface; any other kind appears only with real stored rows, so no
+// empty contract or questionnaire card is invented.
+const kindOrder = [
+  'offer',
+  'order_confirmation',
+  'deposit_invoice',
+  'invoice',
+  'correction',
+] as const;
+const kindLabels: Record<string, string> = {
+  offer: 'Angebote',
+  order_confirmation: 'Auftragsbestätigungen',
+  deposit_invoice: 'Anzahlungsrechnungen',
+  invoice: 'Rechnungen',
+  correction: 'Rechnungskorrekturen',
+};
+const otherKindLabel = 'Weitere Dateien';
+const knownKinds = new Set<string>(kindOrder);
 
 // One off-shape row must never take the whole event file down with it.
 async function validDocuments(reply: Response): Promise<DocumentRow[]> {
@@ -76,7 +96,7 @@ export function EventDocuments({
   }
   useEffect(() => {
     void load()
-      .catch(() => setMessage('Angebote konnten nicht geladen werden.'))
+      .catch(() => setMessage('Dateien konnten nicht geladen werden.'))
       .finally(() => setLoading(false));
   }, [eventId]);
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -172,21 +192,76 @@ export function EventDocuments({
       timeZone,
     }).format(new Date(value));
   }
+  function rows(entries: DocumentRow[]) {
+    return (
+      <ul className="document-list">
+        {entries.map((entry) => (
+          <li key={entry.id}>
+            <div className="document-row">
+              <strong>{entry.number ?? 'Entwurf'}</strong>
+              <span>{stateLabels[entry.state]}</span>
+            </div>
+            <p className="document-meta">
+              {entry.state === 'final' && entry.finalizedAt
+                ? 'Finalisiert am '
+                : 'Angelegt am '}
+              <time
+                dateTime={(entry.finalizedAt ?? entry.issuedAt).split('T')[0]}
+              >
+                {date(entry.finalizedAt ?? entry.issuedAt)}
+              </time>
+              {' · '}
+              {money.format(entry.grossMinor / 100)}
+            </p>
+            <div className="document-actions">
+              {entry.state === 'draft' && (
+                <button
+                  type="button"
+                  disabled={busy !== ''}
+                  aria-label={
+                    'Angebot ' + (entry.number ?? 'Entwurf') + ' finalisieren'
+                  }
+                  onClick={() => void finalize(entry.id)}
+                >
+                  Finalisieren
+                </button>
+              )}
+              {entry.state === 'final' && (
+                <a
+                  className="document-download"
+                  href={'/api/v1/documents/' + entry.id + '/pdf'}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={
+                    'Angebot ' + (entry.number ?? '') + ' als PDF öffnen'
+                  }
+                >
+                  PDF öffnen
+                </a>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  const offers = documents.filter((entry) => entry.kind === 'offer'),
+    otherGroups = kindOrder
+      .filter((kind) => kind !== 'offer')
+      .map((kind) => ({
+        kind,
+        label: kindLabels[kind]!,
+        rows: documents.filter((entry) => entry.kind === kind),
+      }))
+      .filter((group) => group.rows.length),
+    unknownRows = documents.filter((entry) => !knownKinds.has(entry.kind));
   return (
-    <section
-      className="event-documents"
-      aria-labelledby="event-documents-heading"
-    >
-      <h3 id="event-documents-heading">Angebote</h3>
-      <p>
-        Ein Angebot entsteht als Entwurf aus einer Vorlage. Beim Finalisieren
-        erhält es seine Nummer und eine unveränderliche PDF.
-      </p>
+    <div className="event-documents">
       <p role="status">{message}</p>
       {reloadWarning && (
         <div className="reload-warning">
           <p role="alert">
-            Gespeichert, aber die Angebotsliste konnte nicht neu geladen werden.
+            Gespeichert, aber die Dateiliste konnte nicht neu geladen werden.
             Nichts erneut anlegen.
           </p>
           <button
@@ -195,103 +270,82 @@ export function EventDocuments({
             disabled={busy !== ''}
             onClick={retryLoad}
           >
-            Angebote erneut laden
+            Dateien erneut laden
           </button>
         </div>
       )}
       {loading ? (
-        <p>Angebote werden geladen …</p>
+        <p>Dateien werden geladen …</p>
       ) : (
-        <>
-          {documents.length ? (
-            <ul className="document-list">
-              {documents.map((entry) => (
-                <li key={entry.id}>
-                  <div className="document-row">
-                    <strong>{entry.number ?? 'Entwurf'}</strong>
-                    <span>{stateLabels[entry.state]}</span>
-                  </div>
-                  <p className="document-meta">
-                    {entry.state === 'final' && entry.finalizedAt
-                      ? 'Finalisiert am '
-                      : 'Angelegt am '}
-                    <time
-                      dateTime={
-                        (entry.finalizedAt ?? entry.issuedAt).split('T')[0]
-                      }
-                    >
-                      {date(entry.finalizedAt ?? entry.issuedAt)}
-                    </time>
-                    {' · '}
-                    {money.format(entry.grossMinor / 100)}
-                  </p>
-                  <div className="document-actions">
-                    {entry.state === 'draft' && (
-                      <button
-                        type="button"
-                        disabled={busy !== ''}
-                        aria-label={
-                          'Angebot ' +
-                          (entry.number ?? 'Entwurf') +
-                          ' finalisieren'
-                        }
-                        onClick={() => void finalize(entry.id)}
-                      >
-                        Finalisieren
-                      </button>
-                    )}
-                    {entry.state === 'final' && (
-                      <a
-                        className="document-download"
-                        href={'/api/v1/documents/' + entry.id + '/pdf'}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={
-                          'Angebot ' + (entry.number ?? '') + ' als PDF öffnen'
-                        }
-                      >
-                        PDF öffnen
-                      </a>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>Noch kein Angebot zu diesem Event.</p>
-          )}
-          {!templates.length && (
-            <p className="document-hint">
-              Noch keine aktive Angebotsvorlage. Zuerst unter Einstellungen →
-              Dokumentvorlagen eine Vorlage anlegen.
+        <div className="document-cards">
+          <section
+            className="document-card"
+            aria-labelledby="event-documents-heading"
+          >
+            <h4 id="event-documents-heading">Angebote</h4>
+            <p className="document-card-hint">
+              Ein Angebot entsteht als Entwurf aus einer Vorlage. Beim
+              Finalisieren erhält es seine Nummer und eine unveränderliche PDF.
             </p>
+            {offers.length ? (
+              rows(offers)
+            ) : (
+              <p>Noch kein Angebot zu diesem Event.</p>
+            )}
+            {!templates.length && (
+              <p className="document-hint">
+                Noch keine aktive Angebotsvorlage. Zuerst unter Einstellungen →
+                Dokumentvorlagen eine Vorlage anlegen.
+              </p>
+            )}
+            {!contactId && (
+              <p className="document-hint">
+                Für ein Angebot zuerst einen Hauptkontakt zuordnen.
+              </p>
+            )}
+            <form onSubmit={create}>
+              <fieldset
+                disabled={busy !== '' || !templates.length || !contactId}
+              >
+                <legend>Neues Angebot</legend>
+                <label>
+                  Vorlage
+                  <select
+                    value={templateId}
+                    onChange={(event) => setTemplateId(event.target.value)}
+                  >
+                    {templates.map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {entry.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="primary-action">Entwurf anlegen</button>
+              </fieldset>
+            </form>
+          </section>
+          {otherGroups.map((group) => (
+            <section
+              key={group.kind}
+              className="document-card"
+              aria-labelledby={'event-documents-kind-' + group.kind}
+            >
+              <h4 id={'event-documents-kind-' + group.kind}>{group.label}</h4>
+              {rows(group.rows)}
+            </section>
+          ))}
+          {unknownRows.length > 0 && (
+            <section
+              className="document-card"
+              aria-labelledby="event-documents-kind-other"
+            >
+              <h4 id="event-documents-kind-other">{otherKindLabel}</h4>
+              {rows(unknownRows)}
+            </section>
           )}
-          {!contactId && (
-            <p className="document-hint">
-              Für ein Angebot zuerst einen Hauptkontakt zuordnen.
-            </p>
-          )}
-          <form onSubmit={create}>
-            <fieldset disabled={busy !== '' || !templates.length || !contactId}>
-              <legend>Neues Angebot</legend>
-              <label>
-                Vorlage
-                <select
-                  value={templateId}
-                  onChange={(event) => setTemplateId(event.target.value)}
-                >
-                  {templates.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="primary-action">Entwurf anlegen</button>
-            </fieldset>
-          </form>
-        </>
+        </div>
       )}
-    </section>
+    </div>
   );
 }
