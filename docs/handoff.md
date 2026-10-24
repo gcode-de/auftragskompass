@@ -2,6 +2,30 @@
 
 Stand: **21.10.2026**, nach C051.3, H026, H029, H030, H031, H038, H039 (released) sowie H033 (umgesetzt, lokale Abnahme grün; Push/CI/Testbetrieb nach dem Commit). Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Produktpreis-Korrektur: BKP015.1 (24.10.2026)
+
+Die Produktwahl in Dokumentvorlagen kopierte bisher Netto-Katalogpreise
+unverändert in Brutto-Positionen. Reproduziert: 100,00 Euro netto bei 19 Prozent
+wurden als 100,00 statt 119,00 Euro brutto gespeichert. `grossProductPrice()`
+rechnet bei ausdrücklicher Übernahme mit BigInt und Halbauf-Rundung in sicheren
+Centbeträgen; Bruttopreise bleiben unverändert. Fehler erhalten sämtliche
+Positionsfelder und zeigen eine korrigierbare Meldung. Beim Öffnen einer anderen
+Vorlage verschwindet die alte Meldung. Keine automatische Änderung bereits
+gespeicherter Vorlagen, Entwürfe, Produkte oder finaler Dokumente: alte aus
+Nettoprodukten übernommene Positionen bei Bedarf ausdrücklich prüfen/korrigieren.
+Die vorhandene Vorlage bleibt ein Snapshot; die Produktwahl im Angebotseditor
+ist weiterhin ein eigener nächster Slice. Keine Migration oder neue Abhängigkeit.
+
+Komponentenregressionen waren für falschen Nettobetrag und alte Fehlermeldung
+zuerst rot. Fokussiert grün: fünf Unit-, zwölf Vorlagen-Komponenten- und zwei
+Chromiumfälle; sechs Breite-/Theme-Zustände 320/390/1280 mit axe und Screenshots.
+Zusätzlich grün: gesamte Coverage-Suite 995 Tests, geänderte Zeilen/Branches
+vollständig abgedeckt, Format/Lint/Typen/Workspace/Docs und Build.
+Die Browserprüfung nutzt synthetische API-Antworten, keinen Persistenznachweis
+gegen eine echte Datenbank. Unabhängiger Code-Review ohne Befund; Impeccable-
+Detector der geänderten Oberfläche `[]`. Gestaltung bleibt unverändert; langer
+Vorlageneditor ist weiterhin ein bekannter Bestand, kein überarbeiteter Flow.
+
 ## Wiederaufnahme und CI-Korrektur: 24.10.2026
 
 Das tatsächliche Fünf-Stunden-Fenster ist zurückgesetzt, reguläre Nutzung

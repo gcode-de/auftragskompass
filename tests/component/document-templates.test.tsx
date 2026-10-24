@@ -32,10 +32,32 @@ const product = {
   id: 'fictional-product',
   name: 'Fictional product',
   unit: 'Stück',
-  priceMinor: 5000,
+  priceMinor: 10000,
+  priceBasis: 'net',
   taxBasisPoints: 1900,
   state: 'active',
 };
+const grossProduct = {
+    ...product,
+    id: 'fictional-gross-product',
+    name: 'Fictional gross product',
+    priceMinor: 12345,
+    priceBasis: 'gross',
+  },
+  archivedProduct = {
+    ...product,
+    id: 'fictional-archived-product',
+    name: 'Fictional archived product',
+    state: 'archived',
+  },
+  overflowProduct = {
+    ...product,
+    id: 'fictional-overflow-product',
+    name: 'Fictional oversized net product',
+    priceMinor: Number.MAX_SAFE_INTEGER,
+    taxBasisPoints: 1,
+  };
+const products = [product, grossProduct, archivedProduct, overflowProduct];
 function setup(
   reply: (body: Record<string, unknown>) => Response = () =>
     Response.json(template),
@@ -46,7 +68,7 @@ function setup(
     body: Record<string, unknown>;
   }[] = [];
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
-    if (url === '/api/v1/products') return Response.json([product]);
+    if (url === '/api/v1/products') return Response.json(products);
     if (!options) return Response.json([template]);
     const body = JSON.parse(String(options.body)) as Record<string, unknown>;
     writes.push({ url, method: String(options.method), body });
@@ -69,9 +91,10 @@ test('templates load with their positions, save exact minor units and archive wi
     (screen.getByLabelText('Beschreibung') as HTMLInputElement).value,
   ).toBe('Fictional box');
   expect(
-    (screen.getByLabelText('Einzelpreis in Euro') as HTMLInputElement).value,
+    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+      .value,
   ).toBe('199.00');
-  fireEvent.change(screen.getByLabelText('Einzelpreis in Euro'), {
+  fireEvent.change(screen.getByLabelText('Einzelpreis (Brutto) in Euro'), {
     target: { value: '199.00' },
   });
   fireEvent.change(screen.getByLabelText('Rabatt in Prozent'), {
@@ -120,7 +143,7 @@ test('an unknown placeholder is reported instead of being saved silently', async
   );
   expect(await screen.findByText(/Unbekannter Platzhalter/)).toBeTruthy();
 });
-test('choosing a product fills its unit, price and tax into the position', async () => {
+test('choosing a net product fills its gross price, unit and tax into the position', async () => {
   setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
@@ -133,8 +156,128 @@ test('choosing a product fills its unit, price and tax into the position', async
   expect(
     (descriptions[descriptions.length - 1] as HTMLInputElement).value,
   ).toBe('Fictional product');
-  const prices = screen.getAllByLabelText('Einzelpreis in Euro');
-  expect((prices[prices.length - 1] as HTMLInputElement).value).toBe('50.00');
+  const prices = screen.getAllByLabelText('Einzelpreis (Brutto) in Euro');
+  expect((prices[prices.length - 1] as HTMLInputElement).value).toBe('119.00');
+});
+
+test('gross product prices stay unchanged, archived choices stay hidden, and free selection preserves edits', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  const productSelect = screen.getByLabelText('Produkt');
+  expect(
+    screen.queryByRole('option', { name: 'Fictional archived product' }),
+  ).toBeNull();
+  fireEvent.change(productSelect, { target: { value: grossProduct.id } });
+  expect(
+    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('123.45');
+  fireEvent.change(screen.getByLabelText('Beschreibung'), {
+    target: { value: 'Fictional custom override' },
+  });
+  fireEvent.change(screen.getByLabelText('Einzelpreis (Brutto) in Euro'), {
+    target: { value: '135.79' },
+  });
+  fireEvent.change(productSelect, { target: { value: '' } });
+  expect(
+    (screen.getByLabelText('Beschreibung') as HTMLInputElement).value,
+  ).toBe('Fictional custom override');
+  expect(
+    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('135.79');
+});
+
+test('a net product conversion saves the gross minor-unit price', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.change(screen.getByLabelText('Produkt'), {
+    target: { value: product.id },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  await screen.findByText('Gespeichert.');
+  expect(
+    (writes[0]!.body.positions as Array<Record<string, unknown>>)[0],
+  ).toMatchObject({
+    productId: product.id,
+    unitPriceMinor: 11900,
+    taxBasisPoints: 1900,
+  });
+});
+
+test('overflowing net product conversion preserves the previous position and explains recovery', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.change(screen.getByLabelText('Beschreibung'), {
+    target: { value: 'Fictional custom position' },
+  });
+  fireEvent.change(screen.getByLabelText('Menge'), {
+    target: { value: '7' },
+  });
+  fireEvent.change(screen.getByLabelText('Einheit'), {
+    target: { value: 'Paket' },
+  });
+  fireEvent.change(screen.getByLabelText('Einzelpreis (Brutto) in Euro'), {
+    target: { value: '222.22' },
+  });
+  fireEvent.change(screen.getByLabelText('Steuersatz in Prozent'), {
+    target: { value: '8.00' },
+  });
+  fireEvent.change(screen.getByLabelText('Rabatt in Prozent'), {
+    target: { value: '5.00' },
+  });
+  fireEvent.change(screen.getByLabelText('Produkt'), {
+    target: { value: overflowProduct.id },
+  });
+  expect((screen.getByLabelText('Produkt') as HTMLSelectElement).value).toBe(
+    '',
+  );
+  expect(
+    (screen.getByLabelText('Beschreibung') as HTMLInputElement).value,
+  ).toBe('Fictional custom position');
+  expect(
+    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('222.22');
+  expect((screen.getByLabelText('Menge') as HTMLInputElement).value).toBe('7');
+  expect((screen.getByLabelText('Einheit') as HTMLInputElement).value).toBe(
+    'Paket',
+  );
+  expect(
+    (screen.getByLabelText('Steuersatz in Prozent') as HTMLInputElement).value,
+  ).toBe('8.00');
+  expect(
+    (screen.getByLabelText('Rabatt in Prozent') as HTMLInputElement).value,
+  ).toBe('5.00');
+  expect((await screen.findByRole('alert')).textContent).toMatch(
+    /sicheren Bruttobetrag/,
+  );
+});
+test('opening another template draft clears the previous product conversion error', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.change(screen.getByLabelText('Produkt'), {
+    target: { value: overflowProduct.id },
+  });
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Vorlage duplizieren: Fictional offer',
+    }),
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
 });
 test('edits every position field, removes a row and cancels the draft', async () => {
   setup();

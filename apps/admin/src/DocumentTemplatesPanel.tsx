@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
+import { grossProductPrice } from './product-price.js';
 
 type Position = {
   id?: string;
@@ -28,6 +29,7 @@ type Product = {
   name: string;
   unit: string;
   priceMinor: number;
+  priceBasis: string;
   taxBasisPoints: number;
   state: string;
 };
@@ -88,6 +90,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     [positions, setPositions] = useState<DraftPosition[]>([emptyPosition()]),
     [editing, setEditing] = useState(false),
     [message, setMessage] = useState(''),
+    [conversionError, setConversionError] = useState(false),
     [busy, setBusy] = useState(false);
   async function refresh() {
     const response = await fetch('/api/v1/document-templates');
@@ -106,6 +109,8 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       .catch(() => setProducts([]));
   }, []);
   function begin(template: Template | null, copy = false) {
+    setMessage('');
+    setConversionError(false);
     setDraft(
       template && copy
         ? { ...template, name: `${template.name.slice(0, 112)} (Kopie)` }
@@ -127,22 +132,38 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   }
   function applyProduct(index: number, productId: string) {
     const product = products.find((row) => row.id === productId);
-    updatePosition(
-      index,
-      product
-        ? {
-            productId,
-            description: product.name,
-            unit: product.unit,
-            price: formatHundredths(product.priceMinor),
-            tax: formatHundredths(product.taxBasisPoints),
-          }
-        : { productId: '' },
-    );
+    if (!product) {
+      updatePosition(index, { productId: '' });
+      setMessage('');
+      setConversionError(false);
+      return;
+    }
+    try {
+      const grossPrice = grossProductPrice(
+        product.priceMinor,
+        product.priceBasis,
+        product.taxBasisPoints,
+      );
+      updatePosition(index, {
+        productId,
+        description: product.name,
+        unit: product.unit,
+        price: formatHundredths(grossPrice),
+        tax: formatHundredths(product.taxBasisPoints),
+      });
+      setMessage('');
+      setConversionError(false);
+    } catch {
+      setMessage(
+        'Produktpreis konnte nicht in den sicheren Bruttobetrag umgerechnet werden. Die Position blieb unverändert. Bitte Produktpreis und Steuersatz prüfen oder Brutto-Einzelpreis manuell eintragen.',
+      );
+      setConversionError(true);
+    }
   }
   async function save(form: HTMLFormElement) {
     setBusy(true);
     setMessage('');
+    setConversionError(false);
     try {
       const data = new FormData(form);
       const input = {
@@ -335,7 +356,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                 />
               </label>
               <label>
-                Einzelpreis in Euro
+                Einzelpreis (Brutto) in Euro
                 <input
                   inputMode="decimal"
                   value={position.price}
@@ -403,7 +424,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           )}
         </fieldset>
       </form>
-      <p role="status">{message}</p>
+      <p role={conversionError ? 'alert' : 'status'}>{message}</p>
       <ul>
         {rows.map((row) => (
           <li key={row.id}>

@@ -109,6 +109,19 @@ Snapshot-Summen atomar in den Datensatz. Bei früheren extrem hohen Entwürfen
 können deshalb gespeicherte Altsummen bis zur Finalisierung von der neu
 berechneten Vorschau abweichen. Ein Netto-Eingabemodus gehört nicht dazu.
 
+### Produktpreise ausdrücklich übernehmen (BKP015.1)
+
+Bei der Produktauswahl für eine Dokumentvorlage bezeichnet der Positionspreis
+immer Brutto. Ein Nettopreis im Produktkatalog wird dafür anhand des
+Produktsteuersatzes exakt auf den Brutto-Einzelpreis umgerechnet (100,00 Euro
+netto mit 19 Prozent ergeben 119,00 Euro brutto); ein Brutto-Katalogpreis bleibt
+unverändert. Ein Überlauf oder ungültiger Katalogwert verhindert die Übernahme
+und erhält die bisherigen Positionseingaben. Der Produktdatensatz selbst wird
+nicht geschrieben. Bereits gespeicherte Vorlagenpositionen, Entwürfe und finale
+Dokumente werden nicht rückwirkend geändert. Bei früher falsch übernommenen
+Netto-Produkten ist eine ausdrückliche Neuübernahme/Prüfung der Vorlage nötig.
+Dies ist keine Netto-Eingabefunktion für Dokumentpositionen.
+
 ## Ablage
 
 PDFs liegen außerhalb der Datenbank unter `AK_DOCUMENT_STORAGE`
