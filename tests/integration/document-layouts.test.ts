@@ -140,7 +140,7 @@ test('a layout is stored per tenant, versioned and rendered deterministically', 
   });
   expect(html).toContain('Other Town');
   expect(html).toContain('Georgia, "Times New Roman", serif');
-  expect(html).toContain('class="page-numbers" hidden');
+  expect(html).not.toContain('@page');
   expect(html).toContain('199,00');
 });
 test('layouts stay inside their tenant', async () => {

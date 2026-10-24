@@ -179,6 +179,10 @@ describe('renderDocumentHtml', () => {
     expect(html).toContain('167,23');
     expect(html).toContain('31,77');
     expect(html).toContain('Umsatzsteuer 19 %');
+    expect(html).toContain('@bottom-right');
+    expect(html).toContain('counter(page)');
+    expect(html).toContain('counter(pages)');
+    expect(html).not.toContain('Seite 1');
   });
   test('embeds a logo as a data uri only when one is configured', () => {
     expect(renderDocumentHtml(base)).not.toContain('class="logo"');
@@ -220,7 +224,8 @@ describe('renderDocumentHtml', () => {
       },
     });
     expect(html).not.toContain('<th>Pos.</th>');
-    expect(html).toContain('class="page-numbers" hidden');
+    expect(html).not.toContain('@page');
+    expect(html).not.toContain('Seite 1');
   });
   test('lists one tax row per rate and shows the discount column value', () => {
     const html = renderDocumentHtml({

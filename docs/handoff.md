@@ -2,6 +2,23 @@
 
 Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## PDF-Seitenzählung BKP018.0b: 24.10.2026
+
+Neu erzeugte Dokumente nutzen bei aktivierter Option echte Chromium-Seitenzähler
+„Seite X von Y“ in einer nativen Marginbox; deaktiviert erscheint keine Nummer.
+Farbe/Schrift aus dem Layout, rechte Kante zur vorhandenen Tabelle ausgerichtet.
+Der feste Endabsatz „Seite 1“ entfällt. Bestehende finale Bytes und Hashes bleiben
+unverändert; keine neue Dependency oder Renderer-Signatur. Unit- und Browser-RED
+beobachtet, 62 fokussierte Unit-/Integrationstests, 257 Unit-/459 Komponenten
+gesamt, schnelle Gates/Build und echter Chromium-Smoke grün; Changed-Code-Zeile
+und beide Branches vollständig gedeckt. Elf gerenderte Seiten visuell geprüft
+und extrahiert: einseitig 1 von 1, mehrseitig 1–5 von 5, deaktiviert keine Nummer.
+CI legt die drei synthetischen PDF-Smoke-Artefakte ab; seitenweise Textextraktion
+ist lokale QA ohne Parserdependency. CT-Chromium 156 ist verifiziert. Nächster
+Slice: sichtbare Dokumentlayout-Konfiguration und sichere Vorschau ungespeicherter
+Werte; Uploadoberfläche separat. Auslieferung erst mit grüner CI+Images/Checkpoint
+belegen, letzter abgeschlossener Laufzeitnachweis bleibt vorerst 132ace1.
+
 ## Logo-Integrität BKP018.0: 24.10.2026
 
 Auf `codex/ux-event-simplification` implementiert: Upload prüft aktive

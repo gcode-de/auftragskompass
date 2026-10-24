@@ -202,6 +202,20 @@ Alle Routen verlangen eine angemeldete Betreiberberechtigung, die
 CSRF-Prüfung gilt wie bei den übrigen schreibenden Endpunkten. Jede Abfrage ist
 auf den Mandanten begrenzt; fremde IDs liefern `404`.
 
+## PDF-Seitenzählung (BKP018.0b)
+
+Wenn `showPageNumbers` aktiv ist, erzeugt der vorhandene HTML-Renderer eine
+native Chromium-`@page`-Marginbox rechts unten mit „Seite X von Y“.
+`counter(page)` und `counter(pages)` folgen den tatsächlichen Druckseiten;
+ein fester Absatz am Dokumentende wird nicht mehr verwendet. Bei deaktivierter
+Option fehlt diese Marginbox vollständig. Farbe und Schrift folgen dem
+Dokumentlayout. Der Testcontainer verwendet Chromium 156; die Referenzprüfung
+mit dem echten Renderer umfasst ein- und mehrseitige synthetische Dokumente.
+Bereits final gespeicherte HTML-/PDF-Artefakte werden nicht neu gerendert oder
+verändert; die Korrektur gilt nur für neu erzeugte Vorschauen und Finalisierungen.
+Die Browserprüfung legt PDF-Smoke-Artefakte ab, seitenweise Text-/Bildprüfung ist
+zusätzliche lokale QA ohne neue Laufzeit- oder Parserabhängigkeit.
+
 ## Logo
 
 Das Layout kann genau ein Logo tragen. `PUT /api/v1/document-layout/logo`

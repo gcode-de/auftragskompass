@@ -153,6 +153,18 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
         : `      <tr><td>Umsatzsteuer ${percent(
             totals.taxGroups[0]?.taxBasisPoints ?? 0,
           )} %</td><td>${formatMinorUnits(totals.taxMinor)} €</td></tr>`;
+  const pageNumbers = layout.showPageNumbers
+    ? `      @page {
+        @bottom-right {
+          content: "Seite " counter(page) " von " counter(pages);
+          color: ${layout.primaryColor};
+          font-family: ${fontStacks[layout.fontFamily]};
+          font-size: 8pt;
+          padding-right: 16mm;
+        }
+      }
+`
+    : '';
   return `<!doctype html>
 <html lang="de">
   <head>
@@ -168,8 +180,7 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       td, th { padding: 1.5mm 1mm; }
       td:last-child, th:last-child, .totals td:last-child { text-align: right; }
       .totals { margin-top: 3mm; margin-left: auto; width: 60mm; }
-      .page-numbers { color: ${layout.primaryColor}; font-size: 8pt; text-align: right; }
-      .logo { display: block; max-height: 18mm; margin-bottom: 2mm; }
+${pageNumbers}      .logo { display: block; max-height: 18mm; margin-bottom: 2mm; }
     </style>
   </head>
   <body>
@@ -203,11 +214,6 @@ ${taxRows}
       <tr><td>Brutto</td><td>${formatMinorUnits(totals.grossMinor)} €</td></tr>
     </table>
     <p>${lines(renderTemplate(input.outroText, input.values))}</p>
-${
-  layout.showPageNumbers
-    ? '    <p class="page-numbers">Seite 1</p>'
-    : '    <div class="page-numbers" hidden></div>'
-}
   </body>
 </html>
 `;
