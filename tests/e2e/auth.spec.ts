@@ -38,7 +38,8 @@ import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerDocumentRoutes } from '../../packages/core/src/documents.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 async function signInScenario(browser: Browser, mode: 'google' | 'password') {
-  test.setTimeout(180000);
+  // Password mode runs 75 full axe scans; expand only its total journey budget.
+  test.setTimeout(mode === 'password' ? 240000 : 180000);
   const dir = await mkdtemp(join(tmpdir(), 'ak-tls-'));
   const container = await new PostgreSqlContainer(
     'postgres:17.6-alpine',
@@ -223,11 +224,6 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         policyErrors.push('blocked');
     });
     page.setDefaultTimeout(10000);
-    const auditFailures: {
-      state: string;
-      ids: string[];
-      targets: unknown[];
-    }[] = [];
     let auditIndex = 0;
     const audit = async (state: string) => {
       const result = await new AxeBuilder({ page })
@@ -271,12 +267,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         contentType: 'application/json',
         path: report,
       });
-      if (violations.length)
-        auditFailures.push({
-          state,
-          ids: violations.map((v) => v.id),
-          targets: violations.map((v) => v.targets),
-        });
+      expect(violations, `${mode}: ${state}`).toEqual([]);
     };
 
     // H035: Dateien is a real main area over the existing document list. The
@@ -3207,7 +3198,6 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .locator('.menu-trigger')
       .getAttribute('aria-controls');
     expect(await page.locator(`[id="${controls}"]`).count()).toBe(1);
-    expect(auditFailures).toEqual([]);
     if (mode === 'password') {
       await pool.query(
         "INSERT INTO contacts(tenant_id,id,kind,name,contact_person,street,postal_code,city,country,email,phone,mobile,phone_key,mobile_key,state) SELECT $1::uuid,gen_random_uuid(),'private','Fictional browser volume '||n,'','','','','DE','','','','','','active' FROM generate_series(1,500) AS n",

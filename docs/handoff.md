@@ -2,6 +2,23 @@
 
 Stand: **21.10.2026**, nach C051.3, H026, H029, H030, H031, H038, H039 (released) sowie H033 (umgesetzt, lokale Abnahme grün; Push/CI/Testbetrieb nach dem Commit). Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Wiederaufnahme und CI-Korrektur: 24.10.2026
+
+Das tatsächliche Fünf-Stunden-Fenster ist zurückgesetzt, reguläre Nutzung
+ist verfügbar. Vor neuer Arbeit erneut prüfen; kein Zusatzguthaben verwenden.
+Der abschließende Lauf `40088360284` auf `d6c566a` war rot: nur das große
+Passwort-Browserszenario überschritt sein 180-s-Gesamtbudget, 13 weitere
+Chromiumfälle sowie alle vorangehenden Gates waren grün. Der synthetische
+Trace belegt fortlaufende Arbeit bis zur H031-Navigation nach 75 axe-Berichten.
+H043 erhöht ausschließlich dieses Gesamtbudget auf 240 s, lässt Google bei
+180 s und Aktionen bei 10 s. Jede axe-Auswertung wird unmittelbar nach
+Berichtablage geprüft; die frühere Sammelprüfung lag vor später ergänzten
+Website-Zuständen. Kein Retry, Skip oder entfernter Prüfumfang. Beide Auth-
+Abläufe lokal grün (Google 47,1 s, Passwort etwa 96 s), außerdem 252 Unit-,
+441 Komponententests, Typen, Format, Lint, Workspace/Docs und Build.
+Neue vollständige CI abwarten, bevor der bestehende Testbetrieb aktualisiert
+wird. Der folgende Pausenbericht bleibt als datierter Zwischenstand erhalten.
+
 ## Fortsetzung nach Kontingentpause: 24.10.2026
 
 Aktiver Checkout `/Users/gp/Developer/GitHub/auftragskompass-bkp`, Branch
