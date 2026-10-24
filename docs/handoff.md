@@ -2,6 +2,48 @@
 
 Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Kontingentabschluss und ausstehender Liefernachweis: 24.10.2026
+
+Bei tatsächlich 95 Prozent geordnet beendet; reguläre Nutzung noch verfügbar,
+Zusatzguthaben unverändert. Keine neue Wiederaufnahme/Automation eingerichtet;
+alle Luna-Subagents sind beendet. Keine weitere Entwicklung ohne erneute
+Kontingentprüfung, kein Credit-/API-Key-Ausweichweg.
+
+Funktionsstand **e9ca99d04a858723140c9184efe7f38e11a39357** auf
+`codex/ux-event-simplification` gepusht. Vorherige Einzelcommits: 1b040b5
+(Logo-Integrität), 40cef9a (echte Seitenzählung), 33066c4 (H045-Lieferabschluss).
+Alle lokalen Gates einschließlich vollständiger Coverage-Suite 1033 Tests,
+aller 18 Chromiumabläufe und 38 Python-/zwei Node-Betriebstests samt realer
+Compose-Sicherung/isoliertem Restore grün. Keine Tests übersprungen.
+
+CI **40134505361**: quality erfolgreich, images beim Abschluss noch aktiv
+(„Publish API and worker image“). **Kein neuer Auslieferungsnachweis:** letzter
+geprüfter Testbetrieb bleibt 132ace1, drei Container gesund, Timer aktiv,
+kein needs-attention, Drain off. Kein Checkpoint für e9ca99d bestätigt und kein
+solcher Dump als geliefert behauptet. H046 bleibt deshalb offen.
+
+Dieser Dokuabschluss wird separat auf `codex/layout-delivery-handoff-20261024`
+gepusht, um den laufenden freigegebenen Image-Build der UX-Branch nicht
+abzubrechen. Die Testinstallation folgt weiterhin ausschließlich der UX-Branch.
+Beim Fortsetzen zuerst diesen Übergabestand lesen; neue Funktionsarbeit weiter
+auf der UX-Branch erst nach H046-Lieferabschluss. Dokumentation nach geprüftem
+Historien-/Lieferabgleich zurückführen, kein Force-Push.
+
+**H046 fortsetzen:** tatsächliche quality+images von e9ca99d prüfen, alleinigen
+automatischen Updater abwarten, exakte OCI ×3/gesund und CT-/Host-/Betreiber-
+Checkpoint mit identischem Hash/Größe nachweisen. Kein manueller Parallelupdate.
+Dann vorbereiteten ignorierten Harness
+`scratch/live-proof-e9ca99/live.config.ts` mit
+`document-layout-live-assets.spec.ts` verwenden: echte Remote-Assets nur per
+GET-Whitelist vom eigenen HTTPS-Origin, alle Auth-/Geschäfts-APIs und Daten lokal
+fiktiv; sichtbare Version e9ca99d verlangen. Acht Themes/Breiten und echte PDF
+prüfen. Harness ist vorbereitet, bewusst **nicht ausgeführt**. Rohbelege aus
+`/tmp/ak-bkp018-layout/` und finalem `/tmp/ak-bkp018-final-e2e/` sind temporär;
+vor Verlust bei Bedarf ausschließlich in private Sicherungsablage kopieren.
+Nach Liefernachweis Matrix/H046 aktualisieren. Nächster kleiner UI-Slice ist
+in `tasks-documents-mail.md` präzisiert: kompakte mobile Einstellungsnavigation;
+Logo-Uploadoberfläche und übrige Bookitup-Parität weiterhin offen.
+
 ## Dokumentlayout BKP018.1: 24.10.2026
 
 Einstellungen→Dokumentlayout (`#settings-document-layout`) zeigt Zusammenfassung,

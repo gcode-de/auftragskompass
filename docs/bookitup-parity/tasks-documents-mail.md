@@ -42,6 +42,40 @@ Alle Pakete **offen**. [Ausführungsanleitung](agent-playbook.md) und [Designver
 
 **Tests zuerst:** zugelassene/gefälschte MIME- und Dateisignaturen, Übergröße, fremder Tenant, Versionkonflikt, Storagefehler, Reload, Vorschau vs tatsächliches Rendering, finaler PDF-Hash bleibt nach Änderung. Uploadregeln nicht aus allgemeinen UI-Dateiendungen ableiten. **Done:** bestehende Layout-API tatsächlich bedienbar und in beiden Themes lesbar. Commit `feat: configure document branding with a safe preview`.
 
+### Nächster kleiner UI-Slice nach BKP018.1: mobile Einstellungsnavigation
+
+**Befund 24.10.2026, lokal gebauter e9ca99d-Code:** Bei 320px nimmt die bestehende
+zweispaltige Einstellungsnavigation viel Platz vor dem Formular ein. Lange
+Beschriftungen wie „Dokumentlayout“ und „Nummernkreise“ brechen mitten im Wort.
+Nichts ist abgeschnitten, die Anordnung entspricht aber noch nicht dem Ziel
+„nur das Nötigste zuerst“. Dies ist ein eigener nächster Slice, keine bereits
+umgesetzte Verbesserung und keine neue Bookitup-Runtime-Beobachtung.
+
+**Vorgeschlagener Scope BKP018.1b, vor Coding im Hauptplan aktivieren:**
+`SettingsNavigation` in `apps/admin/src/Navigation.tsx` und ausschließlich seine
+responsiven Regeln in `styles.css`. Bei der bestehenden mobilen Grenze bis
+900px einen beschrifteten nativen Select „Einstellungsbereich“ mit dem aktuellen
+Bereich anzeigen, statt zwölf dauerhaft sichtbarer Linkflächen. Oberhalb 900px
+die bestehende Linknavigation erhalten. Dieselbe `settingsLinks`-/Hash-Zuordnung
+verwenden, keine zweite Liste oder neue Routingbibliothek. Auswahl ändert den
+Hash wie ein vorhandener Link; bestehende `hashchange`-/`popstate`-Logik muss
+direkte Links und Browser-Zurück weiter abbilden. Keine Panels unmounten oder
+vorhandene Eingaben bei einem bloßen Bereichswechsel verwerfen. Keine neuen
+Dialoge/Overlays, Animationen, Farben, Abhängigkeiten oder Filteränderungen.
+
+**Abnahme zuerst rot:** Bei 320/390/768 nur der kompakte Bereichswähler sichtbar
+und bedienbar, bei 1280 unveränderte Linknavigation. Alle bisherigen zwölf
+Bereiche einschließlich Dokumentlayout erreichbar; Auswahl und sichtbarer
+Bereich stimmen nach Direktlink, Wechsel und Zurück überein. Zugänglicher Name,
+native Tastaturbedienung, 44px Mindesthöhe, kein Body-Overflow, vollständige
+Beschriftung ohne willkürlichen Wortbruch. Ein bereits schmutziger Layoutentwurf
+bleibt nach Bereichswechsel/Rückkehr erhalten und registriert; bestehende
+Home-/Dateien-/Suchschutzregeln nicht schwächen. Komponentenregression plus
+Chromium bei 320/390/768/1280 in beiden Themes und axe. Vorher/Nachher direkt
+ansehen und erklären, welche erste Arbeitsfläche dadurch früher sichtbar wird.
+Ponytail/Impeccable; Taste v2 nicht auf die Verwaltungsfläche erzwingen. Ein
+möglicher Commit ist `feat: keep mobile settings navigation compact`.
+
 ## BKP019 — Kommerziellen Dokumentablauf bis Zahlung vervollständigen
 
 **Featurepaket, zwingend unterteilen, nach BKP016; C052–C056 wiederverwenden.** Enum-/Template-Unterstützung für fünf Typen ist noch kein fertiges Rechnungswesen. Lastenheft AG-/RG-/NK-Anforderungen, `documents.ts`, Number-/Totals-/Snapshot-/Artifactdienste lesen. Fachliche Pflichtangaben vor Rechnungsrelease gesondert prüfen; diese Auditdoku ist keine Rechts-/Steuerabnahme.
