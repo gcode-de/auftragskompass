@@ -100,6 +100,7 @@ export type DocumentRenderInput = {
   layout: DocumentLayoutInput;
   documentNumber: string;
   issuedAt: Date;
+  validUntil?: string;
   timeZone: string;
   recipientName: string;
   recipientAddress: string;
@@ -187,7 +188,7 @@ ${
       <p>Nummer ${escapeHtml(input.documentNumber)}</p>
       <p>Datum ${formatDocumentDate(input.issuedAt, input.timeZone)}</p>
     </div>
-    <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
+${input.validUntil ? `    <p>Gültig bis ${escapeHtml(input.validUntil)}</p>\n` : ''}    <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
     <p>${lines(renderTemplate(input.introText, input.values))}</p>
     <table>
       <thead><tr>${head.map((cell) => `<th>${cell}</th>`).join('')}</tr></thead>

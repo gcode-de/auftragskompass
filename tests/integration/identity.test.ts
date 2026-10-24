@@ -40,10 +40,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP002 adds the optional contact reference as the current last migration.
-  expect(applied.at(-1)!.name).toBe(
-    '0033_website_inquiry_optional_contact.sql',
-  );
+  // BKP016.1 adds nullable draft snapshots without inventing historical text.
+  expect(applied.at(-1)!.name).toBe('0034_document_draft_content.sql');
   // H034 adds the optional place without touching existing data.
   const columns = (
     await pool.query<{

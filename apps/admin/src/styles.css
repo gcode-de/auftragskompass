@@ -1771,6 +1771,75 @@ summary {
 .document-hint {
   color: var(--muted);
 }
+.offer-draft-editor {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.offer-draft-editor-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.offer-draft-editor-heading h5 {
+  margin: 0.25rem 0;
+  font-size: 1rem;
+}
+.offer-draft-editor > p {
+  max-width: 70ch;
+}
+.offer-draft-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+  margin-block: 0.75rem 1.25rem;
+}
+.offer-draft-fields label {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+}
+.offer-draft-subject {
+  scroll-margin-top: 6rem;
+}
+.offer-draft-fields textarea {
+  resize: vertical;
+}
+.offer-draft-positions {
+  margin-block: 1.25rem;
+  padding-block: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.offer-draft-positions h6 {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+.offer-draft-positions > p:first-of-type {
+  max-width: 70ch;
+  color: var(--muted);
+}
+.offer-draft-positions ul {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+}
+.offer-draft-positions li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding-block: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.offer-draft-total {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.offer-draft-actions {
+  margin-top: 0.75rem;
+}
 .record-navigation {
   position: static;
   border: 0;

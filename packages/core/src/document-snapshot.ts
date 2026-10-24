@@ -1,4 +1,5 @@
 import { DocumentTotalsError, documentTotals } from './document-totals.js';
+import { Temporal } from '@js-temporal/polyfill';
 import {
   DocumentLayoutError,
   renderDocumentHtml,
@@ -22,6 +23,17 @@ export class DocumentSnapshotError extends Error {
 
 export type DocumentState = 'draft' | 'final' | 'withdrawn';
 
+export function validityDate(
+  issuedAt: Date,
+  validityDays: number,
+  timeZone: string,
+): Temporal.PlainDate {
+  return Temporal.Instant.from(issuedAt.toISOString())
+    .toZonedDateTimeISO(timeZone)
+    .toPlainDate()
+    .add({ days: validityDays });
+}
+
 // DV/AG: a final document is immutable; corrections create a new document.
 const transitions: Record<DocumentState, readonly DocumentState[]> = {
   draft: ['final', 'withdrawn'],
@@ -39,6 +51,7 @@ export type SnapshotInput = {
   template: { subject: string; introText: string; outroText: string };
   documentNumber: string;
   issuedAt: Date;
+  validUntil?: string;
   timeZone: string;
   recipientName: string;
   recipientAddress: string;
@@ -75,6 +88,7 @@ export function buildDocumentSnapshot(input: SnapshotInput): DocumentSnapshot {
       layout: input.layout,
       documentNumber: input.documentNumber,
       issuedAt: input.issuedAt,
+      ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       timeZone: input.timeZone,
       recipientName: input.recipientName,
       recipientAddress: input.recipientAddress,

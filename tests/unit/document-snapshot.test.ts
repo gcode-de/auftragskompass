@@ -4,6 +4,7 @@ import {
   buildDocumentSnapshot,
   DocumentSnapshotError,
   type SnapshotInput,
+  validityDate,
 } from '../../packages/core/src/document-snapshot.js';
 
 const layout = {
@@ -59,6 +60,16 @@ describe('assertTransition', () => {
         DocumentSnapshotError,
       );
   });
+});
+
+test('offer validity adds tenant-local calendar days across the Berlin DST change', () => {
+  expect(
+    validityDate(
+      new Date('2030-03-30T23:30:00Z'),
+      14,
+      'Europe/Berlin',
+    ).toString(),
+  ).toBe('2030-04-14');
 });
 
 describe('buildDocumentSnapshot', () => {

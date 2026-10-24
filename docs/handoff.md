@@ -4,6 +4,48 @@ Stand: **21.10.2026**, nach C051.3, H026, H029, H030, H031, H038, H039 (released
 
 ## Neuer verbindlicher Arbeitsauftrag und Prüfbasis: 22.10.2026
 
+**Fortsetzung 24.10.2026:** Der Nutzer beauftragt jetzt die Umsetzung in diesem
+Codex-Chat mit klar abgegrenzten **GPT-6-Luna-Subagents**; der Hauptagent
+koordiniert, integriert und prüft. Der externe Hermes-Auftrag ist wegen seines
+Anbieterlimits pausiert und darf nicht parallel dieselben Dateien bearbeiten.
+Priorität hat ein tatsächlich nutzbarer Angebotsablauf; BKP016 wird in getestete
+vertikale Unter-Slices zerlegt. Ponytail und Impeccable bleiben verbindlich;
+Taste v2 gilt weiterhin nicht für Admin-Oberflächen, REA nur für passende
+Referenzbeobachtungen. Vor größeren Schritten das echte Fünf-Stunden-Kontingent
+prüfen: ab 80 Prozent keine großen neuen Slices, spätestens um 90 Prozent mit
+Abschlussreserve stoppen; keine API-Key-/Credit-Ausweichlösung. Eine bloße
+Software-Zusage ist keine kontoweite Credit-Sperre.
+
+**BKP016.1 (24.10.2026):** Der Angebotsentwurf erhält eigene Texte/Gültigkeit
+aus der Vorlage, einen versionsgesicherten Inline-Editor und eine gespeicherte
+PDF-Vorschau ohne Nummern-/Artefaktverbrauch. Positionen bleiben in diesem Slice
+lesend; Positionsbearbeitung ist der nächste eigene Unter-Slice, Blankoanlage
+folgt BKP017. Alte Entwürfe werden nicht historisch nachbefüllt. Backend- und
+Komponentenregressionen zuerst rot beobachtet; danach 244 Unit-, 436 Komponenten-
+und 288 Integrationstests grün, gemeinsam 968 mit Coverage 97,19 % Zeilen /
+93,68 % Zweige; Changed-Code 261/271 Zeilen und 278/325 Zweige. Browserprüfung
+mit isoliertem PostgreSQL und synthetischen Daten: Speichern/Neuabruf,
+Vorlagenunabhängigkeit, Vorschau ohne Mutation, acht Ansichten bei
+320/390/768/1280 in beiden Themes, editorbezogenes axe bei 390. Die PDF im
+Browserablauf nutzt einen deterministischen Rendererersatz; das echte PDF-Layout
+ist damit nicht visuell abgenommen. Impeccable-Finish: alle acht Bilder geprüft;
+einmaliger Quellscan nur Regex (keine DOM-Kontrastprüfung), einziger harter Fund
+ist der unveränderte, ausdrücklich referenzbasierte Statusstrich der Eventkarte.
+Die neuen Schriftgrößen 1rem/0,95rem verwenden bestehende Stufen und sind in
+DESIGN.md dokumentiert. Keine vollständige Bookitup-Parität behaupten.
+Der vollständige lokale `pnpm check` ist grün, einschließlich 14 Chromium-
+Abläufen, Build und Compose-Sicherung/Restore (38 Python- und 2 Node-Betriebstests).
+Der früher dokumentierte macOS-RLIMIT-Fehler trat in diesem Lauf nicht auf.
+Commit-/CI-/Auslieferungsnachweis nach Abschluss in der Liefermatrix prüfen.
+
+**Regionaler Betriebsrahmen (ausdrückliche Nutzerkorrektur 24.10.2026):**
+Vermietungen finden in Südwestdeutschland und höchstens im Elsass statt.
+Die Oberfläche arbeitet mit der bestehenden Betriebsortszeit Europe/Berlin;
+keine zusätzlichen Zeitzonen-Auswahlen oder internationale Dispositionslogik
+für diesen Ausbau bauen. Sommer-/Winterzeit, Kalendertage und Termine über
+Mitternacht bleiben korrekt; vorhandene UTC-Speicherung und gemeinsame
+Zeithelfer nicht entfernen.
+
 Der Benutzer verlangt jetzt einen möglichst vollständigen funktionalen und in der Bedienlogik nahen Bookitup-Klon mit vorsichtiger Vereinfachung. Der ausführliche [Paritätsauftrag](bookitup-parity/README.md) mit [Beobachtungen](bookitup-parity/observations.md), [UI-Vertrag](bookitup-parity/design-contract.md), [Agentenanleitung](bookitup-parity/agent-playbook.md) und BKP001–BKP030 ist der neue Einstieg für diese Arbeiten. Alte M5/M6-Auslassungen beschreiben den früheren verkürzten Start, nicht mehr das vollständige Ausbauziel. Sie autorisieren weiterhin keinen ungeprüften Produktivwechsel oder echte Daten-/Mailaktionen.
 
 Neu ausdrücklich: neutraleres Grün in beiden Themes, kompakte ausgerichtete Controls, Collapse-Schalter versetzen, Filter wie Bookitup positionieren, mobile Kalenderbedienung verbessern; jeder gültige Website-Eingang wird Option auch ohne Kontakt/Land, Ausnahmebereich unter Events entfällt erst nach abgesicherter Datenlogik. Die DE-Vorbelegung bleibt für fehlende Länder neuer Website-Kontakte erlaubt. Bekannte andere Länder bleiben; das öffentliche v1-Schema erhält nicht beiläufig ein zusätzliches Landfeld.

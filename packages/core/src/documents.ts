@@ -19,7 +19,9 @@ import {
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 import {
+  assertTemplateText,
   documentKinds,
+  DocumentTemplateError,
   type DocumentKind,
   type TemplatePlaceholder,
 } from './document-templates.js';
@@ -34,6 +36,7 @@ import {
   buildDocumentSnapshot,
   DocumentSnapshotError,
   type DocumentState,
+  validityDate,
 } from './document-snapshot.js';
 import {
   allocateDocumentNumber,
@@ -58,7 +61,8 @@ export class DocumentError extends Error {
       | 'number_not_configured'
       | 'invalid_content'
       | 'artifact_failed'
-      | 'invalid_filter',
+      | 'invalid_filter'
+      | 'conflict',
   ) {
     super('Document rejected');
   }
@@ -76,6 +80,13 @@ export type DocumentDraftInput = {
   contactId?: string | null;
   /** Omitted lines copy the template positions; an empty list is a mistake. */
   lines?: DocumentLineDraft[];
+};
+export type DocumentDraftContent = {
+  version: number;
+  subject: string;
+  introText: string;
+  outroText: string;
+  validityDays: number;
 };
 export type DocumentFilters = {
   eventId?: string;
@@ -189,6 +200,8 @@ function translate(error: unknown): never {
     );
   if (error instanceof DocumentSnapshotError)
     throw new DocumentError('invalid_content');
+  if (error instanceof DocumentTemplateError)
+    throw new DocumentError('invalid_content');
   if (error instanceof DocumentPdfError || error instanceof StorageError)
     throw new DocumentError('artifact_failed');
   throw error;
@@ -259,6 +272,156 @@ export function documentRepository(
       )
       .orderBy(asc(documentLines.position));
     return { ...document, lines };
+  }
+
+  async function snapshotFor(
+    connection: Connection,
+    document: NonNullable<Awaited<ReturnType<typeof readOne>>>,
+    documentNumber: string,
+    issuedAt: Date,
+  ) {
+    const tx = database(connection),
+      [template] = await tx
+        .select()
+        .from(documentTemplates)
+        .where(
+          and(
+            eq(documentTemplates.tenantId, tenantId),
+            eq(documentTemplates.id, document.templateId),
+          ),
+        );
+    if (!template) throw new DocumentError('missing_reference');
+    const [layout] = await tx
+      .select()
+      .from(documentLayouts)
+      .where(eq(documentLayouts.tenantId, tenantId));
+    if (!layout) throw new DocumentError('missing_reference');
+    let logoDataUri: string | undefined;
+    if (layout.logoKey && layout.logoMediaType) {
+      try {
+        const logo = await dependencies.store.read(layout.logoKey);
+        logoDataUri = `data:${layout.logoMediaType};base64,${logo.toString('base64')}`;
+      } catch (error) {
+        if (error instanceof StorageError)
+          throw new DocumentError('missing_reference');
+        throw error;
+      }
+    }
+    const [tenant] = await tx
+      .select({ timezone: tenants.timezone })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId));
+    if (!tenant) throw new DocumentError('missing_reference');
+    const [contact] = document.contactId
+      ? await tx
+          .select()
+          .from(contacts)
+          .where(
+            and(
+              eq(contacts.tenantId, tenantId),
+              eq(contacts.id, document.contactId),
+            ),
+          )
+      : [];
+    if (!contact) throw new DocumentError('missing_reference');
+    const [event] = document.eventId
+      ? await tx
+          .select()
+          .from(events)
+          .where(
+            and(eq(events.tenantId, tenantId), eq(events.id, document.eventId)),
+          )
+      : [];
+    const lines: DocumentLineDraftRow[] = document.lines;
+    if (!lines.length) throw new DocumentError('empty_lines');
+    const totals = documentTotals(lines),
+      recipient = recipientOf(contact),
+      values: Partial<Record<TemplatePlaceholder, string>> = {
+        contact: contact.name,
+        total: formatMinorUnits(totals.grossMinor) + ' €',
+        documentLink: dependencies.origin + '/#document-' + document.id,
+      };
+    if (event) {
+      values.event = event.name;
+      if (event.eventDate)
+        values.date = formatDocumentDate(
+          new Date(event.eventDate + 'T12:00:00Z'),
+          tenant.timezone,
+        );
+      if (event.venueOverride) {
+        const place = event.venue?.trim();
+        if (place) values.location = place;
+      } else if (event.locationId) {
+        const [location] = await tx
+          .select({ name: locations.name })
+          .from(locations)
+          .where(
+            and(
+              eq(locations.tenantId, tenantId),
+              eq(locations.id, event.locationId),
+            ),
+          );
+        if (location) values.location = location.name;
+      }
+      const kindIds = [event.eventTypeId, event.packageId].filter(
+        (value): value is string => Boolean(value),
+      );
+      if (kindIds.length) {
+        const names = new Map(
+          (
+            await tx
+              .select({ id: masterData.id, name: masterData.name })
+              .from(masterData)
+              .where(
+                and(
+                  eq(masterData.tenantId, tenantId),
+                  inArray(masterData.id, kindIds),
+                ),
+              )
+          ).map((row) => [row.id, row.name]),
+        );
+        if (event.eventTypeId && names.has(event.eventTypeId))
+          values.eventType = names.get(event.eventTypeId)!;
+        if (event.packageId && names.has(event.packageId))
+          values.package = names.get(event.packageId)!;
+      }
+    }
+    const content = {
+      subject: document.subject ?? template.subject,
+      introText: document.introText ?? template.introText,
+      outroText: document.outroText ?? template.outroText,
+    };
+    const validityDays = document.validityDays ?? template.validityDays,
+      validUntil =
+        document.kind === 'offer'
+          ? validityDate(issuedAt, validityDays, tenant.timezone)
+          : undefined;
+    const formattedValidUntil = validUntil?.toString().split('-').reverse();
+    return buildDocumentSnapshot({
+      layout: {
+        senderName: layout.senderName,
+        senderStreet: layout.senderStreet,
+        senderPostalCode: layout.senderPostalCode,
+        senderCity: layout.senderCity,
+        primaryColor: layout.primaryColor,
+        textColor: layout.textColor,
+        fontFamily: layout.fontFamily as 'system' | 'sans' | 'serif',
+        showPageNumbers: layout.showPageNumbers,
+        showPositionNumbers: layout.showPositionNumbers,
+      },
+      template: content,
+      documentNumber,
+      issuedAt,
+      timeZone: tenant.timezone,
+      recipientName: recipient.name,
+      recipientAddress: recipient.address,
+      lines,
+      values,
+      ...(formattedValidUntil
+        ? { validUntil: formattedValidUntil.join('.') }
+        : {}),
+      ...(logoDataUri ? { logoDataUri } : {}),
+    });
   }
 
   async function assertReference(
@@ -474,6 +637,10 @@ export function documentRepository(
           state: 'draft',
           issuedAt: at,
           finalizedAt: null,
+          subject: template.subject,
+          introText: template.introText,
+          outroText: template.outroText,
+          validityDays: template.validityDays,
           snapshotHash: null,
           pdfHash: null,
           netMinor: totals.netMinor,
@@ -502,7 +669,31 @@ export function documentRepository(
     },
     // Number, snapshot, PDF and state are one transaction: either the document
     // is final with all four, or the number goes back to the sequence.
-    async finalize(actorId: string, id: string) {
+    async updateDraftContent(
+      actorId: string,
+      id: string,
+      content: DocumentDraftContent,
+    ) {
+      if (
+        !Number.isInteger(content.version) ||
+        content.version < 1 ||
+        content.subject.length > 200 ||
+        content.introText.length > 4000 ||
+        content.outroText.length > 4000 ||
+        !Number.isInteger(content.validityDays) ||
+        content.validityDays < 1 ||
+        content.validityDays > 365
+      )
+        throw new DocumentError('invalid_content');
+      try {
+        assertTemplateText(
+          content.subject,
+          content.introText,
+          content.outroText,
+        );
+      } catch {
+        throw new DocumentError('invalid_content');
+      }
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
@@ -512,170 +703,100 @@ export function documentRepository(
           .where(and(scope, eq(documents.id, id)))
           .for('update');
         if (!document) throw new DocumentError('not_found');
+        if (document.state !== 'draft' || document.kind !== 'offer')
+          throw new DocumentError('invalid_state');
+        if (document.version !== content.version)
+          throw new DocumentError('conflict');
+        await tx
+          .update(documents)
+          .set({
+            subject: content.subject,
+            introText: content.introText,
+            outroText: content.outroText,
+            validityDays: content.validityDays,
+            version: document.version + 1,
+          })
+          .where(and(scope, eq(documents.id, id)));
+        await appendAudit(tx, tenantId, 'document.updated', actorId, id);
+        return (await readOne(tx, id))!;
+      });
+    },
+    async preview(id: string) {
+      return db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`,
+        );
+        const document = await readOne(tx, id);
+        if (!document) throw new DocumentError('not_found');
+        if (document.state !== 'draft')
+          throw new DocumentError('invalid_state');
+        try {
+          const snapshot = await snapshotFor(tx, document, 'VORSCHAU', now());
+          return await renderDocumentPdf(snapshot.html, dependencies.render);
+        } catch (error) {
+          translate(error);
+        }
+      });
+    },
+    async finalize(actorId: string, id: string, expectedVersion?: number) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [document] = await tx
+          .select()
+          .from(documents)
+          .where(and(scope, eq(documents.id, id)))
+          .for('update');
+        if (!document) throw new DocumentError('not_found');
+        if (
+          expectedVersion !== undefined &&
+          document.version !== expectedVersion
+        )
+          throw new DocumentError('conflict');
         try {
           assertTransition(document.state as DocumentState, 'final');
         } catch {
           throw new DocumentError('invalid_state');
         }
-        const [template] = await tx
-          .select()
-          .from(documentTemplates)
-          .where(
-            and(
-              eq(documentTemplates.tenantId, tenantId),
-              eq(documentTemplates.id, document.templateId),
-            ),
-          );
-        if (!template) throw new DocumentError('missing_reference');
-        const [layout] = await tx
-          .select()
-          .from(documentLayouts)
-          .where(eq(documentLayouts.tenantId, tenantId));
-        if (!layout) throw new DocumentError('missing_reference');
-        let logoDataUri: string | undefined;
-        if (layout.logoKey && layout.logoMediaType) {
-          try {
-            const logo = await dependencies.store.read(layout.logoKey);
-            logoDataUri = `data:${layout.logoMediaType};base64,${logo.toString('base64')}`;
-          } catch (error) {
-            // A configured logo that vanished must not silently disappear from
-            // the printed document.
-            if (error instanceof StorageError)
-              throw new DocumentError('missing_reference');
-            throw error;
-          }
-        }
-        const [tenant] = await tx
-          .select({ timezone: tenants.timezone })
-          .from(tenants)
-          .where(eq(tenants.id, tenantId));
-        if (!tenant) throw new DocumentError('missing_reference');
-        const [contact] = document.contactId
-          ? await tx
-              .select()
-              .from(contacts)
-              .where(
-                and(
-                  eq(contacts.tenantId, tenantId),
-                  eq(contacts.id, document.contactId),
-                ),
-              )
-          : [];
-        if (!contact) throw new DocumentError('missing_reference');
-        const [event] = document.eventId
-          ? await tx
-              .select()
-              .from(events)
-              .where(
-                and(
-                  eq(events.tenantId, tenantId),
-                  eq(events.id, document.eventId),
-                ),
-              )
-          : [];
-        const lines: DocumentLineDraftRow[] = await tx
-          .select(lineColumns)
-          .from(documentLines)
-          .where(
-            and(
-              eq(documentLines.tenantId, tenantId),
-              eq(documentLines.documentId, id),
-            ),
-          )
-          .orderBy(asc(documentLines.position));
-        if (!lines.length) throw new DocumentError('empty_lines');
-        const totals = documentTotals(lines),
-          recipient = recipientOf(contact),
-          values: Partial<Record<TemplatePlaceholder, string>> = {
-            contact: contact.name,
-            total: formatMinorUnits(totals.grossMinor) + ' €',
-            documentLink: dependencies.origin + '/#document-' + id,
-          };
-        if (event) {
-          values.event = event.name;
-          if (event.eventDate)
-            values.date = formatDocumentDate(
-              new Date(event.eventDate + 'T12:00:00Z'),
-              tenant.timezone,
-            );
-          // H034: the effective place only. A deliberate clear leaves the
-          // placeholder unset instead of resurrecting the legacy address.
-          if (event.venueOverride) {
-            const place = event.venue?.trim();
-            if (place) values.location = place;
-          } else if (event.locationId) {
-            const [location] = await tx
-              .select({ name: locations.name })
-              .from(locations)
-              .where(
-                and(
-                  eq(locations.tenantId, tenantId),
-                  eq(locations.id, event.locationId),
-                ),
-              );
-            if (location) values.location = location.name;
-          }
-          const kindIds = [event.eventTypeId, event.packageId].filter(
-            (value): value is string => Boolean(value),
-          );
-          if (kindIds.length) {
-            const names = new Map(
-              (
-                await tx
-                  .select({ id: masterData.id, name: masterData.name })
-                  .from(masterData)
-                  .where(
-                    and(
-                      eq(masterData.tenantId, tenantId),
-                      inArray(masterData.id, kindIds),
-                    ),
-                  )
-              ).map((row) => [row.id, row.name]),
-            );
-            const eventType = event.eventTypeId
-                ? names.get(event.eventTypeId)
-                : undefined,
-              packageName = event.packageId
-                ? names.get(event.packageId)
-                : undefined;
-            if (eventType) values.eventType = eventType;
-            if (packageName) values.package = packageName;
-          }
-        }
         const at = now();
         try {
+          const completeDocument = await readOne(tx, id);
+          if (!completeDocument) throw new DocumentError('not_found');
+          if (!completeDocument.lines.length)
+            throw new DocumentError('empty_lines');
+          const [template] = await tx
+            .select({ id: documentTemplates.id })
+            .from(documentTemplates)
+            .where(
+              and(
+                eq(documentTemplates.tenantId, tenantId),
+                eq(documentTemplates.id, document.templateId),
+              ),
+            );
+          const [layout] = await tx
+            .select({ tenantId: documentLayouts.tenantId })
+            .from(documentLayouts)
+            .where(eq(documentLayouts.tenantId, tenantId));
+          const [contact] = document.contactId
+            ? await tx
+                .select({ id: contacts.id })
+                .from(contacts)
+                .where(
+                  and(
+                    eq(contacts.tenantId, tenantId),
+                    eq(contacts.id, document.contactId),
+                  ),
+                )
+            : [];
+          if (!template || !layout || !contact)
+            throw new DocumentError('missing_reference');
           const number = await allocateDocumentNumber(
               tx,
               tenantId,
               document.kind as DocumentKind,
               at,
             ),
-            snapshot = buildDocumentSnapshot({
-              layout: {
-                senderName: layout.senderName,
-                senderStreet: layout.senderStreet,
-                senderPostalCode: layout.senderPostalCode,
-                senderCity: layout.senderCity,
-                primaryColor: layout.primaryColor,
-                textColor: layout.textColor,
-                fontFamily: layout.fontFamily as 'system' | 'sans' | 'serif',
-                showPageNumbers: layout.showPageNumbers,
-                showPositionNumbers: layout.showPositionNumbers,
-              },
-              template: {
-                subject: template.subject,
-                introText: template.introText,
-                outroText: template.outroText,
-              },
-              documentNumber: number,
-              issuedAt: at,
-              timeZone: tenant.timezone,
-              recipientName: recipient.name,
-              recipientAddress: recipient.address,
-              lines,
-              values,
-              ...(logoDataUri ? { logoDataUri } : {}),
-            }),
+            snapshot = await snapshotFor(tx, completeDocument!, number, at),
             pdf = await renderDocumentPdf(snapshot.html, dependencies.render);
           await storeDocumentPdf(dependencies.store, pdf);
           await tx
@@ -764,6 +885,10 @@ export function registerDocumentRoutes(
       'state',
       'issuedAt',
       'finalizedAt',
+      'subject',
+      'introText',
+      'outroText',
+      'validityDays',
       'snapshotHash',
       'pdfHash',
       'netMinor',
@@ -783,6 +908,15 @@ export function registerDocumentRoutes(
       issuedAt: { type: 'string', format: 'date-time' },
       finalizedAt: {
         anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+      },
+      subject: nullableText,
+      introText: nullableText,
+      outroText: nullableText,
+      validityDays: {
+        anyOf: [
+          { type: 'integer', minimum: 1, maximum: 365 },
+          { type: 'null' },
+        ],
       },
       snapshotHash: nullableText,
       pdfHash: nullableText,
@@ -829,6 +963,8 @@ export function registerDocumentRoutes(
         return reply.code(404).send({ error: 'not_found' });
       if (error.reason === 'invalid_state')
         return reply.code(409).send({ error: 'invalid_state' });
+      if (error.reason === 'conflict')
+        return reply.code(409).send({ error: 'conflict' });
       if (error.reason === 'artifact_failed')
         return reply.code(500).send({ error: 'artifact_failed' });
       return reply.code(400).send({ error: error.reason });
@@ -865,7 +1001,61 @@ export function registerDocumentRoutes(
       }
     },
   );
-  app.post<{ Params: { id: string } }>(
+  app.put<{ Params: { id: string }; Body: DocumentDraftContent }>(
+    '/api/v1/documents/:id/draft',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'version',
+            'subject',
+            'introText',
+            'outroText',
+            'validityDays',
+          ],
+          properties: {
+            version: { type: 'integer', minimum: 1 },
+            subject: { type: 'string', maxLength: 200 },
+            introText: { type: 'string', maxLength: 4000 },
+            outroText: { type: 'string', maxLength: 4000 },
+            validityDays: { type: 'integer', minimum: 1, maximum: 365 },
+          },
+        },
+        response: { 200: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.updateDraftContent(
+          request.authSession!.userId,
+          request.params.id,
+          request.body,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/documents/:id/preview',
+    { schema: { params } },
+    async (request, reply) => {
+      try {
+        const pdf = await repo.preview(request.params.id);
+        return reply
+          .type('application/pdf')
+          .header('Cache-Control', 'no-store')
+          .header('Content-Disposition', 'inline; filename="VORSCHAU.pdf"')
+          .send(pdf.bytes);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body?: { version?: number } }>(
     '/api/v1/documents/:id/finalize',
     {
       schema: {
@@ -875,9 +1065,22 @@ export function registerDocumentRoutes(
     },
     async (request, reply) => {
       try {
+        const body = request.body;
+        if (
+          body !== undefined &&
+          (!body ||
+            typeof body !== 'object' ||
+            Array.isArray(body) ||
+            Object.keys(body).some((key) => key !== 'version') ||
+            ('version' in body &&
+              (!Number.isInteger(body.version) ||
+                (body.version as number) < 1)))
+        )
+          return reply.code(400).send({ error: 'invalid_content' });
         return await repo.finalize(
           request.authSession!.userId,
           request.params.id,
+          (body as { version?: number } | undefined)?.version,
         );
       } catch (error) {
         return failure(error, reply);

@@ -37,6 +37,7 @@ export type AuditAction =
   | 'document_number.updated'
   | 'document_layout.updated'
   | 'document.created'
+  | 'document.updated'
   | 'document.finalized';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,

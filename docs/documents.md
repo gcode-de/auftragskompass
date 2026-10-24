@@ -1,9 +1,10 @@
 # Geschäftsdokumente: Entwurf, Nummer und finale PDF
 
-Stand: 20.10.2026, Slice C051. Dokumente entstehen aus einer Dokumentvorlage
-(C047), tragen Positionen als Snapshot und werden beim Finalisieren mit einer
-Nummer aus dem Nummernkreis (C050) unveränderlich festgeschrieben. Die
-Bedienoberfläche und der PDF-Download folgen in eigenen Slices.
+Stand: 24.10.2026, einschließlich BKP016.1. Dokumente entstehen aus einer
+Dokumentvorlage, tragen eigene Inhalte und Positionen als Snapshot und werden
+beim Finalisieren mit einer Nummer aus dem Nummernkreis unveränderlich
+festgeschrieben. Angebotsentwürfe lassen sich in der Eventakte bearbeiten und
+vorab als PDF ansehen; finale PDFs können heruntergeladen werden.
 
 ## Lebenszyklus
 
@@ -26,12 +27,52 @@ identisch mit dem Ausgabezeitpunkt.
 
 ## Finalisieren
 
+### Eigene Entwurfstexte (BKP016.1)
+
+Neue Dokumententwürfe kopieren Betreff, Einleitungs-/Schlusstext und
+`validityDays` aus der Vorlage. Spätere Vorlagenänderungen verändern diese Werte
+nicht. Die Positionen sind bereits eigene Kopien; ihre Bearbeitung folgt in
+einem getrennten Slice. Die aktuelle Oberfläche bearbeitet zunächst die Texte
+und Gültigkeit von Angebotsentwürfen.
+
+`PUT /api/v1/documents/:id/draft` ersetzt die vier Inhaltsfelder mit der
+erwarteten `version`. Veraltete Versionen liefern `409 conflict`, abgeschlossene
+Dokumente `409 invalid_state`. Eine bestätigte Speicherung erhöht die Version
+und erzeugt genau einen `document.updated`-Audit-Eintrag. Nach einer verlorenen
+Antwort ist der Ausgang unklar: zuerst neu laden, statt den Schreibauftrag
+blind zu wiederholen. Ein Retry mit alter Version kann keine zweite Änderung
+auslösen. Betreff und Texte erlauben dieselben Platzhalter wie Vorlagen;
+unbekannte Platzhalter sind ungültiger Inhalt.
+
+Migration `0034_document_draft_content` ergänzt nullable Inhaltsfelder mit
+Längen-/Gültigkeitsprüfung. Bereits bestehende Dokumente werden nicht mit
+vermeintlich historischen Texten nachbefüllt. Bei älteren Entwürfen erklärt der
+Editor die fehlende Textkopie; eine ausdrückliche Speicherung übernimmt die
+angezeigte aktuelle Vorlage. Bis dahin bleibt die bisherige Vorlagenauflösung
+erhalten. Bereits finale PDFs werden weder neu gerendert noch verändert.
+
+`GET /api/v1/documents/:id/preview` rendert ausschließlich den gespeicherten
+Entwurf als PDF mit der Kennzeichnung „VORSCHAU“. Es wird keine Geschäftsnummer
+vergeben, kein Artefakt abgelegt und kein Geschäfts-/Auditdatensatz verändert.
+Vorschau und Finalisierung verwenden dieselbe Renderaufbereitung. Bei Angeboten
+ergibt sich „Gültig bis“ aus dem jeweiligen Ausgabedatum und der gespeicherten
+Tageszahl in der Mandantenzeitzone. Die Vorschau ist keine Finalisierung und
+kann bei späterem tatsächlichem Ausgabedatum eine andere Frist zeigen.
+
+Eine Vorschau ungespeicherter Eingaben wird nicht behauptet: zuerst speichern,
+dann die Vorschau der gespeicherten Fassung öffnen. `POST
+/api/v1/documents/:id/finalize` akzeptiert zusätzlich optional die erwartete
+`version`; die vorhandenen Aufrufe ohne Body bleiben kompatibel. Der neue
+Editor verwendet die geprüfte Version. Authentifizierung, Mandantentrennung,
+CSRF für Schreibzugriffe und unveränderliche finale Artefakte bleiben erhalten.
+
 `POST /api/v1/documents/:id/finalize` arbeitet in genau einer
 Datenbanktransaktion:
 
 1. Zeile sperren und den Übergang `draft → final` prüfen,
 2. Nummer aus dem Nummernkreis der Dokumentart ziehen,
-3. Snapshot aus Vorlage, Layout, Empfänger, Event und Positionen bauen,
+3. Snapshot aus eigenen Entwurfstexten (bei alten Entwürfen ohne Textkopie aus
+   der Vorlage), Layout, Empfänger, Event und Positionen bauen,
 4. PDF über Chromium rendern,
 5. PDF inhaltsadressiert ablegen,
 6. Zeile auf `final` setzen und `document.finalized` protokollieren.
@@ -66,6 +107,8 @@ Containerbenutzer gehörend an, damit ein frisches Volume nicht root gehört.
 | Route | Erfolg | Fehler |
 |---|---|---|
 | `POST /api/v1/documents` | `201` Dokument | `400` ungültige Positionen/Vorlage, `404` fremde Referenz |
+| `PUT /api/v1/documents/:id/draft` | `200` aktualisierter Angebotsentwurf | `400` Inhalt/Version, `404`, `409` Konflikt oder falscher Zustand |
+| `GET /api/v1/documents/:id/preview` | `200` Vorschau-PDF, `no-store` | `400` fehlender Inhalt, `404`, `409` falscher Zustand, `500` Renderfehler |
 | `POST /api/v1/documents/:id/finalize` | `200` finales Dokument | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler |
 | `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`, optional `from`/`to`, `limit`, `offset`, `include=metadata`) | `400` ungültiger Filter |
 | `GET /api/v1/documents/:id` | `200` Dokument | `404` |
@@ -123,20 +166,26 @@ offen und brauchen eine eigene Ablage samt Prüfung.
 
 ## Oberfläche
 
-In den Event-Details steht unter „Übersicht“ der Abschnitt „Angebote“. Er listet
-Nummer, Zustand, Datum und Bruttobetrag der Dokumente dieses Events, legt aus
-einer aktiven Angebotsvorlage einen Entwurf mit dem Hauptkontakt an,
-finalisiert ihn und verlinkt die fertige PDF. Fehlt eine aktive Vorlage oder
-ein Hauptkontakt, erklärt der Abschnitt das und deaktiviert das Formular.
+In der Eventakte steht unter „Dateien“ der Abschnitt „Angebote“. Er listet
+Nummer, Zustand, Datum und Bruttobetrag der Dokumente dieses Events und legt aus
+einer aktiven Angebotsvorlage einen Entwurf mit dem Hauptkontakt an.
+„Bearbeiten“ öffnet genau einen Angebotseditor mit Betreff, Einleitung,
+Schlusstext und Gültigkeit in Tagen. Positionen und Gesamtbetrag sind dort
+lesend sichtbar. Ungespeicherte Änderungen sperren Vorschau und Finalisierung;
+Versionskonflikte und unklarer Speicherstatus erhalten die Eingaben und bieten
+einen ausdrücklichen Neuabruf an. Nach bestätigtem Speichern ist die Vorschau
+der gespeicherten Fassung verfügbar. Finalisieren erzeugt die nummerierte PDF;
+der fertige Download bleibt in der Liste. Fehlt eine aktive Vorlage oder ein
+Hauptkontakt, erklärt der Abschnitt das und deaktiviert die Anlage.
 
 ## Protokoll
 
-`document.created` beim Anlegen des Entwurfs, `document.finalized` beim
+`document.created` beim Anlegen des Entwurfs, `document.updated` beim Speichern
+seiner Texte/Gültigkeit und `document.finalized` beim
 Finalisieren, jeweils mit Dokument-ID als `record_id`.
 
 ## Noch offen
 
-- Bedienoberfläche für Entwürfe, Finalisieren und Download.
-- Bearbeiten von Entwürfen, Gültigkeitsdatum, Status `sent`, `expired`,
-  `accepted` und der Zurückziehen-Endpunkt.
+- Bearbeiten der Positionen und Summen sowie Blankoanlage ohne Vorlage.
+- Status `sent`, `expired`, `accepted` und der Zurückziehen-Endpunkt.
 - Rechnungen, Anzahlungen und Korrekturen (C054).

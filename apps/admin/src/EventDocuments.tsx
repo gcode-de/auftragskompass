@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { OfferDraftEditor } from './OfferDraftEditor.js';
 
 type DocumentRow = {
   id: string;
@@ -78,9 +79,18 @@ export function EventDocuments({
     [templateId, setTemplateId] = useState(''),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(''),
+    [editorId, setEditorId] = useState(''),
+    [editorDirty, setEditorDirty] = useState(false),
+    [editorBusy, setEditorBusy] = useState(false),
     [loading, setLoading] = useState(true),
     [reloadWarning, setReloadWarning] = useState(false),
-    mutating = useRef(false);
+    mutating = useRef(false),
+    editorTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (editorId || !editorTrigger.current) return;
+    editorTrigger.current.focus();
+    editorTrigger.current = null;
+  }, [editorId]);
   async function load() {
     const [documentReply, templateReply] = await Promise.all([
       fetch('/api/v1/documents?eventId=' + encodeURIComponent(eventId)),
@@ -136,25 +146,32 @@ export function EventDocuments({
       setBusy('');
     }
   }
-  async function finalize(id: string) {
-    if (mutating.current) return;
+  async function finalize(id: string, version: number) {
+    if (mutating.current || editorBusy || editorDirty) return;
     mutating.current = true;
     setBusy(id);
     setMessage('');
     try {
       const reply = await fetch('/api/v1/documents/' + id + '/finalize', {
         method: 'POST',
-        headers: { 'x-csrf-token': csrfToken },
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ version }),
       });
       if (!reply.ok) {
         const result = (await reply.json()) as { error: string };
         setMessage(
           result.error === 'invalid_state'
             ? 'Bereits finalisiert. Die Liste wird aktualisiert.'
-            : result.error === 'artifact_failed'
-              ? 'PDF konnte nicht erzeugt werden. Bitte Betreiber informieren.'
-              : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
+            : result.error === 'conflict'
+              ? 'Der Entwurf wurde geändert. Bitte erneut laden und prüfen.'
+              : result.error === 'artifact_failed'
+                ? 'PDF konnte nicht erzeugt werden. Bitte Betreiber informieren.'
+                : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
         );
+        if (result.error === 'conflict') setEditorId('');
         // Refresh a possibly stale row, but keep the explanatory message.
         try {
           await load();
@@ -163,6 +180,8 @@ export function EventDocuments({
         }
       } else {
         const result = (await reply.json()) as { number?: string };
+        setEditorId('');
+        setEditorDirty(false);
         setMessage(
           result.number
             ? 'Finalisiert als ' + result.number + '.'
@@ -215,16 +234,37 @@ export function EventDocuments({
             </p>
             <div className="document-actions">
               {entry.state === 'draft' && (
-                <button
-                  type="button"
-                  disabled={busy !== ''}
-                  aria-label={
-                    'Angebot ' + (entry.number ?? 'Entwurf') + ' finalisieren'
-                  }
-                  onClick={() => void finalize(entry.id)}
-                >
-                  Finalisieren
-                </button>
+                <>
+                  {entry.kind === 'offer' && (
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== '' || editorBusy || editorId !== ''}
+                      aria-label={
+                        'Angebot ' + (entry.number ?? 'Entwurf') + ' bearbeiten'
+                      }
+                      aria-expanded={editorId === entry.id}
+                      onClick={(event) => {
+                        editorTrigger.current = event.currentTarget;
+                        setEditorDirty(false);
+                        setEditorId(entry.id);
+                      }}
+                    >
+                      Bearbeiten
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== '' || editorBusy || editorDirty}
+                    aria-label={
+                      'Angebot ' + (entry.number ?? 'Entwurf') + ' finalisieren'
+                    }
+                    onClick={() => void finalize(entry.id, entry.version)}
+                  >
+                    Finalisieren
+                  </button>
+                </>
               )}
               {entry.state === 'final' && (
                 <a
@@ -240,6 +280,27 @@ export function EventDocuments({
                 </a>
               )}
             </div>
+            {entry.kind === 'offer' &&
+              editorId === entry.id &&
+              entry.state === 'draft' && (
+                <OfferDraftEditor
+                  documentId={entry.id}
+                  csrfToken={csrfToken}
+                  onClose={() => {
+                    setEditorDirty(false);
+                    setEditorId('');
+                  }}
+                  onDirtyChange={setEditorDirty}
+                  onBusyChange={setEditorBusy}
+                  onVersionChange={(version) =>
+                    setDocuments((current) =>
+                      current.map((row) =>
+                        row.id === entry.id ? { ...row, version } : row,
+                      ),
+                    )
+                  }
+                />
+              )}
           </li>
         ))}
       </ul>

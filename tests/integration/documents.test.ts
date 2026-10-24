@@ -213,9 +213,19 @@ test('a draft copies the template positions and exposes the exact totals', async
       eventId,
       contactId,
     });
+  await expect(
+    pool.query(
+      'UPDATE documents SET validity_days=NULL WHERE tenant_id=$1 AND id=$2',
+      [tenantId, draft.id],
+    ),
+  ).rejects.toMatchObject({ code: '23514' });
   expect(draft).toMatchObject({
     kind: 'offer',
     state: 'draft',
+    subject: 'Angebot für {{contact}}',
+    introText: 'Veranstaltung {{event}} am {{date}} in {{location}}.',
+    outroText: 'Gesamt {{total}}. Link: {{documentLink}}',
+    validityDays: 14,
     number: null,
     finalizedAt: null,
     snapshotHash: null,
@@ -279,6 +289,101 @@ test('finalizing allocates one number, freezes the snapshot and stores the pdf',
     )
   ).rows.map((row) => row.action);
   expect(actions).toEqual(['document.created', 'document.finalized']);
+});
+
+test('finalization uses the draft text snapshot after the template changes', async () => {
+  const run = dependencies(),
+    repo = documentRepository(pool, tenantId, run.deps),
+    draft = await repo.createDraft(actorId, { templateId, eventId, contactId });
+  try {
+    await documentTemplateRepository(pool, tenantId).save(
+      actorId,
+      {
+        kind: 'offer',
+        name: 'Fictional offer revised',
+        subject: 'Changed after draft',
+        introText: 'Changed intro',
+        outroText: 'Changed outro',
+        validityDays: 30,
+        state: 'active',
+        positions: [
+          {
+            productId: null,
+            description: 'Fictional box',
+            quantity: 1,
+            unit: 'Stück',
+            unitPriceMinor: 19900,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+          {
+            productId: null,
+            description: 'Fictional delivery',
+            quantity: 1,
+            unit: 'Pauschale',
+            unitPriceMinor: 5000,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+        ],
+      },
+      templateId,
+      1,
+    );
+    const legacyDraft = await repo.createDraft(actorId, {
+      templateId,
+      eventId,
+      contactId,
+    });
+    await pool.query(
+      'UPDATE documents SET subject=NULL,intro_text=NULL,outro_text=NULL,validity_days=NULL WHERE tenant_id=$1 AND id=$2',
+      [tenantId, legacyDraft.id],
+    );
+    await repo.preview(legacyDraft.id);
+    expect(run.rendered.at(-1)).toContain('Changed after draft');
+    expect(run.rendered.at(-1)).toContain('Gültig bis 25.11.2030');
+    const finalized = await repo.finalize(actorId, draft.id);
+    const finalHtml = run.rendered.at(-1)!;
+    expect(finalized.subject).toBe('Angebot für {{contact}}');
+    expect(finalHtml).toContain('Angebot für Fictional Customer');
+    expect(finalHtml).not.toContain('Changed after draft');
+    expect(finalHtml).toContain('Gültig bis 09.11.2030');
+  } finally {
+    await documentTemplateRepository(pool, tenantId).save(
+      actorId,
+      {
+        kind: 'offer',
+        name: 'Fictional offer',
+        subject: 'Angebot für {{contact}}',
+        introText: 'Veranstaltung {{event}} am {{date}} in {{location}}.',
+        outroText: 'Gesamt {{total}}. Link: {{documentLink}}',
+        validityDays: 14,
+        state: 'active',
+        positions: [
+          {
+            productId: null,
+            description: 'Fictional box',
+            quantity: 1,
+            unit: 'Stück',
+            unitPriceMinor: 19900,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+          {
+            productId: null,
+            description: 'Fictional delivery',
+            quantity: 1,
+            unit: 'Pauschale',
+            unitPriceMinor: 5000,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+        ],
+      },
+      templateId,
+      2,
+    );
+  }
 });
 
 test('a second finalize is rejected and never consumes another number', async () => {
@@ -355,6 +460,15 @@ test('documents never cross a tenant boundary', async () => {
   await expect(other.finalize(otherActorId, draft.id)).rejects.toMatchObject({
     reason: 'not_found',
   });
+  await expect(
+    other.updateDraftContent(otherActorId, draft.id, {
+      version: 1,
+      subject: 'Foreign edit',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
   await expect(
     other.createDraft(otherActorId, { templateId, contactId }),
   ).rejects.toMatchObject({ reason: 'not_found' });
@@ -694,7 +808,8 @@ test('the document API requires auth and enforces the final state', async () => 
     config,
     (await syntheticGoogle(config)).provider,
   );
-  registerDocumentRoutes(app, pool, tenantId, dependencies().deps);
+  const run = dependencies();
+  registerDocumentRoutes(app, pool, tenantId, run.deps);
   const cookies = { '__Host-ak-session': 'synthetic-documents' },
     headers = {
       origin: config.origin,
@@ -703,6 +818,10 @@ test('the document API requires auth and enforces the final state', async () => 
   try {
     expect(
       (await app.inject('/api/v1/documents/' + randomUUID())).statusCode,
+    ).toBe(401);
+    expect(
+      (await app.inject('/api/v1/documents/' + randomUUID() + '/preview'))
+        .statusCode,
     ).toBe(401);
     const created = await app.inject({
       method: 'POST',
@@ -724,6 +843,140 @@ test('the document API requires auth and enforces the final state', async () => 
     ).toBe(403);
     const id = created.json().id as string;
     expect(created.json().state).toBe('draft');
+    expect(created.json().subject).toBe('Angebot für {{contact}}');
+    await pool.query(
+      'UPDATE documents SET subject=NULL,intro_text=NULL,outro_text=NULL,validity_days=NULL WHERE tenant_id=$1 AND id=$2',
+      [tenantId, id],
+    );
+    const legacy = await app.inject({
+      method: 'GET',
+      url: '/api/v1/documents/' + id,
+      cookies,
+    });
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json()).toMatchObject({
+      subject: null,
+      introText: null,
+      outroText: null,
+      validityDays: null,
+    });
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + id + '/draft',
+      cookies,
+      headers,
+      payload: {
+        version: 1,
+        subject: 'Eigenes Angebot für {{contact}}',
+        introText: 'Persönliche Einleitung',
+        outroText: 'Gültig für {{total}}',
+        validityDays: 21,
+      },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({
+      version: 2,
+      subject: 'Eigenes Angebot für {{contact}}',
+      validityDays: 21,
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/v1/documents/' + id + '/draft',
+          cookies,
+          payload: {
+            version: 2,
+            subject: 'No CSRF',
+            introText: '',
+            outroText: '',
+            validityDays: 21,
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const stale = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + id + '/draft',
+      cookies,
+      headers,
+      payload: {
+        version: 1,
+        subject: 'Stale',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toBe('conflict');
+    const invalidContent = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + id + '/draft',
+      cookies,
+      headers,
+      payload: {
+        version: 2,
+        subject: '{{unknown}}',
+        introText: '',
+        outroText: '',
+        validityDays: 21,
+      },
+    });
+    expect(invalidContent.statusCode).toBe(400);
+    expect(invalidContent.json().error).toBe('invalid_content');
+    const beforePreview = await pool.query(
+      'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+      [tenantId, 'offer'],
+    );
+    const invalidFinalizeBody = await app.inject({
+      method: 'POST',
+      url: '/api/v1/documents/' + id + '/finalize',
+      cookies,
+      headers,
+      payload: [],
+    });
+    expect(invalidFinalizeBody.statusCode).toBe(400);
+    expect(invalidFinalizeBody.json().error).toBe('invalid_content');
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/documents/' + id,
+          cookies,
+        })
+      ).json(),
+    ).toMatchObject({ state: 'draft', version: 2, number: null });
+    const beforeAudit = await pool.query(
+      "SELECT count(*) FROM audit_events WHERE tenant_id=$1 AND action='document.updated' AND record_id=$2",
+      [tenantId, id],
+    );
+    const preview = await app.inject({
+      method: 'GET',
+      url: '/api/v1/documents/' + id + '/preview',
+      cookies,
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['content-type']).toContain('application/pdf');
+    expect(preview.headers['cache-control']).toBe('no-store');
+    expect(preview.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(run.rendered.at(-1)).toContain(
+      'Eigenes Angebot für Fictional Customer',
+    );
+    expect(run.rendered.at(-1)).toContain('Gültig bis');
+    expect(run.files.size).toBe(0);
+    const renderer = run.deps.render;
+    run.deps.render = async () => {
+      throw new Error('synthetic renderer failure');
+    };
+    const failedPreview = await app.inject({
+      method: 'GET',
+      url: '/api/v1/documents/' + id + '/preview',
+      cookies,
+    });
+    expect(failedPreview.statusCode).toBe(500);
+    expect(failedPreview.json().error).toBe('artifact_failed');
+    run.deps.render = renderer;
     expect(
       (
         await app.inject({
@@ -731,6 +984,34 @@ test('the document API requires auth and enforces the final state', async () => 
           url: '/api/v1/documents/' + id + '/finalize',
           cookies,
           headers,
+          payload: { version: 1 },
+        })
+      ).json().error,
+    ).toBe('conflict');
+    expect(
+      (
+        await pool.query(
+          'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+          [tenantId, 'offer'],
+        )
+      ).rows,
+    ).toEqual(beforePreview.rows);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*) FROM audit_events WHERE tenant_id=$1 AND action='document.updated' AND record_id=$2",
+          [tenantId, id],
+        )
+      ).rows,
+    ).toEqual(beforeAudit.rows);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + id + '/finalize',
+          cookies,
+          headers,
+          payload: { version: 2 },
         })
       ).statusCode,
     ).toBe(200);
@@ -749,6 +1030,25 @@ test('the document API requires auth and enforces the final state', async () => 
     });
     expect(read.statusCode).toBe(200);
     expect(read.json().number).toMatch(/^AN-\d{4}-\d{4}$/);
+    expect(read.json().subject).toBe('Eigenes Angebot für {{contact}}');
+    expect(run.rendered.at(-1)).toContain(
+      'Eigenes Angebot für Fictional Customer',
+    );
+    const immutable = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + id + '/draft',
+      cookies,
+      headers,
+      payload: {
+        version: 2,
+        subject: 'Changed finalized',
+        introText: '',
+        outroText: '',
+        validityDays: 21,
+      },
+    });
+    expect(immutable.statusCode).toBe(409);
+    expect(immutable.json().error).toBe('invalid_state');
     const pdf = await app.inject({
       method: 'GET',
       url: '/api/v1/documents/' + id + '/pdf',
