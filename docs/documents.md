@@ -1,6 +1,6 @@
 # Geschäftsdokumente: Entwurf, Nummer und finale PDF
 
-Stand: 24.10.2026, einschließlich BKP016.3. Dokumente entstehen aus einer
+Stand: 24.10.2026, einschließlich BKP016.4. Dokumente entstehen aus einer
 Dokumentvorlage, tragen eigene Inhalte und Positionen als Snapshot und werden
 beim Finalisieren mit einer Nummer aus dem Nummernkreis unveränderlich
 festgeschrieben. Angebotsentwürfe lassen sich in der Eventakte bearbeiten und
@@ -10,7 +10,7 @@ vorab als PDF ansehen; finale PDFs können heruntergeladen werden.
 
 | Zustand | Bedeutung | Nummer | Snapshot/PDF |
 |---|---|---|---|
-| `draft` | aus einer Vorlage erzeugt, Positionen und Summen stehen fest | keine | keiner |
+| `draft` | bearbeitbarer Snapshot aus einer Vorlage | keine | keiner |
 | `final` | finalisiert, unveränderbar | eindeutig je Mandant | HTML-Hash und PDF-Hash gesetzt |
 | `withdrawn` | zurückgezogen (Domänenregel vorhanden, noch kein Endpunkt) | keine | keiner |
 
@@ -94,6 +94,29 @@ Platzhalter leer und die Erstellung mit `invalid_content` scheitern),
 `{{total}}` und `{{documentLink}}` aus Kontakt, Event und Summen. Fehlt ein
 verwendeter Wert, schlägt das Finalisieren mit `400 invalid_content` fehl statt
 ein unvollständiges Dokument zu erzeugen.
+
+### Produkte im Angebotsentwurf (BKP016.4)
+
+Neben „Freie Position hinzufügen“ öffnet „Produkt hinzufügen“ eine kleine
+Katalogauswahl. Erst dann wird der Katalog geladen. Die Auswahl zeigt nur aktive
+Produkte und deren Preisbasis/Steuer; „Als Position hinzufügen“ hängt die
+gewählte Leistung als neue Position an. Das bloße Auswählen ändert den Entwurf
+noch nicht. Vorhandene Eingaben werden nicht überschrieben, auch wenn die
+Katalogantwort verzögert eintrifft. Schließen der Auswahl verwirft keine Position.
+
+Die neue Position kopiert Produkt-ID, Namen als bearbeitbare Beschreibung,
+Einheit, Steuer und den exakt umgerechneten Brutto-Einzelpreis; Menge beginnt
+bei 1, Rabatt bei 0. Spätere Änderungen im Katalog verändern den gespeicherten
+Snapshot nicht. Abweichende Beschreibungen/Preise bleiben dokumentbezogen.
+Bestehende archivierte Produktbezüge bleiben beim Speichern erhalten; archivierte
+Produkte werden lediglich nicht neu angeboten. Der Katalog wird nie geschrieben.
+
+Ladefehler bieten „Katalog erneut laden“, ein leerer Katalog wird ausdrücklich
+benannt. Freie Positionen und bereits vorhandene Eingaben bleiben dabei nutzbar.
+Eine unmögliche Preisumrechnung fügt nichts hinzu. Katalogmeldungen stehen
+getrennt von Speicher-/Konfliktmeldungen. Speichern, Vorschau und Finalisieren
+verwenden unverändert den versionsgesicherten Ablauf; ungespeicherte Positionen
+müssen vor der Vorschau gespeichert werden. Keine neue API oder Migration.
 
 ## Exakte Summen (BKP016.2)
 

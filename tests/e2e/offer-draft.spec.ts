@@ -17,7 +17,10 @@ import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerResourceRoutes } from '../../packages/core/src/resources.js';
-import { registerProductRoutes } from '../../packages/core/src/products.js';
+import {
+  productRepository,
+  registerProductRoutes,
+} from '../../packages/core/src/products.js';
 import {
   registerContactRoutes,
   contactRepository,
@@ -144,6 +147,38 @@ async function offerDraftScenario(browser: Browser) {
         [tenantId],
       )
     ).rows[0]!.user_id;
+    const products = productRepository(pool, tenantId);
+    const netProduct = await products.save(actorId, {
+      name: 'Fictional net product',
+      description: 'Synthetic net-priced product',
+      unit: 'Stück',
+      priceMinor: 10000,
+      priceBasis: 'net',
+      taxBasisPoints: 1900,
+      state: 'active',
+      position: 0,
+    });
+    const grossProduct = await products.save(actorId, {
+      name: 'Fictional gross product',
+      description: 'Synthetic gross-priced product',
+      unit: 'Pauschale',
+      priceMinor: 11900,
+      priceBasis: 'gross',
+      taxBasisPoints: 1900,
+      state: 'active',
+      position: 1,
+    });
+    await products.save(actorId, {
+      name: 'Fictional archived product',
+      description: 'Synthetic archived product',
+      unit: 'Stück',
+      priceMinor: 77700,
+      priceBasis: 'gross',
+      taxBasisPoints: 1900,
+      state: 'archived',
+      position: 2,
+    });
+    const productSnapshot = await products.list();
     const config = { origin, tenantId, mode: 'password' as const };
     const storage = {
       async put() {
@@ -251,6 +286,12 @@ async function offerDraftScenario(browser: Browser) {
 
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
+    const productWrites: string[] = [];
+    page.on('request', (request) => {
+      const { pathname } = new URL(request.url());
+      if (pathname.startsWith('/api/v1/products') && request.method() !== 'GET')
+        productWrites.push(`${request.method()} ${pathname}`);
+    });
     const loaded = await page.goto(origin);
     expect(loaded?.status()).toBe(200);
     await page.getByLabel('E-Mail oder Benutzername').fill('fictional.offer');
@@ -342,7 +383,9 @@ async function offerDraftScenario(browser: Browser) {
     await offers.getByLabel('Einleitung').fill('Fictional saved introduction');
     await offers.getByLabel('Schlusstext').fill('Fictional saved conclusion');
     await offers.getByLabel('Gültigkeit in Tagen').fill('27');
-    await position1.getByLabel('Beschreibung').fill('Fictional edited booth');
+    await position1
+      .getByLabel('Beschreibung')
+      .fill('Fictional edited booth before catalog load');
     await position1.getByLabel('Menge').fill('2');
     await position1.getByLabel('Einheit').fill('Stück');
     await position1.getByLabel('Einzelpreis (Brutto) in Euro').fill('125.50');
@@ -356,24 +399,102 @@ async function offerDraftScenario(browser: Browser) {
     await position2.getByLabel('Einzelpreis (Brutto) in Euro').fill('30.00');
     await position2.getByLabel('Steuer in Prozent').fill('7');
     await position2.getByLabel('Rabatt in Prozent').fill('5');
+
+    let releaseCatalogFailure!: () => void;
+    let signalCatalogRequest!: () => void;
+    const catalogRequestStarted = new Promise<void>((resolve) => {
+      signalCatalogRequest = resolve;
+    });
+    const waitToFailCatalog = new Promise<void>((resolve) => {
+      releaseCatalogFailure = resolve;
+    });
+    let failCatalogRequest = true;
+    await context.route('**/api/v1/products', async (route) => {
+      if (failCatalogRequest) {
+        failCatalogRequest = false;
+        signalCatalogRequest();
+        await waitToFailCatalog;
+        await route.abort();
+        return;
+      }
+      await route.continue();
+    });
+    await offers.getByRole('button', { name: 'Produkt hinzufügen' }).click();
+    await catalogRequestStarted;
+    await expect(
+      offers.getByText('Produktkatalog wird geladen.'),
+    ).toBeVisible();
+    await position1
+      .getByLabel('Beschreibung')
+      .fill('Fictional edited booth during catalog load');
+    releaseCatalogFailure();
+    await expect(offers.getByRole('alert')).toContainText(
+      'Produktkatalog konnte nicht geladen werden.',
+    );
+    await expect(position1.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional edited booth during catalog load',
+    );
+    await offers.getByRole('button', { name: 'Katalog erneut laden' }).click();
+    const productPicker = offers.getByLabel('Produkt aus Katalog');
+    await expect(productPicker).toBeVisible();
+    await expect(productPicker.getByRole('option')).toHaveCount(3);
+    await expect(
+      productPicker.getByRole('option', {
+        name: /Fictional archived product/,
+      }),
+    ).toHaveCount(0);
+    await productPicker.selectOption(netProduct.id);
+    await offers
+      .getByRole('button', { name: 'Als Position hinzufügen' })
+      .click();
+    const netPosition = positions.getByRole('group', { name: 'Position 3' });
+    await expect(netPosition.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional net product',
+    );
+    await expect(netPosition.getByLabel('Beschreibung')).toBeFocused();
+    await expect(netPosition.getByLabel('Menge')).toHaveValue('1');
+    await expect(netPosition.getByLabel('Einheit')).toHaveValue('Stück');
+    await expect(
+      netPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('119.00');
+    await expect(netPosition.getByLabel('Steuer in Prozent')).toHaveValue(
+      '19.00',
+    );
+    await expect(netPosition.getByLabel('Rabatt in Prozent')).toHaveValue(
+      '0.00',
+    );
+    await productPicker.selectOption(grossProduct.id);
+    await offers
+      .getByRole('button', { name: 'Als Position hinzufügen' })
+      .click();
+    const grossPosition = positions.getByRole('group', { name: 'Position 4' });
+    await expect(grossPosition.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional gross product',
+    );
+    await expect(grossPosition.getByLabel('Beschreibung')).toBeFocused();
+    await expect(
+      grossPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('119.00');
+    await expect(grossPosition.getByLabel('Einheit')).toHaveValue('Pauschale');
+
     await positions
       .getByRole('button', { name: 'Freie Position hinzufügen' })
       .click();
-    const position3 = positions.getByRole('group', { name: 'Position 3' });
-    await position3.getByLabel('Beschreibung').fill('Fictional extra cable');
-    await position3.getByLabel('Menge').fill('1');
-    await position3.getByLabel('Einheit').fill('Stück');
-    await position3.getByLabel('Einzelpreis (Brutto) in Euro').fill('25.00');
-    await position3.getByLabel('Steuer in Prozent').fill('0');
-    await position3.getByLabel('Rabatt in Prozent').fill('0');
+    const position5 = positions.getByRole('group', { name: 'Position 5' });
+    await position5.getByLabel('Beschreibung').fill('Fictional extra cable');
+    await position5.getByLabel('Menge').fill('1');
+    await position5.getByLabel('Einheit').fill('Stück');
+    await position5.getByLabel('Einzelpreis (Brutto) in Euro').fill('25.00');
+    await position5.getByLabel('Steuer in Prozent').fill('0');
+    await position5.getByLabel('Rabatt in Prozent').fill('0');
     await positions
       .getByRole('button', { name: 'Freie Position hinzufügen' })
       .click();
-    const position4 = positions.getByRole('group', { name: 'Position 4' });
-    await position4
-      .getByRole('button', { name: 'Position 4 entfernen' })
+    const position6 = positions.getByRole('group', { name: 'Position 6' });
+    await position6
+      .getByRole('button', { name: 'Position 6 entfernen' })
       .click();
-    await expect(positions.getByRole('group')).toHaveCount(3);
+    await expect(positions.getByRole('group')).toHaveCount(5);
     await expect(
       positions.getByText('Änderungen werden beim Speichern neu berechnet.'),
     ).toBeVisible();
@@ -413,9 +534,9 @@ async function offerDraftScenario(browser: Browser) {
       intro_text: 'Fictional saved introduction',
       outro_text: 'Fictional saved conclusion',
       validity_days: 27,
-      net_minor: '29474',
-      tax_minor: '4166',
-      gross_minor: '33640',
+      net_minor: '49474',
+      tax_minor: '7966',
+      gross_minor: '57440',
       version: 2,
       state: 'draft',
       number: null,
@@ -442,7 +563,7 @@ async function offerDraftScenario(browser: Browser) {
       {
         position: 0,
         product_id: null,
-        description: 'Fictional edited booth',
+        description: 'Fictional edited booth during catalog load',
         quantity: 2,
         unit: 'Stück',
         unit_price_minor: '12550',
@@ -461,6 +582,26 @@ async function offerDraftScenario(browser: Browser) {
       },
       {
         position: 2,
+        product_id: netProduct.id,
+        description: 'Fictional net product',
+        quantity: 1,
+        unit: 'Stück',
+        unit_price_minor: '11900',
+        tax_basis_points: 1900,
+        discount_basis_points: 0,
+      },
+      {
+        position: 3,
+        product_id: grossProduct.id,
+        description: 'Fictional gross product',
+        quantity: 1,
+        unit: 'Pauschale',
+        unit_price_minor: '11900',
+        tax_basis_points: 1900,
+        discount_basis_points: 0,
+      },
+      {
+        position: 4,
         product_id: null,
         description: 'Fictional extra cable',
         quantity: 1,
@@ -471,10 +612,10 @@ async function offerDraftScenario(browser: Browser) {
       },
     ]);
     await expect(
-      offers.getByText('Gespeicherter Gesamtbetrag: 336,40 €'),
+      offers.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
     ).toBeVisible();
     await expect(position1.getByLabel('Beschreibung')).toHaveValue(
-      'Fictional edited booth',
+      'Fictional edited booth during catalog load',
     );
     expect(
       (
@@ -585,8 +726,14 @@ async function offerDraftScenario(browser: Browser) {
     const reopenedPosition3 = reopenedPositions.getByRole('group', {
       name: 'Position 3',
     });
+    const reopenedPosition4 = reopenedPositions.getByRole('group', {
+      name: 'Position 4',
+    });
+    const reopenedPosition5 = reopenedPositions.getByRole('group', {
+      name: 'Position 5',
+    });
     await expect(reopenedPosition1.getByLabel('Beschreibung')).toHaveValue(
-      'Fictional edited booth',
+      'Fictional edited booth during catalog load',
     );
     await expect(reopenedPosition1.getByLabel('Menge')).toHaveValue('2');
     await expect(reopenedPosition1.getByLabel('Einheit')).toHaveValue('Stück');
@@ -614,25 +761,62 @@ async function offerDraftScenario(browser: Browser) {
       '5.00',
     );
     await expect(reopenedPosition3.getByLabel('Beschreibung')).toHaveValue(
-      'Fictional extra cable',
+      'Fictional net product',
     );
     await expect(reopenedPosition3.getByLabel('Menge')).toHaveValue('1');
     await expect(reopenedPosition3.getByLabel('Einheit')).toHaveValue('Stück');
     await expect(
       reopenedPosition3.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('119.00');
+    await expect(reopenedPosition4.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional gross product',
+    );
+    await expect(reopenedPosition4.getByLabel('Menge')).toHaveValue('1');
+    await expect(reopenedPosition4.getByLabel('Einheit')).toHaveValue(
+      'Pauschale',
+    );
+    await expect(
+      reopenedPosition4.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('119.00');
+    await expect(reopenedPosition5.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional extra cable',
+    );
+    await expect(reopenedPosition5.getByLabel('Menge')).toHaveValue('1');
+    await expect(reopenedPosition5.getByLabel('Einheit')).toHaveValue('Stück');
+    await expect(
+      reopenedPosition5.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('25.00');
-    await expect(reopenedPosition3.getByLabel('Steuer in Prozent')).toHaveValue(
+    await expect(reopenedPosition5.getByLabel('Steuer in Prozent')).toHaveValue(
       '0.00',
     );
-    await expect(reopenedPosition3.getByLabel('Rabatt in Prozent')).toHaveValue(
+    await expect(reopenedPosition5.getByLabel('Rabatt in Prozent')).toHaveValue(
       '0.00',
     );
     await expect(
-      reopenedOffers.getByText('Gespeicherter Gesamtbetrag: 336,40 €'),
+      reopenedOffers.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
     ).toBeVisible();
+
+    await context.route('**/api/v1/products', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      }),
+    );
+    await reopenedOffers
+      .getByRole('button', { name: 'Produkt hinzufügen' })
+      .click();
+    await expect(
+      reopenedOffers.getByText('Keine aktiven Produkte im Katalog.'),
+    ).toBeVisible();
+    const emptyCatalogAxe = await new AxeBuilder({ page })
+      .include('.offer-draft-editor')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(emptyCatalogAxe.violations).toEqual([]);
     await expect(
       reopenedOffers.locator('.document-list > li .document-meta'),
-    ).toContainText('336,40 €');
+    ).toContainText('574,40 €');
     let previewBytes: Buffer | undefined;
     await context.route(
       '**/api/v1/documents/' + draftId + '/preview',
@@ -654,6 +838,8 @@ async function offerDraftScenario(browser: Browser) {
     expect(previewBytes?.subarray(0, 5).toString()).toBe('%PDF-');
     await expect.poll(() => renderCount).toBe(1);
     expect(storedArtifactCount).toBe(0);
+    expect(productWrites).toEqual([]);
+    expect(await products.list()).toEqual(productSnapshot);
     expect(await persisted()).toMatchObject({
       state: 'draft',
       number: null,

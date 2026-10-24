@@ -2,6 +2,26 @@
 
 Stand: **21.10.2026**, nach C051.3, H026, H029, H030, H031, H038, H039 (released) sowie H033 (umgesetzt, lokale Abnahme grün; Push/CI/Testbetrieb nach dem Commit). Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Angebotspositionen aus Produkten: BKP016.4 (24.10.2026)
+
+Der Angebotseditor lädt den Katalog erst über „Produkt hinzufügen“. Auswahl und
+„Als Position hinzufügen“ erzeugen eine neue bearbeitbare Snapshot-Position;
+bestehende Positionen bleiben erhalten. Menge 1, Rabatt 0, Netto-Katalogpreise
+werden exakt in Brutto umgerechnet. Gespeicherte archivierte Bezüge bleiben
+bestehen, stehen aber nicht neu zur Auswahl. Katalogfehler/Retry/Leerzustand
+blockieren keine freien Eingaben und verdrängen keine Speicher-/Konfliktmeldung.
+Keine neue API/Migration, keine Produktänderung, keine Blankoanlage.
+
+Echte RED-Regressionsfälle vor Umsetzung. Grün: 24 Editor-Komponententests,
+1001 Tests in der gesamten Coverage-Suite; geänderte Zeilen 52/54, Branches 74/82;
+Format/Lint/Typen/Workspace/Docs und Build. Ein realer Chromiumablauf gegen eine
+wegwerfbare PostgreSQL-/Fastify-/HTTPS-Instanz belegt Netto/Brutto, Fokus,
+Erhalt bei verzögertem Katalogfehler, Retry/Leerzustand, tatsächliche Persistenz,
+Reload und unveränderte Katalogdatensätze. Acht lokale Breite-/Theme-Zustände
+320/390/768/1280; axe bei 390 und im Leerzustand. Unabhängiger Code-Review ohne
+kritischen Befund, Impeccable-Detector `[]`. Kein Nachweis für physische Geräte
+oder vollständige Bookitup-Parität; Auslieferung erst nach CI/Imagefreigabe.
+
 ## Produktpreis-Korrektur: BKP015.1 (24.10.2026)
 
 Die Produktwahl in Dokumentvorlagen kopierte bisher Netto-Katalogpreise

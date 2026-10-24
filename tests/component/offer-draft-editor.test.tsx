@@ -75,6 +75,36 @@ const draft = {
     ...content,
   };
 
+const catalogProducts = [
+  {
+    id: 'product-net',
+    name: 'Fiktives Nettoprodukt',
+    unit: 'Paket',
+    priceMinor: 10000,
+    priceBasis: 'net',
+    taxBasisPoints: 1900,
+    state: 'active',
+  },
+  {
+    id: 'product-gross',
+    name: 'Fiktives Bruttoprodukt',
+    unit: 'Stunde',
+    priceMinor: 12345,
+    priceBasis: 'gross',
+    taxBasisPoints: 700,
+    state: 'active',
+  },
+  {
+    id: 'product-archived',
+    name: 'Fiktives Archivprodukt',
+    unit: 'Stück',
+    priceMinor: 500,
+    priceBasis: 'gross',
+    taxBasisPoints: 1900,
+    state: 'archived',
+  },
+];
+
 function detail(values: typeof content | null = content, version = 1) {
   return {
     ...draft,
@@ -94,6 +124,8 @@ function setup(
     template?: typeof template | null;
     put?: (body: Record<string, unknown>) => Response | Promise<Response>;
     detailGet?: () => Response | Promise<Response>;
+    products?: unknown[];
+    productsGet?: () => Response | Promise<Response>;
     finalize?: (body: unknown) => Response;
   } = {},
 ) {
@@ -120,6 +152,11 @@ function setup(
       return Response.json(
         options.template === null ? [] : [options.template ?? template],
       );
+    if (url === '/api/v1/products') {
+      return options.productsGet
+        ? options.productsGet()
+        : Response.json(options.products ?? catalogProducts);
+    }
     if (url === '/api/v1/documents/doc-1' && method === 'GET') {
       getAttempts += 1;
       if (options.detailGet) return options.detailGet();
@@ -350,6 +387,285 @@ test('existing and free positions save exactly, removal/addition persist, and ro
   expect(
     within(persistedPosition).getByLabelText('Beschreibung'),
   ).toHaveProperty('value', 'Fiktiver Aufbau');
+});
+
+test('the catalog loads on demand and explicitly appends a persisted net-price snapshot', async () => {
+  const archivedReference = 'product-archived';
+  const { calls } = setup({
+    initial: {
+      ...detail(),
+      lines: [{ ...line, productId: archivedReference }],
+    },
+  });
+  const view = render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  expect(calls.filter((call) => call.url === '/api/v1/products')).toHaveLength(
+    0,
+  );
+  const original = screen.getByRole('group', { name: 'Position 1' });
+  expect(within(original).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    line.description,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const picker = await screen.findByLabelText('Produkt aus Katalog');
+  expect(calls.filter((call) => call.url === '/api/v1/products')).toHaveLength(
+    1,
+  );
+  expect(
+    screen.queryByRole('option', { name: 'Fiktives Archivprodukt' }),
+  ).toBeNull();
+  fireEvent.change(picker, { target: { value: 'product-net' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Katalogauswahl schließen' }),
+  );
+  expect(
+    screen
+      .getByRole('button', { name: 'Produkt hinzufügen' })
+      .getAttribute('aria-expanded'),
+  ).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  expect(
+    (screen.getByLabelText('Produkt aus Katalog') as HTMLSelectElement).value,
+  ).toBe('product-net');
+  expect(calls.filter((call) => call.url === '/api/v1/products')).toHaveLength(
+    1,
+  );
+
+  // Choosing only stages the source; it does not replace or append anything.
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
+  expect(within(original).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    line.description,
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+  );
+
+  const added = await screen.findByRole('group', { name: 'Position 2' });
+  expect(within(added).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktives Nettoprodukt',
+  );
+  expect(within(added).getByLabelText('Einheit')).toHaveProperty(
+    'value',
+    'Paket',
+  );
+  expect(
+    within(added).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '119.00');
+  expect(within(added).getByLabelText('Steuer in Prozent')).toHaveProperty(
+    'value',
+    '19.00',
+  );
+  expect(within(added).getByLabelText('Menge')).toHaveProperty('value', '1');
+  expect(within(added).getByLabelText('Rabatt in Prozent')).toHaveProperty(
+    'value',
+    '0.00',
+  );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(added).getByLabelText('Beschreibung'),
+    ),
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const savedBody = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: Array<Record<string, unknown>>;
+  };
+  expect(savedBody.lines).toHaveLength(2);
+  expect(savedBody.lines[0]).toMatchObject({
+    productId: archivedReference,
+    description: line.description,
+    unitPriceMinor: line.unitPriceMinor,
+  });
+  expect(savedBody.lines[1]).toMatchObject({
+    productId: 'product-net',
+    description: 'Fiktives Nettoprodukt',
+    quantity: 1,
+    unit: 'Paket',
+    unitPriceMinor: 11900,
+    taxBasisPoints: 1900,
+    discountBasisPoints: 0,
+  });
+
+  view.unmount();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const reloaded = await screen.findByRole('group', { name: 'Position 2' });
+  expect(within(reloaded).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktives Nettoprodukt',
+  );
+  expect(
+    within(reloaded).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '119.00');
+});
+
+test('gross catalog price is copied unchanged and overflowing net product is rejected without changing positions', async () => {
+  setup({
+    products: [
+      ...catalogProducts,
+      {
+        id: 'product-overflow',
+        name: 'Fiktives Produkt mit Überlauf',
+        unit: 'Stück',
+        priceMinor: Number.MAX_SAFE_INTEGER,
+        priceBasis: 'net',
+        taxBasisPoints: 1,
+        state: 'active',
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const picker = await screen.findByLabelText('Produkt aus Katalog');
+  fireEvent.change(picker, { target: { value: 'product-gross' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+  );
+  const grossLine = await screen.findByRole('group', { name: 'Position 2' });
+  expect(
+    within(grossLine).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '123.45');
+
+  fireEvent.change(picker, { target: { value: 'product-overflow' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+  );
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(2);
+  expect(within(grossLine).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktives Bruttoprodukt',
+  );
+  expect((await screen.findByRole('alert')).textContent).toMatch(
+    /Überlauf|Bruttobetrag/,
+  );
+});
+
+test('catalog failure can be retried and an empty active catalog has a clear state', async () => {
+  let attempts = 0;
+  setup({
+    productsGet: () => {
+      attempts += 1;
+      return attempts === 1
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve(Response.json(catalogProducts));
+    },
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Produktkatalog konnte nicht geladen werden.',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Katalog erneut laden' }));
+  expect(await screen.findByLabelText('Produkt aus Katalog')).toBeTruthy();
+  expect(attempts).toBe(2);
+
+  cleanup();
+  setup({ products: [] });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  expect(
+    await screen.findByText('Keine aktiven Produkte im Katalog.'),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Freie Position hinzufügen' }),
+  ).toBeTruthy();
+});
+
+test('a delayed catalog response does not replace edits made while it loads', async () => {
+  let resolveProducts!: (response: Response) => void;
+  setup({
+    productsGet: () =>
+      new Promise<Response>((resolve) => {
+        resolveProducts = resolve;
+      }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  expect(await screen.findByText('Produktkatalog wird geladen.')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Beschreibung'), {
+    target: { value: 'Fiktive eigene Änderung während des Ladens' },
+  });
+  resolveProducts(Response.json(catalogProducts));
+  await screen.findByLabelText('Produkt aus Katalog');
+  expect(screen.getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktive eigene Änderung während des Ladens',
+  );
+});
+
+test('a delayed catalog failure does not replace an offer version-conflict message', async () => {
+  let rejectCatalog!: (response: Response) => void;
+  setup({
+    productsGet: () =>
+      new Promise<Response>((resolve) => {
+        rejectCatalog = resolve;
+      }),
+    put: () => Response.json({ error: 'conflict' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktiver geänderter Betreff' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  const conflict = await screen.findByText(/zwischenzeitlich geändert/);
+  rejectCatalog(Response.json({ error: 'offline' }, { status: 503 }));
+  await screen.findByText('Produktkatalog konnte nicht geladen werden.');
+  expect(conflict.textContent).toContain('zwischenzeitlich geändert');
+  expect(conflict.closest('[role="alert"]')).toBeTruthy();
+});
+
+test('catalog failure remains local when an offer save succeeds', async () => {
+  setup({ productsGet: () => Promise.reject(new Error('offline')) });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  await screen.findByText('Produktkatalog konnte nicht geladen werden.');
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktiver gespeicherter Betreff' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  const saved = await screen.findByText('Änderungen gespeichert.');
+  expect(saved.closest('[role="status"]')).toBeTruthy();
+  expect(
+    screen
+      .getByText('Produktkatalog konnte nicht geladen werden.')
+      .closest('[role="alert"]'),
+  ).toBeTruthy();
 });
 
 test('removing the first of three positions focuses the first surviving description', async () => {

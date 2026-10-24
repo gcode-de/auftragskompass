@@ -9,6 +9,7 @@ import {
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
+import { grossProductPrice } from './product-price.js';
 
 type DraftValues = {
   subject: string;
@@ -57,6 +58,15 @@ type DraftTemplate = {
   introText: string;
   outroText: string;
   validityDays: number;
+};
+type CatalogProduct = {
+  id: string;
+  name: string;
+  unit: string;
+  priceMinor: number;
+  priceBasis: string;
+  taxBasisPoints: number;
+  state: string;
 };
 type Props = {
   documentId: string;
@@ -235,8 +245,17 @@ export function OfferDraftEditor({
     [message, setMessage] = useState(''),
     [error, setError] = useState(false),
     [focusInitialEditor, setFocusInitialEditor] = useState(false),
+    [productPickerOpen, setProductPickerOpen] = useState(false),
+    [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]),
+    [catalogState, setCatalogState] = useState<
+      'idle' | 'loading' | 'ready' | 'error'
+    >('idle'),
+    [selectedProductId, setSelectedProductId] = useState(''),
+    [catalogError, setCatalogError] = useState(false),
+    [catalogMessage, setCatalogMessage] = useState(''),
     request = useRef(0),
     lineSequence = useRef(0),
+    catalogRequest = useRef<Promise<void> | null>(null),
     busyRef = useRef(false),
     dirtyRef = useRef(false),
     subjectInput = useRef<HTMLInputElement | null>(null),
@@ -403,7 +422,7 @@ export function OfferDraftEditor({
   }
 
   function addLine() {
-    if (lineValues.length >= 1000) return;
+    if (lineValues.length >= 1000 || busyRef.current || isBlocked) return;
     lineSequence.current += 1;
     const key = `free-${lineSequence.current}`;
     pendingLineFocus.current = key;
@@ -420,6 +439,98 @@ export function OfferDraftEditor({
         discount: '0.00',
       },
     ]);
+  }
+
+  function loadCatalog() {
+    if (catalogRequest.current) return catalogRequest.current;
+    setCatalogState('loading');
+    setCatalogError(false);
+    setCatalogMessage('');
+    const pending = (async () => {
+      try {
+        const response = await fetch('/api/v1/products');
+        if (!response.ok) throw new Error('catalog');
+        const loaded: unknown = await response.json();
+        if (!Array.isArray(loaded)) throw new Error('catalog');
+        const active = loaded.filter(
+          (product): product is CatalogProduct =>
+            product &&
+            typeof product.id === 'string' &&
+            typeof product.name === 'string' &&
+            typeof product.unit === 'string' &&
+            typeof product.priceBasis === 'string' &&
+            typeof product.state === 'string' &&
+            product.state === 'active' &&
+            Number.isSafeInteger(product.priceMinor) &&
+            Number.isInteger(product.taxBasisPoints),
+        );
+        setCatalogProducts(active);
+        setCatalogState('ready');
+        setCatalogError(false);
+        setCatalogMessage('');
+      } catch {
+        setCatalogState('error');
+        setCatalogError(true);
+        setCatalogMessage('Produktkatalog konnte nicht geladen werden.');
+      } finally {
+        catalogRequest.current = null;
+      }
+    })();
+    catalogRequest.current = pending;
+    return pending;
+  }
+
+  function openProductPicker() {
+    if (busyRef.current || loading || isBlocked || lineValues.length >= 1000)
+      return;
+    setProductPickerOpen(true);
+    if (catalogState === 'idle' || catalogState === 'error') void loadCatalog();
+  }
+
+  function appendCatalogProduct() {
+    if (
+      busyRef.current ||
+      loading ||
+      isBlocked ||
+      lineValues.length >= 1000 ||
+      catalogState !== 'ready'
+    )
+      return;
+    const product = catalogProducts.find(
+      (entry) => entry.id === selectedProductId,
+    );
+    if (!product) return;
+    try {
+      const grossMinor = grossProductPrice(
+        product.priceMinor,
+        product.priceBasis,
+        product.taxBasisPoints,
+      );
+      lineSequence.current += 1;
+      const key = `catalog-${lineSequence.current}`;
+      pendingLineFocus.current = key;
+      setLineValues((current) => [
+        ...current,
+        {
+          key,
+          productId: product.id,
+          description: product.name,
+          quantity: '1',
+          unit: product.unit,
+          unitPrice: formatHundredths(grossMinor),
+          tax: formatHundredths(product.taxBasisPoints),
+          discount: '0.00',
+        },
+      ]);
+      setSelectedProductId('');
+      setCatalogError(false);
+      setCatalogMessage('');
+    } catch {
+      setCatalogError(true);
+      setCatalogMessage(
+        'Der Produktpreis kann nicht in einen sicheren Bruttobetrag umgerechnet werden. Die Positionen blieben unverändert. Produktpreis und Steuersatz prüfen.',
+      );
+    }
   }
 
   function removeLine(key: string) {
@@ -747,11 +858,98 @@ export function OfferDraftEditor({
               <button
                 type="button"
                 className="secondary-action"
-                disabled={lineValues.length >= 1000 || busy || loading}
+                disabled={
+                  lineValues.length >= 1000 || busy || loading || isBlocked
+                }
                 onClick={addLine}
               >
                 Freie Position hinzufügen
               </button>
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={
+                  busy ||
+                  loading ||
+                  (isBlocked && !productPickerOpen) ||
+                  (lineValues.length >= 1000 && !productPickerOpen)
+                }
+                aria-expanded={productPickerOpen}
+                onClick={() =>
+                  productPickerOpen
+                    ? setProductPickerOpen(false)
+                    : openProductPicker()
+                }
+              >
+                {productPickerOpen
+                  ? 'Katalogauswahl schließen'
+                  : 'Produkt hinzufügen'}
+              </button>
+              {productPickerOpen && (
+                <div className="offer-draft-catalog">
+                  {catalogState === 'loading' && (
+                    <p role="status">Produktkatalog wird geladen.</p>
+                  )}
+                  {catalogState === 'error' && (
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy || loading || isBlocked}
+                      onClick={() => void loadCatalog()}
+                    >
+                      Katalog erneut laden
+                    </button>
+                  )}
+                  {catalogState === 'ready' && catalogProducts.length === 0 && (
+                    <p role="status">Keine aktiven Produkte im Katalog.</p>
+                  )}
+                  {catalogState === 'ready' && catalogProducts.length > 0 && (
+                    <>
+                      <label>
+                        Produkt aus Katalog
+                        <select
+                          value={selectedProductId}
+                          disabled={busy || loading || isBlocked}
+                          onChange={(event) =>
+                            setSelectedProductId(event.target.value)
+                          }
+                        >
+                          <option value="">Produkt auswählen</option>
+                          {catalogProducts.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name} —{' '}
+                              {formatHundredths(product.priceMinor)} €{' '}
+                              {product.priceBasis === 'net'
+                                ? 'Netto'
+                                : 'Brutto'}{' '}
+                              — {formatHundredths(product.taxBasisPoints)} %
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={
+                          !selectedProductId ||
+                          lineValues.length >= 1000 ||
+                          busy ||
+                          loading ||
+                          isBlocked
+                        }
+                        onClick={appendCatalogProduct}
+                      >
+                        Als Position hinzufügen
+                      </button>
+                    </>
+                  )}
+                  {catalogMessage && (
+                    <p role={catalogError ? 'alert' : 'status'}>
+                      {catalogMessage}
+                    </p>
+                  )}
+                </div>
+              )}
               {!validLines && (
                 <p role="alert">
                   Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis,
