@@ -2,6 +2,40 @@
 
 Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Geordnete Kontingentpause: 24.10.2026
+
+Die Arbeit endet mit Abschlussreserve (zuletzt 88 Prozent), reguläre Nutzung
+war noch verfügbar, Zusatzguthaben unverändert. Keine automatische Wiederaufnahme
+und keine weiterarbeitenden Subagents. Bei Fortsetzung tatsächliche Limits und
+`ordinaryUsageAllowed` erneut prüfen; kein Credit-/API-Key-Ausweichweg.
+
+Alle Funktionscommits sofort auf `codex/bkp-wave1` gepusht:
+`4ecd5f5` (Netto-Produktübernahme), `fce137b` (Angebots-Produktwahl),
+`5740350ce53c37801e5c6760c41456d670a13320` (Blankoangebote). Arbeitsbaum
+vor diesem Dokuabschluss sauber. Lokal alle erforderlichen Gates grün:
+257 Unit-/459 Komponenten-/295 Integrationstests, 1011 Coverage-Tests,
+16 Chromiumfälle im isolierten Nachlauf, zusätzlicher Blanko-Visualnachlauf,
+Build, 38 Python-/zwei Node-Ops samt Compose-Sicherung/Restore. Keine
+abgeschwächten Assertions oder übersprungenen Tests.
+
+**Noch offen:** Blanko-Source-CI `40123216008` war beim Abschluss noch aktiv.
+Dieser Doku-Push kann ihn regulär ersetzen: aktuellen neuesten HEAD/Lauf prüfen,
+keine alte Run-ID als Freigabe verwenden. Release-CI `40122668313` für `fce137b`
+war ebenfalls noch in quality; sein Image-/Deployabschluss ist nicht nachgewiesen.
+Verifiziert laufend bleibt deshalb `0ddba5b` mit den unten dokumentierten
+Checkpoint-Kopien und der Live-Asset-Abnahme. Der unabhängige automatische Timer
+kann `fce137b` nach vollständig grünen Images später übernehmen; das ist dann
+neu zu prüfen, nicht hier als bereits geschehen behauptet.
+
+Nächster Schritt: CI-Fehler gegebenenfalls beheben; beim Testbetrieb tatsächlichen
+SHA, drei gesunde Container, Drain off und Checkpoint CT/Host/Betreiber mit
+identischer Prüfsumme prüfen. Für die Blankoanlage erst vollständig grüne
+Source-CI, geprüften Fast-forward der UX-Branch und grüne quality+images genau
+zum freigegebenen SHA abwarten. Migration 0035 braucht den bestehenden sicheren
+Checkpoint-/Updaterweg; kein manueller Parallelupdate oder altes Image gegen
+neues Schema. Dann neue Live-Asset-Abnahme und Liefermatrix aktualisieren.
+Keine neue Funktionswelle beginnen, bevor diese Auslieferung abgeschlossen ist.
+
 ## Blankoangebote und Auslieferungsstand: 24.10.2026
 
 **BKP017.1:** Event → Dateien → Neues Angebot bietet „Ohne Vorlage“ auch bei
