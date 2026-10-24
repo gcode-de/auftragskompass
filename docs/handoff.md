@@ -2,6 +2,35 @@
 
 Stand: **21.10.2026**, nach C051.3, H026, H029, H030, H031, H038, H039 (released) sowie H033 (umgesetzt, lokale Abnahme grün; Push/CI/Testbetrieb nach dem Commit). Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Fortsetzung nach Kontingentpause: 24.10.2026
+
+Aktiver Checkout `/Users/gp/Developer/GitHub/auftragskompass-bkp`, Branch
+`codex/bkp-wave1`. Funktionscommits: `1210a8f` (eigene Entwurfstexte/Vorschau),
+`9f4b707` (exakte Summen), `7769be119ddb7654075435c381b2c444a08e3eb3`
+(Positionseditor). Alle sofort gepusht. Gesamter lokaler `pnpm check` grün:
+986 Tests im Coverage-Lauf, 14 Chromium-Abläufe, Build, 38 Python- und zwei
+Node-Betriebstests samt Compose-Sicherung/Restore; letzte Typechecks und
+18 Editortests ebenfalls grün. Vollständiger gestagter Diff unabhängig geprüft.
+
+Bewusster Abschluss bei 89 Prozent des Fünf-Stunden-Fensters; Zusatzguthaben
+laut Nutzungsanzeige unverändert. Keine automatische Wiederaufnahme geplant.
+**Nicht ausgeliefert:** UX-Branch und Home Lab zuletzt weiter `605f75b`.
+CI für `9f4b707` erfolgreich (40087191836); der neueste Funktionslauf
+40088282268 war noch offen. Der Dokumentationsabschluss kann dessen
+Branch-Lauf regulär ersetzen: bei Fortsetzung den tatsächlichen HEAD und
+aktuellsten Lauf prüfen, keine alte Run-ID als Freigabe verwenden.
+
+Zuerst aktuelle Nutzung prüfen und vollständig grüne CI abwarten; danach
+freigegebene UX-Branch nur per geprüftem Fast-forward vorziehen, dort grüne
+Quality **und Images** abwarten und einzigen koordinierten Updater verwenden.
+Checkpoint, identische CT-/Host-/Betreiberkopie, drei gesunde Container mit
+exakter OCI-Revision und ausgelieferte Oberfläche nachprüfen. Installierte
+Updater-/Checkpoint-Skripte entsprachen zuletzt per SHA-256 dem Repository.
+Kein paralleler manueller Updater, Website-Option-Drain bleibt aus.
+Erst danach nächste konkrete Paritätsaufgabe auswählen (Produktwahl für
+Angebotspositionen oder Blankoanlage nach Plan); kein weiterer Ausbau während
+dieser Abschlussreserve. Luna-Agenten sind fertig und bearbeiten keine Dateien.
+
 ## Neuer verbindlicher Arbeitsauftrag und Prüfbasis: 22.10.2026
 
 **Fortsetzung 24.10.2026:** Der Nutzer beauftragt jetzt die Umsetzung in diesem
