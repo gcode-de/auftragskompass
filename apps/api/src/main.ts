@@ -93,6 +93,10 @@ try {
     auth && auth.mode !== 'password' ? await googleProvider(auth) : undefined,
   );
   if (auth) {
+    const documentStore = localStorageAdapter({ root: config.documentStorage }),
+      documentRender = chromiumPdfRenderer({
+        executablePath: config.chromiumPath,
+      });
     registerInquiryPreviewRoute(app);
     registerWebsiteInquiryRoutes(app, pool, auth.tenantId);
     registerWebsiteInboxRoutes(app, pool, auth.tenantId);
@@ -107,12 +111,13 @@ try {
       app,
       pool,
       auth.tenantId,
-      localStorageAdapter({ root: config.documentStorage }),
+      documentStore,
+      documentRender,
     );
     registerDocumentRoutes(app, pool, auth.tenantId, {
       origin: auth.origin,
-      store: localStorageAdapter({ root: config.documentStorage }),
-      render: chromiumPdfRenderer({ executablePath: config.chromiumPath }),
+      store: documentStore,
+      render: documentRender,
     });
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);

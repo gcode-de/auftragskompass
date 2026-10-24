@@ -18,7 +18,11 @@ import {
   logoLimit,
   type DocumentLayoutInput,
 } from '../../packages/core/src/document-layouts.js';
-import type { StorageAdapter } from '../../packages/core/src/storage.js';
+import type { PdfRenderer } from '../../packages/core/src/document-pdf.js';
+import {
+  StorageError,
+  type StorageAdapter,
+} from '../../packages/core/src/storage.js';
 import {
   createHealthServer,
   loadRuntimeConfig,
@@ -63,6 +67,8 @@ const layout: DocumentLayoutInput = {
   showPageNumbers: false,
   showPositionNumbers: true,
 };
+const testPdfRenderer: PdfRenderer = async () =>
+  Buffer.from('%PDF-1.4 synthetic layout PDF');
 beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17.6-alpine').start();
   pool = new Pool({ connectionString: container.getConnectionUri() });
@@ -186,7 +192,13 @@ test('the layout API requires auth, validates colours and reports conflicts', as
     config,
     (await syntheticGoogle(config)).provider,
   );
-  registerDocumentLayoutRoutes(app, pool, tenantId, store.adapter);
+  registerDocumentLayoutRoutes(
+    app,
+    pool,
+    tenantId,
+    store.adapter,
+    testPdfRenderer,
+  );
   const cookies = { '__Host-ak-session': 'synthetic-layout' },
     headers = {
       origin: config.origin,
@@ -226,6 +238,43 @@ test('the layout API requires auth, validates colours and reports conflicts', as
     });
     expect(read.statusCode).toBe(200);
     expect(read.json().senderName).toBe('Fictional Studio');
+
+    await pool.query('DELETE FROM document_layouts WHERE tenant_id=$1', [
+      tenantId,
+    ]);
+    const auditBefore = await pool.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1',
+        [tenantId],
+      ),
+      rejectedUpdate = await app.inject({
+        method: 'PUT',
+        url: '/api/v1/document-layout',
+        cookies,
+        headers,
+        payload: { ...layout, version: read.json().version },
+      });
+    expect(rejectedUpdate.statusCode).toBe(404);
+    expect(rejectedUpdate.json()).toEqual({ error: 'not_found' });
+    expect(
+      await documentLayoutRepository(pool, tenantId, store.adapter).get(),
+    ).toBeNull();
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          'SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1',
+          [tenantId],
+        )
+      ).rows[0]!.count,
+    ).toBe(auditBefore.rows[0]!.count);
+    const createdAgain = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout',
+      cookies,
+      headers,
+      payload: layout,
+    });
+    expect(createdAgain.statusCode).toBe(201);
+    expect(createdAgain.json().version).toBe(1);
   } finally {
     await app.close();
   }
@@ -548,7 +597,13 @@ test('the logo endpoint enforces auth, csrf, type and size', async () => {
     config,
     (await syntheticGoogle(config)).provider,
   );
-  registerDocumentLayoutRoutes(app, pool, tenantId, store.adapter);
+  registerDocumentLayoutRoutes(
+    app,
+    pool,
+    tenantId,
+    store.adapter,
+    testPdfRenderer,
+  );
   const cookies = { '__Host-ak-session': 'synthetic-layout' },
     headers = {
       origin: config.origin,
@@ -639,6 +694,263 @@ test('the logo endpoint enforces auth, csrf, type and size', async () => {
         })
       ).statusCode,
     ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test('layout preview is authenticated, synthetic, read-only and returns a no-store PDF', async () => {
+  const config = {
+      origin: 'https://admin.example.invalid',
+      tenantId,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    repo = documentLayoutRepository(pool, tenantId, store.adapter),
+    writes: string[] = [],
+    readCount = { value: 0 };
+  if (!(await repo.get())) await repo.save(actorId, layout);
+  const savedLogo = await repo.saveLogo(actorId, logoPng, 'image/png'),
+    savedLayout = await repo.get(),
+    previewStore: StorageAdapter = {
+      ...store.adapter,
+      async put(key, bytes) {
+        writes.push(key);
+        await store.adapter.put(key, bytes);
+      },
+      async read(key) {
+        readCount.value++;
+        if (readFailure) throw readFailure;
+        const bytes = store.files.get(key);
+        if (!bytes) throw new StorageError('missing');
+        return bytes;
+      },
+    };
+  let renderFailure: Error | null = null,
+    readFailure: Error | null = null,
+    renderBytes = Buffer.from('%PDF-1.4 synthetic layout preview');
+  const rendered: string[] = [],
+    render: PdfRenderer = async (html) => {
+      rendered.push(html);
+      if (renderFailure) throw renderFailure;
+      return renderBytes;
+    };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentLayoutRoutes(app, pool, tenantId, previewStore, render);
+  const cookies = { '__Host-ak-session': 'synthetic-layout' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-layout'),
+    },
+    input = { ...layout, senderName: 'Unsaved <Studio>' };
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/document-layout/preview',
+          payload: input,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/document-layout/preview',
+          cookies,
+          headers: { origin: config.origin },
+          payload: input,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/document-layout/preview',
+          cookies,
+          headers,
+          payload: { ...input, version: savedLayout!.version },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/document-layout/preview',
+          cookies,
+          headers,
+          payload: { ...input, primaryColor: 'green' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(readCount.value).toBe(0);
+
+    const auditBefore = await pool.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1',
+        [tenantId],
+      ),
+      documentsBefore = await pool.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM documents WHERE tenant_id=$1',
+        [tenantId],
+      ),
+      numbersBefore = await pool.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM document_number_sequences WHERE tenant_id=$1',
+        [tenantId],
+      ),
+      storageFileCountBefore = store.files.size,
+      writesBefore = writes.length,
+      response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/document-layout/preview',
+        cookies,
+        headers,
+        payload: input,
+      });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('application/pdf');
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['content-disposition']).toContain('VORSCHAU.pdf');
+    expect(response.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(readCount.value).toBe(1);
+    expect(rendered[0]).toContain('Unsaved &lt;Studio&gt;');
+    expect(rendered[0]).toContain('Beispielangebot');
+    expect(rendered[0]).toContain('Beispielposition');
+    expect(rendered[0]).toContain(
+      'data:image/png;base64,' + logoPng.toString('base64'),
+    );
+    expect(rendered[0]).not.toContain('layout@example.invalid');
+    expect(await repo.get()).toEqual(savedLayout);
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          'SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1',
+          [tenantId],
+        )
+      ).rows[0]!.count,
+    ).toBe(auditBefore.rows[0]!.count);
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          'SELECT count(*)::text AS count FROM documents WHERE tenant_id=$1',
+          [tenantId],
+        )
+      ).rows[0]!.count,
+    ).toBe(documentsBefore.rows[0]!.count);
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          'SELECT count(*)::text AS count FROM document_number_sequences WHERE tenant_id=$1',
+          [tenantId],
+        )
+      ).rows[0]!.count,
+    ).toBe(numbersBefore.rows[0]!.count);
+    expect(store.files.size).toBe(storageFileCountBefore);
+    expect(writes).toHaveLength(writesBefore);
+
+    store.files.delete(savedLogo.logoKey!);
+    const missingLogo = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(missingLogo.statusCode).toBe(404);
+    expect(missingLogo.json()).toEqual({ error: 'missing_reference' });
+    expect(readCount.value).toBe(2);
+    store.files.set(savedLogo.logoKey!, Buffer.from(logoPng));
+
+    readFailure = new StorageError('failed');
+    const failedStorageRead = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(failedStorageRead.statusCode).toBe(500);
+    expect(failedStorageRead.json()).toEqual({ error: 'preview_failed' });
+    expect(readCount.value).toBe(3);
+    readFailure = null;
+
+    renderFailure = new Error('synthetic renderer detail');
+    const failedRender = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(failedRender.statusCode).toBe(500);
+    expect(failedRender.json()).toEqual({ error: 'preview_failed' });
+    expect(failedRender.body).not.toContain('synthetic renderer detail');
+    expect(readCount.value).toBe(4);
+    renderFailure = null;
+    renderBytes = Buffer.alloc(0);
+    const emptyRender = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(emptyRender.statusCode).toBe(500);
+    expect(emptyRender.json()).toEqual({ error: 'preview_failed' });
+    expect(readCount.value).toBe(5);
+
+    renderBytes = Buffer.from('%PDF-1.4 preview without saved layout');
+    await pool.query('DELETE FROM document_layouts WHERE tenant_id=$1', [
+      tenantId,
+    ]);
+    const withoutSavedLayout = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(withoutSavedLayout.statusCode).toBe(200);
+    expect(rendered.at(-1)).not.toContain('data:image/');
+    expect(readCount.value).toBe(5);
+    expect(await repo.get()).toBeNull();
+
+    const unauthorizedReads = { value: 0 },
+      unauthorizedStore: StorageAdapter = {
+        ...store.adapter,
+        async read(key) {
+          unauthorizedReads.value++;
+          return store.adapter.read(key);
+        },
+      };
+    await expect(
+      documentLayoutRepository(pool, tenantId, unauthorizedStore).preview(
+        otherActorId,
+        input,
+        render,
+      ),
+    ).rejects.toBeInstanceOf(AccessError);
+    expect(unauthorizedReads.value).toBe(0);
   } finally {
     await app.close();
   }

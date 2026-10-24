@@ -196,11 +196,46 @@ Containerbenutzer gehörend an, damit ein frisches Volume nicht root gehört.
 | `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`, optional `from`/`to`, `limit`, `offset`, `include=metadata`) | `400` ungültiger Filter |
 | `GET /api/v1/documents/:id` | `200` Dokument | `404` |
 | `GET /api/v1/documents/:id/pdf` | `200` PDF (`application/pdf`) | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler |
+| `GET /api/v1/document-layout` | `200` gespeichertes Layout | `404` noch nicht eingerichtet |
+| `POST /api/v1/document-layout` | `201` bewusst angelegtes Layout | `400` ungültige Felder, `409` bereits vorhanden |
+| `PUT /api/v1/document-layout` | `200` aktualisiertes Layout | `400` ungültige Felder/Version, `404`, `409` Versionskonflikt |
+| `POST /api/v1/document-layout/preview` | `200` fiktive PDF-Vorschau der übergebenen Werte, `no-store` | `400` ungültige Felder, `403` fehlende Berechtigung, `404` fehlendes referenziertes Logo, `500` neutrale Speicher-/Renderfehler |
 | `PUT /api/v1/document-layout/logo` | `200` Layout mit Logo | `400` falsche Bildbytes, `404` kein Layout, `413` zu groß, `415` fremder Typ |
 
 Alle Routen verlangen eine angemeldete Betreiberberechtigung, die
 CSRF-Prüfung gilt wie bei den übrigen schreibenden Endpunkten. Jede Abfrage ist
 auf den Mandanten begrenzt; fremde IDs liefern `404`.
+
+## Dokumentlayout in Einstellungen (BKP018.1)
+
+„Dokumentlayout“ zeigt den gespeicherten Absender und die vorhandene Gestaltung.
+Erst „Bearbeiten“ öffnet die Felder; eine noch fehlende Konfiguration wird über
+„Layout einrichten“ ausdrücklich begonnen und gespeichert. Absenderdaten werden
+nicht erfunden oder automatisch aus Kunden-/Eventdaten übernommen. Schrift,
+Farben und Nummernoptionen stehen in einer aufklappbaren Darstellungsgruppe.
+Die Administrationsfarben bleiben davon unabhängig. Logo-Upload ist weiterhin
+nur über den vorhandenen API-Vertrag möglich; dessen Oberfläche folgt separat.
+
+Erstanlage nutzt POST, Änderungen nutzen PUT mit der geladenen Version. Eine
+bestätigte gültige Speicherantwort wird direkt übernommen. Nach Konflikt oder
+unklarem Speicherausgang bleiben die Eingaben erhalten; vor erneutem Speichern
+muss der tatsächliche Bestand bewusst geladen werden. Ein Ladefehler gilt nie
+als Beleg für ein fehlendes Layout. Vorhandene Home-/Dateien-/Suchnavigation
+berücksichtigt den registrierten Änderungszustand; dies ist keine Behauptung,
+dass sämtliche historischen Navigationswege der gesamten App bereits schützen.
+
+Die Vorschau verwendet die aktuellen, auch ungespeicherten neun Layoutfelder.
+`POST /api/v1/document-layout/preview` akzeptiert keine Versions-/Tenant-/Logo-
+Schlüssel aus dem Request. Die API prüft aktive Mandantenberechtigung und nutzt
+nur den eigenen gespeicherten Logoverweis. Empfänger, Leistungen und Nummer
+„VORSCHAU“ sind fiktiv; keine Geschäftsnummer wird vergeben, kein Layout,
+Kontakt, Event, Dokument, Artefakt oder Audit geschrieben. Die Antwort ist eine
+PDF mit `Cache-Control: no-store`; bei fehlenden Logobytes/Renderfehlern wird
+kein vermeintlich erfolgreiches Ergebnis geliefert. Die Oberfläche bietet nach
+Prüfung der PDF eine ausdrücklich angeklickte Vorschau/Download-Verknüpfung,
+keine automatische Popupöffnung oder eingebetteten aktiven Fremdinhalte.
+Änderungen an den Feldern machen eine ältere Vorschau ungültig; Blob-URLs werden
+bei Ersatz und beim Verlassen der Komponente widerrufen.
 
 ## PDF-Seitenzählung (BKP018.0b)
 

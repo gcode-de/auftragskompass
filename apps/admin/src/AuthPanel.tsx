@@ -16,6 +16,7 @@ import { FilesPanel } from './FilesPanel.js';
 import { ProductPanel } from './ProductPanel.js';
 import { DocumentTemplatesPanel } from './DocumentTemplatesPanel.js';
 import { DocumentNumbersPanel } from './DocumentNumbersPanel.js';
+import { DocumentLayoutPanel } from './DocumentLayoutPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
 import { WebsiteInbox } from './WebsiteInbox.js';
 import { MasterDataSettings } from './MasterDataPanel.js';
@@ -221,6 +222,12 @@ export function AuthPanel() {
             </div>
             <div hidden={route !== 'numbers'}>
               <DocumentNumbersPanel csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'document-layout'}>
+              <DocumentLayoutPanel
+                csrfToken={user.csrfToken}
+                active={route === 'document-layout'}
+              />
             </div>
             <div hidden={route !== 'export'}>
               <ExportPanel />

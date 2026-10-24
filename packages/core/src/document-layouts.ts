@@ -1,16 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { database } from './database.js';
-import { documentLayouts } from './schema.js';
+import { documentLayouts, tenants } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
+import {
+  DocumentPdfError,
+  renderDocumentPdf,
+  type PdfRenderer,
+} from './document-pdf.js';
 import {
   renderTemplate,
   type TemplatePlaceholder,
 } from './document-templates.js';
-import type { StorageAdapter } from './storage.js';
+import { StorageError, type StorageAdapter } from './storage.js';
 import {
   documentTotals,
   formatDocumentDate,
@@ -21,7 +26,12 @@ import {
 export class DocumentLayoutError extends Error {
   constructor(
     readonly reason:
-      'not_found' | 'conflict' | 'invalid_logo' | 'logo_too_large',
+      | 'not_found'
+      | 'conflict'
+      | 'invalid_logo'
+      | 'logo_too_large'
+      | 'missing_reference'
+      | 'preview_failed',
   ) {
     super('Document layout rejected');
   }
@@ -238,6 +248,8 @@ export function documentLayoutRepository(
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
         const [old] = await tx.select().from(documentLayouts).where(scope);
+        if (!old && version !== undefined)
+          throw new DocumentLayoutError('not_found');
         if (old && old.version !== version)
           throw new DocumentLayoutError('conflict');
         const values = {
@@ -258,6 +270,78 @@ export function documentLayoutRepository(
         await appendAudit(tx, tenantId, 'document_layout.updated', actorId);
         return row!;
       });
+    },
+    async preview(
+      actorId: string,
+      input: DocumentLayoutInput,
+      render: PdfRenderer,
+    ) {
+      const context = await database(pool).transaction(async (tx) => {
+        await tx.execute(
+          sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`,
+        );
+        await requireAdministrator(tx, tenantId, actorId);
+        const [tenant] = await tx
+            .select({ timeZone: tenants.timezone })
+            .from(tenants)
+            .where(eq(tenants.id, tenantId)),
+          [layout] = await tx
+            .select({
+              logoKey: documentLayouts.logoKey,
+              logoMediaType: documentLayouts.logoMediaType,
+            })
+            .from(documentLayouts)
+            .where(scope);
+        if (!tenant) throw new DocumentLayoutError('missing_reference');
+        return {
+          timeZone: tenant.timeZone,
+          logoKey: layout?.logoKey,
+          logoMediaType: layout?.logoMediaType,
+        };
+      });
+      let logoDataUri: string | undefined;
+      if (context.logoKey && context.logoMediaType) {
+        try {
+          const logo = await store.read(context.logoKey);
+          logoDataUri = `data:${context.logoMediaType};base64,${logo.toString('base64')}`;
+        } catch (error) {
+          throw new DocumentLayoutError(
+            error instanceof StorageError && error.reason === 'missing'
+              ? 'missing_reference'
+              : 'preview_failed',
+          );
+        }
+      }
+      const html = renderDocumentHtml({
+        layout: input,
+        documentNumber: 'VORSCHAU',
+        issuedAt: new Date('2030-10-26T10:00:00.000Z'),
+        timeZone: context.timeZone,
+        recipientName: 'Beispielkunde',
+        recipientAddress: 'Beispielstraße 1\n12345 Beispielstadt',
+        subject: 'Beispielangebot',
+        introText: 'Vielen Dank für Ihre Anfrage.',
+        outroText: 'Wir freuen uns auf Ihre Rückmeldung.',
+        lines: [
+          {
+            description: 'Beispielposition',
+            unit: 'Stück',
+            quantity: 1,
+            unitPriceMinor: 10000,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+        ],
+        values: {},
+        ...(logoDataUri ? { logoDataUri } : {}),
+      });
+      try {
+        return await renderDocumentPdf(html, render);
+      } catch (error) {
+        if (error instanceof DocumentPdfError)
+          throw new DocumentLayoutError('preview_failed');
+        throw error;
+      }
     },
     // The logo lives outside the row: the bytes go to the storage adapter and
     // the layout only keeps the derived key and media type.
@@ -293,6 +377,7 @@ export function registerDocumentLayoutRoutes(
   pool: Pool,
   tenantId: string,
   store: StorageAdapter,
+  render: PdfRenderer,
 ) {
   const repo = documentLayoutRepository(pool, tenantId, store);
   // Raw image bodies never pass through JSON; the parser limit is the first
@@ -329,6 +414,10 @@ export function registerDocumentLayoutRoutes(
         return reply.code(404).send({ error: 'not_found' });
       if (error.reason === 'conflict')
         return reply.code(409).send({ error: 'conflict' });
+      if (error.reason === 'missing_reference')
+        return reply.code(404).send({ error: 'missing_reference' });
+      if (error.reason === 'preview_failed')
+        return reply.code(500).send({ error: 'preview_failed' });
       // The parser limit already rejects oversized bodies, so a size error
       // here can only come from a direct repository caller.
       return reply.code(400).send({ error: error.reason });
@@ -380,6 +469,46 @@ export function registerDocumentLayoutRoutes(
           request.body,
           request.body.version,
         );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Body: DocumentLayoutInput }>(
+    '/api/v1/document-layout/preview',
+    {
+      preValidation: async (request, reply) => {
+        const body = request.body;
+        if (
+          !body ||
+          typeof body !== 'object' ||
+          Array.isArray(body) ||
+          Object.keys(body).length !== Object.keys(fields).length ||
+          Object.keys(fields).some((field) => !(field in body))
+        )
+          return reply.code(400).send({ error: 'invalid_layout' });
+      },
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: Object.keys(fields),
+          properties: fields,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const pdf = await repo.preview(
+          request.authSession!.userId,
+          request.body,
+          render,
+        );
+        return reply
+          .type('application/pdf')
+          .header('Cache-Control', 'no-store')
+          .header('Content-Disposition', 'inline; filename="VORSCHAU.pdf"')
+          .send(pdf.bytes);
       } catch (error) {
         return failure(error, reply);
       }

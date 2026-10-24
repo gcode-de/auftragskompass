@@ -61,6 +61,7 @@ const settingsLinks = [
   ['settings-inquiry', 'Website-Formular'],
   ['settings-website', 'Website-Eingänge'],
   ['settings-templates', 'Dokumentvorlagen'],
+  ['settings-document-layout', 'Dokumentlayout'],
   ['settings-numbers', 'Nummernkreise'],
   ['settings-security', 'Konto & Zugriff'],
 ] as const;
@@ -72,6 +73,7 @@ export type WorkspaceRoute =
   | 'inquiry'
   | 'export'
   | 'templates'
+  | 'document-layout'
   | 'numbers'
   | 'search'
   | 'resources'
@@ -85,6 +87,7 @@ export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'export',
   'inquiry',
   'templates',
+  'document-layout',
   'numbers',
   'resources',
   'products',
@@ -101,6 +104,7 @@ const settingsHashes = {
   export: 'settings-export',
   inquiry: 'settings-inquiry',
   templates: 'settings-templates',
+  'document-layout': 'settings-document-layout',
   numbers: 'settings-numbers',
   resources: 'settings-resources',
   products: 'settings-products',
@@ -122,6 +126,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'settings-export') return 'export';
   if (hash === 'settings-security') return 'security';
   if (hash === 'settings-templates') return 'templates';
+  if (hash === 'settings-document-layout') return 'document-layout';
   if (hash === 'settings-numbers') return 'numbers';
   if (hash.startsWith('event-')) return 'events';
   if (hash.startsWith('contact-')) return 'contacts';

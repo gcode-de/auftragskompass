@@ -2,6 +2,42 @@
 
 Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Dokumentlayout BKP018.1: 24.10.2026
+
+Einstellungen→Dokumentlayout (`#settings-document-layout`) zeigt Zusammenfassung,
+explizites Bearbeiten und Ersteinrichtung bei bestätigtem GET404. Absender und
+neun vorhandene Layoutfelder sind editierbar, Darstellungsoptionen aufklappbar.
+POST-Erstanlage und versionsgesichertes PUT; bestätigte Antwort muss zu
+übermittelten Werten/erwarteter Version passen. Konflikt, verschwundenes Layout
+und unklarer Speicherausgang erhalten Eingaben und verlangen ausdrückliches
+Verwerfen/Neuladen. PUT legt eine verschwundene Konfiguration nicht neu an.
+
+Neuer POST `/api/v1/document-layout/preview` prüft genau neun Felder ohne fremde
+Schlüssel, Auth/CSRF und aktive Mandantenberechtigung. Read-only-Snapshot aus
+Mandantenzeitzone und eigenem Logoverweis; anschließend Storage lesen und echte
+PDF rendern. Ausschließlich fiktive Beispieldaten, keine Geschäftsnummer,
+Persistenz oder Audit. Die aktuellen ungespeicherten Werte werden verwendet.
+PDF-Typ/Signatur werden vor Blob-Link geprüft, alte URLs nach Änderungen und
+Unmount widerrufen; keine iframe-/CSP-Ausnahme. In Headless Chrome kann der
+Öffnenlink als Download enden; tatsächliche PDF-Bytes sind geprüft.
+
+16 neue Komponentenfälle und 12 Layout-Integrationen grün, vollständige
+Coverage-Suite 1033 Tests (97,06 Prozent Zeilen/93,29 Prozent Branches),
+Changed-Code 215/234 Zeilen und 201/236 Branches. Schnelle Gates/Build grün;
+synthetischer realer PG-/HTTPS-/Chromiumablauf mit acht Zuständen bei
+320/390/768/1280 in beiden Themes, axe, Persistenz/Reload, echten Fehler-/409-
+Zuständen und tatsächlicher PDF grün. Unabhängige UI-/Backend-Reviews ohne
+Blocker; Impeccable-Detector keine Befunde in geändertem Code, 61 Bestandshinweise
+in gemeinsamer CSS-Datei bleiben separat. Rohbelege ausschließlich privat.
+
+**Offen:** Logo-Uploadoberfläche BKP018.2; längere Beschriftungen in der bestehenden
+mobilen Einstellungsnavigation brechen bei 320px unschön innerhalb von Wörtern.
+Diese Navigation soll anschließend als eigener kleiner Slice kompakter und
+lesbarer werden, nicht durch zusätzliche Dekoration. Keine vollständige
+Bookitup-Parität behaupten. CI+Images, automatischen Updater, Sicherung und
+Live-Assets dieses neuen Funktionsstands vor Auslieferungsaussage prüfen;
+letzter vollständig belegter Betrieb oben/unten historisch 132ace1.
+
 ## PDF-Seitenzählung BKP018.0b: 24.10.2026
 
 Neu erzeugte Dokumente nutzen bei aktivierter Option echte Chromium-Seitenzähler

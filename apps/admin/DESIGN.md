@@ -247,3 +247,28 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 - Keine zusätzliche Markenwelt oder unbelegte Produktfunktionen aus dieser Dokumentation ableiten.
 - Keine Bewegungsanimation für den Tastaturaufruf des mobilen Menüs ergänzen.
 - Keine Daten aus einem ausgeblendeten Arbeitsbereich als sichtbar behandeln.
+
+
+### Dokumentlayout (BKP018.1, 24.10.2026)
+
+Die Einstellungsnavigation führt „Dokumentlayout“ unter
+`#settings-document-layout`. Standard ist eine kompakte Absender-/Darstellungs-
+zusammenfassung; erst „Dokumentlayout bearbeiten“ öffnet das Formular. Ohne
+Konfiguration beginnt der Ablauf ausdrücklich mit „Dokumentlayout einrichten“.
+Absenderfelder bilden ein responsives Grid, ab 15rem Mindestfeldbreite; auf
+kleinen Flächen werden sie einspaltig. Zusätzliche Druckoptionen bleiben in der
+nativen Disclosure „Darstellung“. Neutraler bestehender Feldhintergrund,
+Feldrand und Ink, 44px Mindesthöhe, Kontrollradius 0.4rem; kein neuer Farb- oder
+Typografiestil. Die bearbeiteten PDF-Farben sind Dokumentinhalte und ändern
+nicht das Administrationstheme.
+
+Ein Speichern-Primärknopf, eine sekundäre Vorschauaktion; die Vorschau benötigt
+kein vorheriges Speichern und erhält deutlich bezeichnete Öffnen-/Downloadlinks.
+Kein iframe oder zusätzliches Modal. Konflikt/unklarer Ausgang erhält Eingaben
+und fordert ausdrücklich Bestandsabgleich an. Die neuen Zustände verwenden
+bestehende Status-/Alertrollen; ein veraltetes PDF wird nach Änderungen nicht
+weiter als aktuelle Vorschau angeboten. Bestehender globaler Dirty-Check bleibt
+angebunden. Der finale Detector zeigt keine Befunde in geändertem Code; seine
+61 Hinweise in älteren Teilen der gemeinsamen CSS-Datei wurden nicht pauschal
+als Teil dieses Slices umgebaut. Mobil-/Desktop-/Theme-Abnahme gehört zum
+konkreten Browserbeleg, nicht allein zu diesem Designeintrag.

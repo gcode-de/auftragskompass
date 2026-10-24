@@ -206,15 +206,16 @@ async function offerDraftScenario(browser: Browser) {
     registerEventRoutes(app, pool, tenantId);
     registerDocumentTemplateRoutes(app, pool, tenantId);
     registerDocumentNumberRoutes(app, pool, tenantId);
-    registerDocumentLayoutRoutes(app, pool, tenantId, storage);
+    const renderSynthetic = async (html: string) => {
+      renderCount++;
+      renderedHtml.push(html);
+      return Buffer.from('%PDF-1.4 synthetic offer preview');
+    };
+    registerDocumentLayoutRoutes(app, pool, tenantId, storage, renderSynthetic);
     registerDocumentRoutes(app, pool, tenantId, {
       origin,
       store: storage,
-      render: async (html) => {
-        renderCount++;
-        renderedHtml.push(html);
-        return Buffer.from('%PDF-1.4 synthetic offer preview');
-      },
+      render: renderSynthetic,
     });
     registerCalendarFeedRoutes(app, pool, tenantId, origin);
 
