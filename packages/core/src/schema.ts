@@ -382,7 +382,7 @@ export const documents = pgTable('documents', {
   tenantId: uuid('tenant_id').notNull(),
   id: uuid('id').notNull(),
   kind: text('kind').notNull(),
-  templateId: uuid('template_id').notNull(),
+  templateId: uuid('template_id'),
   eventId: uuid('event_id'),
   contactId: uuid('contact_id'),
   number: text('number'),

@@ -1,7 +1,8 @@
 # Geschäftsdokumente: Entwurf, Nummer und finale PDF
 
-Stand: 24.10.2026, einschließlich BKP016.4. Dokumente entstehen aus einer
-Dokumentvorlage, tragen eigene Inhalte und Positionen als Snapshot und werden
+Stand: 24.10.2026, einschließlich BKP017.1. Dokumente entstehen aus einer
+Dokumentvorlage; Angebote können auch ohne Vorlage beginnen. Sie tragen eigene
+Inhalte und Positionen als Snapshot und werden
 beim Finalisieren mit einer Nummer aus dem Nummernkreis unveränderlich
 festgeschrieben. Angebotsentwürfe lassen sich in der Eventakte bearbeiten und
 vorab als PDF ansehen; finale PDFs können heruntergeladen werden.
@@ -10,7 +11,7 @@ vorab als PDF ansehen; finale PDFs können heruntergeladen werden.
 
 | Zustand | Bedeutung | Nummer | Snapshot/PDF |
 |---|---|---|---|
-| `draft` | bearbeitbarer Snapshot aus einer Vorlage | keine | keiner |
+| `draft` | bearbeitbarer Snapshot, Angebot auch ohne Vorlage | keine | keiner |
 | `final` | finalisiert, unveränderbar | eindeutig je Mandant | HTML-Hash und PDF-Hash gesetzt |
 | `withdrawn` | zurückgezogen (Domänenregel vorhanden, noch kein Endpunkt) | keine | keiner |
 
@@ -26,6 +27,33 @@ Anlagezeitpunkt, beim Finalisieren der Ausgabezeitpunkt. `finalized_at` ist
 identisch mit dem Ausgabezeitpunkt.
 
 ## Finalisieren
+
+### Angebot ohne Vorlage (BKP017.1)
+
+`POST /api/v1/documents/blank-offer` verlangt `eventId` und `contactId` als
+mandantengebundene UUIDs sowie die vorhandene Anmeldung/Administratorberechtigung
+und CSRF-Prüfung. Es entsteht ausschließlich ein Angebotsentwurf: `templateId`
+ist `null`, Betreff „Angebot“, Einleitung/Schluss leer, Gültigkeit 14 Tage,
+Version 1, keine Positionen und Summen 0 Cent. Keine Geschäftsnummer, PDF oder
+Vorlage wird angelegt. Der bisherige Vorlagen-POST bleibt unverändert.
+
+In Event → Dateien → Neues Angebot steht „Ohne Vorlage“ zur Wahl, auch wenn es
+keine aktive Angebotsvorlage gibt. Ein zugeordneter Kontakt bleibt Voraussetzung.
+Nach der Blankoanlage öffnet der vorhandene Editor mit neutralem Leerhinweis.
+Freie Positionen und Katalogprodukte verwenden denselben Ablauf wie andere
+Angebotsentwürfe. Vor dem Speichern, der PDF-Vorschau und der Finalisierung muss
+mindestens eine gültige Position vorhanden sein; leere Entwürfe verbrauchen keine
+Nummer. Nach dem Speichern sind eigene Texte und Positionen unabhängig von
+Vorlagen vorhanden. Finale PDFs bleiben unveränderbar.
+
+Migration `0035_blank_offer_drafts` erlaubt eine nullable Vorlagenreferenz und
+behält den zusammengesetzten Mandanten-Fremdschlüssel. Ein neuer Check erlaubt
+Vorlagenlosigkeit nur bei Angeboten mit Event, Kontakt und vollständigen eigenen
+Inhaltsfeldern. Alte vorlagengebundene Dokumente werden nicht verändert. Es gibt
+keinen neuen dauerhaften Idempotenzschlüssel für die Anlage: Eine verlorene oder
+unplausible Erfolgsantwort sperrt das direkte erneute Anlegen im UI. Zuerst
+„Angebote aktualisieren“ und den Bestand prüfen; ein Browserneustart ersetzt
+keine serverseitige Wiederholungsgarantie.
 
 ### Eigene Entwurfstexte (BKP016.1)
 

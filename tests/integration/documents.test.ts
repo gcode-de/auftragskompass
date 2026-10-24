@@ -242,6 +242,185 @@ test('a draft copies the template positions and exposes the exact totals', async
   expect(draft.lines.map((line) => line.position)).toEqual([0, 1]);
 });
 
+test('a blank offer starts without a template or positions and cannot be saved or finalized empty', async () => {
+  const run = dependencies(),
+    repo = documentRepository(pool, tenantId, run.deps),
+    blank = await repo.createBlankOffer(actorId, { eventId, contactId });
+  expect(blank).toMatchObject({
+    kind: 'offer',
+    templateId: null,
+    eventId,
+    contactId,
+    subject: 'Angebot',
+    introText: '',
+    outroText: '',
+    validityDays: 14,
+    number: null,
+    state: 'draft',
+    netMinor: 0,
+    taxMinor: 0,
+    grossMinor: 0,
+    version: 1,
+    lines: [],
+  });
+
+  const before = (
+    await pool.query<{ next_value: number }>(
+      'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+      [tenantId, 'offer'],
+    )
+  ).rows[0]!.next_value;
+  await expect(repo.preview(blank.id)).rejects.toMatchObject({
+    reason: 'empty_lines',
+  });
+  await expect(repo.finalize(actorId, blank.id)).rejects.toMatchObject({
+    reason: 'empty_lines',
+  });
+  await expect(
+    repo.updateDraftContent(actorId, blank.id, {
+      version: 1,
+      subject: 'Eigenes Angebot',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+    }),
+  ).rejects.toMatchObject({ reason: 'empty_lines' });
+  expect(
+    (
+      await pool.query<{ next_value: number }>(
+        'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+        [tenantId, 'offer'],
+      )
+    ).rows[0]!.next_value,
+  ).toBe(before);
+  await expect(
+    pool.query(
+      `INSERT INTO documents
+        (tenant_id,id,kind,template_id,event_id,contact_id,issued_at)
+       VALUES ($1,$2,'invoice',NULL,$3,$4,$5)`,
+      [tenantId, randomUUID(), eventId, contactId, now],
+    ),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'documents_blank_offer_context',
+  });
+  await expect(
+    pool.query(
+      `INSERT INTO documents
+        (tenant_id,id,kind,template_id,event_id,contact_id,issued_at)
+       VALUES ($1,$2,'offer',NULL,$3,$4,$5)`,
+      [tenantId, randomUUID(), eventId, contactId, now],
+    ),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'documents_blank_offer_context',
+  });
+  expect(await repo.get(blank.id)).toMatchObject({
+    templateId: null,
+    version: 1,
+    lines: [],
+    subject: 'Angebot',
+  });
+
+  const saved = await repo.updateDraftContent(actorId, blank.id, {
+    version: 1,
+    subject: 'Eigenes Blankoangebot',
+    introText: 'Eigene Einleitung',
+    outroText: 'Eigener Schlusstext',
+    validityDays: 14,
+    lines: [
+      {
+        productId: null,
+        description: 'Fiktive Blankoposition',
+        quantity: 1,
+        unit: 'Pauschale',
+        unitPriceMinor: 10000,
+        taxBasisPoints: 0,
+        discountBasisPoints: 0,
+      },
+    ],
+  });
+  expect(saved).toMatchObject({
+    templateId: null,
+    version: 2,
+    grossMinor: 10000,
+    lines: [{ description: 'Fiktive Blankoposition' }],
+  });
+  await repo.preview(blank.id);
+  expect(run.rendered[0]).toContain('Eigenes Blankoangebot');
+  expect(run.rendered[0]).toContain('Eigene Einleitung');
+  expect(run.rendered[0]).not.toContain('Fictional offer');
+
+  const finalized = await repo.finalize(actorId, blank.id, saved.version);
+  expect(finalized).toMatchObject({
+    templateId: null,
+    kind: 'offer',
+    state: 'final',
+    number: 'AN-2030-0001',
+    version: 3,
+    subject: 'Eigenes Blankoangebot',
+    introText: 'Eigene Einleitung',
+    outroText: 'Eigener Schlusstext',
+    grossMinor: 10000,
+  });
+  expect(finalized.snapshotHash).toMatch(/^[a-f0-9]{64}$/);
+  expect(finalized.pdfHash).toMatch(/^[a-f0-9]{64}$/);
+  const pdf = await readDocumentPdf(run.deps.store, finalized.pdfHash!);
+  expect(pdf).toEqual(run.files.get(finalized.pdfHash! + '.pdf'));
+  expect(run.rendered.at(-1)).toContain('Eigenes Blankoangebot');
+  expect(run.rendered.at(-1)).toContain('Eigene Einleitung');
+  expect(run.rendered.at(-1)).toContain('Fiktive Blankoposition');
+  expect(run.rendered.at(-1)).not.toContain('Fictional offer');
+
+  await expect(
+    repo.updateDraftContent(actorId, blank.id, {
+      version: finalized.version,
+      subject: 'Nachträgliche Änderung',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+      lines: saved.lines.map((line) => ({
+        productId: line.productId,
+        description: line.description,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitPriceMinor: line.unitPriceMinor,
+        taxBasisPoints: line.taxBasisPoints,
+        discountBasisPoints: line.discountBasisPoints,
+      })),
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  await expect(
+    repo.finalize(actorId, blank.id, finalized.version),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  expect(await repo.get(blank.id)).toMatchObject({
+    state: 'final',
+    number: finalized.number,
+    version: finalized.version,
+    snapshotHash: finalized.snapshotHash,
+    pdfHash: finalized.pdfHash,
+  });
+  expect(
+    (
+      await pool.query<{ next_value: number }>(
+        'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+        [tenantId, 'offer'],
+      )
+    ).rows[0]!.next_value,
+  ).toBe(before + 1);
+
+  // Keep the shared numbering sequence deterministic for later tests.
+  await run.deps.store.remove(finalized.pdfHash! + '.pdf');
+  await pool.query('DELETE FROM documents WHERE tenant_id=$1 AND id=$2', [
+    tenantId,
+    blank.id,
+  ]);
+  await pool.query(
+    "UPDATE document_number_sequences SET next_value=$1, version=1 WHERE tenant_id=$2 AND kind='offer'",
+    [before, tenantId],
+  );
+});
+
 test('defaults the issue time to the wall clock without an injected clock', async () => {
   const before = Date.now(),
     draft = await documentRepository(pool, tenantId, {
@@ -1050,6 +1229,15 @@ test('the document API requires auth and enforces the final state', async () => 
     };
   try {
     expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/blank-offer',
+          payload: { eventId, contactId },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
       (await app.inject('/api/v1/documents/' + randomUUID())).statusCode,
     ).toBe(401);
     expect(
@@ -1417,6 +1605,138 @@ test('the document API requires auth and enforces the final state', async () => 
         })
       ).statusCode,
     ).toBe(400);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the blank-offer API requires CSRF, event, and tenant contact context', async () => {
+  const config = {
+    origin: site,
+    tenantId,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, tenantId, dependencies().deps);
+  const cookies = { '__Host-ak-session': 'synthetic-documents' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-documents'),
+    };
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/blank-offer',
+          cookies,
+          headers,
+          payload: { eventId },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/blank-offer',
+          cookies,
+          payload: { eventId, contactId },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/blank-offer',
+          cookies,
+          headers,
+          payload: { eventId: randomUUID(), contactId },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/blank-offer',
+          cookies,
+          headers,
+          payload: { eventId, contactId: otherContactId },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/documents/blank-offer',
+      cookies,
+      headers,
+      payload: { eventId, contactId },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      kind: 'offer',
+      templateId: null,
+      eventId,
+      contactId,
+      subject: 'Angebot',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+      netMinor: 0,
+      taxMinor: 0,
+      grossMinor: 0,
+      version: 1,
+      lines: [],
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/documents/' + created.json().id,
+          cookies,
+        })
+      ).json().templateId,
+    ).toBeNull();
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/documents/' + created.json().id + '/preview',
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + created.json().id + '/finalize',
+          cookies,
+          headers,
+        })
+      ).json().error,
+    ).toBe('empty_lines');
   } finally {
     await app.close();
   }

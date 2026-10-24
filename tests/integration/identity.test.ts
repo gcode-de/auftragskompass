@@ -40,8 +40,22 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP016.1 adds nullable draft snapshots without inventing historical text.
-  expect(applied.at(-1)!.name).toBe('0034_document_draft_content.sql');
+  // BKP017.1 permits a blank offer without creating a placeholder template.
+  expect(applied.at(-1)!.name).toBe('0035_blank_offer_drafts.sql');
+  const templateColumn = (
+    await pool.query<{ is_nullable: string }>(
+      "SELECT is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='documents' AND column_name='template_id'",
+    )
+  ).rows[0];
+  expect(templateColumn?.is_nullable).toBe('YES');
+  const templateForeignKey = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND contype='f' AND pg_get_constraintdef(oid) ILIKE '%template_id%'",
+    )
+  ).rows.map((row) => row.def);
+  expect(templateForeignKey).toContain(
+    'FOREIGN KEY (tenant_id, template_id) REFERENCES document_templates(tenant_id, id)',
+  );
   // H034 adds the optional place without touching existing data.
   const columns = (
     await pool.query<{

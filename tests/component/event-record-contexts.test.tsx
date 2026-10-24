@@ -133,6 +133,18 @@ function mockRecord(
       if (url === '/api/v1/document-templates') return Response.json(templates);
       if (url.startsWith('/api/v1/documents?eventId='))
         return Response.json(options.documents ?? [offer, invoice]);
+      if (url === '/api/v1/documents' && init?.method === 'POST')
+        return Response.json(
+          {
+            ...offer,
+            id: 'document-created',
+            number: null,
+            state: 'draft',
+            finalizedAt: null,
+            version: 1,
+          },
+          { status: 201 },
+        );
       if (url.endsWith('/availability')) return Response.json([unit]);
       if (url === '/api/v1/events/' + event.id) {
         if (init) return Response.json({ ...event, version: 4 });

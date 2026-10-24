@@ -96,6 +96,7 @@ test('lists the offers of the event and only offers active templates', async () 
   expect(screen.getByText(/249,00/)).toBeTruthy();
   const select = screen.getByLabelText('Vorlage') as HTMLSelectElement;
   expect(Array.from(select.options).map((option) => option.text)).toEqual([
+    'Ohne Vorlage',
     'Fictional offer',
   ]);
   expect(
@@ -149,12 +150,10 @@ test('a stale finalize is explained and the list refreshed', async () => {
   );
   expect(await screen.findByText(/Bereits finalisiert/)).toBeTruthy();
 });
-test('missing templates or contact disable the form and explain why', async () => {
+test('no template permits blank creation, while a missing contact disables it', async () => {
   setup({ documents: [], templates: [] });
   const view = render(<EventDocuments {...props} contactId={null} />);
-  expect(
-    await screen.findByText(/Noch keine aktive Angebotsvorlage/),
-  ).toBeTruthy();
+  expect(await screen.findByText(/Keine aktive Angebotsvorlage/)).toBeTruthy();
   expect(screen.getByText(/zuerst einen Hauptkontakt/)).toBeTruthy();
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
@@ -164,10 +163,13 @@ test('missing templates or contact disable the form and explain why', async () =
   cleanup();
   setup({ documents: [], templates: [] });
   render(<EventDocuments {...props} />);
-  expect(
-    await screen.findByText(/Noch keine aktive Angebotsvorlage/),
-  ).toBeTruthy();
+  expect(await screen.findByText(/Keine aktive Angebotsvorlage/)).toBeTruthy();
   expect(screen.queryByText(/zuerst einen Hauptkontakt/)).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
+      .disabled,
+  ).toBe(false);
+  expect(screen.getByRole('option', { name: 'Ohne Vorlage' })).toBeTruthy();
 });
 test('a failed load is reported', async () => {
   vi.stubGlobal(
@@ -180,6 +182,13 @@ test('a failed load is reported', async () => {
   expect(
     await screen.findByText('Dateien konnten nicht geladen werden.'),
   ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Dateien erneut laden' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
+      .disabled,
+  ).toBe(true);
 });
 
 test('a rejected draft and a failed pdf are explained to the operator', async () => {

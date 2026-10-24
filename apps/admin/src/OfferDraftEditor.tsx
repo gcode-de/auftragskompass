@@ -40,7 +40,7 @@ type DraftLineValues = {
 };
 type DraftDetail = {
   id: string;
-  templateId: string;
+  templateId: string | null;
   state: string;
   version: number;
   subject: string | null;
@@ -116,7 +116,7 @@ function isDetail(value: unknown): value is DraftDetail {
       detail.validityDays! <= 365;
   return (
     typeof detail.id === 'string' &&
-    typeof detail.templateId === 'string' &&
+    (typeof detail.templateId === 'string' || detail.templateId === null) &&
     detail.state === 'draft' &&
     Number.isInteger(detail.version) &&
     Number.isSafeInteger(detail.netMinor) &&
@@ -126,7 +126,7 @@ function isDetail(value: unknown): value is DraftDetail {
     Number.isSafeInteger(detail.grossMinor) &&
     detail.grossMinor! >= 0 &&
     Array.isArray(detail.lines) &&
-    detail.lines.length >= 1 &&
+    (detail.templateId === null || detail.lines.length >= 1) &&
     detail.lines.length <= 1000 &&
     detail.lines.every(
       (line) =>
@@ -340,7 +340,9 @@ export function OfferDraftEditor({
         setLegacy(fromLegacy);
         setConflict(false);
         setUncertain(false);
-        callbacks.current.onDirtyChange(fromLegacy);
+        callbacks.current.onDirtyChange(
+          fromLegacy || loaded.lines.length === 0,
+        );
         callbacks.current.onSavedMetadata({
           version: loaded.version,
           netMinor: loaded.netMinor,
@@ -375,8 +377,10 @@ export function OfferDraftEditor({
   }, [loadDraft]);
 
   useEffect(() => {
-    callbacks.current.onDirtyChange(needsSave || isBlocked);
-  }, [isBlocked, needsSave]);
+    callbacks.current.onDirtyChange(
+      needsSave || isBlocked || lineValues.length === 0,
+    );
+  }, [isBlocked, lineValues.length, needsSave]);
   useEffect(() => {
     if (!focusInitialEditor || !values) return;
     subjectInput.current?.scrollIntoView?.({ block: 'start' });
@@ -950,7 +954,13 @@ export function OfferDraftEditor({
                   )}
                 </div>
               )}
-              {!validLines && (
+              {lineValues.length === 0 && (
+                <p className="document-hint" role="status">
+                  Noch keine Positionen. Fügen Sie eine freie Position hinzu
+                  oder wählen Sie ein Produkt aus dem Katalog.
+                </p>
+              )}
+              {lineValues.length > 0 && !validLines && (
                 <p role="alert">
                   Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis,
                   Steuer und Rabatt. Mindestens eine gültige Position ist
@@ -978,17 +988,24 @@ export function OfferDraftEditor({
               >
                 {busy ? 'Wird gespeichert …' : 'Änderungen speichern'}
               </button>
-              {dirty || legacy || busy || loading || isBlocked ? (
+              {dirty ||
+              legacy ||
+              busy ||
+              loading ||
+              isBlocked ||
+              !validLines ? (
                 <>
                   <button type="button" className="secondary-action" disabled>
                     Vorschau öffnen
                   </button>
                   <span className="document-hint">
-                    {isBlocked
-                      ? 'Bitte zuerst den aktuellen Serverstand laden.'
-                      : loading
-                        ? 'Der Serverstand wird geladen.'
-                        : 'Bitte zuerst speichern, damit die Vorschau stimmt.'}
+                    {!validLines
+                      ? 'Fügen Sie zuerst mindestens eine gültige Position hinzu.'
+                      : isBlocked
+                        ? 'Bitte zuerst den aktuellen Serverstand laden.'
+                        : loading
+                          ? 'Der Serverstand wird geladen.'
+                          : 'Bitte zuerst speichern, damit die Vorschau stimmt.'}
                   </span>
                 </>
               ) : (

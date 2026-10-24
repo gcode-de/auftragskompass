@@ -1,4 +1,4 @@
-import { expect, test, type Browser } from '@playwright/test';
+import { expect, test, type Browser, type Route } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
@@ -119,6 +119,8 @@ async function offerDraftScenario(browser: Browser) {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   let renderCount = 0;
   let storedArtifactCount = 0;
+  const renderedHtml: string[] = [];
+  const storedArtifacts = new Map<string, Buffer>();
 
   try {
     await new Promise<void>((resolve) =>
@@ -181,13 +183,18 @@ async function offerDraftScenario(browser: Browser) {
     const productSnapshot = await products.list();
     const config = { origin, tenantId, mode: 'password' as const };
     const storage = {
-      async put() {
+      async put(key: string, bytes: Buffer) {
         storedArtifactCount++;
+        storedArtifacts.set(key, Buffer.from(bytes));
       },
-      async read() {
-        throw new Error('synthetic E2E storage has no artifacts');
+      async read(key: string) {
+        const bytes = storedArtifacts.get(key);
+        if (!bytes) throw new Error('synthetic E2E artifact is missing');
+        return Buffer.from(bytes);
       },
-      async remove() {},
+      async remove(key: string) {
+        storedArtifacts.delete(key);
+      },
     };
     await registerAuth(app, pool, config);
     registerAccessRoutes(app, pool, tenantId, 'password');
@@ -203,8 +210,9 @@ async function offerDraftScenario(browser: Browser) {
     registerDocumentRoutes(app, pool, tenantId, {
       origin,
       store: storage,
-      render: async () => {
+      render: async (html) => {
         renderCount++;
+        renderedHtml.push(html);
         return Buffer.from('%PDF-1.4 synthetic offer preview');
       },
     });
@@ -287,10 +295,16 @@ async function offerDraftScenario(browser: Browser) {
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     const productWrites: string[] = [];
+    const templateWrites: string[] = [];
     page.on('request', (request) => {
       const { pathname } = new URL(request.url());
       if (pathname.startsWith('/api/v1/products') && request.method() !== 'GET')
         productWrites.push(`${request.method()} ${pathname}`);
+      if (
+        pathname === '/api/v1/document-templates' &&
+        request.method() !== 'GET'
+      )
+        templateWrites.push(`${request.method()} ${pathname}`);
     });
     const loaded = await page.goto(origin);
     expect(loaded?.status()).toBe(200);
@@ -796,13 +810,13 @@ async function offerDraftScenario(browser: Browser) {
       reopenedOffers.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
     ).toBeVisible();
 
-    await context.route('**/api/v1/products', (route) =>
+    const emptyCatalogRoute = (route: Route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: '[]',
-      }),
-    );
+      });
+    await context.route('**/api/v1/products', emptyCatalogRoute);
     await reopenedOffers
       .getByRole('button', { name: 'Produkt hinzufügen' })
       .click();
@@ -814,6 +828,7 @@ async function offerDraftScenario(browser: Browser) {
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
     expect(emptyCatalogAxe.violations).toEqual([]);
+    await context.unroute('**/api/v1/products', emptyCatalogRoute);
     await expect(
       reopenedOffers.locator('.document-list > li .document-meta'),
     ).toContainText('574,40 €');
@@ -855,6 +870,511 @@ async function offerDraftScenario(browser: Browser) {
         )
       ).rows[0]!.next_value,
     ).toBe(37);
+
+    const currentTemplate = await templates.get(template.id);
+    expect(currentTemplate).not.toBeNull();
+    await templates.save(
+      actorId,
+      {
+        kind: 'offer',
+        name: template.name,
+        subject: currentTemplate!.subject,
+        introText: currentTemplate!.introText,
+        outroText: currentTemplate!.outroText,
+        validityDays: currentTemplate!.validityDays,
+        state: 'archived',
+        positions: currentTemplate!.positions.map((position) => ({
+          productId: position.productId,
+          description: position.description,
+          quantity: position.quantity,
+          unit: position.unit,
+          unitPriceMinor: position.unitPriceMinor,
+          taxBasisPoints: position.taxBasisPoints,
+          discountBasisPoints: position.discountBasisPoints,
+        })),
+      },
+      template.id,
+      currentTemplate!.version,
+    );
+    const templatesBeforeBlankOffer = await templates.list();
+    expect(templatesBeforeBlankOffer).toHaveLength(1);
+    expect(templatesBeforeBlankOffer[0]!.state).toBe('archived');
+    expect(
+      templatesBeforeBlankOffer.filter(
+        (candidate) =>
+          candidate.kind === 'offer' && candidate.state === 'active',
+      ),
+    ).toHaveLength(0);
+
+    await page.reload();
+    await expect(page.locator('#event-' + event.id)).toBeVisible();
+    await page
+      .getByRole('navigation', { name: 'Bereiche des Events' })
+      .getByRole('button', { name: 'Dateien' })
+      .click();
+    const blankOffers = page.getByRole('region', { name: 'Angebote' });
+    const templatePicker = blankOffers.getByLabel('Vorlage');
+    await expect(templatePicker).toHaveValue('');
+    await expect(templatePicker.locator('option')).toHaveText(['Ohne Vorlage']);
+    const blankRequestPromise = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname === '/api/v1/documents/blank-offer' &&
+        request.method() === 'POST',
+    );
+    const blankResponsePromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/v1/documents/blank-offer' &&
+        response.request().method() === 'POST',
+    );
+    await blankOffers.getByRole('button', { name: 'Entwurf anlegen' }).click();
+    const [blankRequest, blankResponse] = await Promise.all([
+      blankRequestPromise,
+      blankResponsePromise,
+    ]);
+    expect(blankRequest.postDataJSON()).toEqual({
+      eventId: event.id,
+      contactId: contact.id,
+    });
+    expect(blankResponse.status()).toBe(201);
+    const blankCreated = (await blankResponse.json()) as {
+      id: string;
+      kind: string;
+      templateId: string | null;
+      eventId: string | null;
+      contactId: string | null;
+      number: string | null;
+      state: string;
+      subject: string | null;
+      introText: string | null;
+      outroText: string | null;
+      validityDays: number | null;
+      netMinor: number;
+      taxMinor: number;
+      grossMinor: number;
+      version: number;
+      lines: unknown[];
+    };
+    expect(blankCreated).toMatchObject({
+      kind: 'offer',
+      templateId: null,
+      eventId: event.id,
+      contactId: contact.id,
+      number: null,
+      state: 'draft',
+      subject: 'Angebot',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+      netMinor: 0,
+      taxMinor: 0,
+      grossMinor: 0,
+      version: 1,
+      lines: [],
+    });
+    const blankEditor = blankOffers.locator('.offer-draft-editor');
+    const blankRow = blankEditor.locator('xpath=ancestor::li[1]');
+    await expect(blankEditor).toBeVisible();
+    await expect(blankEditor.getByLabel('Betreff')).toHaveValue('Angebot');
+    await expect(blankEditor.getByLabel('Einleitung')).toHaveValue('');
+    await expect(blankEditor.getByLabel('Schlusstext')).toHaveValue('');
+    await expect(blankEditor.getByLabel('Gültigkeit in Tagen')).toHaveValue(
+      '14',
+    );
+    await expect(
+      blankEditor.getByText(
+        'Noch keine Positionen. Fügen Sie eine freie Position hinzu oder wählen Sie ein Produkt aus dem Katalog.',
+      ),
+    ).toBeVisible();
+    await expect(
+      blankEditor.getByRole('button', { name: 'Vorschau öffnen' }),
+    ).toBeDisabled();
+    await expect(
+      blankRow.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
+    ).toBeDisabled();
+    const blankOriginalTheme = await page
+      .locator('html')
+      .getAttribute('data-theme');
+    for (const theme of ['light', 'dark'] as const) {
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+        await page.getByRole('button', { name: /modus aktivieren/ }).click();
+      for (const width of [320, 1280] as const) {
+        await page.setViewportSize({
+          width,
+          height: width === 320 ? 844 : 900,
+        });
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width + 1);
+        if (width === 320) {
+          const emptyAccessibility = await new AxeBuilder({ page })
+            .include('.offer-draft-editor')
+            .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+            .analyze();
+          expect(emptyAccessibility.violations).toEqual([]);
+        }
+        await page.screenshot({
+          path: test
+            .info()
+            .outputPath(`blank-offer-empty-${theme}-${width}.png`),
+          fullPage: true,
+        });
+      }
+    }
+    if (
+      blankOriginalTheme &&
+      (await page.locator('html').getAttribute('data-theme')) !==
+        blankOriginalTheme
+    )
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    expect(renderCount).toBe(1);
+    expect(storedArtifactCount).toBe(0);
+    expect(
+      (
+        await pool.query<{ id: string }>(
+          'SELECT id FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid AND template_id IS NULL AND event_id=$3::uuid AND contact_id=$4::uuid AND state=$5 AND number IS NULL AND subject=$6 AND intro_text=$7 AND outro_text=$8 AND validity_days=$9 AND net_minor=0 AND tax_minor=0 AND gross_minor=0 AND version=1 AND pdf_hash IS NULL AND snapshot_hash IS NULL',
+          [
+            tenantId,
+            blankCreated.id,
+            event.id,
+            contact.id,
+            'draft',
+            'Angebot',
+            '',
+            '',
+            14,
+          ],
+        )
+      ).rows,
+    ).toHaveLength(1);
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          'SELECT count(*)::text AS count FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid',
+          [tenantId, blankCreated.id],
+        )
+      ).rows[0]!.count,
+    ).toBe('0');
+
+    await blankEditor
+      .getByRole('button', { name: 'Freie Position hinzufügen' })
+      .click();
+    const blankPosition = blankEditor.getByRole('group', {
+      name: 'Position 1',
+    });
+    await blankEditor.getByLabel('Betreff').fill('Fictional standalone offer');
+    await blankEditor
+      .getByLabel('Einleitung')
+      .fill('Fictional standalone introduction');
+    await blankEditor
+      .getByLabel('Schlusstext')
+      .fill('Fictional standalone conclusion');
+    await blankEditor.getByLabel('Gültigkeit in Tagen').fill('21');
+    await blankPosition
+      .getByLabel('Beschreibung')
+      .fill('Fictional standalone service');
+    await blankPosition.getByLabel('Menge').fill('1');
+    await blankPosition.getByLabel('Einheit').fill('Stück');
+    await blankPosition
+      .getByLabel('Einzelpreis (Brutto) in Euro')
+      .fill('119.00');
+    await blankPosition.getByLabel('Steuer in Prozent').fill('19');
+    await blankPosition.getByLabel('Rabatt in Prozent').fill('0');
+    await blankEditor
+      .getByRole('button', { name: 'Änderungen speichern' })
+      .click();
+    await expect(blankEditor.getByRole('status')).toContainText(
+      'Änderungen gespeichert.',
+    );
+    expect(
+      (
+        await pool.query<{
+          template_id: string | null;
+          contact_id: string | null;
+          subject: string;
+          intro_text: string;
+          outro_text: string;
+          validity_days: number;
+          net_minor: string;
+          tax_minor: string;
+          gross_minor: string;
+          version: number;
+          number: string | null;
+          state: string;
+          pdf_hash: string | null;
+          snapshot_hash: string | null;
+        }>(
+          'SELECT template_id,contact_id,subject,intro_text,outro_text,validity_days,net_minor,tax_minor,gross_minor,version,number,state,pdf_hash,snapshot_hash FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
+          [tenantId, blankCreated.id],
+        )
+      ).rows[0],
+    ).toMatchObject({
+      template_id: null,
+      contact_id: contact.id,
+      subject: 'Fictional standalone offer',
+      intro_text: 'Fictional standalone introduction',
+      outro_text: 'Fictional standalone conclusion',
+      validity_days: 21,
+      net_minor: '10000',
+      tax_minor: '1900',
+      gross_minor: '11900',
+      version: 2,
+      number: null,
+      state: 'draft',
+      pdf_hash: null,
+      snapshot_hash: null,
+    });
+    expect(
+      (
+        await pool.query<{
+          position: number;
+          product_id: string | null;
+          description: string;
+          quantity: number;
+          unit: string;
+          unit_price_minor: string;
+          tax_basis_points: number;
+          discount_basis_points: number;
+        }>(
+          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
+          [tenantId, blankCreated.id],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        position: 0,
+        product_id: null,
+        description: 'Fictional standalone service',
+        quantity: 1,
+        unit: 'Stück',
+        unit_price_minor: '11900',
+        tax_basis_points: 1900,
+        discount_basis_points: 0,
+      },
+    ]);
+    expect(await templates.list()).toEqual(templatesBeforeBlankOffer);
+    expect(templateWrites).toEqual([]);
+
+    await page.reload();
+    await expect(page.locator('#event-' + event.id)).toBeVisible();
+    await page
+      .getByRole('navigation', { name: 'Bereiche des Events' })
+      .getByRole('button', { name: 'Dateien' })
+      .click();
+    const blankOffersAfterReload = page.getByRole('region', {
+      name: 'Angebote',
+    });
+    const blankRowAfterReload = blankOffersAfterReload
+      .locator('.document-list > li')
+      .filter({ hasText: '119,00 €' });
+    await expect(blankRowAfterReload).toHaveCount(1);
+    await blankRowAfterReload
+      .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
+      .click();
+    const blankEditorAfterReload = blankRowAfterReload.locator(
+      '.offer-draft-editor',
+    );
+    await expect(blankEditorAfterReload.getByLabel('Betreff')).toHaveValue(
+      'Fictional standalone offer',
+    );
+    await expect(blankEditorAfterReload.getByLabel('Einleitung')).toHaveValue(
+      'Fictional standalone introduction',
+    );
+    await expect(blankEditorAfterReload.getByLabel('Schlusstext')).toHaveValue(
+      'Fictional standalone conclusion',
+    );
+    await expect(
+      blankEditorAfterReload
+        .getByRole('group', { name: 'Position 1' })
+        .getByLabel('Beschreibung'),
+    ).toHaveValue('Fictional standalone service');
+    let blankPreviewBytes: Buffer | undefined;
+    await context.route(
+      '**/api/v1/documents/' + blankCreated.id + '/preview',
+      async (route) => {
+        const response = await route.fetch();
+        blankPreviewBytes = await response.body();
+        await route.fulfill({ response });
+      },
+    );
+    const blankPreviewResponsePromise = page
+      .context()
+      .waitForEvent('response', (response) =>
+        response
+          .url()
+          .includes('/api/v1/documents/' + blankCreated.id + '/preview'),
+      );
+    await blankEditorAfterReload
+      .getByRole('link', { name: 'Vorschau öffnen' })
+      .click();
+    const blankPreviewResponse = await blankPreviewResponsePromise;
+    expect(blankPreviewResponse.status()).toBe(200);
+    expect(blankPreviewResponse.headers()['content-type']).toContain(
+      'application/pdf',
+    );
+    expect(blankPreviewBytes?.subarray(0, 5).toString()).toBe('%PDF-');
+    await expect.poll(() => renderCount).toBe(2);
+    expect(renderedHtml[1]).toContain('Fictional standalone offer');
+    expect(renderedHtml[1]).toContain('Fictional standalone introduction');
+    expect(renderedHtml[1]).toContain('Fictional standalone conclusion');
+    expect(renderedHtml[1]).toContain('Fictional standalone service');
+    expect(storedArtifactCount).toBe(0);
+    expect(productWrites).toEqual([]);
+    expect(templateWrites).toEqual([]);
+    expect(await products.list()).toEqual(productSnapshot);
+    expect(await templates.list()).toEqual(templatesBeforeBlankOffer);
+    expect(
+      (
+        await pool.query<{
+          state: string;
+          number: string | null;
+          pdf_hash: string | null;
+          snapshot_hash: string | null;
+          version: number;
+        }>(
+          'SELECT state,number,pdf_hash,snapshot_hash,version FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
+          [tenantId, blankCreated.id],
+        )
+      ).rows[0],
+    ).toEqual({
+      state: 'draft',
+      number: null,
+      pdf_hash: null,
+      snapshot_hash: null,
+      version: 2,
+    });
+    expect(
+      (
+        await pool.query<{ next_value: number }>(
+          "SELECT next_value FROM document_number_sequences WHERE tenant_id=$1::uuid AND kind='offer'",
+          [tenantId],
+        )
+      ).rows[0]!.next_value,
+    ).toBe(37);
+    const blankFinalizeRequestPromise = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname ===
+          `/api/v1/documents/${blankCreated.id}/finalize` &&
+        request.method() === 'POST',
+    );
+    const blankFinalizeResponsePromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+        `/api/v1/documents/${blankCreated.id}/finalize`,
+    );
+    await blankRowAfterReload
+      .getByRole('button', { name: 'Angebot Entwurf finalisieren' })
+      .click();
+    const [blankFinalizeRequest, blankFinalizeResponse] = await Promise.all([
+      blankFinalizeRequestPromise,
+      blankFinalizeResponsePromise,
+    ]);
+    expect(blankFinalizeRequest.postDataJSON()).toEqual({ version: 2 });
+    expect(blankFinalizeResponse.status()).toBe(200);
+    const blankFinalized = (await blankFinalizeResponse.json()) as {
+      id: string;
+      state: string;
+      number: string | null;
+      version: number;
+    };
+    expect(blankFinalized).toMatchObject({
+      id: blankCreated.id,
+      state: 'final',
+      version: 3,
+    });
+    expect(blankFinalized.number).toMatch(/^OF-\d{4}-0037$/);
+    await expect(
+      page.getByText(`Finalisiert als ${blankFinalized.number}.`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(renderCount).toBe(3);
+    expect(renderedHtml[2]).toContain('Fictional standalone offer');
+    expect(renderedHtml[2]).toContain('Fictional standalone introduction');
+    expect(renderedHtml[2]).toContain('Fictional standalone conclusion');
+    expect(renderedHtml[2]).toContain('Fictional standalone service');
+    expect(storedArtifactCount).toBe(1);
+    expect(storedArtifacts.size).toBe(1);
+    expect(await products.list()).toEqual(productSnapshot);
+    expect(await templates.list()).toEqual(templatesBeforeBlankOffer);
+    expect(productWrites).toEqual([]);
+    expect(templateWrites).toEqual([]);
+    expect(
+      (
+        await pool.query<{
+          state: string;
+          number: string | null;
+          subject: string;
+          intro_text: string;
+          outro_text: string;
+          net_minor: string;
+          tax_minor: string;
+          gross_minor: string;
+          pdf_hash: string | null;
+          snapshot_hash: string | null;
+          version: number;
+        }>(
+          'SELECT state,number,subject,intro_text,outro_text,net_minor,tax_minor,gross_minor,pdf_hash,snapshot_hash,version FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
+          [tenantId, blankCreated.id],
+        )
+      ).rows[0],
+    ).toMatchObject({
+      state: 'final',
+      number: blankFinalized.number,
+      subject: 'Fictional standalone offer',
+      intro_text: 'Fictional standalone introduction',
+      outro_text: 'Fictional standalone conclusion',
+      net_minor: '10000',
+      tax_minor: '1900',
+      gross_minor: '11900',
+      pdf_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      snapshot_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      version: 3,
+    });
+    await expect(
+      blankOffersAfterReload
+        .locator('.document-list > li')
+        .filter({ hasText: '119,00 €' })
+        .getByRole('link', {
+          name: `Angebot ${blankFinalized.number} als PDF öffnen`,
+        }),
+    ).toBeVisible();
+    let finalPdfBytes: Buffer | undefined;
+    await context.route(
+      '**/api/v1/documents/' + blankCreated.id + '/pdf',
+      async (route) => {
+        const response = await route.fetch();
+        finalPdfBytes = await response.body();
+        await route.fulfill({ response });
+      },
+    );
+    const finalPdfResponsePromise = page
+      .context()
+      .waitForEvent(
+        'response',
+        (response) =>
+          new URL(response.url()).pathname ===
+          `/api/v1/documents/${blankCreated.id}/pdf`,
+      );
+    await blankOffersAfterReload
+      .getByRole('link', {
+        name: `Angebot ${blankFinalized.number} als PDF öffnen`,
+      })
+      .click();
+    const finalPdfResponse = await finalPdfResponsePromise;
+    expect(finalPdfResponse.status()).toBe(200);
+    expect(finalPdfResponse.headers()['content-type']).toContain(
+      'application/pdf',
+    );
+    expect(finalPdfBytes?.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(
+      (
+        await pool.query<{ next_value: number }>(
+          "SELECT next_value FROM document_number_sequences WHERE tenant_id=$1::uuid AND kind='offer'",
+          [tenantId],
+        )
+      ).rows[0]!.next_value,
+    ).toBe(38);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(1281);

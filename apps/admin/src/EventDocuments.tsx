@@ -5,7 +5,7 @@ import { exactMinorUnits } from './FilesPanel.js';
 type DocumentRow = {
   id: string;
   kind: string;
-  templateId: string;
+  templateId: string | null;
   eventId: string | null;
   contactId: string | null;
   number: string | null;
@@ -80,7 +80,9 @@ export function EventDocuments({
     [editorDirty, setEditorDirty] = useState(false),
     [editorBusy, setEditorBusy] = useState(false),
     [loading, setLoading] = useState(true),
+    [initialLoadFailed, setInitialLoadFailed] = useState(false),
     [reloadWarning, setReloadWarning] = useState(false),
+    [createUncertain, setCreateUncertain] = useState(false),
     mutating = useRef(false),
     editorTrigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -100,36 +102,74 @@ export function EventDocuments({
     setDocuments(await validDocuments(documentReply));
     setTemplates(offers);
     setTemplateId((current) => current || offers[0]?.id || '');
+    setInitialLoadFailed(false);
   }
   useEffect(() => {
     void load()
-      .catch(() => setMessage('Dateien konnten nicht geladen werden.'))
+      .catch(() => setInitialLoadFailed(true))
       .finally(() => setLoading(false));
   }, [eventId]);
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!templateId || !contactId || mutating.current) return;
+    if (!contactId || createUncertain || mutating.current) return;
+    const isBlank = templateId === '',
+      expectedTemplateId = templateId || null;
+    const createTrigger =
+      event.currentTarget.querySelector<HTMLButtonElement>('button');
     mutating.current = true;
     setBusy('create');
     setMessage('');
     try {
-      const reply = await fetch('/api/v1/documents', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-csrf-token': csrfToken,
+      const reply = await fetch(
+        templateId ? '/api/v1/documents' : '/api/v1/documents/blank-offer',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify({
+            ...(templateId ? { templateId } : {}),
+            eventId,
+            contactId,
+          }),
         },
-        body: JSON.stringify({ templateId, eventId, contactId }),
-      });
+      );
       if (!reply.ok) {
+        if (reply.status >= 500) throw new Error('uncertain-create');
         setMessage(
           'Entwurf konnte nicht angelegt werden. Vorlage, Kontakt und Anmeldung prüfen.',
         );
         return;
       }
+      const created = (await reply.json()) as DocumentRow;
+      if (
+        typeof created.id !== 'string' ||
+        created.id.length === 0 ||
+        created.kind !== 'offer' ||
+        created.state !== 'draft' ||
+        created.eventId !== eventId ||
+        created.contactId !== contactId ||
+        created.templateId !== expectedTemplateId ||
+        !Number.isSafeInteger(created.grossMinor) ||
+        created.grossMinor < 0 ||
+        !Number.isSafeInteger(created.version) ||
+        created.version < 1
+      )
+        throw new Error('uncertain-create');
+      if (isBlank) {
+        editorTrigger.current = createTrigger;
+        setDocuments((current) => [
+          created,
+          ...current.filter((row) => row.id !== created.id),
+        ]);
+      }
       // Confirmed write: report it before the list reload. A later GET failure
       // must never read as a reason to create the draft again.
-      setMessage('Entwurf angelegt.');
+      setMessage(
+        isBlank ? 'Leerer Angebotsentwurf angelegt.' : 'Entwurf angelegt.',
+      );
+      if (isBlank) setEditorId(created.id);
       try {
         await load();
         setReloadWarning(false);
@@ -137,7 +177,8 @@ export function EventDocuments({
         setReloadWarning(true);
       }
     } catch {
-      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+      setMessage('');
+      setCreateUncertain(true);
     } finally {
       mutating.current = false;
       setBusy('');
@@ -199,8 +240,27 @@ export function EventDocuments({
     }
   }
   function retryLoad() {
-    setReloadWarning(false);
-    void load().catch(() => setReloadWarning(true));
+    if (mutating.current) return;
+    mutating.current = true;
+    setBusy('reload');
+    void load()
+      .then(() => {
+        setReloadWarning(false);
+        setInitialLoadFailed(false);
+        if (createUncertain) {
+          setCreateUncertain(false);
+          setMessage(
+            'Liste aktualisiert. Bitte prüfen Sie vorhandene Angebote, bevor Sie erneut anlegen.',
+          );
+        }
+      })
+      .catch(() => {
+        if (!createUncertain && !initialLoadFailed) setReloadWarning(true);
+      })
+      .finally(() => {
+        mutating.current = false;
+        setBusy('');
+      });
   }
   function date(value: string) {
     return new Intl.DateTimeFormat('de-DE', {
@@ -332,6 +392,35 @@ export function EventDocuments({
           </button>
         </div>
       )}
+      {createUncertain && (
+        <div className="reload-warning">
+          <p role="alert">
+            Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und
+            vorhandene Einträge prüfen, bevor Sie erneut anlegen.
+          </p>
+          <button
+            type="button"
+            className="tertiary-action"
+            disabled={busy !== ''}
+            onClick={retryLoad}
+          >
+            Angebote aktualisieren
+          </button>
+        </div>
+      )}
+      {initialLoadFailed && (
+        <div className="reload-warning">
+          <p role="alert">Dateien konnten nicht geladen werden.</p>
+          <button
+            type="button"
+            className="tertiary-action"
+            disabled={busy !== ''}
+            onClick={retryLoad}
+          >
+            Dateien erneut laden
+          </button>
+        </div>
+      )}
       {loading ? (
         <p>Dateien werden geladen …</p>
       ) : (
@@ -342,8 +431,9 @@ export function EventDocuments({
           >
             <h4 id="event-documents-heading">Angebote</h4>
             <p className="document-card-hint">
-              Ein Angebot entsteht als Entwurf aus einer Vorlage. Beim
-              Finalisieren erhält es seine Nummer und eine unveränderliche PDF.
+              Ein Angebot entsteht als Entwurf aus einer Vorlage oder ohne
+              Vorlage. Beim Finalisieren erhält es seine Nummer und eine
+              unveränderliche PDF.
             </p>
             {offers.length ? (
               rows(offers)
@@ -352,8 +442,9 @@ export function EventDocuments({
             )}
             {!templates.length && (
               <p className="document-hint">
-                Noch keine aktive Angebotsvorlage. Zuerst unter Einstellungen →
-                Dokumentvorlagen eine Vorlage anlegen.
+                Keine aktive Angebotsvorlage. Sie können auch ohne Vorlage
+                starten oder unter Einstellungen → Dokumentvorlagen eine Vorlage
+                anlegen.
               </p>
             )}
             {!contactId && (
@@ -363,7 +454,13 @@ export function EventDocuments({
             )}
             <form onSubmit={create}>
               <fieldset
-                disabled={busy !== '' || !templates.length || !contactId}
+                disabled={
+                  busy !== '' ||
+                  !contactId ||
+                  createUncertain ||
+                  initialLoadFailed ||
+                  reloadWarning
+                }
               >
                 <legend>Neues Angebot</legend>
                 <label>
@@ -372,6 +469,7 @@ export function EventDocuments({
                     value={templateId}
                     onChange={(event) => setTemplateId(event.target.value)}
                   >
+                    <option value="">Ohne Vorlage</option>
                     {templates.map((entry) => (
                       <option key={entry.id} value={entry.id}>
                         {entry.name}

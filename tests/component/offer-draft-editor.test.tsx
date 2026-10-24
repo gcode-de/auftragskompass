@@ -116,6 +116,21 @@ function detail(values: typeof content | null = content, version = 1) {
     lines: [line],
   };
 }
+function blankDetail() {
+  return {
+    ...detail(),
+    id: 'blank-doc',
+    templateId: null,
+    subject: 'Angebot',
+    introText: '',
+    outroText: '',
+    validityDays: 14,
+    netMinor: 0,
+    taxMinor: 0,
+    grossMinor: 0,
+    lines: [] as TestLine[],
+  };
+}
 
 function setup(
   options: {
@@ -126,19 +141,25 @@ function setup(
     detailGet?: () => Response | Promise<Response>;
     products?: unknown[];
     productsGet?: () => Response | Promise<Response>;
+    blankCreate?: () => Response | Promise<Response>;
+    initialLoadFail?: boolean;
     finalize?: (body: unknown) => Response;
   } = {},
 ) {
   const calls: { url: string; method: string; body?: unknown }[] = [];
   let current = options.initial ?? detail(),
+    createdBlank: ReturnType<typeof blankDetail> | null = null,
+    createdRows: unknown[] = [],
     getAttempts = 0;
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET',
       body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, method, body });
-    if (url.startsWith('/api/v1/documents?eventId='))
-      return Response.json(
-        options.documents ?? [
+    if (url.startsWith('/api/v1/documents?eventId=')) {
+      if (options.initialLoadFail && getAttempts++ === 0)
+        return Response.json({ error: 'unavailable' }, { status: 503 });
+      return Response.json([
+        ...(options.documents ?? [
           {
             ...draft,
             version: current.version,
@@ -146,8 +167,10 @@ function setup(
             taxMinor: current.taxMinor,
             grossMinor: current.grossMinor,
           },
-        ],
-      );
+        ]),
+        ...createdRows,
+      ]);
+    }
     if (url === '/api/v1/document-templates')
       return Response.json(
         options.template === null ? [] : [options.template ?? template],
@@ -156,6 +179,55 @@ function setup(
       return options.productsGet
         ? options.productsGet()
         : Response.json(options.products ?? catalogProducts);
+    }
+    if (url === '/api/v1/documents/blank-offer' && method === 'POST') {
+      const response = options.blankCreate
+        ? await options.blankCreate()
+        : Response.json(blankDetail(), { status: 201 });
+      if (response.ok)
+        createdBlank = (await response.clone().json()) as ReturnType<
+          typeof blankDetail
+        >;
+      if (response.ok)
+        createdRows = [
+          ...createdRows,
+          {
+            ...createdBlank,
+            eventId: 'event-1',
+            contactId: 'contact-1',
+            number: null,
+            state: 'draft',
+            issuedAt: '2030-10-26T10:00:00Z',
+            finalizedAt: null,
+          },
+        ];
+      return response;
+    }
+    if (url === '/api/v1/documents' && method === 'POST') {
+      const created = {
+        ...draft,
+        id: 'doc-1',
+        templateId: template.id,
+      };
+      createdRows = [...createdRows, created];
+      return Response.json(created, { status: 201 });
+    }
+    if (url === '/api/v1/documents/blank-doc' && method === 'GET') {
+      return Response.json(createdBlank ?? blankDetail());
+    }
+    if (url === '/api/v1/documents/blank-doc/draft' && method === 'PUT') {
+      const submitted = body as { lines: Array<Record<string, unknown>> };
+      createdBlank = {
+        ...(createdBlank ?? blankDetail()),
+        ...body,
+        version: (createdBlank?.version ?? 1) + 1,
+        lines: submitted.lines.map((entry, position) => ({
+          ...entry,
+          id: `blank-line-${position + 1}`,
+          position,
+        })) as TestLine[],
+      } as ReturnType<typeof blankDetail>;
+      return Response.json(createdBlank);
     }
     if (url === '/api/v1/documents/doc-1' && method === 'GET') {
       getAttempts += 1;
@@ -252,6 +324,238 @@ test('a draft opens focused with editable saved positions and previews only pers
   ).toHaveProperty('disabled', true);
   expect(hasUnsavedChanges()).toBe(true);
   expect(calls.some((call) => call.url.endsWith('/preview'))).toBe(false);
+});
+
+test('without a template an offer is created blank, empty stays calm, and the first saved position reloads', async () => {
+  const { calls } = setup({ template: null, documents: [] });
+  const view = render(<EventDocuments {...props} />);
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  expect(screen.getByText(/Sie können auch ohne Vorlage/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Vorlage'), {
+    target: { value: '' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+
+  await screen.findByLabelText('Betreff');
+  expect(
+    await screen.findByText('Leerer Angebotsentwurf angelegt.'),
+  ).toBeTruthy();
+  expect(fieldValue('Betreff')).toBe('Angebot');
+  expect(fieldValue('Einleitung')).toBe('');
+  expect(fieldValue('Schlusstext')).toBe('');
+  expect(fieldValue('Gültigkeit in Tagen')).toBe('14');
+  expect(
+    screen.getByText(
+      'Noch keine Positionen. Fügen Sie eine freie Position hinzu oder wählen Sie ein Produkt aus dem Katalog.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(hasUnsavedChanges()).toBe(false);
+  expect(
+    screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
+  ).toHaveProperty('disabled', true);
+  expect(
+    screen.getByRole('button', { name: 'Vorschau öffnen' }),
+  ).toHaveProperty('disabled', true);
+  expect(
+    calls.filter((call) => call.url === '/api/v1/documents/blank-offer'),
+  ).toHaveLength(1);
+  expect(
+    calls.find((call) => call.url === '/api/v1/documents/blank-offer')?.body,
+  ).toEqual({
+    eventId: props.eventId,
+    contactId: props.contactId,
+  });
+
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(confirm).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByText(
+    'Noch keine Positionen. Fügen Sie eine freie Position hinzu oder wählen Sie ein Produkt aus dem Katalog.',
+  );
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Freie Position hinzufügen' }),
+  );
+  fireEvent.change(screen.getByLabelText('Beschreibung'), {
+    target: { value: 'Fiktiver Startposten' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    lines: [
+      {
+        productId: null,
+        description: 'Fiktiver Startposten',
+        quantity: 1,
+      },
+    ],
+  });
+  expect(screen.getByRole('link', { name: 'Vorschau öffnen' })).toBeTruthy();
+
+  view.unmount();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const reloaded = await screen.findByRole('group', { name: 'Position 1' });
+  expect(within(reloaded).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktiver Startposten',
+  );
+});
+
+test('a lost blank-offer creation response requires checking the list before another create', async () => {
+  const { calls } = setup({
+    template: null,
+    documents: [],
+    blankCreate: () => Promise.reject(new Error('connection lost')),
+  });
+  render(<EventDocuments {...props} />);
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  expect(await screen.findByText(/Angebotsstatus ist unklar/)).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
+  ).toHaveProperty('disabled', true);
+  expect(
+    screen.getByRole('button', { name: 'Angebote aktualisieren' }),
+  ).toBeTruthy();
+  expect(
+    calls.filter((call) => call.url === '/api/v1/documents/blank-offer'),
+  ).toHaveLength(1);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Angebote aktualisieren' }),
+  );
+  await screen.findByText(/Liste aktualisiert.*prüfen/);
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
+  ).toHaveProperty('disabled', false);
+  expect(
+    calls.filter((call) => call.url === '/api/v1/documents/blank-offer'),
+  ).toHaveLength(1);
+});
+
+test('blank creation still requires the event contact', async () => {
+  setup({ template: null, documents: [] });
+  render(<EventDocuments {...props} contactId={null} />);
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  expect(
+    screen.getByText(/Für ein Angebot zuerst einen Hauptkontakt zuordnen/),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
+  ).toHaveProperty('disabled', true);
+});
+
+test('initial list failure disables creation until a successful retry', async () => {
+  setup({ documents: [], initialLoadFail: true });
+  render(<EventDocuments {...props} />);
+  expect(
+    await screen.findByText('Dateien konnten nicht geladen werden.'),
+  ).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Dateien konnten nicht geladen werden',
+  );
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
+  ).toHaveProperty('disabled', true);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
+  ).toHaveProperty('disabled', false);
+});
+
+test('a server error from blank creation requires list verification before retry', async () => {
+  const { calls } = setup({
+    template: null,
+    documents: [],
+    blankCreate: () =>
+      Promise.resolve(Response.json({ error: 'unavailable' }, { status: 503 })),
+  });
+  render(<EventDocuments {...props} />);
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  expect(await screen.findByText(/Angebotsstatus ist unklar/)).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
+  ).toHaveProperty('disabled', true);
+  expect(
+    calls.filter((call) => call.url === '/api/v1/documents/blank-offer'),
+  ).toHaveLength(1);
+});
+
+test('a client error from blank creation remains a known rejection', async () => {
+  const { calls } = setup({
+    template: null,
+    documents: [],
+    blankCreate: () =>
+      Promise.resolve(Response.json({ error: 'validation' }, { status: 400 })),
+  });
+  render(<EventDocuments {...props} />);
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  expect(
+    await screen.findByText(
+      'Entwurf konnte nicht angelegt werden. Vorlage, Kontakt und Anmeldung prüfen.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText(/Angebotsstatus ist unklar/)).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
+  ).toHaveProperty('disabled', false);
+  expect(
+    calls.filter((call) => call.url === '/api/v1/documents/blank-offer'),
+  ).toHaveLength(1);
+});
+
+test('a template-backed offer keeps the existing create flow when selected', async () => {
+  const { calls } = setup({ documents: [] });
+  render(<EventDocuments {...props} />);
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  expect((screen.getByLabelText('Vorlage') as HTMLSelectElement).value).toBe(
+    template.id,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await screen.findByText('Entwurf angelegt.');
+  expect(screen.queryByLabelText('Betreff')).toBeNull();
+  expect(calls.find((call) => call.method === 'POST')).toMatchObject({
+    url: '/api/v1/documents',
+    body: {
+      templateId: template.id,
+      eventId: props.eventId,
+      contactId: props.contactId,
+    },
+  });
+});
+
+test('a malformed successful blank-create response is treated as uncertain and is not opened', async () => {
+  setup({
+    template: null,
+    documents: [],
+    blankCreate: () =>
+      Promise.resolve(
+        Response.json(
+          { ...blankDetail(), eventId: 'another-event' },
+          { status: 201 },
+        ),
+      ),
+  });
+  render(<EventDocuments {...props} />);
+  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  fireEvent.change(screen.getByLabelText('Vorlage'), {
+    target: { value: '' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  expect(await screen.findByText(/Angebotsstatus ist unklar/)).toBeTruthy();
+  expect(screen.queryByLabelText('Betreff')).toBeNull();
 });
 
 test('existing and free positions save exactly, removal/addition persist, and row totals refresh without a detail refetch', async () => {

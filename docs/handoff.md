@@ -1,6 +1,61 @@
 # Projektübergabe AuftragsKompass
 
-Stand: **21.10.2026**, nach C051.3, H026, H029, H030, H031, H038, H039 (released) sowie H033 (umgesetzt, lokale Abnahme grün; Push/CI/Testbetrieb nach dem Commit). Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+
+## Blankoangebote und Auslieferungsstand: 24.10.2026
+
+**BKP017.1:** Event → Dateien → Neues Angebot bietet „Ohne Vorlage“ auch bei
+leerem Vorlagenkatalog. Ein zugeordneter Kontakt bleibt erforderlich. Der neue
+v1-Endpunkt `POST /api/v1/documents/blank-offer` legt einen reinen Angebotsentwurf
+mit `templateId:null`, eigenen Texten, 14 Tagen Gültigkeit, 0 Positionen/0 Cent
+und ohne Nummer/PDF an. Kein versteckter Vorlagendatensatz. Migration 0035
+lockert ausschließlich die Vorlagen-Nullbarkeit, erhält den Mandanten-FK und
+beschränkt Vorlagenlosigkeit per Check auf vollständigen Angebotskontext.
+
+Der Editor öffnet nur nach bestätigter Blankoanlage automatisch. Leere Positionen
+sind ein neutraler Anfangszustand; sie sperren Speichern/Vorschau/Finalisierung,
+aber erzeugen keine falsche Verwerfrückfrage. Freie und Katalogpositionen sowie
+Text-/Versions-/Konfliktschutz werden wiederverwendet. Renderer/Finalisierung
+verwenden eigene Texte ohne Vorlagenfallback; finale Nummern, Hashes und Dateien
+bleiben unveränderbar. Initiale Ladefehler sperren die Anlage und bieten Retry.
+Unklare Antworten einschließlich 5xx verlangen zuerst Bestandsabgleich; dauerhafte
+POST-Idempotenz über Browserneustarts ist weiterhin nicht vorhanden.
+
+Echte REDs für fehlende Repository-Methode, unplausible Erfolgsantwort sowie
+Ladefehler/503 beobachtet. Gesamte Unit-/Komponenten-/Integrations-/Coverage-
+Prüfung grün (257/459/295, zusammen 1011; Changed-Code 61/65 Zeilen und 99/109
+Branches). Der reale synthetische PostgreSQL-/HTTPS-Browserablauf prüft auch
+Blanko-Reload, Vorschau, Finalisierung, Nummer/Hashes und PDF-Download; dessen
+Renderer ist ausdrücklich ein deterministischer PDF-Stub. Kein Anspruch auf
+vollständige PDF-Layoutabnahme. Impeccable-Detector beider UI-Dateien `[]`,
+unabhängiger Review ohne Blocker. Abschließend alle 16 Chromiumfälle im isolierten Nachlauf grün; die vier neuen
+Blanko-Breite-/Theme-Bilder plus mobile axe-Prüfungen ebenfalls. Build und
+38 Python-/zwei Node-Betriebstests einschließlich Compose-Sicherung/Restore
+grün. Keine Tests oder Assertions übersprungen.
+
+**Verifiziert ausgeliefert:** `0ddba5b8f6d948244340b3e174d170a8ae365efb`
+über Release-CI `40120899761` (quality+images grün). Drei Container gesund,
+exakte OCI-Revision, kein `needs-attention`. Checkpoint vom 24.10.2026 18:48 UTC
+in CT, Host und Betreiberablage mit identischem SHA-256 `1f21689e…886bf7`.
+Browserprüfung mit tatsächlich geladenen Live-Assets und sichtbarer Version
+0ddba5b grün; acht Theme-/Breitenbilder 320/390/768/1280 ohne visuellen Blocker.
+Geschäfts-API/Datenbank waren dabei lokal und fiktiv, keine echte Anmeldung oder
+Kundendatenänderung. Feste Navigation in langen Vollseitenbildern ist keine
+vollständige Prüfung normaler mobiler Scroll-/Fokusfreiheit; Geräteprüfung offen.
+
+BKP015.1/BKP016.4 liegen auf `fce137b`, Source-CI `40121471376` grün; die
+UX-Branch wurde per geprüftem Fast-forward vorgezogen, Release-CI `40122668313`
+ist abzuwarten. Bei Fortsetzung tatsächlichen Betriebsstand prüfen. Keine
+pauschale Aussage, die neuesten Blanko-/Produktfunktionen seien bereits live.
+Genau ein automatischer Updater; Website-Option-Drain weiterhin off belassen.
+
+**Prüfdisziplin:** Gleichzeitige Playwright-Aufrufe dürfen nicht dasselbe
+`outputDir` verwenden. Ein fokussierter Lauf löschte im Gesamtprüfungslauf
+Trace-Dateien (ENOENT beim Passwort-Test). Der abschließende Nachlauf verwendet
+ein eigenes `--output`; keine Produktänderung oder höhere Timeouts dafür.
+PDF-Antwortbytes im Browsertest vor `route.fulfill` aus `route.fetch` lesen,
+bevor Chromiums PDF-Navigation den Body unzugänglich macht. Keine Assertions,
+Nummern-/Unverändert-Nachweise oder Auth-Prüfungen dafür entfernen.
 
 ## Angebotspositionen aus Produkten: BKP016.4 (24.10.2026)
 

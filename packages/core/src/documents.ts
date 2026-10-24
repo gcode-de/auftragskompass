@@ -83,6 +83,7 @@ export type DocumentDraftInput = {
   /** Omitted lines copy the template positions; an empty list is a mistake. */
   lines?: DocumentLineDraft[];
 };
+export type BlankOfferInput = { eventId: string; contactId: string };
 export type DocumentDraftContent = {
   version: number;
   subject: string;
@@ -107,7 +108,7 @@ export type DocumentFilters = {
 export type DocumentListRow = {
   id: string;
   kind: DocumentKind;
-  templateId: string;
+  templateId: string | null;
   eventId: string | null;
   contactId: string | null;
   number: string | null;
@@ -298,16 +299,19 @@ export function documentRepository(
     issuedAt: Date,
   ) {
     const tx = database(connection),
-      [template] = await tx
-        .select()
-        .from(documentTemplates)
-        .where(
-          and(
-            eq(documentTemplates.tenantId, tenantId),
-            eq(documentTemplates.id, document.templateId),
-          ),
-        );
-    if (!template) throw new DocumentError('missing_reference');
+      [template] = document.templateId
+        ? await tx
+            .select()
+            .from(documentTemplates)
+            .where(
+              and(
+                eq(documentTemplates.tenantId, tenantId),
+                eq(documentTemplates.id, document.templateId),
+              ),
+            )
+        : [];
+    if (document.templateId && !template)
+      throw new DocumentError('missing_reference');
     const [layout] = await tx
       .select()
       .from(documentLayouts)
@@ -403,16 +407,22 @@ export function documentRepository(
           values.package = names.get(event.packageId)!;
       }
     }
-    const content = {
-      subject: document.subject ?? template.subject,
-      introText: document.introText ?? template.introText,
-      outroText: document.outroText ?? template.outroText,
-    };
-    const validityDays = document.validityDays ?? template.validityDays,
-      validUntil =
-        document.kind === 'offer'
-          ? validityDate(issuedAt, validityDays, tenant.timezone)
-          : undefined;
+    const subject = document.subject ?? template?.subject,
+      introText = document.introText ?? template?.introText,
+      outroText = document.outroText ?? template?.outroText,
+      validityDays = document.validityDays ?? template?.validityDays;
+    if (
+      typeof subject !== 'string' ||
+      typeof introText !== 'string' ||
+      typeof outroText !== 'string' ||
+      typeof validityDays !== 'number'
+    )
+      throw new DocumentError('missing_reference');
+    const content = { subject, introText, outroText };
+    const validUntil =
+      document.kind === 'offer'
+        ? validityDate(issuedAt, validityDays, tenant.timezone)
+        : undefined;
     const formattedValidUntil = validUntil?.toString().split('-').reverse();
     return buildDocumentSnapshot({
       layout: {
@@ -466,6 +476,40 @@ export function documentRepository(
   }
 
   return {
+    async createBlankOffer(actorId: string, input: BlankOfferInput) {
+      const id = randomUUID();
+      await db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        await assertReference(tx, 'event', input.eventId);
+        await assertReference(tx, 'contact', input.contactId);
+        const at = now();
+        await tx.insert(documents).values({
+          tenantId,
+          id,
+          kind: 'offer',
+          templateId: null,
+          eventId: input.eventId,
+          contactId: input.contactId,
+          number: null,
+          state: 'draft',
+          issuedAt: at,
+          finalizedAt: null,
+          subject: 'Angebot',
+          introText: '',
+          outroText: '',
+          validityDays: 14,
+          snapshotHash: null,
+          pdfHash: null,
+          netMinor: 0,
+          taxMinor: 0,
+          grossMinor: 0,
+          version: 1,
+        });
+        await appendAudit(tx, tenantId, 'document.created', actorId, id);
+      });
+      return (await readOne(db, id))!;
+    },
     async get(id: string) {
       return readOne(db, id);
     },
@@ -729,6 +773,19 @@ export function documentRepository(
           throw new DocumentError('invalid_state');
         if (document.version !== content.version)
           throw new DocumentError('conflict');
+        if (content.lines === undefined && document.templateId === null) {
+          const [line] = await tx
+            .select({ id: documentLines.id })
+            .from(documentLines)
+            .where(
+              and(
+                eq(documentLines.tenantId, tenantId),
+                eq(documentLines.documentId, id),
+              ),
+            )
+            .limit(1);
+          if (!line) throw new DocumentError('empty_lines');
+        }
         let totals: ReturnType<typeof documentTotals> | undefined;
         if (content.lines !== undefined) {
           if (!content.lines.length) throw new DocumentError('empty_lines');
@@ -830,15 +887,17 @@ export function documentRepository(
           if (!completeDocument) throw new DocumentError('not_found');
           if (!completeDocument.lines.length)
             throw new DocumentError('empty_lines');
-          const [template] = await tx
-            .select({ id: documentTemplates.id })
-            .from(documentTemplates)
-            .where(
-              and(
-                eq(documentTemplates.tenantId, tenantId),
-                eq(documentTemplates.id, document.templateId),
-              ),
-            );
+          const [template] = document.templateId
+            ? await tx
+                .select({ id: documentTemplates.id })
+                .from(documentTemplates)
+                .where(
+                  and(
+                    eq(documentTemplates.tenantId, tenantId),
+                    eq(documentTemplates.id, document.templateId),
+                  ),
+                )
+            : [];
           const [layout] = await tx
             .select({ tenantId: documentLayouts.tenantId })
             .from(documentLayouts)
@@ -854,7 +913,7 @@ export function documentRepository(
                   ),
                 )
             : [];
-          if (!template || !layout || !contact)
+          if ((document.templateId && !template) || !layout || !contact)
             throw new DocumentError('missing_reference');
           const number = await allocateDocumentNumber(
               tx,
@@ -966,7 +1025,7 @@ export function registerDocumentRoutes(
     properties: {
       id: { type: 'string', format: 'uuid' },
       kind: { type: 'string', enum: [...documentKinds] },
-      templateId: { type: 'string', format: 'uuid' },
+      templateId: nullableUuid,
       eventId: nullableUuid,
       contactId: nullableUuid,
       number: nullableText,
@@ -1061,6 +1120,37 @@ export function registerDocumentRoutes(
           .code(201)
           .send(
             await repo.createDraft(request.authSession!.userId, request.body),
+          );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Body: BlankOfferInput }>(
+    '/api/v1/documents/blank-offer',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['eventId', 'contactId'],
+          properties: {
+            eventId: { type: 'string', format: 'uuid' },
+            contactId: { type: 'string', format: 'uuid' },
+          },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createBlankOffer(
+              request.authSession!.userId,
+              request.body,
+            ),
           );
       } catch (error) {
         return failure(error, reply);
@@ -1175,7 +1265,7 @@ export function registerDocumentRoutes(
     properties: {
       id: { type: 'string', format: 'uuid' },
       kind: { type: 'string', enum: [...documentKinds] },
-      templateId: { type: 'string', format: 'uuid' },
+      templateId: nullableUuid,
       eventId: nullableUuid,
       contactId: nullableUuid,
       number: nullableText,
