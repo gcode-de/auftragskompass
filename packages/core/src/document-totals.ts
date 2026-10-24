@@ -36,6 +36,18 @@ function safe(value: number, reason: 'invalid' | 'overflow' = 'invalid') {
   return value;
 }
 
+const maximumMinor = BigInt(Number.MAX_SAFE_INTEGER);
+
+function roundedRatio(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator / 2n) / denominator;
+}
+
+function safeMinor(value: bigint): number {
+  if (value < 0n || value > maximumMinor)
+    throw new DocumentTotalsError('overflow');
+  return Number(value);
+}
+
 export function lineTotals(line: TotalsLine): LineTotals {
   if (
     !Number.isSafeInteger(line.quantity) ||
@@ -50,62 +62,81 @@ export function lineTotals(line: TotalsLine): LineTotals {
     line.taxBasisPoints > 10000
   )
     throw new DocumentTotalsError('invalid');
-  const grossMinor = safe(
-    Math.round(
-      (line.quantity *
-        line.unitPriceMinor *
-        (10000 - line.discountBasisPoints)) /
-        10000,
-    ),
-    'overflow',
+  const grossExact = roundedRatio(
+    BigInt(line.quantity) *
+      BigInt(line.unitPriceMinor) *
+      BigInt(10000 - line.discountBasisPoints),
+    10000n,
   );
-  const netMinor = safe(
-    Math.round((grossMinor * 10000) / (10000 + line.taxBasisPoints)),
-    'overflow',
+  const grossMinor = safeMinor(grossExact);
+  const netMinor = safeMinor(
+    roundedRatio(grossExact * 10000n, BigInt(10000 + line.taxBasisPoints)),
   );
   return { grossMinor, netMinor, taxMinor: grossMinor - netMinor };
 }
 
 export function documentTotals(lines: readonly TotalsLine[]): DocumentTotals {
   const computed = lines.map(lineTotals),
-    groups = new Map<number, TaxGroup>();
-  let netMinor = 0,
-    taxMinor = 0,
-    grossMinor = 0;
+    groups = new Map<
+      number,
+      {
+        taxBasisPoints: number;
+        netMinor: bigint;
+        taxMinor: bigint;
+        grossMinor: bigint;
+      }
+    >();
+  let netMinor = 0n,
+    taxMinor = 0n,
+    grossMinor = 0n;
   lines.forEach((line, index) => {
     const totals = computed[index]!,
       group = groups.get(line.taxBasisPoints) ?? {
         taxBasisPoints: line.taxBasisPoints,
-        netMinor: 0,
-        taxMinor: 0,
-        grossMinor: 0,
+        netMinor: 0n,
+        taxMinor: 0n,
+        grossMinor: 0n,
       };
-    group.netMinor += totals.netMinor;
-    group.taxMinor += totals.taxMinor;
-    group.grossMinor += totals.grossMinor;
+    group.netMinor += BigInt(totals.netMinor);
+    group.taxMinor += BigInt(totals.taxMinor);
+    group.grossMinor += BigInt(totals.grossMinor);
     groups.set(line.taxBasisPoints, group);
-    netMinor += totals.netMinor;
-    taxMinor += totals.taxMinor;
-    grossMinor += totals.grossMinor;
+    netMinor += BigInt(totals.netMinor);
+    taxMinor += BigInt(totals.taxMinor);
+    grossMinor += BigInt(totals.grossMinor);
   });
   return {
     lines: computed,
-    taxGroups: [...groups.values()].sort(
-      (a, b) => a.taxBasisPoints - b.taxBasisPoints,
-    ),
-    netMinor: safe(netMinor, 'overflow'),
-    taxMinor: safe(taxMinor, 'overflow'),
-    grossMinor: safe(grossMinor, 'overflow'),
+    taxGroups: [...groups.values()]
+      .sort((a, b) => a.taxBasisPoints - b.taxBasisPoints)
+      .map((group) => ({
+        taxBasisPoints: group.taxBasisPoints,
+        netMinor: safeMinor(group.netMinor),
+        taxMinor: safeMinor(group.taxMinor),
+        grossMinor: safeMinor(group.grossMinor),
+      })),
+    netMinor: safeMinor(netMinor),
+    taxMinor: safeMinor(taxMinor),
+    grossMinor: safeMinor(grossMinor),
   };
 }
 
 // The cross-check that keeps a printed document consistent with itself.
 export function assertTotalsConsistent(totals: DocumentTotals): void {
-  if (totals.netMinor + totals.taxMinor !== totals.grossMinor)
+  const netMinor = BigInt(safe(totals.netMinor)),
+    taxMinor = BigInt(safe(totals.taxMinor)),
+    grossMinor = BigInt(safe(totals.grossMinor));
+  if (netMinor + taxMinor !== grossMinor)
     throw new DocumentTotalsError('invalid');
-  const net = totals.taxGroups.reduce((sum, group) => sum + group.netMinor, 0),
-    tax = totals.taxGroups.reduce((sum, group) => sum + group.taxMinor, 0);
-  if (net !== totals.netMinor || tax !== totals.taxMinor)
+  const net = totals.taxGroups.reduce(
+      (sum, group) => sum + BigInt(safe(group.netMinor)),
+      0n,
+    ),
+    tax = totals.taxGroups.reduce(
+      (sum, group) => sum + BigInt(safe(group.taxMinor)),
+      0n,
+    );
+  if (net !== netMinor || tax !== taxMinor)
     throw new DocumentTotalsError('invalid');
 }
 

@@ -90,6 +90,20 @@ Platzhalter leer und die Erstellung mit `invalid_content` scheitern),
 verwendeter Wert, schlägt das Finalisieren mit `400 invalid_content` fehl statt
 ein unvollständiges Dokument zu erzeugen.
 
+## Exakte Summen (BKP016.2)
+
+Positionspreise bleiben Bruttobeträge in Cent. Rabatt wird zuerst auf den
+Bruttobetrag angewendet; anschließend wird die enthaltene Steuer je Position
+ermittelt. Zwischenprodukte und Summen verwenden Ganzzahlarithmetik mit
+kaufmännischer Rundung auf volle Cent. Die API liefert weiterhin sichere
+Integer-Centwerte; ein Ergebnis über `Number.MAX_SAFE_INTEGER` wird abgewiesen.
+Damit verlieren auch große zulässige Beträge keine Cent durch Float-Zwischenwerte.
+Bereits gespeicherte Dokumente werden nicht pauschal neu berechnet: finale PDFs
+bleiben unverändert, Finalisieren eines Entwurfs übernimmt die neu berechneten
+Snapshot-Summen atomar in den Datensatz. Bei früheren extrem hohen Entwürfen
+können deshalb gespeicherte Altsummen bis zur Finalisierung von der neu
+berechneten Vorschau abweichen. Ein Netto-Eingabemodus gehört nicht dazu.
+
 ## Ablage
 
 PDFs liegen außerhalb der Datenbank unter `AK_DOCUMENT_STORAGE`

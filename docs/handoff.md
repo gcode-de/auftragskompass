@@ -38,6 +38,20 @@ Abläufen, Build und Compose-Sicherung/Restore (38 Python- und 2 Node-Betriebste
 Der früher dokumentierte macOS-RLIMIT-Fehler trat in diesem Lauf nicht auf.
 Commit-/CI-/Auslieferungsnachweis nach Abschluss in der Liefermatrix prüfen.
 
+**BKP016.2 (24.10.2026):** Große zulässige Beträge verloren im bisherigen
+Summendienst einen Cent. Regressionen zuerst rot beobachtet; Ganzzahl-
+Zwischenwerte erhalten nun Rabatt-, Steuer- und Summengenauigkeit, API-
+Centwerte und vorhandene Brutto-Bedeutung bleiben erhalten. 974 Tests im
+gemeinsamen Coverage-Lauf grün, anschließend acht aktuelle fokussierte
+Summenregressionen einschließlich ungeradem Steuerteiler und getrennten
+Steuergruppen; Format/Lint/Typen/Workspace/Docs, Angebots-Chromiumablauf und
+Build grün. Keine pauschale Änderung alter Dokumente oder finaler Artefakte.
+Zusätzliche manuelle PDF-Prüfung zu BKP016.1: ein rein fiktives Angebot durch
+den echten Chromium-PDF-Renderer erzeugt und mit Poppler als Seite angesehen;
+Empfänger, Gültigkeit, Positionsspalten, Summen und Seitenzahl lesbar ohne
+Überlappung. Dies prüft ein typisches einseitiges Beispiel, keine vollständige
+Mehrseiten-/Langtext-Abnahme. Testartefakte außerhalb Git.
+
 **Regionaler Betriebsrahmen (ausdrückliche Nutzerkorrektur 24.10.2026):**
 Vermietungen finden in Südwestdeutschland und höchstens im Elsass statt.
 Die Oberfläche arbeitet mit der bestehenden Betriebsortszeit Europe/Berlin;
