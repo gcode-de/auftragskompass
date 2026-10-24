@@ -2,6 +2,48 @@
 
 Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Aktueller Abschluss H045 und Weiterarbeit: 24.10.2026
+
+Die frühere Kontingentpause ist beendet; das tatsächlich neue Fenster wurde
+geprüft, reguläre Nutzung verfügbar, Zusatzguthaben unverändert. Alte Werte unten
+sind historische Momentaufnahmen. Weiterhin vor Erschöpfung geordnet abschließen,
+kein Credit-/API-Key-Ausweichweg.
+
+**Verifiziert ausgeliefert: `132ace1c2de570d3f48201f49244ac538f7ece7d`.**
+Source-CI 40123365972 und Release-CI 40130269260 vollständig grün. Genau ein
+automatischer Updater; drei Container gesund mit exakter OCI-Revision, kein
+needs-attention, Website-Option-Drain weiterhin off. Checkpoint
+`preupdate-132ace1c2de5-20261024T205402130540Z.dump` in CT, Host und privater
+Betreiberablage identisch (2.366.356 Bytes; SHA-256
+`3d09edb19709b93336b996b6ab2be8442a6700f786cc85335f39bcbc8959facc`).
+
+Live-Assets zeigen Version132ace1. Produktwahl und Blankoangebot bis Reload,
+Vorschau, Finalisierung und PDF-Download gegen ausschließlich fiktive lokale
+API/DB geprüft. Zwölf Zustände bei 320/390/768/1280 in beiden Themes, axe und
+natürlicher mobiler Fokus ohne Überdeckung grün. Drei mit dem echten
+Chromium-Renderer erzeugte PDFs (Vorlagenvorschau, Blankovorschau, Blankofinale)
+als PNG gerendert und visuell geprüft: jeweils eine lesbare A4-Seite, Positionen,
+Summen und Texte ohne Abschneiden. Das ist kein Nachweis für Mehrseitenlayout,
+Container-Schriftgleichheit, physische Geräte oder echte Geschäfts-API-Aufrufe.
+
+**Arbeitsweg ab H045:** Die bestehende Branch
+`codex/ux-event-simplification` nach sauberem H045-Abschluss per geprüftem
+Fast-forward auf den vollständigen Stand bringen und dort die nächsten einzeln
+geprüften Slices implementieren. Damit entfällt die doppelte Source-/Release-CI.
+Keine Workflow-/Allowliständerung, kein Force-Push; lokale Tests und Review vor
+jedem Push sowie vollständige grüne quality+images und Checkpoint vor jedem
+Testupdate bleiben Pflicht. Arbeitskopie bleibt
+`/Users/gp/Developer/GitHub/auftragskompass-bkp`; die andere Arbeitskopie nicht ändern.
+
+Nächster sinnvoller Slice ist die Integritätsvoraussetzung für BKP018: bisher
+schreibt der Logo-Upload vor der Administratorprüfung auf einen wiederverwendeten
+Dateischlüssel. Erst mit roten Tests absichern, dann autorisieren und eindeutige
+unveränderliche Schlüssel verwenden; alte Dateien für Sicherungs-/laufende
+Vorschauverweise erhalten. Neue vorwärtsgerichtete Migration statt Änderung an
+0028. Separat vor einer fertigen Layoutkonfiguration prüfen: aktuelle Seitenzahl
+ist fest „Seite 1“, echte Mehrseitenzählung bisher nicht belegt. Keine neue
+UI oder vollständige Layout-Parität behaupten, bevor die jeweilige Strecke fertig ist.
+
 ## Geordnete Kontingentpause: 24.10.2026
 
 Die Arbeit endet mit Abschlussreserve (zuletzt 88 Prozent), reguläre Nutzung
