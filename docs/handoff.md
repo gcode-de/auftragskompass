@@ -2,6 +2,21 @@
 
 Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Logo-Integrität BKP018.0: 24.10.2026
+
+Auf `codex/ux-event-simplification` implementiert: Upload prüft aktive
+Mandantenberechtigung vor Storage-Schreiben, verwendet unveränderliche UUID-Keys
+und aktualisiert Zeiger/Version/Audit unter derselben Mandantensperre.
+Migration 0036 erhält Legacy-Zeilen; fremde Schlüssel und falsche
+Endung-/MIME-Paare werden abgewiesen. Speicher-/DBfehler lassen bisherige Bytes
+und DB-Zustand unverändert. Alte/unklare neue Dateien bleiben erhalten, kein GC
+oder neues Rollen-/Versionsvertragsmodell. Echte REDs, 47 fokussierte
+Integrationstests, vollständige Coverage-Suite 1016 Tests, schnelle Gates und
+betroffener Chromiumablauf grün; unabhängiger Review ohne Blocker. CI und
+Testauslieferung dieses neuen Stands erst nach Push verifizieren, zuletzt
+nachgewiesener Testbetrieb bleibt 132ace1. Als Nächstes separate echte
+Mehrseitenzählung, danach sichtbare Layoutkonfiguration mit sicherer Vorschau.
+
 ## Aktueller Abschluss H045 und Weiterarbeit: 24.10.2026
 
 Die frühere Kontingentpause ist beendet; das tatsächlich neue Fenster wurde
@@ -40,7 +55,7 @@ schreibt der Logo-Upload vor der Administratorprüfung auf einen wiederverwendet
 Dateischlüssel. Erst mit roten Tests absichern, dann autorisieren und eindeutige
 unveränderliche Schlüssel verwenden; alte Dateien für Sicherungs-/laufende
 Vorschauverweise erhalten. Neue vorwärtsgerichtete Migration statt Änderung an
-0028. Separat vor einer fertigen Layoutkonfiguration prüfen: aktuelle Seitenzahl
+0028/0031. Separat vor einer fertigen Layoutkonfiguration prüfen: aktuelle Seitenzahl
 ist fest „Seite 1“, echte Mehrseitenzählung bisher nicht belegt. Keine neue
 UI oder vollständige Layout-Parität behaupten, bevor die jeweilige Strecke fertig ist.
 

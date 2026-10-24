@@ -40,8 +40,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP017.1 permits a blank offer without creating a placeholder template.
-  expect(applied.at(-1)!.name).toBe('0035_blank_offer_drafts.sql');
+  // BKP018.0 scopes immutable logo keys without dropping legacy references.
+  expect(applied.at(-1)!.name).toBe('0036_document_layout_logo_keys.sql');
   const templateColumn = (
     await pool.query<{ is_nullable: string }>(
       "SELECT is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='documents' AND column_name='template_id'",
@@ -107,6 +107,47 @@ test('migrations serialize, restart safely and detect changed history', async ()
   expect(
     (await pool.query("SELECT to_regclass('partial') AS table")).rows[0].table,
   ).toBeNull();
+  const migrations = await Promise.all(
+      names
+        .filter((name) => name < '0036_document_layout_logo_keys.sql')
+        .map(async (name) => ({
+          name,
+          sql: await readFile(new URL(name, directory), 'utf8'),
+        })),
+    ),
+    logoMigration = {
+      name: '0036_document_layout_logo_keys.sql',
+      sql: await readFile(
+        new URL('0036_document_layout_logo_keys.sql', directory),
+        'utf8',
+      ),
+    },
+    legacyTenantId = randomUUID();
+  await migrate(pool, migrations);
+  await pool.query('INSERT INTO tenants (id,name,timezone) VALUES ($1,$2,$3)', [
+    legacyTenantId,
+    'Synthetic logo tenant',
+    'Europe/Berlin',
+  ]);
+  await pool.query(
+    `INSERT INTO document_layouts (
+      tenant_id,sender_name,sender_street,sender_postal_code,sender_city,
+      primary_color,text_color,font_family,logo_key,logo_media_type
+    ) VALUES ($1,'Synthetic sender','','','Synthetic city','#123456','#123456','system',$2,'image/png')`,
+    [legacyTenantId, `logo-${legacyTenantId}.png`],
+  );
+  await migrate(pool, [logoMigration]);
+  expect(
+    (
+      await pool.query(
+        'SELECT logo_key,logo_media_type FROM document_layouts WHERE tenant_id=$1',
+        [legacyTenantId],
+      )
+    ).rows[0],
+  ).toEqual({
+    logo_key: `logo-${legacyTenantId}.png`,
+    logo_media_type: 'image/png',
+  });
   await migrate(pool);
 });
 test('repositories isolate tenants, enforce uniqueness and compound foreign keys', async () => {

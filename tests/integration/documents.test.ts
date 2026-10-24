@@ -1816,7 +1816,7 @@ test('a configured logo is embedded into the final html', async () => {
       Buffer.from('synthetic logo'),
     ]),
     layoutRepo = documentLayoutRepository(pool, tenantId, run.deps.store);
-  await layoutRepo.saveLogo(actorId, png, 'image/png');
+  const logo = await layoutRepo.saveLogo(actorId, png, 'image/png');
   const repo = documentRepository(pool, tenantId, run.deps),
     draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
     finalized = await repo.finalize(actorId, draft.id);
@@ -1824,7 +1824,7 @@ test('a configured logo is embedded into the final html', async () => {
   expect(run.rendered[0]).toContain(
     'data:image/png;base64,' + png.toString('base64'),
   );
-  await run.deps.store.remove(`logo-${tenantId}.png`);
+  await run.deps.store.remove(logo.logoKey!);
   const missing = await repo.createDraft(actorId, {
     templateId,
     contactId,

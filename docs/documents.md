@@ -208,10 +208,23 @@ Das Layout kann genau ein Logo tragen. `PUT /api/v1/document-layout/logo`
 nimmt einen rohen PNG- oder JPEG-Körper an (höchstens 512 KB). Geprüft werden
 die magische Signatur gegen den angegebenen Inhaltstyp und die Größe; ein
 umbenanntes Fremdformat wird abgewiesen. Die Bytes liegen außerhalb der
-Datenbank, der Schlüssel `logo-<mandant>.png|jpg` steht mit dem Medientyp im
-Layout. Ersetzen schreibt zuerst die neue Datei, aktualisiert die Zeile, erhöht
-die Version und protokolliert `document_layout.updated`; erst danach wird die
-alte Datei entfernt. Beim Finalisieren liest der Dokumentdienst das Logo und
+Datenbank. Neue Uploads erhalten einen eindeutigen Schlüssel
+`logo-<mandant>-<upload-uuid>.png|jpg`; bereits gespeicherte Legacy-Schlüssel
+`logo-<mandant>.png|jpg` bleiben gültig. Migration 0036 erhält diese Referenzen,
+bindet neue Schlüssel an den Mandanten und prüft die Zuordnung von Endung
+und Medientyp. Unter der Mandantensperre wird zuerst
+die Administratorberechtigung geprüft, erst danach eine neue Datei geschrieben.
+Zeiger, Version und `document_layout.updated` werden gemeinsam transaktional
+geändert. Ein abgewiesener oder fehlgeschlagener Upload überschreibt niemals
+die aktive Datei. Alte Logodateien bleiben für Sicherungsreferenzen und bereits
+laufende Vorschauen erhalten; dieser Slice führt keine automatische Bereinigung
+ein. Bei unklarem Datenbank-Commit wird eine möglicherweise unreferenzierte neue
+Datei gegenüber dem Risiko bevorzugt, aktive Bytes zu löschen. Speicher und
+Datenbank müssen gemeinsam gesichert werden; ein DB-Dump enthält keine Bilder.
+Der bestehende Uploadvertrag bleibt unverändert: keine erwartete Version im
+Request, bei konkurrierenden autorisierten Uploads gewinnt der zuletzt erfolgreich
+unter der Mandantensperre gespeicherte Zeiger.
+Beim Finalisieren liest der Dokumentdienst das Logo und
 bettet es als `data:`-URI in das HTML ein, damit die PDF ohne externe Quelle
 deterministisch bleibt. Fehlt ein eingetragenes Logo, bricht das Finalisieren
 mit `missing_reference` ab, statt still ohne Marke zu drucken.

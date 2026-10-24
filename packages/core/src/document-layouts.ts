@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { eq } from 'drizzle-orm';
@@ -254,22 +255,17 @@ export function documentLayoutRepository(
     },
     // The logo lives outside the row: the bytes go to the storage adapter and
     // the layout only keeps the derived key and media type.
+    // Keep old and uncertain-upload bytes: checkpoints and in-flight renders
+    // may still reference them. Unique keys make failed writes harmless.
     async saveLogo(actorId: string, bytes: Buffer, declared: string) {
       const mediaType = assertLogo(bytes, declared),
-        key = `logo-${tenantId}.${mediaType === 'image/png' ? 'png' : 'jpg'}`,
-        [existing] = await database(pool)
-          .select({ logoKey: documentLayouts.logoKey })
-          .from(documentLayouts)
-          .where(scope);
-      if (!existing) throw new DocumentLayoutError('not_found');
-      await store.put(key, bytes);
-      let superseded: string | null = null;
-      const row = await database(pool).transaction(async (tx) => {
+        key = `logo-${tenantId}-${randomUUID()}.${mediaType === 'image/png' ? 'png' : 'jpg'}`;
+      return database(pool).transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
         const [old] = await tx.select().from(documentLayouts).where(scope);
         if (!old) throw new DocumentLayoutError('not_found');
-        if (old.logoKey && old.logoKey !== key) superseded = old.logoKey;
+        await store.put(key, bytes);
         const [updated] = await tx
           .update(documentLayouts)
           .set({
@@ -282,9 +278,6 @@ export function documentLayoutRepository(
         await appendAudit(tx, tenantId, 'document_layout.updated', actorId);
         return updated!;
       });
-      // A superseded file is only removed once the row points at the new one.
-      if (superseded) await store.remove(superseded).catch(() => {});
-      return row;
     },
   };
 }

@@ -9,6 +9,7 @@ import { migrate } from '../../packages/core/src/identity.js';
 import {
   bootstrapAccess,
   accessRepository,
+  AccessError,
 } from '../../packages/core/src/access.js';
 import {
   documentLayoutRepository,
@@ -238,20 +239,26 @@ const logoPng = Buffer.concat([
     Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
     Buffer.from('synthetic jpeg body'),
   ]);
-test('a logo is stored, referenced and replaced without leftovers', async () => {
+test('logo uploads are referenced by new immutable keys and retain old bytes', async () => {
   const repo = documentLayoutRepository(pool, tenantId, store.adapter),
     before = (await repo.get())!.version,
     saved = await repo.saveLogo(actorId, logoPng, 'image/png');
   expect(saved).toMatchObject({
-    logoKey: `logo-${tenantId}.png`,
     logoMediaType: 'image/png',
     version: before + 1,
   });
-  expect(store.files.get(`logo-${tenantId}.png`)).toEqual(logoPng);
+  expect(saved.logoKey).toMatch(
+    new RegExp(`^logo-${tenantId}-[0-9a-f-]{36}[.]png$`),
+  );
+  const oldKey = saved.logoKey!;
+  expect(store.files.get(oldKey)).toEqual(logoPng);
   const replaced = await repo.saveLogo(actorId, logoJpeg, 'image/jpeg');
-  expect(replaced.logoKey).toBe(`logo-${tenantId}.jpg`);
-  expect(store.files.has(`logo-${tenantId}.png`)).toBe(false);
-  expect(store.files.get(`logo-${tenantId}.jpg`)).toEqual(logoJpeg);
+  expect(replaced.logoKey).toMatch(
+    new RegExp(`^logo-${tenantId}-[0-9a-f-]{36}[.]jpg$`),
+  );
+  expect(replaced.logoKey).not.toBe(oldKey);
+  expect(store.files.get(oldKey)).toEqual(logoPng);
+  expect(store.files.get(replaced.logoKey!)).toEqual(logoJpeg);
   expect(
     (
       await documentLayoutRepository(
@@ -288,6 +295,232 @@ test('logo uploads reject the wrong bytes and oversized bodies', async () => {
     ),
   ).rejects.toMatchObject({ reason: 'logo_too_large' });
   expect((await repo.get())!.logoKey).toBe(before);
+});
+
+test('a rejected logo upload cannot overwrite an existing logo before authorization', async () => {
+  const repo = documentLayoutRepository(pool, tenantId, store.adapter),
+    original = await repo.saveLogo(actorId, logoPng, 'image/png'),
+    originalBytes = store.files.get(original.logoKey!)!,
+    auditBefore = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1 AND action='document_layout.updated'",
+      [tenantId],
+    ),
+    writes: string[] = [],
+    trackedStore: StorageAdapter = {
+      ...store.adapter,
+      async put(key, bytes) {
+        writes.push(key);
+        await store.adapter.put(key, bytes);
+      },
+    };
+  await expect(
+    documentLayoutRepository(pool, tenantId, trackedStore).saveLogo(
+      otherActorId,
+      Buffer.concat([logoPng, Buffer.from('unauthorized replacement')]),
+      'image/png',
+    ),
+  ).rejects.toBeInstanceOf(AccessError);
+  expect(writes).toEqual([]);
+  expect(store.files.get(original.logoKey!)).toEqual(originalBytes);
+  expect(await repo.get()).toMatchObject({
+    logoKey: original.logoKey,
+    logoMediaType: original.logoMediaType,
+    version: original.version,
+  });
+  expect(
+    (
+      await pool.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1 AND action='document_layout.updated'",
+        [tenantId],
+      )
+    ).rows[0]!.count,
+  ).toBe(auditBefore.rows[0]!.count);
+});
+
+test('storage failure cannot replace the active logo bytes or row', async () => {
+  const repo = documentLayoutRepository(pool, tenantId, store.adapter),
+    original = await repo.saveLogo(actorId, logoPng, 'image/png'),
+    originalBytes = store.files.get(original.logoKey!)!,
+    unreliableStore: StorageAdapter = {
+      ...store.adapter,
+      async put(key, bytes) {
+        await store.adapter.put(key, bytes);
+        throw new Error('synthetic storage failure after write');
+      },
+    };
+  await expect(
+    documentLayoutRepository(pool, tenantId, unreliableStore).saveLogo(
+      actorId,
+      Buffer.concat([logoPng, Buffer.from('new upload')]),
+      'image/png',
+    ),
+  ).rejects.toThrow('synthetic storage failure after write');
+  expect(store.files.get(original.logoKey!)).toEqual(originalBytes);
+  expect(await repo.get()).toMatchObject({
+    logoKey: original.logoKey,
+    logoMediaType: original.logoMediaType,
+    version: original.version,
+  });
+});
+
+test('a database failure leaves the active logo immutable and rolls back metadata', async () => {
+  const repo = documentLayoutRepository(pool, tenantId, store.adapter),
+    original = await repo.saveLogo(actorId, logoPng, 'image/png'),
+    originalBytes = store.files.get(original.logoKey!)!,
+    auditBefore = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1 AND action='document_layout.updated'",
+      [tenantId],
+    );
+  await pool.query(`
+    CREATE FUNCTION reject_document_layout_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.action = 'document_layout.updated' THEN
+        RAISE EXCEPTION 'synthetic layout audit failure';
+      END IF;
+      RETURN NEW;
+    END $$;
+  `);
+  await pool.query(`
+    CREATE TRIGGER reject_document_layout_audit
+    BEFORE INSERT ON audit_events FOR EACH ROW
+    EXECUTE FUNCTION reject_document_layout_audit()
+  `);
+  try {
+    await expect(
+      repo.saveLogo(
+        actorId,
+        Buffer.concat([logoPng, Buffer.from('database failure')]),
+        'image/png',
+      ),
+    ).rejects.toThrow();
+  } finally {
+    await pool.query(
+      'DROP TRIGGER reject_document_layout_audit ON audit_events',
+    );
+    await pool.query('DROP FUNCTION reject_document_layout_audit()');
+  }
+  expect(store.files.get(original.logoKey!)).toEqual(originalBytes);
+  expect(await repo.get()).toMatchObject({
+    logoKey: original.logoKey,
+    logoMediaType: original.logoMediaType,
+    version: original.version,
+  });
+  expect(
+    (
+      await pool.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1 AND action='document_layout.updated'",
+        [tenantId],
+      )
+    ).rows[0]!.count,
+  ).toBe(auditBefore.rows[0]!.count);
+});
+
+test('concurrent logo uploads use distinct immutable storage keys', async () => {
+  const originalRepo = documentLayoutRepository(pool, tenantId, store.adapter),
+    original = await originalRepo.saveLogo(actorId, logoPng, 'image/png'),
+    auditBefore = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1 AND action='document_layout.updated'",
+      [tenantId],
+    );
+  let entered = 0,
+    signalFirst!: () => void,
+    signalSecond!: () => void,
+    release!: () => void;
+  const firstEntered = new Promise<void>((resolve) => (signalFirst = resolve)),
+    secondEntered = new Promise<void>((resolve) => (signalSecond = resolve)),
+    gate = new Promise<void>((resolve) => (release = resolve)),
+    delayedStore: StorageAdapter = {
+      ...store.adapter,
+      async put(key, bytes) {
+        await store.adapter.put(key, bytes);
+        entered++;
+        if (entered === 1) signalFirst();
+        if (entered === 2) signalSecond();
+        if (entered === 1) await gate;
+      },
+    },
+    repo = documentLayoutRepository(pool, tenantId, delayedStore),
+    firstBytes = Buffer.concat([
+      logoPng,
+      Buffer.from('first concurrent upload'),
+    ]),
+    secondBytes = Buffer.concat([
+      logoPng,
+      Buffer.from('second concurrent upload'),
+    ]);
+  const firstPending = repo.saveLogo(actorId, firstBytes, 'image/png');
+  await firstEntered;
+  const secondPending = repo.saveLogo(actorId, secondBytes, 'image/png');
+  const secondEnteredWhileFirstBlocked = await Promise.race([
+    secondEntered.then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 50)),
+  ]);
+  release();
+  const [first, second] = await Promise.all([firstPending, secondPending]);
+  expect(secondEnteredWhileFirstBlocked).toBe(false);
+  expect(first.logoKey).not.toBe(second.logoKey);
+  expect(first.version).toBe(original.version + 1);
+  expect(second.version).toBe(original.version + 2);
+  expect(store.files.get(first.logoKey!)).toEqual(firstBytes);
+  expect(store.files.get(second.logoKey!)).toEqual(secondBytes);
+  expect(store.files.has(original.logoKey!)).toBe(true);
+  expect(await originalRepo.get()).toMatchObject({
+    logoKey: second.logoKey,
+    logoMediaType: 'image/png',
+    version: original.version + 2,
+  });
+  expect(
+    (
+      await pool.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM audit_events WHERE tenant_id=$1 AND action='document_layout.updated'",
+        [tenantId],
+      )
+    ).rows[0]!.count,
+  ).toBe(String(Number(auditBefore.rows[0]!.count) + 2));
+});
+
+test('logo key constraints retain legacy keys and scope new UUID keys to the tenant', async () => {
+  const repo = documentLayoutRepository(pool, tenantId, store.adapter);
+  if (!(await repo.get())) await repo.save(actorId, layout);
+  await pool.query(
+    'UPDATE document_layouts SET logo_key=$1,logo_media_type=$2 WHERE tenant_id=$3',
+    [`logo-${tenantId}.png`, 'image/png', tenantId],
+  );
+  const uploadId = randomUUID(),
+    validKey = `logo-${tenantId}-${uploadId}.png`;
+  await expect(
+    pool.query(
+      'UPDATE document_layouts SET logo_key=$1,logo_media_type=$2 WHERE tenant_id=$3',
+      [validKey, 'image/png', tenantId],
+    ),
+  ).resolves.toBeDefined();
+  await expect(
+    pool.query('UPDATE document_layouts SET logo_key=$1 WHERE tenant_id=$2', [
+      `logo-${otherTenantId}-${randomUUID()}.png`,
+      tenantId,
+    ]),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'document_layouts_logo_key_scope',
+  });
+  await expect(
+    pool.query('UPDATE document_layouts SET logo_key=$1 WHERE tenant_id=$2', [
+      `logo-${tenantId}-${randomUUID()}.gif`,
+      tenantId,
+    ]),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'document_layouts_logo_key_scope',
+  });
+  await expect(
+    pool.query(
+      'UPDATE document_layouts SET logo_key=$1,logo_media_type=$2 WHERE tenant_id=$3',
+      [validKey, 'image/jpeg', tenantId],
+    ),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'document_layouts_logo_key_scope',
+  });
 });
 test('the logo endpoint enforces auth, csrf, type and size', async () => {
   const config = {
@@ -389,7 +622,9 @@ test('the logo endpoint enforces auth, csrf, type and size', async () => {
     });
     expect(saved.statusCode).toBe(200);
     expect(saved.json().logoMediaType).toBe('image/png');
-    expect(saved.json().logoKey).toBe(`logo-${tenantId}.png`);
+    expect(saved.json().logoKey).toMatch(
+      new RegExp(`^logo-${tenantId}-[0-9a-f-]{36}\\.png$`),
+    );
     await pool.query('DELETE FROM document_layouts WHERE tenant_id=$1', [
       tenantId,
     ]);
