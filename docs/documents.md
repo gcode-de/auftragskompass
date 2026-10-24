@@ -1,6 +1,6 @@
 # Geschäftsdokumente: Entwurf, Nummer und finale PDF
 
-Stand: 24.10.2026, einschließlich BKP016.1. Dokumente entstehen aus einer
+Stand: 24.10.2026, einschließlich BKP016.3. Dokumente entstehen aus einer
 Dokumentvorlage, tragen eigene Inhalte und Positionen als Snapshot und werden
 beim Finalisieren mit einer Nummer aus dem Nummernkreis unveränderlich
 festgeschrieben. Angebotsentwürfe lassen sich in der Eventakte bearbeiten und
@@ -31,12 +31,17 @@ identisch mit dem Ausgabezeitpunkt.
 
 Neue Dokumententwürfe kopieren Betreff, Einleitungs-/Schlusstext und
 `validityDays` aus der Vorlage. Spätere Vorlagenänderungen verändern diese Werte
-nicht. Die Positionen sind bereits eigene Kopien; ihre Bearbeitung folgt in
-einem getrennten Slice. Die aktuelle Oberfläche bearbeitet zunächst die Texte
-und Gültigkeit von Angebotsentwürfen.
+nicht. Die Positionen sind ebenfalls eigene Kopien. Der Editor bearbeitet Texte,
+Gültigkeit und Positionen von Angebotsentwürfen.
 
 `PUT /api/v1/documents/:id/draft` ersetzt die vier Inhaltsfelder mit der
-erwarteten `version`. Veraltete Versionen liefern `409 conflict`, abgeschlossene
+erwarteten `version`. Seit BKP016.3 kann optional `lines` mitgesendet werden:
+eine vollständige Liste von 1 bis 1000 Positionen. Beschreibung, Menge, Einheit,
+Bruttopreis in Cent, Steuer und Rabatt werden validiert; Produktbezüge müssen
+zum Mandanten gehören (ein bestehender archivierter Bezug bleibt erlaubt). Texte,
+Positionen und neu berechnete Summen werden atomar gespeichert. Ohne `lines`
+bleiben Positionen und Summen unverändert, auch ihre IDs. Ein mitgesendeter
+Positionssatz erhält neue Zeilen-IDs; diese sind keine externen Belegreferenzen. Veraltete Versionen liefern `409 conflict`, abgeschlossene
 Dokumente `409 invalid_state`. Eine bestätigte Speicherung erhöht die Version
 und erzeugt genau einen `document.updated`-Audit-Eintrag. Nach einer verlorenen
 Antwort ist der Ausgang unklar: zuerst neu laden, statt den Schreibauftrag
@@ -184,8 +189,14 @@ In der Eventakte steht unter „Dateien“ der Abschnitt „Angebote“. Er list
 Nummer, Zustand, Datum und Bruttobetrag der Dokumente dieses Events und legt aus
 einer aktiven Angebotsvorlage einen Entwurf mit dem Hauptkontakt an.
 „Bearbeiten“ öffnet genau einen Angebotseditor mit Betreff, Einleitung,
-Schlusstext und Gültigkeit in Tagen. Positionen und Gesamtbetrag sind dort
-lesend sichtbar. Ungespeicherte Änderungen sperren Vorschau und Finalisierung;
+Schlusstext und Gültigkeit in Tagen. Vorhandene Positionen lassen sich mit
+Beschreibung, Menge, Einheit, Brutto-Einzelpreis, Steuer und Rabatt bearbeiten;
+freie Positionen können ergänzt oder entfernt werden. Die vorhandenen exakten
+Dezimalhelfer übersetzen Euro/Prozent in Cent/Basispunkte, ohne Float-Konvertierung.
+Die angezeigte Gesamtsumme bezeichnet ausdrücklich den gespeicherten Stand;
+aktuelle Eingaben werden erst beim Speichern serverseitig berechnet. Ein
+Dokumentpreis verändert weder Vorlage noch Produkt. Die Auswahl neuer Positionen
+aus dem Produktkatalog folgt separat. Ungespeicherte Änderungen sperren Vorschau und Finalisierung;
 Versionskonflikte und unklarer Speicherstatus erhalten die Eingaben und bieten
 einen ausdrücklichen Neuabruf an. Nach bestätigtem Speichern ist die Vorschau
 der gespeicherten Fassung verfügbar. Finalisieren erzeugt die nummerierte PDF;
@@ -200,6 +211,7 @@ Finalisieren, jeweils mit Dokument-ID als `record_id`.
 
 ## Noch offen
 
-- Bearbeiten der Positionen und Summen sowie Blankoanlage ohne Vorlage.
+- Neue Positionen aus dem Produktkatalog auswählen; Blankoanlage ohne Vorlage.
+- Netto-Preiseingabe mit eigenem explizitem Preismodell (kein stiller Wechsel bestehender Bruttowerte).
 - Status `sent`, `expired`, `accepted` und der Zurückziehen-Endpunkt.
 - Rechnungen, Anzahlungen und Korrekturen (C054).

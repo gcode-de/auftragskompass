@@ -14,6 +14,7 @@ import {
   events,
   locations,
   masterData,
+  products,
   tenants,
 } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
@@ -27,6 +28,7 @@ import {
 } from './document-templates.js';
 import {
   documentTotals,
+  DocumentTotalsError,
   formatDocumentDate,
   formatMinorUnits,
   type TotalsLine,
@@ -87,6 +89,7 @@ export type DocumentDraftContent = {
   introText: string;
   outroText: string;
   validityDays: number;
+  lines?: DocumentLineDraft[];
 };
 export type DocumentFilters = {
   eventId?: string;
@@ -162,8 +165,22 @@ function assertLine(line: DocumentLineDraft, index: number): void {
   if (
     typeof line.description !== 'string' ||
     !line.description.trim() ||
+    line.description.length > 300 ||
     typeof line.unit !== 'string' ||
-    !line.unit.trim()
+    !line.unit.trim() ||
+    line.unit.length > 40 ||
+    !Number.isSafeInteger(line.quantity) ||
+    line.quantity < 1 ||
+    line.quantity > 100000 ||
+    !Number.isSafeInteger(line.unitPriceMinor) ||
+    line.unitPriceMinor < 0 ||
+    line.unitPriceMinor > Number.MAX_SAFE_INTEGER ||
+    !Number.isSafeInteger(line.taxBasisPoints) ||
+    line.taxBasisPoints < 0 ||
+    line.taxBasisPoints > 10000 ||
+    !Number.isSafeInteger(line.discountBasisPoints) ||
+    line.discountBasisPoints < 0 ||
+    line.discountBasisPoints > 10000
   )
     throw new DocumentError('invalid_line');
   if (index > 999) throw new DocumentError('invalid_line');
@@ -426,7 +443,7 @@ export function documentRepository(
 
   async function assertReference(
     connection: Connection,
-    table: 'event' | 'contact',
+    table: 'event' | 'contact' | 'product',
     id: string | null | undefined,
   ) {
     if (!id) return;
@@ -436,10 +453,15 @@ export function documentRepository(
             .select({ id: events.id })
             .from(events)
             .where(and(eq(events.tenantId, tenantId), eq(events.id, id)))
-        : await database(connection)
-            .select({ id: contacts.id })
-            .from(contacts)
-            .where(and(eq(contacts.tenantId, tenantId), eq(contacts.id, id)));
+        : table === 'contact'
+          ? await database(connection)
+              .select({ id: contacts.id })
+              .from(contacts)
+              .where(and(eq(contacts.tenantId, tenantId), eq(contacts.id, id)))
+          : await database(connection)
+              .select({ id: products.id })
+              .from(products)
+              .where(and(eq(products.tenantId, tenantId), eq(products.id, id)));
     if (!row) throw new DocumentError('not_found');
   }
 
@@ -707,6 +729,43 @@ export function documentRepository(
           throw new DocumentError('invalid_state');
         if (document.version !== content.version)
           throw new DocumentError('conflict');
+        let totals: ReturnType<typeof documentTotals> | undefined;
+        if (content.lines !== undefined) {
+          if (!content.lines.length) throw new DocumentError('empty_lines');
+          content.lines.forEach(assertLine);
+          for (const line of content.lines)
+            await assertReference(tx, 'product', line.productId);
+          try {
+            totals = documentTotals(content.lines);
+          } catch (error) {
+            if (error instanceof DocumentTotalsError)
+              throw new DocumentError('invalid_line');
+            throw error;
+          }
+          await tx
+            .delete(documentLines)
+            .where(
+              and(
+                eq(documentLines.tenantId, tenantId),
+                eq(documentLines.documentId, id),
+              ),
+            );
+          await tx.insert(documentLines).values(
+            content.lines.map((line, position) => ({
+              tenantId,
+              documentId: id,
+              id: randomUUID(),
+              position,
+              productId: line.productId ?? null,
+              description: line.description.trim(),
+              quantity: line.quantity,
+              unit: line.unit.trim(),
+              unitPriceMinor: line.unitPriceMinor,
+              taxBasisPoints: line.taxBasisPoints,
+              discountBasisPoints: line.discountBasisPoints,
+            })),
+          );
+        }
         await tx
           .update(documents)
           .set({
@@ -714,6 +773,13 @@ export function documentRepository(
             introText: content.introText,
             outroText: content.outroText,
             validityDays: content.validityDays,
+            ...(totals
+              ? {
+                  netMinor: totals.netMinor,
+                  taxMinor: totals.taxMinor,
+                  grossMinor: totals.grossMinor,
+                }
+              : {}),
             version: document.version + 1,
           })
           .where(and(scope, eq(documents.id, id)));
@@ -1022,6 +1088,7 @@ export function registerDocumentRoutes(
             introText: { type: 'string', maxLength: 4000 },
             outroText: { type: 'string', maxLength: 4000 },
             validityDays: { type: 'integer', minimum: 1, maximum: 365 },
+            lines: { type: 'array', minItems: 1, maxItems: 1000, items: line },
           },
         },
         response: { 200: row },

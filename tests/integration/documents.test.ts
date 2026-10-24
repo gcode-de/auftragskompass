@@ -386,6 +386,239 @@ test('finalization uses the draft text snapshot after the template changes', asy
   }
 });
 
+test('editing a draft can replace its positions and recompute saved totals', async () => {
+  const repo = documentRepository(pool, tenantId, dependencies().deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
+    productId = randomUUID();
+  await pool.query(
+    `INSERT INTO products (tenant_id,id,name,description,unit,price_minor,price_basis,
+      tax_basis_points,state,position,version)
+     VALUES ($1,$2,'Fictional archived product','','Stück',1000,'gross',1900,'archived',999,1)`,
+    [tenantId, productId],
+  );
+
+  const saved = await repo.updateDraftContent(actorId, draft.id, {
+    version: draft.version,
+    subject: draft.subject!,
+    introText: draft.introText!,
+    outroText: draft.outroText!,
+    validityDays: draft.validityDays!,
+    lines: [
+      {
+        productId,
+        description: 'Edited archived product position',
+        quantity: 2,
+        unit: 'Stück',
+        unitPriceMinor: 1000,
+        taxBasisPoints: 1900,
+        discountBasisPoints: 0,
+      },
+      {
+        productId: null,
+        description: 'Edited free position',
+        quantity: 1,
+        unit: 'Pauschale',
+        unitPriceMinor: 500,
+        taxBasisPoints: 0,
+        discountBasisPoints: 1000,
+      },
+    ],
+  });
+
+  expect(saved).toMatchObject({
+    version: 2,
+    netMinor: 2131,
+    taxMinor: 319,
+    grossMinor: 2450,
+    lines: [
+      {
+        position: 0,
+        productId,
+        description: 'Edited archived product position',
+      },
+      { position: 1, productId: null, description: 'Edited free position' },
+    ],
+  });
+  expect(saved.lines.map((line) => line.id)).not.toEqual(
+    draft.lines.map((line) => line.id),
+  );
+  expect(await repo.get(draft.id)).toMatchObject(saved);
+});
+
+test('editing draft content without lines preserves existing line ids and values', async () => {
+  const repo = documentRepository(pool, tenantId, dependencies().deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
+    saved = await repo.updateDraftContent(actorId, draft.id, {
+      version: draft.version,
+      subject: draft.subject!,
+      introText: draft.introText!,
+      outroText: draft.outroText!,
+      validityDays: draft.validityDays!,
+    });
+  expect(saved.version).toBe(draft.version + 1);
+  expect(saved.lines).toEqual(draft.lines);
+  expect(saved).toMatchObject({
+    netMinor: draft.netMinor,
+    taxMinor: draft.taxMinor,
+    grossMinor: draft.grossMinor,
+  });
+});
+
+test('invalid, overflowing and foreign-product edits leave the draft untouched', async () => {
+  const repo = documentRepository(pool, tenantId, dependencies().deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
+    otherProductId = randomUUID(),
+    content = {
+      version: draft.version,
+      subject: draft.subject!,
+      introText: draft.introText!,
+      outroText: draft.outroText!,
+      validityDays: draft.validityDays!,
+    },
+    line = {
+      description: 'Replacement line',
+      quantity: 1,
+      unit: 'Stück',
+      unitPriceMinor: 1000,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    };
+  await pool.query(
+    `INSERT INTO products (tenant_id,id,name,description,unit,price_minor,price_basis,
+      tax_basis_points,state,position,version)
+     VALUES ($1,$2,'Other fictional product','','Stück',1000,'gross',1900,'active',998,1)`,
+    [otherTenantId, otherProductId],
+  );
+  await expect(
+    repo.updateDraftContent(actorId, draft.id, { ...content, lines: [] }),
+  ).rejects.toMatchObject({ reason: 'empty_lines' });
+  await expect(
+    repo.updateDraftContent(actorId, draft.id, {
+      ...content,
+      lines: [{ ...line, description: ' '.repeat(301) }],
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_line' });
+  await expect(
+    repo.updateDraftContent(actorId, draft.id, {
+      ...content,
+      lines: [
+        { ...line, unitPriceMinor: Number.MAX_SAFE_INTEGER },
+        { ...line, unitPriceMinor: 1 },
+      ],
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_line' });
+  await expect(
+    repo.updateDraftContent(actorId, draft.id, {
+      ...content,
+      lines: [{ ...line, productId: otherProductId }],
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  expect(await repo.get(draft.id)).toEqual(draft);
+  const updates = await pool.query(
+    "SELECT count(*) FROM audit_events WHERE tenant_id=$1 AND action='document.updated' AND record_id=$2",
+    [tenantId, draft.id],
+  );
+  expect(updates.rows[0].count).toBe('0');
+});
+
+test('concurrent position edits accept one version and audit it once', async () => {
+  const repo = documentRepository(pool, tenantId, dependencies().deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
+    edit = (description: string) =>
+      repo.updateDraftContent(actorId, draft.id, {
+        version: draft.version,
+        subject: draft.subject!,
+        introText: draft.introText!,
+        outroText: draft.outroText!,
+        validityDays: draft.validityDays!,
+        lines: [
+          {
+            description,
+            quantity: 1,
+            unit: 'Pauschale',
+            unitPriceMinor: 1000,
+            taxBasisPoints: 0,
+            discountBasisPoints: 0,
+          },
+        ],
+      }),
+    results = await Promise.allSettled([
+      edit('Concurrent edit A'),
+      edit('Concurrent edit B'),
+    ]);
+  expect(results.map((result) => result.status).sort()).toEqual([
+    'fulfilled',
+    'rejected',
+  ]);
+  const rejected = results.find((result) => result.status === 'rejected');
+  expect(rejected).toMatchObject({ reason: { reason: 'conflict' } });
+  const saved = await repo.get(draft.id);
+  expect(saved).toMatchObject({ version: 2, grossMinor: 1000 });
+  expect(saved!.lines[0]!.description).toMatch(/^Concurrent edit [AB]$/);
+  await expect(
+    repo.updateDraftContent(actorId, draft.id, {
+      version: draft.version,
+      subject: draft.subject!,
+      introText: draft.introText!,
+      outroText: draft.outroText!,
+      validityDays: draft.validityDays!,
+      lines: [
+        {
+          description: 'Stale retried edit',
+          quantity: 1,
+          unit: 'Pauschale',
+          unitPriceMinor: 2000,
+          taxBasisPoints: 0,
+          discountBasisPoints: 0,
+        },
+      ],
+    }),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(await repo.get(draft.id)).toEqual(saved);
+  const updates = await pool.query(
+    "SELECT count(*) FROM audit_events WHERE tenant_id=$1 AND action='document.updated' AND record_id=$2",
+    [tenantId, draft.id],
+  );
+  expect(updates.rows[0].count).toBe('1');
+});
+
+test('a concurrent position edit and finalization preserve the winning version', async () => {
+  const run = dependencies(),
+    repo = documentRepository(pool, tenantId, run.deps),
+    draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
+    edit = repo.updateDraftContent(actorId, draft.id, {
+      version: draft.version,
+      subject: draft.subject!,
+      introText: draft.introText!,
+      outroText: draft.outroText!,
+      validityDays: draft.validityDays!,
+      lines: [
+        {
+          description: 'Concurrent final line',
+          quantity: 1,
+          unit: 'Pauschale',
+          unitPriceMinor: 1000,
+          taxBasisPoints: 0,
+          discountBasisPoints: 0,
+        },
+      ],
+    }),
+    [updated, finalized] = await Promise.allSettled([
+      edit,
+      repo.finalize(actorId, draft.id),
+    ]);
+  expect(finalized.status).toBe('fulfilled');
+  if (finalized.status !== 'fulfilled') throw finalized.reason;
+  if (updated.status === 'fulfilled') {
+    expect(finalized.value).toMatchObject({ version: 3, grossMinor: 1000 });
+    expect(finalized.value.lines[0]!.description).toBe('Concurrent final line');
+  } else {
+    expect(updated.reason).toMatchObject({ reason: 'invalid_state' });
+    expect(finalized.value).toMatchObject({ version: 2, grossMinor: 24900 });
+  }
+  expect(run.rendered).toHaveLength(1);
+});
+
 test('a second finalize is rejected and never consumes another number', async () => {
   const repo = documentRepository(pool, tenantId, dependencies().deps),
     draft = await repo.createDraft(actorId, { templateId, contactId, eventId }),
@@ -871,6 +1104,17 @@ test('the document API requires auth and enforces the final state', async () => 
         introText: 'Persönliche Einleitung',
         outroText: 'Gültig für {{total}}',
         validityDays: 21,
+        lines: [
+          {
+            productId: null,
+            description: 'API edited line',
+            quantity: 2,
+            unit: 'Stück',
+            unitPriceMinor: 2500,
+            taxBasisPoints: 0,
+            discountBasisPoints: 0,
+          },
+        ],
       },
     });
     expect(saved.statusCode).toBe(200);
@@ -878,6 +1122,8 @@ test('the document API requires auth and enforces the final state', async () => 
       version: 2,
       subject: 'Eigenes Angebot für {{contact}}',
       validityDays: 21,
+      grossMinor: 5000,
+      lines: [{ position: 0, description: 'API edited line', quantity: 2 }],
     });
     expect(
       (
@@ -1045,6 +1291,17 @@ test('the document API requires auth and enforces the final state', async () => 
         introText: '',
         outroText: '',
         validityDays: 21,
+        lines: [
+          {
+            productId: null,
+            description: 'Must remain immutable',
+            quantity: 1,
+            unit: 'Pauschale',
+            unitPriceMinor: 1,
+            taxBasisPoints: 0,
+            discountBasisPoints: 0,
+          },
+        ],
       },
     });
     expect(immutable.statusCode).toBe(409);

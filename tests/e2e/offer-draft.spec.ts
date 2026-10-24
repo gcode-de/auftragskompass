@@ -223,6 +223,14 @@ async function offerDraftScenario(browser: Browser) {
           taxBasisPoints: 1900,
           discountBasisPoints: 0,
         },
+        {
+          description: 'Fictional delivery',
+          quantity: 2,
+          unit: 'Stunde',
+          unitPriceMinor: 5000,
+          taxBasisPoints: 700,
+          discountBasisPoints: 500,
+        },
       ],
     });
     await documentLayoutRepository(pool, tenantId, storage).save(actorId, {
@@ -312,15 +320,69 @@ async function offerDraftScenario(browser: Browser) {
       'Template conclusion before draft',
     );
     await expect(offers.getByLabel('Gültigkeit in Tagen')).toHaveValue('14');
-    const positions = offers.locator('.offer-draft-positions');
+    const positions = offers.getByRole('region', { name: 'Positionen' });
+    const position1 = positions.getByRole('group', { name: 'Position 1' });
+    const position2 = positions.getByRole('group', { name: 'Position 2' });
+    await expect(position1.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional photo booth service',
+    );
+    await expect(position1.getByLabel('Menge')).toHaveValue('1');
+    await expect(position1.getByLabel('Einheit')).toHaveValue('Tag');
     await expect(
-      positions.getByText('Fictional photo booth service'),
-    ).toBeVisible();
-    await expect(positions.locator('input, textarea, select')).toHaveCount(0);
+      position1.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('100.00');
+    await expect(position1.getByLabel('Steuer in Prozent')).toHaveValue(
+      '19.00',
+    );
+    await expect(position1.getByLabel('Rabatt in Prozent')).toHaveValue('0.00');
+    await expect(position2.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional delivery',
+    );
     await offers.getByLabel('Betreff').fill('Fictional saved subject');
     await offers.getByLabel('Einleitung').fill('Fictional saved introduction');
     await offers.getByLabel('Schlusstext').fill('Fictional saved conclusion');
     await offers.getByLabel('Gültigkeit in Tagen').fill('27');
+    await position1.getByLabel('Beschreibung').fill('Fictional edited booth');
+    await position1.getByLabel('Menge').fill('2');
+    await position1.getByLabel('Einheit').fill('Stück');
+    await position1.getByLabel('Einzelpreis (Brutto) in Euro').fill('125.50');
+    await position1.getByLabel('Steuer in Prozent').fill('19');
+    await position1.getByLabel('Rabatt in Prozent').fill('10');
+    await position2
+      .getByLabel('Beschreibung')
+      .fill('Fictional edited delivery');
+    await position2.getByLabel('Menge').fill('3');
+    await position2.getByLabel('Einheit').fill('Stunde');
+    await position2.getByLabel('Einzelpreis (Brutto) in Euro').fill('30.00');
+    await position2.getByLabel('Steuer in Prozent').fill('7');
+    await position2.getByLabel('Rabatt in Prozent').fill('5');
+    await positions
+      .getByRole('button', { name: 'Freie Position hinzufügen' })
+      .click();
+    const position3 = positions.getByRole('group', { name: 'Position 3' });
+    await position3.getByLabel('Beschreibung').fill('Fictional extra cable');
+    await position3.getByLabel('Menge').fill('1');
+    await position3.getByLabel('Einheit').fill('Stück');
+    await position3.getByLabel('Einzelpreis (Brutto) in Euro').fill('25.00');
+    await position3.getByLabel('Steuer in Prozent').fill('0');
+    await position3.getByLabel('Rabatt in Prozent').fill('0');
+    await positions
+      .getByRole('button', { name: 'Freie Position hinzufügen' })
+      .click();
+    const position4 = positions.getByRole('group', { name: 'Position 4' });
+    await position4
+      .getByRole('button', { name: 'Position 4 entfernen' })
+      .click();
+    await expect(positions.getByRole('group')).toHaveCount(3);
+    await expect(
+      positions.getByText('Änderungen werden beim Speichern neu berechnet.'),
+    ).toBeVisible();
+    await expect(
+      offers.getByRole('button', { name: 'Vorschau öffnen' }),
+    ).toBeDisabled();
+    await expect(
+      offers.getByText('Gespeicherter Gesamtbetrag: 195,00 €'),
+    ).toBeVisible();
     await offers.getByRole('button', { name: 'Änderungen speichern' }).click();
     await expect(offers.getByRole('status')).toContainText(
       'Änderungen gespeichert.',
@@ -333,13 +395,16 @@ async function offerDraftScenario(browser: Browser) {
           intro_text: string | null;
           outro_text: string | null;
           validity_days: number | null;
+          net_minor: string;
+          tax_minor: string;
+          gross_minor: string;
           version: number;
           state: string;
           number: string | null;
           pdf_hash: string | null;
           snapshot_hash: string | null;
         }>(
-          'SELECT subject,intro_text,outro_text,validity_days,version,state,number,pdf_hash,snapshot_hash FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
+          'SELECT subject,intro_text,outro_text,validity_days,net_minor,tax_minor,gross_minor,version,state,number,pdf_hash,snapshot_hash FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
           [tenantId, draftId],
         )
       ).rows[0]!;
@@ -348,6 +413,9 @@ async function offerDraftScenario(browser: Browser) {
       intro_text: 'Fictional saved introduction',
       outro_text: 'Fictional saved conclusion',
       validity_days: 27,
+      net_minor: '29474',
+      tax_minor: '4166',
+      gross_minor: '33640',
       version: 2,
       state: 'draft',
       number: null,
@@ -356,15 +424,105 @@ async function offerDraftScenario(browser: Browser) {
     });
     expect(
       (
-        await pool.query<{ description: string; unit_price_minor: string }>(
-          'SELECT description,unit_price_minor FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid',
+        await pool.query<{
+          position: number;
+          product_id: string | null;
+          description: string;
+          quantity: number;
+          unit: string;
+          unit_price_minor: string;
+          tax_basis_points: number;
+          discount_basis_points: number;
+        }>(
+          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
           [tenantId, draftId],
         )
       ).rows,
     ).toEqual([
       {
+        position: 0,
+        product_id: null,
+        description: 'Fictional edited booth',
+        quantity: 2,
+        unit: 'Stück',
+        unit_price_minor: '12550',
+        tax_basis_points: 1900,
+        discount_basis_points: 1000,
+      },
+      {
+        position: 1,
+        product_id: null,
+        description: 'Fictional edited delivery',
+        quantity: 3,
+        unit: 'Stunde',
+        unit_price_minor: '3000',
+        tax_basis_points: 700,
+        discount_basis_points: 500,
+      },
+      {
+        position: 2,
+        product_id: null,
+        description: 'Fictional extra cable',
+        quantity: 1,
+        unit: 'Stück',
+        unit_price_minor: '2500',
+        tax_basis_points: 0,
+        discount_basis_points: 0,
+      },
+    ]);
+    await expect(
+      offers.getByText('Gespeicherter Gesamtbetrag: 336,40 €'),
+    ).toBeVisible();
+    await expect(position1.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional edited booth',
+    );
+    expect(
+      (
+        await pool.query<{
+          subject: string;
+          validity_days: number;
+        }>(
+          'SELECT subject,validity_days FROM document_templates WHERE tenant_id=$1::uuid AND id=$2::uuid',
+          [tenantId, template.id],
+        )
+      ).rows,
+    ).toEqual([{ subject: 'Later template subject', validity_days: 90 }]);
+    expect(
+      (
+        await pool.query<{
+          position: number;
+          product_id: string | null;
+          description: string;
+          quantity: number;
+          unit: string;
+          unit_price_minor: string;
+          tax_basis_points: number;
+          discount_basis_points: number;
+        }>(
+          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_template_positions WHERE tenant_id=$1::uuid AND template_id=$2::uuid ORDER BY position',
+          [tenantId, template.id],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        position: 0,
+        product_id: null,
         description: 'Fictional photo booth service',
+        quantity: 1,
+        unit: 'Tag',
         unit_price_minor: '10000',
+        tax_basis_points: 1900,
+        discount_basis_points: 0,
+      },
+      {
+        position: 1,
+        product_id: null,
+        description: 'Fictional delivery',
+        quantity: 2,
+        unit: 'Stunde',
+        unit_price_minor: '5000',
+        tax_basis_points: 700,
+        discount_basis_points: 500,
       },
     ]);
 
@@ -415,6 +573,66 @@ async function offerDraftScenario(browser: Browser) {
     await expect(reopenedOffers.getByLabel('Gültigkeit in Tagen')).toHaveValue(
       '27',
     );
+    const reopenedPositions = reopenedOffers.getByRole('region', {
+      name: 'Positionen',
+    });
+    const reopenedPosition1 = reopenedPositions.getByRole('group', {
+      name: 'Position 1',
+    });
+    const reopenedPosition2 = reopenedPositions.getByRole('group', {
+      name: 'Position 2',
+    });
+    const reopenedPosition3 = reopenedPositions.getByRole('group', {
+      name: 'Position 3',
+    });
+    await expect(reopenedPosition1.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional edited booth',
+    );
+    await expect(reopenedPosition1.getByLabel('Menge')).toHaveValue('2');
+    await expect(reopenedPosition1.getByLabel('Einheit')).toHaveValue('Stück');
+    await expect(
+      reopenedPosition1.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('125.50');
+    await expect(reopenedPosition1.getByLabel('Steuer in Prozent')).toHaveValue(
+      '19.00',
+    );
+    await expect(reopenedPosition1.getByLabel('Rabatt in Prozent')).toHaveValue(
+      '10.00',
+    );
+    await expect(reopenedPosition2.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional edited delivery',
+    );
+    await expect(reopenedPosition2.getByLabel('Menge')).toHaveValue('3');
+    await expect(reopenedPosition2.getByLabel('Einheit')).toHaveValue('Stunde');
+    await expect(
+      reopenedPosition2.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('30.00');
+    await expect(reopenedPosition2.getByLabel('Steuer in Prozent')).toHaveValue(
+      '7.00',
+    );
+    await expect(reopenedPosition2.getByLabel('Rabatt in Prozent')).toHaveValue(
+      '5.00',
+    );
+    await expect(reopenedPosition3.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional extra cable',
+    );
+    await expect(reopenedPosition3.getByLabel('Menge')).toHaveValue('1');
+    await expect(reopenedPosition3.getByLabel('Einheit')).toHaveValue('Stück');
+    await expect(
+      reopenedPosition3.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('25.00');
+    await expect(reopenedPosition3.getByLabel('Steuer in Prozent')).toHaveValue(
+      '0.00',
+    );
+    await expect(reopenedPosition3.getByLabel('Rabatt in Prozent')).toHaveValue(
+      '0.00',
+    );
+    await expect(
+      reopenedOffers.getByText('Gespeicherter Gesamtbetrag: 336,40 €'),
+    ).toBeVisible();
+    await expect(
+      reopenedOffers.locator('.document-list > li .document-meta'),
+    ).toContainText('336,40 €');
     let previewBytes: Buffer | undefined;
     await context.route(
       '**/api/v1/documents/' + draftId + '/preview',

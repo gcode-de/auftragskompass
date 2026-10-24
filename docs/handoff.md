@@ -52,6 +52,27 @@ Empfänger, Gültigkeit, Positionsspalten, Summen und Seitenzahl lesbar ohne
 Überlappung. Dies prüft ein typisches einseitiges Beispiel, keine vollständige
 Mehrseiten-/Langtext-Abnahme. Testartefakte außerhalb Git.
 
+**BKP016.3 (24.10.2026):** Angebotspositionen sind im fokussierten Editor
+bearbeitbar; freie Positionen lassen sich ergänzen/entfernen. Euro/Prozent
+werden exakt übersetzt, alle Texte und Positionen mit einer Version atomar
+gespeichert. Die Liste übernimmt bestätigte Summen direkt aus der Antwort;
+auch ihre Centanzeige verwendet den exakten bestehenden Formatierer. Fehlende
+`lines` im API-Aufruf erhalten die bisherigen Zeilen/IDs. Bestehende
+Produktbezüge bleiben mandantengebunden, auch bei archivierten Produkten;
+Produkte und Vorlagen werden nicht verändert. Neue Produktwahl, Blankoanlage
+und Netto-Eingabemodus bleiben eigene Folge-Slices. Kein vollständiger
+Angebots-/Rechnungs-/Mailprozess oder vollständige Bookitup-Parität.
+Abschlussprüfung umfasst atomaren Rollback, zwei Bearbeiter und
+Bearbeitung/Finalisierung gleichzeitig, Eingabeerhalt, gesperrte Felder während
+Speichern, Fokus nach Hinzufügen/Entfernen und Vorschau nur des gespeicherten
+Stands. Reine Testdaten in isolierten Datenbanken; keine echten Belege erzeugt.
+Prüfstand: 986 Tests im gemeinsamen Coverage-Lauf (252 Unit, 441 Komponenten,
+293 Integration), 97,20 % Zeilen / 93,67 % Zweige, Changed-Code 87/89 Zeilen
+und 81/89 Zweige; 18 fokussierte Editortests nach den letzten Korrekturen
+grün. Acht Ansichten 320/390/768/1280 in Hell/Dunkel und editorbezogenes axe
+bei 390 geprüft. Keine neuen Skills oder Abhängigkeiten; Ponytail/Impeccable
+und die bestehende Designwelt fortgeführt.
+
 **Regionaler Betriebsrahmen (ausdrückliche Nutzerkorrektur 24.10.2026):**
 Vermietungen finden in Südwestdeutschland und höchstens im Elsass statt.
 Die Oberfläche arbeitet mit der bestehenden Betriebsortszeit Europe/Berlin;

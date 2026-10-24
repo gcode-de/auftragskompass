@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from '@testing-library/react';
 import { EventDocuments } from '../../apps/admin/src/EventDocuments.js';
@@ -14,6 +15,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+type TestLine = {
+  id: string;
+  position: number;
+  productId: string | null;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPriceMinor: number;
+  taxBasisPoints: number;
+  discountBasisPoints: number;
+};
 
 const draft = {
     id: 'doc-1',
@@ -43,7 +56,7 @@ const draft = {
     outroText: 'Viele Grüße',
     validityDays: 14,
   },
-  line = {
+  line: TestLine = {
     id: 'line-1',
     position: 0,
     productId: null,
@@ -93,7 +106,15 @@ function setup(
     calls.push({ url, method, body });
     if (url.startsWith('/api/v1/documents?eventId='))
       return Response.json(
-        options.documents ?? [{ ...draft, version: current.version }],
+        options.documents ?? [
+          {
+            ...draft,
+            version: current.version,
+            netMinor: current.netMinor,
+            taxMinor: current.taxMinor,
+            grossMinor: current.grossMinor,
+          },
+        ],
       );
     if (url === '/api/v1/document-templates')
       return Response.json(
@@ -115,6 +136,13 @@ function setup(
         ...current,
         ...body,
         version: current.version + 1,
+        lines: (body.lines as Array<Record<string, unknown>>).map(
+          (entry, position) => ({
+            ...entry,
+            id: current.lines[position]?.id ?? `line-created-${position}`,
+            position,
+          }),
+        ),
       };
       return Response.json(current);
     }
@@ -140,7 +168,7 @@ function fieldValue(label: string) {
   ).value;
 }
 
-test('a draft opens in a focused editor, keeps positions read only, and previews only persisted values', async () => {
+test('a draft opens focused with editable saved positions and previews only persisted values', async () => {
   const { calls } = setup();
   render(<EventDocuments {...props} />);
   fireEvent.click(
@@ -157,9 +185,20 @@ test('a draft opens in a focused editor, keeps positions read only, and previews
   expect(fieldValue('Einleitung')).toBe('Guten Tag, hier ein Beispiel.');
   expect(fieldValue('Schlusstext')).toBe('Viele Grüße');
   expect(fieldValue('Gültigkeit in Tagen')).toBe('14');
-  expect(screen.getByText('Fiktives Fotobox-Paket')).toBeTruthy();
-  expect(screen.getByText(/Positionsbearbeitung folgt separat/)).toBeTruthy();
-  expect(screen.queryByRole('textbox', { name: /Position/ })).toBeNull();
+  const firstPosition = screen.getByRole('group', { name: 'Position 1' });
+  expect(
+    (
+      screen.getByLabelText('Beschreibung', {
+        selector: 'input',
+      }) as HTMLInputElement
+    ).value,
+  ).toBe('Fiktives Fotobox-Paket');
+  expect(
+    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('249.00');
+  expect(firstPosition).toBeTruthy();
+  expect(screen.queryByText(/Positionsbearbeitung folgt separat/)).toBeNull();
   expect(
     screen.getByRole('link', { name: 'Vorschau öffnen' }).getAttribute('href'),
   ).toBe('/api/v1/documents/doc-1/preview');
@@ -176,6 +215,205 @@ test('a draft opens in a focused editor, keeps positions read only, and previews
   ).toHaveProperty('disabled', true);
   expect(hasUnsavedChanges()).toBe(true);
   expect(calls.some((call) => call.url.endsWith('/preview'))).toBe(false);
+});
+
+test('existing and free positions save exactly, removal/addition persist, and row totals refresh without a detail refetch', async () => {
+  const primaryLine = {
+      ...line,
+      productId: '22222222-2222-4222-8222-222222222222',
+    },
+    secondLine = {
+      ...line,
+      id: 'line-2',
+      position: 1,
+      productId: '11111111-1111-4111-8111-111111111111',
+      description: 'Fiktive Zusatzleistung',
+      unitPriceMinor: 5000,
+    },
+    savedLines = [
+      {
+        productId: '22222222-2222-4222-8222-222222222222',
+        description: 'Fiktives aktualisiertes Paket',
+        quantity: 2,
+        unit: 'Pauschale',
+        unitPriceMinor: 123456,
+        taxBasisPoints: 770,
+        discountBasisPoints: 1250,
+      },
+      {
+        productId: null,
+        description: 'Fiktiver Aufbau',
+        quantity: 3,
+        unit: 'Stunde',
+        unitPriceMinor: 2500,
+        taxBasisPoints: 1900,
+        discountBasisPoints: 0,
+      },
+    ];
+  const { calls } = setup({
+    initial: { ...detail(), lines: [primaryLine, secondLine] },
+    put: (body) => {
+      const returned = {
+        ...detail(),
+        ...body,
+        version: 2,
+        netMinor: 23000,
+        taxMinor: 4500,
+        grossMinor: 27500,
+        lines: (body.lines as typeof savedLines).map((entry, position) => ({
+          ...entry,
+          id: position === 0 ? 'line-1' : 'line-3',
+          position,
+        })),
+      };
+      return Response.json(returned);
+    },
+  });
+  const view = render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const first = screen.getByRole('group', { name: 'Position 1' });
+  fireEvent.change(within(first).getByLabelText('Beschreibung'), {
+    target: { value: 'Fiktives aktualisiertes Paket' },
+  });
+  fireEvent.change(within(first).getByLabelText('Menge'), {
+    target: { value: '2' },
+  });
+  fireEvent.change(
+    within(first).getByLabelText('Einzelpreis (Brutto) in Euro'),
+    { target: { value: '1234,56' } },
+  );
+  fireEvent.change(within(first).getByLabelText('Steuer in Prozent'), {
+    target: { value: '7,70' },
+  });
+  fireEvent.change(within(first).getByLabelText('Rabatt in Prozent'), {
+    target: { value: '12,50' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
+  expect(document.activeElement).toBe(
+    within(first).getByLabelText('Beschreibung'),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Freie Position hinzufügen' }),
+  );
+  const second = screen.getByRole('group', { name: 'Position 2' });
+  expect(document.activeElement).toBe(
+    within(second).getByLabelText('Beschreibung'),
+  );
+  fireEvent.change(within(second).getByLabelText('Beschreibung'), {
+    target: { value: 'Fiktiver Aufbau' },
+  });
+  fireEvent.change(within(second).getByLabelText('Menge'), {
+    target: { value: '3' },
+  });
+  fireEvent.change(within(second).getByLabelText('Einheit'), {
+    target: { value: 'Stunde' },
+  });
+  fireEvent.change(
+    within(second).getByLabelText('Einzelpreis (Brutto) in Euro'),
+    { target: { value: '25' } },
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await waitFor(() =>
+    expect(calls.find((call) => call.method === 'PUT')?.body).toEqual({
+      version: 1,
+      ...content,
+      lines: savedLines,
+    }),
+  );
+  await waitFor(() =>
+    expect(document.querySelector('.document-meta')?.textContent).toContain(
+      '275,00',
+    ),
+  );
+  expect(
+    calls.filter((call) => call.url === '/api/v1/documents/doc-1'),
+  ).toHaveLength(1);
+  expect(
+    calls.filter(
+      (call) =>
+        call.url.startsWith('/api/v1/documents?eventId=') &&
+        call.method === 'GET',
+    ),
+  ).toHaveLength(1);
+  view.unmount();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const persistedPosition = await screen.findByRole('group', {
+    name: 'Position 2',
+  });
+  expect(
+    within(persistedPosition).getByLabelText('Beschreibung'),
+  ).toHaveProperty('value', 'Fiktiver Aufbau');
+});
+
+test('removing the first of three positions focuses the first surviving description', async () => {
+  const secondLine = {
+      ...line,
+      id: 'line-2',
+      position: 1,
+      description: 'Zweite Leistung',
+    },
+    thirdLine = {
+      ...line,
+      id: 'line-3',
+      position: 2,
+      description: 'Dritte Leistung',
+    };
+  setup({ initial: { ...detail(), lines: [line, secondLine, thirdLine] } });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByRole('group', { name: 'Position 3' });
+  fireEvent.click(screen.getByRole('button', { name: 'Position 1 entfernen' }));
+  const remaining = screen.getByRole('group', { name: 'Position 1' });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(remaining).getByLabelText('Beschreibung'),
+    ),
+  );
+  expect(within(remaining).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Zweite Leistung',
+  );
+});
+
+test('removing the middle of three positions focuses the next surviving description', async () => {
+  const secondLine = {
+      ...line,
+      id: 'line-2',
+      position: 1,
+      description: 'Zweite Leistung',
+    },
+    thirdLine = {
+      ...line,
+      id: 'line-3',
+      position: 2,
+      description: 'Dritte Leistung',
+    };
+  setup({ initial: { ...detail(), lines: [line, secondLine, thirdLine] } });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByRole('group', { name: 'Position 3' });
+  fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
+  const remaining = screen.getByRole('group', { name: 'Position 2' });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(remaining).getByLabelText('Beschreibung'),
+    ),
+  );
+  expect(within(remaining).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Dritte Leistung',
+  );
 });
 
 test('saving sends all values with the loaded version, survives reload, and finalizes that version', async () => {
@@ -212,6 +450,17 @@ test('saving sends all values with the loaded version, survives reload, and fina
       introText: 'Fiktive aktualisierte Einleitung',
       outroText: 'Fiktiver aktualisierter Schluss',
       validityDays: 30,
+      lines: [
+        {
+          productId: null,
+          description: line.description,
+          quantity: line.quantity,
+          unit: line.unit,
+          unitPriceMinor: line.unitPriceMinor,
+          taxBasisPoints: line.taxBasisPoints,
+          discountBasisPoints: line.discountBasisPoints,
+        },
+      ],
     }),
   );
   expect(await screen.findByText('Änderungen gespeichert.')).toBeTruthy();
@@ -242,6 +491,40 @@ test('saving sends all values with the loaded version, survives reload, and fina
   );
 });
 
+test('position fields stay disabled while a save is pending and re-enable after success', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const { calls } = setup({ put: () => pending });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const subject = await screen.findByLabelText('Betreff');
+  fireEvent.change(subject, { target: { value: 'Fiktiver neuer Betreff' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await waitFor(() =>
+    expect(calls.some((call) => call.method === 'PUT')).toBe(true),
+  );
+  expect(screen.getByRole('group', { name: 'Position 1' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  finish(
+    Response.json({
+      ...detail(),
+      subject: 'Fiktiver neuer Betreff',
+      version: 2,
+    }),
+  );
+  await screen.findByText('Änderungen gespeichert.');
+  expect(screen.getByRole('group', { name: 'Position 1' })).toHaveProperty(
+    'disabled',
+    false,
+  );
+});
+
 test('legacy draft values are initialized from the current template only in the editor and disclosed', async () => {
   const archivedTemplate = { ...template, state: 'archived' };
   const { calls } = setup({
@@ -267,6 +550,17 @@ test('legacy draft values are initialized from the current template only in the 
   expect(calls.find((call) => call.method === 'PUT')?.body).toEqual({
     version: 1,
     ...content,
+    lines: [
+      {
+        productId: null,
+        description: line.description,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitPriceMinor: line.unitPriceMinor,
+        taxBasisPoints: line.taxBasisPoints,
+        discountBasisPoints: line.discountBasisPoints,
+      },
+    ],
   });
 });
 
@@ -368,7 +662,49 @@ test('field limits and validity range are explicit and invalid days block saving
   ).toHaveProperty('disabled', true);
 });
 
-test('large stored totals and prices retain every cent in the read-only editor', async () => {
+test('blank and invalid position values block saving without sending a request', async () => {
+  const { calls } = setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  const edits = [
+    ['Beschreibung', ''],
+    ['Beschreibung', 'Fiktives Fotobox-Paket'],
+    ['Menge', '-1'],
+    ['Menge', '1'],
+    ['Einzelpreis (Brutto) in Euro', '-0,01'],
+    ['Einzelpreis (Brutto) in Euro', '249,00'],
+    ['Steuer in Prozent', '100,01'],
+    ['Steuer in Prozent', '19'],
+    ['Rabatt in Prozent', 'abc'],
+    ['Rabatt in Prozent', '0'],
+    ['Einheit', ''],
+    ['Einheit', 'Pauschale'],
+  ] as const;
+  for (const [label, value] of edits) {
+    fireEvent.change(within(position).getByLabelText(label), {
+      target: { value },
+    });
+    if (
+      !value ||
+      value.startsWith('-') ||
+      value === '100,01' ||
+      value === 'abc'
+    ) {
+      expect(
+        screen.getByRole('button', { name: 'Änderungen speichern' }),
+      ).toHaveProperty('disabled', true);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Änderungen speichern' }),
+      );
+    }
+  }
+  expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(0);
+});
+
+test('large stored totals and prices retain every cent in the editor and document row', async () => {
   const large = Number.MAX_SAFE_INTEGER;
   setup({
     initial: {
@@ -385,6 +721,9 @@ test('large stored totals and prices retain every cent in the read-only editor',
   );
   const total = await screen.findByText(/Gesamtbetrag/);
   expect(total.textContent).toContain('90.071.992.547.409,91 €');
+  await waitFor(() =>
+    expect(screen.getAllByText(/90\.071\.992\.547\.409,91/)).toHaveLength(2),
+  );
 });
 
 test('dirty editor keeps route protection and Escape cancellation until discard is confirmed', async () => {
@@ -466,6 +805,15 @@ test('a conflict preserves the input and a failed explicit reload never replaces
   ).toBeTruthy();
   expect(fieldValue('Betreff')).toBe('Eigener Text bleibt erhalten');
   expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot' },
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
+    ).toHaveProperty('disabled', true),
+  );
+  expect(screen.queryByRole('link', { name: 'Vorschau öffnen' })).toBeNull();
 });
 
 test('an uncertain save result offers reload and prevents blind resubmission', async () => {
@@ -494,6 +842,15 @@ test('an uncertain save result offers reload and prevents blind resubmission', a
     screen.getByRole('button', { name: 'Änderungen speichern' }),
   ).toHaveProperty('disabled', true);
   expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot' },
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
+    ).toHaveProperty('disabled', true),
+  );
+  expect(screen.queryByRole('link', { name: 'Vorschau öffnen' })).toBeNull();
   vi.spyOn(window, 'confirm').mockReturnValue(true);
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf neu laden' }));
   await screen.findByLabelText('Betreff');

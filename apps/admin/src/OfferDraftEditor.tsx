@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
+import { formatHundredths, parseHundredths } from './decimal.js';
 
 type DraftValues = {
   subject: string;
@@ -17,10 +18,24 @@ type DraftValues = {
 };
 type DraftLine = {
   id: string;
+  position: number;
+  productId: string | null;
   description: string;
   quantity: number;
   unit: string;
   unitPriceMinor: number;
+  taxBasisPoints: number;
+  discountBasisPoints: number;
+};
+type DraftLineValues = {
+  key: string;
+  productId: string | null;
+  description: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  tax: string;
+  discount: string;
 };
 type DraftDetail = {
   id: string;
@@ -31,6 +46,8 @@ type DraftDetail = {
   introText: string | null;
   outroText: string | null;
   validityDays: number | null;
+  netMinor: number;
+  taxMinor: number;
   grossMinor: number;
   lines: DraftLine[];
 };
@@ -47,7 +64,12 @@ type Props = {
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onBusyChange: (busy: boolean) => void;
-  onVersionChange: (version: number) => void;
+  onSavedMetadata: (
+    metadata: Pick<
+      DraftDetail,
+      'version' | 'netMinor' | 'taxMinor' | 'grossMinor'
+    >,
+  ) => void;
 };
 
 function valuesOf(values: {
@@ -87,18 +109,36 @@ function isDetail(value: unknown): value is DraftDetail {
     typeof detail.templateId === 'string' &&
     detail.state === 'draft' &&
     Number.isInteger(detail.version) &&
+    Number.isSafeInteger(detail.netMinor) &&
+    detail.netMinor! >= 0 &&
+    Number.isSafeInteger(detail.taxMinor) &&
+    detail.taxMinor! >= 0 &&
     Number.isSafeInteger(detail.grossMinor) &&
     detail.grossMinor! >= 0 &&
     Array.isArray(detail.lines) &&
+    detail.lines.length >= 1 &&
+    detail.lines.length <= 1000 &&
     detail.lines.every(
       (line) =>
         line &&
         typeof line.id === 'string' &&
+        Number.isInteger(line.position) &&
+        (line.productId === null || typeof line.productId === 'string') &&
         typeof line.description === 'string' &&
+        line.description.length <= 300 &&
         typeof line.unit === 'string' &&
-        Number.isFinite(line.quantity) &&
+        line.unit.length <= 40 &&
+        Number.isInteger(line.quantity) &&
+        line.quantity >= 1 &&
+        line.quantity <= 100000 &&
         Number.isSafeInteger(line.unitPriceMinor) &&
-        line.unitPriceMinor >= 0,
+        line.unitPriceMinor >= 0 &&
+        Number.isInteger(line.taxBasisPoints) &&
+        line.taxBasisPoints >= 0 &&
+        line.taxBasisPoints <= 10000 &&
+        Number.isInteger(line.discountBasisPoints) &&
+        line.discountBasisPoints >= 0 &&
+        line.discountBasisPoints <= 10000,
     ) &&
     (allNull || savedContent)
   );
@@ -120,16 +160,72 @@ function hasSavedContent(detail: DraftDetail): detail is DraftDetail & {
   );
 }
 
+function lineValuesOf(lines: DraftLine[], previous: DraftLineValues[] = []) {
+  return lines.map((line, index) => ({
+    key: previous[index]?.key ?? `saved-${line.id}`,
+    productId: line.productId,
+    description: line.description,
+    quantity: String(line.quantity),
+    unit: line.unit,
+    unitPrice: formatHundredths(line.unitPriceMinor),
+    tax: formatHundredths(line.taxBasisPoints),
+    discount: formatHundredths(line.discountBasisPoints),
+  }));
+}
+
+function lineDraft(line: DraftLineValues) {
+  if (!line.description.trim() || line.description.length > 300)
+    throw new Error('description');
+  if (!line.unit.trim() || line.unit.length > 40) throw new Error('unit');
+  if (!/^\d+$/.test(line.quantity)) throw new Error('quantity');
+  const quantity = Number(line.quantity);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100000)
+    throw new Error('quantity');
+  const unitPriceMinor = parseHundredths(line.unitPrice),
+    taxBasisPoints = parseHundredths(line.tax),
+    discountBasisPoints = parseHundredths(line.discount);
+  if (taxBasisPoints > 10000 || discountBasisPoints > 10000)
+    throw new Error('percent');
+  return {
+    productId: line.productId,
+    description: line.description,
+    quantity,
+    unit: line.unit,
+    unitPriceMinor,
+    taxBasisPoints,
+    discountBasisPoints,
+  };
+}
+
+function decimalInvalid(value: string) {
+  try {
+    parseHundredths(value);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function percentInvalid(value: string) {
+  try {
+    return parseHundredths(value) > 10000;
+  } catch {
+    return true;
+  }
+}
+
 export function OfferDraftEditor({
   documentId,
   csrfToken,
   onClose,
   onDirtyChange,
   onBusyChange,
-  onVersionChange,
+  onSavedMetadata,
 }: Props) {
   const [values, setValues] = useState<DraftValues | null>(null),
     [baseline, setBaseline] = useState<DraftValues | null>(null),
+    [lineValues, setLineValues] = useState<DraftLineValues[]>([]),
+    [baselineLines, setBaselineLines] = useState<DraftLineValues[]>([]),
     [detail, setDetail] = useState<DraftDetail | null>(null),
     [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
@@ -140,19 +236,36 @@ export function OfferDraftEditor({
     [error, setError] = useState(false),
     [focusInitialEditor, setFocusInitialEditor] = useState(false),
     request = useRef(0),
+    lineSequence = useRef(0),
     busyRef = useRef(false),
     dirtyRef = useRef(false),
     subjectInput = useRef<HTMLInputElement | null>(null),
-    callbacks = useRef({ onDirtyChange, onBusyChange, onVersionChange });
-  callbacks.current = { onDirtyChange, onBusyChange, onVersionChange };
+    lineInputRefs = useRef(new Map<string, HTMLInputElement>()),
+    pendingLineFocus = useRef(''),
+    callbacks = useRef({ onDirtyChange, onBusyChange, onSavedMetadata });
+  callbacks.current = { onDirtyChange, onBusyChange, onSavedMetadata };
 
   const dirty = Boolean(
-    values && baseline && JSON.stringify(values) !== JSON.stringify(baseline),
+    values &&
+    baseline &&
+    (JSON.stringify(values) !== JSON.stringify(baseline) ||
+      JSON.stringify(lineValues) !== JSON.stringify(baselineLines)),
   );
   dirtyRef.current = dirty;
   const needsSave = dirty || legacy;
   const days = Number(values?.validityDays),
     validDays = Number.isInteger(days) && days >= 1 && days <= 365,
+    validLines =
+      lineValues.length >= 1 &&
+      lineValues.length <= 1000 &&
+      lineValues.every((line) => {
+        try {
+          lineDraft(line);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
     isBlocked = conflict || uncertain;
 
   const loadDraft = useCallback(
@@ -199,14 +312,22 @@ export function OfferDraftEditor({
         }
         if (ticket !== request.current) return;
         const formValues = valuesOf(next);
+        const formLines = lineValuesOf(loaded.lines);
         setDetail(loaded);
         setValues(formValues);
         setBaseline(formValues);
+        setLineValues(formLines);
+        setBaselineLines(formLines);
         setLegacy(fromLegacy);
         setConflict(false);
         setUncertain(false);
         callbacks.current.onDirtyChange(fromLegacy);
-        callbacks.current.onVersionChange(loaded.version);
+        callbacks.current.onSavedMetadata({
+          version: loaded.version,
+          netMinor: loaded.netMinor,
+          taxMinor: loaded.taxMinor,
+          grossMinor: loaded.grossMinor,
+        });
         setMessage(fromLegacy ? '' : 'Entwurf geladen.');
         if (focusEditor) setFocusInitialEditor(true);
       } catch {
@@ -235,14 +356,23 @@ export function OfferDraftEditor({
   }, [loadDraft]);
 
   useEffect(() => {
-    callbacks.current.onDirtyChange(needsSave);
-  }, [needsSave]);
+    callbacks.current.onDirtyChange(needsSave || isBlocked);
+  }, [isBlocked, needsSave]);
   useEffect(() => {
     if (!focusInitialEditor || !values) return;
     subjectInput.current?.scrollIntoView?.({ block: 'start' });
     subjectInput.current?.focus();
     setFocusInitialEditor(false);
   }, [focusInitialEditor, values]);
+  useEffect(() => {
+    if (!pendingLineFocus.current) return;
+    const input = lineInputRefs.current.get(pendingLineFocus.current);
+    if (input) {
+      input.scrollIntoView?.({ block: 'nearest' });
+      input.focus();
+    }
+    pendingLineFocus.current = '';
+  }, [lineValues]);
   useEffect(() => registerUnsavedChanges(() => dirtyRef.current), []);
 
   function close() {
@@ -258,6 +388,49 @@ export function OfferDraftEditor({
 
   function change<K extends keyof DraftValues>(key: K, value: DraftValues[K]) {
     setValues((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  function changeLine<K extends keyof DraftLineValues>(
+    key: string,
+    field: K,
+    value: DraftLineValues[K],
+  ) {
+    setLineValues((current) =>
+      current.map((line) =>
+        line.key === key ? { ...line, [field]: value } : line,
+      ),
+    );
+  }
+
+  function addLine() {
+    if (lineValues.length >= 1000) return;
+    lineSequence.current += 1;
+    const key = `free-${lineSequence.current}`;
+    pendingLineFocus.current = key;
+    setLineValues((current) => [
+      ...current,
+      {
+        key,
+        productId: null,
+        description: '',
+        quantity: '1',
+        unit: 'Stück',
+        unitPrice: '0.00',
+        tax: '19.00',
+        discount: '0.00',
+      },
+    ]);
+  }
+
+  function removeLine(key: string) {
+    if (lineValues.length <= 1) return;
+    const index = lineValues.findIndex((line) => line.key === key);
+    setLineValues((current) => {
+      const remaining = current.filter((line) => line.key !== key),
+        next = remaining[Math.min(index, remaining.length - 1)];
+      pendingLineFocus.current = next?.key ?? '';
+      return remaining;
+    });
   }
 
   async function reload() {
@@ -280,6 +453,7 @@ export function OfferDraftEditor({
       !detail ||
       !needsSave ||
       !validDays ||
+      !validLines ||
       isBlocked
     )
       return;
@@ -289,6 +463,7 @@ export function OfferDraftEditor({
     setMessage('');
     setError(false);
     try {
+      const submittedLines = lineValues.map(lineDraft);
       const reply = await fetch('/api/v1/documents/' + documentId + '/draft', {
         method: 'PUT',
         headers: {
@@ -301,6 +476,7 @@ export function OfferDraftEditor({
           introText: values.introText,
           outroText: values.outroText,
           validityDays: days,
+          lines: submittedLines,
         }),
       });
       if (!reply.ok) {
@@ -333,13 +509,21 @@ export function OfferDraftEditor({
       )
         throw new Error('uncertain');
       const savedValues = valuesOf(saved);
+      const savedLines = lineValuesOf(saved.lines, lineValues);
       setDetail(saved);
       setValues(savedValues);
       setBaseline(savedValues);
+      setLineValues(savedLines);
+      setBaselineLines(savedLines);
       setLegacy(false);
       setConflict(false);
       setUncertain(false);
-      callbacks.current.onVersionChange(saved.version);
+      callbacks.current.onSavedMetadata({
+        version: saved.version,
+        netMinor: saved.netMinor,
+        taxMinor: saved.taxMinor,
+        grossMinor: saved.grossMinor,
+      });
       setMessage('Änderungen gespeichert.');
     } catch {
       setUncertain(true);
@@ -440,27 +624,144 @@ export function OfferDraftEditor({
               aria-labelledby={'offer-positions-' + documentId}
             >
               <h6 id={'offer-positions-' + documentId}>Positionen</h6>
-              <p>
-                Positionsbearbeitung folgt separat. Die gespeicherten Positionen
-                und Summen bleiben unverändert.
-              </p>
-              {detail.lines.length ? (
-                <ul>
-                  {detail.lines.map((line) => (
-                    <li key={line.id}>
-                      <span>{line.description}</span>
-                      <span>
-                        {line.quantity} {line.unit} · Einzelpreis (Brutto){' '}
-                        {exactMinorUnits(line.unitPriceMinor) ?? '—'} €
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>Keine gespeicherten Positionen.</p>
+              <p>Änderungen werden beim Speichern neu berechnet.</p>
+              <div className="offer-draft-position-list">
+                {lineValues.map((line, index) => (
+                  <fieldset
+                    className="offer-draft-position"
+                    disabled={busy || loading}
+                    key={line.key}
+                  >
+                    <legend>Position {index + 1}</legend>
+                    <div className="offer-draft-position-fields">
+                      <label>
+                        Beschreibung
+                        <input
+                          ref={(element) => {
+                            if (element)
+                              lineInputRefs.current.set(line.key, element);
+                            else lineInputRefs.current.delete(line.key);
+                          }}
+                          value={line.description}
+                          maxLength={300}
+                          required
+                          aria-invalid={
+                            !line.description.trim() ||
+                            line.description.length > 300
+                          }
+                          onChange={(event) =>
+                            changeLine(
+                              line.key,
+                              'description',
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Menge
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={line.quantity}
+                          required
+                          aria-invalid={
+                            !/^\d+$/.test(line.quantity) ||
+                            Number(line.quantity) < 1 ||
+                            Number(line.quantity) > 100000
+                          }
+                          onChange={(event) =>
+                            changeLine(line.key, 'quantity', event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        Einheit
+                        <input
+                          value={line.unit}
+                          maxLength={40}
+                          required
+                          aria-invalid={
+                            !line.unit.trim() || line.unit.length > 40
+                          }
+                          onChange={(event) =>
+                            changeLine(line.key, 'unit', event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        Einzelpreis (Brutto) in Euro
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={line.unitPrice}
+                          required
+                          aria-invalid={decimalInvalid(line.unitPrice)}
+                          onChange={(event) =>
+                            changeLine(
+                              line.key,
+                              'unitPrice',
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Steuer in Prozent
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={line.tax}
+                          required
+                          aria-invalid={percentInvalid(line.tax)}
+                          onChange={(event) =>
+                            changeLine(line.key, 'tax', event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        Rabatt in Prozent
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={line.discount}
+                          required
+                          aria-invalid={percentInvalid(line.discount)}
+                          onChange={(event) =>
+                            changeLine(line.key, 'discount', event.target.value)
+                          }
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={lineValues.length <= 1 || busy || loading}
+                      onClick={() => removeLine(line.key)}
+                    >
+                      Position {index + 1} entfernen
+                    </button>
+                  </fieldset>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={lineValues.length >= 1000 || busy || loading}
+                onClick={addLine}
+              >
+                Freie Position hinzufügen
+              </button>
+              {!validLines && (
+                <p role="alert">
+                  Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis,
+                  Steuer und Rabatt. Mindestens eine gültige Position ist
+                  erforderlich.
+                </p>
               )}
               <p className="offer-draft-total">
-                Gesamtbetrag: {exactMinorUnits(detail.grossMinor) ?? '—'} €
+                Gespeicherter Gesamtbetrag:{' '}
+                {exactMinorUnits(detail.grossMinor) ?? '—'} €
               </p>
             </section>
             <div className="document-actions offer-draft-actions">
@@ -471,6 +772,7 @@ export function OfferDraftEditor({
                   !values ||
                   !needsSave ||
                   !validDays ||
+                  !validLines ||
                   busy ||
                   loading ||
                   isBlocked
@@ -478,15 +780,17 @@ export function OfferDraftEditor({
               >
                 {busy ? 'Wird gespeichert …' : 'Änderungen speichern'}
               </button>
-              {dirty || legacy || busy || loading ? (
+              {dirty || legacy || busy || loading || isBlocked ? (
                 <>
                   <button type="button" className="secondary-action" disabled>
                     Vorschau öffnen
                   </button>
                   <span className="document-hint">
-                    {loading
-                      ? 'Der Serverstand wird geladen.'
-                      : 'Bitte zuerst speichern, damit die Vorschau stimmt.'}
+                    {isBlocked
+                      ? 'Bitte zuerst den aktuellen Serverstand laden.'
+                      : loading
+                        ? 'Der Serverstand wird geladen.'
+                        : 'Bitte zuerst speichern, damit die Vorschau stimmt.'}
                   </span>
                 </>
               ) : (

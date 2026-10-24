@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { OfferDraftEditor } from './OfferDraftEditor.js';
+import { exactMinorUnits } from './FilesPanel.js';
 
 type DocumentRow = {
   id: string;
@@ -22,10 +23,6 @@ const stateLabels: Record<DocumentRow['state'], string> = {
   final: 'Finalisiert',
   withdrawn: 'Zurückgezogen',
 };
-const money = new Intl.NumberFormat('de-DE', {
-  style: 'currency',
-  currency: 'EUR',
-});
 // BKP013.1: the event file owns one card per document kind that actually
 // exists. The offer card is always shown because it also carries the existing
 // creation surface; any other kind appears only with real stored rows, so no
@@ -230,7 +227,7 @@ export function EventDocuments({
                 {date(entry.finalizedAt ?? entry.issuedAt)}
               </time>
               {' · '}
-              {money.format(entry.grossMinor / 100)}
+              {exactMinorUnits(entry.grossMinor) ?? '—'} €
             </p>
             <div className="document-actions">
               {entry.state === 'draft' && (
@@ -292,10 +289,10 @@ export function EventDocuments({
                   }}
                   onDirtyChange={setEditorDirty}
                   onBusyChange={setEditorBusy}
-                  onVersionChange={(version) =>
+                  onSavedMetadata={(metadata) =>
                     setDocuments((current) =>
                       current.map((row) =>
-                        row.id === entry.id ? { ...row, version } : row,
+                        row.id === entry.id ? { ...row, ...metadata } : row,
                       ),
                     )
                   }
