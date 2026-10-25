@@ -31,7 +31,36 @@ oder Geräteabnahme. Rohbelege ausschließlich privat unter
 
 BKP018.1b setzt den kompakten mobilen Einstellungsbereichswähler um; der
 aktuelle lokale Prüfstand und die Auslieferungsgrenze stehen im nächsten
-Abschnitt. Die Logo-Uploadoberfläche und übrige Parität bleiben separat offen.
+Abschnitt. Die Logo-Uploadoberfläche ist im folgenden BKP018.2 dokumentiert;
+die übrige Parität bleibt separat offen.
+
+## BKP018.2: Logo im Dokumentlayout hochladen, 25.10.2026
+
+Gespeicherte Layouts bieten „Logo hinzufügen“ beziehungsweise „Logo ersetzen“.
+Nur bei Bedarf erscheinen native Dateiauswahl, PNG-/JPEG-Hinweis bis 512KiB,
+Upload und Verwerfen; die übrigen Layoutaktionen sind solange verborgen.
+Auswahl allein schreibt nichts. Inhaltsbearbeitung/Upload bleiben getrennt.
+Die vorhandene raw-PUT-API erhält Datei und CSRF, eine bestätigte vollständige
+Antwort aktualisiert die Version. Alte PDF-Vorschauen werden widerrufen.
+
+Netzwerk-/5xx-/unplausible Antworten sperren erneutes Hochladen bis zum
+bewussten GET-Abgleich. Die Auswahl bleibt bei fehlgeschlagenem GET erhalten;
+der Abgleich benennt ihr Verwerfen. Fokus nach Upload/Abbruch/GET kehrt nur
+im aktiven Bereich zum Auslöser beziehungsweise zur Einrichtung zurück.
+Keine API-/Migrationsänderung: andere autorisierte Tabs bleiben zuletzt
+schreibend maßgeblich, alte Logobytes werden absichtlich erhalten. Keine
+Thumbnail-/Löschfunktion. Bereits finale PDF-Bytes/Hashes bleiben unverändert.
+
+34 fokussierte Layout-Komponententests, 35 Dokumentintegrationstests und echte
+synthetische HTTPS-/PostgreSQL-/Chromiumstrecke grün. Gesamte Coverage-Suite
+1051 Tests; nach den letzten Fokus-/Textkorrekturen und zwei zusätzlichen
+Netzwerk-/JSON-Fehlerfällen alle 494 Komponententests
+mit Panel-Coverage 94,35 Prozent Zeilen/88,99 Prozent Zweige, Changed-Code
+108/109 Zeilen und 105/116 Zweige. Unabhängiger Review ohne Blocker,
+Impeccable ohne neue Befunde (61 Bestandshinweise). PDF mit sichtbarem
+fiktivem Logo als einseitiges A4 tatsächlich gerendert und visuell geprüft.
+Die Auslieferung bleibt bis zur finalen grünen CI samt Images und geprüftem
+Checkpoint/OCI offen; dies ist kein Nachweis einer echten Geschäfts-API-Abnahme.
 
 ## BKP018.1b: kompakte mobile Einstellungsnavigation, 25.10.2026
 
@@ -52,12 +81,12 @@ und sind keine behauptete Geräteabnahme. Lokale Geschäftsdaten ausschließlich
 fiktiv. Neue Auslieferung erst nach grüner CI samt Images und geprüftem
 Checkpoint/OCI bestätigen; letzter verifizierter Testbetrieb oben bleibt e9ca99d.
 
-Nächster möglicher kleiner Slice: BKP018.2 für den bestehenden sicheren
-Logo-Upload. Nur gespeichertes Layout, ausdrückliche Aktion, keine parallele
+Der danach umgesetzte Slice BKP018.2 für den bestehenden sicheren
+Logo-Upload ist oben dokumentiert. Nur gespeichertes Layout, ausdrückliche Aktion, keine parallele
 Inhaltsbearbeitung; unklare Antwort vor Wiederholen abgleichen. Bestehende API
 hat für Logos kein CAS, konkurrierende autorisierte Uploads bleiben zuletzt
 schreibend maßgeblich. Keine Logo-Löschung oder neue Thumbnail-API erfinden.
-Vor Umsetzung eigens aktivieren und Tests zuerst ergänzen.
+Das Gesamtticket BKP018 bleibt bis zur vollständigen fachlichen Abnahme offen.
 
 ## Kontingentabschluss und ausstehender Liefernachweis: 24.10.2026
 

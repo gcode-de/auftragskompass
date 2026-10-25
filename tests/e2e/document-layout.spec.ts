@@ -1,4 +1,4 @@
-import { chromium, expect, test } from '@playwright/test';
+import { chromium, expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
@@ -25,6 +25,25 @@ import { chromiumPdfRenderer } from '../../packages/core/src/document-pdf.js';
 const login = 'fictional.layout@example.invalid';
 const username = 'fictional.layout';
 const password = 'Fictional layout password 123!';
+
+async function syntheticLogo(page: Page, mimeType: 'image/png' | 'image/jpeg') {
+  const dataUrl = await page.evaluate((type) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 48;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('synthetic canvas is unavailable');
+    context.fillStyle = '#3d6b58';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#fff';
+    context.fillRect(8, 8, 30, 30);
+    context.fillStyle = '#20211f';
+    context.font = 'bold 24px sans-serif';
+    context.fillText('AK', 46, 33);
+    return canvas.toDataURL(type, 0.92);
+  }, mimeType);
+  return Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+}
 
 test('document layout setup, preview, conflict recovery, and persistence work in Chromium', async ({
   browser,
@@ -81,8 +100,10 @@ test('document layout setup, preview, conflict recovery, and persistence work in
   });
   let renderedPdfLength = 0;
   let relayedPdfLength = 0;
+  let renderedHtml = '';
   const renderer = async (html: string) => {
     const bytes = await chromiumRenderer(html);
+    renderedHtml = html;
     renderedPdfLength = bytes.length;
     return bytes;
   };
@@ -162,6 +183,20 @@ test('document layout setup, preview, conflict recovery, and persistence work in
 
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
+    const logoRequests: {
+      headers: Record<string, string>;
+      body: Buffer | null;
+    }[] = [];
+    page.on('request', (request) => {
+      if (
+        request.url().endsWith('/api/v1/document-layout/logo') &&
+        request.method() === 'PUT'
+      )
+        logoRequests.push({
+          headers: request.headers(),
+          body: request.postDataBuffer(),
+        });
+    });
     const loaded = await page.goto(origin);
     expect(loaded?.status()).toBe(200);
     await page.getByLabel('E-Mail oder Benutzername').fill(username);
@@ -255,15 +290,233 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       senderCity: 'Example City',
       version: 1,
     });
+    const logoButton = layout.getByRole('button', {
+      name: 'Logo hinzufügen',
+      exact: true,
+    });
+    await expect(logoButton).toBeVisible();
     const initialAuditCount = await pool.query<{ count: string }>(
       "SELECT count(*) FROM audit_events WHERE tenant_id=$1::uuid AND action LIKE 'document_layout.%'",
       [tenantId],
     );
 
+    // File selection is local until the explicit raw upload action. A too
+    // large file is rejected before the request; a bad PNG signature leaves
+    // the current layout untouched when the API rejects it.
+    const fileInput = layout.getByLabel('Logodatei', { exact: true });
+    const uploadButton = layout.getByRole('button', {
+      name: 'Logo hochladen',
+      exact: true,
+    });
+    await logoButton.click();
+    await expect(
+      layout.getByRole('button', { name: 'Dokumentlayout bearbeiten' }),
+    ).toHaveCount(0);
+    await expect(
+      layout.getByRole('button', { name: 'Vorschau erstellen' }),
+    ).toHaveCount(0);
+    const png = await syntheticLogo(page, 'image/png');
+    await fileInput.setInputFiles({
+      name: 'fictional-logo.png',
+      mimeType: 'image/png',
+      buffer: png,
+    });
+    await expect(
+      layout.getByText('fictional-logo.png', { exact: true }),
+    ).toBeVisible();
+    await expect(uploadButton).toBeEnabled();
+    expect(logoRequests).toHaveLength(0);
+    expect(await documentLayoutRepository(pool, tenantId, store).get()).toEqual(
+      initialRow,
+    );
+
+    await fileInput.setInputFiles({
+      name: 'fictional-too-large.png',
+      mimeType: 'image/png',
+      buffer: Buffer.alloc(512 * 1024 + 1),
+    });
+    await uploadButton.click();
+    await expect(layout.getByRole('alert')).toContainText('512 KiB');
+    expect(logoRequests).toHaveLength(0);
+    expect(await documentLayoutRepository(pool, tenantId, store).get()).toEqual(
+      initialRow,
+    );
+
+    await fileInput.setInputFiles({
+      name: 'fictional-invalid.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('not a PNG image'),
+    });
+    const invalidLogoResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/document-layout/logo') &&
+        response.request().method() === 'PUT',
+    );
+    await uploadButton.click();
+    expect((await invalidLogoResponse).status()).toBe(400);
+    await expect(layout.getByRole('alert')).toContainText(/gültige PNG|JPEG/);
+    expect(logoRequests).toHaveLength(1);
+    expect(logoRequests[0]!.headers['content-type']).toBe('image/png');
+    expect(logoRequests[0]!.headers['x-csrf-token']).toBeTruthy();
+    expect(logoRequests[0]!.body).toEqual(Buffer.from('not a PNG image'));
+    expect(await documentLayoutRepository(pool, tenantId, store).get()).toEqual(
+      initialRow,
+    );
+    expect(storage.size).toBe(0);
+
+    await fileInput.setInputFiles({
+      name: 'fictional-logo.png',
+      mimeType: 'image/png',
+      buffer: png,
+    });
+    const pngResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/document-layout/logo') &&
+        response.request().method() === 'PUT',
+    );
+    await uploadButton.click();
+    expect((await pngResponse).status()).toBe(200);
+    await expect(layout.getByRole('status')).toContainText('Logo gespeichert.');
+    await expect(layout.getByText('Ein Logo ist eingerichtet.')).toBeVisible();
+    expect(logoRequests).toHaveLength(2);
+    expect(logoRequests[1]!.headers['content-type']).toBe('image/png');
+    expect(logoRequests[1]!.headers['x-csrf-token']).toBeTruthy();
+    expect(logoRequests[1]!.body).toEqual(png);
+    const pngRow = await documentLayoutRepository(pool, tenantId, store).get();
+    expect(pngRow).toMatchObject({ version: 2, logoMediaType: 'image/png' });
+    expect(pngRow?.logoKey).toMatch(/\.png$/);
+    expect(storage.get(pngRow!.logoKey!)).toEqual(png);
+
+    await page.reload();
+    await expect(page).toHaveURL(/#settings-document-layout$/);
+    await expect(layout.getByText('Ein Logo ist eingerichtet.')).toBeVisible();
+    await layout
+      .getByRole('button', { name: 'Dokumentlayout bearbeiten', exact: true })
+      .click();
+    await page.locator('.document-layout-display > summary').click();
+    await layout.getByLabel('Ort').fill('Logo-persisted City');
+    await layout
+      .getByRole('button', { name: 'Dokumentlayout speichern', exact: true })
+      .click();
+    await expect(
+      layout.getByText('Gespeichert.', { exact: true }),
+    ).toBeVisible();
+    const savedWithLogo = await documentLayoutRepository(
+      pool,
+      tenantId,
+      store,
+    ).get();
+    expect(savedWithLogo).toMatchObject({
+      senderCity: 'Logo-persisted City',
+      version: 3,
+      logoKey: pngRow!.logoKey,
+      logoMediaType: 'image/png',
+    });
+    expect(storage.get(pngRow!.logoKey!)).toEqual(png);
+    await page.reload();
+    await expect(layout.getByText('Ein Logo ist eingerichtet.')).toBeVisible();
+    await expect(layout.getByText(/Logo-persisted City/)).toBeVisible();
+
+    // A staged replacement must leave the current version and bytes unchanged.
+    const logoButtonAfterReload = layout.getByRole('button', {
+      name: 'Logo ersetzen',
+      exact: true,
+    });
+    await logoButtonAfterReload.click();
+    await expect(
+      layout.getByRole('button', { name: 'Dokumentlayout bearbeiten' }),
+    ).toHaveCount(0);
+    await expect(
+      layout.getByRole('button', { name: 'Vorschau erstellen' }),
+    ).toHaveCount(0);
+    await expect(
+      layout.getByRole('button', { name: 'Logo ersetzen', exact: true }),
+    ).toHaveCount(0);
+    const jpeg = await syntheticLogo(page, 'image/jpeg');
+    await fileInput.setInputFiles({
+      name: 'fictional-logo.jpg',
+      mimeType: 'image/jpeg',
+      buffer: jpeg,
+    });
+    const beforeReplacement = await documentLayoutRepository(
+      pool,
+      tenantId,
+      store,
+    ).get();
+    expect(logoRequests).toHaveLength(2);
+    expect(beforeReplacement).toEqual(savedWithLogo);
+    expect(storage.get(pngRow!.logoKey!)).toEqual(png);
+
+    for (const theme of ['light', 'dark'] as const) {
+      const currentTheme = await page
+        .locator('html')
+        .getAttribute('data-theme');
+      if (currentTheme !== theme) {
+        await page
+          .getByRole('button', { name: /Dunkelmodus|Hellmodus/ })
+          .click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      }
+      for (const width of [320, 390, 768, 1280]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect(fileInput).toBeVisible();
+        await expect(uploadButton).toBeEnabled();
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+          .toBeLessThanOrEqual(width + 1);
+        if (width === 320) {
+          const buttonBox = await uploadButton.boundingBox();
+          expect(buttonBox).not.toBeNull();
+          expect(buttonBox!.height).toBeGreaterThanOrEqual(44);
+        }
+        await page.screenshot({
+          path: testInfo.outputPath(`layout-logo-${theme}-${width}.png`),
+          fullPage: true,
+        });
+        if (width === 320 || width === 1280) {
+          const result = await new AxeBuilder({ page })
+            .include('#document-layout')
+            .analyze();
+          expect(result.violations, `logo ${theme} at ${width}px`).toEqual([]);
+        }
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 844 });
+    const jpegResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/document-layout/logo') &&
+        response.request().method() === 'PUT',
+    );
+    await uploadButton.click();
+    expect((await jpegResponse).status()).toBe(200);
+    await expect(layout.getByRole('status')).toContainText('Logo gespeichert.');
+    expect(logoRequests).toHaveLength(3);
+    expect(logoRequests[2]!.headers['content-type']).toBe('image/jpeg');
+    expect(logoRequests[2]!.headers['x-csrf-token']).toBeTruthy();
+    expect(logoRequests[2]!.body).toEqual(jpeg);
+    const replacedRow = await documentLayoutRepository(
+      pool,
+      tenantId,
+      store,
+    ).get();
+    expect(replacedRow).toMatchObject({
+      version: 4,
+      logoMediaType: 'image/jpeg',
+    });
+    expect(replacedRow?.logoKey).toMatch(/\.jpg$/);
+    expect(replacedRow?.logoKey).not.toBe(pngRow?.logoKey);
+    expect(storage.get(replacedRow!.logoKey!)).toEqual(jpeg);
+    expect(storage.get(pngRow!.logoKey!)).toEqual(png);
+    await page.reload();
+    await expect(layout.getByText('Ein Logo ist eingerichtet.')).toBeVisible();
+
     // Reopen the saved form before checking its responsive states and preview.
     await layout
       .getByRole('button', { name: 'Dokumentlayout bearbeiten', exact: true })
       .click();
+    await expect(
+      layout.getByRole('button', { name: /Logo hinzufügen|Logo ersetzen/ }),
+    ).toHaveCount(0);
     await page.locator('.document-layout-display > summary').click();
     const widths = [320, 390, 768, 1280];
     for (const theme of ['light', 'dark'] as const) {
@@ -402,6 +655,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       tenantId,
       store,
     ).get();
+    const storageSizeBeforePreview = storage.size;
     const auditBeforePreview = await pool.query<{ count: string }>(
       "SELECT count(*) FROM audit_events WHERE tenant_id=$1::uuid AND action LIKE 'document_layout.%'",
       [tenantId],
@@ -419,6 +673,9 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     expect(response.headers()['content-type']).toMatch(/application\/pdf/i);
     expect(renderedPdfLength).toBeGreaterThan(5);
     expect(relayedPdfLength).toBe(renderedPdfLength);
+    expect(renderedHtml).toContain(
+      `data:image/jpeg;base64,${jpeg.toString('base64')}`,
+    );
     expect(Number(response.headers()['content-length'])).toBe(
       renderedPdfLength,
     );
@@ -448,11 +705,11 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       .getByRole('link', { name: 'Vorschau-PDF herunterladen' })
       .click();
     const download = await downloadPromise;
-    const downloadablePdf = testInfo.outputPath('layout-preview-download.pdf');
+    const downloadablePdf = testInfo.outputPath('layout-logo-preview.pdf');
     await download.saveAs(downloadablePdf);
     const previewBytes = await readFile(downloadablePdf);
     expect(previewBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
-    await testInfo.attach('layout-unsaved-preview.pdf', {
+    await testInfo.attach('layout-preview-with-logo.pdf', {
       path: downloadablePdf,
       contentType: 'application/pdf',
     });
@@ -483,7 +740,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
         )
       ).rows[0]!.count,
     ).toBe('0');
-    expect(storage.size).toBe(0);
+    expect(storage.size).toBe(storageSizeBeforePreview);
 
     // A save transport failure is an uncertain outcome, so typed values stay
     // visible and an explicit reload is required before another save.
@@ -595,7 +852,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       tenantId,
       store,
     ).get();
-    expect(finalRow?.version).toBe(3);
+    expect(finalRow?.version).toBe(6);
 
     // The preview response uses the same headers that nginx serves in the
     // deployed admin path; a browser security error here is a test failure.

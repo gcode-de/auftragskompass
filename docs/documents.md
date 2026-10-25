@@ -213,8 +213,21 @@ Erst „Bearbeiten“ öffnet die Felder; eine noch fehlende Konfiguration wird 
 „Layout einrichten“ ausdrücklich begonnen und gespeichert. Absenderdaten werden
 nicht erfunden oder automatisch aus Kunden-/Eventdaten übernommen. Schrift,
 Farben und Nummernoptionen stehen in einer aufklappbaren Darstellungsgruppe.
-Die Administrationsfarben bleiben davon unabhängig. Logo-Upload ist weiterhin
-nur über den vorhandenen API-Vertrag möglich; dessen Oberfläche folgt separat.
+Die Administrationsfarben bleiben davon unabhängig. Im gespeicherten Layout
+öffnet „Logo hinzufügen“ beziehungsweise „Logo ersetzen“ die Dateiauswahl.
+Auswahl allein schreibt nichts; erst die gesonderte Uploadaktion übernimmt
+die PNG-/JPEG-Datei bis 512KiB. Während der Inhaltsbearbeitung steht kein
+Logo-Upload zur Verfügung. Die PDF-Vorschau zeigt das gespeicherte Logo; eine
+separate Thumbnail- oder Löschfunktion gehört nicht zu diesem Ablauf.
+
+Upload und Layoutbearbeitung laufen nacheinander. Die bestätigte vollständige
+Antwort aktualisiert die Layoutversion, eine alte Vorschau wird verworfen.
+Nach Netzwerk-/Serverfehler oder unplausibler Antwort ist der Ausgang unklar:
+kein automatisches Wiederholen, sondern ausdrücklich den Bestand laden. Ein
+fehlgeschlagener Abgleich kann erneut geladen werden, ohne nochmals hochzuladen.
+Die Auswahl bleibt bis zur bestätigten Übernahme beziehungsweise zum Abgleich
+erhalten. Andere autorisierte Tabs können das Logo weiterhin ersetzen; der
+bestehende Logo-Endpunkt besitzt keine erwartete Versionsnummer.
 
 Erstanlage nutzt POST, Änderungen nutzen PUT mit der geladenen Version. Eine
 bestätigte gültige Speicherantwort wird direkt übernommen. Nach Konflikt oder
@@ -254,7 +267,7 @@ zusätzliche lokale QA ohne neue Laufzeit- oder Parserabhängigkeit.
 ## Logo
 
 Das Layout kann genau ein Logo tragen. `PUT /api/v1/document-layout/logo`
-nimmt einen rohen PNG- oder JPEG-Körper an (höchstens 512 KB). Geprüft werden
+nimmt einen rohen PNG- oder JPEG-Körper bis 512KiB (524.288 Bytes) an. Geprüft werden
 die magische Signatur gegen den angegebenen Inhaltstyp und die Größe; ein
 umbenanntes Fremdformat wird abgewiesen. Die Bytes liegen außerhalb der
 Datenbank. Neue Uploads erhalten einen eindeutigen Schlüssel

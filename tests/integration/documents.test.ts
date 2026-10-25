@@ -1835,6 +1835,55 @@ test('a configured logo is embedded into the final html', async () => {
   });
 });
 
+test('replacing the layout logo leaves finalized PDFs unchanged and updates draft previews', async () => {
+  const run = dependencies(),
+    firstLogo = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('synthetic original logo'),
+    ]),
+    nextLogo = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('synthetic replacement logo'),
+    ]),
+    layoutRepo = documentLayoutRepository(pool, tenantId, run.deps.store),
+    repo = documentRepository(pool, tenantId, run.deps);
+  await layoutRepo.saveLogo(actorId, firstLogo, 'image/png');
+  const draft = await repo.createDraft(actorId, {
+      templateId,
+      contactId,
+      eventId,
+    }),
+    finalized = await repo.finalize(actorId, draft.id),
+    originalPdf = await readDocumentPdf(run.deps.store, finalized.pdfHash!);
+  expect(run.rendered[0]).toContain(
+    'data:image/png;base64,' + firstLogo.toString('base64'),
+  );
+
+  await layoutRepo.saveLogo(actorId, nextLogo, 'image/png');
+  const unchanged = await repo.get(finalized.id);
+  expect(unchanged).toMatchObject({
+    state: 'final',
+    snapshotHash: finalized.snapshotHash,
+    pdfHash: finalized.pdfHash,
+  });
+  expect(await readDocumentPdf(run.deps.store, unchanged!.pdfHash!)).toEqual(
+    originalPdf,
+  );
+
+  const previewDraft = await repo.createDraft(actorId, {
+    templateId,
+    contactId,
+    eventId,
+  });
+  await repo.preview(previewDraft.id);
+  expect(run.rendered[1]).toContain(
+    'data:image/png;base64,' + nextLogo.toString('base64'),
+  );
+  expect(run.rendered[1]).not.toContain(
+    'data:image/png;base64,' + firstLogo.toString('base64'),
+  );
+});
+
 test('a free-form place feeds {{location}}, clears honestly and never rewrites final documents', async () => {
   const run = dependencies(),
     png = Buffer.concat([

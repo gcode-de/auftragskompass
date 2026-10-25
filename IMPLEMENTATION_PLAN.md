@@ -8,6 +8,48 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP018.2 — `feat: upload document logos from layout settings`** (25.10.2026)
+
+  Gespeichertes Dokumentlayout in der Zusammenfassung um eine progressive,
+  beschriftete PNG-/JPEG-Auswahl und ausdrückliches Hochladen/Ersetzen ergänzen.
+  Bestehende raw-PUT-API mit CSRF, Signatur- und 512KiB-Validierung verwenden;
+  keine neue API, CAS, Migration, Abhängigkeit, Löschung oder Logo-Thumbnail.
+  Auswahl allein schreibt nichts. Während Inhaltsbearbeitung kein Upload,
+  während Upload keine Vorschau/Änderung/Reload parallel. Eindeutig bestätigte
+  vollständige Antwort aktualisiert Layoutversion und Logoanzeige; alte
+  Vorschau widerrufen. Abweichende/stale Antwort, Netzwerk-/5xx-/unlesbarer
+  Erfolg sind unklar: Eingaben erhalten, Wiederholung sperren und expliziten
+  GET-Abgleich anbieten, auch bei fehlgeschlagenem Abgleich in Zusammenfassung.
+  Validierungsfehler lassen den letzten Stand bestehen. Logo-API bleibt ohne
+  CAS: konkurrierende autorisierte Uploads zuletzt schreibend maßgeblich.
+
+  Tests zuerst: keine Mutation bei Auswahl, rohe PNG/JPEG-Bytes+CSRF, Limit/
+  Typ/Signatur, Ersetzen und aktuelle Version für folgende Layoutspeicherung,
+  bekannte Fehler vs unklarer Ausgang ohne doppelte PUTs, GET-Fehler/Retry,
+  fehlendes Layout, montierter Bereich/unmount, exklusiver Bearbeitungszustand,
+  alte Blobvorschau ungültig. Vorhandene serverseitige Auth-/Tenantgrenzen
+  weiter prüfen. Reale synthetische Chromiumstrecke mit tatsächlich gerenderter
+  Logo-PDF, 320/390/768/1280 × Themes/axe; gespeichertes finales PDF bleibt
+  nach Logowechsel byte-/hashidentisch (fokussierte Integration).
+  Ponytail/Impeccable, getrennte Luna-Dateizuständigkeiten; schnelle Gates plus
+  betroffene Integration/E2E/Coverage, unabhängiger Review, dokumentieren,
+  explizit stagen, vollständigen Diff prüfen, ein Commit und sofort pushen.
+
+  Abnahme: tatsächliche Komponenten- und Browser-REDs vor Umsetzung; 34
+  fokussierte Layout-Komponenten- und 35 Dokumentintegrationstests grün.
+  Gesamte Coverage-Suite 1051 Tests grün; finale Komponentenfolge mit zwei zusätzlichen Netzwerk-/JSON-Fehlerfällen 494 Tests,
+  Panel 94,35 Prozent Zeilen/88,99 Prozent Zweige, Changed-Code 108/109 Zeilen
+  und 105/116 Zweige. Schnelle Gates/Build und echter Chromiumablauf mit
+  PNG/JPEG, Reload, folgender versionsgesicherter Layoutspeicherung und
+  Signatur-/Größenfehlern grün. Acht Logo-Theme-/Breitenbilder plus axe und
+  echte einseitige A4-PDF mit sichtbarem synthetischem Logo geprüft.
+  Finalartefakt nach Logowechsel byte-/hashidentisch; alte Logobytes bleiben
+  ausdrücklich erhalten. Reviewkorrekturen: keine versteckte Dateiauswahl,
+  klare Verwerf-/GET-Beschriftung, Fokus nach Upload/Abbruch/Abgleich und
+  keine Fokusübernahme aus verborgenem Bereich. Unabhängiger Review ohne
+  Blocker; Impeccable ohne neue Befunde (61 Bestandshinweise). Kein neuer
+  Backendvertrag, keine echte Buchung oder Kundendaten verändert.
+
 - [x] **BKP018.1b — `feat: keep mobile settings navigation compact`** (25.10.2026)
 
   Scope: `SettingsNavigation` nutzt dieselben vorhandenen zwölf Bereichs-/Hashwerte

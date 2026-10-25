@@ -759,6 +759,21 @@ a.workspace-title:hover {
   gap: 1rem;
   max-width: 58rem;
 }
+.document-layout-logo-form {
+  display: grid;
+  gap: 0.4rem;
+  max-width: 58rem;
+}
+.document-layout-logo-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+.document-layout-logo-form p {
+  margin: 0;
+}
+#document-layout-logo-help {
+  color: var(--muted);
+}
 .document-layout-form fieldset {
   min-width: 0;
   margin: 0;

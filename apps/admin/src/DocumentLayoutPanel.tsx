@@ -111,27 +111,57 @@ export function DocumentLayoutPanel({
     [message, setMessage] = useState(''),
     [error, setError] = useState(''),
     [previewBusy, setPreviewBusy] = useState(false),
-    [previewUrl, setPreviewUrl] = useState('');
+    [previewUrl, setPreviewUrl] = useState(''),
+    [logoFormOpen, setLogoFormOpen] = useState(false),
+    [logoFile, setLogoFile] = useState<File | null>(null);
   const dirtyRef = useRef(false),
     baselineRef = useRef<LayoutInput>(emptyLayout),
     draftRef = useRef(draft),
+    logoToggleRef = useRef<HTMLButtonElement | null>(null),
+    setupButtonRef = useRef<HTMLButtonElement | null>(null),
+    logoInputRef = useRef<HTMLInputElement | null>(null),
+    focusLogoInput = useRef(false),
+    restoreLogoFocus = useRef(false),
+    focusAfterReload = useRef<'summary' | 'setup' | null>(null),
     previewUrlRef = useRef(''),
     previewSequence = useRef(0),
+    logoSequence = useRef(0),
     requestSequence = useRef(0),
     initialLoadStarted = useRef(false);
   draftRef.current = draft;
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
-  dirtyRef.current = dirty;
+  dirtyRef.current = dirty || logoFile !== null;
 
   useEffect(() => registerUnsavedChanges(() => dirtyRef.current), []);
   useEffect(
     () => () => {
       requestSequence.current++;
       previewSequence.current++;
+      logoSequence.current++;
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     },
     [],
   );
+  useEffect(() => {
+    if (!loading && !busy && focusAfterReload.current) {
+      const target = focusAfterReload.current;
+      focusAfterReload.current = null;
+      if (active) {
+        if (target === 'summary') logoToggleRef.current?.focus();
+        else setupButtonRef.current?.focus();
+      }
+      return;
+    }
+    if (!logoFormOpen && !busy && restoreLogoFocus.current) {
+      restoreLogoFocus.current = false;
+      if (active) logoToggleRef.current?.focus();
+      return;
+    }
+    if (logoFormOpen && !busy && active && focusLogoInput.current) {
+      focusLogoInput.current = false;
+      logoInputRef.current?.focus();
+    }
+  }, [active, busy, loading, logoFormOpen]);
 
   function clearPreview() {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -139,7 +169,7 @@ export function DocumentLayoutPanel({
     setPreviewUrl('');
   }
 
-  async function reload() {
+  async function reload(restoreFocus = false) {
     const sequence = ++requestSequence.current;
     setLoading(true);
     setLoadError(false);
@@ -148,6 +178,7 @@ export function DocumentLayoutPanel({
       const response = await fetch('/api/v1/document-layout');
       if (sequence !== requestSequence.current) return;
       if (response.status === 404) {
+        focusAfterReload.current = restoreFocus ? 'setup' : null;
         setRow(null);
         setDraft(emptyLayout);
         draftRef.current = emptyLayout;
@@ -157,6 +188,8 @@ export function DocumentLayoutPanel({
         setEditing(false);
         setConflict(false);
         setUncertain(false);
+        setLogoFile(null);
+        setLogoFormOpen(false);
         clearPreview();
         setMessage('Noch kein Dokumentlayout eingerichtet.');
         return;
@@ -165,6 +198,7 @@ export function DocumentLayoutPanel({
       const result: unknown = await response.json();
       if (!isLayoutRow(result)) throw new Error('load');
       if (sequence !== requestSequence.current) return;
+      focusAfterReload.current = restoreFocus ? 'summary' : null;
       const next = inputFrom(result);
       setRow(result);
       setDraft(next);
@@ -175,6 +209,8 @@ export function DocumentLayoutPanel({
       setEditing(false);
       setConflict(false);
       setUncertain(false);
+      setLogoFile(null);
+      setLogoFormOpen(false);
       previewSequence.current++;
       clearPreview();
       setMessage('Dokumentlayout neu geladen.');
@@ -366,6 +402,116 @@ export function DocumentLayoutPanel({
     }
   }
 
+  async function uploadLogo() {
+    if (
+      !loaded ||
+      !row ||
+      loadError ||
+      busy ||
+      loading ||
+      previewBusy ||
+      conflict ||
+      uncertain ||
+      !logoFile
+    )
+      return;
+    if (logoFile.size > 512 * 1024) {
+      setError('Die Logodatei darf höchstens 512 KiB groß sein.');
+      return;
+    }
+    if (logoFile.type !== 'image/png' && logoFile.type !== 'image/jpeg') {
+      setError('Bitte eine PNG- oder JPEG-Datei auswählen.');
+      return;
+    }
+
+    const sequence = ++logoSequence.current,
+      expectedRow = row,
+      selectedFile = logoFile;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    previewSequence.current++;
+    setPreviewBusy(false);
+    clearPreview();
+    try {
+      const response = await fetch('/api/v1/document-layout/logo', {
+        method: 'PUT',
+        headers: {
+          'content-type': selectedFile.type,
+          'x-csrf-token': csrfToken,
+        },
+        body: selectedFile,
+      });
+      if (sequence !== logoSequence.current) return;
+      if (!response.ok) {
+        if (response.status === 404) {
+          setUncertain(true);
+          setError(
+            'Das Dokumentlayout ist nicht mehr verfügbar. Der Uploadstand ist unklar. Deine Dateiauswahl bleibt erhalten. Bitte den Serverstand laden.',
+          );
+        } else if (response.status >= 500) {
+          setUncertain(true);
+          setError(
+            'Der Uploadstand ist unklar. Deine Dateiauswahl bleibt erhalten. Bitte den Serverstand laden, bevor du weiterarbeitest.',
+          );
+        } else if (response.status === 401 || response.status === 403) {
+          setError(
+            response.status === 401
+              ? 'Bitte erneut anmelden, um das Logo hochzuladen.'
+              : 'Du darfst das Dokumentlayout nicht ändern. Bitte deine Berechtigung prüfen.',
+          );
+        } else {
+          setError(
+            response.status === 413
+              ? 'Die Logodatei ist zu groß. Bitte eine Datei bis 512 KiB auswählen.'
+              : 'Logo konnte nicht hochgeladen werden. Bitte eine gültige PNG- oder JPEG-Datei auswählen.',
+          );
+        }
+        return;
+      }
+
+      const result: unknown = await response.json();
+      if (sequence !== logoSequence.current) return;
+      if (
+        !isLayoutRow(result) ||
+        result.version !== expectedRow.version + 1 ||
+        JSON.stringify(inputFrom(result)) !==
+          JSON.stringify(inputFrom(expectedRow)) ||
+        result.logoMediaType !== selectedFile.type ||
+        result.logoKey === null ||
+        result.logoKey === expectedRow.logoKey
+      ) {
+        setUncertain(true);
+        setError(
+          'Die Uploadantwort war unvollständig oder verändert. Der Speicherstand ist unklar. Deine Dateiauswahl bleibt erhalten. Bitte den Serverstand laden.',
+        );
+        return;
+      }
+
+      const next = inputFrom(result);
+      setRow(result);
+      setBaseline(next);
+      baselineRef.current = next;
+      setDraft(next);
+      draftRef.current = next;
+      setLogoFile(null);
+      restoreLogoFocus.current = true;
+      setLogoFormOpen(false);
+      setConflict(false);
+      setUncertain(false);
+      setMessage('Logo gespeichert.');
+    } catch {
+      if (sequence === logoSequence.current) {
+        setUncertain(true);
+        setError(
+          'Der Uploadstand ist unklar. Deine Dateiauswahl bleibt erhalten. Bitte den Serverstand laden, bevor du weiterarbeitest.',
+        );
+      }
+    } finally {
+      if (sequence === logoSequence.current) setBusy(false);
+    }
+  }
+
   const blocked = conflict || uncertain,
     canPreview = Boolean(draft.senderName.trim()),
     disabled = busy || loading || blocked || loadError;
@@ -386,7 +532,7 @@ export function DocumentLayoutPanel({
           type="button"
           className="secondary-action"
           disabled={loading}
-          onClick={() => void reload()}
+          onClick={() => void reload(true)}
         >
           Dokumentlayout erneut laden
         </button>
@@ -412,27 +558,116 @@ export function DocumentLayoutPanel({
             </div>
           </dl>
           {row.logoKey && <p>Ein Logo ist eingerichtet.</p>}
-          <div className="document-layout-actions">
-            <button
-              type="button"
-              className="secondary-action"
-              disabled={disabled}
-              onClick={() => {
-                setEditing(true);
-                setMessage('');
+          {logoFormOpen && (
+            <form
+              className="document-layout-logo-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void uploadLogo();
               }}
             >
-              Dokumentlayout bearbeiten
-            </button>
+              <label>
+                Logodatei
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  aria-describedby="document-layout-logo-help"
+                  ref={logoInputRef}
+                  disabled={disabled || previewBusy}
+                  onChange={(event) => {
+                    const next = event.target.files?.[0] ?? null;
+                    setLogoFile(next);
+                    setError('');
+                    setMessage('');
+                  }}
+                />
+              </label>
+              <p id="document-layout-logo-help">
+                PNG oder JPEG, höchstens 512 KiB.
+              </p>
+              {logoFile && <p>{logoFile.name}</p>}
+              {busy && <p role="status">Logo wird hochgeladen …</p>}
+              <div className="document-layout-actions">
+                <button
+                  type="submit"
+                  className="primary-action"
+                  disabled={disabled || previewBusy || logoFile === null}
+                >
+                  Logo hochladen
+                </button>
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  disabled={busy || loading || blocked}
+                  onClick={() => {
+                    restoreLogoFocus.current = true;
+                    setLogoFile(null);
+                    setLogoFormOpen(false);
+                    dirtyRef.current = dirty;
+                    setError('');
+                    setMessage('');
+                  }}
+                >
+                  Auswahl verwerfen
+                </button>
+              </div>
+            </form>
+          )}
+          {!logoFormOpen && (
+            <div className="document-layout-actions">
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={disabled || logoFormOpen}
+                onClick={() => {
+                  setEditing(true);
+                  setMessage('');
+                }}
+              >
+                Dokumentlayout bearbeiten
+              </button>
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={
+                  disabled || previewBusy || !canPreview || logoFormOpen
+                }
+                onClick={() => void preview()}
+              >
+                Vorschau erstellen
+              </button>
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={disabled || previewBusy || logoFormOpen}
+                ref={logoToggleRef}
+                onClick={() => {
+                  focusLogoInput.current = true;
+                  setLogoFormOpen(true);
+                  setError('');
+                  setMessage('');
+                }}
+              >
+                {row.logoKey ? 'Logo ersetzen' : 'Logo hinzufügen'}
+              </button>
+            </div>
+          )}
+          {(blocked || loadError) && (
             <button
               type="button"
-              className="secondary-action"
-              disabled={disabled || previewBusy || !canPreview}
-              onClick={() => void preview()}
+              className="tertiary-action"
+              disabled={loading || busy}
+              onClick={() => void reload(true)}
             >
-              Vorschau erstellen
+              {logoFile
+                ? 'Logoauswahl verwerfen und neu laden'
+                : loadError
+                  ? 'Dokumentlayout erneut laden'
+                  : dirty
+                    ? 'Änderungen verwerfen und neu laden'
+                    : 'Dokumentlayout neu laden'}
             </button>
-          </div>
+          )}
         </>
       ) : loaded && !row && !editing ? (
         <div className="document-layout-setup">
@@ -444,6 +679,7 @@ export function DocumentLayoutPanel({
           <button
             type="button"
             className="primary-action"
+            ref={setupButtonRef}
             disabled={disabled}
             onClick={() => {
               setEditing(true);
@@ -617,7 +853,7 @@ export function DocumentLayoutPanel({
               type="button"
               className="tertiary-action"
               disabled={loading || busy}
-              onClick={() => void reload()}
+              onClick={() => void reload(true)}
             >
               {dirty
                 ? 'Änderungen verwerfen und neu laden'
@@ -629,7 +865,7 @@ export function DocumentLayoutPanel({
               type="button"
               className="tertiary-action"
               disabled={loading || busy}
-              onClick={() => void reload()}
+              onClick={() => void reload(true)}
             >
               Dokumentlayout erneut laden
             </button>

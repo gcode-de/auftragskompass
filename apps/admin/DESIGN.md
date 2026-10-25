@@ -171,6 +171,16 @@ Die interne Verwaltungsoberfläche unterstützt den Inhaber eines lokal betriebe
 - Native modale Navigation auf schmalen Bildschirmen.
 - Eigenes Kompass-Favicon (`favicon.svg`, 32px-PNG-Fallback) in den Farben der Seitenleiste; keine fremden Markenassets.
 
+Dokumentlayout: Die gespeicherte Konfiguration beginnt als Zusammenfassung.
+„Logo hinzufügen“ beziehungsweise „Logo ersetzen“ öffnet nur bei Bedarf die
+native PNG-/JPEG-Dateiauswahl mit Größenhinweis und ausdrücklicher Uploadaktion.
+Auswahl allein speichert nichts. Während dieses Ablaufs bleiben die anderen
+Layoutaktionen verborgen; „Auswahl verwerfen“ kehrt zurück. Upload/Abgleich
+verwenden die vorhandenen Lade-, Fehler- und Aktionsstufen, keine neue Fläche
+oder Akzentfarbe. Der Fokus wechselt zur Dateiauswahl und nach Abschluss/Abbruch
+zum Auslöser, sofern der Bereich aktiv ist. Eine unklare Antwort verlangt zuerst
+Bestandsabgleich; eine PDF-Vorschau wird nach einem Upload neu erzeugt.
+
 ## Colors
 
 Maßgeblich ist der eine `:root`-Block in `src/styles.css`. Die Frontmatter bewahrt die exakten Farbpaare als `light-dark(Hellwert, Dunkelwert)`; die erste Farbe gehört zum Hellmodus, die zweite zum Dunkelmodus. `color-scheme: light dark` übernimmt zunächst die Systempräferenz; `data-theme="light"` beziehungsweise `"dark"` setzt das explizite Farbschema. Native Formelemente folgen diesem Schema.
