@@ -8,6 +8,26 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H047 — `test: wait for worker readiness through startup probes`** (25.10.2026)
+
+  Reale rote Linux-CI 40170018957 scheitert in worker-main.test.ts während
+  Coverage: Datenbank up, Worker noch down, erste gültige HTTP-Antwort 503.
+  Bestehender Testhelper wartet nur auf einen offenen Port statt Bereitschaft.
+  Ausschließlich begrenzte Testabholung korrigieren: bis 200 pollend warten,
+  auch bei 503 dieselbe kurze Pause; letzte nicht-bereite Antwort bei
+  Erschöpfung zurückgeben, damit bestehender exakter Ready-Vertrag rot bleibt.
+  Kein Produkt-Healthcheck, Timeoutbudget, Skip oder automatischer Testretry
+  ändern. Kleine deterministische Regressionen für 503→200, dauerhafte503
+  und vorübergehenden Verbindungsfehler; realen Worker mit/ohne Drain und
+  geordnetes Shutdown weiterhin prüfen. Tests zuerst (rote CI als Reproduktion),
+  erforderliche Gates, unabhängiger Review, explizite Pfade/gesamter Diff,
+  ein Commit und sofort pushen. BKP015-Archivfehler danach separat offen lassen.
+  Abnahme: fokussiert 5/5 einschließlich beider realer Workerstarts/Shutdowns,
+  gesamte Unitfolge 260 Tests, Format/Lint/Typen/Workspace/Docs/Build grün.
+  Unabhängiger Review ohne Blocker. Keine Produktdatei verändert, bestehende
+  exakte Readiness-/Shutdown-Assertions erhalten; vollständige Linux-CI und
+  finale Imagefreigabe bleiben erforderlich.
+
 - [x] **BKP018.2 — `feat: upload document logos from layout settings`** (25.10.2026)
 
   Gespeichertes Dokumentlayout in der Zusammenfassung um eine progressive,

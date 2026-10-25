@@ -14,6 +14,29 @@ import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 
 const run = promisify(execute);
+type ReadinessResponse = { status: number; body: unknown };
+const readinessAttempts = 100;
+const pause = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitUntilReady(
+  probe: () => Promise<ReadinessResponse | null>,
+  wait: () => Promise<void> = () => pause(200),
+): Promise<ReadinessResponse | null> {
+  let lastResponse: ReadinessResponse | null = null;
+  for (let attempt = 0; attempt < readinessAttempts; attempt++) {
+    try {
+      const response = await probe();
+      if (response?.status === 200) return response;
+      if (response) lastResponse = response;
+    } catch {
+      // The listener may not accept connections until startup completes.
+    }
+    if (attempt + 1 < readinessAttempts) await wait();
+  }
+  return lastResponse;
+}
+
 const execFileAsync = async (...args: [string, string[], { cwd: string }]) => {
     try {
       return await run(args[0], args[1], args[2]);
@@ -162,22 +185,13 @@ async function startWorker(
     child.kill('SIGTERM');
     return { code: await closed, tookMs: Date.now() - started };
   };
-  const ready = async (): Promise<{
-    status: number;
-    body: unknown;
-  } | null> => {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      try {
-        const response = await fetch(
-          'http://127.0.0.1:' + port + '/health/ready',
-        );
-        return { status: response.status, body: await response.json() };
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    }
-    return null;
-  };
+  const ready = () =>
+    waitUntilReady(async () => {
+      const response = await fetch(
+        'http://127.0.0.1:' + port + '/health/ready',
+      );
+      return { status: response.status, body: await response.json() };
+    });
   try {
     await run({
       ready,
@@ -200,6 +214,62 @@ async function startWorker(
   // SIGTERM closes the app, which stops the drain before the pool ends.
   expect(child.signalCode).toBeNull();
 }
+
+test('readiness polling waits through a startup 503 until the worker is ready', async () => {
+  const responses: ReadinessResponse[] = [
+    { status: 503, body: { status: 'unavailable' } },
+    { status: 200, body: { status: 'ready' } },
+  ];
+  let probes = 0,
+    waits = 0;
+  const result = await waitUntilReady(
+    async () => responses[probes++] ?? null,
+    async () => {
+      waits++;
+    },
+  );
+  expect(result).toEqual(responses[1]);
+  expect(probes).toBe(2);
+  expect(waits).toBe(1);
+});
+
+test('readiness polling returns the last 503 instead of treating it as ready', async () => {
+  const response = { status: 503, body: { status: 'unavailable' } };
+  let probes = 0,
+    waits = 0;
+  const result = await waitUntilReady(
+    async () => {
+      probes++;
+      return response;
+    },
+    async () => {
+      waits++;
+    },
+  );
+  expect(probes).toBe(readinessAttempts);
+  expect(waits).toBe(readinessAttempts - 1);
+  expect(result).toEqual(response);
+  expect(result?.status).not.toBe(200);
+});
+
+test('readiness polling recovers from a transient connection failure', async () => {
+  const ready = { status: 200, body: { status: 'ready' } };
+  let probes = 0,
+    waits = 0;
+  const result = await waitUntilReady(
+    async () => {
+      probes++;
+      if (probes === 1) throw new Error('connection refused');
+      return ready;
+    },
+    async () => {
+      waits++;
+    },
+  );
+  expect(result).toEqual(ready);
+  expect(probes).toBe(2);
+  expect(waits).toBe(1);
+});
 
 test('the real worker entrypoint serves readiness with the option drain wired in', async () => {
   await startWorker(

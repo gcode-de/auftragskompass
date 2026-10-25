@@ -2,6 +2,29 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## CI-Nachtrag H047: begrenzt auf tatsächliche Worker-Bereitschaft warten
+
+BKP018.1b (`38f3ccc`) und BKP018.2 (`c95be20`) sind auf der UX-Branch
+gepusht. Linux-CI 40170018957 scheiterte im bestehenden Worker-Starttest:
+HTTP war schon erreichbar, Worker durfte während der Initialisierung noch
+503 liefern. Der Helper gab diese erste Antwort sofort an die exakte
+Ready-Assertion weiter. Das ist kein belegter Fehler der neuen Oberfläche.
+H047 korrigiert ausschließlich diesen Testhelper: höchstens 100 Abholungen
+mit bestehenden 200ms-Pausen, frühes Ende nur bei 200, letzte 503 bleibt am
+Ende als fehlschlagende Diagnose erhalten. Kein Produkt-/Healthcheckwechsel,
+kein Skip, kein höheres Testbudget oder automatischer Testretry.
+
+Deterministische Fälle für 503→200, dauerhaft503 und Verbindungsfehler→200
+sowie beide tatsächlichen PostgreSQL-/Worker-Start-/Shutdownfälle grün (5/5).
+Unabhängiger Review ohne Blocker. Vollständige grüne Linux-CI samt Images
+bleibt vor automatischer Auslieferung zwingend. Aktuelle Laufzeit nicht aus
+diesem Dokument ableiten; zuletzt unabhängig verifiziert ist e9ca99d unten.
+
+Bekannte nächste Lücke im Vorlagenbereich: Archivieren ignoriert bisher
+HTTP-Fehler/409 und fängt Verbindungsfehler nicht. Als eigener kleiner
+BKP015-Unter-Slice behandeln; fokussierter Vorlageneditor/Filter/Vorschau und
+übrige Dokument-/Mailparität bleiben darüber hinaus offen.
+
 ## H046 abgeschlossen, tatsächlicher Betrieb: 25.10.2026
 
 Das neue Fünf-Stunden- und Wochenfenster ist tatsächlich zurückgesetzt,
