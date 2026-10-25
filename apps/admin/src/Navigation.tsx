@@ -157,6 +157,7 @@ export function useWorkspaceRoute() {
     };
     window.addEventListener('hashchange', changed);
     window.addEventListener('popstate', changed);
+    changed();
     return () => {
       window.removeEventListener('hashchange', changed);
       window.removeEventListener('popstate', changed);

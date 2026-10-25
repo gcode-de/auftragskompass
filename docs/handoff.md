@@ -2,6 +2,35 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H049: nach Listenerinstallation aktuelle Route abgleichen, 25.10.2026
+
+H047 ist als `7c4b78f` gepusht. Dessen CI 40171302012 wurde im bisherigen
+Sprach-/Navigationstest rot: Suchüberschrift nach Hashwechsel nicht gefunden.
+Lokal war die gesamte Komponentenfolge grün. Ein gezielter neuer Test belegt
+jedoch eine echte Lücke im gemeinsamen `useWorkspaceRoute`: Hashwechsel in
+`useLayoutEffect` nach initialem Render, aber vor passiver Listenerinstallation,
+bleiben ohne erneuten Abgleich im alten Zustand. Ein Aufruf von `changed()`
+nach dem Registrieren beider Listener behebt die deterministisch rote Regression.
+Die Lücke passt zum CI-Symptom; der exakte CI-Ablauf ist damit nicht bewiesen.
+Keine geänderten Wartebudgets, Wiederholungen oder entfernten Assertions.
+
+Betroffene Aufrufer AuthPanel, Navigation und SettingsNavigation verwenden
+denselben Hook; keine zusätzliche Historymutation/Eventauslösung. Bestehende
+Legacy-Normalisierung bleibt erhalten. 28 fokussierte Navigations-/Sprachtests
+und alle 495 Komponententests grün, Navigation 100 Prozent Zeilen/95,55 Prozent
+Zweige. Unabhängiger Review ohne Blocker. Vollständige vorherige lokale
+Chromiumfolge 18/18 und 38 Python-/zwei Node-Ops inklusive realem Compose-
+Backup/Restore grün; nach H049 alle drei betroffenen Auth-/Layout-Chromiumabläufe erneut
+grün (2,7 Minuten). Schnelle Gates und 260 Unit-Tests ebenfalls grün;
+geänderte Zeile vollständig gedeckt. Die vollständige neue Linux-CI bleibt Auslieferungssperre.
+
+H048 ist noch offen: am 25.10. zuletzt nur lesend geprüft läuft `ae37b30`
+auf drei gesunden Containern mit exakter OCI, Timer aktiv, kein needs-attention.
+Für diesen Zwischenstand wurde keine neue dreifache Betreiber-Sicherung oder
+Live-Asset-Abnahme behauptet. Der letzte vollständige Liefernachweis bleibt
+e9ca99d unten. Vor dem abschließenden Doku-Push prüfen, dass laufende Images
+nicht ungewollt abgebrochen werden. Kein manueller Parallel-Updater.
+
 ## CI-Nachtrag H047: begrenzt auf tatsächliche Worker-Bereitschaft warten
 
 BKP018.1b (`38f3ccc`) und BKP018.2 (`c95be20`) sind auf der UX-Branch

@@ -9,6 +9,7 @@ import {
   within,
   waitFor,
 } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import {
   Navigation,
   SettingsNavigation,
@@ -86,6 +87,23 @@ function Workspace() {
     </>
   );
 }
+test('workspace route reconciles a hash change that happens before passive listeners mount', async () => {
+  function EarlySearchNavigation() {
+    const route = useWorkspaceRoute();
+    useLayoutEffect(() => {
+      window.history.replaceState(null, '', '/?q=Fictional#search');
+      fireEvent(window, new HashChangeEvent('hashchange'));
+    }, []);
+    return <output aria-label="Arbeitsbereich">{route}</output>;
+  }
+
+  window.history.replaceState(null, '', '/');
+  render(<EarlySearchNavigation />);
+  await waitFor(() => {
+    expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('search');
+  });
+});
+
 test('resolves deep links, settings and browser history without losing search', () => {
   window.history.replaceState(null, '', '/?q=Fictional#event-synthetic');
   render(<Workspace />);

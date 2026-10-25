@@ -8,6 +8,43 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H049 — `fix: reconcile workspace routes when listeners mount`** (25.10.2026)
+
+  CI 40171302012 scheitert im Sprach-/Navigationskomponentenfall an fehlender
+  Suchüberschrift (lokal 494 Komponenten grün). Eng prüfen, ob ein Hashwechsel
+  zwischen initialem Hook-Render und Listener-Effektinstallation verloren geht.
+  Deterministische rote Regression mit URL-Wechsel vor passivem Hook-Effekt,
+  dann nur bei bestätigter Lücke bestehendes useWorkspaceRoute nach Registrierung
+  gegen die aktuelle URL abgleichen. Callers AuthPanel/Navigation/SettingsNavigation,
+  Direkt-/Legacylinks, Query/History und keine doppelten Listener prüfen.
+  Keine höhere globale Wartezeit, Retrys, Skips oder entfernten Assertions.
+  CI-Ursache nur soweit durch Belege gestützt benennen. Ponytail/Impeccable,
+  schnelle Gates plus betroffene Komponenten/Coverage/Auth-Chromium, unabhängiger
+  Review, explizite Pfade, voller staged Diff, ein Commit und sofort pushen.
+  H048 bleibt bis tatsächlicher freigegebener Auslieferung offen.
+  Abnahme: deterministische Layout-Effekt-Regression ohne Fix rot, mit Fix
+  grün; 28 fokussierte und 495 gesamte Komponententests, 260 Unit-Tests,
+  schnelle Gates/Build und drei Auth-/Layout-Chromiumabläufe grün. Navigation
+  100 Prozent Zeilen/95,55 Prozent Zweige; geänderte Zeile 1/1 gedeckt.
+  Unabhängiger Review ohne Blocker. Der reale Hookfehler ist bewiesen;
+  Zusammenhang mit genau diesem CI-Lauf bleibt plausible Inferenz.
+
+- [ ] **H048 — `docs: verify mobile settings and logo delivery`** (wartet auf CI-Freigabe, 25.10.2026)
+
+  Nach H049 ausschließlich aktuellen Lieferstand abschließen: vollständige
+  grüne quality+images-CI, alleinigen automatischen Updater abwarten, drei
+  gesunde Container/exakte OCI, Checkpoint CT/Host/Betreiber mit identischen
+  Bytes/Hash und privaten Rechten, kein needs-attention/Drain off. Live-Assets
+  mit sichtbarer Buildkennung, vollständig fiktiven lokalen Geschäfts-APIs/
+  PostgreSQL/Renderer prüfen: kompakte mobile Navigation, Logoauswahl/
+  PNG-/JPEG-Upload/Reload/Versionierung, PDF mit sichtbarem Logo, responsive
+  Themes/axe, keine Browseranfrage an echte Geschäfts-API. Gesamte lokale
+  Chromium- und Betriebssuite mit Restore abschließen. Grenzen ausdrücklich
+  dokumentieren, nächste Vorlagen-Archivkorrektur detailliert vorbereiten.
+  Keine parallelen manuellen Updates oder echten Datenänderungen. Dokuabschluss
+  erst nach tatsächlichen Belegen committen/pushen, laufende freigegebene Images
+  bei Kontingentabschluss nicht durch unnötigen Releasebranch-Push abbrechen.
+
 - [x] **H047 — `test: wait for worker readiness through startup probes`** (25.10.2026)
 
   Reale rote Linux-CI 40170018957 scheitert in worker-main.test.ts während
