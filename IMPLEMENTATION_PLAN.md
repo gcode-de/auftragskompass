@@ -8,6 +8,32 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.5b — `fix: reconcile document template saves safely`** (25.10.2026)
+
+  Vorhandenen Editor-/Archiv-/Dirty-/Fokusvertrag erhalten, kein CSS-/Filter-
+  oder Vorschauumbau. Tests zuerst. POST nutzt frische UUID pro logischer Anlage
+  und eingefrorenen Auftrag; unklarer Ausgang sperrt Änderungen, explizite sichere
+  Wiederholung nur mit derselben UUID und identischem Snapshot. GET-Neuladen
+  bleibt ausschließlich lesend und gibt unklare Neuanlage nicht blind frei.
+  POST/PUT-Ergebnis vollständig auf ID/Version, Inhalt, Status, Positionen und
+  Servertrim prüfen. Bestätigtes Ergebnis sofort übernehmen und Editor schließen;
+  anschließender Listenfehler darf Erfolg nicht widerrufen. GET-Retry entfernt
+  bestätigten Datensatz weder bei leerer noch älterer Antwort; neuere gültige
+  Version ehrlich übernehmen. Synchrone In-flight-Sperre; 400/401/403 erhalten
+  Entwurf, 404/409 erfordern ausdrücklichen Abgleich ohne Entwurfüberschreibung.
+  Unklarer PUT wird per GET abgeglichen, nie mit still neuer Version wiederholt.
+  Tests: bestätigte201/200+GET503/leer/älter/neuer, Doppelclick, unplausible
+  Erfolgsantwort/JSON, bekannte Ablehnungen, Konflikt, POST-Antwortverlust und
+  sichere identische Wiederholung (genau eine Vorlage). Preise/Produktbezüge,
+  Tastaturfokus und Dirtyschutz erhalten. Komponenten/Coverage, synthetischer
+  Chromiumablauf in Mobil/Desktop und beiden Themes, Impeccable-Finish/Review.
+  Abgenommen:1110 Tests, acht Chromiumabläufe, alle drei Wiederherstellungszustände
+  mit axe/Überlaufprüfung bei320/1280px und beiden Themes. Geändert170/185 Zeilen
+  und214/250 Branches; unabhängiger Luna-Review klar, Impeccable-Zielscan leer.
+  Eingangs-GET-Rennen (Erfolg/Fehler), laufende unveränderte Kopie und gezielte
+  Fokuswiederherstellung nach Abgleich zusätzlich abgesichert. Kein Browser-
+  Neuladen-/Schließen-Entwurfsspeicher; bestehende SPA-Grenze ist dokumentiert.
+
 - [x] **BKP015.5a — `feat: make document template creation retries idempotent`** (25.10.2026)
 
   Separat deploybare kompatible Vorbereitung für sichere Speicherrückmeldung:

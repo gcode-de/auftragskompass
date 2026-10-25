@@ -2,6 +2,58 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## BKP015.5b: sichere Speicherrückmeldung in der Oberfläche, 25.10.2026
+
+POST verwendet pro logischer Anlage eine UUID und eingefrorene JSON-Daten. Nach
+unklarer Antwort kann nur derselbe Auftrag ausdrücklich wiederholt werden;
+auch eine Ablehnung beim Wiederholen verliert seine Vorgangsidentität nicht.
+Bestätigte POST-/PUT-Antwort schließt den Editor und übernimmt den Datensatz,
+auch bei anschließendem GET-Fehler. GET-Wiederholung entfernt bestätigte Daten
+weder bei leerem noch älterem Stand. Ein neuerer Serverstand wird ehrlich geladen.
+Unklarer PUT/Konflikt erhält Entwurf und ursprüngliche Version; kein stilles CAS-
+Upgrade. Initiale GET-Erfolge und Fehler können spätere Speicherstände nicht
+überschreiben. Laufende Anlagen gelten auch bei unveränderten Feldern als dirty.
+
+59 fokussierte Komponenten, insgesamt1110 Tests mit Coverage grün; gesamt97,07%
+Zeilen/93,15% Branches, geändert170/185 und214/250. Acht synthetische Chromium-
+Vorlagenabläufe grün, drei Wiederherstellungszustände mit axe/Überlaufprüfung bei
+320/1280px in beiden Themes. Schnelle Gates/Build grün. Root hat die gerenderten
+Zustände geprüft; unabhängiger Luna-Review nach Korrekturen klar. Impeccable-
+Zielscan meldet[]; vorhandene Farben, Layout und Motion bleiben erhalten.
+Fokus kehrt nach Abgleich nur bei lokal gebliebenem Fokus ins erhaltene Formular
+oder zur Zeilenaktion zurück; externe Fokuswechsel bleiben erhalten und verlieren
+keine veralteten Rückkehrziele an spätere Aufträge.
+
+**Grenze:** Vorgangs-ID und Entwurf leben im gemounteten Panel. Bestehender
+Dirtyschutz betrifft App-Navigation; Browser-Neuladen/-Schließen hat weder neue
+Warnung noch persistente Wiederherstellung. Nicht als umfassende Offline-
+Wiederherstellung bezeichnen. Suche/Art-/Archivfilter und Vorschau bleiben offen.
+CI/Images und Auslieferung dieses neuen UI-Commits separat prüfen; zuletzt komplett
+verifiziert ist823a23f im folgenden Abschnitt. Jeder Commit sofort auf
+codex/ux-event-simplification pushen. Kontingent zuletzt67% im laufenden Fenster;
+aktuell erneut prüfen, keine Zusatzcredits nutzen. Einmalige01:15-Fortsetzung
+bleibt eingerichtet und muss nach dieser einen weiteren Phase gelöscht werden.
+
+## Verifizierte Auslieferung: 823a23f, 25.10.2026 abends
+
+CI40225057526 (quality und images) vollständig grün. Der alleinige Auto-Updater
+hat ohne manuellen Eingriff auf823a23fba23389240333c605fd90891bec13f65e aktualisiert.
+API, Worker und Admin gesund, OCI-Revision jeweils exakt gleich. Timer aktiv,
+Updater-Service nach Abschluss inaktiv, keine needs-attention-Sperre; Option-
+Drain weiterhin off. Damit sind auch BKP015.2–.4 und H051/H052 ausgeliefert.
+
+Checkpoint vor dem Update auf CT114, Proxmoxhost und Betreiberrechner identisch
+verifiziert: 2837765 Bytes, SHA256
+`3cdf596f34722ad70205e69f4baed13fc406dbc6b4405220aae77c62a3ee96fd`.
+Private Betreiberkopie unter
+`/Users/gp/Documents/AuftragsKompass-Sicherung/delivery-2026-10-25/823a23f/`;
+keine Sicherung oder realen Daten im Repo. Der ignorierte Verifier erwartet jetzt
+explizit `AK_EXPECT_REVISION` als vollständigen SHA statt einer hartcodierten alten
+Revision. Fünf Chromiumabläufe gegen die echten ausgelieferten statischen Dateien
+bestehen mit lokal synthetischen API-Antworten und exaktem Versionslabel; keine
+Schreibaufrufe gegen reale Geschäfts-APIs. Die neue BKP015.5b-Oberfläche ist davon
+noch nicht umfasst; ihren Commit/CI/Lieferstatus separat prüfen.
+
 ## BKP015.5a: wiederholbare Vorlagenanlage, 25.10.2026
 
 Optionale UUID `requestId` auf Vorlagen-POST; Migration0037 speichert tenant-

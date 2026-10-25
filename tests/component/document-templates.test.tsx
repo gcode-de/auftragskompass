@@ -1,5 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { DocumentTemplatesPanel } from '../../apps/admin/src/DocumentTemplatesPanel.js';
 import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 
@@ -62,10 +68,12 @@ const grossProduct = {
   };
 const products = [product, grossProduct, archivedProduct, overflowProduct];
 function setup(
-  reply: (body: Record<string, unknown>) => Response | Promise<Response> = () =>
-    Response.json(template),
-  readList: () => Response = () => Response.json([template]),
+  reply: (body: Record<string, unknown>) => Response | Promise<Response> = (
+    body,
+  ) => Response.json(savedBody(body)),
+  readList?: () => Response | Promise<Response>,
 ) {
+  let currentRows: unknown[] = [template];
   const writes: {
     url: string;
     method: string;
@@ -74,7 +82,7 @@ function setup(
   }[] = [];
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     if (url === '/api/v1/products') return Response.json(products);
-    if (!options) return readList();
+    if (!options) return readList ? readList() : Response.json(currentRows);
     const body = JSON.parse(String(options.body)) as Record<string, unknown>;
     writes.push({
       url,
@@ -82,7 +90,27 @@ function setup(
       body,
       headers: options.headers,
     });
-    return reply(body);
+    const response = await reply(body);
+    if (response.ok && !readList) {
+      try {
+        const saved = (await response.clone().json()) as Record<
+          string,
+          unknown
+        >;
+        currentRows = [
+          ...currentRows.filter(
+            (row) =>
+              !row ||
+              typeof row !== 'object' ||
+              (row as Record<string, unknown>).id !== saved.id,
+          ),
+          saved,
+        ];
+      } catch {
+        // Malformed success responses remain available to the component tests.
+      }
+    }
+    return response;
   });
   vi.stubGlobal('fetch', fetcher);
   return writes;
@@ -101,23 +129,529 @@ function archivedResponse(body: Record<string, unknown>) {
     })),
   });
 }
+function savedBody(
+  body: Record<string, unknown>,
+  id = typeof body.version === 'number'
+    ? 'fictional-template'
+    : 'fictional-created-template',
+): Record<string, unknown> {
+  const sentPositions = body.positions as Array<Record<string, unknown>>;
+  const payload = { ...body };
+  delete payload.requestId;
+  const version = payload.version;
+  delete payload.version;
+  return {
+    ...payload,
+    id,
+    version: Number(version ?? 0) + 1,
+    positions: sentPositions.map((position, index) => ({
+      ...position,
+      id: `fictional-created-position-${index}`,
+    })),
+  };
+}
+function createdBody(body: Record<string, unknown>) {
+  return savedBody(body, 'fictional-created-template');
+}
+function createdResponse(body: Record<string, unknown>) {
+  return Response.json(createdBody(body));
+}
 function openCreate() {
   fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));
 }
+test('a confirmed create remains saved when the following list GET fails', async () => {
+  let listReads = 0;
+  const writes = setup(createdResponse, () =>
+    listReads++ === 0
+      ? Response.json([template])
+      : Response.json({ error: 'unavailable' }, { status: 503 }),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional persisted template' },
+  });
+  const form = screen
+    .getByRole('button', { name: 'Vorlage speichern' })
+    .closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  expect(writes).toHaveLength(1);
+
+  expect(
+    await screen.findByText(
+      'Vorlage gespeichert. Die Liste konnte nicht aktualisiert werden.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText('Bezeichnung')).toBeNull();
+  expect(
+    screen.getByText('Angebot: Fictional persisted template – 0 Position(en)'),
+  ).toBeTruthy();
+  const reload = screen.getByRole('button', { name: 'Vorlagen neu laden' });
+  expect(reload).toBeTruthy();
+  expect(document.activeElement).toBe(reload);
+  expect(writes).toHaveLength(1);
+  expect(writes[0]!.method).toBe('POST');
+});
+test('an unknown create can only retry the same request id and frozen body', async () => {
+  let postCount = 0;
+  let created: Record<string, unknown> | null = null;
+  const writes = setup(
+    async (body) => {
+      postCount++;
+      if (postCount === 1) throw new Error('response lost');
+      created = createdBody(body);
+      return Response.json(created);
+    },
+    () => Response.json(created ? [template, created] : [template]),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional persisted template' },
+  });
+  const form = screen
+    .getByRole('button', { name: 'Vorlage speichern' })
+    .closest('form')!;
+  fireEvent.submit(form);
+
+  expect(
+    await screen.findByText(
+      'Der Speicherauftrag ist unklar. Bitte denselben Auftrag sicher wiederholen.',
+    ),
+  ).toBeTruthy();
+  const retry = screen.getByRole('button', {
+    name: 'Speicherauftrag wiederholen',
+  });
+  expect(document.activeElement).toBe(retry);
+  expect(screen.getByLabelText('Bezeichnung').matches(':disabled')).toBe(true);
+  fireEvent.click(retry);
+
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(writes).toHaveLength(2);
+  expect(writes[0]!.body).toEqual(writes[1]!.body);
+  expect(writes[0]!.body.requestId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  );
+});
+test('a late initial list response cannot erase a confirmed create', async () => {
+  let releaseInitial!: (response: Response) => void;
+  const initialList = new Promise<Response>((resolve) => {
+    releaseInitial = resolve;
+  });
+  let listReads = 0;
+  let created: Record<string, unknown> | null = null;
+  const writes = setup(
+    (body) => {
+      created = createdBody(body);
+      return Response.json(created);
+    },
+    () => {
+      listReads++;
+      return listReads === 1
+        ? initialList
+        : Response.json(created ? [created] : []);
+    },
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional persisted template' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  await act(async () => {
+    releaseInitial(Response.json([template]));
+  });
+
+  expect(
+    await screen.findByText(
+      'Angebot: Fictional persisted template – 0 Position(en)',
+    ),
+  ).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(listReads).toBe(2);
+});
+test('a late initial list failure cannot replace the confirmed save message', async () => {
+  let rejectInitial!: (response: Response) => void;
+  const initialList = new Promise<Response>((resolve) => {
+    rejectInitial = resolve;
+  });
+  let listReads = 0;
+  let created: Record<string, unknown> | null = null;
+  setup(
+    (body) => {
+      created = createdBody(body);
+      return Response.json(created);
+    },
+    () => {
+      listReads++;
+      return listReads === 1
+        ? initialList
+        : Response.json(created ? [created] : []);
+    },
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional confirmed template' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  await act(async () => {
+    rejectInitial(Response.json({ error: 'unavailable' }, { status: 503 }));
+  });
+  await vi.waitFor(() =>
+    expect(screen.getByRole('status').textContent).toBe('Gespeichert.'),
+  );
+  expect(
+    screen.getByText('Angebot: Fictional confirmed template – 0 Position(en)'),
+  ).toBeTruthy();
+});
+test.each([400, 401, 403])(
+  'a known POST rejection (%i) keeps the draft editable',
+  async (status) => {
+    const writes = setup(() =>
+      Response.json({ error: 'rejected' }, { status }),
+    );
+    render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+    await screen.findAllByText(/Fictional offer/);
+    openCreate();
+    fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+      target: { value: 'Fictional unsaved template' },
+    });
+    fireEvent.submit(
+      screen
+        .getByRole('button', { name: 'Vorlage speichern' })
+        .closest('form')!,
+    );
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Bezeichnung') as HTMLInputElement).disabled,
+    ).toBe(false);
+    expect(
+      screen.queryByRole('button', { name: 'Speicherauftrag wiederholen' }),
+    ).toBeNull();
+    expect(writes).toHaveLength(1);
+  },
+);
+test.each([
+  'id',
+  'version',
+  'state',
+  'content',
+  'position id',
+  'malformed JSON',
+])(
+  'an implausible create response (%s) stays in safe retry state',
+  async (mutation) => {
+    const writes = setup((body) => {
+      if (mutation === 'malformed JSON')
+        return new Response('{', { status: 201 });
+      const saved = createdBody(body);
+      if (mutation === 'id') saved.id = template.id;
+      if (mutation === 'version') saved.version = 2;
+      if (mutation === 'state') saved.state = 'inactive';
+      if (mutation === 'content') saved.subject = 'Unexpected subject';
+      if (mutation === 'position id')
+        (saved.positions as Array<Record<string, unknown>>)[0]!.id = '';
+      return Response.json(saved);
+    });
+    render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+    await screen.findAllByText(/Fictional offer/);
+    openCreate();
+    fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+      target: { value: 'Fictional pending template' },
+    });
+    fireEvent.change(screen.getByLabelText('Beschreibung'), {
+      target: { value: 'Fictional position' },
+    });
+    fireEvent.submit(
+      screen
+        .getByRole('button', { name: 'Vorlage speichern' })
+        .closest('form')!,
+    );
+
+    expect(
+      await screen.findByText(
+        mutation === 'malformed JSON'
+          ? 'Der Speicherauftrag ist unklar. Bitte denselben Auftrag sicher wiederholen.'
+          : 'Die Speicherantwort war unplausibel. Bitte denselben Auftrag sicher wiederholen.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Speicherauftrag wiederholen' }),
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Bezeichnung') as HTMLInputElement).matches(
+        ':disabled',
+      ),
+    ).toBe(true);
+    expect(writes).toHaveLength(1);
+  },
+);
+test('an empty or older list cannot remove a confirmed create until a later GET is current', async () => {
+  let reads = 0;
+  let created: Record<string, unknown> | null = null;
+  const writes = setup(
+    (body) => {
+      created = createdBody(body);
+      return Response.json(created);
+    },
+    () => {
+      reads++;
+      if (reads === 1) return Response.json([template]);
+      if (reads === 2) return Response.json([]);
+      if (reads === 3) return Response.json([template]);
+      return Response.json(created ? [created] : []);
+    },
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional persisted template' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(
+    await screen.findByText(
+      'Vorlage gespeichert. Der Listenstand ist noch nicht aktuell. Bitte Vorlagen neu laden.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText('Angebot: Fictional persisted template – 0 Position(en)'),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Vorlagen neu laden' }));
+  await screen.findByText(/Listenstand ist noch nicht aktuell/);
+  expect(
+    screen.getByText('Angebot: Fictional persisted template – 0 Position(en)'),
+  ).toBeTruthy();
+  const reload = screen.getByRole('button', { name: 'Vorlagen neu laden' });
+  reload.focus();
+  fireEvent.click(reload);
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(reads).toBe(4);
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fictional persisted template',
+    }),
+  );
+});
+test('a newer server version replaces the confirmed receipt after create', async () => {
+  let reads = 0;
+  let created: Record<string, unknown> | null = null;
+  const writes = setup(
+    (body) => {
+      created = createdBody(body);
+      return Response.json(created);
+    },
+    () => {
+      reads++;
+      if (reads === 1) return Response.json([template]);
+      const newer = {
+        ...created,
+        version: 2,
+        name: 'Fictional newer template from another writer',
+      };
+      return Response.json(newer ? [newer] : []);
+    },
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional created template' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(
+    await screen.findByText(
+      'Vorlage gespeichert. Die Vorlage wurde inzwischen geändert; der aktuelle Stand wurde geladen.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/Fictional newer template from another writer/),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Vorlagen neu laden' }),
+  ).toBeNull();
+  expect(writes).toHaveLength(1);
+});
+test('successful reconciliation does not steal focus after the user moves elsewhere', async () => {
+  let reads = 0;
+  let created: Record<string, unknown> | null = null;
+  let updated: Record<string, unknown> | null = null;
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const writes = setup(
+    (body) => {
+      if (typeof body.requestId === 'string') {
+        created = createdBody(body);
+        return Response.json(created);
+      }
+      updated = savedBody(body);
+      return Response.json(updated);
+    },
+    () => {
+      reads++;
+      if (reads === 1) return Response.json([template]);
+      if (reads === 2)
+        return Response.json({ error: 'unavailable' }, { status: 503 });
+      if (reads === 3) return pending;
+      return Response.json([
+        updated ?? template,
+        ...(created ? [created] : []),
+      ]);
+    },
+  );
+  render(
+    <>
+      <button type="button">Fictional external focus target</button>
+      <DocumentTemplatesPanel csrfToken="fictional-csrf" />
+    </>,
+  );
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional created template' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  expect(
+    await screen.findByRole('button', { name: 'Vorlagen neu laden' }),
+  ).toBeTruthy();
+  const reload = screen.getByRole('button', { name: 'Vorlagen neu laden' });
+  reload.focus();
+  fireEvent.click(reload);
+  const external = screen.getByRole('button', {
+    name: 'Fictional external focus target',
+  });
+  external.focus();
+  finish(Response.json(created ? [template, created] : [template]));
+
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(document.activeElement).toBe(external);
+  const edit = screen.getByRole('button', {
+    name: 'Vorlage bearbeiten: Fictional offer',
+  });
+  fireEvent.click(edit);
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional later update' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  await vi.waitFor(() => expect(writes).toHaveLength(2));
+  await vi.waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Vorlage bearbeiten: Fictional offer',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false),
+  );
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fictional offer',
+    }),
+  );
+  expect(writes[1]!.method).toBe('PUT');
+});
+test('a known rejection of an uncertain retry keeps the original request locked', async () => {
+  let attempts = 0;
+  const writes = setup(() => {
+    attempts++;
+    if (attempts === 1)
+      return Response.json({ error: 'unknown' }, { status: 503 });
+    if (attempts === 2)
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    return Response.json(createdBody(writes[0]!.body));
+  });
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional retried template' },
+  });
+  const bodyForm = screen
+    .getByRole('button', { name: 'Vorlage speichern' })
+    .closest('form')!;
+  fireEvent.submit(bodyForm);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Speicherauftrag wiederholen' }),
+  );
+
+  expect(
+    await screen.findByText(
+      'Bitte erneut anmelden, um die Vorlage zu speichern.',
+    ),
+  ).toBeTruthy();
+  expect(
+    (screen.getByLabelText('Bezeichnung') as HTMLInputElement).matches(
+      ':disabled',
+    ),
+  ).toBe(true);
+  expect(
+    screen.getByRole('button', { name: 'Speicherauftrag wiederholen' }),
+  ).toBeTruthy();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Speicherauftrag wiederholen' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Speicherauftrag wiederholen' }),
+  );
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(writes).toHaveLength(3);
+  expect(writes[0]!.body).toEqual(writes[1]!.body);
+  expect(writes[0]!.body).toEqual(writes[2]!.body);
+  expect(
+    screen.getAllByText(
+      /Angebot: Fictional retried template – 0 Position\(en\)/,
+    ),
+  ).toHaveLength(1);
+});
 test('templates load with their positions, save exact minor units and archive with the current version', async () => {
   let listReads = 0;
-  const archived = {
-    ...template,
-    version: 2,
-    state: 'archived',
-    positions: [{ ...position, id: 'fictional-archived-position-0' }],
-  };
+  let saved: Record<string, unknown> = template;
+  let archived: Record<string, unknown> = template;
   const writes = setup(
-    (body) =>
-      body.state === 'archived'
-        ? archivedResponse(body)
-        : Response.json(template),
-    () => Response.json(listReads++ < 2 ? [template] : [archived]),
+    (body) => {
+      if (body.state === 'archived') {
+        archived = createdBody({ ...body, version: Number(body.version) });
+        archived = {
+          ...archived,
+          id: template.id,
+          version: Number(body.version) + 1,
+          state: 'archived',
+        };
+        return archivedResponse(body);
+      }
+      saved = savedBody(body);
+      return Response.json(saved);
+    },
+    () => {
+      const index = listReads++;
+      return Response.json(
+        index === 0 ? [template] : index === 1 ? [saved] : [archived],
+      );
+    },
   );
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   expect(
@@ -169,7 +703,7 @@ test('templates load with their positions, save exact minor units and archive wi
   fireEvent.click(archiveButton);
   await vi.waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0]!.body.state).toBe('archived');
-  expect(writes[0]!.body.version).toBe(1);
+  expect(writes[0]!.body.version).toBe(2);
   expect((writes[0]!.body.positions as unknown[]).length).toBe(1);
   expect(
     (writes[0]!.body.positions as Array<Record<string, unknown>>)[0],
@@ -1065,6 +1599,82 @@ test('a conflicting version is reported so the operator reloads first', async ()
   );
   expect(await screen.findByText(/Inzwischen geändert/)).toBeTruthy();
 });
+test.each(['id', 'version', 'state', 'content'])(
+  'an implausible update response (%s) keeps the edited input for GET reconciliation',
+  async (mutation) => {
+    const writes = setup((body) => {
+      const saved = savedBody(body);
+      if (mutation === 'id') saved.id = 'fictional-other-template';
+      if (mutation === 'version') saved.version = Number(body.version) + 2;
+      if (mutation === 'state') saved.state = 'archived';
+      if (mutation === 'content') saved.subject = 'Different server content';
+      return Response.json(saved);
+    });
+    render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+    await screen.findAllByText(/Fictional offer/);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Vorlage bearbeiten: Fictional offer',
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('Betreff'), {
+      target: { value: 'Fictional intended update' },
+    });
+    fireEvent.submit(
+      screen
+        .getByRole('button', { name: 'Vorlage speichern' })
+        .closest('form')!,
+    );
+
+    expect(
+      await screen.findByText(
+        'Die Speicherantwort war unplausibel. Bitte Vorlagen neu laden; dein Entwurf bleibt erhalten.',
+      ),
+    ).toBeTruthy();
+    expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+      'Fictional intended update',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Vorlagen neu laden' }));
+    await screen.findByText(/Serverstand geladen/);
+    expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+      'Fictional intended update',
+    );
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.body.version).toBe(template.version);
+  },
+);
+test('a deleted update target requires GET reconciliation and keeps the draft', async () => {
+  const writes = setup(() =>
+    Response.json({ error: 'missing' }, { status: 404 }),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional retained draft' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(
+    await screen.findByText(/Vorlage ist nicht mehr verfügbar/),
+  ).toBeTruthy();
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    'Fictional retained draft',
+  );
+  const reload = screen.getByRole('button', { name: 'Vorlagen neu laden' });
+  reload.focus();
+  fireEvent.click(reload);
+  await screen.findByText(/Serverstand geladen/);
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    'Fictional retained draft',
+  );
+  expect(document.activeElement).toBe(screen.getByLabelText('Bezeichnung'));
+  expect(writes).toHaveLength(1);
+});
 test('a failed template list is reported without breaking the form', async () => {
   vi.stubGlobal(
     'fetch',
@@ -1102,6 +1712,29 @@ test('templates stay in a list until create is requested, then focus the editor'
   expect(
     screen.getByRole('button', { name: 'Vorlage speichern' }),
   ).toBeTruthy();
+});
+test('an unchanged duplicate remains SPA-dirty while its create is pending', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const writes = setup(() => pending);
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Vorlage duplizieren: Fictional offer',
+    }),
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  expect(hasUnsavedChanges()).toBe(true);
+  expect(writes).toHaveLength(1);
+  finish(Response.json(createdBody(writes[0]!.body)));
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(hasUnsavedChanges()).toBe(false);
 });
 
 test('a confirmed new-template save closes the editor and returns focus', async () => {
@@ -1254,9 +1887,8 @@ test('an unchanged editor stays clean while an archive request disables the form
       version: template.version,
     }),
   );
-  expect(
-    await screen.findByText(/Vorlage archiviert\. Der Listenstand weicht ab/),
-  ).toBeTruthy();
+  expect(await screen.findByText('Vorlage archiviert.')).toBeTruthy();
+  expect(hasUnsavedChanges()).toBe(false);
 });
 
 test('a successful delayed save does not steal focus from another control', async () => {
@@ -1264,7 +1896,7 @@ test('a successful delayed save does not steal focus from another control', asyn
   const pending = new Promise<Response>((resolve) => {
     finish = resolve;
   });
-  setup(() => pending);
+  const writes = setup(() => pending);
   render(
     <>
       <button type="button">Fictional external focus target</button>
@@ -1285,7 +1917,7 @@ test('a successful delayed save does not steal focus from another control', asyn
     name: 'Fictional external focus target',
   });
   external.focus();
-  finish(Response.json(template));
+  finish(Response.json(savedBody(writes[0]!.body)));
   await screen.findByText('Gespeichert.');
   expect(document.activeElement).toBe(external);
 });

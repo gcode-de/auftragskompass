@@ -25,6 +25,15 @@ type Template = {
   state: string;
   positions: Position[];
 };
+type TemplatePayload = Omit<Template, 'id' | 'version'>;
+type CreateAttempt = {
+  requestId: string;
+  body: string;
+  payload: TemplatePayload;
+};
+type SaveRecovery =
+  | { kind: 'confirmed'; template: Template }
+  | { kind: 'put'; id: string; version: number };
 type ArchiveReconciliation = {
   id: string;
   outcome: 'unknown' | 'stale' | 'confirmed';
@@ -168,6 +177,43 @@ function sameTemplateContent(actual: Template, expected: Template) {
   );
 }
 
+function matchesTemplateWrite(
+  value: unknown,
+  expected: TemplatePayload,
+  id: string | undefined,
+  version: number,
+): value is Template {
+  if (!isTemplate(value)) return false;
+  return (
+    value.id.trim().length > 0 &&
+    (!id || value.id === id) &&
+    value.version === version &&
+    value.kind === expected.kind &&
+    value.name === expected.name.trim() &&
+    value.subject === expected.subject &&
+    value.introText === expected.introText &&
+    value.outroText === expected.outroText &&
+    value.validityDays === expected.validityDays &&
+    value.state === expected.state &&
+    value.positions.length === expected.positions.length &&
+    value.positions.every((position, index) => {
+      const sent = expected.positions[index];
+      return (
+        typeof position.id === 'string' &&
+        position.id.trim().length > 0 &&
+        sent !== undefined &&
+        position.productId === (sent.productId ?? null) &&
+        position.description === sent.description.trim() &&
+        position.quantity === sent.quantity &&
+        position.unit === sent.unit.trim() &&
+        position.unitPriceMinor === sent.unitPriceMinor &&
+        position.taxBasisPoints === sent.taxBasisPoints &&
+        position.discountBasisPoints === sent.discountBasisPoints
+      );
+    })
+  );
+}
+
 export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const [rows, setRows] = useState<Template[]>([]),
     [products, setProducts] = useState<Product[]>([]),
@@ -182,9 +228,18 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     [archivePendingId, setArchivePendingId] = useState<string | null>(null),
     [archiveReconciliation, setArchiveReconciliation] =
       useState<ArchiveReconciliation | null>(null),
+    [saveRecovery, setSaveRecovery] = useState<SaveRecovery | null>(null),
+    [uncertainCreate, setUncertainCreate] = useState(false),
     [archiveFocusRequest, setArchiveFocusRequest] =
       useState<ArchiveFocusRequest | null>(null);
   const archiveInFlight = useRef(false);
+  const saveInFlight = useRef(false);
+  const listGeneration = useRef(0);
+  const saveFocusWasInForm = useRef(false);
+  const saveReconcileFocusOrigin = useRef<SaveRecovery | null>(null);
+  const deferredSaveCloseFocus = useRef(false);
+  const deferredSaveReturnTarget = useRef<HTMLElement | null>(null);
+  const createAttempt = useRef<CreateAttempt | null>(null);
   const archiveFocusIntent = useRef<ArchiveFocusIntent | null>(null);
   const archiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const editButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -197,6 +252,8 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const baselineFields = useRef('');
   const baselinePositions = useRef('');
   const reconcileButtonRef = useRef<HTMLButtonElement>(null);
+  const saveRetryButtonRef = useRef<HTMLButtonElement>(null);
+  const saveReconcileButtonRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(
     () => () => {
@@ -263,14 +320,17 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     return result;
   }
   async function refresh() {
+    const generation = listGeneration.current;
     const result = await readTemplates();
-    setRows(result);
+    if (generation === listGeneration.current) setRows(result);
     return result;
   }
   useEffect(() => {
-    void refresh().catch(() =>
-      setMessage('Vorlagen konnten nicht geladen werden.'),
-    );
+    const generation = listGeneration.current;
+    void refresh().catch(() => {
+      if (generation === listGeneration.current)
+        setMessage('Vorlagen konnten nicht geladen werden.');
+    });
     void fetch('/api/v1/products')
       .then((response) => (response.ok ? response.json() : []))
       .then((list: Product[]) =>
@@ -281,21 +341,64 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   function hasUnsavedDraft() {
     const form = editorFormRef.current;
     return (
-      editorOpenRef.current &&
-      form !== null &&
-      (JSON.stringify(
-        Array.from(
-          form.querySelectorAll<
-            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-          >('[name]'),
-        ).map((field) => [field.name, field.value]),
-      ) !== baselineFields.current ||
-        JSON.stringify(positions) !== baselinePositions.current)
+      uncertainCreate ||
+      (saveInFlight.current && editorOpenRef.current) ||
+      (saveRecovery?.kind === 'put' && editorOpenRef.current) ||
+      (editorOpenRef.current &&
+        form !== null &&
+        (JSON.stringify(
+          Array.from(
+            form.querySelectorAll<
+              HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+            >('[name]'),
+          ).map((field) => [field.name, field.value]),
+        ) !== baselineFields.current ||
+          JSON.stringify(positions) !== baselinePositions.current))
     );
+  }
+  function applyConfirmedTemplateSnapshot(
+    confirmed: Template,
+    refreshed: Template[],
+  ) {
+    const current = refreshed.find((row) => row.id === confirmed.id);
+    if (
+      !current ||
+      current.version < confirmed.version ||
+      (current.version === confirmed.version &&
+        (current.state !== confirmed.state ||
+          !sameTemplateContent(current, confirmed)))
+    ) {
+      setRows((existing) => {
+        const previous = existing.find((row) => row.id === confirmed.id);
+        const preserved =
+          previous && previous.version > confirmed.version
+            ? previous
+            : confirmed;
+        return [
+          ...refreshed.filter((row) => row.id !== confirmed.id),
+          preserved,
+        ];
+      });
+      setSaveRecovery({ kind: 'confirmed', template: confirmed });
+      setMessage(
+        'Vorlage gespeichert. Der Listenstand ist noch nicht aktuell. Bitte Vorlagen neu laden.',
+      );
+      setConversionError(true);
+      return false;
+    }
+    setRows(refreshed);
+    setSaveRecovery(null);
+    setMessage(
+      current.version > confirmed.version
+        ? 'Vorlage gespeichert. Die Vorlage wurde inzwischen geändert; der aktuelle Stand wurde geladen.'
+        : 'Gespeichert.',
+    );
+    setConversionError(false);
+    return true;
   }
   useEffect(
     () => registerUnsavedChanges(hasUnsavedDraft),
-    [editorOpen, positions],
+    [editorOpen, positions, saveRecovery, uncertainCreate],
   );
   useLayoutEffect(() => {
     if (editorOpen) {
@@ -320,13 +423,88 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         else {
           const fallback = createButtonRef.current;
           if (available(fallback)) fallback.focus({ preventScroll: true });
+          else if (saveFocusWasInForm.current) {
+            deferredSaveCloseFocus.current = true;
+            deferredSaveReturnTarget.current = target;
+          }
         }
       }
       restoreFocusAfterClose.current = true;
     }
     editorWasOpen.current = editorOpen;
   }, [editorOpen, editorGeneration, draft, editing]);
+  useLayoutEffect(() => {
+    if (busy || !saveFocusWasInForm.current) return;
+    const active = document.activeElement;
+    const focusWasLost =
+      active === document.body ||
+      (editorFormRef.current?.contains(active) === true &&
+        active instanceof HTMLElement &&
+        active.matches(':disabled'));
+    if (!focusWasLost) {
+      saveFocusWasInForm.current = false;
+      saveReconcileFocusOrigin.current = null;
+      return;
+    }
+    if (uncertainCreate) {
+      const target = saveRetryButtonRef.current;
+      if (target?.isConnected && !target.disabled) {
+        target.focus();
+        saveFocusWasInForm.current = false;
+      }
+    } else if (saveRecovery) {
+      const target = saveReconcileButtonRef.current;
+      if (target?.isConnected && !target.disabled) {
+        target.focus();
+        saveFocusWasInForm.current = false;
+      }
+    } else if (saveReconcileFocusOrigin.current) {
+      const origin = saveReconcileFocusOrigin.current;
+      const target =
+        origin.kind === 'put'
+          ? editorFormRef.current?.querySelector<HTMLElement>(
+              'input[name="name"]',
+            )
+          : editButtonRefs.current.get(origin.template.id);
+      const destination = target ?? headingRef.current;
+      if (
+        destination?.isConnected &&
+        !destination.closest('[hidden], [inert], [aria-hidden="true"]') &&
+        !(destination instanceof HTMLButtonElement && destination.disabled)
+      )
+        destination.focus({ preventScroll: true });
+      saveReconcileFocusOrigin.current = null;
+      saveFocusWasInForm.current = false;
+    } else {
+      saveFocusWasInForm.current = false;
+    }
+  }, [busy, saveRecovery, uncertainCreate]);
+  useLayoutEffect(() => {
+    if (!deferredSaveCloseFocus.current || busy) return;
+    if (document.activeElement !== document.body) {
+      deferredSaveCloseFocus.current = false;
+      deferredSaveReturnTarget.current = null;
+      saveFocusWasInForm.current = false;
+      return;
+    }
+    const recoveryTarget = uncertainCreate
+      ? saveRetryButtonRef.current
+      : saveRecovery
+        ? saveReconcileButtonRef.current
+        : null;
+    const target = recoveryTarget ?? deferredSaveReturnTarget.current;
+    const available =
+      target?.isConnected &&
+      !(target instanceof HTMLButtonElement && target.disabled) &&
+      !target.closest('[hidden], [inert], [aria-hidden="true"]');
+    if (available) target.focus({ preventScroll: true });
+    deferredSaveCloseFocus.current = false;
+    deferredSaveReturnTarget.current = null;
+    saveFocusWasInForm.current = false;
+  }, [busy, saveRecovery, uncertainCreate]);
   function begin(template: Template | null, copy = false, origin: HTMLElement) {
+    if (busy || archiveReconciliation || saveRecovery || uncertainCreate)
+      return;
     if (editorOpenRef.current && hasUnsavedDraft()) {
       if (!window.confirm('Ungespeicherte Änderungen verwerfen?')) return;
     }
@@ -361,7 +539,8 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     setEditing(Boolean(template) && !copy);
   }
   function closeEditor() {
-    if (busy || archiveReconciliation) return;
+    if (busy || archiveReconciliation || saveRecovery || uncertainCreate)
+      return;
     if (
       hasUnsavedDraft() &&
       !window.confirm('Ungespeicherte Änderungen verwerfen?')
@@ -411,21 +590,30 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setConversionError(true);
     }
   }
-  async function save(form: HTMLFormElement) {
-    if (busy || archiveReconciliation) return;
+  async function save(form: HTMLFormElement, retryCreate = false) {
+    if (saveInFlight.current || busy || archiveReconciliation || saveRecovery)
+      return;
+    if (uncertainCreate && !retryCreate) return;
+    saveFocusWasInForm.current =
+      editorFormRef.current?.contains(document.activeElement) === true ||
+      document.activeElement === saveRetryButtonRef.current;
+    saveReconcileFocusOrigin.current = null;
+    saveInFlight.current = true;
     setBusy(true);
     setMessage('');
     setConversionError(false);
     try {
-      const data = new FormData(form);
-      const input = {
-        kind: String(data.get('kind')),
-        name: String(data.get('name')),
-        subject: String(data.get('subject')),
-        introText: String(data.get('introText')),
-        outroText: String(data.get('outroText')),
-        validityDays: Number(data.get('validityDays')),
-        state: String(data.get('state')),
+      const attempt = retryCreate ? createAttempt.current : null;
+      if (retryCreate && (!attempt || editing)) return;
+      const data = retryCreate ? null : new FormData(form);
+      const input: TemplatePayload = attempt?.payload ?? {
+        kind: String(data!.get('kind')),
+        name: String(data!.get('name')),
+        subject: String(data!.get('subject')),
+        introText: String(data!.get('introText')),
+        outroText: String(data!.get('outroText')),
+        validityDays: Number(data!.get('validityDays')),
+        state: String(data!.get('state')),
         positions: positions
           .filter((position) => position.description.trim().length > 0)
           .map((position) => ({
@@ -437,8 +625,20 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             taxBasisPoints: parseHundredths(position.tax),
             discountBasisPoints: parseHundredths(position.discount),
           })),
-        ...(editing ? { version: draft!.version } : {}),
       };
+      const requestId = retryCreate
+        ? attempt!.requestId
+        : editing
+          ? undefined
+          : globalThis.crypto.randomUUID();
+      const body = retryCreate
+        ? attempt!.body
+        : JSON.stringify({
+            ...input,
+            ...(editing ? { version: draft!.version } : { requestId }),
+          });
+      if (!editing && !retryCreate)
+        createAttempt.current = { requestId: requestId!, body, payload: input };
       const response = await fetch(
         editing
           ? `/api/v1/document-templates/${draft!.id}`
@@ -449,21 +649,127 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             'content-type': 'application/json',
             'x-csrf-token': csrfToken,
           },
-          body: JSON.stringify(input),
+          body,
         },
       );
       if (!response.ok) {
-        const result = (await response.json()) as { error: string };
+        if (
+          editing &&
+          (response.status === 404 ||
+            response.status === 409 ||
+            response.status >= 500)
+        ) {
+          setSaveRecovery({
+            kind: 'put',
+            id: draft!.id,
+            version: draft!.version,
+          });
+          setMessage(
+            response.status === 409
+              ? 'Inzwischen geändert. Bitte Vorlagen neu laden; dein Entwurf bleibt erhalten.'
+              : response.status === 404
+                ? 'Vorlage ist nicht mehr verfügbar. Bitte Vorlagen neu laden; dein Entwurf bleibt erhalten.'
+                : 'Speicherergebnis unklar. Bitte Vorlagen neu laden; dein Entwurf bleibt erhalten.',
+          );
+          setConversionError(true);
+          return;
+        }
+        if (!editing && ![400, 401, 403].includes(response.status)) {
+          setUncertainCreate(true);
+          setMessage(
+            'Der Speicherauftrag ist unklar. Bitte denselben Auftrag sicher wiederholen.',
+          );
+          setConversionError(true);
+          return;
+        }
+        let result: { error?: string } = {};
+        try {
+          result = (await response.json()) as { error?: string };
+        } catch {
+          // A known HTTP rejection remains known even without a JSON body.
+        }
+        if (!editing && !retryCreate) {
+          createAttempt.current = null;
+          setUncertainCreate(false);
+        }
         setMessage(
           result.error === 'conflict'
             ? 'Inzwischen geändert. Vorlagen aktualisieren und erneut bearbeiten.'
             : result.error === 'unknown_placeholder'
               ? 'Unbekannter Platzhalter. Nur die aufgeführten Platzhalter verwenden.'
-              : 'Speichern fehlgeschlagen. Angaben, Preise und Anmeldung prüfen.',
+              : response.status === 401
+                ? 'Bitte erneut anmelden, um die Vorlage zu speichern.'
+                : response.status === 403
+                  ? 'Du darfst Dokumentvorlagen nicht ändern. Bitte deine Berechtigung prüfen.'
+                  : 'Speichern fehlgeschlagen. Angaben und Preise prüfen.',
         );
+        setConversionError(true);
         return;
       }
-      await refresh();
+      let result: unknown;
+      try {
+        result = await response.json();
+      } catch {
+        if (editing)
+          setSaveRecovery({
+            kind: 'put',
+            id: draft!.id,
+            version: draft!.version,
+          });
+        else setUncertainCreate(true);
+        setMessage(
+          editing
+            ? 'Speicherergebnis unklar. Bitte Vorlagen neu laden; dein Entwurf bleibt erhalten.'
+            : 'Der Speicherauftrag ist unklar. Bitte denselben Auftrag sicher wiederholen.',
+        );
+        setConversionError(true);
+        return;
+      }
+      const expectedVersion = editing ? draft!.version + 1 : 1;
+      if (
+        (!editing &&
+          !retryCreate &&
+          rows.some(
+            (row) =>
+              row.id ===
+              (result && typeof result === 'object' && 'id' in result
+                ? result.id
+                : undefined),
+          )) ||
+        !matchesTemplateWrite(
+          result,
+          input,
+          editing ? draft!.id : undefined,
+          expectedVersion,
+        )
+      ) {
+        if (editing)
+          setSaveRecovery({
+            kind: 'put',
+            id: draft!.id,
+            version: draft!.version,
+          });
+        else setUncertainCreate(true);
+        setMessage(
+          editing
+            ? 'Die Speicherantwort war unplausibel. Bitte Vorlagen neu laden; dein Entwurf bleibt erhalten.'
+            : 'Die Speicherantwort war unplausibel. Bitte denselben Auftrag sicher wiederholen.',
+        );
+        setConversionError(true);
+        return;
+      }
+      const saved = result;
+      listGeneration.current += 1;
+      setRows((current) => {
+        const previous = current.find((row) => row.id === saved.id);
+        if (previous && previous.version > saved.version) return current;
+        return [...current.filter((row) => row.id !== saved.id), saved];
+      });
+      setSaveRecovery({ kind: 'confirmed', template: saved });
+      if (!editing) {
+        createAttempt.current = null;
+        setUncertainCreate(false);
+      }
       const activeElement = document.activeElement;
       restoreFocusAfterClose.current =
         activeElement === document.body ||
@@ -475,19 +781,99 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setPositions([emptyPosition()]);
       form.reset();
       setMessage('Gespeichert.');
+      try {
+        const refreshed = await readTemplates();
+        applyConfirmedTemplateSnapshot(saved, refreshed);
+      } catch {
+        setSaveRecovery({ kind: 'confirmed', template: saved });
+        setMessage(
+          'Vorlage gespeichert. Die Liste konnte nicht aktualisiert werden.',
+        );
+        setConversionError(true);
+      }
     } catch (error) {
-      setMessage(
-        error instanceof Error && error.message === 'Ungültiger Dezimalwert'
-          ? 'Preise, Steuer und Rabatt mit höchstens zwei Nachkommastellen eingeben.'
-          : 'Verbindung fehlgeschlagen. Deine Eingabe bleibt erhalten.',
-      );
+      if (
+        error instanceof Error &&
+        error.message === 'Ungültiger Dezimalwert'
+      ) {
+        setMessage(
+          'Preise, Steuer und Rabatt mit höchstens zwei Nachkommastellen eingeben.',
+        );
+        setConversionError(true);
+      } else if (editing) {
+        setSaveRecovery({
+          kind: 'put',
+          id: draft!.id,
+          version: draft!.version,
+        });
+        setMessage(
+          'Speicherergebnis unklar. Bitte Vorlagen neu laden; dein Entwurf bleibt erhalten.',
+        );
+        setConversionError(true);
+      } else {
+        if (createAttempt.current) {
+          setUncertainCreate(true);
+          setMessage(
+            'Der Speicherauftrag ist unklar. Bitte denselben Auftrag sicher wiederholen.',
+          );
+        } else {
+          setMessage('Speichern fehlgeschlagen. Angaben und Preise prüfen.');
+        }
+        setConversionError(true);
+      }
     } finally {
+      saveInFlight.current = false;
+      setBusy(false);
+    }
+  }
+  async function reconcileSave() {
+    const currentRecovery = saveRecovery;
+    if (!currentRecovery || busy || saveInFlight.current) return;
+    saveFocusWasInForm.current =
+      document.activeElement === saveReconcileButtonRef.current;
+    saveReconcileFocusOrigin.current = saveFocusWasInForm.current
+      ? currentRecovery
+      : null;
+    saveInFlight.current = true;
+    setBusy(true);
+    setMessage('Vorlagen werden neu geladen …');
+    try {
+      const refreshed = await readTemplates();
+      if (currentRecovery.kind === 'confirmed') {
+        applyConfirmedTemplateSnapshot(currentRecovery.template, refreshed);
+      } else {
+        setRows(refreshed);
+        setSaveRecovery(null);
+        const row = refreshed.find((entry) => entry.id === currentRecovery.id);
+        setMessage(
+          row
+            ? 'Serverstand geladen. Dein Entwurf blieb unverändert; zum Speichern bitte die aktuelle Vorlage erneut öffnen.'
+            : 'Vorlage nicht mehr vorhanden. Dein Entwurf blieb unverändert.',
+        );
+        setConversionError(false);
+      }
+    } catch {
+      setMessage(
+        currentRecovery.kind === 'confirmed'
+          ? 'Vorlage gespeichert. Die Liste konnte nicht aktualisiert werden.'
+          : 'Der Serverstand konnte nicht abgeglichen werden. Dein Entwurf bleibt erhalten. Bitte Vorlagen neu laden.',
+      );
+      setConversionError(true);
+    } finally {
+      saveInFlight.current = false;
       setBusy(false);
     }
   }
   async function reconcileArchive(origin: HTMLElement) {
     const current = archiveReconciliation;
-    if (!current || busy || archiveInFlight.current) return;
+    if (
+      !current ||
+      busy ||
+      saveRecovery ||
+      uncertainCreate ||
+      archiveInFlight.current
+    )
+      return;
     trackArchiveFocus(current.id, origin);
     archiveInFlight.current = true;
     setBusy(true);
@@ -564,6 +950,8 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     if (
       row.state === 'archived' ||
       busy ||
+      saveRecovery !== null ||
+      uncertainCreate ||
       archiveInFlight.current ||
       archiveReconciliation !== null
     )
@@ -736,7 +1124,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           ref={createButtonRef}
           type="button"
           className="primary-action"
-          disabled={busy || archiveReconciliation !== null}
+          disabled={
+            busy ||
+            archiveReconciliation !== null ||
+            saveRecovery !== null ||
+            uncertainCreate
+          }
           onClick={(event) => begin(null, false, event.currentTarget)}
         >
           Vorlage anlegen
@@ -755,7 +1148,14 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             Platzhalter: {placeholders.map((name) => `{{${name}}}`).join(', ')}.
             Unbekannte Platzhalter werden beim Speichern abgewiesen.
           </p>
-          <fieldset disabled={busy || archiveReconciliation !== null}>
+          <fieldset
+            disabled={
+              busy ||
+              archiveReconciliation !== null ||
+              saveRecovery !== null ||
+              uncertainCreate
+            }
+          >
             <legend>{editing ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</legend>
             <label>
               Dokumentart
@@ -936,6 +1336,31 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         </form>
       )}
       <p role={conversionError ? 'alert' : 'status'}>{message}</p>
+      {uncertainCreate && editorOpen && (
+        <button
+          ref={saveRetryButtonRef}
+          type="button"
+          className="secondary-action"
+          disabled={busy}
+          onClick={() => {
+            const form = editorFormRef.current;
+            if (form) void save(form, true);
+          }}
+        >
+          Speicherauftrag wiederholen
+        </button>
+      )}
+      {saveRecovery && (
+        <button
+          ref={saveReconcileButtonRef}
+          type="button"
+          className="tertiary-action"
+          disabled={busy}
+          onClick={() => void reconcileSave()}
+        >
+          Vorlagen neu laden
+        </button>
+      )}
       {archiveReconciliation && (
         <button
           ref={reconcileButtonRef}
@@ -961,7 +1386,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                 else editButtonRefs.current.delete(row.id);
               }}
               className="secondary-action"
-              disabled={busy || archiveReconciliation !== null}
+              disabled={
+                busy ||
+                archiveReconciliation !== null ||
+                saveRecovery !== null ||
+                uncertainCreate
+              }
               aria-label={`Vorlage bearbeiten: ${row.name}`}
               onClick={(event) => begin(row, false, event.currentTarget)}
             >
@@ -969,7 +1399,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             </button>
             <button
               className="secondary-action"
-              disabled={busy || archiveReconciliation !== null}
+              disabled={
+                busy ||
+                archiveReconciliation !== null ||
+                saveRecovery !== null ||
+                uncertainCreate
+              }
               aria-label={`Vorlage duplizieren: ${row.name}`}
               onClick={(event) => begin(row, true, event.currentTarget)}
             >
@@ -985,7 +1420,9 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               disabled={
                 busy ||
                 row.state === 'archived' ||
-                archiveReconciliation !== null
+                archiveReconciliation !== null ||
+                saveRecovery !== null ||
+                uncertainCreate
               }
               aria-label={`Vorlage archivieren: ${row.name}`}
               onClick={(event) => void archive(row, event.currentTarget)}

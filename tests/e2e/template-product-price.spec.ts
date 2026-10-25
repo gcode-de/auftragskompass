@@ -65,11 +65,13 @@ type Write = {
   method: string;
   path: string;
   body: Record<string, unknown>;
+  rawBody?: string;
 };
 
 type TemplateStubOptions = {
   conflictArchiveOnce?: boolean;
   failListGetAfterArchiveOnce?: boolean;
+  loseFirstCreateResponse?: boolean;
 };
 
 async function stubTemplateApis(
@@ -84,11 +86,18 @@ async function stubTemplateApis(
   const allowedOrigin = new URL(baseURL).origin;
   let savedTemplate = structuredClone(originalTemplate);
   const createdTemplates: (typeof originalTemplate)[] = [];
+  const createReceipts = new Map<
+    string,
+    { payload: string; response: typeof originalTemplate }
+  >();
   const writes: Write[] = [];
   const unexpectedApiWrites: string[] = [];
+  const queuedTemplateLists: unknown[] = [];
   let listGets = 0;
   let archiveAttempts = 0;
   let archived = false;
+  let createAttempts = 0;
+  let failNextTemplateListGet = false;
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -137,14 +146,39 @@ async function stubTemplateApis(
   await page.route('**/api/v1/document-templates', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON() as Record<string, unknown>;
+      createAttempts += 1;
       writes.push({
         method: 'POST',
         path: '/api/v1/document-templates',
         body,
+        rawBody: route.request().postData() ?? '',
       });
+      const payload = Object.fromEntries(
+        Object.entries(body).filter(([key]) => key !== 'requestId'),
+      );
+      const payloadText = JSON.stringify(payload);
+      const requestId =
+        typeof body.requestId === 'string' ? body.requestId : null;
+      const receipt = requestId ? createReceipts.get(requestId) : undefined;
+      if (receipt) {
+        if (receipt.payload !== payloadText) {
+          await route.fulfill({
+            status: 409,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'conflict' }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify(receipt.response),
+        });
+        return;
+      }
       const positions = body.positions as Array<Record<string, unknown>>;
       const created = {
-        ...body,
+        ...payload,
         id: duplicateTemplateId,
         version: 1,
         positions: positions.map((position, index) => ({
@@ -153,6 +187,16 @@ async function stubTemplateApis(
         })),
       } as typeof originalTemplate;
       createdTemplates.push(created);
+      if (requestId) {
+        createReceipts.set(requestId, {
+          payload: payloadText,
+          response: created,
+        });
+      }
+      if (options.loseFirstCreateResponse && createAttempts === 1) {
+        await route.abort('failed');
+        return;
+      }
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -165,6 +209,23 @@ async function stubTemplateApis(
       return;
     }
     listGets += 1;
+    if (failNextTemplateListGet) {
+      failNextTemplateListGet = false;
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'synthetic list unavailable' }),
+      });
+      return;
+    }
+    if (queuedTemplateLists.length > 0) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(queuedTemplateLists.shift()),
+      });
+      return;
+    }
     if (archived && options.failListGetAfterArchiveOnce) {
       options.failListGetAfterArchiveOnce = false;
       await route.fulfill({
@@ -210,9 +271,20 @@ async function stubTemplateApis(
         }
         archived = true;
       }
+      const positions = Array.isArray(body.positions)
+        ? (body.positions as Array<Record<string, unknown>>).map(
+            (position, index) => ({
+              ...position,
+              id:
+                savedTemplate.positions[index]?.id ??
+                `88888888-8888-4888-8888-${String(index).padStart(12, '0')}`,
+            }),
+          )
+        : savedTemplate.positions;
       savedTemplate = {
         ...savedTemplate,
         ...body,
+        positions,
         version: savedTemplate.version + 1,
       } as typeof originalTemplate;
       await route.fulfill({
@@ -237,6 +309,15 @@ async function stubTemplateApis(
     products: structuredClone(catalog),
     getListGets: () => listGets,
     getArchiveAttempts: () => archiveAttempts,
+    getCreateAttempts: () => createAttempts,
+    getCreateReceipts: () => createReceipts,
+    getCreatedTemplates: () => createdTemplates,
+    failNextTemplateListGet: () => {
+      failNextTemplateListGet = true;
+    },
+    queueTemplateList: (response: unknown) => {
+      queuedTemplateLists.push(response);
+    },
   };
 }
 
@@ -395,6 +476,208 @@ test('templates start as a list and open a focused on-demand editor with safe ca
         ],
       },
     },
+  ]);
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
+
+test('confirmed template creation survives failed list refresh and reconciles without losing the saved row', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  const api = await stubTemplateApis(page);
+  await openTemplateList(page);
+  const templates = page.getByRole('region', { name: 'Dokumentvorlagen' });
+  await page.getByRole('button', { name: 'Vorlage anlegen' }).click();
+  await templates.getByLabel('Bezeichnung').fill('Fiktiv bestätigte Vorlage');
+  await templates.getByLabel('Betreff').fill('Fiktiv bestätigter Betreff');
+  api.failNextTemplateListGet();
+
+  await page.getByRole('button', { name: 'Vorlage speichern' }).click();
+  await expect(
+    page.getByText(
+      'Vorlage gespeichert. Die Liste konnte nicht aktualisiert werden.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
+  await expect(
+    page.getByText('Fiktiv bestätigte Vorlage', { exact: false }),
+  ).toBeVisible();
+  expect(api.getCreateAttempts()).toBe(1);
+  expect(api.getCreateReceipts().size).toBe(1);
+  expect(api.getCreatedTemplates()).toHaveLength(1);
+  expect(api.writes[0]?.body.requestId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+  await captureTemplateEvidence(page, 'template-confirmed-save-refresh-error');
+
+  const created = api.getCreatedTemplates()[0];
+  if (!created) throw new Error('Synthetic create response was not recorded');
+  api.queueTemplateList([]);
+  await page.getByRole('button', { name: 'Vorlagen neu laden' }).click();
+  await expect(
+    page.getByText('Fiktiv bestätigte Vorlage', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Vorlagen neu laden' }),
+  ).toBeVisible();
+  expect(api.getCreateAttempts()).toBe(1);
+
+  api.queueTemplateList([
+    {
+      ...created,
+      version: 2,
+      name: 'Fiktiv serverseitig aktualisierte Vorlage',
+      subject: 'Fiktiv neuer Serverbetreff',
+    },
+  ]);
+  await page.getByRole('button', { name: 'Vorlagen neu laden' }).click();
+  await expect(
+    page.getByText('Fiktiv serverseitig aktualisierte Vorlage', {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Vorlagen neu laden' }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fiktiv serverseitig aktualisierte Vorlage',
+      exact: true,
+    }),
+  ).toBeFocused();
+  expect(api.getCreateAttempts()).toBe(1);
+  expect(api.writes).toHaveLength(1);
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
+
+test('confirmed template update survives failed list refresh and keeps the confirmed version over stale GET data', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  const api = await stubTemplateApis(page);
+  await openTemplateList(page);
+  const templates = page.getByRole('region', { name: 'Dokumentvorlagen' });
+  await page
+    .getByRole('button', {
+      name: 'Vorlage bearbeiten: Fiktive Bruttopreisvorlage',
+    })
+    .click();
+  await templates
+    .getByLabel('Bezeichnung')
+    .fill('Fiktiv bestätigte PUT-Vorlage');
+  await templates.getByLabel('Betreff').fill('Fiktiv bestätigter PUT-Betreff');
+  api.failNextTemplateListGet();
+
+  await page.getByRole('button', { name: 'Vorlage speichern' }).click();
+  await expect(
+    page.getByText(
+      'Vorlage gespeichert. Die Liste konnte nicht aktualisiert werden.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
+  await expect(
+    page.getByText('Fiktiv bestätigte PUT-Vorlage', { exact: false }),
+  ).toBeVisible();
+  expect(api.writes).toHaveLength(1);
+  expect(api.writes[0]).toMatchObject({
+    method: 'PUT',
+    path: `/api/v1/document-templates/${templateId}`,
+    body: {
+      version: 1,
+      name: 'Fiktiv bestätigte PUT-Vorlage',
+      subject: 'Fiktiv bestätigter PUT-Betreff',
+    },
+  });
+  await captureTemplateEvidence(page, 'template-confirmed-put-refresh-error');
+
+  api.queueTemplateList([structuredClone(originalTemplate)]);
+  await page.getByRole('button', { name: 'Vorlagen neu laden' }).click();
+  await expect(
+    page.getByText('Fiktiv bestätigte PUT-Vorlage', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Vorlagen neu laden' }),
+  ).toBeVisible();
+  expect(api.writes).toHaveLength(1);
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
+
+test('lost template-create response blocks mutations and safely retries the same idempotent request', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  const api = await stubTemplateApis(page, sourceProducts, {
+    loseFirstCreateResponse: true,
+  });
+  await openTemplateList(page);
+  const templates = page.getByRole('region', { name: 'Dokumentvorlagen' });
+  await page.getByRole('button', { name: 'Vorlage anlegen' }).click();
+  const name = templates.getByLabel('Bezeichnung');
+  const subject = templates.getByLabel('Betreff');
+  await name.fill('Fiktiv idempotent gespeicherte Vorlage');
+  await subject.fill('Fiktiv unveränderlicher Wiederholungsinhalt');
+  await page.getByRole('button', { name: 'Vorlage speichern' }).click();
+
+  await expect(
+    page.getByText(
+      'Der Speicherauftrag ist unklar. Bitte denselben Auftrag sicher wiederholen.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(name).toHaveValue('Fiktiv idempotent gespeicherte Vorlage');
+  await expect(subject).toHaveValue(
+    'Fiktiv unveränderlicher Wiederholungsinhalt',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Vorlage speichern' }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Speicherauftrag wiederholen' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fiktive Bruttopreisvorlage',
+    }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage duplizieren: Fiktive Bruttopreisvorlage',
+    }),
+  ).toBeDisabled();
+  expect(api.getCreateAttempts()).toBe(1);
+  expect(api.getCreateReceipts().size).toBe(1);
+  expect(api.getCreatedTemplates()).toHaveLength(1);
+  expect(api.getListGets()).toBe(1);
+  const firstRequest = structuredClone(api.writes[0]?.body);
+  const firstRawBody = api.writes[0]?.rawBody;
+  expect(firstRawBody).toBeTruthy();
+  expect(firstRequest?.requestId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+  await captureTemplateEvidence(page, 'template-create-unknown-outcome');
+
+  await page
+    .getByRole('button', { name: 'Speicherauftrag wiederholen' })
+    .click();
+  await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
+  await expect(
+    page.getByText('Fiktiv idempotent gespeicherte Vorlage', {
+      exact: false,
+    }),
+  ).toBeVisible();
+  expect(api.getCreateAttempts()).toBe(2);
+  expect(api.getCreateReceipts().size).toBe(1);
+  expect(api.getCreatedTemplates()).toHaveLength(1);
+  expect(api.writes).toHaveLength(2);
+  expect(api.writes.map((write) => write.rawBody)).toEqual([
+    firstRawBody,
+    firstRawBody,
+  ]);
+  expect(api.writes.map((write) => write.body)).toEqual([
+    firstRequest,
+    firstRequest,
   ]);
   expect(api.unexpectedApiWrites).toEqual([]);
 });

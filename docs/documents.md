@@ -359,11 +359,32 @@ Aktion zurück. Ein asynchroner Speicherabschluss übersteuert keinen inzwischen
 anderweitig gesetzten Fokus. Die Liste bleibt auch bei offenem Editor erreichbar,
 damit Archivierung und Bestandsabgleich offene Eingaben weiterhin erhalten.
 
-Bekannte separate Speicherlücke: Bestätigter POST/PUT plus fehlgeschlagener
-Listen-GET wird bisher als Verbindungsfehler behandelt. Vor erneutem Anlegen
-Bestand prüfen; blinde Wiederholung kann eine weitere Vorlage erzeugen. Die
-Korrektur ist als BKP015.5 in den Paritätsanweisungen vorbereitet. Diese Änderung
-behauptet keine serverseitige POST-Idempotenz.
+### Speicherung und Bestandsabgleich (BKP015.5b)
+
+Eine vollständige, passende POST-/PUT-Antwort bestätigt die Speicherung unabhängig
+vom anschließenden Listenabruf. Der Editor schließt und die bestätigte Zeile bleibt
+sichtbar. Scheitert das Neuladen oder enthält es einen älteren, leeren oder
+widersprüchlichen Stand, erklärt die Oberfläche: gespeichert, Liste noch nicht
+aktuell. „Vorlagen neu laden“ wiederholt ausschließlich den GET. Eine tatsächlich
+neuere Serverversion kann als aktueller Stand übernommen werden.
+
+Bei verlorener, fehlerhafter oder unplausibler Anlageantwort bleiben Eingaben und
+der eingefrorene Auftrag erhalten; weitere Änderungen sind gesperrt.
+„Speicherauftrag wiederholen“ sendet dieselben JSON-Daten mit derselben UUID.
+Auch eine zwischenzeitlich abgelaufene Anmeldung oder fehlende Berechtigung darf
+diese Vorgangsidentität nicht löschen. Es erfolgt keine automatische Wiederholung.
+Die Zuordnung beruht auf der serverseitigen Quittung aus BKP015.5a und nicht auf
+einer ähnlich aussehenden Listenzeile. Dieser Wiederholungszustand lebt im geöffneten
+Editor; eine browserübergreifende Entwurfs-/Vorgangswiederherstellung ist nicht
+implementiert. Beim Wechsel innerhalb der App greift die bestehende Dirty-Abfrage;
+Browser-Neuladen oder -Schließen speichert diesen Wiederholungszustand nicht.
+
+Bei unklarem PUT oder Versionskonflikt lädt die Abgleichaktion nur den aktuellen
+Bestand; sie ersetzt weder den getippten Entwurf noch dessen Versionsnummer.
+Die aktuelle Vorlage kann danach bewusst erneut geöffnet werden. Eine bekannte
+Ablehnung wegen Eingaben, Anmeldung oder Berechtigung erklärt den Grund und erhält
+die Eingaben. Fokus und Dirtyschutz bleiben erhalten; ein inzwischen anderweitig
+gesetzter Fokus wird nicht zurückgerissen.
 
 ## Wiederholbare Vorlagenanlage: API-Vorbereitung (BKP015.5a)
 
