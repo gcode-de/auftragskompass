@@ -8,6 +8,17 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H053 — `test: await loaded event detail language`** (25.10.2026)
+
+  CI40227220526 zu249aa47 scheitert in ui-language.test.tsx:88: Region ist
+  bereits vorhanden, Detailinhalt aber noch aria-busy=true. Gleiches geladenes
+  Überschriftenziel mit findByRole statt sofortigem getByRole abwarten. Kein
+  höheres Zeitbudget, Skip, Retry oder geänderte Produktassertion. CI-Fehler ist
+  der RED-Nachweis; schnelle Gates und gesamte Komponenten-/Unit-Suite prüfen.
+  Separater Testcommit nach abgeschlossenem Darstellungsslice, sofort pushen.
+  Schnelle Gates/Build, gesamte Unit-/Komponentensuite grün, unabhängiger
+  Luna-Review klar. CI/Images und Lieferung separat neu prüfen.
+
 - [x] **BKP015.6 — `feat: group document templates by document kind`** (25.10.2026)
 
   Kleiner lesender UI-Slice nach neuer Browserbeobachtung B35: Bookitup zeigt

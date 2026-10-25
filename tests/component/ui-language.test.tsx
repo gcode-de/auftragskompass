@@ -85,7 +85,9 @@ test('visible screens keep one page title and the detail uses Event language', a
   fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
   const details = await screen.findByRole('region', { name: 'Event-Details' });
   expect(
-    within(details).getByRole('heading', { name: 'Event: Synthetic event' }),
+    await within(details).findByRole('heading', {
+      name: 'Event: Synthetic event',
+    }),
   ).toBeTruthy();
   expect(
     within(details).getByRole('combobox', { name: 'Status des Events' }),
