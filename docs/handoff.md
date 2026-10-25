@@ -2,6 +2,41 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Kontingentabschluss H050: 25.10.2026
+
+Bei zuletzt 92 Prozent geordnet mit Abschlussreserve beendet; Zusatzguthaben
+unverändert, keine neue Automation oder manuelle Rücksetzung. Alle Luna-Aufgaben
+beendet. Vor Fortsetzung tatsächliche Limits prüfen, keine Zusatzcredits nutzen.
+
+Funktionsstand **7ac0ba912d7e181053a6f512b18a6d4405f40325** auf
+`codex/ux-event-simplification` gepusht. Neue Einzelcommits: `38f3ccc`
+(kompakte mobile Einstellungen), `c95be20` (Logo-Upload), `7c4b78f`
+(Worker-Test), `7ac0ba9` (verlorenen URL-Wechsel abgleichen).
+CI **40172043659 läuft noch**, kein neuer Image-/Liefernachweis. Tatsächlich
+zuletzt gelesen: ae37b30, drei gesunde Container/exakte OCI, Timer aktiv,
+kein needs-attention. **H048 bleibt offen**; kein manuelles Update angestoßen.
+
+Lokale Nachweise: 260 Unit-/495 Komponententests, schnelle Gates/Build,
+vorherige vollständige Coverage-Suite 1051 Tests plus zusätzliche Negativfälle,
+18/18 Chromium und 38 Python-/zwei Node-Ops samt echtem Compose-Restore;
+nach dem letzten Hookfix drei betroffene Chromiumabläufe nochmals grün.
+Logo- und Navigationsbilder/PDFs nur privat unter
+`AuftragsKompass-Sicherung/delivery-2026-10-25/`.
+
+Fortsetzung: zuerst tatsächliche CI samt Images des Funktionsstands prüfen,
+alleinigen Auto-Updater abwarten, Checkpoint CT/Host/Betreiber abgleichen und
+Live-Assets mit sichtbarer neuer Revision abnehmen. Ignorierter vorbereiteter
+Harness `scratch/live-proof-7ac0ba9/live.config.ts` wurde noch nicht gegen die
+neuen Live-Assets ausgeführt; nur freigegebene statische Remote-GETs,
+Geschäfts-APIs/DB/Renderer lokal fiktiv. Danach Doku-Historie von
+`codex/branding-handoff-20261025` per geprüftem Fast-forward zurückführen,
+kein Force-Push. Nächster Code-Slice BKP015.2 ist ausführlich in
+[Dokument-/Mailtickets](bookitup-parity/tasks-documents-mail.md) vorbereitet,
+noch nicht umgesetzt. Weiter Ponytail full/Impeccable und klar getrennte
+Luna-Dateizuständigkeiten; REA nur bei echter Referenz-/Runtime-Untersuchung,
+Taste v2 nicht auf Verwaltungsflächen erzwingen. Keine Paritätsvollständigkeit
+oder echte Kundendaten-/Geräteabnahme behaupten.
+
 ## H049: nach Listenerinstallation aktuelle Route abgleichen, 25.10.2026
 
 H047 ist als `7c4b78f` gepusht. Dessen CI 40171302012 wurde im bisherigen

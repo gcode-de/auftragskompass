@@ -12,6 +12,77 @@ Alle Pakete **offen**. [Ausführungsanleitung](agent-playbook.md) und [Designver
 
 **Tests zuerst:** Vorlagenart-/Archivfilter, Dirty-/Fokus-/409, Produktübernahme kopiert exakte Preise/Steuer, freie Position bleibt erhalten, Vorschau escaping und unbekannte Tokens, Vorschau verbraucht keine Nummer/ändert keine Vorlage. Mobile Positionsfelder als lesbare Gruppen statt zusammengedrückte Achtspaltentabelle. **Nicht dabei:** Mailvorlagen oder allgemeiner Layoutbuilder. Commit erster Slice `feat: edit document templates through a focused workflow`.
 
+### Nächster begrenzter Unter-Slice: BKP015.2, Archivierung zuverlässig rückmelden
+
+**Quellbefund 25.10.2026, c95be20/7c4b78f:** In
+`apps/admin/src/DocumentTemplatesPanel.tsx` ruft der Archivieren-Knopf direkt
+`fetch(..., {method: 'PUT', ...}).then(() => refresh())` auf. Er prüft weder
+`response.ok` noch den Versionskonflikt und fängt Promise-Ablehnungen nicht.
+`busy` wird dort nicht gesetzt. Der bestehende Komponentenfall prüft nur den
+abgesendeten Versions-/Positionskörper. Dies ist eine beobachtete Quelllücke,
+keine neue Bookitup-Runtime-Beobachtung. **Noch nicht implementiert.**
+
+Vor Coding als eigenen nummerierten Hauptplan-Slice aktivieren. Vorschlag:
+`fix: handle document template archive outcomes safely`. Genau diesen Ablauf
+korrigieren, keinen großen Vorlageneditor, Filter, neue API oder Migration
+hineinziehen. Ponytail full, Impeccable Operate für verständliche Rückmeldung;
+vorhandene Aktionsstufen, Tokens und unveränderte Feld-/Positionsmodelle nutzen.
+
+1. Zuerst `DocumentTemplatesPanel.tsx`, `packages/core/src/document-templates.ts`
+   und `tests/component/document-templates.test.tsx` vollständig lesen; echte
+   Antwortform und Versionsregeln prüfen. Bestehende Einzelvorlage/Positionen
+   samt Produktbezug erhalten, Mandanten-/CSRF-Prüfung nicht umgehen.
+2. Vor Umsetzung roten Komponentenfall hinzufügen: Archiv-PUT liefert 409;
+   Liste und geöffnete Eingaben bleiben erhalten, sichtbare Konfliktmeldung,
+   keine Behauptung „Archiviert“. Weiterer roter Fall für verworfenen Fetch
+   (synthetischer Verbindungsfehler), ohne unbehandelte Promise-Ablehnung.
+3. Archivieren erhält einen kleinen asynchronen Handler statt ungesicherter
+   `.then`-Kette. Laufenden Auftrag sichtbar machen und gegen Doppelklick
+   sperren; Erfolg, bekannte Ablehnung und unklaren Ausgang unterscheiden.
+   Bei 409 erst aktuellen Bestand ausdrücklich laden, statt alte Version
+   erneut zu schreiben. Bei 401/403 Berechtigung/Anmeldung nennen, nicht die
+   Dateiformate oder ein anderes Feature. Bei fehlender Vorlage verständlich
+   Bestand abgleichen. Feldvalidierung niemals als Erfolg darstellen.
+4. Erfolgreicher PUT und danach fehlgeschlagener Listen-GET sind zwei
+   unterschiedliche Ergebnisse. Die bestätigte Archivierung muss erkennbar
+   bleiben und darf nicht nochmals gesendet werden, nur weil die Liste nicht
+   neu geladen werden konnte. Antwort vor Verwendung auf die für Bestätigung
+   nötigen Merkmale prüfen; keine unvalidierte JSON-Zeile in die Oberfläche
+   übernehmen. Bei verlorenem PUT-Ergebnis oder unplausibler Antwort ist der
+   Ausgang unklar: keine automatische Wiederholung. Vor erneutem Archivieren
+   GET-Abgleich, mit sichtbarem Retry für ausschließlich den lesenden Abruf.
+   Die bestehenden Datenbank-Versionsregeln ersetzen diese Rückmeldung nicht.
+5. Liste aktualisieren darf einen offenen Vorlagenentwurf nicht zurücksetzen.
+   Kein `begin(...)`, Form-Reset oder Route-Remount nur zur Aktualisierung.
+   Neue/Editieren/Duplizieren-Semantik nicht nebenbei umbauen. Den archivierten
+   Zustand mit Text tragen; Farbe allein genügt nicht. Fokus nach einem
+   verschwundenen/deaktivierten Auslöser sinnvoll erhalten, Meldungen über
+   vorhandene Status-/Alertmuster ausgeben.
+6. Abnahme: erfolgreicher versionierter PUT einschließlich unveränderter
+   Positionen/CSRF, 409, 400, 401/403, fehlende Vorlage, Netzwerk/5xx,
+   fehlerhafte Erfolgsantwort, Erfolg plus GET-Fehler/GET-Retry und Doppelklick.
+   Genau ein schreibender Auftrag bis zum Ergebnis/Abgleich. Bei jedem
+   Fehler bleiben Liste und ggf. getippter Betreff/Position erhalten. Der
+   archivierte Knopf bleibt gesperrt; keine zweite Archivierung nach Erfolg.
+7. Betroffenen Browserpfad in `tests/e2e/template-product-price.spec.ts`
+   wiederverwenden: synthetische Vorlagen, vorhandene Produkt-/Preisprüfungen
+   erhalten; Konflikt und bestätigte Archivierung mit fehlgeschlagenem Reload
+   bei Desktop und 320px, beide Themes, Tastatur/Fokus und axe prüfen.
+   Keine echte Vorlage oder Kundendaten zum Ausprobieren ändern.
+8. Schnelle Gates und betroffene Komponenten-/Browserprüfungen, Changed-Code-
+   Coverage, unabhängiges Review, tatsächliche Screenshots, DESIGN nur bei
+   geänderter Bedienkonvention aktualisieren. Explizite Pfade stagen, gesamten
+   staged Diff lesen und fokussierten Commit sofort pushen. Linux-CI/Images
+   und Liefernachweis getrennt prüfen. **BKP015 insgesamt bleibt offen**:
+   fokussierter Editor, Suche/Filter und deterministische Vorlagenvorschau
+   sind mit dieser Fehlerkorrektur noch nicht erledigt.
+
+Bei Luna-Zusammenarbeit: ein Coding-Agent besitzt Panel und Komponentenfälle,
+ein Browser-Agent ausschließlich den genannten E2E-Pfad; Koordinator besitzt
+Plan/Dokumentation/Integration/Abschlussreview. Keine parallelen Änderungen
+an derselben Datei, keine Quota-/Credits-Ausweichlösung. Erst tatsächliches
+Restkontingent und Abschlussreserve prüfen, dann diesen Slice starten.
+
 ## BKP016 — Dokumententwürfe vollständig und unabhängig bearbeiten
 
 **P1 für alltagstaugliche Angebote, nach bestehender C051-Basis.** Lesen `EventDocuments.tsx`, `documents.ts`, `document-templates.ts`, `document-snapshot.ts`, `document-totals.ts`, `document-pdf.ts`, `document-artifacts.ts`, `schema.ts`, Migrationen 0026–0031 (unverändert lassen), Dokumentkomponenten-/Integrationstests und Rendering-/Geldtests.

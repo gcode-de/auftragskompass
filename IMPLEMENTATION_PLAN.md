@@ -8,6 +8,17 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H050 — `docs: record quota pause and pending branding delivery`** (25.10.2026)
+
+  Bei beobachteten 92 Prozent mit Abschlussreserve sichern: Funktionsstand
+  7ac0ba9 auf UX gepusht, CI 40172043659 noch aktiv, H048 offen. Tatsächlich
+  verifizierten Runtime-Zwischenstand und lokale Prüfungen getrennt festhalten,
+  genauen BKP015.2-Archivierungsauftrag für nächste Agenten dokumentieren.
+  Nur Doku auf eigener Branch, um die laufende UX-Freigabe nicht abzubrechen.
+  Keine Zusatzcredits, keine automatische Wiederaufnahme; vor Fortsetzung
+  Limits/CI/Runtime prüfen und erst H048 abschließen. Dokumentationscheck,
+  explizite Pfade, gesamter staged Diff und sofortiger Push.
+
 - [x] **H049 — `fix: reconcile workspace routes when listeners mount`** (25.10.2026)
 
   CI 40171302012 scheitert im Sprach-/Navigationskomponentenfall an fehlender
