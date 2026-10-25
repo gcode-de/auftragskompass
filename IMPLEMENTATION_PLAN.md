@@ -8,6 +8,16 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H051 — `test: await layout reload focus restoration`** (25.10.2026)
+
+  CI40197096114 scheitert ausschließlich in der bestehenden Logo404-Recovery-
+  Fokusprüfung: Status ist gerendert, document.activeElement noch body. Der
+  Produktcode fokussiert in einem passiven React-Effekt nach loading/busy.
+  Denselben exakten Fokusvertrag im Test mit vorhandenem waitFor und unverändertem
+  Standardbudget prüfen, keine Produktänderung/entfernte Assertion/Testsperre.
+  CI-RED als Ausgangsbeleg, 519 Komponenten-/260 Unit-Tests und schnelle Gates/Build grün,
+  unabhängiger Review, expliziter Diff/Commit/Push. Kein Image/Deploy aus roter CI.
+
 - [x] **BKP015.4 — `feat: open document template editors on demand`** (25.10.2026)
 
   Zunächst Vorlagenliste mit einer Anlegen-Aktion statt dauerhaft großem Formular.

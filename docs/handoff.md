@@ -2,6 +2,33 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Abschlussreserve: CI-Fokusprüfung H051, 25.10.2026
+
+Neue Funktionscommits auf UX gepusht:22144e6 (Archivierung), f26c137
+(konsistente Liste),7747cb8 (Editor auf Aufruf). Lokal vollständige1082 Tests,
+21 Chromiumabläufe und abschließend38 Python-/zwei Node-Ops grün.
+CI40197096114 zu7747cb8 scheiterte im bestehenden Layout-Logo404-Test733:
+DOM-Status vorhanden, Fokus noch body. Images wurden übersprungen, kein Update.
+H051 wartet im Test mit vorhandenem waitFor/Standardbudget auf denselben exakten
+Fokusvertrag; Produktcode fokussiert nach loading/busy im passiven Effekt.
+Kein höheres Budget, Skip oder Produktwechsel; unabhängiger Luna-Review klar.
+Nach H051 erneut519 Komponenten-/260 Unit-Tests und schnelle Gates/Build grün.
+
+Bei83 Prozent nur noch Tests/Doku/Commit/Push abschließen; spätestens85 stoppen,
+keine Zusatzcredits. **Auslieferung der drei neuen Slices bleibt offen.** Zuerst
+neue CI quality+images tatsächlich prüfen, alleinigen Auto-Updater abwarten,
+gesund/exakte OCI/Checkpoint CT+Host+Betreiber und Live-Assets verifizieren.
+Zuletzt nur lesend e9fa074 auf drei gesunden Containern, Timer aktiv/Service
+inaktiv, kein needs-attention, Option-Drain off; vollständiger früherer
+Liefernachweis7ac0ba9 unten. Keine manuelle Aktualisierung/echten Datenänderungen.
+
+Vorbereiteter ignorierter Harness `scratch/live-template-proof/` enthält
+Static-only-Proxy und Kopie der fünf synthetischen Vorlagenabläufe samt exaktem
+Versionslabel. **Noch nicht gegen neue Live-Assets ausgeführt.** Verifier hat
+derzeit7747cb8 hardcodiert; vor Nutzung auf den wirklich freigegebenen vollständigen
+SHA ändern. Keine Geschäfts-API-Aufrufe zur echten Domain. Danach BKP015.5 gemäß
+ausführlichen Anweisungen unten. Keine neue automatische Wiederaufnahme geplant.
+
 ## BKP015.4: Vorlageneditor auf Aufruf, 25.10.2026
 
 Zunächst nur Liste und „Vorlage anlegen“; Formular/Platzhalterhilfe erst auf

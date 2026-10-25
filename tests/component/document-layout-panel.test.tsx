@@ -730,8 +730,10 @@ test('a logo 404 reconciles the missing layout before the setup path can resume'
   expect(
     await screen.findByText('Noch kein Dokumentlayout eingerichtet.'),
   ).toBeTruthy();
-  expect(document.activeElement).toBe(
-    screen.getByRole('button', { name: 'Dokumentlayout einrichten' }),
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Dokumentlayout einrichten' }),
+    ),
   );
   expect(screen.queryByText('fictional-logo.png')).toBeNull();
   expect(hasUnsavedChanges()).toBe(false);
