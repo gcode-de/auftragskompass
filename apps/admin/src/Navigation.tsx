@@ -167,17 +167,36 @@ export function useWorkspaceRoute() {
 export function SettingsNavigation() {
   const route = useWorkspaceRoute();
   const current = settingsHashes[route as keyof typeof settingsHashes];
+  const selected = '#' + (current ?? 'settings');
   return (
     <nav className="settings-navigation" aria-label="Einstellungen">
-      {settingsLinks.map(([hash, label]) => (
-        <a
-          key={hash}
-          href={'#' + hash}
-          aria-current={hash === current ? 'page' : undefined}
+      <div className="settings-navigation-links">
+        {settingsLinks.map(([hash, label]) => (
+          <a
+            key={hash}
+            href={'#' + hash}
+            aria-current={hash === current ? 'page' : undefined}
+          >
+            {label}
+          </a>
+        ))}
+      </div>
+      <label className="settings-navigation-select">
+        Einstellungsbereich
+        <select
+          aria-label="Einstellungsbereich"
+          value={selected}
+          onChange={(event) => {
+            window.location.hash = event.target.value;
+          }}
         >
-          {label}
-        </a>
-      ))}
+          {settingsLinks.map(([hash, label]) => (
+            <option key={hash} value={'#' + hash}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
     </nav>
   );
 }

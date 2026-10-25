@@ -8,6 +8,39 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP018.1b — `feat: keep mobile settings navigation compact`** (25.10.2026)
+
+  Scope: `SettingsNavigation` nutzt dieselben vorhandenen zwölf Bereichs-/Hashwerte
+  für einen beschrifteten nativen Select „Einstellungsbereich“ bis einschließlich
+  900px; darüber bisherige Links unverändert. Auswahl ändert den Hash, vorhandene
+  Hook-/History-/Panelzustände erhalten, keine neue Routing-/UI-Abhängigkeit,
+  keine Backend-/Logo-/Filteränderung. Bestehende Tokens, 44px Höhe und Impeccable
+  Operate, kein Dashboard-Marketingstil. Anleitung im Dokument-/Mailticket.
+
+  Tests zuerst: aktueller Bereich/Direktlinks/Legacy-Hashes, alle Optionen,
+  Wechsel und Browser-Zurück, Query erhalten, schmutziger Layoutentwurf nach
+  Wechsel/Rückkehr erhalten und Home-/Dateien-/Suchschutz unverändert. Bei
+  320/390/768 Select sichtbar/Links verborgen, bei 1280 umgekehrt; auch 900/901
+  Grenze, Tastatur und kein Overflow prüfen. Alle betroffenen mobilen
+  Auth-Browserkonsumenten auf tatsächliche Bedienung anpassen, Desktopfälle
+  unverändert. Acht Theme-/Breitenbilder plus axe, Vorher/Nachher und Fokus.
+
+  Genau ein Slice; Komponenten-RED vor Umsetzung, erforderliche schnelle Gates,
+  betroffene Chromium-/Coverage-Prüfung, unabhängiger Review, DESIGN/Handoff
+  aktualisieren, explizites Staging und vollständiger Diff, Commit sofort pushen.
+
+  Abnahme: echte rote Komponentenregression vor Umsetzung, 257 Unit- und
+  476 Komponententests grün; Navigation 100 Prozent Zeilen/95,55 Prozent Zweige,
+  Changed-Code 4/4 Zeilen und 4/4 Zweige. Format/Lint/Typen/Workspace/Docs/Build
+  grün, drei betroffene Chromiumabläufe (beide Logins und Dokumentlayout) grün.
+  Acht Theme-/Breitenbilder visuell geprüft, axe und 900/901px-Grenze grün;
+  320px-Überschrift ungefähr y=226 statt y=535. Native Buchstabenauswahl,
+  Fokus/History/Query und schmutziger Entwurf geprüft; Popup-Pfeilfolgen bleiben
+  lokale Headless-Grenze ohne Produkt-Sonderlogik. Unabhängiger Review ohne
+  Blocker, Impeccable-Detector ohne neue Befunde (61 Bestandshinweise).
+  Kein Backend verändert, daher keine neue betroffene Integrationsstrecke;
+  vollständige Linux-CI bleibt zwingende Auslieferungssperre.
+
 - [x] **H046 — `docs: verify layout delivery and record the next mobile slice`** (24.10.2026): Den gepushten Funktionsstand e9ca99d nach vollständiger quality+images-CI und alleiniger automatischer Aktualisierung abschließen: exakte OCI ×3/gesund, Checkpoint CT/Host/Betreiber gleich, Drain off/kein needs-attention, Live-Assets mit sichtbarer Buildkennung plus vollständig fiktiver lokaler Geschäfts-API prüfen. Lokale abschließende gesamte Chromium-/Betriebssuite und tatsächliche Auslieferungsbeweise dokumentieren. Mobile Einstellungsnavigation als nächsten klar begrenzten Slice mit bestehender 320px-Wortbruch-Lücke notieren; Logooberfläche und übrige Parität offen lassen. Kontingent vor Erschöpfung mit Reserve beenden, keine Zusatzcredits oder automatische Wiederaufnahme. Ein Dokumentationscommit, explizites Staging/Review und sofortiger Push; dessen neue CI ist kein weiterer Funktionsdeploynachweis. Zwischenabschluss bei 95 Prozent: lokal alle 18 Chromiumabläufe und 38 Python-/zwei Node-Ops samt Restore grün; CI 40134505361 quality erfolgreich, images noch aktiv. Laufzeit bleibt zuletzt geprüft 132ace1. Doku separat auf codex/layout-delivery-handoff-20261024 pushen, damit laufende UX-Images nicht abgebrochen werden. H046 bleibt bis echtem Liefer-/Checkpoint-/Live-Asset-Nachweis offen. Abschluss am 25.10.2026: CI 40134505361 quality+images grün; e9ca99d auf drei gesunden Containern mit exakter OCI, Drain off/kein needs-attention. Checkpoint CT/Host/Betreiber identisch, 2.384.655 Bytes, SHA-256 `bc5efc03feccbde5ce8d11469e2ae721e9f0f60a6714428cdebbf0b6e4953164`. Live-Assets mit sichtbarer Version e9ca99d, acht Theme-/Breitenbildern, axe und tatsächlicher lokaler Chromium-PDF erfolgreich; APIs/DB/Renderer ausschließlich lokal fiktiv. Getrennte Doku-Historie per geprüftem Fast-forward in UX zurückgeführt, kein Force-Push. Mobiler Wortbruch bleibt nächster Slice.
 
 - [x] **BKP018.1 — `feat: configure document layout with a safe unsaved preview`** (24.10.2026): Einstellungen→Dokumentlayout als kleiner vertikaler Slice auf vorhandener Layout-API. Zusammenfassung mit explizitem Bearbeiten, bei 404 bewusste Ersteinrichtung; keine automatischen Geschäftsdaten oder Speicherung. Absendername/-anschrift plus bestehende Farben/Schrift und Seiten-/Positionsnummern, Darstellung progressiv; sichtbare neutrale Darstellungsstartwerte vor ausdrücklichem Speichern zulässig. POST-Erstanlage/versionsgesichertes PUT, gültige bestätigte Antwort direkt übernehmen; Ladefehler von 404 trennen, Konflikt/unklarer Speicherausgang erhalten Eingaben und verlangen Bestandsabgleich, Dirty-Schutz vorhandener Navigation verwenden. Neuer authentifizierter/CSRF-geschützter POST /api/v1/document-layout/preview nimmt genau dieselben neun editierbaren Felder ohne Version und rendert ausschließlich fiktive Beispieldaten über vorhandenen Renderer; aktuelles gespeichertes Logo nur aus eigenem Mandanten. Keine Kontakte/Events/Nummern/Dokumente/Artefakte/Audits/Layouts verändern, no-store und neutrale Fehler bei fehlendem Logo/Renderer. Gemeinsamen Renderer/Storage im API-Prozess injizieren, keine neue Abhängigkeit. UI zeigt ausdrücklich erzeugte Vorschau über geprüftes PDF-Blob und bewusst geklickten neuen Tab/Download, alte URLs widerrufen; kein iframe/CSP-Aufweichen, Vorschau nicht mit Speichern verwechseln. Logo-Uploadoberfläche folgt separat. Tests zuerst für Setup/GET404vsFehler/POST/PUT/409/unklare Antwort/Reload/Dirty und unsaved Preview; API Auth/CSRF/Schema/Tenant/keine Nebenwirkung/Logo-/Rendererfehler; realer synthetischer PG-/HTTPS-Chromiumablauf, 320/390/768/1280 beide Themes, axe und echte Vorschau-PDF. Vorhandene finale Bytes/Hashes unverändert. Ponytail/Impeccable bestehende Designwelt, klar getrennte Luna-Dateizuständigkeiten, required Gates/Review, explizites Staging, ein Commit und sofortiger Push. Keine vollständige BKP018-Parität behaupten. Abnahme: echte REDs vor Umsetzung, 16 neue Komponentenregressionen und 12 Layout-Integrationstests; gesamte Coverage-Suite 1033 Tests grün (97,06 Prozent Zeilen/93,29 Prozent Branches), Changed-Code 215/234 Zeilen und 201/236 Branches. Format/Lint/Typen/Workspace/Docs/Build grün; realer PG-/HTTPS-/Chromiumablauf mit acht Theme-/Breitenbildern, axe und tatsächlicher einseitiger PDF grün. Unabhängige Backend-/UI-Reviews ohne Blocker; Detector ohne Befund im geänderten Code (61 Bestandshinweise). Headless Chrome lädt den PDF-Öffnenlink herunter, daher gültige Bytes statt interner Viewer-URL geprüft. Mobile Einstellungsnavigation bricht lange Wörter weiterhin unschön; kein Anspruch vollständiger mobiler Navigationsparität. Testauslieferung erst mit final grünen Images/Checkpoint belegen.

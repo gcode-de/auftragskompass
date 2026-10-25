@@ -42,16 +42,17 @@ Alle Pakete **offen**. [Ausführungsanleitung](agent-playbook.md) und [Designver
 
 **Tests zuerst:** zugelassene/gefälschte MIME- und Dateisignaturen, Übergröße, fremder Tenant, Versionkonflikt, Storagefehler, Reload, Vorschau vs tatsächliches Rendering, finaler PDF-Hash bleibt nach Änderung. Uploadregeln nicht aus allgemeinen UI-Dateiendungen ableiten. **Done:** bestehende Layout-API tatsächlich bedienbar und in beiden Themes lesbar. Commit `feat: configure document branding with a safe preview`.
 
-### Nächster kleiner UI-Slice nach BKP018.1: mobile Einstellungsnavigation
+### BKP018.1b: mobile Einstellungsnavigation
 
 **Befund 24.10.2026, lokal gebauter e9ca99d-Code:** Bei 320px nimmt die bestehende
 zweispaltige Einstellungsnavigation viel Platz vor dem Formular ein. Lange
 Beschriftungen wie „Dokumentlayout“ und „Nummernkreise“ brechen mitten im Wort.
 Nichts ist abgeschnitten, die Anordnung entspricht aber noch nicht dem Ziel
-„nur das Nötigste zuerst“. Dies ist ein eigener nächster Slice, keine bereits
-umgesetzte Verbesserung und keine neue Bookitup-Runtime-Beobachtung.
+„nur das Nötigste zuerst“. Dies war die Ausgangslage vor BKP018.1b; keine neue
+Bookitup-Runtime-Beobachtung. Der aktuelle Implementierungs-/Prüfstand steht
+im Hauptplan und in der Projektübergabe.
 
-**Vorgeschlagener Scope BKP018.1b, vor Coding im Hauptplan aktivieren:**
+**Begrenzter Scope BKP018.1b:**
 `SettingsNavigation` in `apps/admin/src/Navigation.tsx` und ausschließlich seine
 responsiven Regeln in `styles.css`. Bei der bestehenden mobilen Grenze bis
 900px einen beschrifteten nativen Select „Einstellungsbereich“ mit dem aktuellen

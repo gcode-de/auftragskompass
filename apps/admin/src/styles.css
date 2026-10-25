@@ -715,14 +715,22 @@ a.workspace-title:hover {
   margin: 0 0 1.75rem;
   gap: 0.5rem;
 }
-.settings-navigation a {
+.settings-navigation-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.settings-navigation-links a {
   color: var(--muted);
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
-.settings-navigation a[aria-current] {
+.settings-navigation-links a[aria-current] {
   background: var(--selected-surface);
   color: var(--selected-ink);
+}
+.settings-navigation-select {
+  display: none;
 }
 #settings > div > section + section {
   border-top: 1px solid var(--border);
@@ -922,11 +930,26 @@ button:focus-visible {
     scroll-margin-top: 5rem;
   }
   .settings-navigation {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: block;
   }
-  .settings-navigation a {
-    padding: 0.65rem;
+  .settings-navigation-links {
+    display: none;
+  }
+  .settings-navigation-select {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0;
+  }
+  .settings-navigation-select select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0.55rem 0.65rem;
+    color: var(--ink);
+    font: inherit;
+    background: var(--field-surface);
+    border: 1px solid var(--field-border);
+    border-radius: 0.4rem;
   }
   .event-row {
     grid-template-columns: minmax(0, 1fr);

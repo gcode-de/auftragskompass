@@ -187,8 +187,15 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       .getByRole('navigation', { name: 'Hauptnavigation' })
       .getByRole('link', { name: 'Einstellungen', exact: true })
       .click();
-    await page
-      .getByRole('navigation', { name: 'Einstellungen' })
+    const settingsNavigation = page.getByRole('navigation', {
+      name: 'Einstellungen',
+      exact: true,
+    });
+    const settingsSelect = settingsNavigation.locator(
+      'select[aria-label="Einstellungsbereich"]',
+    );
+    await expect(settingsSelect).toBeHidden();
+    await settingsNavigation
       .getByRole('link', { name: 'Dokumentlayout', exact: true })
       .click();
     await expect(page).toHaveURL(/#settings-document-layout$/);
@@ -271,6 +278,65 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       }
       for (const width of widths) {
         await page.setViewportSize({ width, height: 844 });
+        if (width <= 900) {
+          await expect(settingsSelect).toBeVisible();
+          await expect(
+            settingsNavigation.getByRole('combobox', {
+              name: 'Einstellungsbereich',
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(settingsSelect).toHaveValue('#settings-document-layout');
+          await expect(settingsSelect.locator('option')).toHaveCount(12);
+          await expect(
+            settingsNavigation.getByRole('link', {
+              name: 'Dokumentlayout',
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          if (width === 320) {
+            const selectBox = await settingsSelect.boundingBox();
+            const navBox = await settingsNavigation.boundingBox();
+            const headingBox = await layout
+              .getByRole('heading', { name: 'Dokumentlayout', exact: true })
+              .boundingBox();
+            const senderBox = await layout
+              .getByLabel('Absendername')
+              .boundingBox();
+            expect(selectBox).not.toBeNull();
+            expect(navBox).not.toBeNull();
+            expect(headingBox).not.toBeNull();
+            expect(senderBox).not.toBeNull();
+            expect(selectBox!.height).toBeGreaterThanOrEqual(44);
+            expect(navBox!.height).toBeLessThan(110);
+            expect(headingBox!.y).toBeLessThan(350);
+            expect(selectBox!.y + selectBox!.height).toBeLessThanOrEqual(844);
+            expect(senderBox!.y + senderBox!.height).toBeLessThanOrEqual(844);
+            await testInfo.attach(`settings-navigation-${theme}-320-geometry`, {
+              body: JSON.stringify(
+                {
+                  width,
+                  theme,
+                  navigationHeight: navBox!.height,
+                  selectHeight: selectBox!.height,
+                  headingY: headingBox!.y,
+                  senderFieldBottom: senderBox!.y + senderBox!.height,
+                },
+                null,
+                2,
+              ),
+              contentType: 'application/json',
+            });
+          }
+        } else {
+          await expect(settingsSelect).toBeHidden();
+          await expect(
+            settingsNavigation.getByRole('link', {
+              name: 'Dokumentlayout',
+              exact: true,
+            }),
+          ).toBeVisible();
+        }
         await expect
           .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
           .toBeLessThanOrEqual(width + 1);
@@ -285,15 +351,42 @@ test('document layout setup, preview, conflict recovery, and persistence work in
           expect(result.violations, `${theme} at ${width}px`).toEqual([]);
         }
       }
+      await page.setViewportSize({ width: 900, height: 844 });
+      await expect(settingsSelect).toBeVisible();
+      await expect(settingsNavigation.getByRole('link')).toHaveCount(0);
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(901);
+      await page.setViewportSize({ width: 901, height: 844 });
+      await expect(settingsSelect).toBeHidden();
+      await expect(
+        settingsNavigation.getByRole('link', {
+          name: 'Dokumentlayout',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(902);
     }
     await page.setViewportSize({ width: 1280, height: 844 });
 
     // Preview uses the real Chromium PDF renderer. The controlled GET outage
     // route is removed after setup and does not intercept its dedicated route.
     await page.unroute('**/api/v1/document-layout');
+    await page.setViewportSize({ width: 390, height: 844 });
     await layout.getByLabel('Absendername').fill('Unsaved Fictional Preview');
+    await settingsSelect.selectOption('#settings-products');
+    await expect(page).toHaveURL(/#settings-products$/);
+    await expect(page.getByRole('region', { name: 'Produkte' })).toBeVisible();
+    await settingsSelect.selectOption('#settings-document-layout');
+    await expect(page).toHaveURL(/#settings-document-layout$/);
+    await expect(layout.getByLabel('Absendername')).toHaveValue(
+      'Unsaved Fictional Preview',
+    );
     const navigationDialog = page.waitForEvent('dialog');
     page.once('dialog', (event) => void event.dismiss());
+    await page.setViewportSize({ width: 1280, height: 844 });
     await page
       .getByRole('link', { name: 'AuftragsKompass – zur Eventübersicht' })
       .click();

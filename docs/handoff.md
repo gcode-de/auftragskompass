@@ -29,10 +29,35 @@ waren lokal und fiktiv; keine Behauptung einer echten Geschäfts-API-/Kundendate
 oder Geräteabnahme. Rohbelege ausschließlich privat unter
 `AuftragsKompass-Sicherung/delivery-2026-10-24/e9ca99/`.
 
-Nächster kleiner Slice: BKP018.1b kompakter mobiler Einstellungsbereichswähler
-statt der 320px-Linkwand mit Wortbrüchen. Anleitung in
-[Dokument-/Mailtickets](bookitup-parity/tasks-documents-mail.md). Erst im Hauptplan
-aktivieren; Backend-/Logo-Uploadoberfläche und übrige Parität nicht hineinziehen.
+BKP018.1b setzt den kompakten mobilen Einstellungsbereichswähler um; der
+aktuelle lokale Prüfstand und die Auslieferungsgrenze stehen im nächsten
+Abschnitt. Die Logo-Uploadoberfläche und übrige Parität bleiben separat offen.
+
+## BKP018.1b: kompakte mobile Einstellungsnavigation, 25.10.2026
+
+Bis einschließlich 900px ersetzt ein beschrifteter nativer Select die zwölf
+ständig sichtbaren Links; darüber bleiben die bisherigen Links erhalten.
+Dieselbe Hash-Zuordnung, Direktlinks einschließlich Legacy-Aliassen, Query und
+Browser-History bleiben maßgeblich. Panels bleiben montiert, ein schmutziger
+Layoutentwurf bleibt beim Bereichswechsel erhalten. Keine neue Abhängigkeit,
+Backendänderung, Animation oder Änderung der Palette.
+
+Alle acht lokalen 320/390/768/1280 × Hell/Dunkel-Bilder visuell geprüft: bei
+320px beginnt die Layoutüberschrift ungefähr bei y=226 statt zuvor y=535.
+Bereichswähler und erstes Absenderfeld sind auf der ersten Arbeitsfläche
+sichtbar; keine Wortbruch-Linkwand. Browserprüfungen umfassen auch 900/901px,
+axe, Fokus und Entwurfserhalt. Native Buchstabenauswahl prüft die Tastatur;
+Popup-Pfeilfolgen funktionieren in lokalem Headless-Chromium nicht zuverlässig
+und sind keine behauptete Geräteabnahme. Lokale Geschäftsdaten ausschließlich
+fiktiv. Neue Auslieferung erst nach grüner CI samt Images und geprüftem
+Checkpoint/OCI bestätigen; letzter verifizierter Testbetrieb oben bleibt e9ca99d.
+
+Nächster möglicher kleiner Slice: BKP018.2 für den bestehenden sicheren
+Logo-Upload. Nur gespeichertes Layout, ausdrückliche Aktion, keine parallele
+Inhaltsbearbeitung; unklare Antwort vor Wiederholen abgleichen. Bestehende API
+hat für Logos kein CAS, konkurrierende autorisierte Uploads bleiben zuletzt
+schreibend maßgeblich. Keine Logo-Löschung oder neue Thumbnail-API erfinden.
+Vor Umsetzung eigens aktivieren und Tests zuerst ergänzen.
 
 ## Kontingentabschluss und ausstehender Liefernachweis: 24.10.2026
 

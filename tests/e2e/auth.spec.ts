@@ -963,6 +963,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       name: 'Einstellungen',
       exact: true,
     });
+    const settingsSelect = settingsNavigation.locator(
+      'select[aria-label="Einstellungsbereich"]',
+    );
+    await expect(settingsSelect).toBeHidden();
     await expect(
       settingsNavigation.getByRole('link', {
         name: 'Ressourcen',
@@ -1017,7 +1021,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       blocks.getByText(/Fictional browser maintenance.*Freigegeben/),
     ).toBeVisible();
-    for (const width of [390, 320]) {
+    for (const width of [768, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       expect(
         await resources.evaluate(
@@ -1029,12 +1033,20 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           () => document.documentElement.scrollWidth <= window.innerWidth + 1,
         ),
       ).toBe(true);
+      await expect(settingsSelect).toBeVisible();
+      await expect(
+        settingsNavigation.getByRole('combobox', {
+          name: 'Einstellungsbereich',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(settingsSelect).toHaveValue('#settings-resources');
       await expect(
         settingsNavigation.getByRole('link', {
           name: 'Ressourcen',
           exact: true,
         }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       expect(
         await settingsNavigation.evaluate(
           (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -1050,6 +1062,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     });
     await expect(page).toHaveURL(/#resources$/);
     await expect(resources).toBeVisible();
+    await expect(settingsSelect).toHaveValue('#settings-resources');
     await expect(
       settingsNavigation.getByRole('link', {
         name: 'Ressourcen',
@@ -1089,7 +1102,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         exact: true,
       }),
     ).toBeVisible();
-    for (const width of [390, 320]) {
+    for (const width of [768, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       expect(
         await products.evaluate(
@@ -1106,6 +1119,20 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           (element) => element.scrollWidth <= element.clientWidth + 1,
         ),
       ).toBe(true);
+      await expect(settingsSelect).toBeVisible();
+      await expect(
+        settingsNavigation.getByRole('combobox', {
+          name: 'Einstellungsbereich',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(settingsSelect).toHaveValue('#settings-products');
+      await expect(
+        settingsNavigation.getByRole('link', {
+          name: 'Produkte',
+          exact: true,
+        }),
+      ).toHaveCount(0);
     }
     await page.setViewportSize({ width: 1280, height: 720 });
     const productsTimeOrigin = await page.evaluate(
@@ -1116,6 +1143,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     });
     await expect(page).toHaveURL(/#products$/);
     await expect(products).toBeVisible();
+    await expect(settingsSelect).toHaveValue('#settings-products');
     await expect(
       settingsNavigation.getByRole('link', {
         name: 'Produkte',
@@ -1210,15 +1238,37 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('link', { name: 'Einstellungen', exact: true })
       .click();
     await expect(mobileDrawer).toBeHidden();
-    const mobileProductsLink = settingsNavigation.getByRole('link', {
-      name: 'Produkte',
-      exact: true,
-    });
-    await mobileProductsLink.focus();
-    await page.keyboard.press('Enter');
+    await expect(settingsSelect).toBeVisible();
+    await expect(page).toHaveURL(/#settings$/);
+    await expect(settingsSelect).toHaveValue('#settings');
+    await expect(
+      settingsNavigation.getByRole('link', {
+        name: 'Produkte',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await settingsSelect.focus();
+    await expect(settingsSelect).toBeFocused();
+    // Local macOS headless Chromium does not expose the native popup to arrow
+    // keys; use the native option typeahead for a real keyboard selection.
+    await page.keyboard.press('r');
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await expect(settingsSelect).toHaveValue('#settings-resources');
+    await expect(resources).toBeVisible();
+    await expect(settingsSelect).toBeFocused();
+    await settingsSelect.selectOption('#settings-products');
     await expect(page).toHaveURL(/#settings-products$/);
-    await expect(mobileProductsLink).toBeFocused();
+    await expect(settingsSelect).toHaveValue('#settings-products');
     await expect(products).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await expect(settingsSelect).toHaveValue('#settings-resources');
+    await page.goForward();
+    await expect(page).toHaveURL(/#settings-products$/);
+    await expect(settingsSelect).toHaveValue('#settings-products');
+    await expect(settingsSelect).toBeFocused();
+    await expect(products).toBeVisible();
+    expect(await page.evaluate(() => location.search)).toBe(queryBeforeHistory);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth + 1,

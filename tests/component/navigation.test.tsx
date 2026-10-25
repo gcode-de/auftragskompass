@@ -7,6 +7,7 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from '@testing-library/react';
 import {
   Navigation,
@@ -119,6 +120,53 @@ test('resolves deep links, settings and browser history without losing search', 
   fireEvent(window, new PopStateEvent('popstate'));
   expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('products');
   expect(window.location.search).toBe('?q=Fictional');
+});
+
+test('settings navigation has a labeled twelve-option select synced with legacy hashes and history', async () => {
+  window.history.replaceState(null, '', '/?q=Fictional#resources');
+  render(<SettingsNavigation />);
+  const settingsNavigation = screen.getByRole('navigation', {
+    name: 'Einstellungen',
+  });
+  const select = within(settingsNavigation).getByRole('combobox', {
+    name: 'Einstellungsbereich',
+  }) as HTMLSelectElement;
+  expect(select.options).toHaveLength(12);
+  expect(select.value).toBe('#settings-resources');
+  expect(
+    Array.from(select.options).map((option) => [
+      option.textContent,
+      option.value,
+    ]),
+  ).toEqual([
+    ['Stammdaten', '#settings'],
+    ['Ressourcen', '#settings-resources'],
+    ['Produkte', '#settings-products'],
+    ['Kalender-Abos', '#settings-calendar'],
+    ['Datenimport', '#import-review'],
+    ['Datenexport', '#settings-export'],
+    ['Website-Formular', '#settings-inquiry'],
+    ['Website-Eingänge', '#settings-website'],
+    ['Dokumentvorlagen', '#settings-templates'],
+    ['Dokumentlayout', '#settings-document-layout'],
+    ['Nummernkreise', '#settings-numbers'],
+    ['Konto & Zugriff', '#settings-security'],
+  ]);
+
+  fireEvent.change(select, { target: { value: '#settings-document-layout' } });
+  await waitFor(() =>
+    expect(window.location.hash).toBe('#settings-document-layout'),
+  );
+  expect(window.location.search).toBe('?q=Fictional');
+  expect(select.value).toBe('#settings-document-layout');
+
+  await act(async () => {
+    window.history.back();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(window.location.hash).toBe('#resources');
+  expect(window.location.search).toBe('?q=Fictional');
+  expect(select.value).toBe('#settings-resources');
 });
 
 test('the retired locations link redirects to events without a new history entry or query loss', () => {
