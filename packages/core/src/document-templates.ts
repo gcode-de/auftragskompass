@@ -1,9 +1,13 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, asc, eq } from 'drizzle-orm';
-import { documentTemplatePositions, documentTemplates } from './schema.js';
+import {
+  documentTemplateCreateOperations,
+  documentTemplatePositions,
+  documentTemplates,
+} from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 
@@ -84,6 +88,28 @@ export type DocumentTemplateInput = {
   positions: TemplatePositionInput[];
 };
 
+function documentTemplateRequestHash(input: DocumentTemplateInput): string {
+  const canonical = {
+    kind: input.kind,
+    name: input.name.trim(),
+    subject: input.subject,
+    introText: input.introText,
+    outroText: input.outroText,
+    validityDays: input.validityDays,
+    state: input.state,
+    positions: input.positions.map((position) => ({
+      productId: position.productId ?? null,
+      description: position.description.trim(),
+      quantity: position.quantity,
+      unit: position.unit.trim(),
+      unitPriceMinor: position.unitPriceMinor,
+      taxBasisPoints: position.taxBasisPoints,
+      discountBasisPoints: position.discountBasisPoints,
+    })),
+  };
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
 export function documentTemplateRepository(pool: Pool, tenantId: string) {
   const db = drizzle(pool),
     scope = eq(documentTemplates.tenantId, tenantId),
@@ -127,7 +153,10 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
   }
   // Read through the same connection: reading the pool inside the write
   // transaction would not see the uncommitted row.
-  async function readOne(connection: ReturnType<typeof drizzle>, id: string) {
+  async function readOne(
+    connection: Pick<ReturnType<typeof drizzle>, 'select'>,
+    id: string,
+  ) {
     const [template] = await connection
       .select()
       .from(documentTemplates)
@@ -168,11 +197,32 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
       input: DocumentTemplateInput,
       id?: string,
       version?: number,
+      requestId?: string,
     ) {
       assertTemplateText(input.subject, input.introText, input.outroText);
-      const savedId = await db.transaction(async (tx) => {
+      const requestHash = requestId
+        ? documentTemplateRequestHash(input)
+        : undefined;
+      const outcome = await db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
+        if (id && requestId) throw new DocumentTemplateError('conflict');
+        if (requestId && requestHash) {
+          const [receipt] = await tx
+            .select()
+            .from(documentTemplateCreateOperations)
+            .where(
+              and(
+                eq(documentTemplateCreateOperations.tenantId, tenantId),
+                eq(documentTemplateCreateOperations.requestId, requestId),
+              ),
+            );
+          if (receipt) {
+            if (receipt.requestHash !== requestHash)
+              throw new DocumentTemplateError('conflict');
+            return { response: receipt.response };
+          }
+        }
         let previous = 0;
         if (id) {
           const [old] = await tx
@@ -236,9 +286,21 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
           actorId,
           templateId,
         );
-        return templateId;
+        if (requestId && requestHash) {
+          const response = (await readOne(tx, templateId))!;
+          await tx.insert(documentTemplateCreateOperations).values({
+            tenantId,
+            requestId,
+            templateId,
+            requestHash,
+            response,
+          });
+          return { response };
+        }
+        return { id: templateId };
       });
-      return (await readOne(db, savedId))!;
+      if ('response' in outcome) return outcome.response;
+      return (await readOne(db, outcome.id))!;
     },
   };
 }
@@ -335,7 +397,7 @@ export function registerDocumentTemplateRoutes(
       (await repo.get(request.params.id)) ??
       reply.code(404).send({ error: 'not_found' }),
   );
-  app.post<{ Body: DocumentTemplateInput }>(
+  app.post<{ Body: DocumentTemplateInput & { requestId?: string } }>(
     '/api/v1/document-templates',
     {
       schema: {
@@ -343,7 +405,10 @@ export function registerDocumentTemplateRoutes(
           type: 'object',
           additionalProperties: false,
           required: Object.keys(fields),
-          properties: fields,
+          properties: {
+            ...fields,
+            requestId: { type: 'string', format: 'uuid' },
+          },
         },
         response: { 201: row },
       },
@@ -352,7 +417,15 @@ export function registerDocumentTemplateRoutes(
       try {
         return reply
           .code(201)
-          .send(await repo.save(request.authSession!.userId, request.body));
+          .send(
+            await repo.save(
+              request.authSession!.userId,
+              request.body,
+              undefined,
+              undefined,
+              request.body.requestId,
+            ),
+          );
       } catch (error) {
         return failure(error, reply);
       }
@@ -374,7 +447,7 @@ export function registerDocumentTemplateRoutes(
           type: 'object',
           additionalProperties: false,
           required: [...Object.keys(fields), 'version'],
-          properties: { ...fields, version },
+          properties: { ...fields, version, requestId: false },
         },
         response: { 200: row },
       },

@@ -8,6 +8,30 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.5a — `feat: make document template creation retries idempotent`** (25.10.2026)
+
+  Separat deploybare kompatible Vorbereitung für sichere Speicherrückmeldung:
+  POST akzeptiert optional eine UUID requestId, alte Clients ohne Schlüssel
+  unverändert. Neuer tenantgebundener Operationssatz mit Request-Hash und exakt
+  ursprünglichem Ergebnis (einschließlich Positions-IDs). Gleicher Schlüssel und
+  Inhalt liefert ursprüngliches Ergebnis ohne zweite Vorlage/Audit; anderer
+  Inhalt409. Nach späterem Bearbeiten/Archivieren Originalreceipt wiedergeben,
+  keine Rücksetzung aktueller Daten. Bestehenden Tenantlock/Adminprüfung/Transaktion
+  verwenden; Vorlage, Positionen, Audit und Receipt atomar. Fremdtenant/Fremdrolle
+  dürfen nichts lesen oder schreiben. PUT-CAS unverändert; requestId dort nicht
+  zulassen. Keine öffentliche Receipt-Liste, kein Idempotenzframework oder Ablauf-
+  /Löschprozess ohne gesonderte Anforderung. Migration0037 vorwärts und additiv,
+  tenantgebundener FK/PK und Hash-/Objektconstraints. Receipt enthält nur bereits
+  vorhandene Vorlagendaten; keine echten Daten in Git.
+  Tests zuerst: doppelte/parallele POSTs, Inhaltkonflikt, anderer Tenant gleicher
+  Schlüssel, verlorene Antwort+Retry, Neustart/Persistenz, später geänderte Vorlage,
+  alte unkeyed POSTs, invalidUUID400/PUT-Abweisung, Auth/CSRF, Audit-/FK-Rollback,
+  Migration/Constraints/Bestandsdaten. Echte PG-/API-Tests, schnelle Gates und
+  Coverage/Review; expliziter Diff/Commit/sofortiger Push. UI folgt in BKP015.5b;
+  diese optionale Protokollerweiterung ist allein kompatibel auslieferbar.
+  RED: identischer Schlüssel erzeugte zuvor zwei Vorlagen. 1087 Tests grün,
+  geänderte Zeilen21/22 und Branches22/22; unabhängiger Luna-Review ohne Blocker.
+
 - [x] **H052 — `test: measure settled sidebar toggle geometry`** (25.10.2026)
 
   H051-CI40197576242 besteht Komponenten/Coverage, scheitert im Passwort-

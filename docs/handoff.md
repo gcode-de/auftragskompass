@@ -2,6 +2,31 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## BKP015.5a: wiederholbare Vorlagenanlage, 25.10.2026
+
+Optionale UUID `requestId` auf Vorlagen-POST; Migration0037 speichert tenant-
+gebundenen Hash und ursprüngliche vollständige Antwort in derselben Transaktion
+wie Vorlage, Positionen und Audit. Gleicher Schlüssel/Inhalt wiederholt201 ohne
+Doppelanlage, anderer Inhalt409. Adminprüfung vor Lookup; PUT lehnt Schlüssel ab,
+Versionsprüfung und alte unkeyed Clients bleiben erhalten. Replay nach späterem
+Edit/Archiv liefert ursprüngliche Quittung, setzt aktuellen Datensatz nicht zurück.
+
+RED mit zwei IDs bei gleichem Schlüssel belegt; neue API-/PG-Tests einschließlich
+Parallelität, Neustart, tenantfremdem Zugriff, CSRF, Constraints und Rollback.
+1087 Tests mit Coverage grün (gesamt97,21% Zeilen/93,36% Branches; geändert21/22
+und22/22), schnelle Gates/Build und fünf Vorlagen-Chromiumabläufe grün.
+38 Python-/zwei Node-Ops einschließlich echter Sicherung/isoliertem Restore grün.
+Unabhängiger Luna-Review ohne Blocker. Der Schlüssel soll mit identischem
+Eingabesnapshot wiederholt werden; keine freie semantische Umdeutung von UUIDs.
+
+**Noch keine UI-Nutzung und kein Liefernachweis dieses Slices.** Nächster Schritt
+BKP015.5b: bestätigte Speicherantwort von fehlgeschlagenem Listenabruf trennen,
+unklare Anlage nur mit stabiler UUID und identischem Auftrag wiederholen; GET-
+Retry bleibt ausschließlich lesend. Eingaben, Fokus und Dirtyschutz erhalten.
+CI/Images und Auto-Updater weiter prüfen. Aktuell ausstehender H052-Lauf40224016542
+zu19e482f; Home Lab zuletzt lesend e9fa074, Timer aktiv/Service inaktiv, keine
+Aufmerksamkeitssperre. Keine parallelen manuellen Updates.
+
 ## Neue Fortsetzung: 25.10.2026, abends
 
 Neues reguläres Fünf-Stunden-Fenster bei 0 Prozent geprüft, resetsAt=1792972443.

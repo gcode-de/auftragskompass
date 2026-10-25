@@ -370,6 +370,47 @@ export const documentTemplatePositions = pgTable(
     discountBasisPoints: integer('discount_basis_points').notNull().default(0),
   },
 );
+export type DocumentTemplateCreateResponse = {
+  tenantId: string;
+  id: string;
+  kind: string;
+  name: string;
+  subject: string;
+  introText: string;
+  outroText: string;
+  validityDays: number;
+  state: string;
+  version: number;
+  positions: {
+    id: string;
+    productId: string | null;
+    description: string;
+    quantity: number;
+    unit: string;
+    unitPriceMinor: number;
+    taxBasisPoints: number;
+    discountBasisPoints: number;
+  }[];
+};
+export const documentTemplateCreateOperations = pgTable(
+  'document_template_create_operations',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    requestId: uuid('request_id').notNull(),
+    templateId: uuid('template_id').notNull(),
+    requestHash: text('request_hash').notNull(),
+    response: jsonb('response')
+      .$type<DocumentTemplateCreateResponse>()
+      .notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.requestId] }),
+    foreignKey({
+      columns: [t.tenantId, t.templateId],
+      foreignColumns: [documentTemplates.tenantId, documentTemplates.id],
+    }),
+  ],
+);
 export const documentNumberSequences = pgTable('document_number_sequences', {
   tenantId: uuid('tenant_id').notNull(),
   kind: text('kind').notNull(),

@@ -365,6 +365,32 @@ Bestand prüfen; blinde Wiederholung kann eine weitere Vorlage erzeugen. Die
 Korrektur ist als BKP015.5 in den Paritätsanweisungen vorbereitet. Diese Änderung
 behauptet keine serverseitige POST-Idempotenz.
 
+## Wiederholbare Vorlagenanlage: API-Vorbereitung (BKP015.5a)
+
+`POST /api/v1/document-templates` akzeptiert optional `requestId` als UUID.
+Für denselben Tenant, Schlüssel und normalisierten Eingabeinhalt liefert ein
+Retry wieder HTTP201 mit dem ursprünglichen Ergebnis einschließlich Vorlagen-
+und Positions-IDs. Es entstehen weder eine zweite Vorlage noch weitere
+Audit-Einträge. Ein anderer Inhalt mit bereits verwendetem Schlüssel ergibt409.
+Die Normalisierung entspricht den gespeicherten Textfeldern: Name, Positions-
+beschreibung und Einheit werden getrimmt; Reihenfolge und übrige Werte bleiben
+Bestandteil des Hashs. Clients sollen dieselbe UUID und denselben eingefrorenen
+Auftrag wiederholen, nicht den Schlüssel mit veränderten Eingaben wiederverwenden.
+
+Migration0037 ergänzt `document_template_create_operations` additiv. Tenantlock,
+Adminprüfung und Transaktion schützen Anlage und persistente Antwort gemeinsam.
+Auch nach Neustart oder späterem Bearbeiten/Archivieren wird nur das ursprüngliche
+Ergebnis wiedergegeben; der aktuelle Datensatz wird dabei nicht zurückgesetzt.
+Diese Antwort ist eine Auftragsquittung und kein aktueller Bestandsabruf.
+
+Ohne Schlüssel bleibt das bisherige POST-Verhalten erhalten. PUT verwendet
+weiterhin die Versionsprüfung und weist `requestId` zurück. Die Oberfläche nutzt
+diese Vorbereitung erst mit BKP015.5b; die oben beschriebene UI-Speicherlücke ist
+mit dieser API-Erweiterung allein noch nicht geschlossen. Keine öffentliche
+Quittungsliste oder automatische Löschung/Aufbewahrungsfrist wird eingeführt.
+Vor Schemaänderungen gilt der bestehende verifizierte Update-Checkpoint;
+nach Migration keine alte App automatisch gegen das neue Schema zurückstarten.
+
 ## Dokumentvorlagen archivieren (BKP015.2)
 
 „Archivieren“ sendet den gespeicherten Vorlagenstand einschließlich Version und

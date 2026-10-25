@@ -40,8 +40,10 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP018.0 scopes immutable logo keys without dropping legacy references.
-  expect(applied.at(-1)!.name).toBe('0036_document_layout_logo_keys.sql');
+  // BKP015.5a adds durable create receipts; prior logo references stay intact.
+  expect(applied.at(-1)!.name).toBe(
+    '0037_document_template_create_operations.sql',
+  );
   const templateColumn = (
     await pool.query<{ is_nullable: string }>(
       "SELECT is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='documents' AND column_name='template_id'",
