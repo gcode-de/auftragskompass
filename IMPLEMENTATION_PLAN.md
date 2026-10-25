@@ -40,7 +40,7 @@
   Unabhängiger Review ohne Blocker. Der reale Hookfehler ist bewiesen;
   Zusammenhang mit genau diesem CI-Lauf bleibt plausible Inferenz.
 
-- [ ] **H048 — `docs: verify mobile settings and logo delivery`** (wartet auf CI-Freigabe, 25.10.2026)
+- [x] **H048 — `docs: verify mobile settings and logo delivery`** (abgeschlossen, 25.10.2026)
 
   Nach H049 ausschließlich aktuellen Lieferstand abschließen: vollständige
   grüne quality+images-CI, alleinigen automatischen Updater abwarten, drei
@@ -55,6 +55,17 @@
   Keine parallelen manuellen Updates oder echten Datenänderungen. Dokuabschluss
   erst nach tatsächlichen Belegen committen/pushen, laufende freigegebene Images
   bei Kontingentabschluss nicht durch unnötigen Releasebranch-Push abbrechen.
+  Abnahme im neuen Fenster: CI 40172043659 quality+images grün; 7ac0ba9
+  auf allen drei Containern gesund/exakte OCI, Timer aktiv/Service inaktiv,
+  kein needs-attention/Drain off. Checkpoint CT/Host/Betreiber 2.587.194 Bytes,
+  SHA-256 046e1466e204fa420731652d5da0d5fcb7566a66a344bf063c601e1044e44375
+  identisch, private Rechte. Live-Assets sichtbare Version7ac0ba9, 16 Bilder
+  plus axe und zwei echte Logo-PDFs grün; API/DB/Renderer lokal fiktiv,
+  keine externen Browser-HTTP(S)-Requests. Abschließende gesamte lokale
+  Chromiumfolge 18/18 (2,7 Minuten); vorherige unveränderte Betriebssuite
+  38 Python-/zwei Node-Fälle samt realem Compose-Backup/Restore grün,
+  vollständige neue Linux-CI ebenfalls. Unabhängiger Dokumentationsreview,
+  getrennte Doku-Historie per geprüftem Fast-forward in UX zurückgeführt.
 
 - [x] **H047 — `test: wait for worker readiness through startup probes`** (25.10.2026)
 

@@ -2,6 +2,47 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H048 abgeschlossen: mobile Einstellungen und Logo ausgeliefert, 25.10.2026
+
+Neues Fünf-Stunden-Fenster tatsächlich begonnen, reguläre Nutzung verfügbar.
+Für diese Fortsetzung gilt die neue Nutzerobergrenze **85 Prozent**, nicht
+frühere 93/95-Prozent-Werte. Ab etwa 75 Prozent keine große neue Aufgabe;
+Reserve für Tests, Review, Commit, Push und Lieferabschluss halten.
+
+**Tatsächlich ausgeliefert und geprüft: 7ac0ba912d7e181053a6f512b18a6d4405f40325.**
+CI 40172043659 quality+images erfolgreich. Sole-Auto-Updater: last-success
+exakt identisch, API/Worker/Admin gesund mit exakter OCI, Timer aktiv/Service
+inaktiv, kein needs-attention, Website-Option-Drain off. Keine manuelle
+Aktualisierung und keine echten Geschäftsdaten verändert.
+
+Checkpoint `preupdate-7ac0ba912d7e-20261025T073231377975Z.dump` im CT, auf dem
+Host und in privater Betreiberablage: 2.587.194 Bytes, identischer SHA-256
+`046e1466e204fa420731652d5da0d5fcb7566a66a344bf063c601e1044e44375`.
+Dateien 600, Betreiberordner 700. Dumpinhalte nicht ausgewertet.
+
+Live-Assets mit sichtbarer Version7ac0ba9 geprüft: kompletter Layout-/Logoablauf,
+PNG/JPEG, Fehler/Reload und nachfolgende versionsgesicherte Layoutspeicherung,
+16 Bilder bei 320/390/768/1280 × Hell/Dunkel, axe und zwei echte einseitige
+Chromium-PDFs mit sichtbarem fiktivem Logo. Luna prüfte alle Bilder und Seiten,
+Koordinator zusätzlich Mobil/Desktop beider Themes und beide PDF-Seiten.
+Nur allowlist-Static-GETs zur echten Domain, keine externen HTTP(S)-Requests
+aus dem Browser; Auth/Geschäfts-API/DB/Renderer lokal fiktiv. Dies ist keine
+Abnahme echter Kundendatenflüsse oder physischer Mobilgeräte. Private Rohbelege
+unter `AuftragsKompass-Sicherung/delivery-2026-10-25/7ac0ba9/`.
+
+Gesamte lokale Chromiumfolge auf aktuellem Funktionsstand nochmals 18/18 grün
+(2,7 Minuten); bestehende unveränderte Ops-Suite zuvor 38 Python-/zwei Node-
+Fälle samt realem Compose-Backup/Restore grün. Die vollständige Linux-CI hat
+dieselben Releasegates erfolgreich durchlaufen. H048 ist damit geschlossen.
+
+Die getrennte Dokumentationshistorie 39721f9 wurde nach tatsächlichem Liefer-
+abgleich per Fast-forward in die lokale UX-Branch zurückgeführt. Nächster
+Code-Slice: **BKP015.2 Archivierung von Dokumentvorlagen**, ausführlich in
+[Dokument-/Mailtickets](bookitup-parity/tasks-documents-mail.md) beschrieben;
+vor Coding als eigener Hauptplan-Slice aktivieren. Kein großes Vorlageneditor-
+oder Rechnungsprojekt in diese Fehlerkorrektur ziehen. Ponytail/Impeccable und
+klar getrennte Luna-Dateizuständigkeiten weiterverwenden.
+
 ## Kontingentabschluss H050: 25.10.2026
 
 Bei zuletzt 92 Prozent geordnet mit Abschlussreserve beendet; Zusatzguthaben
