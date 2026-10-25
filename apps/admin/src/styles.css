@@ -2719,6 +2719,53 @@ summary {
   min-width: 44px;
   min-height: 44px;
 }
+.document-template-groups {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+.document-template-group h3 {
+  margin: 0 0 0.45rem;
+  font-size: 1.1rem;
+}
+.document-template-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.document-template-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.document-template-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.document-template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.document-template-empty {
+  margin: 1rem 0 0;
+  color: var(--muted);
+}
+@media (max-width: 38rem) {
+  .document-template-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .document-template-actions {
+    justify-content: flex-start;
+  }
+}
 @media (max-width: 900px) {
   .files-table {
     min-width: 32rem;

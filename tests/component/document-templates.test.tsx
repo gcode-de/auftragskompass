@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { DocumentTemplatesPanel } from '../../apps/admin/src/DocumentTemplatesPanel.js';
 import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
@@ -159,6 +160,61 @@ function createdResponse(body: Record<string, unknown>) {
 function openCreate() {
   fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));
 }
+test('document templates are grouped by supported kind and retain unknown kinds', async () => {
+  const invoice = {
+    ...template,
+    id: 'fictional-invoice-template',
+    kind: 'invoice',
+    name: 'Fictional invoice template',
+    state: 'archived',
+  };
+  const unknown = {
+    ...template,
+    id: 'fictional-unknown-template',
+    kind: 'custom_confirmation',
+    name: 'Fictional custom template',
+  };
+  setup(
+    () => Response.json(template),
+    () => Response.json([template, invoice, unknown]),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  const invoices = screen.getByRole('region', { name: 'Rechnungen' });
+  const otherKinds = screen.getByRole('region', {
+    name: 'Weitere Dokumentarten',
+  });
+  expect(within(offers).getByText(/Angebot: Fictional offer/)).toBeTruthy();
+  expect(
+    within(invoices).getByText(
+      /Rechnung: Fictional invoice template.*Archiviert/,
+    ),
+  ).toBeTruthy();
+  expect(
+    within(otherKinds).getByText(
+      /custom_confirmation: Fictional custom template/,
+    ),
+  ).toBeTruthy();
+  expect(
+    within(invoices).getByRole('button', {
+      name: 'Vorlage bearbeiten: Fictional invoice template',
+    }),
+  ).toBeTruthy();
+});
+test('an empty document-template list explains how to begin', async () => {
+  setup(
+    () => Response.json(template),
+    () => Response.json([]),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+
+  expect(
+    await screen.findByText('Noch keine Dokumentvorlagen vorhanden.'),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Vorlage anlegen' })).toBeTruthy();
+});
 test('a confirmed create remains saved when the following list GET fails', async () => {
   let listReads = 0;
   const writes = setup(createdResponse, () =>
@@ -1712,6 +1768,25 @@ test('templates stay in a list until create is requested, then focus the editor'
   expect(
     screen.getByRole('button', { name: 'Vorlage speichern' }),
   ).toBeTruthy();
+});
+test('saving a changed kind returns focus to the edited template row', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.change(screen.getByLabelText('Dokumentart'), {
+    target: { value: 'invoice' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
 });
 test('an unchanged duplicate remains SPA-dirty while its create is pending', async () => {
   let finish!: (response: Response) => void;

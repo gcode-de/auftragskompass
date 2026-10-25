@@ -359,6 +359,18 @@ Aktion zurück. Ein asynchroner Speicherabschluss übersteuert keinen inzwischen
 anderweitig gesetzten Fokus. Die Liste bleibt auch bei offenem Editor erreichbar,
 damit Archivierung und Bestandsabgleich offene Eingaben weiterhin erhalten.
 
+### Liste nach Dokumentart (BKP015.6)
+
+Vorhandene Vorlagen stehen in benannten Gruppen nach Dokumentart. Nur befüllte
+Gruppen erscheinen; ein leerer Gesamtbestand zeigt einen Hinweis. Unbekannte
+Dokumentarten bleiben unter „Weitere Dokumentarten“ sichtbar. Alle bisherigen
+Zustände einschließlich archivierter Vorlagen bleiben enthalten. Vorlagenzeilen
+richten Zusammenfassung und Aktionen aus; auf schmalen Ansichten stehen die
+Aktionen umbrechend unter der Zusammenfassung. Speichern, Archivierung und
+Dirtyschutz bleiben gleich. Ein Wechsel der Dokumentart erhält die Fokus-Rückkehr
+zur passenden Zeile. Such-/Archivfilter, Aktionsmenü und Vorschau sind mit dieser
+kleinen Darstellungskorrektur nicht umgesetzt.
+
 ### Speicherung und Bestandsabgleich (BKP015.5b)
 
 Eine vollständige, passende POST-/PUT-Antwort bestätigt die Speicherung unabhängig

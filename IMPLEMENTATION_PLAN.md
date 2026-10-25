@@ -8,6 +8,29 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.6 — `feat: group document templates by document kind`** (25.10.2026)
+
+  Kleiner lesender UI-Slice nach neuer Browserbeobachtung B35: Bookitup zeigt
+  Vorlagen nach Dokumentart gruppiert und ruhige Zeilenaktionen; keine Such-/
+  Archivfilter auf dieser untersuchten Ansicht beobachtet. Nur vorhandene Arten
+  als benannte Gruppen, nur befüllte Gruppen; unbekannte Arten sichtbar erhalten.
+  Leerbestand mit einem verständlichen Hinweis. Liste ohne Aufzählungspunkte,
+  Metadaten und vorhandene Aktionen sauber ausrichten, mobil umbrechend, gleiche
+  bestehenden Touchziele. Keine neue API/Migration, kein CSS außerhalb dieses
+  Panels, keine neuen Farben/Animation/Abhängigkeiten. Bestehende Texte,
+  Editieren/Duplizieren/Archivieren, Dirtyschutz, Fokus-Refs und Speichersicherheit
+  unverändert; alle Zustände einschließlich Archiv sichtbar. Aktionsmenü und
+  Such-/Archivfilter bleiben spätere eigene Entscheidungen/Slices.
+  Tests zuerst: mehrere Arten, leerer Bestand, unbekannte Art bleibt sichtbar,
+  alle bisherigen Aktionen/Fokusfälle; synthetisches Chromium mit Gruppen und
+  ausgerichteten Zeilen bei320/1280px in beiden Themes, axe/Überlauf. Review vor
+  finalen Gates, geänderte Coverage und Impeccable-Finish; explizit committen/pushen.
+  Abgenommen:1113 Tests,62 Panelkomponenten, neun Chromiumabläufe; geändert
+  26/26 Zeilen und34/34 Branches. Gruppierungszustand mit axe/Überlaufprüfung
+  bei320/1280px und beiden Themes, Screenshots geprüft. Luna-Review klar;
+  geänderte Art erhält Zeilenfokus auch nach DOM-Neuanlage. Impeccable ohne neue
+  Befunde,61 bestehende Hinweise im unverändert gelassenen gemeinsamen CSS.
+
 - [x] **BKP015.5b — `fix: reconcile document template saves safely`** (25.10.2026)
 
   Vorhandenen Editor-/Archiv-/Dirty-/Fokusvertrag erhalten, kein CSS-/Filter-

@@ -141,3 +141,29 @@ Workflow `audit`, Ziel `apps/admin`, keine formale duale `critique`, kein Shape-
 | P2 | Dokumente nur über Vorlage, ohne vollständige Entwurfsbearbeitung | Alltagsvorgänge erfordern Umwege | BKP016/BKP017 |
 
 Mail, Vertragswesen und Finanzen sind **Funktionslücken**, nicht bloße P3-Politur. Nach den jeweiligen Korrekturen technischen Audit wiederholen und zuletzt `impeccable polish` auf die tatsächlich veränderte Fläche anwenden. Questions skipped: Der Benutzer hat Ziel, Lesezugriff und Prioritäten ausreichend konkretisiert; keine zusätzliche Stilfrage nötig. Echte noch unbekannte Referenzdetails werden vor ihrem Ticket beobachtet, nicht erfunden.
+
+## Nachbeobachtung B35: Dokumentvorlagen, 25.10.2026
+
+**Beobachtung über Computer Use in Chrome**, vorhandener angemeldeter Bookitup-Tab,
+`/settings/templates`. Nur Navigation Einstellungen → Dokumente → Dokument-Vorlagen
+und Öffnen/Schließen eines Zeilenmenüs; keine Auswahl einer schreibenden Aktion.
+Die Liste gruppiert nach Dokumentarten, zeigt Vorlagennamen, Bearbeitungszeitpunkt
+und ein zurückhaltendes Menü rechts. Im geöffneten Menü sichtbar: Namen ändern,
+Duplizieren, Löschen. Für Kategorien ohne Einträge steht ein Leerhinweis. Eine
+Plusaktion steht in der Überschrift; Fristen erscheinen separat unter der Liste.
+Auf genau dieser Desktopansicht keine Such-/Archivfilter beobachtet; keine Aussage
+über andere Ansichten oder verborgene Funktionen. Neue mobile Bookitup-Aufnahme
+und eigentliche Namensänderung/Speicherung wurden nicht untersucht.
+
+**Werkzeuggrenze:** REA-Skill gelesen; kein verbundener REA-MCP und kein installierter
+REA-CLI gefunden. Dies ist manuelle Laufzeitbeobachtung über Computer Use, kein
+REA-Evidence-Datensatz oder Decompilierungsbefund. Keine Reparatur/Installation,
+keine Originalscreenshots oder Kundendaten in Git.
+
+**Ableitung für BKP015.6:** vorhandene unterstützte Arten gruppieren und Zeilen
+ausrichten; keine unimplementierten Dokumentarten oder Löschfunktion vortäuschen.
+Nur befüllte Gruppen zu zeigen ist eine bewusste vorsichtige Vereinfachung für
+AuftragsKompass, kein beobachtetes Detail der Referenz. Such-/Archivfilter aus
+dem bisherigen Plan sind Zusatzanforderungen, keine hier belegte Referenzparität.
+Aktionsmenü getrennt planen, damit bestehende Tastatur-/Archiv-/Speicherverträge
+nicht in einen kleinen Darstellungsslice hineingezogen werden.

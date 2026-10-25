@@ -2,6 +2,31 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## BKP015.6: gruppierte Vorlagenliste, 25.10.2026
+
+Neue manuelle Browserbeobachtung B35 in observations.md: Bookitup gruppiert
+Vorlagen nach Dokumentart und zeigt ruhige Aktionsmenüs. Keine sichtbaren Such-/
+Archivfilter auf genau dieser Desktopansicht. Nur lesend navigiert, Menü geöffnet
+und ohne Aktion geschlossen; anschließend ursprüngliche Dokumentübersicht
+wiederhergestellt. Kein REA-MCP/CLI gefunden, daher kein REA-Evidence-Datensatz.
+Keine echten Namen, Originalscreenshots oder Geschäftsdaten in Git.
+
+AuftragsKompass gruppiert jetzt vorhandene Arten, erhält unbekannte und archivierte
+Einträge und zeigt einen Leerhinweis. Bestehende Texte/Aktionen bleiben erhalten;
+Zeilen und Buttons sind ausgerichtet, mobil umbrechend. Kein Menü-/Filter-/API-
+oder Mutationsumbau. Bei geänderter Art bleibt Fokus an der umgruppierten Zeile.
+62 Panelkomponenten, insgesamt1113 Tests, neun Chromiumabläufe, axe/Überlauf bei
+320/1280px in beiden Themes und Build grün. Geänderte Coverage26/26 Zeilen,
+34/34 Branches. Unabhängiger Luna-Review klar, Root hat Screenshots geprüft;
+Impeccable meldet nur61 vorhandene gemeinsame CSS-Hinweise, keinen neuen Befund.
+
+**CI-Blocker vor weiterer Auslieferung:** UI-Commit249aa47, Lauf40227220526,
+scheiterte in ui-language.test.tsx:88 an getByRole für eine noch nicht geladene
+Eventüberschrift; Fehlerzustand zeigt aria-busy=true und Ladehinweis. Vorlagen-
+prüfungen waren grün, Images übersprungen. Dies wird als eigener H053-Testfix
+abgeschlossen, nicht durch Abschwächen oder Überspringen gelöst. Bis zu grünem
+Folgelauf keine neue Lieferung behaupten. Zuletzt verifiziert live:823a23f.
+
 ## BKP015.5b: sichere Speicherrückmeldung in der Oberfläche, 25.10.2026
 
 POST verwendet pro logischer Anlage eine UUID und eingefrorene JSON-Daten. Nach

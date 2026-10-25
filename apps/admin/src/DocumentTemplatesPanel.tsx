@@ -74,6 +74,13 @@ const kinds: [string, string][] = [
   ['invoice', 'Rechnung'],
   ['correction', 'Rechnungskorrektur'],
 ];
+const templateKindGroups: [string, string][] = [
+  ['offer', 'Angebote'],
+  ['order_confirmation', 'Auftragsbestätigungen'],
+  ['deposit_invoice', 'Anzahlungsrechnungen'],
+  ['invoice', 'Rechnungen'],
+  ['correction', 'Rechnungskorrekturen'],
+];
 const states: [string, string][] = [
   ['active', 'Aktiv'],
   ['inactive', 'Inaktiv'],
@@ -248,6 +255,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const editorOpenRef = useRef(false);
   const editorWasOpen = useRef(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const returnFocusTemplateId = useRef<string | null>(null);
   const restoreFocusAfterClose = useRef(true);
   const baselineFields = useRef('');
   const baselinePositions = useRef('');
@@ -411,7 +419,9 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         target.focus();
     } else if (editorWasOpen.current) {
       const target = returnFocusRef.current;
+      const templateId = returnFocusTemplateId.current;
       returnFocusRef.current = null;
+      returnFocusTemplateId.current = null;
       const available = (element: HTMLElement | null): element is HTMLElement =>
         Boolean(
           element?.isConnected &&
@@ -421,7 +431,9 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       if (restoreFocusAfterClose.current) {
         if (available(target)) target.focus({ preventScroll: true });
         else {
-          const fallback = createButtonRef.current;
+          const fallback =
+            (templateId && editButtonRefs.current.get(templateId)) ||
+            createButtonRef.current;
           if (available(fallback)) fallback.focus({ preventScroll: true });
           else if (saveFocusWasInForm.current) {
             deferredSaveCloseFocus.current = true;
@@ -520,6 +532,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       ? template.positions.map(toDraft)
       : [emptyPosition()];
     returnFocusRef.current = origin;
+    returnFocusTemplateId.current = template && !copy ? template.id : null;
     baselineFields.current = JSON.stringify([
       ['kind', nextDraft?.kind ?? 'offer'],
       ['name', nextDraft?.name ?? ''],
@@ -1114,6 +1127,22 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setBusy(false);
     }
   }
+  const templateGroups = templateKindGroups
+    .map(([kind, name]) => ({
+      key: kind,
+      name,
+      rows: rows.filter((row) => row.kind === kind),
+    }))
+    .filter((group) => group.rows.length > 0);
+  const otherKindRows = rows.filter(
+    (row) => !templateKindGroups.some(([kind]) => row.kind === kind),
+  );
+  if (otherKindRows.length > 0)
+    templateGroups.push({
+      key: 'other',
+      name: 'Weitere Dokumentarten',
+      rows: otherKindRows,
+    });
   return (
     <section id="document-templates" aria-label="Dokumentvorlagen">
       <h2 ref={headingRef} tabIndex={-1}>
@@ -1372,68 +1401,96 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           Vorlagen neu laden
         </button>
       )}
-      <ul>
-        {rows.map((row) => (
-          <li key={row.id}>
-            <span>
-              {kinds.find(([value]) => value === row.kind)?.[1] ?? row.kind}:{' '}
-              {row.name} – {row.positions.length} Position(en)
-              {row.state === 'archived' ? ' – Archiviert' : ''}
-            </span>{' '}
-            <button
-              ref={(element) => {
-                if (element) editButtonRefs.current.set(row.id, element);
-                else editButtonRefs.current.delete(row.id);
-              }}
-              className="secondary-action"
-              disabled={
-                busy ||
-                archiveReconciliation !== null ||
-                saveRecovery !== null ||
-                uncertainCreate
-              }
-              aria-label={`Vorlage bearbeiten: ${row.name}`}
-              onClick={(event) => begin(row, false, event.currentTarget)}
+      {rows.length === 0 ? (
+        <p className="document-template-empty">
+          Noch keine Dokumentvorlagen vorhanden.
+        </p>
+      ) : (
+        <div className="document-template-groups">
+          {templateGroups.map((group) => (
+            <section
+              key={group.key}
+              className="document-template-group"
+              aria-labelledby={`document-template-group-${group.key}`}
             >
-              Bearbeiten
-            </button>
-            <button
-              className="secondary-action"
-              disabled={
-                busy ||
-                archiveReconciliation !== null ||
-                saveRecovery !== null ||
-                uncertainCreate
-              }
-              aria-label={`Vorlage duplizieren: ${row.name}`}
-              onClick={(event) => begin(row, true, event.currentTarget)}
-            >
-              Duplizieren
-            </button>
-            <button
-              ref={(element) => {
-                if (element) archiveButtonRefs.current.set(row.id, element);
-                else archiveButtonRefs.current.delete(row.id);
-              }}
-              className="tertiary-action"
-              type="button"
-              disabled={
-                busy ||
-                row.state === 'archived' ||
-                archiveReconciliation !== null ||
-                saveRecovery !== null ||
-                uncertainCreate
-              }
-              aria-label={`Vorlage archivieren: ${row.name}`}
-              onClick={(event) => void archive(row, event.currentTarget)}
-            >
-              {archivePendingId === row.id
-                ? 'Archivierung läuft …'
-                : 'Archivieren'}
-            </button>
-          </li>
-        ))}
-      </ul>
+              <h3 id={`document-template-group-${group.key}`}>{group.name}</h3>
+              <ul className="document-template-list">
+                {group.rows.map((row) => (
+                  <li className="document-template-row" key={row.id}>
+                    <span className="document-template-summary">
+                      {kinds.find(([value]) => value === row.kind)?.[1] ??
+                        row.kind}
+                      : {row.name} – {row.positions.length} Position(en)
+                      {row.state === 'archived' ? ' – Archiviert' : ''}
+                    </span>
+                    <div className="document-template-actions">
+                      <button
+                        ref={(element) => {
+                          if (element)
+                            editButtonRefs.current.set(row.id, element);
+                          else editButtonRefs.current.delete(row.id);
+                        }}
+                        className="secondary-action"
+                        disabled={
+                          busy ||
+                          archiveReconciliation !== null ||
+                          saveRecovery !== null ||
+                          uncertainCreate
+                        }
+                        aria-label={`Vorlage bearbeiten: ${row.name}`}
+                        onClick={(event) =>
+                          begin(row, false, event.currentTarget)
+                        }
+                      >
+                        Bearbeiten
+                      </button>
+                      <button
+                        className="secondary-action"
+                        disabled={
+                          busy ||
+                          archiveReconciliation !== null ||
+                          saveRecovery !== null ||
+                          uncertainCreate
+                        }
+                        aria-label={`Vorlage duplizieren: ${row.name}`}
+                        onClick={(event) =>
+                          begin(row, true, event.currentTarget)
+                        }
+                      >
+                        Duplizieren
+                      </button>
+                      <button
+                        ref={(element) => {
+                          if (element)
+                            archiveButtonRefs.current.set(row.id, element);
+                          else archiveButtonRefs.current.delete(row.id);
+                        }}
+                        className="tertiary-action"
+                        type="button"
+                        disabled={
+                          busy ||
+                          row.state === 'archived' ||
+                          archiveReconciliation !== null ||
+                          saveRecovery !== null ||
+                          uncertainCreate
+                        }
+                        aria-label={`Vorlage archivieren: ${row.name}`}
+                        onClick={(event) =>
+                          void archive(row, event.currentTarget)
+                        }
+                      >
+                        {archivePendingId === row.id
+                          ? 'Archivierung läuft …'
+                          : 'Archivieren'}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

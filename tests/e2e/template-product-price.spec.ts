@@ -31,6 +31,26 @@ const originalTemplate = {
   ],
 };
 
+function templateForKind(
+  kind: string,
+  name: string,
+  id: string,
+  positionId: string,
+  state: 'active' | 'inactive' | 'archived' = 'active',
+) {
+  return {
+    ...structuredClone(originalTemplate),
+    id,
+    kind,
+    name,
+    state,
+    positions: originalTemplate.positions.map((position) => ({
+      ...position,
+      id: positionId,
+    })),
+  };
+}
+
 const sourceProducts = [
   {
     id: netProductId,
@@ -72,6 +92,7 @@ type TemplateStubOptions = {
   conflictArchiveOnce?: boolean;
   failListGetAfterArchiveOnce?: boolean;
   loseFirstCreateResponse?: boolean;
+  initialTemplates?: (typeof originalTemplate)[];
 };
 
 async function stubTemplateApis(
@@ -84,8 +105,11 @@ async function stubTemplateApis(
     throw new Error('Playwright baseURL must be configured for this E2E');
   }
   const allowedOrigin = new URL(baseURL).origin;
-  let savedTemplate = structuredClone(originalTemplate);
-  const createdTemplates: (typeof originalTemplate)[] = [];
+  const initialTemplates = options.initialTemplates ?? [originalTemplate];
+  let savedTemplate = structuredClone(initialTemplates[0] ?? originalTemplate);
+  const createdTemplates = initialTemplates
+    .slice(1)
+    .map((template) => structuredClone(template));
   const createReceipts = new Map<
     string,
     { payload: string; response: typeof originalTemplate }
@@ -363,6 +387,76 @@ async function captureTemplateEvidence(page: Page, prefix: string) {
     }
   }
 }
+
+test('template list groups every populated document kind and preserves unknown and archived rows', async ({
+  page,
+}) => {
+  const templates = [
+    structuredClone(originalTemplate),
+    templateForKind(
+      'order_confirmation',
+      'Fiktive Auftragsbestätigungsvorlage',
+      '77777777-7777-4777-8777-777777777771',
+      '88888888-8888-4888-8888-000000000001',
+    ),
+    templateForKind(
+      'deposit_invoice',
+      'Fiktive Anzahlungsrechnungsvorlage',
+      '77777777-7777-4777-8777-777777777772',
+      '88888888-8888-4888-8888-000000000002',
+    ),
+    templateForKind(
+      'invoice',
+      'Fiktive Rechnungsvorlage',
+      '77777777-7777-4777-8777-777777777773',
+      '88888888-8888-4888-8888-000000000003',
+    ),
+    templateForKind(
+      'correction',
+      'Fiktive Rechnungskorrekturvorlage',
+      '77777777-7777-4777-8777-777777777774',
+      '88888888-8888-4888-8888-000000000004',
+      'archived',
+    ),
+    templateForKind(
+      'future_document_kind',
+      'Fiktive unbekannte Dokumentart',
+      '77777777-7777-4777-8777-777777777775',
+      '88888888-8888-4888-8888-000000000005',
+    ),
+  ];
+  const api = await stubTemplateApis(page, sourceProducts, {
+    initialTemplates: templates,
+  });
+  await openTemplateList(page);
+
+  for (const heading of [
+    'Angebote',
+    'Auftragsbestätigungen',
+    'Anzahlungsrechnungen',
+    'Rechnungen',
+    'Rechnungskorrekturen',
+    'Weitere Dokumentarten',
+  ]) {
+    await expect(
+      page.getByRole('heading', { name: heading, exact: true }),
+    ).toBeVisible();
+  }
+  for (const name of templates.map((template) => template.name)) {
+    await expect(
+      page.getByRole('button', {
+        name: `Vorlage bearbeiten: ${name}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+  }
+  await expect(
+    page.getByText(/Fiktive Rechnungskorrekturvorlage.*Archiviert/),
+  ).toBeVisible();
+  await captureTemplateEvidence(page, 'template-list-grouped-kinds');
+  expect(api.writes).toEqual([]);
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
 
 test('templates start as a list and open a focused on-demand editor with safe cancel and duplication', async ({
   page,
