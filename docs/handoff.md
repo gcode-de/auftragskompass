@@ -1,6 +1,38 @@
 # Projektübergabe AuftragsKompass
 
-Stand der Fortsetzung: **24.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+
+## H046 abgeschlossen, tatsächlicher Betrieb: 25.10.2026
+
+Das neue Fünf-Stunden- und Wochenfenster ist tatsächlich zurückgesetzt,
+reguläre Nutzung verfügbar; Zusatzguthaben unverändert. Vor jeder Fortsetzung
+weiterhin aktuelle Limits prüfen. Frühere Kontingentpausen unten sind Historie.
+
+**Verifiziert ausgeliefert: e9ca99d04a858723140c9184efe7f38e11a39357.** CI
+40134505361 quality+images erfolgreich. Der einzige automatische Updater hat
+aktualisiert: API/Worker/Admin gesund mit exakt diesem OCI-Label, last-success
+identisch, Timer aktiv/Service inaktiv, kein needs-attention, Drain off.
+Checkpoint `preupdate-e9ca99d04a85-20261024T214540405895Z.dump` in CT, Host
+und privater Betreiberablage: 2.384.655 Bytes, identischer SHA-256
+`bc5efc03feccbde5ce8d11469e2ae721e9f0f60a6714428cdebbf0b6e4953164`.
+Betreiberdatei 600, Ordner 700. Keine Dumpinhalte gelesen oder Updates manuell
+angestoßen. Die getrennte Doku-Branch 8ed228b wurde per geprüftem Fast-forward
+lokal in die UX-Branch zurückgeführt; weitere Arbeit erfolgt dort.
+
+Live-Assets mit sichtbarer Version e9ca99d in acht Zuständen bei
+320/390/768/1280 × Hell/Dunkel geprüft; axe bei 320/1280 in beiden Themes grün.
+Der komplette Layoutablauf mit tatsächlicher Chromium-PDF, Save/Reload,
+503-/404-/409-Zuständen und ohne Vorschau-Nebenwirkungen ist grün. Die beiden
+Downloads sind identische einseitige A4-PDFs (47.164 Bytes), gerenderte Seite
+lesbar mit „Seite 1 von 1“. Alle Auth-/Geschäfts-APIs, Datenbank und Renderer
+waren lokal und fiktiv; keine Behauptung einer echten Geschäfts-API-/Kundendaten-
+oder Geräteabnahme. Rohbelege ausschließlich privat unter
+`AuftragsKompass-Sicherung/delivery-2026-10-24/e9ca99/`.
+
+Nächster kleiner Slice: BKP018.1b kompakter mobiler Einstellungsbereichswähler
+statt der 320px-Linkwand mit Wortbrüchen. Anleitung in
+[Dokument-/Mailtickets](bookitup-parity/tasks-documents-mail.md). Erst im Hauptplan
+aktivieren; Backend-/Logo-Uploadoberfläche und übrige Parität nicht hineinziehen.
 
 ## Kontingentabschluss und ausstehender Liefernachweis: 24.10.2026
 
