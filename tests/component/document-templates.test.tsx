@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { DocumentTemplatesPanel } from '../../apps/admin/src/DocumentTemplatesPanel.js';
+import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 
 afterEach(() => {
   cleanup();
@@ -100,6 +101,9 @@ function archivedResponse(body: Record<string, unknown>) {
     })),
   });
 }
+function openCreate() {
+  fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));
+}
 test('templates load with their positions, save exact minor units and archive with the current version', async () => {
   let listReads = 0;
   const archived = {
@@ -119,7 +123,6 @@ test('templates load with their positions, save exact minor units and archive wi
   expect(
     (await screen.findAllByText(/Fictional offer/)).length,
   ).toBeGreaterThan(0);
-  expect(screen.getByText(/\{\{documentLink\}\}/)).toBeTruthy();
   fireEvent.click(
     screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
   );
@@ -130,6 +133,7 @@ test('templates load with their positions, save exact minor units and archive wi
     (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
       .value,
   ).toBe('199.00');
+  expect(screen.getByText(/\{\{documentLink\}\}/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Einzelpreis (Brutto) in Euro'), {
     target: { value: '199.00' },
   });
@@ -525,6 +529,17 @@ test('reconciliation accepts and presents a strictly newer server template versi
   expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
     'Fictional unsaved subject during concurrent edit',
   );
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fictional offer',
+    }),
+  );
+  expect(confirm).toHaveBeenCalledWith('Ungespeicherte Änderungen verwerfen?');
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    'Fictional unsaved subject during concurrent edit',
+  );
+  confirm.mockReturnValue(true);
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Vorlage bearbeiten: Fictional offer',
@@ -824,6 +839,7 @@ test('an unknown placeholder is reported instead of being saved silently', async
   setup(() => Response.json({ error: 'unknown_placeholder' }, { status: 400 }));
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
+  openCreate();
   fireEvent.change(screen.getByLabelText('Betreff'), {
     target: { value: 'Angebot für {{kontakt}}' },
   });
@@ -836,6 +852,9 @@ test('choosing a net product fills its gross price, unit and tax into the positi
   setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }));
   const selects = screen.getAllByLabelText('Produkt');
   fireEvent.change(selects[selects.length - 1]!, {
@@ -853,6 +872,9 @@ test('gross product prices stay unchanged, archived choices stay hidden, and fre
   setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
   const productSelect = screen.getByLabelText('Produkt');
   expect(
     screen.queryByRole('option', { name: 'Fictional archived product' }),
@@ -882,6 +904,9 @@ test('a net product conversion saves the gross minor-unit price', async () => {
   const writes = setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
   fireEvent.change(screen.getByLabelText('Produkt'), {
     target: { value: product.id },
   });
@@ -993,10 +1018,9 @@ test('edits every position field, removes a row and cancels the draft', async ()
     screen.getAllByRole('button', { name: 'Position entfernen' })[1]!,
   );
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(1);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
   fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
-  expect((screen.getByLabelText('Bezeichnung') as HTMLInputElement).value).toBe(
-    '',
-  );
+  expect(screen.queryByLabelText('Bezeichnung')).toBeNull();
 });
 test('duplicating opens a copy with the stored positions intact', async () => {
   setup();
@@ -1024,6 +1048,7 @@ test('a failed product list still leaves free positions usable', async () => {
   );
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
+  openCreate();
   expect((screen.getByLabelText('Produkt') as HTMLSelectElement).value).toBe(
     '',
   );
@@ -1032,6 +1057,9 @@ test('a conflicting version is reported so the operator reloads first', async ()
   setup(() => Response.json({ error: 'conflict' }, { status: 409 }));
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
   fireEvent.submit(
     screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
   );
@@ -1049,7 +1077,215 @@ test('a failed template list is reported without breaking the form', async () =>
   expect(
     await screen.findByText('Vorlagen konnten nicht geladen werden.'),
   ).toBeTruthy();
+  openCreate();
   expect(
     screen.getByRole('button', { name: 'Vorlage speichern' }),
   ).toBeTruthy();
+});
+
+test('templates stay in a list until create is requested, then focus the editor', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+
+  expect(screen.queryByLabelText('Bezeichnung')).toBeNull();
+  expect(screen.queryByText(/Platzhalter:/)).toBeNull();
+  const create = screen.getByRole('button', { name: 'Vorlage anlegen' });
+  expect(create.className).toContain('primary-action');
+  create.focus();
+  fireEvent.click(create);
+
+  const name = screen.getByLabelText('Bezeichnung');
+  expect(document.activeElement).toBe(name);
+  expect(screen.getByText(/Platzhalter:/)).toBeTruthy();
+  expect(screen.getByText(/Fictional offer – 1 Position\(en\)/)).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Vorlage speichern' }),
+  ).toBeTruthy();
+});
+
+test('a confirmed new-template save closes the editor and returns focus', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  const create = screen.getByRole('button', { name: 'Vorlage anlegen' });
+  create.focus();
+  fireEvent.click(create);
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional created template' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(writes[0]!.method).toBe('POST');
+  expect(writes[0]!.body.name).toBe('Fictional created template');
+  expect(screen.queryByLabelText('Bezeichnung')).toBeNull();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Vorlage anlegen' }),
+  );
+});
+
+test('canceling a dirty editor asks before discard and restores trigger focus', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+
+  const create = screen.getByRole('button', { name: 'Vorlage anlegen' });
+  create.focus();
+  fireEvent.click(create);
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Fictional unsaved template' },
+  });
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(confirm).toHaveBeenCalledWith('Ungespeicherte Änderungen verwerfen?');
+  expect(screen.getByLabelText('Bezeichnung')).toBeTruthy();
+  expect(screen.getByText(/Fictional offer – 1 Position\(en\)/)).toBeTruthy();
+
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(screen.queryByLabelText('Bezeichnung')).toBeNull();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Vorlage anlegen' }),
+  );
+});
+
+test('changing to another template asks before discarding the open draft', async () => {
+  const other = {
+    ...template,
+    id: 'fictional-other-template',
+    name: 'Fictional other offer',
+  };
+  setup(
+    () => Response.json(template),
+    () => Response.json([template, other]),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional edited subject' },
+  });
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Vorlage duplizieren: Fictional other offer',
+    }),
+  );
+  expect(confirm).toHaveBeenCalledWith('Ungespeicherte Änderungen verwerfen?');
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    'Fictional edited subject',
+  );
+});
+
+test('app-wide dirty registration tracks form fields and position changes', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  expect(hasUnsavedChanges()).toBe(false);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional edited subject' },
+  });
+  expect(hasUnsavedChanges()).toBe(true);
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: template.subject },
+  });
+  expect(hasUnsavedChanges()).toBe(false);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }));
+  expect(hasUnsavedChanges()).toBe(true);
+});
+
+test('accepting same-row edit confirmation resets the uncontrolled draft', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  const edit = screen.getByRole('button', {
+    name: 'Vorlage bearbeiten: Fictional offer',
+  });
+  fireEvent.click(edit);
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional unsaved subject' },
+  });
+  expect(hasUnsavedChanges()).toBe(true);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  fireEvent.click(edit);
+
+  expect(document.activeElement).toBe(screen.getByLabelText('Bezeichnung'));
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    template.subject,
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('an unchanged editor stays clean while an archive request disables the form', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  setup((body) =>
+    body.state === 'archived' ? pending : Response.json(template),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Vorlage archivieren: Fictional offer',
+    }),
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+  finish(
+    archivedResponse({
+      ...template,
+      state: 'archived',
+      version: template.version,
+    }),
+  );
+  expect(
+    await screen.findByText(/Vorlage archiviert\. Der Listenstand weicht ab/),
+  ).toBeTruthy();
+});
+
+test('a successful delayed save does not steal focus from another control', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  setup(() => pending);
+  render(
+    <>
+      <button type="button">Fictional external focus target</button>
+      <DocumentTemplatesPanel csrfToken="fictional-csrf" />
+    </>,
+  );
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional pending save' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  const external = screen.getByRole('button', {
+    name: 'Fictional external focus target',
+  });
+  external.focus();
+  finish(Response.json(template));
+  await screen.findByText('Gespeichert.');
+  expect(document.activeElement).toBe(external);
 });

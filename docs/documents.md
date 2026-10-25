@@ -342,6 +342,29 @@ der gespeicherten Fassung verfügbar. Finalisieren erzeugt die nummerierte PDF;
 der fertige Download bleibt in der Liste. Fehlt eine aktive Vorlage oder ein
 Hauptkontakt, erklärt der Abschnitt das und deaktiviert die Anlage.
 
+## Dokumentvorlagen verwalten (BKP015.4)
+
+Unter Einstellungen → Dokumentvorlagen erscheinen zuerst die Liste und
+„Vorlage anlegen“. Anlegen, Bearbeiten und Duplizieren öffnen genau einen
+Inline-Editor mit dem bestehenden Feld-/Positionsmodell. Platzhalterhilfe wird
+erst dort angezeigt. Abbrechen und erfolgreich abgeschlossener Speicherablauf
+führen zurück zur Liste. Ungespeicherte Texte und Positionen werden vor
+Abbrechen oder Wechsel auf eine andere Vorlage mit einer Rückfrage geschützt;
+ein bestätigter Wechsel auf dieselbe Vorlage lädt ihre gespeicherten Werte neu.
+Die vorhandene appweite Dirty-Abfrage berücksichtigt diesen Entwurf. Das ist
+kein neuer Schutz für bisher ungesicherte Browser-Zurück-/Schließen-Abläufe.
+
+Der Fokus beginnt in Bezeichnung und kehrt nach Schließen zur auslösenden
+Aktion zurück. Ein asynchroner Speicherabschluss übersteuert keinen inzwischen
+anderweitig gesetzten Fokus. Die Liste bleibt auch bei offenem Editor erreichbar,
+damit Archivierung und Bestandsabgleich offene Eingaben weiterhin erhalten.
+
+Bekannte separate Speicherlücke: Bestätigter POST/PUT plus fehlgeschlagener
+Listen-GET wird bisher als Verbindungsfehler behandelt. Vor erneutem Anlegen
+Bestand prüfen; blinde Wiederholung kann eine weitere Vorlage erzeugen. Die
+Korrektur ist als BKP015.5 in den Paritätsanweisungen vorbereitet. Diese Änderung
+behauptet keine serverseitige POST-Idempotenz.
+
 ## Dokumentvorlagen archivieren (BKP015.2)
 
 „Archivieren“ sendet den gespeicherten Vorlagenstand einschließlich Version und
@@ -365,8 +388,8 @@ lesenden Repeatable-Read-Transaktion (BKP015.3). Eine parallel gespeicherte
 Ein nachfolgender Schreibversuch aus einem älteren Snapshot wird weiterhin
 über die vorhandene Versionsprüfung abgewiesen; API und Sortierung bleiben gleich.
 
-Fokussierter Vorlageneditor, Suche/Filter und eigenständige Vorlagenvorschau sind
-damit noch nicht umgesetzt; das übergeordnete Paritätsticket BKP015 bleibt offen.
+Suche/Art-/Archivfilter und eigenständige Vorlagenvorschau sind noch offen;
+das übergeordnete Paritätsticket BKP015 bleibt offen.
 
 ## Protokoll
 

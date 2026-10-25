@@ -951,6 +951,15 @@ test('password, import, template and number panels name a tier for every action'
   const templates = screen.getByRole('region', { name: 'Dokumentvorlagen' });
   await within(templates).findByText(/Synthetic offer template/);
   expectHierarchy(templates, 'Dokumentvorlagen');
+  const createTemplate = within(templates).getByRole('button', {
+    name: 'Vorlage anlegen',
+  });
+  expect(tier(createTemplate)).toBe('primary-action');
+  expect(
+    within(templates).queryByRole('button', { name: 'Vorlage speichern' }),
+  ).toBeNull();
+  fireEvent.click(createTemplate);
+  expectHierarchy(templates, 'Dokumentvorlageneditor');
   expect(
     tier(within(templates).getByRole('button', { name: 'Vorlage speichern' })),
   ).toBe('primary-action');

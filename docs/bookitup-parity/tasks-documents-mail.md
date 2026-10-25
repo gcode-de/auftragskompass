@@ -88,6 +88,66 @@ Plan/Dokumentation/Integration/Abschlussreview. Keine parallelen Änderungen
 an derselben Datei, keine Quota-/Credits-Ausweichlösung. Erst tatsächliches
 Restkontingent und Abschlussreserve prüfen, dann diesen Slice starten.
 
+### BKP015.3 und BKP015.4: konsistente Liste und Editor auf Aufruf
+
+BKP015.3 schließt den belegten Listenfehler: Vorlagen und Positionen kommen aus
+einem gemeinsamen lesenden Datenbank-Snapshot; parallele Änderungen dürfen keine
+neue Versionsnummer mit alten Positionen verbinden. Deterministischer echter
+PostgreSQL-Test und Abnahme stehen im Hauptplan.
+
+BKP015.4 begrenzt die zunächst sichtbare Fläche auf Liste und „Vorlage anlegen“.
+Anlegen/Bearbeiten/Duplizieren öffnen denselben vorhandenen Inline-Editor, keine
+zweite Datenstruktur. Liste und Archivierungsabgleich bleiben erreichbar.
+Getippte Texte und Positionsänderungen werden vor Abbrechen/Wechsel geschützt;
+Fokus und appweite Dirty-Registrierung gehören dazu. Filter und eigenständige
+Vorlagenvorschau bleiben eigene Arbeiten. Aktuellen Abschluss immer im Hauptplan
+prüfen; diese Beschreibung allein ist kein Liefernachweis.
+
+### Anschließend gesondert aktivieren: BKP015.5, Speicherergebnis sichern
+
+**Belegter Altzustand vor BKP015.4:** `save()` in
+`DocumentTemplatesPanel.tsx` wartet nach erfolgreichem POST/PUT auf `refresh()`.
+Scheitert dieser GET, meldet es einen Verbindungsfehler und erhält den Editor.
+Ein erneutes Speichern kann einen zweiten POST auslösen. BKP015.4 verändert
+diesen Speichervertrag ausdrücklich nicht. Das ist keine Bookitup-Beobachtung.
+
+Vor Umsetzung eigenen Hauptplan-Slice aktivieren. Kleinste vollständige Korrektur:
+
+1. Bestehende vollständige POST-/PUT-Antwort und Servernormalisierung prüfen.
+   Erwartete neue ID/Version 1 beziehungsweise dieselbe ID/Version+1, Zustand,
+   Dokumentart, Texte, Gültigkeit und alle geordneten Positionswerte abgleichen.
+   Neue generierte Positions-IDs nicht mit alten IDs gleichsetzen. Name,
+   Positionsbeschreibung und Einheit werden serverseitig getrimmt; keine anderen
+   stillen fachlichen Normalisierungen erfinden. Bereits vorhandene Validatoren
+   nur bei passender Semantik wiederverwenden.
+2. Erst tatsächlich bestätigte Speicherung lokal übernehmen und Editor genau
+   einmal schließen/zurücksetzen. Anschließender Listenfehler bleibt ausdrücklich
+   „gespeichert, Liste nicht aktualisiert“ und bietet nur GET-Wiederholung. Ein
+   leerer oder älterer Listenstand darf den bestätigten Datensatz nicht entfernen.
+   Tatsächlich neuere gültige Versionen dürfen übernommen werden.
+3. Synchronen In-flight-Schutz für schnelle Doppelklicks verwenden. Bekannte
+   400/401/403-Ablehnungen erhalten Eingaben und erklären Angaben/Anmeldung/
+   Berechtigung. 404/409 benötigen einen ausdrücklichen Bestandsabgleich, ohne
+   die eingegebenen Texte/Positionen still auf neuere Werte zurückzusetzen.
+4. Netzwerk/5xx/ungültige oder widersprüchliche 2xx-Antwort ist ein **unklarer
+   Schreibausgang**, kein sicher fehlgeschlagener Auftrag. Nicht automatisch
+   wiederholen und keinen zweiten POST nach bloßem GET freischalten: Der aktuelle
+   POST hat keinen Idempotenzschlüssel; eine gleich aussehende Listenzeile kann
+   schon vorher existiert haben, und ein erster Auftrag kann noch committen.
+   Einen kleinen klaren Betreiber-Abgleich vor bewusster Neuanlage vorsehen oder
+   eine eigene kompatible serverseitige Idempotenz-Scheibe zuerst planen. Niemals
+   aus Ähnlichkeit sicher auf die Identität eines unbestätigten Auftrags schließen.
+5. Tests zuerst: bestätigte201/200 plus GET503, genau ein Schreibauftrag auch
+   nach GET-Retry, Doppelklick, falsche ID/Version/Inhalte und ungültiges JSON,
+   bekannte Ablehnungen, 409 und unklarer POST mit bereits gleicher Vorlage im
+   Bestand. Eingaben, Produktbezüge, exakte Preise, Fokus und Dirtyschutz erhalten.
+   Komponenten-Coverage und synthetischer Chromium-Anlegen-/Bearbeiten-/Reloadpfad
+   bei Mobil/Desktop beider Themes; keine echte Vorlage zum Testen speichern.
+
+Keinen großen Filter-/Vorschau-/Mailumbau oder generisches Mutationsframework
+hineinziehen. Nach dieser Korrektur folgen getrennt Suche/Art-/Archivfilter und
+deterministische Vorlagenvorschau ohne Nummernverbrauch/Datei-/Vorlagenmutation.
+
 ## BKP016 — Dokumententwürfe vollständig und unabhängig bearbeiten
 
 **P1 für alltagstaugliche Angebote, nach bestehender C051-Basis.** Lesen `EventDocuments.tsx`, `documents.ts`, `document-templates.ts`, `document-snapshot.ts`, `document-totals.ts`, `document-pdf.ts`, `document-artifacts.ts`, `schema.ts`, Migrationen 0026–0031 (unverändert lassen), Dokumentkomponenten-/Integrationstests und Rendering-/Geldtests.

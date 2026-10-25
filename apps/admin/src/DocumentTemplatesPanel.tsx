@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { grossProductPrice } from './product-price.js';
+import { registerUnsavedChanges } from './unsaved-changes.js';
 
 type Position = {
   id?: string;
@@ -172,6 +173,8 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     [products, setProducts] = useState<Product[]>([]),
     [draft, setDraft] = useState<Template | null>(null),
     [positions, setPositions] = useState<DraftPosition[]>([emptyPosition()]),
+    [editorOpen, setEditorOpen] = useState(false),
+    [editorGeneration, setEditorGeneration] = useState(0),
     [editing, setEditing] = useState(false),
     [message, setMessage] = useState(''),
     [conversionError, setConversionError] = useState(false),
@@ -185,6 +188,14 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const archiveFocusIntent = useRef<ArchiveFocusIntent | null>(null);
   const archiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const editButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const createButtonRef = useRef<HTMLButtonElement>(null);
+  const editorFormRef = useRef<HTMLFormElement>(null);
+  const editorOpenRef = useRef(false);
+  const editorWasOpen = useRef(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const restoreFocusAfterClose = useRef(true);
+  const baselineFields = useRef('');
+  const baselinePositions = useRef('');
   const reconcileButtonRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(
@@ -267,22 +278,101 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       )
       .catch(() => setProducts([]));
   }, []);
-  function begin(template: Template | null, copy = false) {
+  function hasUnsavedDraft() {
+    const form = editorFormRef.current;
+    return (
+      editorOpenRef.current &&
+      form !== null &&
+      (JSON.stringify(
+        Array.from(
+          form.querySelectorAll<
+            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+          >('[name]'),
+        ).map((field) => [field.name, field.value]),
+      ) !== baselineFields.current ||
+        JSON.stringify(positions) !== baselinePositions.current)
+    );
+  }
+  useEffect(
+    () => registerUnsavedChanges(hasUnsavedDraft),
+    [editorOpen, positions],
+  );
+  useLayoutEffect(() => {
+    if (editorOpen) {
+      const target =
+        editorFormRef.current?.querySelector<HTMLElement>('input[name="name"]');
+      if (
+        target?.isConnected &&
+        !target.closest('[hidden], [inert], [aria-hidden="true"]')
+      )
+        target.focus();
+    } else if (editorWasOpen.current) {
+      const target = returnFocusRef.current;
+      returnFocusRef.current = null;
+      const available = (element: HTMLElement | null): element is HTMLElement =>
+        Boolean(
+          element?.isConnected &&
+          !(element instanceof HTMLButtonElement && element.disabled) &&
+          !element.closest('[hidden], [inert], [aria-hidden="true"]'),
+        );
+      if (restoreFocusAfterClose.current) {
+        if (available(target)) target.focus({ preventScroll: true });
+        else {
+          const fallback = createButtonRef.current;
+          if (available(fallback)) fallback.focus({ preventScroll: true });
+        }
+      }
+      restoreFocusAfterClose.current = true;
+    }
+    editorWasOpen.current = editorOpen;
+  }, [editorOpen, editorGeneration, draft, editing]);
+  function begin(template: Template | null, copy = false, origin: HTMLElement) {
+    if (editorOpenRef.current && hasUnsavedDraft()) {
+      if (!window.confirm('Ungespeicherte Änderungen verwerfen?')) return;
+    }
     if (!archiveReconciliation) {
       setMessage('');
       setConversionError(false);
     }
-    setDraft(
+    const nextDraft =
       template && copy
         ? { ...template, name: `${template.name.slice(0, 112)} (Kopie)` }
-        : template,
-    );
-    setPositions(
-      template?.positions.length
-        ? template.positions.map(toDraft)
-        : [emptyPosition()],
-    );
+        : template;
+    const nextPositions = template?.positions.length
+      ? template.positions.map(toDraft)
+      : [emptyPosition()];
+    returnFocusRef.current = origin;
+    baselineFields.current = JSON.stringify([
+      ['kind', nextDraft?.kind ?? 'offer'],
+      ['name', nextDraft?.name ?? ''],
+      ['subject', nextDraft?.subject ?? ''],
+      ['introText', nextDraft?.introText ?? ''],
+      ['outroText', nextDraft?.outroText ?? ''],
+      ['validityDays', String(nextDraft?.validityDays ?? 14)],
+      ['state', nextDraft?.state ?? 'active'],
+    ]);
+    baselinePositions.current = JSON.stringify(nextPositions);
+    setEditorGeneration((current) => current + 1);
+    restoreFocusAfterClose.current = true;
+    editorOpenRef.current = true;
+    setEditorOpen(true);
+    setDraft(nextDraft);
+    setPositions(nextPositions);
     setEditing(Boolean(template) && !copy);
+  }
+  function closeEditor() {
+    if (busy || archiveReconciliation) return;
+    if (
+      hasUnsavedDraft() &&
+      !window.confirm('Ungespeicherte Änderungen verwerfen?')
+    )
+      return;
+    editorOpenRef.current = false;
+    restoreFocusAfterClose.current = true;
+    setEditorOpen(false);
+    setDraft(null);
+    setEditing(false);
+    setPositions([emptyPosition()]);
   }
   function updatePosition(index: number, patch: Partial<DraftPosition>) {
     setPositions((current) =>
@@ -374,6 +464,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         return;
       }
       await refresh();
+      const activeElement = document.activeElement;
+      restoreFocusAfterClose.current =
+        activeElement === document.body ||
+        editorFormRef.current?.contains(activeElement) === true;
+      editorOpenRef.current = false;
+      setEditorOpen(false);
       setDraft(null);
       setEditing(false);
       setPositions([emptyPosition()]);
@@ -635,200 +731,210 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       <h2 ref={headingRef} tabIndex={-1}>
         Dokumentvorlagen
       </h2>
-      <p>
-        Platzhalter: {placeholders.map((name) => `{{${name}}}`).join(', ')}.
-        Unbekannte Platzhalter werden beim Speichern abgewiesen.
-      </p>
-      <form
-        key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save(event.currentTarget);
-        }}
-      >
-        <fieldset disabled={busy || archiveReconciliation !== null}>
-          <legend>{editing ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</legend>
-          <label>
-            Dokumentart
-            <select name="kind" defaultValue={draft?.kind ?? 'offer'}>
-              {kinds.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Bezeichnung
-            <input
-              name="name"
-              required
-              maxLength={120}
-              defaultValue={draft?.name ?? ''}
-            />
-          </label>
-          <label>
-            Betreff
-            <input
-              name="subject"
-              maxLength={200}
-              defaultValue={draft?.subject ?? ''}
-            />
-          </label>
-          <label>
-            Einleitungstext
-            <textarea
-              name="introText"
-              maxLength={4000}
-              defaultValue={draft?.introText ?? ''}
-            />
-          </label>
-          <label>
-            Schlusstext
-            <textarea
-              name="outroText"
-              maxLength={4000}
-              defaultValue={draft?.outroText ?? ''}
-            />
-          </label>
-          <label>
-            Angebotsgültigkeit in Tagen
-            <input
-              name="validityDays"
-              type="number"
-              min={1}
-              max={365}
-              required
-              defaultValue={draft?.validityDays ?? 14}
-            />
-          </label>
-          <label>
-            Zustand
-            <select name="state" defaultValue={draft?.state ?? 'active'}>
-              {states.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <h3>Positionen</h3>
-          {positions.map((position, index) => (
-            <fieldset key={index}>
-              <legend>Position {index + 1}</legend>
-              <label>
-                Produkt
-                <select
-                  value={position.productId}
-                  onChange={(event) => applyProduct(index, event.target.value)}
+      {!editorOpen && (
+        <button
+          ref={createButtonRef}
+          type="button"
+          className="primary-action"
+          disabled={busy || archiveReconciliation !== null}
+          onClick={(event) => begin(null, false, event.currentTarget)}
+        >
+          Vorlage anlegen
+        </button>
+      )}
+      {editorOpen && (
+        <form
+          ref={editorFormRef}
+          key={`${editorGeneration}:${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save(event.currentTarget);
+          }}
+        >
+          <p>
+            Platzhalter: {placeholders.map((name) => `{{${name}}}`).join(', ')}.
+            Unbekannte Platzhalter werden beim Speichern abgewiesen.
+          </p>
+          <fieldset disabled={busy || archiveReconciliation !== null}>
+            <legend>{editing ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</legend>
+            <label>
+              Dokumentart
+              <select name="kind" defaultValue={draft?.kind ?? 'offer'}>
+                {kinds.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Bezeichnung
+              <input
+                name="name"
+                required
+                maxLength={120}
+                defaultValue={draft?.name ?? ''}
+              />
+            </label>
+            <label>
+              Betreff
+              <input
+                name="subject"
+                maxLength={200}
+                defaultValue={draft?.subject ?? ''}
+              />
+            </label>
+            <label>
+              Einleitungstext
+              <textarea
+                name="introText"
+                maxLength={4000}
+                defaultValue={draft?.introText ?? ''}
+              />
+            </label>
+            <label>
+              Schlusstext
+              <textarea
+                name="outroText"
+                maxLength={4000}
+                defaultValue={draft?.outroText ?? ''}
+              />
+            </label>
+            <label>
+              Angebotsgültigkeit in Tagen
+              <input
+                name="validityDays"
+                type="number"
+                min={1}
+                max={365}
+                required
+                defaultValue={draft?.validityDays ?? 14}
+              />
+            </label>
+            <label>
+              Zustand
+              <select name="state" defaultValue={draft?.state ?? 'active'}>
+                {states.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <h3>Positionen</h3>
+            {positions.map((position, index) => (
+              <fieldset key={index}>
+                <legend>Position {index + 1}</legend>
+                <label>
+                  Produkt
+                  <select
+                    value={position.productId}
+                    onChange={(event) =>
+                      applyProduct(index, event.target.value)
+                    }
+                  >
+                    <option value="">Freie Position</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Beschreibung
+                  <input
+                    value={position.description}
+                    maxLength={300}
+                    onChange={(event) =>
+                      updatePosition(index, { description: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Menge
+                  <input
+                    inputMode="numeric"
+                    value={position.quantity}
+                    onChange={(event) =>
+                      updatePosition(index, { quantity: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Einheit
+                  <input
+                    value={position.unit}
+                    maxLength={40}
+                    onChange={(event) =>
+                      updatePosition(index, { unit: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Einzelpreis (Brutto) in Euro
+                  <input
+                    inputMode="decimal"
+                    value={position.price}
+                    onChange={(event) =>
+                      updatePosition(index, { price: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Steuersatz in Prozent
+                  <input
+                    inputMode="decimal"
+                    value={position.tax}
+                    onChange={(event) =>
+                      updatePosition(index, { tax: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Rabatt in Prozent
+                  <input
+                    inputMode="decimal"
+                    value={position.discount}
+                    onChange={(event) =>
+                      updatePosition(index, { discount: event.target.value })
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={positions.length === 1}
+                  onClick={() =>
+                    setPositions((current) =>
+                      current.filter((_row, at) => at !== index),
+                    )
+                  }
                 >
-                  <option value="">Freie Position</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Beschreibung
-                <input
-                  value={position.description}
-                  maxLength={300}
-                  onChange={(event) =>
-                    updatePosition(index, { description: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Menge
-                <input
-                  inputMode="numeric"
-                  value={position.quantity}
-                  onChange={(event) =>
-                    updatePosition(index, { quantity: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Einheit
-                <input
-                  value={position.unit}
-                  maxLength={40}
-                  onChange={(event) =>
-                    updatePosition(index, { unit: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Einzelpreis (Brutto) in Euro
-                <input
-                  inputMode="decimal"
-                  value={position.price}
-                  onChange={(event) =>
-                    updatePosition(index, { price: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Steuersatz in Prozent
-                <input
-                  inputMode="decimal"
-                  value={position.tax}
-                  onChange={(event) =>
-                    updatePosition(index, { tax: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Rabatt in Prozent
-                <input
-                  inputMode="decimal"
-                  value={position.discount}
-                  onChange={(event) =>
-                    updatePosition(index, { discount: event.target.value })
-                  }
-                />
-              </label>
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={positions.length === 1}
-                onClick={() =>
-                  setPositions((current) =>
-                    current.filter((_row, at) => at !== index),
-                  )
-                }
-              >
-                Position entfernen
-              </button>
-            </fieldset>
-          ))}
-          <button
-            type="button"
-            className="secondary-action"
-            onClick={() =>
-              setPositions((current) => [...current, emptyPosition()])
-            }
-          >
-            Position hinzufügen
-          </button>
-          <button className="primary-action">Vorlage speichern</button>
-          {draft && (
+                  Position entfernen
+                </button>
+              </fieldset>
+            ))}
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={() =>
+                setPositions((current) => [...current, emptyPosition()])
+              }
+            >
+              Position hinzufügen
+            </button>
+            <button className="primary-action">Vorlage speichern</button>
             <button
               type="button"
               className="tertiary-action"
-              onClick={() => {
-                setDraft(null);
-                setEditing(false);
-                setPositions([emptyPosition()]);
-              }}
+              onClick={closeEditor}
             >
               Abbrechen
             </button>
-          )}
-        </fieldset>
-      </form>
+          </fieldset>
+        </form>
+      )}
       <p role={conversionError ? 'alert' : 'status'}>{message}</p>
       {archiveReconciliation && (
         <button
@@ -857,7 +963,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               className="secondary-action"
               disabled={busy || archiveReconciliation !== null}
               aria-label={`Vorlage bearbeiten: ${row.name}`}
-              onClick={() => begin(row)}
+              onClick={(event) => begin(row, false, event.currentTarget)}
             >
               Bearbeiten
             </button>
@@ -865,7 +971,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               className="secondary-action"
               disabled={busy || archiveReconciliation !== null}
               aria-label={`Vorlage duplizieren: ${row.name}`}
-              onClick={() => begin(row, true)}
+              onClick={(event) => begin(row, true, event.currentTarget)}
             >
               Duplizieren
             </button>

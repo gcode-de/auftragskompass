@@ -5,6 +5,7 @@ const templateId = '11111111-1111-4111-8111-111111111111';
 const netProductId = '22222222-2222-4222-8222-222222222222';
 const grossProductId = '33333333-3333-4333-8333-333333333333';
 const overflowProductId = '44444444-4444-4444-8444-444444444444';
+const duplicateTemplateId = '66666666-6666-4666-8666-666666666666';
 
 const originalTemplate = {
   id: templateId,
@@ -82,6 +83,7 @@ async function stubTemplateApis(
   }
   const allowedOrigin = new URL(baseURL).origin;
   let savedTemplate = structuredClone(originalTemplate);
+  const createdTemplates: (typeof originalTemplate)[] = [];
   const writes: Write[] = [];
   const unexpectedApiWrites: string[] = [];
   let listGets = 0;
@@ -133,6 +135,31 @@ async function stubTemplateApis(
       : route.fulfill({ status: 405, body: '' }),
   );
   await page.route('**/api/v1/document-templates', async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      writes.push({
+        method: 'POST',
+        path: '/api/v1/document-templates',
+        body,
+      });
+      const positions = body.positions as Array<Record<string, unknown>>;
+      const created = {
+        ...body,
+        id: duplicateTemplateId,
+        version: 1,
+        positions: positions.map((position, index) => ({
+          ...position,
+          id: `77777777-7777-4777-8777-77777777777${index}`,
+        })),
+      } as typeof originalTemplate;
+      createdTemplates.push(created);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(created),
+      });
+      return;
+    }
     if (route.request().method() !== 'GET') {
       await route.fulfill({ status: 405, body: '' });
       return;
@@ -150,7 +177,7 @@ async function stubTemplateApis(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify([savedTemplate]),
+      body: JSON.stringify([savedTemplate, ...createdTemplates]),
     });
   });
   await page.route(
@@ -213,11 +240,15 @@ async function stubTemplateApis(
   };
 }
 
-async function openTemplateEditor(page: Page) {
+async function openTemplateList(page: Page) {
   await page.goto('/#settings-templates');
   await expect(
     page.getByRole('heading', { name: 'Dokumentvorlagen' }),
   ).toBeVisible();
+}
+
+async function openTemplateEditor(page: Page) {
+  await openTemplateList(page);
   await page
     .getByRole('button', {
       name: 'Vorlage bearbeiten: Fiktive Bruttopreisvorlage',
@@ -225,6 +256,148 @@ async function openTemplateEditor(page: Page) {
     .click();
   return page.getByRole('group', { name: 'Position 1' });
 }
+
+async function captureTemplateEvidence(page: Page, prefix: string) {
+  for (const theme of ['light', 'dark'] as const) {
+    const toggle = page.getByRole('button', { name: /modus aktivieren/i });
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+      await toggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    for (const width of [1280, 320] as const) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width + 1);
+      const accessibility = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      expect(accessibility.violations, `${prefix} ${width}px ${theme}`).toEqual(
+        [],
+      );
+      await page.screenshot({
+        path: test.info().outputPath(`${prefix}-${width}-${theme}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+    }
+  }
+}
+
+test('templates start as a list and open a focused on-demand editor with safe cancel and duplication', async ({
+  page,
+}) => {
+  const api = await stubTemplateApis(page);
+  await openTemplateList(page);
+  const templates = page.getByRole('region', { name: 'Dokumentvorlagen' });
+  const createButton = page.getByRole('button', { name: 'Vorlage anlegen' });
+  await expect(createButton).toBeVisible();
+  await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fiktive Bruttopreisvorlage',
+    }),
+  ).toBeVisible();
+  await captureTemplateEvidence(page, 'template-list');
+
+  await createButton.click();
+  const name = templates.getByLabel('Bezeichnung');
+  await expect(name).toBeFocused();
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fiktive Bruttopreisvorlage',
+    }),
+  ).toBeVisible();
+  await captureTemplateEvidence(page, 'template-create-editor');
+
+  await name.fill('Fiktiver neuer Entwurf');
+  const subject = templates.getByLabel('Betreff');
+  await subject.fill('Fiktiver ungespeicherter Betreff');
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toBe('Ungespeicherte Änderungen verwerfen?');
+    await dialog.dismiss();
+  });
+  await page.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(name).toHaveValue('Fiktiver neuer Entwurf');
+  await expect(subject).toHaveValue('Fiktiver ungespeicherter Betreff');
+  expect(api.writes).toEqual([]);
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toBe('Ungespeicherte Änderungen verwerfen?');
+    await dialog.accept();
+  });
+  await page.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
+  await expect(createButton).toBeFocused();
+  expect(api.writes).toEqual([]);
+
+  const editOriginal = page.getByRole('button', {
+    name: 'Vorlage bearbeiten: Fiktive Bruttopreisvorlage',
+    exact: true,
+  });
+  await editOriginal.click();
+  await expect(subject).toHaveValue(originalTemplate.subject);
+  await subject.fill('Fiktiver nicht gespeicherter geänderter Betreff');
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toBe('Ungespeicherte Änderungen verwerfen?');
+    await dialog.accept();
+  });
+  await editOriginal.click();
+  await expect(subject).toHaveValue(originalTemplate.subject);
+  await expect(name).toBeFocused();
+  expect(api.writes).toEqual([]);
+
+  await page
+    .getByRole('button', {
+      name: 'Vorlage duplizieren: Fiktive Bruttopreisvorlage',
+    })
+    .click();
+  await expect(name).toHaveValue('Fiktive Bruttopreisvorlage (Kopie)');
+  const duplicatePosition = templates.getByRole('group', {
+    name: 'Position 1',
+  });
+  await expect(duplicatePosition.getByLabel('Beschreibung')).toHaveValue(
+    'Fiktive bestehende Position',
+  );
+  await expect(
+    duplicatePosition.getByLabel('Einzelpreis (Brutto) in Euro'),
+  ).toHaveValue('88.88');
+  await subject.fill('Fiktive Kopie mit eigenem Betreff');
+  await page.getByRole('button', { name: 'Vorlage speichern' }).click();
+  await expect(page.getByText('Gespeichert.', { exact: true })).toBeVisible();
+  await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage duplizieren: Fiktive Bruttopreisvorlage',
+      exact: true,
+    }),
+  ).toBeFocused();
+  expect(api.writes).toMatchObject([
+    {
+      method: 'POST',
+      path: '/api/v1/document-templates',
+      body: {
+        kind: 'offer',
+        name: 'Fiktive Bruttopreisvorlage (Kopie)',
+        subject: 'Fiktive Kopie mit eigenem Betreff',
+        positions: [
+          {
+            productId: null,
+            description: 'Fiktive bestehende Position',
+            quantity: 1,
+            unit: 'Pauschale',
+            unitPriceMinor: 8888,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+        ],
+      },
+    },
+  ]);
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
 
 test('template copies net product prices as gross, keeps overrides and guards overflow in Chromium', async ({
   page,

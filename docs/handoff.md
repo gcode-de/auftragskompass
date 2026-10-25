@@ -2,6 +2,49 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## BKP015.4: Vorlageneditor auf Aufruf, 25.10.2026
+
+Zunächst nur Liste und „Vorlage anlegen“; Formular/Platzhalterhilfe erst auf
+Anlegen/Bearbeiten/Duplizieren. Ein bestehender Inline-Editor, alle bisherigen
+Felder und Preis-/Produkt-/Archivwege erhalten. Dirty-Rückfrage bei Abbrechen
+und Wechsel; bestätigtes erneutes Öffnen derselben Vorlage verwirft tatsächlich
+auch unkontrollierte Textfelder. Native Feldwerte bleiben beim Deaktivieren
+lesbar, sodass unveränderte Entwürfe nicht fälschlich schmutzig werden. Fokus
+beim Öffnen in Bezeichnung, nach Schließen zum verfügbaren Auslöser, ohne
+asynchron anderweitig gesetzten Fokus oder inaktive Bereiche zu übersteuern.
+
+36 fokussierte/519 gesamte Komponentenfälle, vollständige Coverage-Suite 1082
+Tests und 21 Chromiumabläufe grün, schnelle Gates/Build ebenfalls. Panel 99,37
+Prozent Zeilen/91,29 Prozent Zweige; Changed-Code 75/75 Zeilen und 79/82 Zweige.
+Acht Mobil-/Desktopbilder beider Themes sowie axe/Overflow sauber; Luna sah
+alle, Koordinator vier repräsentative Bilder. Impeccable null neue Funde bei
+61 unveränderten gemeinsamen CSS-Funden; unabhängiger Review ohne Blocker.
+Private Belege unter `delivery-2026-10-25/template-demand-local/`.
+
+Ein erster paralleler Ops-Lauf scheiterte an der erwarteten Fehlermeldung der
+leeren Restore-Datenbank; der ursprüngliche stderr wurde vom Test nicht
+ausgegeben. Ein isolierter unveränderter synthetischer Test mit Zusatzdiagnose
+bestand danach (83s) samt erwarteter Schemafehlermeldung. Ursache des ersten
+Ausgangs unbekannt, nicht als behobener Produktfehler ausgeben. Vollständiger
+abschließender Ops-Lauf danach grün:38 Python-/zwei Nodefälle samt realem
+Compose-Backup/Restore. CI/Images und tatsächlicher Liefernachweis folgen separat.
+
+**Nächster sinnvoller Slice: BKP015.5.** Der bestehende Speichervorgang verwechselt
+bestätigten POST/PUT plus fehlgeschlagenen Listen-GET noch mit einem gescheiterten
+Schreibauftrag. Blindes erneutes Anlegen kann duplizieren; POST hat keinen
+Idempotenzschlüssel. Ausführliche sichere Anweisungen stehen in
+[Dokument-/Mailtickets](bookitup-parity/tasks-documents-mail.md). Diese bekannte
+Lücke wurde durch die Editorvereinfachung nicht umgebaut. Danach Suche/Art-/
+Archivfilter und eigenständige Vorlagenvorschau, keine gesamte Mail-/Rechnungs-
+Implementierung in einen Slice ziehen. BKP015 insgesamt bleibt offen.
+
+Weiter Ponytail full/Impeccable und klar getrennte Luna-Dateizuständigkeiten.
+REA nur für tatsächlichen Referenz-/Runtimeabgleich; Taste v2 schließt die
+Verwaltungsoberfläche aus. Keine neue Referenzuntersuchung oder vollständige
+Bookitup-Parität behaupten. Nutzerobergrenze 85 Prozent gilt weiterhin;
+bei zuletzt 74 Prozent nur noch Abschluss/Reserve, keine neue Funktion.
+Zusatzcredits unverändert, keine automatische Wiederaufnahme eingerichtet.
+
 ## BKP015.3: konsistente Vorlagenliste, 25.10.2026
 
 Die getrennten Listenabfragen für Vorlage und Positionen verwenden jetzt einen

@@ -8,6 +8,42 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.4 — `feat: open document template editors on demand`** (25.10.2026)
+
+  Zunächst Vorlagenliste mit einer Anlegen-Aktion statt dauerhaft großem Formular.
+  Anlegen/Bearbeiten/Duplizieren öffnet genau einen bestehenden Inline-Editor;
+  Felder, exakte Produkt-/Positionspreise und API bleiben unverändert. Abbrechen
+  und erfolgreicher bestehender Speicherablauf schließen ihn. Getippte Texte
+  und Positionsänderungen vor Abbrechen/anderer Vorlage/Neuanlage ausdrücklich
+  schützen; bestehende appweite Dirty-Registrierung nutzen. Beim Öffnen sinnvoll
+  fokussieren, nach Schließen zum Auslöser zurück; kein Fokus auf hidden-Flächen.
+  Liste bleibt für bestehenden Archiv-/GET-Abgleich erreichbar, Entwurf dabei
+  erhalten. Nur eine dominante Hauptaktion je Frame. Kein Filter-/Vorschauprojekt,
+  keine neue Abhängigkeit, API oder Migration. Der bisherige Speicherfehler bei
+  bestätigtem PUT/POST plus fehlgeschlagenem Listen-GET ist ein gesonderter
+  anschließender Korrekturslice, keine heimliche Ausweitung dieses UI-Auftrags.
+  Tests zuerst für Liste ohne Formular, explizite Anlage, Fokus, Abbrechen mit
+  Dirty-Entscheidung, Duplikat und bestehenden Preis-/Archiv-/Fehlerpfad. Alle
+  bisherigen Tests über echte Öffnungsaktionen erhalten. Mobil/Desktop beider
+  Themes im Chromium, axe/Overflow, Screenshots und unabhängiger Review. Ponytail,
+  Impeccable, getrennte Luna-Dateizuständigkeiten; alle schnellen Gates, betroffene
+  Coverage/E2E, ein Commit und sofort pushen. BKP015 insgesamt bleibt offen.
+
+  Abnahme: echte RED-Fälle für initial offenes Formular, Verwerfen derselben
+  Vorlage, fälschlich schmutzige deaktivierte Felder und Fokusverlust; danach
+  36 fokussierte/519 gesamte Komponentenfälle, gesamte Coverage-Suite 1082 Tests,
+  schnelle Gates/Build und alle 21 Chromiumabläufe grün. Panel 99,37 Prozent
+  Zeilen/91,29 Prozent Zweige, Changed-Code 75/75 und 79/82. Acht Mobil-/Desktop-
+  Bilder in beiden Themes geprüft, axe/Overflow sauber; Impeccable null neue
+  Funde bei unveränderter gemeinsamer CSS-Baseline 61, unabhängiger Review klar.
+  Erster paralleler Ops-Lauf scheiterte ohne vollständige Diagnose am erwarteten
+  Fehlertext der leeren Restore-Datenbank; isolierter unveränderter Test mit
+  Zusatzdiagnose danach grün, ursprüngliche Ursache nicht belegt. Vollständiger
+  Ops-Abschluss anschließend vollständig grün (38 Python-/zwei Nodefälle samt
+  realem Compose-Backup/Restore). CI/Images/Lieferung gesondert festhalten. Nächster
+  fachlich nötiger Slice ist BKP015.5 für sichere Speicherrückmeldung, siehe
+  detaillierte Paritätsanweisungen; Filter und Vorschau folgen danach.
+
 - [x] **BKP015.3 — `fix: read document template lists from one snapshot`** (25.10.2026)
 
   Die bestehende Vorlagenliste liest Vorlagen und Positionen in zwei unabhängigen
@@ -63,7 +99,7 @@
   Panel-Coverage 99,24 Prozent Zeilen/90,19 Prozent Zweige; Changed-Code
   179/180 Zeilen und 172/190 Zweige. Vier Mobil-/Desktopbilder in beiden Themes
   und zwei zusätzliche Fehlerbilder geprüft, axe/Overflow ohne Befund.
-  Impeccable: Panel null Detektorfunde, unveränderte gemeinsame CSS-Baseline61;
+  Impeccable: Panel null Detektorfunde, unveränderte gemeinsame CSS-Baseline 61;
   unabhängiger Luna-Review ohne Blocker. Kein neuer API-/Datenbankvertrag.
   Linux-CI/Images und Auslieferung nach Push gesondert nachweisen.
 
