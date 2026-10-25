@@ -359,6 +359,12 @@ hin. Eine tatsächlich neuere Serverversion wird als aktueller Stand übernommen
 ein widersprüchlicher älterer Stand hebt einen bestätigten Erfolg nicht auf.
 Der Listenabgleich erhält getippte Texte und Positionen des offenen Entwurfs.
 
+Der Listenendpunkt liest Vorlagen und ihre Positionen gemeinsam in einer
+lesenden Repeatable-Read-Transaktion (BKP015.3). Eine parallel gespeicherte
+Änderung kann dadurch keine neue Versionsnummer mit alten Positionen koppeln.
+Ein nachfolgender Schreibversuch aus einem älteren Snapshot wird weiterhin
+über die vorhandene Versionsprüfung abgewiesen; API und Sortierung bleiben gleich.
+
 Fokussierter Vorlageneditor, Suche/Filter und eigenständige Vorlagenvorschau sind
 damit noch nicht umgesetzt; das übergeordnete Paritätsticket BKP015 bleibt offen.
 

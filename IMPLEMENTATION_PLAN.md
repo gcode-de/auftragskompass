@@ -8,6 +8,30 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.3 — `fix: read document template lists from one snapshot`** (25.10.2026)
+
+  Die bestehende Vorlagenliste liest Vorlagen und Positionen in zwei unabhängigen
+  READ-COMMITTED-Abfragen. Deterministisch prüfen, ob ein paralleles Speichern
+  neue Version plus alte Positionen liefert und eine spätere versionsgültige
+  Archivierung dadurch neue Positionen zurückschreiben kann. Zuerst echter
+  PostgreSQL-Interleavingtest: alte Position lesen, normale Änderung auf Version 2
+  committen, dann verzögerte Vorlagenabfrage ausführen. Testbar getrennte Lese-
+  und Schreibpools, begrenzte Gates mit garantiertem Cleanup, keine Sleeps oder
+  produktiven Testhooks. Danach beide bestehenden Listenabfragen in genau einem
+  lesenden Repeatable-Read-Snapshot; Tenantfilter, Sortierung, Preis-/Positions-
+  modell und API-Vertrag erhalten. Keine Sperre, Migration oder UI-Erweiterung.
+  Snapshot muss alte zusammengehörige Version/Position liefern, anschließende
+  Archivierung mit alter Version muss 409 auslösen und neue Position erhalten.
+  Ponytail/Luna mit getrenntem Code-/Testbesitz; betroffene echte Integration,
+  schnelle Gates/Coverage, unabhängiger Review, explizit stagen und sofort pushen.
+
+  Abnahme: echtes RED mit neuer Version 2/alten Positionen A und akzeptierter
+  veralteter Archivierung; nach Fix zusammengehörige Version 1/A, alter Schreib-
+  versuch abgewiesen und gespeicherte Version 2/B erhalten. Vier fokussierte
+  Integrationsfälle, gesamte Coverage-Suite 1074 Tests und schnelle Gates/Build
+  grün. Gesamtabdeckung 97,20 Prozent Zeilen/93,31 Prozent Zweige, geänderte
+  Zeilen 4/4; unabhängiger Luna-Review ohne Blocker. Keine neue UI oder Migration.
+
 - [x] **BKP015.2 — `fix: handle document template archive outcomes safely`** (25.10.2026)
 
   Genau den bestehenden Archivieren-Ablauf nach detailliertem Auftrag in

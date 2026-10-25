@@ -2,6 +2,20 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## BKP015.3: konsistente Vorlagenliste, 25.10.2026
+
+Die getrennten Listenabfragen für Vorlage und Positionen verwenden jetzt einen
+gemeinsamen lesenden Repeatable-Read-Snapshot. Der reale PostgreSQL-Test zeigte
+vorher neue Version 2 mit alten Positionen A und einen akzeptierten veralteten
+Schreibversuch. Nach Fix: konsistente Version 1/A, Konflikt beim alten Archivieren,
+Version 2/B bleibt erhalten. Keine API-/Schema-/UI-Änderung, keine Schreibsperre.
+
+Vier fokussierte Integrationsfälle und gesamte Coverage-Suite 1074 Tests grün
+(97,20 Prozent Zeilen/93,31 Prozent Zweige), geänderte Zeilen 4/4. Schnelle
+Gates/Build und unabhängiger Luna-Review klar. CI/Images und Deployment dieser
+Änderung noch gesondert prüfen; letzte unten vollständig belegte Lieferung 7ac0ba9.
+Fokussierter Vorlageneditor, Filter und Vorschau bleiben nächste UI-Arbeit.
+
 ## BKP015.2: Vorlagenarchivierung abgesichert, 25.10.2026
 
 Archivieren prüft nun Ablehnung, Versionskonflikt, bestätigten Erfolg und
@@ -15,7 +29,7 @@ bewusste Nutzerbewegung oder inaktive Arbeitsbereiche zu übersteuern.
 
 Lokal grün: 28 fokussierte/511 gesamte Komponentenfälle, 260 Unit-Tests,
 schnelle Gates/Build und vier betroffene Chromiumabläufe. Panel 99,24 Prozent
-Zeilen/90,19 Prozent Zweige, Changed-Code179/180 und172/190. Sechs relevante
+Zeilen/90,19 Prozent Zweige, Changed-Code 179/180 und 172/190. Sechs relevante
 Mobil-/Desktop-/Fehlerbilder geprüft, axe/Overflow sauber; Impeccable null neue
 Funde (61 unveränderte gemeinsame CSS-Funde), unabhängiger Luna-Review klar.
 Diese Änderung ist vor CI-/Lieferabgleich noch nicht als deployed belegt.
@@ -28,8 +42,8 @@ deterministischer PostgreSQL-RED-Test, dann beide Listenabfragen in einem
 konsistenten lesenden Snapshot; keine neue API, Migration oder UI-Erweiterung.
 Fokussierter Editor, Filter und Vorlagenvorschau bleiben offen.
 
-Aktuelle Nutzerobergrenze weiterhin85 Prozent, keine Zusatzcredits nutzen.
-Zuletzt regulär verfügbar,36 Prozent im neuen Fenster; vor weiteren Slices
+Aktuelle Nutzerobergrenze weiterhin 85 Prozent, keine Zusatzcredits nutzen.
+Zuletzt regulär verfügbar, 36 Prozent im neuen Fenster; vor weiteren Slices
 tatsächliche Limits prüfen. Keine automatische Wiederaufnahme neu beauftragt.
 
 ## H048 abgeschlossen: mobile Einstellungen und Logo ausgeliefert, 25.10.2026

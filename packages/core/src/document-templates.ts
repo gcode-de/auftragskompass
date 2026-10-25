@@ -89,7 +89,7 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
     scope = eq(documentTemplates.tenantId, tenantId),
     positionScope = eq(documentTemplatePositions.tenantId, tenantId);
   async function positionsOf(
-    connection: ReturnType<typeof drizzle>,
+    connection: Pick<ReturnType<typeof drizzle>, 'select'>,
     templateId?: string,
   ) {
     const rows = templateId
@@ -137,20 +137,28 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
   }
   return {
     async list() {
-      const [templates, positions] = await Promise.all([
-        db
-          .select()
-          .from(documentTemplates)
-          .where(scope)
-          .orderBy(asc(documentTemplates.kind), asc(documentTemplates.name)),
-        positionsOf(db),
-      ]);
-      return templates.map((template) => ({
-        ...template,
-        positions: clone(
-          positions.filter((row) => row.templateId === template.id),
-        ),
-      }));
+      return db.transaction(
+        async (tx) => {
+          const [templates, positions] = await Promise.all([
+            tx
+              .select()
+              .from(documentTemplates)
+              .where(scope)
+              .orderBy(
+                asc(documentTemplates.kind),
+                asc(documentTemplates.name),
+              ),
+            positionsOf(tx),
+          ]);
+          return templates.map((template) => ({
+            ...template,
+            positions: clone(
+              positions.filter((row) => row.templateId === template.id),
+            ),
+          }));
+        },
+        { isolationLevel: 'repeatable read', accessMode: 'read only' },
+      );
     },
     async get(id: string) {
       return readOne(db, id);

@@ -3,7 +3,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { migrate } from '../../packages/core/src/identity.js';
 import {
@@ -109,6 +109,152 @@ test('templates keep ordered positions, bump the version and survive archiving',
   const reread = await repo.get(created.id);
   expect(reread?.state).toBe('archived');
   expect(reread?.positions).toHaveLength(1);
+});
+test('template lists pair versions and positions from one database snapshot', async () => {
+  const writer = documentTemplateRepository(pool, tenantId),
+    source = input(),
+    created = await writer.save(actorId, {
+      ...source,
+      positions: [{ ...source.positions[0]!, description: 'Fictional old A' }],
+    }),
+    readPool = new Pool({ connectionString: container.getConnectionUri() }),
+    reader = documentTemplateRepository(readPool, tenantId),
+    originalQuery = readPool.query.bind(readPool) as (
+      ...args: unknown[]
+    ) => Promise<unknown>,
+    originalQueryCall = readPool.query.bind(readPool),
+    originalConnect = readPool.connect.bind(readPool);
+  let templateReached!: () => void,
+    positionsCaptured!: () => void,
+    releaseTemplate!: () => void;
+  const templateQueryReached = new Promise<void>(
+      (resolve) => (templateReached = resolve),
+    ),
+    positionsQueryCaptured = new Promise<void>(
+      (resolve) => (positionsCaptured = resolve),
+    ),
+    templateQueryRelease = new Promise<void>(
+      (resolve) => (releaseTemplate = resolve),
+    );
+  let templateGateUsed = false,
+    positionsGateUsed = false,
+    poolQueryDelegation = 0;
+  const interleave = async (query: unknown, execute: () => unknown) => {
+    const sql =
+      typeof query === 'string'
+        ? query
+        : query && typeof query === 'object' && 'text' in query
+          ? String(query.text)
+          : '';
+    if (!templateGateUsed && /document_templates/.test(sql)) {
+      templateGateUsed = true;
+      templateReached();
+      await templateQueryRelease;
+    }
+    const result = await execute();
+    if (!positionsGateUsed && /document_template_positions/.test(sql)) {
+      positionsGateUsed = true;
+      positionsCaptured();
+    }
+    return result;
+  };
+  readPool.query = ((...args: unknown[]) => {
+    if (args.some((argument) => typeof argument === 'function'))
+      return Reflect.apply(originalQueryCall, undefined, args);
+    return interleave(args[0], () => {
+      poolQueryDelegation += 1;
+      return originalQuery(...args).finally(() => {
+        poolQueryDelegation -= 1;
+      });
+    });
+  }) as typeof readPool.query;
+  readPool.connect = ((...args: unknown[]) => {
+    if (args.some((argument) => typeof argument === 'function'))
+      return Reflect.apply(originalConnect, undefined, args);
+    return (originalConnect() as Promise<PoolClient>).then((client) => {
+      const clientQuery = client.query.bind(client) as (
+        ...queryArgs: unknown[]
+      ) => Promise<unknown>;
+      client.query = ((...queryArgs: unknown[]) => {
+        if (
+          poolQueryDelegation > 0 ||
+          queryArgs.some((argument) => typeof argument === 'function')
+        )
+          return clientQuery(...queryArgs);
+        return interleave(queryArgs[0], () => clientQuery(...queryArgs));
+      }) as typeof client.query;
+      return client;
+    });
+  }) as typeof readPool.connect;
+
+  let listing: ReturnType<typeof reader.list> | undefined;
+  let gateTimeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    listing = reader.list();
+    await Promise.race([
+      Promise.all([templateQueryReached, positionsQueryCaptured]),
+      new Promise<never>((_resolve, reject) => {
+        gateTimeout = setTimeout(
+          () => reject(new Error('Template list query interleaving timed out')),
+          5000,
+        );
+      }),
+    ]);
+    if (gateTimeout) clearTimeout(gateTimeout);
+    gateTimeout = undefined;
+    const updated = await writer.save(
+      actorId,
+      {
+        ...source,
+        positions: [
+          { ...source.positions[0]!, description: 'Fictional new B' },
+        ],
+      },
+      created.id,
+      1,
+    );
+    expect(updated.version).toBe(2);
+    expect(updated.positions.map((position) => position.description)).toEqual([
+      'Fictional new B',
+    ]);
+    releaseTemplate();
+
+    const snapshot = (await listing).find(
+      (template) => template.id === created.id,
+    )!;
+    let staleArchiveError: unknown;
+    try {
+      await writer.save(
+        actorId,
+        {
+          ...source,
+          state: 'archived',
+          positions: snapshot.positions,
+        },
+        snapshot.id,
+        snapshot.version,
+      );
+    } catch (error) {
+      staleArchiveError = error;
+    }
+    const final = await writer.get(created.id);
+    expect(final?.positions.map((position) => position.description)).toEqual([
+      'Fictional new B',
+    ]);
+    expect(staleArchiveError).toMatchObject({ reason: 'conflict' });
+    expect(final?.version).toBe(2);
+    expect(snapshot.version).toBe(1);
+    expect(snapshot.positions.map((position) => position.description)).toEqual([
+      'Fictional old A',
+    ]);
+  } finally {
+    releaseTemplate();
+    if (gateTimeout) clearTimeout(gateTimeout);
+    if (listing) await listing.catch(() => undefined);
+    readPool.query = originalQueryCall;
+    readPool.connect = originalConnect;
+    await readPool.end();
+  }
 });
 test('templates stay inside their tenant', async () => {
   const mine = await documentTemplateRepository(pool, tenantId).save(
