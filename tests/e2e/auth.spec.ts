@@ -523,6 +523,15 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         };
       });
     const expectSharedBrandRow = async () => {
+      // Keyboard activation can leave the button's active transform easing out
+      // after keyup, so measure the 44px touch target after that transition.
+      await sidebar.locator('.sidebar-toggle').evaluate(async (button) => {
+        await Promise.all(
+          button
+            .getAnimations()
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      });
       const report = await brandRowReport();
       expect(report.row).not.toBeNull();
       const row = report.row!;

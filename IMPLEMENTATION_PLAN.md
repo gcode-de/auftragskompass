@@ -8,6 +8,23 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H052 — `test: measure settled sidebar toggle geometry`** (25.10.2026)
+
+  H051-CI40197576242 besteht Komponenten/Coverage, scheitert im Passwort-
+  Chromiumablauf an expectSharedBrandRow: Togglebreite43,999130249 statt44.
+  Echte Ursache anhand Styles/Transforms/Animation und Browsergeometrie prüfen.
+  Zuerst reproduzierbarer Beleg, dann kleinste richtige Korrektur: keine pauschale
+  Relaxierung aller Touchprüfungen, kein Skip/Retry oder größeres Zeitbudget.
+  Bei laufender Transition tatsächlichen Endzustand abwarten; bei bloßer
+  Gleitkommadarstellung Messung gegen echten44px-Layoutvertrag absichern.
+  Betroffene Auth-Chromiumabläufe, schnelle Gates und unabhängiger Review;
+  danach CI/Images/Lieferung abschließen. Kein Deploy bei roter CI.
+  Abnahme: deterministischer Chromiumprobe mit echten Styles misst laufende
+  transform-Transition43,9998627px, nach animation.finished exakt44×44.
+  Nur betroffenen Toggle vor Messung abwarten, unveränderte strenge44px-
+  Assertions. Beide HTTPS-Authmodi2/2, 519 Komponenten-/260 Unit-Tests und
+  schnelle Gates/Build grün; unabhängiger Review ohne Blocker. Kein Produktcode.
+
 - [x] **H051 — `test: await layout reload focus restoration`** (25.10.2026)
 
   CI40197096114 scheitert ausschließlich in der bestehenden Logo404-Recovery-

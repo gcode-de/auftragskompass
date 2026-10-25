@@ -2,6 +2,27 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Neue Fortsetzung: 25.10.2026, abends
+
+Neues reguläres Fünf-Stunden-Fenster bei 0 Prozent geprüft, resetsAt=1792972443.
+Aktuelle Nutzeranweisung ersetzt die frühere 85-Prozent-Obergrenze: sinnvoll
+bis nahe zur Erschöpfung arbeiten, ab 85 nur kleine abschließbare Aufgaben und
+ab 95 geordnet beenden; keine Zusatzcredits oder manuellen Resets. Genau eine
+weitere Phase gegen 01:15 Europe/Berlin am 26.10.2026 ist als Thread-Heartbeat
+`auftragskompass-einmalig-um-01-15-fortsetzen` eingerichtet. Vor Start echten
+Reset/ordinaryUsageAllowed prüfen; nach dieser zweiten Phase Automation löschen.
+
+H051-CI40197576242 hat Komponenten/Coverage bestanden, scheiterte danach im
+Passwort-Chromiumablauf an der Sidebar-Togglemessung 43,999130249 statt44px.
+Keine Images, keine neue Auslieferung. H052 untersucht tatsächliche Transition/
+Browsergeometrie, ohne Touchvertrag oder Prüfungen pauschal abzuschwächen.
+H052 ist lokal abgenommen: echte Styles+Space zeigen laufende transform-
+Transition mit 43,9998627px, nach animation.finished exakt 44×44. Messung wartet
+nur auf Toggleanimation; keine gelockerte 44px-Assertion oder feste Pause. Beide
+HTTPS-Authmodi 2/2, 519 Komponenten-/260 Unit-Tests, schnelle Gates/Build und
+unabhängiger Review grün. CI/Images und Lieferung danach erneut prüfen.
+Danach BKP015.5 und weitere Paritätsslices.
+
 ## Abschlussreserve: CI-Fokusprüfung H051, 25.10.2026
 
 Neue Funktionscommits auf UX gepusht:22144e6 (Archivierung), f26c137
