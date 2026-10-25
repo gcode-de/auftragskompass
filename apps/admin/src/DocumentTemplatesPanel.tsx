@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { grossProductPrice } from './product-price.js';
 
@@ -23,6 +23,21 @@ type Template = {
   validityDays: number;
   state: string;
   positions: Position[];
+};
+type ArchiveReconciliation = {
+  id: string;
+  outcome: 'unknown' | 'stale' | 'confirmed';
+  confirmed?: Template;
+};
+type ArchiveFocusTarget = 'archive' | 'edit' | 'reconcile' | 'heading';
+type ArchiveFocusRequest = {
+  id: string;
+  target: ArchiveFocusTarget;
+};
+type ArchiveFocusIntent = {
+  id: string;
+  moved: boolean;
+  stop: () => void;
 };
 type Product = {
   id: string;
@@ -83,6 +98,75 @@ const toDraft = (position: Position): DraftPosition => ({
   discount: formatHundredths(position.discountBasisPoints),
 });
 
+function isTemplate(value: unknown): value is Template {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.id === 'string' &&
+    Number.isSafeInteger(row.version) &&
+    Number(row.version) > 0 &&
+    typeof row.kind === 'string' &&
+    typeof row.name === 'string' &&
+    typeof row.subject === 'string' &&
+    typeof row.introText === 'string' &&
+    typeof row.outroText === 'string' &&
+    Number.isSafeInteger(row.validityDays) &&
+    Number(row.validityDays) >= 1 &&
+    Number(row.validityDays) <= 365 &&
+    (row.state === 'active' ||
+      row.state === 'inactive' ||
+      row.state === 'archived') &&
+    Array.isArray(row.positions) &&
+    row.positions.length <= 200 &&
+    row.positions.every((position: unknown) => {
+      if (!position || typeof position !== 'object') return false;
+      const line = position as Record<string, unknown>;
+      return (
+        (line.id === undefined || typeof line.id === 'string') &&
+        (line.productId === null || typeof line.productId === 'string') &&
+        typeof line.description === 'string' &&
+        Number.isSafeInteger(line.quantity) &&
+        Number(line.quantity) >= 1 &&
+        typeof line.unit === 'string' &&
+        Number.isSafeInteger(line.unitPriceMinor) &&
+        Number(line.unitPriceMinor) >= 0 &&
+        Number.isSafeInteger(line.taxBasisPoints) &&
+        Number(line.taxBasisPoints) >= 0 &&
+        Number(line.taxBasisPoints) <= 10000 &&
+        Number.isSafeInteger(line.discountBasisPoints) &&
+        Number(line.discountBasisPoints) >= 0 &&
+        Number(line.discountBasisPoints) <= 10000
+      );
+    })
+  );
+}
+
+function sameTemplateContent(actual: Template, expected: Template) {
+  return (
+    actual.id === expected.id &&
+    actual.kind === expected.kind &&
+    actual.name === expected.name &&
+    actual.subject === expected.subject &&
+    actual.introText === expected.introText &&
+    actual.outroText === expected.outroText &&
+    actual.validityDays === expected.validityDays &&
+    actual.positions.length === expected.positions.length &&
+    actual.positions.every((position, index) => {
+      const original = expected.positions[index];
+      return (
+        original !== undefined &&
+        position.productId === original.productId &&
+        position.description === original.description &&
+        position.quantity === original.quantity &&
+        position.unit === original.unit &&
+        position.unitPriceMinor === original.unitPriceMinor &&
+        position.taxBasisPoints === original.taxBasisPoints &&
+        position.discountBasisPoints === original.discountBasisPoints
+      );
+    })
+  );
+}
+
 export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const [rows, setRows] = useState<Template[]>([]),
     [products, setProducts] = useState<Product[]>([]),
@@ -91,11 +175,86 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     [editing, setEditing] = useState(false),
     [message, setMessage] = useState(''),
     [conversionError, setConversionError] = useState(false),
-    [busy, setBusy] = useState(false);
-  async function refresh() {
+    [busy, setBusy] = useState(false),
+    [archivePendingId, setArchivePendingId] = useState<string | null>(null),
+    [archiveReconciliation, setArchiveReconciliation] =
+      useState<ArchiveReconciliation | null>(null),
+    [archiveFocusRequest, setArchiveFocusRequest] =
+      useState<ArchiveFocusRequest | null>(null);
+  const archiveInFlight = useRef(false);
+  const archiveFocusIntent = useRef<ArchiveFocusIntent | null>(null);
+  const archiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const editButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const reconcileButtonRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(
+    () => () => {
+      archiveFocusIntent.current?.stop();
+      archiveFocusIntent.current = null;
+    },
+    [],
+  );
+  function trackArchiveFocus(id: string, origin: HTMLElement) {
+    archiveFocusIntent.current?.stop();
+    archiveFocusIntent.current = null;
+    if (document.activeElement !== origin) return;
+    const intent: ArchiveFocusIntent = {
+      id,
+      moved: false,
+      stop: () => document.removeEventListener('focusin', onFocusIn),
+    };
+    function onFocusIn(event: FocusEvent) {
+      const target = event.target;
+      if (target !== origin && target !== document.body) intent.moved = true;
+    }
+    document.addEventListener('focusin', onFocusIn);
+    archiveFocusIntent.current = intent;
+  }
+  function requestArchiveFocus(id: string, target: ArchiveFocusTarget) {
+    if (archiveFocusIntent.current?.id === id)
+      setArchiveFocusRequest({ id, target });
+  }
+  useLayoutEffect(() => {
+    if (!archiveFocusRequest || busy) return;
+    const intent = archiveFocusIntent.current;
+    setArchiveFocusRequest(null);
+    if (!intent || intent.id !== archiveFocusRequest.id) return;
+    intent.stop();
+    archiveFocusIntent.current = null;
+    if (intent.moved) return;
+    const target =
+      archiveFocusRequest.target === 'archive'
+        ? archiveButtonRefs.current.get(archiveFocusRequest.id)
+        : archiveFocusRequest.target === 'edit'
+          ? editButtonRefs.current.get(archiveFocusRequest.id)
+          : archiveFocusRequest.target === 'reconcile'
+            ? reconcileButtonRef.current
+            : headingRef.current;
+    const unavailable =
+      !target ||
+      (target instanceof HTMLButtonElement && target.disabled) ||
+      !target.isConnected ||
+      target.closest('[hidden], [inert], [aria-hidden="true"]') !== null;
+    const fallback = headingRef.current;
+    const destination = unavailable ? fallback : target;
+    if (
+      destination?.isConnected &&
+      !destination.closest('[hidden], [inert], [aria-hidden="true"]')
+    )
+      destination.focus();
+  }, [archiveFocusRequest, busy, archiveReconciliation, rows]);
+  async function readTemplates() {
     const response = await fetch('/api/v1/document-templates');
     if (!response.ok) throw new Error('load');
-    setRows((await response.json()) as Template[]);
+    const result: unknown = await response.json();
+    if (!Array.isArray(result) || !result.every(isTemplate))
+      throw new Error('load');
+    return result;
+  }
+  async function refresh() {
+    const result = await readTemplates();
+    setRows(result);
+    return result;
   }
   useEffect(() => {
     void refresh().catch(() =>
@@ -109,8 +268,10 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       .catch(() => setProducts([]));
   }, []);
   function begin(template: Template | null, copy = false) {
-    setMessage('');
-    setConversionError(false);
+    if (!archiveReconciliation) {
+      setMessage('');
+      setConversionError(false);
+    }
     setDraft(
       template && copy
         ? { ...template, name: `${template.name.slice(0, 112)} (Kopie)` }
@@ -161,6 +322,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     }
   }
   async function save(form: HTMLFormElement) {
+    if (busy || archiveReconciliation) return;
     setBusy(true);
     setMessage('');
     setConversionError(false);
@@ -227,9 +389,252 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setBusy(false);
     }
   }
+  async function reconcileArchive(origin: HTMLElement) {
+    const current = archiveReconciliation;
+    if (!current || busy || archiveInFlight.current) return;
+    trackArchiveFocus(current.id, origin);
+    archiveInFlight.current = true;
+    setBusy(true);
+    setMessage('Vorlagen werden neu geladen …');
+    setConversionError(false);
+    try {
+      const result = await readTemplates();
+      const row = result.find((template) => template.id === current.id);
+      if (current.outcome === 'confirmed' && current.confirmed) {
+        if (row && row.version > current.confirmed.version) {
+          setRows(result);
+          setArchiveReconciliation(null);
+          setMessage(
+            'Archivierung bestätigt. Die Vorlage wurde inzwischen erneut geändert; der aktuelle Stand wurde geladen.',
+          );
+          setConversionError(false);
+          requestArchiveFocus(
+            current.id,
+            row.state === 'active' ? 'archive' : 'edit',
+          );
+          return;
+        }
+        if (
+          row?.state === 'archived' &&
+          row.version === current.confirmed.version &&
+          sameTemplateContent(row, current.confirmed)
+        ) {
+          setRows(result);
+          setArchiveReconciliation(null);
+          setMessage('Vorlagen neu geladen. Die Archivierung ist bestätigt.');
+          requestArchiveFocus(current.id, 'edit');
+          return;
+        }
+        const withoutTarget = result.filter(
+          (template) => template.id !== current.id,
+        );
+        setRows([...withoutTarget, current.confirmed]);
+        setMessage(
+          'Die Archivierung ist bestätigt. Der Listenstand weicht ab. Bitte Vorlagen erneut laden.',
+        );
+        setConversionError(true);
+        requestArchiveFocus(current.id, 'reconcile');
+        return;
+      }
+      setRows(result);
+      setArchiveReconciliation(null);
+      setConversionError(false);
+      setMessage(
+        !row
+          ? 'Vorlagen neu geladen. Die Vorlage ist nicht mehr vorhanden.'
+          : row.state === 'archived'
+            ? 'Vorlagen neu geladen. Die Vorlage ist archiviert.'
+            : 'Vorlagen neu geladen. Die Vorlage ist nicht archiviert; du kannst den Vorgang erneut starten.',
+      );
+      requestArchiveFocus(
+        current.id,
+        !row ? 'heading' : row.state === 'active' ? 'archive' : 'edit',
+      );
+    } catch {
+      setMessage(
+        current.outcome === 'confirmed'
+          ? 'Vorlage archiviert. Die Liste konnte nicht aktualisiert werden. Bitte Vorlagen erneut laden.'
+          : 'Der Serverstand konnte nicht abgeglichen werden. Bitte Vorlagen erneut laden.',
+      );
+      setConversionError(true);
+      requestArchiveFocus(current.id, 'reconcile');
+    } finally {
+      archiveInFlight.current = false;
+      setArchivePendingId(null);
+      setBusy(false);
+    }
+  }
+  async function archive(row: Template, origin: HTMLElement) {
+    if (
+      row.state === 'archived' ||
+      busy ||
+      archiveInFlight.current ||
+      archiveReconciliation !== null
+    )
+      return;
+    trackArchiveFocus(row.id, origin);
+    archiveInFlight.current = true;
+    setArchivePendingId(row.id);
+    setBusy(true);
+    setMessage('Vorlage wird archiviert …');
+    setConversionError(false);
+    try {
+      const response = await fetch(`/api/v1/document-templates/${row.id}`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          kind: row.kind,
+          name: row.name,
+          subject: row.subject,
+          introText: row.introText,
+          outroText: row.outroText,
+          validityDays: row.validityDays,
+          state: 'archived',
+          positions: row.positions.map((position) => ({
+            productId: position.productId,
+            description: position.description,
+            quantity: position.quantity,
+            unit: position.unit,
+            unitPriceMinor: position.unitPriceMinor,
+            taxBasisPoints: position.taxBasisPoints,
+            discountBasisPoints: position.discountBasisPoints,
+          })),
+          version: row.version,
+        }),
+      });
+      if (!response.ok) {
+        let focusTarget: ArchiveFocusTarget = 'archive';
+        if (response.status === 404 || response.status === 409) {
+          focusTarget = 'reconcile';
+          setArchiveReconciliation({ id: row.id, outcome: 'stale' });
+          setMessage(
+            response.status === 409
+              ? 'Vorlage wurde inzwischen geändert. Bitte Vorlagen neu laden, bevor du erneut archivierst.'
+              : 'Vorlage ist nicht mehr verfügbar. Bitte Vorlagen neu laden, bevor du erneut archivierst.',
+          );
+        } else if (response.status >= 500) {
+          focusTarget = 'reconcile';
+          setArchiveReconciliation({ id: row.id, outcome: 'unknown' });
+          setMessage(
+            'Der Archivierungsstand ist unklar. Bitte Vorlagen neu laden, bevor du erneut archivierst.',
+          );
+        } else {
+          setMessage(
+            response.status === 401
+              ? 'Bitte erneut anmelden, um die Vorlage zu archivieren.'
+              : response.status === 403
+                ? 'Du darfst Dokumentvorlagen nicht ändern. Bitte deine Berechtigung prüfen.'
+                : 'Archivierung abgelehnt. Angaben und Berechtigung prüfen.',
+          );
+        }
+        setConversionError(true);
+        requestArchiveFocus(row.id, focusTarget);
+        return;
+      }
+      let result: unknown;
+      try {
+        result = await response.json();
+      } catch {
+        setArchiveReconciliation({ id: row.id, outcome: 'unknown' });
+        setMessage(
+          'Der Archivierungsstand ist unklar. Bitte Vorlagen neu laden, bevor du erneut archivierst.',
+        );
+        setConversionError(true);
+        requestArchiveFocus(row.id, 'reconcile');
+        return;
+      }
+      if (
+        !isTemplate(result) ||
+        result.id !== row.id ||
+        result.version !== row.version + 1 ||
+        result.state !== 'archived' ||
+        !sameTemplateContent(result, row)
+      ) {
+        setArchiveReconciliation({ id: row.id, outcome: 'unknown' });
+        setMessage(
+          'Die Archivierungsantwort war unplausibel. Bitte Vorlagen neu laden, bevor du erneut archivierst.',
+        );
+        setConversionError(true);
+        requestArchiveFocus(row.id, 'reconcile');
+        return;
+      }
+
+      setRows((current) =>
+        current.map((template) =>
+          template.id === result.id ? result : template,
+        ),
+      );
+      setArchiveReconciliation({
+        id: result.id,
+        outcome: 'confirmed',
+        confirmed: result,
+      });
+      setMessage('Vorlage archiviert.');
+      setConversionError(false);
+      try {
+        const refreshed = await readTemplates();
+        const archived = refreshed.find((template) => template.id === row.id);
+        if (archived && archived.version > result.version) {
+          setRows(refreshed);
+          setArchiveReconciliation(null);
+          setMessage(
+            'Vorlage archiviert. Die Vorlage wurde inzwischen erneut geändert; der aktuelle Stand wurde geladen.',
+          );
+          setConversionError(false);
+          requestArchiveFocus(
+            row.id,
+            archived.state === 'active' ? 'archive' : 'edit',
+          );
+          return;
+        }
+        if (
+          archived?.state === 'archived' &&
+          archived.version === result.version &&
+          sameTemplateContent(archived, result)
+        ) {
+          setRows(refreshed);
+          setArchiveReconciliation(null);
+          setMessage('Vorlage archiviert.');
+          requestArchiveFocus(row.id, 'edit');
+        } else {
+          setRows([
+            ...refreshed.filter((template) => template.id !== result.id),
+            result,
+          ]);
+          setMessage(
+            'Vorlage archiviert. Der Listenstand weicht ab. Bitte Vorlagen erneut laden.',
+          );
+          setConversionError(true);
+          requestArchiveFocus(row.id, 'reconcile');
+        }
+      } catch {
+        setMessage(
+          'Vorlage archiviert. Die Liste konnte nicht aktualisiert werden. Bitte Vorlagen erneut laden.',
+        );
+        setConversionError(true);
+        requestArchiveFocus(row.id, 'reconcile');
+      }
+    } catch {
+      setArchiveReconciliation({ id: row.id, outcome: 'unknown' });
+      setMessage(
+        'Der Archivierungsstand ist unklar. Bitte Vorlagen neu laden, bevor du erneut archivierst.',
+      );
+      setConversionError(true);
+      requestArchiveFocus(row.id, 'reconcile');
+    } finally {
+      archiveInFlight.current = false;
+      setArchivePendingId(null);
+      setBusy(false);
+    }
+  }
   return (
     <section id="document-templates" aria-label="Dokumentvorlagen">
-      <h2>Dokumentvorlagen</h2>
+      <h2 ref={headingRef} tabIndex={-1}>
+        Dokumentvorlagen
+      </h2>
       <p>
         Platzhalter: {placeholders.map((name) => `{{${name}}}`).join(', ')}.
         Unbekannte Platzhalter werden beim Speichern abgewiesen.
@@ -241,7 +646,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           void save(event.currentTarget);
         }}
       >
-        <fieldset disabled={busy}>
+        <fieldset disabled={busy || archiveReconciliation !== null}>
           <legend>{editing ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</legend>
           <label>
             Dokumentart
@@ -425,6 +830,17 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         </fieldset>
       </form>
       <p role={conversionError ? 'alert' : 'status'}>{message}</p>
+      {archiveReconciliation && (
+        <button
+          ref={reconcileButtonRef}
+          type="button"
+          className="tertiary-action"
+          disabled={busy}
+          onClick={(event) => void reconcileArchive(event.currentTarget)}
+        >
+          Vorlagen neu laden
+        </button>
+      )}
       <ul>
         {rows.map((row) => (
           <li key={row.id}>
@@ -434,8 +850,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               {row.state === 'archived' ? ' – Archiviert' : ''}
             </span>{' '}
             <button
+              ref={(element) => {
+                if (element) editButtonRefs.current.set(row.id, element);
+                else editButtonRefs.current.delete(row.id);
+              }}
               className="secondary-action"
-              disabled={busy}
+              disabled={busy || archiveReconciliation !== null}
               aria-label={`Vorlage bearbeiten: ${row.name}`}
               onClick={() => begin(row)}
             >
@@ -443,46 +863,30 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             </button>
             <button
               className="secondary-action"
-              disabled={busy}
+              disabled={busy || archiveReconciliation !== null}
               aria-label={`Vorlage duplizieren: ${row.name}`}
               onClick={() => begin(row, true)}
             >
               Duplizieren
             </button>
             <button
+              ref={(element) => {
+                if (element) archiveButtonRefs.current.set(row.id, element);
+                else archiveButtonRefs.current.delete(row.id);
+              }}
               className="tertiary-action"
-              disabled={busy || row.state === 'archived'}
-              aria-label={`Vorlage archivieren: ${row.name}`}
-              onClick={() =>
-                void fetch(`/api/v1/document-templates/${row.id}`, {
-                  method: 'PUT',
-                  headers: {
-                    'content-type': 'application/json',
-                    'x-csrf-token': csrfToken,
-                  },
-                  body: JSON.stringify({
-                    kind: row.kind,
-                    name: row.name,
-                    subject: row.subject,
-                    introText: row.introText,
-                    outroText: row.outroText,
-                    validityDays: row.validityDays,
-                    state: 'archived',
-                    positions: row.positions.map((position) => ({
-                      productId: position.productId,
-                      description: position.description,
-                      quantity: position.quantity,
-                      unit: position.unit,
-                      unitPriceMinor: position.unitPriceMinor,
-                      taxBasisPoints: position.taxBasisPoints,
-                      discountBasisPoints: position.discountBasisPoints,
-                    })),
-                    version: row.version,
-                  }),
-                }).then(() => refresh())
+              type="button"
+              disabled={
+                busy ||
+                row.state === 'archived' ||
+                archiveReconciliation !== null
               }
+              aria-label={`Vorlage archivieren: ${row.name}`}
+              onClick={(event) => void archive(row, event.currentTarget)}
             >
-              Archivieren
+              {archivePendingId === row.id
+                ? 'Archivierung läuft …'
+                : 'Archivieren'}
             </button>
           </li>
         ))}

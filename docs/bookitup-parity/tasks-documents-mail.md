@@ -12,7 +12,7 @@ Alle Pakete **offen**. [Ausführungsanleitung](agent-playbook.md) und [Designver
 
 **Tests zuerst:** Vorlagenart-/Archivfilter, Dirty-/Fokus-/409, Produktübernahme kopiert exakte Preise/Steuer, freie Position bleibt erhalten, Vorschau escaping und unbekannte Tokens, Vorschau verbraucht keine Nummer/ändert keine Vorlage. Mobile Positionsfelder als lesbare Gruppen statt zusammengedrückte Achtspaltentabelle. **Nicht dabei:** Mailvorlagen oder allgemeiner Layoutbuilder. Commit erster Slice `feat: edit document templates through a focused workflow`.
 
-### Nächster begrenzter Unter-Slice: BKP015.2, Archivierung zuverlässig rückmelden
+### Abgeschlossener Unter-Slice: BKP015.2, Archivierung zuverlässig rückmelden
 
 **Quellbefund 25.10.2026, c95be20/7c4b78f:** In
 `apps/admin/src/DocumentTemplatesPanel.tsx` ruft der Archivieren-Knopf direkt
@@ -20,7 +20,12 @@ Alle Pakete **offen**. [Ausführungsanleitung](agent-playbook.md) und [Designver
 `response.ok` noch den Versionskonflikt und fängt Promise-Ablehnungen nicht.
 `busy` wird dort nicht gesetzt. Der bestehende Komponentenfall prüft nur den
 abgesendeten Versions-/Positionskörper. Dies ist eine beobachtete Quelllücke,
-keine neue Bookitup-Runtime-Beobachtung. **Noch nicht implementiert.**
+keine neue Bookitup-Runtime-Beobachtung. **Am 25.10.2026 implementiert und lokal
+abgenommen:** 28 fokussierte Komponentenfälle, vier Chromiumabläufe einschließlich
+Fokus/GET-Recovery, geprüfte Mobil-/Desktop-/Fehlerbilder und unveränderte
+Entwürfe. Linux-CI/Images und Auslieferung bleiben getrennte Nachweise. Die
+folgenden Anweisungen dokumentieren den umgesetzten Auftrag, keinen offenen
+Implementierungsauftrag. BKP015 als Gesamtprojekt bleibt offen.
 
 Vor Coding als eigenen nummerierten Hauptplan-Slice aktivieren. Vorschlag:
 `fix: handle document template archive outcomes safely`. Genau diesen Ablauf

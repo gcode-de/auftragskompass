@@ -8,6 +8,41 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.2 — `fix: handle document template archive outcomes safely`** (25.10.2026)
+
+  Genau den bestehenden Archivieren-Ablauf nach detailliertem Auftrag in
+  docs/bookitup-parity/tasks-documents-mail.md korrigieren. Vorhandener kompletter
+  DTO inklusive gespeicherter Produktpositionen/Version/CSRF bleibt unverändert.
+  Bekannte Ablehnungen, 409/404-Bestandsabgleich, bestätigten 200-Erfolg und
+  unklaren Netzwerk-/5xx-/unplausiblen Erfolg unterscheiden. Laufenden Auftrag
+  gegen Doppelklick sperren. Bestätigte Archivierung lokal sichtbar/gesperrt
+  halten, auch wenn anschließender GET fehlschlägt; nur GET wiederholen. Vor
+  erneutem Archivieren nach unklarem Ausgang/Versionskonflikt aktuellen Bestand
+  ausdrücklich laden. Gültige Antworten vor Verwendung prüfen. Offenen
+  Vorlagenentwurf/unkontrollierte Felder/Positionen beim Listenabgleich erhalten.
+  Kein neuer API-/Schema-/Migrationsvertrag, keine große Editor-/Filterarbeit.
+
+  Tests zuerst: roter 409- und Netzwerkfall, 400/401/403/404/5xx, ungültige
+  Erfolgsantwort, bestätigter PUT plus GET-Fehler/Retry ohne zweites PUT,
+  Doppelklick, vollständige gespeicherte Positionen (auch alter Produktbezug),
+  unveränderter getippter Entwurf, Fokus/Meldungen. Betroffene synthetische
+  Chromiumstrecke 320/1280 × Themes mit axe, bestehende Preis-/Produktfälle
+  erhalten. Ponytail/Impeccable, getrennte Luna-Dateizuständigkeiten; schnelle
+  Gates/Komponenten-/Changed-Code-Coverage/betroffene E2E, unabhängiger Review,
+  dokumentieren, explizit stagen/gesamten Diff prüfen, ein Commit und sofort
+  auf UX pushen. Gesamtticket BKP015 bleibt für fokussierten Editor/Filter/
+  deterministische Vorlagenvorschau offen.
+
+  Abnahme: tatsächliches RED für 409/Netzwerk und neuere Serverversion sowie
+  Fokusverlust im Chromium, danach 28 fokussierte/511 gesamte Komponentenfälle,
+  260 Unit-Tests, schnelle Gates/Build und vier betroffene Chromiumabläufe grün.
+  Panel-Coverage 99,24 Prozent Zeilen/90,19 Prozent Zweige; Changed-Code
+  179/180 Zeilen und 172/190 Zweige. Vier Mobil-/Desktopbilder in beiden Themes
+  und zwei zusätzliche Fehlerbilder geprüft, axe/Overflow ohne Befund.
+  Impeccable: Panel null Detektorfunde, unveränderte gemeinsame CSS-Baseline61;
+  unabhängiger Luna-Review ohne Blocker. Kein neuer API-/Datenbankvertrag.
+  Linux-CI/Images und Auslieferung nach Push gesondert nachweisen.
+
 - [x] **H050 — `docs: record quota pause and pending branding delivery`** (25.10.2026)
 
   Bei beobachteten 92 Prozent mit Abschlussreserve sichern: Funktionsstand

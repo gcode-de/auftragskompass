@@ -66,7 +66,16 @@ type Write = {
   body: Record<string, unknown>;
 };
 
-async function stubTemplateApis(page: Page, catalog = sourceProducts) {
+type TemplateStubOptions = {
+  conflictArchiveOnce?: boolean;
+  failListGetAfterArchiveOnce?: boolean;
+};
+
+async function stubTemplateApis(
+  page: Page,
+  catalog = sourceProducts,
+  options: TemplateStubOptions = {},
+) {
   const baseURL = test.info().project.use.baseURL;
   if (typeof baseURL !== 'string') {
     throw new Error('Playwright baseURL must be configured for this E2E');
@@ -75,6 +84,9 @@ async function stubTemplateApis(page: Page, catalog = sourceProducts) {
   let savedTemplate = structuredClone(originalTemplate);
   const writes: Write[] = [];
   const unexpectedApiWrites: string[] = [];
+  let listGets = 0;
+  let archiveAttempts = 0;
+  let archived = false;
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -120,15 +132,27 @@ async function stubTemplateApis(page: Page, catalog = sourceProducts) {
         })
       : route.fulfill({ status: 405, body: '' }),
   );
-  await page.route('**/api/v1/document-templates', (route) =>
-    route.request().method() === 'GET'
-      ? route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify([savedTemplate]),
-        })
-      : route.fulfill({ status: 405, body: '' }),
-  );
+  await page.route('**/api/v1/document-templates', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fulfill({ status: 405, body: '' });
+      return;
+    }
+    listGets += 1;
+    if (archived && options.failListGetAfterArchiveOnce) {
+      options.failListGetAfterArchiveOnce = false;
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'synthetic list unavailable' }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([savedTemplate]),
+    });
+  });
   await page.route(
     `**/api/v1/document-templates/${templateId}`,
     async (route) => {
@@ -142,6 +166,23 @@ async function stubTemplateApis(page: Page, catalog = sourceProducts) {
         path: `/api/v1/document-templates/${templateId}`,
         body,
       });
+      if (body.state === 'archived') {
+        archiveAttempts += 1;
+        if (options.conflictArchiveOnce && archiveAttempts === 1) {
+          savedTemplate = {
+            ...savedTemplate,
+            version: savedTemplate.version + 1,
+            subject: 'Fiktiv extern geänderte Vorlage',
+          };
+          await route.fulfill({
+            status: 409,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'conflict' }),
+          });
+          return;
+        }
+        archived = true;
+      }
       savedTemplate = {
         ...savedTemplate,
         ...body,
@@ -163,7 +204,13 @@ async function stubTemplateApis(page: Page, catalog = sourceProducts) {
     await route.fallback();
   });
 
-  return { writes, unexpectedApiWrites, products: structuredClone(catalog) };
+  return {
+    writes,
+    unexpectedApiWrites,
+    products: structuredClone(catalog),
+    getListGets: () => listGets,
+    getArchiveAttempts: () => archiveAttempts,
+  };
 }
 
 async function openTemplateEditor(page: Page) {
@@ -315,4 +362,172 @@ test('empty product catalog keeps a free template position editable and saveable
     },
   ]);
   expect(unexpectedApiWrites).toEqual([]);
+});
+
+test('archive conflict reconciles by GET while the open template draft stays intact', async ({
+  page,
+}) => {
+  const api = await stubTemplateApis(page, sourceProducts, {
+    conflictArchiveOnce: true,
+  });
+  const position = await openTemplateEditor(page);
+  const subject = page.getByLabel('Betreff');
+  const description = position.getByLabel('Beschreibung');
+  await subject.fill('Fiktiver noch nicht gespeicherter Betreff');
+  await description.fill('Fiktive noch nicht gespeicherte Position');
+
+  await page
+    .getByRole('button', {
+      name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
+    })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Vorlage wurde inzwischen geändert',
+  );
+  const reconcileButton = page.getByRole('button', {
+    name: 'Vorlagen neu laden',
+  });
+  await expect(reconcileButton).toBeFocused();
+  await expect(subject).toHaveValue(
+    'Fiktiver noch nicht gespeicherter Betreff',
+  );
+  await expect(description).toHaveValue(
+    'Fiktive noch nicht gespeicherte Position',
+  );
+  expect(api.getArchiveAttempts()).toBe(1);
+  expect(api.getListGets()).toBe(1);
+
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(321);
+  const conflictAccessibility = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  expect(conflictAccessibility.violations, '320px conflict state').toEqual([]);
+  await page.screenshot({
+    path: test
+      .info()
+      .outputPath('template-archive-conflict-before-reload-320.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+
+  await reconcileButton.click();
+  await expect.poll(api.getListGets).toBe(2);
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
+    }),
+  ).toBeFocused();
+  await expect(subject).toHaveValue(
+    'Fiktiver noch nicht gespeicherter Betreff',
+  );
+  await expect(description).toHaveValue(
+    'Fiktive noch nicht gespeicherte Position',
+  );
+  expect(api.getArchiveAttempts()).toBe(1);
+  expect(api.writes).toHaveLength(1);
+
+  for (const theme of ['light', 'dark'] as const) {
+    const toggle = page.getByRole('button', { name: /modus aktivieren/i });
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+      await toggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    for (const width of [1280, 320] as const) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width + 1);
+      const accessibility = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      expect(accessibility.violations, `${width}px ${theme}`).toEqual([]);
+      await page.screenshot({
+        path: test
+          .info()
+          .outputPath(`template-archive-conflict-${width}-${theme}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      const bounds = await subject.boundingBox();
+      expect(bounds, `subject field visible at ${width}px`).not.toBeNull();
+      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    }
+  }
+
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
+
+test('confirmed archive remains successful when list refresh fails and retry performs GET only', async ({
+  page,
+}) => {
+  const api = await stubTemplateApis(page, sourceProducts, {
+    failListGetAfterArchiveOnce: true,
+  });
+  const position = await openTemplateEditor(page);
+  const subject = page.getByLabel('Betreff');
+  const description = position.getByLabel('Beschreibung');
+  await subject.fill('Fiktiver gespeicherter Entwurf bleibt offen');
+  await description.fill('Fiktive offene Positionsbearbeitung');
+
+  await page
+    .getByRole('button', {
+      name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
+    })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Vorlage archiviert. Die Liste konnte nicht aktualisiert werden.',
+  );
+  await expect(
+    page.getByText(/Fiktive Bruttopreisvorlage.*Archiviert/),
+  ).toBeVisible();
+  await expect(subject).toHaveValue(
+    'Fiktiver gespeicherter Entwurf bleibt offen',
+  );
+  await expect(description).toHaveValue('Fiktive offene Positionsbearbeitung');
+  expect(api.getArchiveAttempts()).toBe(1);
+  expect(api.getListGets()).toBe(2);
+  expect(api.writes).toHaveLength(1);
+
+  const reconcileButton = page.getByRole('button', {
+    name: 'Vorlagen neu laden',
+  });
+  await expect(reconcileButton).toBeFocused();
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
+    }),
+  ).toBeDisabled();
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(321);
+  const archivedAccessibility = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  expect(
+    archivedAccessibility.violations,
+    '320px confirmed archive state',
+  ).toEqual([]);
+  await page.screenshot({
+    path: test
+      .info()
+      .outputPath('template-archive-confirmed-before-reload-320.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+
+  await reconcileButton.click();
+  await expect.poll(api.getListGets).toBe(3);
+  await expect(
+    page.getByText(/Fiktive Bruttopreisvorlage.*Archiviert/),
+  ).toBeVisible();
+  await expect(subject).toHaveValue(
+    'Fiktiver gespeicherter Entwurf bleibt offen',
+  );
+  await expect(description).toHaveValue('Fiktive offene Positionsbearbeitung');
+  expect(api.getArchiveAttempts()).toBe(1);
+  expect(api.writes).toHaveLength(1);
+  expect(api.unexpectedApiWrites).toEqual([]);
 });

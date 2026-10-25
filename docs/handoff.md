@@ -2,6 +2,36 @@
 
 Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## BKP015.2: Vorlagenarchivierung abgesichert, 25.10.2026
+
+Archivieren prüft nun Ablehnung, Versionskonflikt, bestätigten Erfolg und
+unklaren Ausgang. Vollständige gespeicherte Positionen/Produktbezüge bleiben
+erhalten; ein offener Entwurf wird nicht zum Archivieren verwendet und bleibt
+beim Abgleich unverändert. Weitere Änderungen bleiben bei unklarem Ausgang bis
+zum ausdrücklichen GET gesperrt. Bestätigter Erfolg überlebt fehlgeschlagenen
+Listenabruf; kein automatischer zweiter PUT. Neuere gültige Serverstände werden
+übernommen. Fokus führt zum Abgleich und danach zu verfügbarer Aktion, ohne
+bewusste Nutzerbewegung oder inaktive Arbeitsbereiche zu übersteuern.
+
+Lokal grün: 28 fokussierte/511 gesamte Komponentenfälle, 260 Unit-Tests,
+schnelle Gates/Build und vier betroffene Chromiumabläufe. Panel 99,24 Prozent
+Zeilen/90,19 Prozent Zweige, Changed-Code179/180 und172/190. Sechs relevante
+Mobil-/Desktop-/Fehlerbilder geprüft, axe/Overflow sauber; Impeccable null neue
+Funde (61 unveränderte gemeinsame CSS-Funde), unabhängiger Luna-Review klar.
+Diese Änderung ist vor CI-/Lieferabgleich noch nicht als deployed belegt.
+
+Separat als nächster kleiner Slice behandeln: `documentTemplateRepository.list`
+liest derzeit Vorlagen und Positionen in getrennten READ-COMMITTED-Abfragen.
+Ein Interleaving kann neue Version mit alten Positionen koppeln und eine spätere
+versionsgültige Archivierung neuere Positionen überschreiben lassen. Zuerst
+deterministischer PostgreSQL-RED-Test, dann beide Listenabfragen in einem
+konsistenten lesenden Snapshot; keine neue API, Migration oder UI-Erweiterung.
+Fokussierter Editor, Filter und Vorlagenvorschau bleiben offen.
+
+Aktuelle Nutzerobergrenze weiterhin85 Prozent, keine Zusatzcredits nutzen.
+Zuletzt regulär verfügbar,36 Prozent im neuen Fenster; vor weiteren Slices
+tatsächliche Limits prüfen. Keine automatische Wiederaufnahme neu beauftragt.
+
 ## H048 abgeschlossen: mobile Einstellungen und Logo ausgeliefert, 25.10.2026
 
 Neues Fünf-Stunden-Fenster tatsächlich begonnen, reguläre Nutzung verfügbar.

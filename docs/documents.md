@@ -342,6 +342,26 @@ der gespeicherten Fassung verfügbar. Finalisieren erzeugt die nummerierte PDF;
 der fertige Download bleibt in der Liste. Fehlt eine aktive Vorlage oder ein
 Hauptkontakt, erklärt der Abschnitt das und deaktiviert die Anlage.
 
+## Dokumentvorlagen archivieren (BKP015.2)
+
+„Archivieren“ sendet den gespeicherten Vorlagenstand einschließlich Version und
+aller Positionen; ein gleichzeitig offener, ungespeicherter Entwurf wird dafür
+nicht verwendet. Auch Referenzen auf inzwischen archivierte Produkte bleiben
+erhalten. Während des Auftrags sind weitere Änderungen gesperrt.
+
+Eine bestätigte Archivierung bleibt sichtbar, wenn das anschließende Laden der
+Liste fehlschlägt. „Vorlagen neu laden“ wiederholt ausschließlich den GET, nie
+den Schreibauftrag. Bei Versionskonflikt, nicht mehr vorhandener Vorlage oder
+unklarem Ausgang (Verbindungsfehler, Serverfehler, unplausible Erfolgsantwort)
+bleiben weitere Änderungen bis zu einem ausdrücklichen, gültigen Listenabruf
+gesperrt. Bekannte Ablehnungen weisen auf Anmeldung, Berechtigung oder Angaben
+hin. Eine tatsächlich neuere Serverversion wird als aktueller Stand übernommen;
+ein widersprüchlicher älterer Stand hebt einen bestätigten Erfolg nicht auf.
+Der Listenabgleich erhält getippte Texte und Positionen des offenen Entwurfs.
+
+Fokussierter Vorlageneditor, Suche/Filter und eigenständige Vorlagenvorschau sind
+damit noch nicht umgesetzt; das übergeordnete Paritätsticket BKP015 bleibt offen.
+
 ## Protokoll
 
 `document.created` beim Anlegen des Entwurfs, `document.updated` beim Speichern
