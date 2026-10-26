@@ -2,6 +2,38 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H058: BKP012.2 abgeschlossen – Welle BKP009–BKP012 komplett, 26.10.2026
+
+- **BKP012.2 `999354f`** – Hauptkontakt im Event-Editor über den suchbaren
+  Picker: gemeinsame `ContactPicker.tsx` (`useContactSearch()` mit
+  Sequenzschutz) für Anlege-Dialog und Editor, „Kunde entfernen“ = „Kein
+  Kunde ausgewählt“, archivierte historische Zuordnung lesbar/mitgesendet
+  aber nicht erneut wählbar, Inline-Anlage als Ansichtswechsel in derselben
+  Fläche (Evententwurf bleibt vollständig erhalten, kein zweiter Validator,
+  keine zweite Dialogebene), Auswahl aus der bestätigten POST-Antwort inkl.
+  Sichtungsliste (behebt echten Fehler: frisch angelegte Kontakte
+  verschwanden nach Hauptkontaktwechsel aus „Weitere Kontakte“). Der Picker
+  trennt `value`/`selected`, damit eine gespeicherte, nicht mehr gelistete
+  Zuordnung beim Speichern nicht still auf `null` wird. 13 neue
+  Editor-Verhaltenstests; Anlege-Dialog 29/29 verhaltenstreu; Nachtrags-
+  abnahme 320/390/1280 × light/dark der Inline-Kontaktansicht (sechs
+  Screenshots, axe 0 Verstöße). Gates: component 637, integration 311,
+  unit 265, coverage grün, E2E 14/14, Build grün.
+
+Damit ist die befohlene Welle **BKP009 (Ressourcen), BKP010 (Produkte),
+BKP011 (Kontaktdetails) und BKP012 (Kontaktwahl im Event) vollständig in
+nummerierten Unter-Slices umgesetzt** (siehe Implementierungsplan für die
+vollständigen Abnahmen). Weiter geht es mit dem Paritätsbacklog BKP013+
+(Vorschlag nächste: BKP013.1 Eventkontext gliedern oder Vorlagenrest
+Suche/Archivfilter + Platzhalter-Einfügewerkzeuge) sowie den notierten
+Folgeslices (BKP010.3 optional, `registerUnsavedChanges` des Event-Editors,
+BKP011-Landauswahl).
+
+Betrieb weiterhin wie H056/H057: zuletzt verifiziert live **c21330c**,
+alleiniger Auto-Updater ohne parallele manuelle Aktualisierung; der
+Checkpoint-/OCI-Nachweis bleibt offen, solange der Proxmox-Host
+(192.168.68.201) nicht erreichbar ist.
+
 ## H057: Kontaktwelle BKP011/BKP012 abgeschlossen, 26.10.2026
 
 Fortsetzung von H056 am selben Tag; gleiche Arbeitsweise (MiMo V2.6 Pro
