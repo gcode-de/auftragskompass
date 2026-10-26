@@ -26,14 +26,26 @@ Mandantensperre innerhalb der Transaktion erneut geprüft. Änderungen und Audit
 Die Verwaltung liegt seit H033 unter Einstellungen (`#settings-resources`) und
 nicht mehr in der Hauptnavigation. Der alte Deep Link `#resources` öffnet
 denselben Abschnitt ohne Neuladen; Ressourcenzuweisung in Event-Details und
-Kalender bleibt unverändert erreichbar.
+Kalender bleibt unverändert erreichbar. Die Oberfläche führt mit der
+Bestandsliste: eine kompakte Werkzeugleiste bietet Suche über Name, Code und
+Kategorie, eine Kategorie- und eine Zustandsauswahl (aktive, inaktive und
+archivierte Einträge); „Ressource anlegen“ und die Zeilenaktion „Bearbeiten“
+öffnen den Bearbeitungsdialog bewusst, das Formular ist sonst nicht im
+Tabpfad. Ohne Bestand und ohne Filtertreffer werden getrennte Leerhinweise
+gezeigt; der Filterzustand bleibt beim Editieren erhalten.
 
 Archivierung erhält die Ressourcen-ID; ein Löschendpunkt existiert nicht. Historische
 Verweise können den zusammengesetzten Fremdschlüssel `(tenant_id, id)` verwenden.
-Die Oberfläche hält Eingaben bei Fehlern vor und meldet Versionskonflikte.
+Die Oberfläche hält Eingaben bei Fehlern vor und meldet Versionskonflikte;
+ungespeicherte Dialogentwürfe werden vor dem Schließen bewusst bestätigt.
 
-Dies ist der Ressourcenstamm. Reservierungen, Doppelbuchungsschutz und zeitlich
-begrenzte Wartungsblockierungen folgen in C021–C024. Das Sperrkennzeichen erfasst
-den Stammdatenzustand; C014 prüft noch keine tatsächlichen Buchungsüberschneidungen.
-
-Ab C021 erhalten Bestände stabile physische Einheiten. Künftige aktive Belegungen schützen betroffene Einheiten vor Bestandsreduktion und Archivierung; siehe [Reservierungsmodell](reservations.md).
+Der Ressourcenstamm umfasst zusätzlich stabile physische Einheiten
+(`0013_reservations.sql`) und ist über die vorhandenen Reservationen bereits an den
+Buchungsbetrieb angebunden: der Exclusion-Constraint `0014_reservation_overlap.sql`
+verhindert überschneidende Belegungen, `0015_resource_activity.sql` verlangt für
+gebuchte Events eine feste Fotobox-Zuweisung und schützt zugewiesene Einheiten vor
+Bestandsreduktion und Archivierung. Zeitlich begrenzte Sperren sind als eigene
+Reservationen mit Zustand `blocked` umgesetzt und werden im selben
+Überschneidungsschutz abgesichert (Sperrverwaltung „Zeitweise Ressourcensperren“
+im Ressourcenbereich; Details siehe [Reservierungsmodell](reservations.md)). Das
+allgemeine Sperrkennzeichen im Stamm bleibt davon unabhängig ein Stammdatenzustand.

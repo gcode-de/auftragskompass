@@ -298,12 +298,24 @@ test('settings lists render one primary action and name every other tier', async
   render(<ResourcePanel csrfToken="csrf" />);
   const resources = screen.getByRole('region', { name: 'Ressourcen' });
   await within(resources).findByText(/Synthetic box/);
+  // BKP009: the page leads with its list. The dialog is mounted on demand, so
+  // the frame's one primary action is the create glyph in the toolbar; the
+  // editor's save primary only exists once the dialog is open.
   expectHierarchy(resources, 'Ressourcen');
+  const create = within(resources).getByRole('button', {
+    name: 'Ressource anlegen',
+  });
+  expect(tier(create), 'Ressource anlegen is an icon-only action').toBe(
+    'icon-action',
+  );
   expect(
-    tier(
-      within(resources).getByRole('button', { name: 'Ressource speichern' }),
-    ),
-  ).toBe('primary-action');
+    create.getAttribute('class'),
+    'Ressource anlegen carries the dominant icon modifier',
+  ).toContain('tier-primary-icon');
+  expect(
+    within(resources).queryByRole('button', { name: 'Ressource speichern' }),
+    'the editor is not mounted until it is opened',
+  ).toBeNull();
   expect(
     tier(
       within(resources).getByRole('button', {
@@ -1272,11 +1284,13 @@ test('each mounted workspace route shows at most one primary action in the real 
   }
 });
 
-test('resources resolves its two mounted primaries through the hidden-page rule', async () => {
-  // ResourcePanel keeps its own save action in the resource editor and inherits
-  // the master-data editor's save action; both stay mounted, and
-  // `[hidden]{display:none!important}` guarantees only one is displayed. That
-  // is the contract: two saved primaries in the tree, one visible at a time.
+test('resources resolves its create and save primaries through the hidden-page rule', async () => {
+  // BKP009: the resource page leads with its list. The toolbar's create action
+  // is the only primary of the page frame; the editor is mounted on demand and
+  // then carries the save primary inside its own dialog frame. That is the
+  // contract: one visible primary per visible frame, never two inside one
+  // frame, and `[hidden]{display:none!important}` keeps every unselected
+  // settings page out of the paint.
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
@@ -1288,30 +1302,51 @@ test('resources resolves its two mounted primaries through the hidden-page rule'
   render(<ResourcePanel csrfToken="csrf" />);
   const resources = screen.getByRole('region', { name: 'Ressourcen' });
   await within(resources).findByText(/Synthetic box/);
-  const primaries = Array.from(
-    resources.querySelectorAll(
-      'button.primary-action, button.tier-primary-icon',
-    ),
-  );
+  const primaries = () =>
+    Array.from(
+      resources.querySelectorAll(
+        'button.primary-action, button.tier-primary-icon',
+      ),
+    );
+  // Nothing is pre-mounted: the page shows its list plus one create action.
+  expect(within(resources).queryByRole('dialog')).toBeNull();
   expect(
-    primaries.length,
+    within(resources).queryByRole('button', { name: 'Ressource speichern' }),
+  ).toBeNull();
+  expect(
+    primaries().map(
+      (control) =>
+        control.getAttribute('aria-label') ?? control.textContent?.trim() ?? '',
+    ),
     'Ressourcen keeps one primary per mounted editor',
-  ).toBeGreaterThanOrEqual(1);
-  for (const control of primaries)
-    expect(
-      control.closest('[hidden]') !== null ||
-        ['Ressource speichern', 'Speichern'].includes(
-          control.textContent?.trim() ?? '',
-        ),
-      'a mounted primary is either hidden by the shipped rule or a save action',
-    ).toBe(true);
-  // Only the editor that is not hidden contributes a visible primary.
+  ).toEqual(['Ressource anlegen']);
+  // Only frames that are not hidden contribute a visible primary.
   const visibleFrames = Array.from(resources.children).filter(
     (child) => child.closest('[hidden]') === null,
   );
   expect(visibleFrames.length, 'one open editor frame').toBeGreaterThan(0);
   for (const frame of visibleFrames)
-    expectAtMostOnePrimary(frame, 'Ressourcen (sichtbarer Editor)');
+    expectAtMostOnePrimary(frame, 'Ressourcen (sichtbarer Rahmen)');
+  // Opening the editor adds the dialog frame with exactly one save primary.
+  fireEvent.click(
+    within(resources).getByRole('button', {
+      name: 'Ressource bearbeiten: Synthetic box',
+    }),
+  );
+  const dialog = await within(resources).findByRole('dialog', {
+    name: 'Ressource bearbeiten',
+  });
+  expectAtMostOnePrimary(dialog, 'Ressourcen (Editor)');
+  expect(
+    tier(within(dialog).getByRole('button', { name: 'Ressource speichern' })),
+  ).toBe('primary-action');
+  expect(
+    primaries().map(
+      (control) =>
+        control.getAttribute('aria-label') ?? control.textContent?.trim() ?? '',
+    ),
+    'two visible frames, one primary each',
+  ).toEqual(['Ressource anlegen', 'Ressource speichern']);
   const hiddenRule = /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(
     readFileSync(resolve(process.cwd(), 'apps/admin/src/styles.css'), 'utf8'),
   );

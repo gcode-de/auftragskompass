@@ -291,17 +291,31 @@ test('settings keep resource and product panels mounted once and retain drafts a
   await go('/?q=Synthetic#settings-resources');
   const resources = await screen.findByRole('region', { name: 'Ressourcen' });
   expect(screen.queryByRole('region', { name: 'Produkte' })).toBeNull();
-  fireEvent.change(within(resources).getByLabelText('Bezeichnung'), {
+  // BKP009: the resource editor is mounted on demand. Open the dialog and keep
+  // its draft dirty; the hash switch below must not remount it.
+  fireEvent.click(
+    within(resources).getByRole('button', { name: 'Ressource anlegen' }),
+  );
+  const resourceDialog = await within(resources).findByRole('dialog', {
+    name: 'Ressource anlegen',
+  });
+  fireEvent.change(within(resourceDialog).getByLabelText('Bezeichnung'), {
     target: { value: 'Synthetic draft box' },
   });
   expect(
-    (within(resources).getByLabelText('Bezeichnung') as HTMLInputElement).value,
+    (within(resourceDialog).getByLabelText('Bezeichnung') as HTMLInputElement)
+      .value,
   ).toBe('Synthetic draft box');
 
   await go('/?q=Synthetic#resources');
+  const resourcesAfterHash = screen.getByRole('region', { name: 'Ressourcen' });
+  expect(
+    within(resourcesAfterHash).getByRole('dialog'),
+    'the open editor survives the hash switch instead of being remounted',
+  ).toBe(resourceDialog);
   expect(
     (
-      within(screen.getByRole('region', { name: 'Ressourcen' })).getByLabelText(
+      within(resourcesAfterHash).getByLabelText(
         'Bezeichnung',
       ) as HTMLInputElement
     ).value,

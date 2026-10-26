@@ -1000,7 +1000,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .click();
     await expect(
       resources.getByRole('listitem').filter({ hasText: /^FB1 –/ }),
-    ).toContainText('FB1 – 1 Stück – Gesperrt');
+    ).toContainText('FB1 – 1 Stück – Fotobox – Aktiv – Gesperrt');
     const blocks = resources.getByRole('region', {
       name: 'Zeitweise Ressourcensperren',
     });
@@ -1030,8 +1030,33 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       blocks.getByText(/Fictional browser maintenance.*Freigegeben/),
     ).toBeVisible();
-    for (const width of [768, 390, 320]) {
+    // BKP009 acceptance: 320, 390, 768 and 1280px in both themes. Neither the
+    // resource section, the document, nor the settings navigation may overflow
+    // horizontally. The settings sub-navigation collapses into its select at
+    // the 900px breakpoint, so the compact assertions stay on the narrow
+    // widths and the desktop links are checked on 1280px.
+    const themeToggle = page.getByRole('button', { name: /modus aktivieren/ });
+    for (const [width, theme] of [
+      [320, 'light'],
+      [320, 'dark'],
+      [390, 'light'],
+      [390, 'dark'],
+      [768, 'light'],
+      [768, 'dark'],
+      [1280, 'light'],
+      [1280, 'dark'],
+    ] as const) {
       await page.setViewportSize({ width, height: 844 });
+      if (
+        (await themeToggle.getAttribute('aria-pressed')) !==
+        String(theme === 'dark')
+      )
+        await themeToggle.click();
+      await expect(themeToggle).toHaveAttribute(
+        'aria-pressed',
+        String(theme === 'dark'),
+      );
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       expect(
         await resources.evaluate(
           (section) => section.scrollWidth <= section.clientWidth + 1,
@@ -1042,26 +1067,46 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           () => document.documentElement.scrollWidth <= window.innerWidth + 1,
         ),
       ).toBe(true);
-      await expect(settingsSelect).toBeVisible();
-      await expect(
-        settingsNavigation.getByRole('combobox', {
-          name: 'Einstellungsbereich',
-          exact: true,
-        }),
-      ).toBeVisible();
-      await expect(settingsSelect).toHaveValue('#settings-resources');
-      await expect(
-        settingsNavigation.getByRole('link', {
-          name: 'Ressourcen',
-          exact: true,
-        }),
-      ).toHaveCount(0);
       expect(
         await settingsNavigation.evaluate(
           (element) => element.scrollWidth <= element.clientWidth + 1,
         ),
       ).toBe(true);
+      if (width > 900) {
+        await expect(settingsSelect).toBeHidden();
+        await expect(
+          settingsNavigation.getByRole('link', {
+            name: 'Ressourcen',
+            exact: true,
+          }),
+        ).toHaveAttribute('aria-current', 'page');
+      } else {
+        await expect(settingsSelect).toBeVisible();
+        await expect(
+          settingsNavigation.getByRole('combobox', {
+            name: 'Einstellungsbereich',
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(settingsSelect).toHaveValue('#settings-resources');
+        await expect(
+          settingsNavigation.getByRole('link', {
+            name: 'Ressourcen',
+            exact: true,
+          }),
+        ).toHaveCount(0);
+      }
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `tests/test-results/resource-${width}-${theme}.png`,
+        fullPage: true,
+        animations: 'disabled',
+      });
     }
+    // Leave the run in the light theme the rest of the scenario asserts in.
+    if ((await themeToggle.getAttribute('aria-pressed')) !== 'false')
+      await themeToggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await page.setViewportSize({ width: 1280, height: 720 });
     const resourcesTimeOrigin = await page.evaluate(
       () => performance.timeOrigin,
@@ -1199,6 +1244,14 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('link', { name: 'Ressourcen', exact: true })
       .click();
     await expect(page).toHaveURL(/#settings-resources$/);
+    // BKP009: the resource editor is mounted on demand. Open the row's dialog
+    // so the draft below is typed into a real form field.
+    await resources
+      .getByRole('button', { name: 'Ressource bearbeiten: FB1', exact: true })
+      .click();
+    await expect(
+      resources.getByRole('dialog', { name: 'Ressource bearbeiten' }),
+    ).toBeVisible();
     await resources
       .getByLabel('Bezeichnung', { exact: true })
       .fill('Synthetic draft box');
@@ -1219,6 +1272,15 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       resources.getByLabel('Bezeichnung', { exact: true }),
     ).toHaveValue('Synthetic draft box');
+    // The dialog is still open and dirty, so it must be dismissed through its
+    // documented discard prompt before the sub-navigation is clickable again.
+    page.once('dialog', (prompt) => void prompt.accept());
+    await resources
+      .getByRole('button', { name: 'Ressource abbrechen', exact: true })
+      .click();
+    await expect(
+      resources.getByRole('dialog', { name: 'Ressource bearbeiten' }),
+    ).toBeHidden();
     await page.goBack();
     await settingsNavigation
       .getByRole('link', { name: 'Produkte', exact: true })

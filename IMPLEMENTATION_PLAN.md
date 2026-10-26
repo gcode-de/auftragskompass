@@ -8,6 +8,50 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP009.1 — `feat: make resource management list-first with explicit editing`** (26.10.2026)
+
+  Erster vollständiger Unter-Slice von BKP009 (Ressourcen, UI-Slice ohne Domainänderung),
+  geschnitten gemäß rein lesender DeepSeek-Quellanalyse zu `bc8f888` (Bericht privat im
+  Scratch, keine Repo-Datei verändert). Liste zuerst: normale Bestandsliste sofort
+  sichtbar, kompakte Werkzeugleiste mit Suche (Name/Code/Kategorie, clientseitig über
+  die bereits vollständig geladene Liste), Kategorieauswahl aus tatsächlich
+  vorkommenden Kategorien und Archiv-/Zustandsauswahl für aktive/inaktive/archivierte
+  Einträge. Anlage über „Ressource anlegen“, Bearbeiten über die Zeile: beide öffnen
+  bewusst denselben accessiblen Dialog (role=dialog/aria-modal, Fokusfalle, Escape/
+  Abbruch, Fokusrückkehr auf den Auslöser, ersatzweise Plus wenn die Zeile verschwand).
+  Formular initial nicht im Tabpfad. Dirtyschutz über vorhandenes
+  `unsaved-changes`-Muster (unverändert schließt ohne Rückfrage, geänderter Entwurf
+  verlangt bewusstes Verwerfen); Speichern hält den Dialog bis zur bestätigten
+  Mutation, Doppelklick sendet genau eine Mutation. Fehlerverträge: 409 `conflict`
+  behält Eingaben mit Fokussierung der Meldung, `code_exists` erhält eigenen Text
+  (bisher generisch), `resource_in_use`/Netzwerkfehler unverändert verständlich;
+  bestätigtes Speichern mit fehlgeschlagenem Nachladen wird ehrlich als gespeichert
+  gemeldet mit GET-Wiederholung (Muster ResourceBlocks/contacts), kein blindes POST.
+  Leerzustände „Noch keine Ressourcen“ und „Keine Treffer“ getrennt, Ladezustand.
+  Filterzustand bleibt über Dialog-Öffnen/Schließen/Speichern erhalten.
+  Unverändert: Feldvertrag (Name 1–120, Code 1–40, Kategorie 1–120 Freitext,
+  Beschreibung ≤2000, Bestand 0–10000 Default 1, Puffer je 0–365 Default 2/2,
+  Sortierung 0–9999, Zustand/Gesperrt, `version`), API/GET-POST-PUT, physische
+  Einheiten und DB-Reservierungsschutz. Sperrverwaltung (`ResourceBlocks`) bleibt
+  unverändert eingehängt erreichbar; ihr bewusstes Öffnen ist BKP009.2.
+  Geteilte Vertragstests bewusst mitgezogen (ein Besitzer): Ressourcen-Primäraktions-
+  vertrag in `action-hierarchy.test.tsx` und Ressourcensegment in `tests/e2e/auth.spec.ts`.
+  Tests zuerst rot beobachtet (Liste-zuerst/Dialog/Dirty/Doppelklick/409/Filter/Leer),
+  dann implementiert. Keine Sperrverwaltungs-Offenlegung, Sets/Bedarfsautomatik,
+  Einheitenlogik, Kategoriemigration, Server-Defaults, API-Änderungen oder neues
+  Designsystem. Coding-Subagent: DeepSeek V4.1 Flash über die Hermes-CLI
+  (`hermes -z … -m deepseek-v4.1-flash --provider opencode-go`), getrennte
+  Dateizuständigkeiten, MiMo reviewt vollständigen Diff und integriert.
+  Abgenommen: zuerst rot beobachtet (13 neue/umgestellte Komponententests plus
+  drei fremde Vertragsstellen), danach grün: `test:component` 568/568,
+  `test:coverage` vollständig grün (1137 Tests; ResourcePanel 100% Zeilen/
+  92,06% Zweige), `test:unit` 260, `test:workspace` 20, `test:docs` grün,
+  schnelle Gates/Build grün; auth-E2E beide Modi komplett grün inklusive
+  Ressourcenablauf und neuer 320/390/768/1280-×-Theme-Schleife mit acht
+  Screenshots (tests/test-results, gitignored). Offen für BKP009.2:
+  bewusstes Öffnen der Sperrverwaltung sowie die im A1-Vertragstest notierte
+  Zählempfindlichkeit des Sperrformulars (Stub ohne gültige Blockdaten).
+
 - [x] **H055 — `docs: prepare current Hermes parity goal`** (26.10.2026)
 
   Nach BKP015.7/.8 tatsächlichen Abschlussstand, Tests, offenen CI-/Liefernachweis
