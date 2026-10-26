@@ -40,8 +40,28 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
+  // BKP019.b: a confirmation is linked to the offer it was copied from.
+  expect(applied.at(-1)!.name).toBe('0041_order_confirmation.sql');
+  // The source is a document of the same tenant, never another tenant's row.
+  const sourceForeignKey = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND contype='f' AND pg_get_constraintdef(oid) ILIKE '%source_document_id%'",
+    )
+  ).rows.map((row) => row.def);
+  expect(sourceForeignKey).toContain(
+    'FOREIGN KEY (tenant_id, source_document_id) REFERENCES documents(tenant_id, id)',
+  );
+  // Exactly one confirmation per offer, independent of the confirmation's state.
+  const confirmationIndex = (
+    await pool.query<{ indexdef: string }>(
+      "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='documents_one_order_confirmation'",
+    )
+  ).rows[0]!.indexdef;
+  expect(confirmationIndex).toContain('(tenant_id, source_document_id)');
+  expect(confirmationIndex).toContain(
+    "WHERE (kind = 'order_confirmation'::text)",
+  );
   // BKP019.a records how an offer was accepted after the status axis.
-  expect(applied.at(-1)!.name).toBe('0040_offer_acceptance.sql');
   // The acceptance references an own library file through the composite key,
   // so a foreign tenant's file can never be attached.
   const acceptanceForeignKey = (

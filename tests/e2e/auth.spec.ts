@@ -1026,6 +1026,223 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       eventOffers.getByRole('button', { name: /annehmen$/ }),
     ).toHaveCount(0);
     await audit('event-angebot-angenommen');
+    // BKP019.b: the accepted offer becomes an order confirmation without a
+    // single retyped position. It owns a separate number range, so the offer's
+    // number and bytes can never move.
+    // The confirmation owns its number range; this server seeds number ranges
+    // directly (the settings routes are not part of this scenario).
+    await pool.query(
+      `INSERT INTO document_number_sequences
+        (tenant_id,kind,pattern,min_length,next_value,version)
+       VALUES ($1,'order_confirmation','AB-{YYYY}-{SEQ}',4,1,1)`,
+      [config.tenantId],
+    );
+    const confirmationCount = async () =>
+      (
+        await pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM documents
+            WHERE tenant_id=$1 AND kind='order_confirmation'`,
+          [config.tenantId],
+        )
+      ).rows[0]!.count;
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Auftragsbestätigung erstellen',
+      })
+      .click();
+    // The step asks once and writes nothing before the confirmation.
+    await expect(
+      eventOffers.getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Auftragsbestätigung anlegen',
+      }),
+    ).toBeVisible();
+    expect(await confirmationCount()).toBe(0);
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Auftragsbestätigung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText('Auftragsbestätigung als Entwurf angelegt.'),
+    ).toBeVisible();
+    const orders = page.getByRole('region', { name: 'Auftragsbestätigungen' });
+    await expect(orders.getByRole('listitem')).toHaveCount(1);
+    // A draft has no number, so "Entwurf" appears twice in its row: as the
+    // number placeholder and as the state. The state is what is asserted here.
+    await expect(orders.locator('.document-row span').first()).toHaveText(
+      'Entwurf',
+    );
+    const confirmation = (
+      await pool.query<{
+        id: string;
+        number: string | null;
+        source_document_id: string;
+        gross_minor: string;
+      }>(
+        `SELECT id, number, source_document_id, gross_minor FROM documents
+          WHERE tenant_id=$1 AND kind='order_confirmation'`,
+        [config.tenantId],
+      )
+    ).rows[0]!;
+    // The link is durable, the number is not yet allocated, and the amount is
+    // the offer's own - no retyping happened, so no second sum either.
+    expect(confirmation.source_document_id).toBe(offer.id);
+    expect(confirmation.number).toBeNull();
+    const offerGross = (
+      await pool.query<{ gross_minor: string }>(
+        'SELECT gross_minor FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, offer.id],
+      )
+    ).rows[0]!.gross_minor;
+    expect(confirmation.gross_minor).toBe(offerGross);
+    // The copied positions are the offer's own, read through the real API.
+    type Detail = {
+      subject: string;
+      lines: {
+        description: string;
+        quantity: number;
+        unit: string;
+        unitPriceMinor: number;
+        taxBasisPoints: number;
+        discountBasisPoints: number;
+      }[];
+    };
+    // The copy has its own line ids; what must be identical is the content.
+    const copied = (lines: Detail['lines']) =>
+      lines.map((line) => ({
+        description: line.description,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitPriceMinor: line.unitPriceMinor,
+        taxBasisPoints: line.taxBasisPoints,
+        discountBasisPoints: line.discountBasisPoints,
+      }));
+    const confirmationDetail = (await (
+      await page.request.get(origin + '/api/v1/documents/' + confirmation.id)
+    ).json()) as Detail;
+    const offerDetail = (await (
+      await page.request.get(origin + '/api/v1/documents/' + offer.id)
+    ).json()) as Detail;
+    expect(copied(confirmationDetail.lines)).toEqual(copied(offerDetail.lines));
+    expect(confirmationDetail.lines.length).toBeGreaterThan(0);
+    expect(confirmationDetail.subject).toBe(
+      'Auftragsbestätigung für {{contact}}',
+    );
+    expect(offerDetail.subject).toBe('Angebot für {{contact}}');
+    // The source is readable and linked.
+    await expect(
+      orders.locator('.document-meta', { hasText: 'Aus Angebot' }),
+    ).toBeVisible();
+    await expect(
+      orders.getByRole('link', {
+        name: 'Angebot ' + offer.number + ' als PDF öffnen',
+      }),
+    ).toHaveAttribute('href', '/api/v1/documents/' + offer.id + '/pdf');
+    // A second attempt is explained, never silently written twice.
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Auftragsbestätigung erstellen',
+      })
+      .click();
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Auftragsbestätigung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText(
+        'Für dieses Angebot gibt es bereits eine Auftragsbestätigung.',
+      ),
+    ).toBeVisible();
+    expect(await confirmationCount()).toBe(1);
+    // BKP019.b2: the copied wording is correctable before it is frozen. The
+    // confirmation opens the same editor an offer draft uses, under its own name.
+    const editedIntro =
+      'Fiktive Einleitung der Bestätigung, vor der Finalisierung korrigiert.';
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung Entwurf bearbeiten',
+      })
+      .click();
+    const confirmationEditor = orders.locator('.offer-draft-editor');
+    await expect(
+      confirmationEditor.getByRole('heading', {
+        name: 'Auftragsbestätigung bearbeiten',
+      }),
+    ).toBeVisible();
+    // The offer heading of the shared editor never labels a confirmation.
+    await expect(
+      confirmationEditor.getByRole('heading', { name: 'Angebot bearbeiten' }),
+    ).toHaveCount(0);
+    await expect(confirmationEditor.getByLabel('Einleitung')).toHaveValue(
+      'Hallo',
+    );
+    await confirmationEditor.getByLabel('Einleitung').fill(editedIntro);
+    await confirmationEditor
+      .getByRole('button', { name: 'Änderungen speichern' })
+      .click();
+    await expect(
+      confirmationEditor.getByText('Änderungen gespeichert.'),
+    ).toBeVisible();
+    // The correction lands on the confirmation's own row; the offer it was
+    // copied from keeps its wording and its version.
+    const editedDraft = (
+      await pool.query<{ intro_text: string; version: number }>(
+        'SELECT intro_text, version FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, confirmation.id],
+      )
+    ).rows[0]!;
+    expect(editedDraft).toEqual({ intro_text: editedIntro, version: 2 });
+    const offerIntroAfterEdit = (
+      await pool.query<{ intro_text: string }>(
+        'SELECT intro_text FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, offer.id],
+      )
+    ).rows[0]!.intro_text;
+    expect(offerIntroAfterEdit).toBe('Hallo');
+    // Finalizing uses the confirmation's own number range.
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung Entwurf finalisieren',
+      })
+      .click();
+    await expect(page.getByText(/Finalisiert als AB-/)).toBeVisible();
+    // The frozen version carries the corrected wording, and its own PDF.
+    const frozenConfirmation = (await (
+      await page.request.get(origin + '/api/v1/documents/' + confirmation.id)
+    ).json()) as { state: string; introText: string; pdfHash: string | null };
+    expect(frozenConfirmation.state).toBe('final');
+    expect(frozenConfirmation.introText).toBe(editedIntro);
+    expect(frozenConfirmation.pdfHash).toBeTruthy();
+    const frozenPdf = await page.request.get(
+      origin + '/api/v1/documents/' + confirmation.id + '/pdf',
+    );
+    expect(frozenPdf.status()).toBe(200);
+    expect((await frozenPdf.body()).subarray(0, 5).toString()).toBe('%PDF-');
+    const confirmedNumber = (
+      await pool.query<{ number: string }>(
+        'SELECT number FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, confirmation.id],
+      )
+    ).rows[0]!.number;
+    expect(confirmedNumber).toMatch(/^AB-\d{4}-\d{4}$/);
+    await expect(
+      orders.getByText(confirmedNumber, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      orders.getByRole('link', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' als PDF öffnen',
+      }),
+    ).toBeVisible();
+    await expect(
+      orders.locator('.document-meta', { hasText: 'Aus Angebot' }),
+    ).toBeVisible();
+    // The offer keeps its own bytes and its own number.
+    const offerPdfAfterConfirmation = await pdfOf();
+    expect((await offerPdfAfterConfirmation.body()).equals(firstBytes)).toBe(
+      true,
+    );
+    await audit('event-auftragsbestaetigung');
     // Withdrawing asks once, and only then writes.
     await eventOffers
       .getByRole('button', {

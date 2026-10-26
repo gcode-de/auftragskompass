@@ -44,6 +44,62 @@ const draft = {
     offerExpired: false,
     version: 3,
   },
+  // BKP019.b: the same offer after the customer accepted it, and the draft
+  // confirmation an operator created from it.
+  acceptedOffer = {
+    ...sentOffer,
+    offerStatus: 'accepted' as const,
+    version: 4,
+  },
+  confirmationDraft = {
+    id: 'doc-ab-1',
+    kind: 'order_confirmation',
+    templateId: null,
+    eventId: 'event-1',
+    contactId: 'contact-1',
+    number: null,
+    state: 'draft' as const,
+    issuedAt: '2030-10-26T10:10:00Z',
+    finalizedAt: null,
+    netMinor: 20925,
+    taxMinor: 3975,
+    grossMinor: 24900,
+    version: 1,
+    sourceDocumentId: 'doc-2',
+    sourceNumber: 'AN-2030-0001',
+  },
+  finalizedConfirmation = {
+    ...confirmationDraft,
+    number: 'AB-2030-0001',
+    state: 'final' as const,
+    finalizedAt: '2030-10-26T10:15:00Z',
+    version: 2,
+  },
+  // BKP019.b2: the stored draft detail the editor reads, and the wording each
+  // kind owns. A confirmation names itself, so no offer wording can leak in.
+  storedLine = {
+    id: 'line-1',
+    position: 0,
+    productId: null,
+    description: 'Fiktives Fotobox-Paket',
+    quantity: 1,
+    unit: 'Pauschale',
+    unitPriceMinor: 24900,
+    taxBasisPoints: 1900,
+    discountBasisPoints: 0,
+  },
+  offerWording = {
+    subject: 'Angebot für {{contact}}',
+    introText: 'Guten Tag, hier ein Beispiel.',
+    outroText: 'Viele Grüße',
+    validityDays: 14,
+  },
+  confirmationWording = {
+    subject: 'Auftragsbestätigung für {{contact}}',
+    introText: 'Vielen Dank für Ihren Auftrag.',
+    outroText: 'Freundliche Grüße',
+    validityDays: 14,
+  },
   // BKP019.a: the library a signed acceptance may attach; one row is already
   // archived, so it must never be offered as a choice.
   libraryFiles = [
@@ -94,6 +150,7 @@ function setup(
     create?: (url: string) => Response;
     offerStatus?: () => Response;
     library?: () => Response;
+    orderConfirmation?: () => Response;
   } = {},
 ) {
   const calls: {
@@ -105,6 +162,15 @@ function setup(
     state = {
       documents: options.documents ?? [draft],
       templates: options.templates ?? templates,
+    },
+    // BKP019.b2: the one draft detail the editor reads, keyed by its own id.
+    drafts: Record<string, Record<string, unknown>> = {
+      'doc-1': { ...draft, ...offerWording, lines: [storedLine] },
+      'doc-ab-1': {
+        ...confirmationDraft,
+        ...confirmationWording,
+        lines: [storedLine],
+      },
     },
     fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
@@ -144,11 +210,58 @@ function setup(
         if (options.offerStatus) return options.offerStatus();
         return Response.json(sentOffer);
       }
+      if (url.endsWith('/order-confirmation')) {
+        calls.push({
+          url,
+          method,
+          body: JSON.parse(String(init!.body)),
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.orderConfirmation) return options.orderConfirmation();
+        // The confirmed row replaces the old list on the following reload.
+        state.documents = [acceptedOffer, confirmationDraft];
+        return Response.json(confirmationDraft, { status: 201 });
+      }
       if (url.endsWith('/finalize')) {
         calls.push({ url, method });
         if (options.finalize) return options.finalize();
         state.documents = [finalized];
         return Response.json(finalized);
+      }
+      // BKP019.b2: the shared draft editor reads and writes one document. The
+      // answer echoes the submitted texts at the next version, like the server.
+      if (method === 'PUT' && url.endsWith('/draft')) {
+        const id = url.split('/').slice(-2)[0]!,
+          body = JSON.parse(String(init!.body)) as {
+            version: number;
+            lines: Record<string, unknown>[];
+          };
+        calls.push({
+          url,
+          method,
+          body,
+          headers: init!.headers as Record<string, string>,
+        });
+        const current = drafts[id];
+        if (!current) throw new Error('unexpected ' + url);
+        const saved = {
+          ...current,
+          ...body,
+          version: (current.version as number) + 1,
+          lines: body.lines.map((line, position) => ({
+            ...line,
+            id: 'line-saved-' + position,
+            position,
+          })),
+        };
+        drafts[id] = saved;
+        return Response.json(saved);
+      }
+      if (method === 'GET' && /^\/api\/v1\/documents\/[^/?]+$/.test(url)) {
+        const detail = drafts[url.slice('/api/v1/documents/'.length)];
+        if (!detail) throw new Error('unexpected ' + url);
+        calls.push({ url, method });
+        return Response.json(detail);
       }
       throw new Error('unexpected ' + url);
     });
@@ -796,6 +909,342 @@ test('an archived attachment stays readable without a dead link', async () => {
   expect(
     within(row).queryByRole('link', { name: /synthetic-archived-offer\.pdf/ }),
   ).toBeNull();
+});
+
+// BKP019.b: an accepted offer can be confirmed without retyping a position. The
+// action exists exactly there - a draft, a sent or a withdrawn offer has none.
+test('only an accepted offer offers the confirmation action', async () => {
+  setup({ documents: [acceptedOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Angenommen')).closest(
+    'li',
+  ) as HTMLElement;
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+    }),
+  ).toBeTruthy();
+  // Nothing writes before the operator confirms the step.
+  expect(row.querySelector('form')).toBeNull();
+  cleanup();
+  for (const entry of [
+    { ...finalized, offerStatus: null },
+    sentOffer,
+    { ...acceptedOffer, offerStatus: 'withdrawn' as const },
+  ]) {
+    setup({ documents: [entry] });
+    const other = render(<EventDocuments {...props} />);
+    await screen.findByText(/Angelegt am|Finalisiert am/);
+    expect(
+      screen.queryByRole('button', { name: /Auftragsbestätigung erstellen/ }),
+    ).toBeNull();
+    other.unmount();
+    cleanup();
+  }
+});
+
+test('creating the confirmation asks once and posts the offer version', async () => {
+  const { calls } = setup({ documents: [acceptedOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Angenommen')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+    }),
+  );
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+    }),
+  ).toBeTruthy();
+  // Nothing left the browser before the confirmation.
+  expect(calls.some((call) => call.url.endsWith('/order-confirmation'))).toBe(
+    false,
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText('Auftragsbestätigung als Entwurf angelegt.'),
+  ).toBeTruthy();
+  expect(
+    calls.find((call) => call.url.endsWith('/order-confirmation')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-2/order-confirmation',
+    method: 'POST',
+    body: { version: 4 },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  // The created confirmation is on screen after the confirmed reload, and its
+  // row names the source offer.
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const source = within(orders).getByRole('link', {
+    name: 'Angebot AN-2030-0001 als PDF öffnen',
+  });
+  expect(source.getAttribute('href')).toBe('/api/v1/documents/doc-2/pdf');
+  expect(source.textContent).toBe('AN-2030-0001');
+});
+
+test('cancelling the confirmation sends nothing', async () => {
+  const { calls } = setup({ documents: [acceptedOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Angenommen')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung abbrechen',
+    }),
+  );
+  expect(
+    within(row).queryByRole('button', { name: /Auftragsbestätigung anlegen/ }),
+  ).toBeNull();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+    }),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/order-confirmation'))).toBe(
+    false,
+  );
+});
+
+test('an existing confirmation is explained instead of retried', async () => {
+  const { calls } = setup({
+    documents: [acceptedOffer],
+    orderConfirmation: () =>
+      Response.json({ error: 'duplicate' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Angenommen')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText(
+      'Für dieses Angebot gibt es bereits eine Auftragsbestätigung.',
+    ),
+  ).toBeTruthy();
+  // Exactly one attempt: a duplicate is never posted a second time.
+  expect(
+    calls.filter((call) => call.url.endsWith('/order-confirmation')),
+  ).toHaveLength(1);
+});
+
+test('a confirmation row names its source offer and its own kind', async () => {
+  setup({ documents: [acceptedOffer, finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  expect(within(orders).getByText('AB-2030-0001')).toBeTruthy();
+  // The confirmation names the offer it was copied from, as a real link.
+  const source = within(orders).getByRole('link', {
+    name: 'Angebot AN-2030-0001 als PDF öffnen',
+  });
+  expect(source.getAttribute('href')).toBe('/api/v1/documents/doc-2/pdf');
+  expect(within(orders).getByText(/Aus Angebot/)).toBeTruthy();
+  // Its own PDF action is labelled as a confirmation, not as an offer.
+  expect(
+    within(orders).getByRole('link', {
+      name: 'Auftragsbestätigung AB-2030-0001 als PDF öffnen',
+    }),
+  ).toBeTruthy();
+  expect(within(orders).queryByText(/Gültig bis/)).toBeNull();
+});
+
+// BKP019.b2: a confirmation draft is correctable in the same editor an offer
+// draft uses. Its heading names it, and the saved texts are its own.
+test('a confirmation draft opens the shared editor under its own heading and saves its texts', async () => {
+  const { calls } = setup({ documents: [confirmationDraft] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  // Nothing opens on its own: the editor appears only when asked for.
+  expect(within(row).queryByRole('heading')).toBeNull();
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung Entwurf bearbeiten',
+    }),
+  );
+  expect(
+    await within(row).findByRole('heading', {
+      name: 'Auftragsbestätigung bearbeiten',
+    }),
+  ).toBeTruthy();
+  // The offer heading of the shared editor is never shown for a confirmation.
+  expect(
+    within(row).queryByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  const intro = (await within(row).findByLabelText(
+    'Einleitung',
+  )) as HTMLTextAreaElement;
+  expect(intro.value).toBe('Vielen Dank für Ihren Auftrag.');
+  expect(
+    (within(row).getByLabelText('Betreff') as HTMLInputElement).value,
+  ).toBe('Auftragsbestätigung für {{contact}}');
+  fireEvent.change(intro, {
+    target: { value: 'Guten Tag, wir bestätigen Ihren Auftrag verbindlich.' },
+  });
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Änderungen speichern' }),
+  );
+  expect(await within(row).findByText('Änderungen gespeichert.')).toBeTruthy();
+  const writes = calls.filter((call) => call.method === 'PUT');
+  // Exactly the confirmation is written; the offer draft of the event is not.
+  expect(writes).toHaveLength(1);
+  expect(writes[0]!.url).toBe('/api/v1/documents/doc-ab-1/draft');
+  expect(writes[0]!.headers).toMatchObject({
+    'content-type': 'application/json',
+    'x-csrf-token': 'fictional-csrf',
+  });
+  expect(writes[0]!.body).toMatchObject({
+    version: 1,
+    subject: 'Auftragsbestätigung für {{contact}}',
+    introText: 'Guten Tag, wir bestätigen Ihren Auftrag verbindlich.',
+    outroText: 'Freundliche Grüße',
+    validityDays: 14,
+  });
+  expect((writes[0]!.body as { lines: unknown[] }).lines).toHaveLength(1);
+  expect(
+    calls.some((call) => call.url === '/api/v1/documents/doc-1/draft'),
+  ).toBe(false);
+  // Closing returns to the row exactly like the offer editor does.
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(
+    within(row).queryByRole('heading', {
+      name: 'Auftragsbestätigung bearbeiten',
+    }),
+  ).toBeNull();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung Entwurf bearbeiten',
+    }),
+  ).toBeTruthy();
+});
+
+// BKP019.b2: the offer draft keeps its own wording and its own heading.
+test('an offer draft keeps the offer heading and wording', async () => {
+  setup();
+  render(<EventDocuments {...props} />);
+  const offers = await screen.findByRole('region', { name: 'Angebote' });
+  const row = within(offers).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  expect(
+    await within(row).findByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeTruthy();
+  expect(
+    within(row).queryByRole('heading', {
+      name: 'Auftragsbestätigung bearbeiten',
+    }),
+  ).toBeNull();
+  expect(
+    (within(row).getByLabelText('Betreff') as HTMLInputElement).value,
+  ).toBe('Angebot für {{contact}}');
+});
+
+test('a refused or unanswered confirmation is explained and never invented', async () => {
+  // One confirmation attempt against a controlled answer, then teardown.
+  const attempt = async (answer: () => Response) => {
+    setup({ documents: [acceptedOffer], orderConfirmation: answer });
+    const view = render(<EventDocuments {...props} />);
+    const row = (await screen.findByText('Angenommen')).closest(
+      'li',
+    ) as HTMLElement;
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+      }),
+    );
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+      }),
+    );
+    return view;
+  };
+  let view = await attempt(() =>
+    Response.json({ error: 'offer_not_accepted' }, { status: 409 }),
+  );
+  expect(
+    await screen.findByText(
+      'Nur ein angenommenes Angebot lässt sich bestätigen. Bitte Liste aktualisieren.',
+    ),
+  ).toBeTruthy();
+  view.unmount();
+  cleanup();
+
+  view = await attempt(() =>
+    Response.json({ error: 'conflict' }, { status: 409 }),
+  );
+  expect(
+    await screen.findByText(
+      'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.',
+    ),
+  ).toBeTruthy();
+  view.unmount();
+  cleanup();
+
+  // A further rejection keeps one honest wording instead of a guess.
+  view = await attempt(() =>
+    Response.json({ error: 'missing_reference' }, { status: 400 }),
+  );
+  expect(
+    await screen.findByText(
+      'Auftragsbestätigung konnte nicht erstellt werden. Bitte Angaben prüfen.',
+    ),
+  ).toBeTruthy();
+  view.unmount();
+  cleanup();
+
+  // An answer that is not a draft confirmation is never listed as one.
+  view = await attempt(() =>
+    Response.json({ ...confirmationDraft, kind: 'invoice' }, { status: 201 }),
+  );
+  expect(
+    await screen.findByText(
+      'Auftragsbestätigung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText('AB-2030-0001')).toBeNull();
+  view.unmount();
+  cleanup();
+
+  view = await attempt(() => {
+    throw new TypeError('offline');
+  });
+  expect(
+    await screen.findByText(
+      'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
+    ),
+  ).toBeTruthy();
+  view.unmount();
 });
 
 // BKP013.2: one controllable harness for the create/reload pair. The list

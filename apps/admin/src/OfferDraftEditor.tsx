@@ -71,6 +71,9 @@ type CatalogProduct = {
 type Props = {
   documentId: string;
   csrfToken: string;
+  // BKP019.b2: one editor serves both draft kinds; only the heading names the
+  // document. An offer is the default, so its wording cannot change.
+  kind?: string;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onBusyChange: (busy: boolean) => void;
@@ -224,9 +227,25 @@ function percentInvalid(value: string) {
   }
 }
 
+// BKP019.b2: the same editor edits an offer and an order confirmation draft.
+// The heading says which document is being corrected; anything else keeps the
+// offer wording that existed before.
+function editorHeading(kind: string | undefined) {
+  return kind === 'order_confirmation'
+    ? 'Auftragsbestätigung bearbeiten'
+    : 'Angebot bearbeiten';
+}
+
+function editorDiscardMessage(kind: string | undefined) {
+  return kind === 'order_confirmation'
+    ? 'Ungespeicherte Änderungen an der Auftragsbestätigung verwerfen?'
+    : 'Ungespeicherte Angebotsänderungen verwerfen?';
+}
+
 export function OfferDraftEditor({
   documentId,
   csrfToken,
+  kind,
   onClose,
   onDirtyChange,
   onBusyChange,
@@ -400,11 +419,7 @@ export function OfferDraftEditor({
 
   function close() {
     if (busyRef.current) return;
-    if (
-      dirtyRef.current &&
-      !window.confirm('Ungespeicherte Angebotsänderungen verwerfen?')
-    )
-      return;
+    if (dirtyRef.current && !window.confirm(editorDiscardMessage(kind))) return;
     callbacks.current.onDirtyChange(false);
     onClose();
   }
@@ -666,7 +681,7 @@ export function OfferDraftEditor({
       aria-labelledby={'offer-editor-' + documentId}
     >
       <div className="offer-draft-editor-heading">
-        <h5 id={'offer-editor-' + documentId}>Angebot bearbeiten</h5>
+        <h5 id={'offer-editor-' + documentId}>{editorHeading(kind)}</h5>
         <button
           type="button"
           className="tertiary-action"

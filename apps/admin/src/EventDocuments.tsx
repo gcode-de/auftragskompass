@@ -27,6 +27,10 @@ type DocumentRow = {
   acceptanceFileId?: string | null;
   acceptanceFileName?: string | null;
   acceptanceFileState?: 'available' | 'archived' | null;
+  // BKP019.b: the offer a confirmation was copied from, only present with the
+  // offer projection.
+  sourceDocumentId?: string | null;
+  sourceNumber?: string | null;
 };
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
 type AcceptanceChannel = 'email' | 'phone' | 'pdf' | 'other';
@@ -104,6 +108,22 @@ const kindLabels: Record<string, string> = {
 };
 const otherKindLabel = 'Weitere Dateien';
 const knownKinds = new Set<string>(kindOrder);
+// BKP019.b: every action label names the kind of its own row, so a confirmation
+// is never read out as an offer. Offer wordings stay unchanged.
+const kindSingular: Record<string, string> = {
+  offer: 'Angebot',
+  order_confirmation: 'Auftragsbestätigung',
+  deposit_invoice: 'Anzahlungsrechnung',
+  invoice: 'Rechnung',
+  correction: 'Rechnungskorrektur',
+};
+function kindName(entry: { kind: string }) {
+  return kindSingular[entry.kind] ?? 'Dokument';
+}
+// BKP019.b2: a confirmation draft owns its texts and positions exactly like an
+// offer draft, so both open the one editor. No other draft kind is editable
+// server-side, so no other kind offers an editor here.
+const editableDraftKinds = new Set<string>(['offer', 'order_confirmation']);
 
 // One off-shape row must never take the whole event file down with it.
 async function validDocuments(reply: Response): Promise<DocumentRow[]> {
@@ -145,6 +165,8 @@ export function EventDocuments({
     [reloadWarning, setReloadWarning] = useState(false),
     [createUncertain, setCreateUncertain] = useState(false),
     [confirmWithdrawId, setConfirmWithdrawId] = useState(''),
+    // BKP019.b: the accepted offer whose confirmation is being confirmed.
+    [confirmConfirmationId, setConfirmConfirmationId] = useState(''),
     // BKP019.a: the compact acceptance form of exactly one row.
     [acceptanceId, setAcceptanceId] = useState(''),
     [acceptanceChannel, setAcceptanceChannel] = useState<
@@ -373,6 +395,77 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  // BKP019.b: an accepted offer is confirmed as one explicit step. Nothing is
+  // retyped: the positions come from the offer, and the confirmation is a draft
+  // that is finalised with its own number later.
+  async function createConfirmation(id: string, version: number) {
+    if (mutating.current || editorBusy || editorDirty) return;
+    mutating.current = true;
+    setBusy(id);
+    setMessage('');
+    setConfirmConfirmationId('');
+    try {
+      const reply = await fetch(
+        '/api/v1/documents/' + id + '/order-confirmation',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify({ version }),
+        },
+      );
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(
+          result.error === 'duplicate'
+            ? 'Für dieses Angebot gibt es bereits eine Auftragsbestätigung.'
+            : result.error === 'offer_not_accepted'
+              ? 'Nur ein angenommenes Angebot lässt sich bestätigen. Bitte Liste aktualisieren.'
+              : result.error === 'conflict' || result.error === 'invalid_state'
+                ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
+                : 'Auftragsbestätigung konnte nicht erstellt werden. Bitte Angaben prüfen.',
+        );
+        try {
+          await load();
+        } catch {
+          // The message above already says what to do.
+        }
+        return;
+      }
+      const created = (await reply.json()) as DocumentRow;
+      const confirmed =
+        typeof created?.id === 'string' &&
+        created.id.length > 0 &&
+        created.kind === 'order_confirmation' &&
+        created.state === 'draft' &&
+        created.eventId === eventId;
+      if (confirmed) {
+        // A confirmed write is real stored data: show it at once, then replace it
+        // with the server's row.
+        setDocuments((current) => [
+          created,
+          ...current.filter((row) => row.id !== created.id),
+        ]);
+        setMessage('Auftragsbestätigung als Entwurf angelegt.');
+      } else
+        setMessage(
+          'Auftragsbestätigung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+        );
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   // BKP019.a: the library the acceptance may reference. Only an own, available
   // row is selectable; the "not scanned" fact stays visible instead of a scan
   // promise we cannot keep.
@@ -539,6 +632,29 @@ export function EventDocuments({
               {' · '}
               {exactMinorUnits(entry.grossMinor) ?? '—'} €
             </p>
+            {/* BKP019.b: a confirmation names the offer it was copied from. The
+                number is the offer's own, and the link opens that document. */}
+            {entry.kind === 'order_confirmation' && entry.sourceNumber && (
+              <p className="document-meta">
+                <span>Aus Angebot </span>
+                {entry.sourceDocumentId ? (
+                  <a
+                    href={
+                      '/api/v1/documents/' + entry.sourceDocumentId + '/pdf'
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={
+                      'Angebot ' + entry.sourceNumber + ' als PDF öffnen'
+                    }
+                  >
+                    {entry.sourceNumber}
+                  </a>
+                ) : (
+                  <span>{entry.sourceNumber}</span>
+                )}
+              </p>
+            )}
             {entry.kind === 'offer' && entry.state === 'final' && (
               <p className="document-offer-status">
                 <span>{offerStatusLabels[entry.offerStatus ?? 'unset']}</span>
@@ -610,13 +726,16 @@ export function EventDocuments({
             <div className="document-actions">
               {entry.state === 'draft' && (
                 <>
-                  {entry.kind === 'offer' && (
+                  {editableDraftKinds.has(entry.kind) && (
                     <button
                       type="button"
                       className="secondary-action"
                       disabled={busy !== '' || editorBusy || editorId !== ''}
                       aria-label={
-                        'Angebot ' + (entry.number ?? 'Entwurf') + ' bearbeiten'
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? 'Entwurf') +
+                        ' bearbeiten'
                       }
                       aria-expanded={editorId === entry.id}
                       onClick={(event) => {
@@ -633,7 +752,10 @@ export function EventDocuments({
                     className="secondary-action"
                     disabled={busy !== '' || editorBusy || editorDirty}
                     aria-label={
-                      'Angebot ' + (entry.number ?? 'Entwurf') + ' finalisieren'
+                      kindName(entry) +
+                      ' ' +
+                      (entry.number ?? 'Entwurf') +
+                      ' finalisieren'
                     }
                     onClick={() => void finalize(entry.id, entry.version)}
                   >
@@ -648,7 +770,10 @@ export function EventDocuments({
                   target="_blank"
                   rel="noreferrer"
                   aria-label={
-                    'Angebot ' + (entry.number ?? '') + ' als PDF öffnen'
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' als PDF öffnen'
                   }
                 >
                   PDF öffnen
@@ -666,7 +791,8 @@ export function EventDocuments({
                         className="secondary-action"
                         disabled={busy !== ''}
                         aria-label={
-                          'Angebot ' +
+                          kindName(entry) +
+                          ' ' +
                           (entry.number ?? '') +
                           ' versendet markieren'
                         }
@@ -683,7 +809,10 @@ export function EventDocuments({
                         className="secondary-action"
                         disabled={busy !== ''}
                         aria-label={
-                          'Angebot ' + (entry.number ?? '') + ' annehmen'
+                          kindName(entry) +
+                          ' ' +
+                          (entry.number ?? '') +
+                          ' annehmen'
                         }
                         aria-expanded={acceptanceId === entry.id}
                         onClick={() => openAcceptance(entry.id)}
@@ -698,7 +827,8 @@ export function EventDocuments({
                           className="secondary-action"
                           disabled={busy !== ''}
                           aria-label={
-                            'Angebot ' +
+                            kindName(entry) +
+                            ' ' +
                             (entry.number ?? '') +
                             ' Rückzug bestätigen'
                           }
@@ -717,7 +847,8 @@ export function EventDocuments({
                           className="tertiary-action"
                           disabled={busy !== ''}
                           aria-label={
-                            'Angebot ' +
+                            kindName(entry) +
+                            ' ' +
                             (entry.number ?? '') +
                             ' Rückzug abbrechen'
                           }
@@ -732,7 +863,10 @@ export function EventDocuments({
                         className="secondary-action"
                         disabled={busy !== ''}
                         aria-label={
-                          'Angebot ' + (entry.number ?? '') + ' zurückziehen'
+                          kindName(entry) +
+                          ' ' +
+                          (entry.number ?? '') +
+                          ' zurückziehen'
                         }
                         onClick={() => setConfirmWithdrawId(entry.id)}
                       >
@@ -741,6 +875,60 @@ export function EventDocuments({
                     )}
                   </>
                 )}
+              {/* BKP019.b: only an accepted offer can be confirmed, and only as
+                  an explicit step - the confirmation starts as a draft. */}
+              {entry.state === 'final' &&
+                entry.kind === 'offer' &&
+                entry.offerStatus === 'accepted' &&
+                (confirmConfirmationId === entry.id ? (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Auftragsbestätigung anlegen'
+                      }
+                      onClick={() =>
+                        void createConfirmation(entry.id, entry.version)
+                      }
+                    >
+                      Ja, Auftragsbestätigung anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Auftragsbestätigung abbrechen'
+                      }
+                      onClick={() => setConfirmConfirmationId('')}
+                    >
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== ''}
+                    aria-label={
+                      kindName(entry) +
+                      ' ' +
+                      (entry.number ?? '') +
+                      ' Auftragsbestätigung erstellen'
+                    }
+                    onClick={() => setConfirmConfirmationId(entry.id)}
+                  >
+                    Auftragsbestätigung erstellen
+                  </button>
+                ))}
             </div>
             {entry.kind === 'offer' &&
               entry.state === 'final' &&
@@ -847,12 +1035,13 @@ export function EventDocuments({
                   </fieldset>
                 </form>
               )}
-            {entry.kind === 'offer' &&
+            {editableDraftKinds.has(entry.kind) &&
               editorId === entry.id &&
               entry.state === 'draft' && (
                 <OfferDraftEditor
                   documentId={entry.id}
                   csrfToken={csrfToken}
+                  kind={entry.kind}
                   onClose={() => {
                     setEditorDirty(false);
                     setEditorId('');

@@ -8,6 +8,57 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.b — `feat: confirm an accepted offer without retyping positions`** (26.10.2026)
+
+  Unter-Slice (b) von BKP019 nach rein lesender DeepSeek-Analyse zu `ef664b3`
+  (Lastenheft AG-05: angenommenes Angebot ohne erneute Positionserfassung in
+  eine Auftragsbestätigung übernehmen). Staleness-Befund: (b) fehlt vollständig
+  – `order_confirmation` ist reiner Enumwert; zwei nicht offensichtliche
+  Blockaden werden behoben (Blanko-CHECK erlaubt vorlagenlos nur Angebote;
+  `PUT /draft` verweigert Nicht-Angebotsarten, sodass eine Bestätigung sonst
+  den Angebotstext unkorrigierbar drucken würde). Neuer Erzeugungsweg
+  `POST /api/v1/documents/:id/order-confirmation` mit Statusvertrag
+  final+accepted und Pflicht-`version`; erzeugt einen BEARBEITBAREN
+  Bestätigungsentwurf mit Positionen 1:1 aus dem Angebot (Bruttopreise,
+  Steuer-/Rabatt-Basispunkte unverändert, keine Umrechnung; Summen serverseitig
+  exakt = Angebotsendsummen), Texten aus dem Angebot (Betreff „Auftrags-
+  bestätigung für {{contact}}“, Einleitung/Schluss korrigierbar) und
+  Quellverknüpfung `source_document_id` (Migration `0041` mit
+  mandantengebundenem FK, CHECK nur für Bestätigungen, partiellem
+  Unique-Index = genau eine Bestätigung je Angebot, endgültig; Dublette → 409
+  ohne Nummernverbrauch). Spätere Änderungen an Angebot oder Bestätigung
+  beeinflussen sich nie gegenseitig (Pflichttest beide Richtungen); die
+  Bestätigung finalisiert art-agnostisch mit eigener Nummer. UI-Aktion nur
+  bei `accepted`-Angeboten; Quellnummer sichtbar. Referenz ehrlich: AG-05
+  ist Lastenheft-Soll, Bookitup-UI unbekannt, die Bestätigung ist KEIN
+  Rechnungsbeleg. Tests zuerst rot (17 Fälle inkl. Übernahme-Gleichheit,
+  Dublette, Rollback/Parallelität, DB-CHECKs; `documents.test.ts:298–308`
+  bleibt unantastbar). Coding-Subagent: DeepSeek V4.1 Flash (gleiche
+  Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen (inkl. Nachtrag BKP019.b2 „Bestätigungsentwurf in der UI
+  bearbeitbar“): rot beobachtet (13 Integrationsfehler fehlender Methode,
+  fehlende Route/UI-Aktion, Migrationserwartung; Nachtrag: fehlende
+  Bearbeiten-Aktion), danach grün: `test:unit` 274/274, `test:component`
+  707/707, `test:integration` 364/364 (16 neue Pflichttests: Positions-/
+  Summen-/Steuer-/Rabatt-/Preisbasisgleichheit, Status-/Artvertrag,
+  Fremdmandant, Dublette 409 ohne Nummernverbrauch, Parallelität/Rollback,
+  Unabhängigkeit beide Richtungen, eigene Nummer/PDF, fehlender
+  Nummernkreis, DB-CHECKs 23514/23503/23505, Projektion, HTTP-Route),
+  `test:coverage` 1343 vollständig (Changed ≥85/80),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. Ablauf angenommenes Angebot →
+  Bestätigung mit kopierten Positionen (kein Editor geöffnet) →
+  Dublettenerklärung → Finalisierung mit eigener Nummer → Quellhinweis,
+  Angebots-PDF bytegleich; im Nachtrag: Bestätigungsentwurf öffnet den
+  geteilten Editor mit eigener Überschrift, geänderte Texte werden
+  gespeichert und finalisiert. MiMo-Reviewfix: auch der Verwerfen-Dialog des
+  Editors ist jetzt artabhängig („Änderungen an der Auftragsbestätigung“).
+  Notiert: Dublettensperre ist endgültig (Ersatzbeleg = Entscheidung in (c));
+  `validity_days` wird aus Vorlagengründen kopiert, fachlich inert für
+  Bestätigungen; Angebot ohne Kontakt/Event wird mit `missing_reference`
+  abgelehnt statt mit erfundenem Inhalt bestätigt; die Erzeugung antwortet in
+  der alten Zeilenform, die Quelle erscheint über `include=offer`.
+
 - [x] **BKP019.a — `feat: record how an offer was accepted`** (26.10.2026)
 
   Unter-Slice (a) von BKP019 nach rein lesender DeepSeek-Analyse zu `44a055f`

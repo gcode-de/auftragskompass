@@ -390,6 +390,25 @@ finalen Inhalt, die Nummer oder die PDF-Bytes des Angebots. Auch hier gilt:
 keine Automatik aus E-Mail, keine Rechts- oder Beweiskraftbehauptung für ein
 angehängtes unterschriebenes PDF.
 
+### Auftragsbestätigung aus einem Angebot (BKP019.b, AG-05)
+
+Aus einem **finalen, angenommenen** Angebot entsteht ohne erneute
+Positionserfassung eine Auftragsbestätigung: „Auftragsbestätigung erstellen“
+legt einen Entwurf an, dessen Positionen 1:1 aus dem Angebot stammen
+(Bruttobeträge, Steuer- und Rabattbasispunkte unverändert, keine Umrechnung)
+und dessen Summen serverseitig exakt den Angebotsendsummen entsprechen. Der
+Betreff lautet „Auftragsbestätigung für {{contact}}“, Einleitung und
+Schlusstext übernimmt das Angebot; der Entwurf bleibt vollständig
+bearbeitbar und finalisiert mit eigener Nummer wie jeder andere Entwurf.
+Die Bestätigung trägt dauerhaft die Quelle („Aus Angebot AN-…“); genau eine
+Bestätigung je Angebot (eine Dublette wird mit 409 abgewiesen, ohne
+Nummernverbrauch). Angebot und Bestätigung sind danach unabhängig:
+spätere Änderungen beeinflussen einander nie. Die Bestätigung ist ein
+eigener Geschäftsbeleg und ausdrücklich **kein** Rechnungsbeleg – ohne
+Rechts- oder Steuerbehauptung. Das Angebot selbst bleibt final und
+unveränderlich; sein Angebotsstatus wird durch die Bestätigung nicht
+berührt.
+
 ## Dokumentvorlagen verwalten (BKP015.4)
 
 Unter Einstellungen → Dokumentvorlagen erscheinen zuerst die Liste und

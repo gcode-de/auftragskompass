@@ -2060,6 +2060,9 @@ const acceptanceKeys = [
   'acceptanceFileName',
   'acceptanceFileState',
 ];
+// BKP019.b: a confirmation names the offer it was copied from. The two keys
+// belong to the projection only; the unpaged list keeps its old shape.
+const confirmationKeys = ['sourceDocumentId', 'sourceNumber'];
 
 test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
   const scope = randomUUID(),
@@ -3209,6 +3212,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         'validUntil',
         'offerExpired',
         ...acceptanceKeys,
+        ...confirmationKeys,
       ].sort(),
     );
     const projected = await app.inject({
@@ -3226,6 +3230,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         'validUntil',
         'offerExpired',
         ...acceptanceKeys,
+        ...confirmationKeys,
       ].sort(),
     );
     expect(projectedRow).toMatchObject({
@@ -3985,6 +3990,8 @@ test('the offer status route accepts the acceptance details and refuses bad ones
         'acceptanceFileId',
         'acceptanceFileName',
         'acceptanceFileState',
+        'sourceDocumentId',
+        'sourceNumber',
       ].sort(),
     );
     // Repeating the identical details is a no-op, a changed one is refused.
@@ -4019,6 +4026,884 @@ test('the offer status route accepts the acceptance details and refuses bad ones
       acceptanceNote: 'Zusage am Telefon.',
       acceptanceFileId: fileId,
     });
+  } finally {
+    await app.close();
+  }
+});
+
+// BKP019.b: an accepted offer becomes an order confirmation without retyping a
+// single position. Every case below starts from a really finalized, really
+// accepted offer, because confirming a mere draft would be a lie.
+const confirmationLines = [
+  {
+    productId: null,
+    description: 'Fictional photo box',
+    quantity: 2,
+    unit: 'Stück',
+    unitPriceMinor: 24900,
+    taxBasisPoints: 1900,
+    discountBasisPoints: 500,
+  },
+  {
+    productId: null,
+    description: 'Fictional delivery',
+    quantity: 1,
+    unit: 'Pauschale',
+    unitPriceMinor: 5000,
+    taxBasisPoints: 700,
+    discountBasisPoints: 0,
+  },
+];
+const confirmationTexts = {
+  subject: 'Angebot für {{contact}}',
+  introText: 'Fiktive Feier {{event}} am {{date}}.',
+  outroText: 'Gesamt {{total}}. Wir freuen uns auf die Feier.',
+  validityDays: 14,
+};
+
+async function confirmationContext(scope: string) {
+  await bootstrapAccess(
+    pool,
+    scope,
+    'confirmation-' + scope + '@example.invalid',
+    'Synthetic confirmation',
+    'Europe/Berlin',
+  );
+  const seed = await seedIssuingContext(scope),
+    contact = randomUUID(),
+    event = randomUUID();
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional Confirmation Customer','Robin Example','Example Street 2',
+      '12345','Fictional Town','DE','confirmation@example.invalid','','','','','active',1)`,
+    [scope, contact],
+  );
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,event_type_id,package_id,location_id,source,
+      event_date,starts_at,ends_at,time_zone,description,notes_html,version)
+     VALUES ($1,$2,'Fictional Confirmation Wedding','option',NULL,NULL,NULL,'synthetic','2030-11-14',
+      NULL,NULL,'Europe/Berlin','','',1)`,
+    [scope, event],
+  );
+  const run = dependencies();
+  return {
+    scope,
+    actor: seed.actor,
+    run,
+    repo: documentRepository(pool, scope, { ...run.deps, store: seed.store }),
+    contact,
+    event,
+    templateId: seed.templateId,
+  };
+}
+
+async function confirmationDraft(
+  context: Awaited<ReturnType<typeof confirmationContext>>,
+) {
+  const draft = await context.repo.createDraft(context.actor, {
+    templateId: context.templateId,
+    eventId: context.event,
+    contactId: context.contact,
+  });
+  return context.repo.updateDraftContent(context.actor, draft.id, {
+    version: draft.version,
+    ...confirmationTexts,
+    lines: confirmationLines,
+  });
+}
+
+async function confirmedOffer(scope: string) {
+  const context = await confirmationContext(scope),
+    draft = await confirmationDraft(context),
+    finalized = await context.repo.finalize(
+      context.actor,
+      draft.id,
+      draft.version,
+    ),
+    sent = await context.repo.changeOfferStatus(context.actor, finalized.id, {
+      status: 'sent',
+      version: finalized.version,
+    }),
+    accepted = await context.repo.changeOfferStatus(
+      context.actor,
+      finalized.id,
+      { status: 'accepted', version: sent.version, channel: 'email' },
+    );
+  return {
+    ...context,
+    draft,
+    offerId: accepted.id,
+    version: accepted.version,
+    number: accepted.number!,
+  };
+}
+
+async function storedDocument(scope: string, id: string) {
+  return (
+    await pool.query<Record<string, unknown>>(
+      `SELECT kind, template_id, event_id, contact_id, number, state, subject, intro_text,
+              outro_text, validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
+              gross_minor, version, source_document_id, offer_status,
+              to_char(valid_until,'YYYY-MM-DD') AS valid_until
+         FROM documents WHERE tenant_id=$1 AND id=$2`,
+      [scope, id],
+    )
+  ).rows[0]!;
+}
+
+async function storedLines(scope: string, id: string) {
+  return (
+    await pool.query<Record<string, unknown>>(
+      `SELECT position, product_id, description, quantity, unit, unit_price_minor,
+              tax_basis_points, discount_basis_points
+         FROM document_lines WHERE tenant_id=$1 AND document_id=$2 ORDER BY position`,
+      [scope, id],
+    )
+  ).rows;
+}
+
+async function confirmationCount(scope: string) {
+  return (
+    await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM documents
+        WHERE tenant_id=$1 AND kind='order_confirmation'`,
+      [scope],
+    )
+  ).rows[0]!.count;
+}
+
+test('the confirmation copies every position, price, tax and discount of the offer', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    ),
+    stored = await storedDocument(offer.scope, confirmation.id);
+  // 1:1: same descriptions, quantities, units, gross prices and both
+  // basis-point rates - no conversion, no second rounding of its own.
+  expect(await storedLines(offer.scope, confirmation.id)).toEqual(
+    await storedLines(offer.scope, offer.offerId),
+  );
+  expect(stored).toMatchObject({
+    kind: 'order_confirmation',
+    template_id: null,
+    event_id: offer.event,
+    contact_id: offer.contact,
+    number: null,
+    state: 'draft',
+    // A confirmation is addressed as one; the rest is the offer's own wording.
+    subject: 'Auftragsbestätigung für {{contact}}',
+    intro_text: confirmationTexts.introText,
+    outro_text: confirmationTexts.outroText,
+    validity_days: 14,
+    snapshot_hash: null,
+    pdf_hash: null,
+    version: 1,
+    source_document_id: offer.offerId,
+    offer_status: null,
+    valid_until: null,
+  });
+  // The sums are recomputed from the copied gross prices and equal the offer's.
+  const source = await offer.repo.get(offer.offerId);
+  expect(confirmation).toMatchObject({
+    netMinor: source!.netMinor,
+    taxMinor: source!.taxMinor,
+    grossMinor: source!.grossMinor,
+  });
+  expect(confirmation.grossMinor).toBe(52310);
+  expect(confirmation.grossMinor).toBe(
+    confirmation.netMinor + confirmation.taxMinor,
+  );
+});
+
+test('the confirmation needs a final offer the customer accepted', async () => {
+  const context = await confirmationContext(randomUUID()),
+    draft = await confirmationDraft(context);
+  // A draft is not an offer anybody could have accepted.
+  await expect(
+    context.repo.createOrderConfirmation(
+      context.actor,
+      draft.id,
+      draft.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  const finalized = await context.repo.finalize(
+    context.actor,
+    draft.id,
+    draft.version,
+  );
+  // Final, but never sent and never accepted.
+  await expect(
+    context.repo.createOrderConfirmation(
+      context.actor,
+      finalized.id,
+      finalized.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'offer_not_accepted' });
+  const sent = await context.repo.changeOfferStatus(
+    context.actor,
+    finalized.id,
+    {
+      status: 'sent',
+      version: finalized.version,
+    },
+  );
+  await expect(
+    context.repo.createOrderConfirmation(
+      context.actor,
+      finalized.id,
+      sent.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'offer_not_accepted' });
+  const accepted = await context.repo.changeOfferStatus(
+      context.actor,
+      finalized.id,
+      { status: 'accepted', version: sent.version, channel: 'phone' },
+    ),
+    withdrawn = await context.repo.changeOfferStatus(
+      context.actor,
+      finalized.id,
+      { status: 'withdrawn', version: accepted.version },
+    );
+  // A withdrawn offer is no order, even though its acceptance stays readable.
+  await expect(
+    context.repo.createOrderConfirmation(
+      context.actor,
+      finalized.id,
+      withdrawn.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'offer_not_accepted' });
+  expect(await confirmationCount(context.scope)).toBe(0);
+});
+
+test('only offers can become a confirmation', async () => {
+  const context = await confirmationContext(randomUUID()),
+    invoiceTemplate = await documentTemplateRepository(
+      pool,
+      context.scope,
+    ).save(context.actor, {
+      kind: 'invoice',
+      name: 'Fictional invoice',
+      subject: 'Rechnung {{contact}}',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+      state: 'active',
+      positions: [],
+    }),
+    invoice = await context.repo.createDraft(context.actor, {
+      templateId: invoiceTemplate.id,
+      eventId: context.event,
+      contactId: context.contact,
+      lines: [confirmationLines[0]!],
+    });
+  await expect(
+    context.repo.createOrderConfirmation(
+      context.actor,
+      invoice.id,
+      invoice.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  // A confirmation is never the source of another confirmation.
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    );
+  await expect(
+    offer.repo.createOrderConfirmation(
+      offer.actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+});
+
+test('a confirmation of another tenant, actor or unknown offer is invisible', async () => {
+  const offer = await confirmedOffer(randomUUID());
+  await expect(
+    documentRepository(
+      pool,
+      otherTenantId,
+      dependencies().deps,
+    ).createOrderConfirmation(otherActorId, offer.offerId, offer.version),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    offer.repo.createOrderConfirmation(
+      randomUUID(),
+      offer.offerId,
+      offer.version,
+    ),
+  ).rejects.toThrow('forbidden');
+  await expect(
+    offer.repo.createOrderConfirmation(offer.actor, randomUUID(), 1),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  expect(await confirmationCount(offer.scope)).toBe(0);
+});
+
+test('a stale offer version is a conflict and writes nothing', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    auditBefore = await offerAudit(offer.scope, offer.offerId);
+  await expect(
+    offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version - 1,
+    ),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(await confirmationCount(offer.scope)).toBe(0);
+  expect(await offerAudit(offer.scope, offer.offerId)).toEqual(auditBefore);
+});
+
+test('a second confirmation is refused without consuming a number', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    first = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    );
+  await expect(
+    offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'duplicate' });
+  const rows = (
+    await pool.query<{ id: string }>(
+      `SELECT id FROM documents WHERE tenant_id=$1 AND kind='order_confirmation'`,
+      [offer.scope],
+    )
+  ).rows;
+  expect(rows.map((row) => row.id)).toEqual([first.id]);
+  // Only the confirmation is audited as created; the offer keeps its own trail.
+  expect(await offerAudit(offer.scope, first.id)).toEqual(['document.created']);
+  expect(await offerAudit(offer.scope, offer.offerId)).toEqual([
+    'document.accepted',
+    'document.created',
+    'document.finalized',
+    'document.sent',
+    'document.updated',
+  ]);
+  // No number was allocated: the confirmation has no range yet, and creating one
+  // never wrote one.
+  expect(
+    (
+      await pool.query(
+        'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+        [offer.scope, 'order_confirmation'],
+      )
+    ).rows,
+  ).toEqual([]);
+});
+
+test('two simultaneous confirmations produce exactly one document', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    results = await Promise.allSettled([
+      offer.repo.createOrderConfirmation(
+        offer.actor,
+        offer.offerId,
+        offer.version,
+      ),
+      offer.repo.createOrderConfirmation(
+        offer.actor,
+        offer.offerId,
+        offer.version,
+      ),
+    ]),
+    fulfilled = results.filter((result) => result.status === 'fulfilled'),
+    rejected = results.filter((result) => result.status === 'rejected');
+  // The unique index decides, not an application-side "check first" query.
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+    reason: 'duplicate',
+  });
+  expect(
+    (
+      await pool.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM documents
+          WHERE tenant_id=$1 AND source_document_id=$2 AND kind='order_confirmation'`,
+        [offer.scope, offer.offerId],
+      )
+    ).rows[0]!.count,
+  ).toBe(1);
+});
+
+test('withdrawing the offer never changes the confirmation', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    ),
+    beforeDocument = await storedDocument(offer.scope, confirmation.id),
+    beforeLines = await storedLines(offer.scope, confirmation.id),
+    withdrawn = await offer.repo.changeOfferStatus(offer.actor, offer.offerId, {
+      status: 'withdrawn',
+      version: offer.version,
+    });
+  expect(withdrawn.offerStatus).toBe('withdrawn');
+  expect(await storedDocument(offer.scope, confirmation.id)).toEqual(
+    beforeDocument,
+  );
+  expect(await storedLines(offer.scope, confirmation.id)).toEqual(beforeLines);
+  // The offer itself stays final and immutable; only its status axis moved.
+  expect(await storedDocument(offer.scope, offer.offerId)).toMatchObject({
+    state: 'final',
+    offer_status: 'withdrawn',
+    number: offer.number,
+  });
+});
+
+test('editing the confirmation never changes the offer', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    ),
+    beforeOffer = await storedDocument(offer.scope, offer.offerId),
+    beforeLines = await storedLines(offer.scope, offer.offerId),
+    pdfBefore = await offer.repo.pdf(offer.offerId),
+    edited = await offer.repo.updateDraftContent(offer.actor, confirmation.id, {
+      version: confirmation.version,
+      subject: 'Auftragsbestätigung, korrigiert',
+      introText: 'Korrigierte Einleitung.',
+      outroText: 'Korrigierter Schluss.',
+      validityDays: 30,
+      lines: [
+        {
+          productId: null,
+          description: 'Korrigierte Position',
+          quantity: 3,
+          unit: 'Stück',
+          unitPriceMinor: 1000,
+          taxBasisPoints: 700,
+          discountBasisPoints: 0,
+        },
+      ],
+    });
+  // The confirmation draft is editable, exactly like an offer draft.
+  expect(edited).toMatchObject({
+    kind: 'order_confirmation',
+    subject: 'Auftragsbestätigung, korrigiert',
+    version: confirmation.version + 1,
+    grossMinor: 3000,
+  });
+  expect(await storedDocument(offer.scope, offer.offerId)).toEqual(beforeOffer);
+  expect(await storedLines(offer.scope, offer.offerId)).toEqual(beforeLines);
+  // The offer's bytes are the frozen ones, not a re-render of the new text.
+  expect(
+    (await offer.repo.pdf(offer.offerId)).bytes.equals(pdfBefore.bytes),
+  ).toBe(true);
+});
+
+test('the confirmation finalizes with its own number and its own PDF', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    ),
+    offerPdf = await offer.repo.pdf(offer.offerId);
+  await documentNumberRepository(pool, offer.scope).save(
+    offer.actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await offer.repo.finalize(
+      offer.actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+    stored = await storedDocument(offer.scope, confirmation.id);
+  expect(finalized.number).toBe('AB-2030-0001');
+  expect(stored).toMatchObject({
+    kind: 'order_confirmation',
+    state: 'final',
+    number: 'AB-2030-0001',
+    offer_status: null,
+    // Only an offer carries a deadline; a confirmation carries none.
+    valid_until: null,
+    source_document_id: offer.offerId,
+  });
+  // The offer keeps its own number, its own status and its own bytes.
+  expect(await storedDocument(offer.scope, offer.offerId)).toMatchObject({
+    number: offer.number,
+    state: 'final',
+    offer_status: 'accepted',
+  });
+  expect(
+    (await offer.repo.pdf(offer.offerId)).bytes.equals(offerPdf.bytes),
+  ).toBe(true);
+  const confirmationPdf = await offer.repo.pdf(confirmation.id);
+  expect(confirmationPdf.number).toBe('AB-2030-0001');
+  expect(confirmationPdf.bytes.equals(offerPdf.bytes)).toBe(false);
+});
+
+test('a missing number range keeps the confirmation a draft', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    );
+  await expect(
+    offer.repo.finalize(offer.actor, confirmation.id, confirmation.version),
+  ).rejects.toMatchObject({ reason: 'number_not_configured' });
+  expect(await storedDocument(offer.scope, confirmation.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+    snapshot_hash: null,
+    pdf_hash: null,
+  });
+  expect(
+    (
+      await pool.query(
+        'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+        [offer.scope, 'order_confirmation'],
+      )
+    ).rows,
+  ).toEqual([]);
+  // Nothing was consumed: the first real finalization still gets 0001.
+  await documentNumberRepository(pool, offer.scope).save(
+    offer.actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  expect(
+    (
+      await offer.repo.finalize(
+        offer.actor,
+        confirmation.id,
+        confirmation.version,
+      )
+    ).number,
+  ).toBe('AB-2030-0001');
+});
+
+test('a failing renderer rolls the confirmation number back', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    );
+  await documentNumberRepository(pool, offer.scope).save(
+    offer.actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 7 },
+  );
+  const failing = documentRepository(pool, offer.scope, {
+    ...dependencies().deps,
+    render: async () => {
+      throw new Error('synthetic confirmation renderer failure');
+    },
+  });
+  await expect(
+    failing.finalize(offer.actor, confirmation.id, confirmation.version),
+  ).rejects.toMatchObject({ reason: 'artifact_failed' });
+  expect(await storedDocument(offer.scope, confirmation.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+  });
+  expect(
+    await documentNumberRepository(pool, offer.scope).preview(
+      'order_confirmation',
+      new Date('2030-10-26T10:00:00Z'),
+    ),
+  ).toBe('AB-2030-0007');
+});
+
+test('a finalized confirmation is immutable and has no offer status', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    );
+  await documentNumberRepository(pool, offer.scope).save(
+    offer.actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await offer.repo.finalize(
+      offer.actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+    pdf = await offer.repo.pdf(confirmation.id);
+  // Final content is final: a correction is a new document.
+  await expect(
+    offer.repo.updateDraftContent(offer.actor, confirmation.id, {
+      version: finalized.version,
+      subject: 'Zu spät',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // A confirmation is no offer: it never gains a business status.
+  await expect(
+    offer.repo.changeOfferStatus(offer.actor, confirmation.id, {
+      status: 'sent',
+      version: finalized.version,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  expect((await offer.repo.pdf(confirmation.id)).bytes.equals(pdf.bytes)).toBe(
+    true,
+  );
+});
+
+test('the database keeps the source link inside confirmations of this tenant', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    ),
+    code = (query: Promise<unknown>) =>
+      query
+        .then(() => 'accepted')
+        .catch((error: { code?: string }) => error.code),
+    invoiceId = randomUUID(),
+    foreignId = randomUUID();
+  await listRows(pool, offer.scope, [
+    {
+      id: invoiceId,
+      templateId: offer.templateId,
+      kind: 'invoice',
+      issuedAt: '2030-10-26T10:00:00Z',
+    },
+  ]);
+  await listRows(pool, otherTenantId, [
+    {
+      id: foreignId,
+      templateId: otherTemplateId,
+      issuedAt: '2030-10-26T10:00:00Z',
+    },
+  ]);
+  // A source is reserved for confirmations.
+  expect(
+    await code(
+      pool.query(
+        'UPDATE documents SET source_document_id=$3 WHERE tenant_id=$1 AND id=$2',
+        [offer.scope, invoiceId, offer.offerId],
+      ),
+    ),
+  ).toBe('23514');
+  // The widened kind never widened completeness: without event and contact a
+  // template-less document is still refused.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days)
+         VALUES ($1,$2,'order_confirmation',NULL,NULL,$3,$4,'Auftragsbestätigung','','',14)`,
+        [offer.scope, randomUUID(), offer.contact, now],
+      ),
+    ),
+  ).toBe('23514');
+  // The widened kind itself is allowed ...
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days)
+         VALUES ($1,$2,'order_confirmation',NULL,$3,$4,$5,'Auftragsbestätigung','','',14)`,
+        [offer.scope, randomUUID(), offer.event, offer.contact, now],
+      ),
+    ),
+  ).toBe('accepted');
+  // ... and `invoice` still is not, exactly as before this slice.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days)
+         VALUES ($1,$2,'invoice',NULL,$3,$4,$5,'Rechnung','','',14)`,
+        [offer.scope, randomUUID(), offer.event, offer.contact, now],
+      ),
+    ),
+  ).toBe('23514');
+  // Exactly one confirmation per offer - also against a second direct insert.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days,source_document_id)
+         VALUES ($1,$2,'order_confirmation',NULL,$3,$4,$5,'Auftragsbestätigung','','',14,$6)`,
+        [
+          offer.scope,
+          randomUUID(),
+          offer.event,
+          offer.contact,
+          now,
+          offer.offerId,
+        ],
+      ),
+    ),
+  ).toBe('23505');
+  // A document of another tenant can never become the source.
+  expect(
+    await code(
+      pool.query(
+        'UPDATE documents SET source_document_id=$3 WHERE tenant_id=$1 AND id=$2',
+        [offer.scope, confirmation.id, foreignId],
+      ),
+    ),
+  ).toBe('23503');
+});
+
+test('the offer projection names the source of a confirmation', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    ),
+    listed = (await offer.repo.list({
+      include: 'offer',
+    })) as DocumentOfferRow[],
+    byId = (id: string) => listed.find((row) => row.id === id)!;
+  expect(byId(confirmation.id)).toMatchObject({
+    sourceDocumentId: offer.offerId,
+    sourceNumber: offer.number,
+    offerStatus: null,
+    validUntil: null,
+  });
+  // Every other row answers with the honest NULL instead of a guess.
+  expect(byId(offer.offerId)).toMatchObject({
+    sourceDocumentId: null,
+    sourceNumber: null,
+  });
+  expect(Object.keys(byId(confirmation.id)).sort()).toEqual(
+    [
+      ...oldListKeys,
+      'offerStatus',
+      'validUntil',
+      'offerExpired',
+      ...acceptanceKeys,
+      'sourceDocumentId',
+      'sourceNumber',
+    ].sort(),
+  );
+});
+
+test('the confirmation route validates auth, body and duplicates', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    granted = (await accessRepository(pool, offer.scope).list())[0]!;
+  await accessRepository(pool, offer.scope).issueSession(
+    { subject: 'seed-' + offer.scope, email: granted.email },
+    digest('synthetic-confirmation'),
+  );
+  const config = {
+      origin: site,
+      tenantId: offer.scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, offer.scope, offer.run.deps);
+  const url = '/api/v1/documents/' + offer.offerId + '/order-confirmation',
+    cookies = { '__Host-ak-session': 'synthetic-confirmation' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-confirmation'),
+    },
+    post = (payload: Record<string, unknown>, secured = true) =>
+      app.inject({
+        method: 'POST',
+        url,
+        cookies,
+        ...(secured ? { headers } : {}),
+        payload,
+      });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          payload: { version: offer.version },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect((await post({ version: offer.version }, false)).statusCode).toBe(
+      403,
+    );
+    // Fastify's schema strips unknown keys, exactly like every other document
+    // route; a missing or non-integer version is refused with 400.
+    for (const payload of [{}, { version: 0 }, { version: 1.5 }])
+      expect((await post(payload)).statusCode, JSON.stringify(payload)).toBe(
+        400,
+      );
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + randomUUID() + '/order-confirmation',
+          cookies,
+          headers,
+          payload: { version: 1 },
+        })
+      ).statusCode,
+    ).toBe(404);
+    // A stale version is a conflict before anything is copied.
+    expect((await post({ version: 1 })).statusCode).toBe(409);
+    expect((await post({ version: 1 })).json()).toEqual({ error: 'conflict' });
+    const created = await post({ version: offer.version });
+    expect(created.statusCode).toBe(201);
+    const single = await app.inject({
+      url: '/api/v1/documents/' + (created.json() as { id: string }).id,
+      cookies,
+    });
+    expect(Object.keys(created.json() as object).sort()).toEqual(
+      Object.keys(single.json() as object).sort(),
+    );
+    expect(created.json()).toMatchObject({
+      kind: 'order_confirmation',
+      state: 'draft',
+      number: null,
+      templateId: null,
+      subject: 'Auftragsbestätigung für {{contact}}',
+      grossMinor: 52310,
+    });
+    // The create answer keeps the old document shape: the offer projection, not
+    // this route, names the source.
+    expect(created.body).not.toContain('sourceDocumentId');
+    const again = await post({ version: offer.version });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: 'duplicate' });
+    expect(await confirmationCount(offer.scope)).toBe(1);
   } finally {
     await app.close();
   }

@@ -71,7 +71,9 @@ export class DocumentError extends Error {
       | 'invalid_time'
       | 'invalid_note'
       | 'invalid_attachment'
-      | 'acceptance_conflict',
+      | 'acceptance_conflict'
+      | 'offer_not_accepted'
+      | 'duplicate',
   ) {
     super('Document rejected');
   }
@@ -215,6 +217,10 @@ export type DocumentOfferRow = DocumentListRow & {
   acceptanceFileId: string | null;
   acceptanceFileName: string | null;
   acceptanceFileState: 'available' | 'archived' | null;
+  // BKP019.b: the offer a confirmation was copied from. NULL for every other
+  // row, including the offer itself.
+  sourceDocumentId: string | null;
+  sourceNumber: string | null;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -311,6 +317,15 @@ function translate(error: unknown): never {
   if (error instanceof DocumentPdfError || error instanceof StorageError)
     throw new DocumentError('artifact_failed');
   throw error;
+}
+
+// Drizzle wraps driver errors, so the PostgreSQL code travels in `cause`.
+// The only unique index a confirmation insert can hit is the partial one on
+// `(tenant_id, source_document_id)`; numbers are still NULL at that point.
+function uniqueViolation(error: unknown): boolean {
+  return (
+    (error as { cause?: { code?: string } } | null)?.cause?.code === '23505'
+  );
 }
 
 const maxOffset = 1_000_000;
@@ -444,6 +459,8 @@ export function documentRepository(
   // driver can never turn a tenant-local day into a guessing `Date`.
   // BKP019.a adds the acceptance record; the joined file is tenant-scoped, so a
   // foreign id could never surface a name here.
+  // BKP019.b adds the source of a confirmation; the joined document is
+  // tenant-scoped for the same reason.
   async function offerStateOf(connection: Connection, id: string) {
     // `database()` narrows to the query builder, so the reviewed-SQL hatch is
     // named here, the same shape library-files.ts uses.
@@ -456,10 +473,13 @@ export function documentRepository(
                      'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS accepted_at,
              d.acceptance_channel, d.acceptance_note,
              d.acceptance_file_id, f.display_name AS acceptance_file_name,
-             f.state AS acceptance_file_state
+             f.state AS acceptance_file_state,
+             d.source_document_id, s.number AS source_number
         FROM documents d
         LEFT JOIN library_files f
           ON f.tenant_id = d.tenant_id AND f.id = d.acceptance_file_id
+        LEFT JOIN documents s
+          ON s.tenant_id = d.tenant_id AND s.id = d.source_document_id
        WHERE d.tenant_id = ${tenantId} AND d.id = ${id}`)) as {
       rows: {
         valid_until: string | null;
@@ -470,6 +490,8 @@ export function documentRepository(
         acceptance_file_id: string | null;
         acceptance_file_name: string | null;
         acceptance_file_state: 'available' | 'archived' | null;
+        source_document_id: string | null;
+        source_number: string | null;
       }[];
     };
     const row = result.rows[0];
@@ -483,6 +505,9 @@ export function documentRepository(
       acceptanceFileId: row?.acceptance_file_id ?? null,
       acceptanceFileName: row?.acceptance_file_name ?? null,
       acceptanceFileState: row?.acceptance_file_state ?? null,
+      sourceDocumentId: row?.source_document_id ?? null,
+      // The number of the source, not of the confirmation itself.
+      sourceNumber: row?.source_number ?? null,
     };
   }
 
@@ -824,6 +849,16 @@ export function documentRepository(
             acceptanceFileId: sql<
               string | null
             >`documents.acceptance_file_id`.as('acceptance_file_id'),
+            // BKP019.b: the source of a confirmation, read in the same query -
+            // never a lookup per row, and only this tenant's document.
+            sourceDocumentId: sql<
+              string | null
+            >`documents.source_document_id`.as('source_document_id'),
+            sourceNumber: sql<string | null>`(
+              SELECT s.number FROM documents s
+               WHERE s.tenant_id = documents.tenant_id
+                 AND s.id = documents.source_document_id
+            )`.as('source_number'),
           })
           .from(documents)
           .where(narrowed)
@@ -873,6 +908,8 @@ export function documentRepository(
             acceptanceChannel,
             acceptanceNote,
             acceptanceFileId,
+            sourceDocumentId,
+            sourceNumber,
             ...row
           }) => ({
             ...row,
@@ -889,6 +926,9 @@ export function documentRepository(
             acceptanceFileState: acceptanceFileId
               ? (attached.get(acceptanceFileId)?.state ?? null)
               : null,
+            // BKP019.b: a confirmation names the offer it was copied from.
+            sourceDocumentId,
+            sourceNumber,
             // Derived, never stored: the deadline and the tenant day decide.
             offerExpired: offerExpired(
               validUntil,
@@ -1050,6 +1090,123 @@ export function documentRepository(
       });
       return (await readOne(db, id))!;
     },
+    // BKP019.b: an accepted offer becomes a confirmation draft without a single
+    // retyped position. The copy is its own document with its own number range;
+    // the offer keeps its number, its bytes and its status untouched.
+    async createOrderConfirmation(
+      actorId: string,
+      offerId: string,
+      expectedVersion: number,
+    ) {
+      const id = randomUUID();
+      try {
+        await db.transaction(async (tx) => {
+          await lockTenant(tx, tenantId);
+          await requireAdministrator(tx, tenantId, actorId);
+          // The offer row is locked, so a simultaneous withdrawal can never slip
+          // between the status check and the copy.
+          const [offer] = await tx
+            .select()
+            .from(documents)
+            .where(and(scope, eq(documents.id, offerId)))
+            .for('update');
+          if (!offer) throw new DocumentError('not_found');
+          if (offer.kind !== 'offer') throw new DocumentError('invalid_kind');
+          if (offer.state !== 'final') throw new DocumentError('invalid_state');
+          if (offer.version !== expectedVersion)
+            throw new DocumentError('conflict');
+          const source = await offerStateOf(tx, offerId);
+          // Only the customer's yes is an order: an unsent, a merely sent or a
+          // withdrawn offer is not.
+          if (source.offerStatus !== 'accepted')
+            throw new DocumentError('offer_not_accepted');
+          // A confirmation lives in the event file, and a template-less document
+          // needs both references; an offer without them cannot be copied.
+          if (!offer.eventId || !offer.contactId)
+            throw new DocumentError('missing_reference');
+          // A very old offer may have no stored wording at all. Copying it would
+          // produce an unprintable document, so it is refused instead of guessed.
+          if (
+            offer.introText === null ||
+            offer.outroText === null ||
+            offer.validityDays === null
+          )
+            throw new DocumentError('missing_reference');
+          const lines = await tx
+            .select(lineColumns)
+            .from(documentLines)
+            .where(
+              and(
+                eq(documentLines.tenantId, tenantId),
+                eq(documentLines.documentId, offerId),
+              ),
+            )
+            .orderBy(asc(documentLines.position));
+          if (!lines.length) throw new DocumentError('empty_lines');
+          // Sums are recomputed from the copied gross prices, so they cannot
+          // drift from the positions that are actually printed.
+          const totals = documentTotals(lines),
+            at = now();
+          await tx.insert(documents).values({
+            tenantId,
+            id,
+            kind: 'order_confirmation',
+            // No template: the offer is the source, not a template.
+            templateId: null,
+            eventId: offer.eventId,
+            contactId: offer.contactId,
+            number: null,
+            state: 'draft',
+            issuedAt: at,
+            finalizedAt: null,
+            // Addressed as a confirmation; the rest is the offer's own wording.
+            subject: 'Auftragsbestätigung für {{contact}}',
+            introText: offer.introText,
+            outroText: offer.outroText,
+            // Inert for a confirmation: no deadline is printed or frozen for it,
+            // but the content block requires a value.
+            validityDays: offer.validityDays,
+            snapshotHash: null,
+            pdfHash: null,
+            netMinor: totals.netMinor,
+            taxMinor: totals.taxMinor,
+            grossMinor: totals.grossMinor,
+            version: 1,
+          });
+          // `schema.ts` stays unchanged on purpose - every other row contract is
+          // keyed to it - so the one new column is written by reviewed SQL in the
+          // same transaction. Its CHECK, its tenant-bound FK and the partial
+          // unique index decide, not the application.
+          await tx.execute(sql`UPDATE documents
+                                  SET source_document_id = ${offerId}::uuid
+                                WHERE tenant_id = ${tenantId} AND id = ${id}`);
+          await tx.insert(documentLines).values(
+            lines.map((line, position) => ({
+              tenantId,
+              documentId: id,
+              id: randomUUID(),
+              position,
+              productId: line.productId,
+              description: line.description,
+              quantity: line.quantity,
+              unit: line.unit,
+              // Verbatim: the gross price and both basis-point rates, never a
+              // conversion and never a second rounding.
+              unitPriceMinor: line.unitPriceMinor,
+              taxBasisPoints: line.taxBasisPoints,
+              discountBasisPoints: line.discountBasisPoints,
+            })),
+          );
+          await appendAudit(tx, tenantId, 'document.created', actorId, id);
+        });
+      } catch (error) {
+        // The partial unique index is the duplicate guard: a second confirmation
+        // is refused, and the first one keeps its number and its bytes.
+        if (uniqueViolation(error)) throw new DocumentError('duplicate');
+        throw error;
+      }
+      return (await readOne(db, id))!;
+    },
     // Number, snapshot, PDF and state are one transaction: either the document
     // is final with all four, or the number goes back to the sequence.
     async updateDraftContent(
@@ -1086,7 +1243,13 @@ export function documentRepository(
           .where(and(scope, eq(documents.id, id)))
           .for('update');
         if (!document) throw new DocumentError('not_found');
-        if (document.state !== 'draft' || document.kind !== 'offer')
+        // BKP019.b: a confirmation draft owns its own texts and positions, so
+        // correcting them is the same right an offer draft has. Every other kind
+        // stays refused - this is not a global opening.
+        if (
+          document.state !== 'draft' ||
+          (document.kind !== 'offer' && document.kind !== 'order_confirmation')
+        )
           throw new DocumentError('invalid_state');
         if (document.version !== content.version)
           throw new DocumentError('conflict');
@@ -1467,6 +1630,10 @@ export function registerDocumentRoutes(
         { type: 'null' },
       ],
     },
+    // BKP019.b: the offer a confirmation was copied from. The two keys are part
+    // of the offer projection, so every older route keeps its own shape.
+    sourceDocumentId: nullableUuid,
+    sourceNumber: nullableText,
   };
   const row = {
     type: 'object',
@@ -1573,6 +1740,11 @@ export function registerDocumentRoutes(
         return reply.code(409).send({ error: 'conflict' });
       if (error.reason === 'acceptance_conflict')
         return reply.code(409).send({ error: 'acceptance_conflict' });
+      // BKP019.b: the offer was not accepted, or the confirmation already exists.
+      if (error.reason === 'offer_not_accepted')
+        return reply.code(409).send({ error: 'offer_not_accepted' });
+      if (error.reason === 'duplicate')
+        return reply.code(409).send({ error: 'duplicate' });
       if (error.reason === 'artifact_failed')
         return reply.code(500).send({ error: 'artifact_failed' });
       return reply.code(400).send({ error: error.reason });
@@ -1867,6 +2039,39 @@ export function registerDocumentRoutes(
     async (request, reply) => {
       try {
         return await repo.list(request.query);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // BKP019.b: the confirmation is copied from an accepted offer. Same auth,
+  // CSRF, tenant lock, version guard and audit path as every other document
+  // write; only the source is a document instead of a template.
+  app.post<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/documents/:id/order-confirmation',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version: { type: 'integer', minimum: 1 } },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createOrderConfirmation(
+              request.authSession!.userId,
+              request.params.id,
+              request.body.version,
+            ),
+          );
       } catch (error) {
         return failure(error, reply);
       }
