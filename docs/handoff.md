@@ -2,6 +2,73 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H057: Kontaktwelle BKP011/BKP012 abgeschlossen, 26.10.2026
+
+Fortsetzung von H056 am selben Tag; gleiche Arbeitsweise (MiMo V2.6 Pro
+koordiniert/reviewt, DeepSeek V4.1 Flash als Coding-Subagent über die
+Hermes-CLI, Modellkennung in jedem der acht Delegats dieser Welle bestätigt:
+zwei rein lesende Analysen, sechs Coding-Läufe).
+
+- **BKP011.1 `57183a4`** – Lesende Kontaktakte inline in der Zeile
+  (`#contact-<id>` bleibt Vertrag): Kopf mit Typ/Name/Archivzustand, Kontaktweg
+  mit sichtbaren gespeicherten Werten und korrekt escaped `mailto:`/`tel:`
+  (neue Helfer `contact-links.ts`, ohne Nummern-Normalisierung), Anschrift mit
+  Land über `Intl.DisplayNames` + ISO-Fallback, zugehörige Events aus der
+  vorhandenen tenantgesicherten Projektion (kein N+1) mit Lade-/Leer-/Fehler-
+  zustand und GET-Wiederholung; „Events anzeigen“-Altplan entfernt; Schließen
+  stellt Suche/Scroll/Fokus wieder her. Neu: `ContactDetails.tsx`,
+  `contact-links.ts`, 15 Akten-Komponententests, Unit-Tests der Helfer,
+  Tenant-Isolations-Integrationstest (zwei reale Mandanten).
+- **BKP012.1 `8192229`** – Suchbarer Kundenpicker im Event-Anlege-Dialog
+  (B30: „Kundensuche/neuen Kunden anbieten“) über `GET /api/v1/contacts?q=`
+  mit Sequenzschutz gegen vertauschte Antworten, höchstens 20 sichtbare
+  Treffer, archivierte Treffer nicht wählbar; bewusste Inline-Anlage als
+  Ansichtswechsel in derselben Dialogbox (Evententwurf bleibt gemountet),
+  gemeinsame `ContactDialog.tsx` mit dem EINEN vorhandenen Validator,
+  Auswahl erst aus der bestätigten POST-Antwort, kein heimliches
+  Gemeinschaftsspeichern, kontaktlos bleibt möglich. 10 neue
+  Verhaltenstests inkl. aller Ticket-Negativfälle; zwei Vertragstests in
+  `events.test.tsx` mussten als notwendige Aufrufer angepasst werden
+  (Aussagen unverändert).
+- **`344a10e`** – Test-Race-Korrektur: der Akten-Test griff Event-Links per
+  `getByRole` an, bevor der Fetch-Auflöser sie renderte; lokal reproduziert
+  (1/10 Läufe rot, exakte CI-Meldung von Lauf 40283185607), behoben durch
+  konsequentes `findByRole` ohne abgeschwächte Assertions (20/20 + 5×15/15
+  Wiederholungsläufe grün).
+
+Beide Abnahmeprüfungen deckten echte bestehende a11y-Defekte auf (axe
+`heading-order`): fehlende `h2`-Ebene unter der Seiten-`h1` in der Kontaktakte
+und in den Dialogtiteln; behoben analog `EventDetails` mit angeglichenen
+CSS-Selektoren und in Chromium gemessenen Stilwerten. Impeccable-Finish-Detektor
+über alle geänderten Panels ohne Befund (`[]`).
+
+Tests: `test:component` 624, `test:integration` 311, `test:unit` 265,
+`test:coverage` vollständig grün (geänderter Code je ≥85/80), schnelle
+Gates/`test:docs`/`test:workspace`/Build grün; E2E auth+template-product-price
+14/14 inkl. Akten-Matrix 320/390/1280 × light/dark (sechs Screenshots) und
+vier zusätzlicher axe-Audits, jeweils 0 Verstöße.
+
+CI der Welle: 40277279353 (`57183a4`) grün, 40283185607 (`8192229`) rot wegen
+des oben dokumentierten Test-Races, 40284692007 (`344a10e`) nach gezieltem
+Re-Run komplett grün (quality 20m11s + images 1m55s; der Erstlauf erreichte
+die 25-Minuten-Jobgrenze mit laufenden, zuvor grünen Phasen –
+„The operation was canceled.“ in `test:ops`), ebenso zuvor 40268559954
+(`e2b5646`) grün. Der langsame Erstlauf und die frühere
+Jobgrenzenbeobachtung sind ein Grund, die CI-Laufzeiten im Blick zu behalten;
+kein Test wurde geändert, um Zeit zu sparen.
+
+Betrieb unverändert zu H056: zuletzt verifiziert live **c21330c**; der
+alleinige Auto-Updater übernimmt grüne Heads der UX-Branch automatisch, keine
+parallele manuelle Aktualisierung. Der Checkpoint-/OCI-/Drei-Container-Nachweis
+weiterhin offen, weil der Proxmox-Host (192.168.68.201) von hier nicht
+erreichbar ist.
+
+Offen als Nächstes: BKP012.2 (Hauptkontakt/Bearbeiten im Event-Editor über den
+Picker), optional BKP010.3 (Backend-Auftragsbeleg), BKP013/BKP014 und der
+weitere Paritätsbacklog; weiterhin: Vorlagenfilter/Platzhalter,
+BKP007-Folgeslices nach Referenzbeobachtung, Betriebsprüfung nachholen.
+Keine vollständige Parität behaupten.
+
 ## H056: BKP009-/BKP010-Welle abgeschlossen, 26.10.2026
 
 Vier nummerierte Unter-Slices auf `codex/ux-event-simplification`, einzeln committet
