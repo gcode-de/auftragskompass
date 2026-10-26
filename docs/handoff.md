@@ -2,6 +2,39 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H060: BKP013.2 (Dokumententwurf bei Neuladefehler) und Statuskorrektur, 26.10.2026
+
+- **Befund vorab:** BKP013.1 war bereits über `605f75b` (23.10.2026) umgesetzt,
+  abgenommen und live ausgeliefert; ältere Statuszeilen in tasks-core/handoff
+  führten es fälschlich als „nächsten“ Slice – korrigiert. Der tatsächliche
+  Rest von BKP013 war das Kriterium „Dokumenterfolg bleibt bei Neuladefehler
+  sichtbar“.
+- **BKP013.2 `c3021ed`** – jede bestätigte Dokumentanlage (mit und ohne
+  Vorlage) setzt die gespeicherte Zeile aus der POST-Antwort lokal in die
+  Liste; ein fehlgeschlagenes Neuladen ist nur ein Reload-Problem mit
+  GET-only-Wiederholung, kein blindes POST. Die zuvor blinde Mock-Struktur der
+  Vertragstests ist durch getrennte Fixtures geschärft (echte Beweiskraft);
+  RED real beobachtet (5 Komponententests + beide E2E-Szenarien gegen den
+  unfixed Stand), danach grün: component 665, integration 311, unit 265,
+  coverage vollständig, E2E 16/16 inklusive neuem Beweis (Vorlagenanlage →
+  GET 503 → Entwurf sichtbar/bedienbar, genau ein POST, Retry nur GET),
+  Build grün.
+
+Bewusst offen in BKP013 (keine erfundenen Lösungen): Bereichs-Deep-Links
+(Referenz unbekannt), Notizbearbeitung in der Akte (dokumentierter Weg über
+„Stammdaten bearbeiten“), Kürzen der unteren Bereichsleiste; dazu die
+notierten Folgeslices (BKP010.3 optional, `registerUnsavedChanges` des
+Event-Editors, Platzhalter-Werkzeuge im Angebotsentwurfs-Editor,
+BKP011-Landauswahl). **Nächster sinnvoller Slice: BKP014.1** (Eventliste mit
+tatsächlichen Ressourcen – additive tenantgesicherte Projektion ohne N+1),
+danach der weitere Backlog (Dateien, kommerzielle Dokumentabläufe, Mailkern,
+Aufgaben/Verträge/Fragebögen, Websiteformulare, BKP007-Folge nach
+Referenzbeobachtung).
+
+Betrieb unverändert: verifiziert live **c21330c**, alleiniger Auto-Updater
+ohne parallele manuelle Aktualisierung; Checkpoint-/OCI-Nachweis weiterhin
+offen, solange der Proxmox-Host (192.168.68.201) nicht erreichbar ist.
+
 ## H059: Vorlagenrest abgeschlossen (Filter + Platzhalterwerkzeuge), 26.10.2026
 
 Die beiden im Übergabeprompt gesondert offenen Vorlagen-Zusatzanforderungen
