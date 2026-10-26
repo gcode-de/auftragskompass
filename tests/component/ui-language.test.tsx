@@ -58,6 +58,14 @@ function fetcher() {
         { code: 'inquiry', label: 'Anfrage' },
         { code: 'booked', label: 'Gebucht' },
       ]);
+    // BKP009.2: a loaded overview makes the maintenance management a real
+    // disclosure, so the hash-switch contract below can open it.
+    if (url === '/api/v1/resource-blocks')
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        units: [],
+        blocks: [],
+      });
     return Response.json([]);
   });
 }
@@ -307,8 +315,28 @@ test('settings keep resource and product panels mounted once and retain drafts a
       .value,
   ).toBe('Synthetic draft box');
 
+  // BKP009.2: the maintenance management is opened deliberately and stays a
+  // plain state of the mounted panel — the hash switch below must neither
+  // reload nor close it.
+  const blocksSummary = await within(resources).findByText(
+    /^Sperrverwaltung öffnen$/,
+  );
+  fireEvent.click(blocksSummary);
+  const blocksDetails = blocksSummary.closest('details')!;
+  expect(blocksDetails.hasAttribute('open')).toBe(true);
+  expect(within(resources).getByText(/^Sperrverwaltung schließen$/)).toBe(
+    blocksSummary,
+  );
+
   await go('/?q=Synthetic#resources');
   const resourcesAfterHash = screen.getByRole('region', { name: 'Ressourcen' });
+  expect(
+    within(resourcesAfterHash)
+      .getByText(/^Sperrverwaltung schließen$/)
+      .closest('details'),
+    'the opened maintenance management survives the hash switch',
+  ).toBe(blocksDetails);
+  expect(blocksDetails.hasAttribute('open')).toBe(true);
   expect(
     within(resourcesAfterHash).getByRole('dialog'),
     'the open editor survives the hash switch instead of being remounted',

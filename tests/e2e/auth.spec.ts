@@ -1004,6 +1004,32 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     const blocks = resources.getByRole('region', {
       name: 'Zeitweise Ressourcensperren',
     });
+    // BKP009.2: the maintenance management is a deliberate disclosure. Its
+    // form, its list and its primary action are only mounted once it is
+    // opened; the area itself, its heading and its refresh control stay.
+    const blocksSummary = blocks.locator('summary');
+    const blocksDetails = blocks.locator('details');
+    await expect(blocksSummary).toHaveText('Sperrverwaltung öffnen');
+    await expect(blocksDetails).toHaveJSProperty('open', false);
+    await expect(blocks.getByLabel('Sperrgrund')).toHaveCount(0);
+    await expect(
+      blocks.getByRole('button', { name: 'Zeitraum sperren', exact: true }),
+    ).toHaveCount(0);
+    // Keyboard: the native summary is reachable and opens on Enter and Space;
+    // Escape never closes a disclosure.
+    await blocksSummary.focus();
+    await page.keyboard.press('Escape');
+    await expect(blocksDetails).toHaveJSProperty('open', false);
+    await page.keyboard.press('Enter');
+    await expect(blocksDetails).toHaveJSProperty('open', true);
+    await expect(blocksSummary).toHaveText('Sperrverwaltung schließen');
+    await page.keyboard.press('Space');
+    await expect(blocksDetails).toHaveJSProperty('open', false);
+    await page.keyboard.press('Space');
+    await expect(blocksDetails).toHaveJSProperty('open', true);
+    // The route scan above only saw the closed state, so the opened management
+    // gets its own full scan (including best-practice rules).
+    await audit('EinstellungenRessourcenSperren');
     await blocks
       .getByRole('combobox', { name: 'Zu sperrende Einheit', exact: true })
       .selectOption({ label: 'FB2 · Einheit 1 (FB2)' });
@@ -1036,77 +1062,94 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     // the 900px breakpoint, so the compact assertions stay on the narrow
     // widths and the desktop links are checked on 1280px.
     const themeToggle = page.getByRole('button', { name: /modus aktivieren/ });
-    for (const [width, theme] of [
-      [320, 'light'],
-      [320, 'dark'],
-      [390, 'light'],
-      [390, 'dark'],
-      [768, 'light'],
-      [768, 'dark'],
-      [1280, 'light'],
-      [1280, 'dark'],
-    ] as const) {
-      await page.setViewportSize({ width, height: 844 });
-      if (
-        (await themeToggle.getAttribute('aria-pressed')) !==
-        String(theme === 'dark')
-      )
-        await themeToggle.click();
-      await expect(themeToggle).toHaveAttribute(
-        'aria-pressed',
-        String(theme === 'dark'),
-      );
-      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      expect(
-        await resources.evaluate(
-          (section) => section.scrollWidth <= section.clientWidth + 1,
-        ),
-      ).toBe(true);
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= window.innerWidth + 1,
-        ),
-      ).toBe(true);
-      expect(
-        await settingsNavigation.evaluate(
-          (element) => element.scrollWidth <= element.clientWidth + 1,
-        ),
-      ).toBe(true);
-      if (width > 900) {
-        await expect(settingsSelect).toBeHidden();
-        await expect(
-          settingsNavigation.getByRole('link', {
-            name: 'Ressourcen',
-            exact: true,
-          }),
-        ).toHaveAttribute('aria-current', 'page');
-      } else {
-        await expect(settingsSelect).toBeVisible();
-        await expect(
-          settingsNavigation.getByRole('combobox', {
-            name: 'Einstellungsbereich',
-            exact: true,
-          }),
-        ).toBeVisible();
-        await expect(settingsSelect).toHaveValue('#settings-resources');
-        await expect(
-          settingsNavigation.getByRole('link', {
-            name: 'Ressourcen',
-            exact: true,
-          }),
-        ).toHaveCount(0);
+    // BKP009.2: the whole matrix runs in both disclosure states. The opened
+    // management must not overflow either, and the closed one is the state the
+    // page loads in.
+    const layoutMatrix = async (state: 'open' | 'closed') => {
+      for (const [width, theme] of [
+        [320, 'light'],
+        [320, 'dark'],
+        [390, 'light'],
+        [390, 'dark'],
+        [768, 'light'],
+        [768, 'dark'],
+        [1280, 'light'],
+        [1280, 'dark'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        if (
+          (await themeToggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await themeToggle.click();
+        await expect(themeToggle).toHaveAttribute(
+          'aria-pressed',
+          String(theme === 'dark'),
+        );
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        expect(
+          await resources.evaluate(
+            (section) => section.scrollWidth <= section.clientWidth + 1,
+          ),
+        ).toBe(true);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+          ),
+        ).toBe(true);
+        expect(
+          await settingsNavigation.evaluate(
+            (element) => element.scrollWidth <= element.clientWidth + 1,
+          ),
+        ).toBe(true);
+        if (width > 900) {
+          await expect(settingsSelect).toBeHidden();
+          await expect(
+            settingsNavigation.getByRole('link', {
+              name: 'Ressourcen',
+              exact: true,
+            }),
+          ).toHaveAttribute('aria-current', 'page');
+        } else {
+          await expect(settingsSelect).toBeVisible();
+          await expect(
+            settingsNavigation.getByRole('combobox', {
+              name: 'Einstellungsbereich',
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(settingsSelect).toHaveValue('#settings-resources');
+          await expect(
+            settingsNavigation.getByRole('link', {
+              name: 'Ressourcen',
+              exact: true,
+            }),
+          ).toHaveCount(0);
+        }
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path:
+            state === 'open'
+              ? `tests/test-results/resource-${width}-${theme}.png`
+              : `tests/test-results/resource-blocks-closed-${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
       }
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({
-        path: `tests/test-results/resource-${width}-${theme}.png`,
-        fullPage: true,
-        animations: 'disabled',
-      });
-    }
+    };
+    await layoutMatrix('open');
+    // Closing asks nothing here: the save reset the draft. The closed matrix
+    // proves the deliberate opening is not what keeps the page from overflowing.
+    await blocksSummary.click();
+    await expect(blocksDetails).toHaveJSProperty('open', false);
+    await layoutMatrix('closed');
     // Leave the run in the light theme the rest of the scenario asserts in.
     if ((await themeToggle.getAttribute('aria-pressed')) !== 'false')
       await themeToggle.click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    // Reopen it: the hash switch below must keep the panel and its state.
+    await blocksSummary.click();
+    await expect(blocksDetails).toHaveJSProperty('open', true);
     await page.setViewportSize({ width: 1280, height: 720 });
     const resourcesTimeOrigin = await page.evaluate(
       () => performance.timeOrigin,
@@ -1126,6 +1169,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     expect(await page.evaluate(() => performance.timeOrigin)).toBe(
       resourcesTimeOrigin,
     );
+    // The disclosure survived the hash switch: no remount, no reload.
+    await expect(blocksDetails).toHaveJSProperty('open', true);
+    await expect(blocksSummary).toHaveText('Sperrverwaltung schließen');
+    // Leave the page in its default state for the steps below.
+    await blocksSummary.click();
+    await expect(blocksDetails).toHaveJSProperty('open', false);
     await navigate('Einstellungen', 'Produkte');
     await expect(
       settingsNavigation.getByRole('link', {

@@ -80,7 +80,15 @@ function mutations(fetcher: ReturnType<typeof listFetcher>) {
 }
 
 test('the resource page starts with the compact toolbar and the list, without an exposed editor', async () => {
-  vi.stubGlobal('fetch', listFetcher([row, spare, retired]));
+  const list = listFetcher([row, spare, retired]);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) =>
+      String(url) === '/api/v1/resource-blocks'
+        ? Response.json({ timeZone: 'Europe/Berlin', units: [], blocks: [] })
+        : list(url, options),
+    ),
+  );
   render(<ResourcePanel csrfToken="csrf" />);
   const resources = screen.getByRole('region', { name: 'Ressourcen' });
   await within(resources).findByText(
@@ -112,9 +120,20 @@ test('the resource page starts with the compact toolbar and the list, without an
     ),
   ).toBeTruthy();
   expect(screen.getByRole('region', { name: 'Ressourcen' })).toBeTruthy();
-  // The unchanged block management stays reachable below the list.
+  // The unchanged block management stays reachable below the list, but only as
+  // a deliberate disclosure: the region and its label exist, while the form,
+  // its primary action and the overview are not mounted before the opening.
+  const blocks = screen.getByRole('region', {
+    name: 'Zeitweise Ressourcensperren',
+  });
+  expect(blocks).toBeTruthy();
+  await within(blocks).findByText(/^Sperrverwaltung öffnen$/);
+  expect(within(blocks).queryByLabelText('Sperrgrund')).toBeNull();
   expect(
-    screen.getByRole('region', { name: 'Zeitweise Ressourcensperren' }),
+    within(blocks).queryByRole('button', { name: 'Zeitraum sperren' }),
+  ).toBeNull();
+  expect(
+    within(blocks).getByRole('button', { name: 'Sperren aktualisieren' }),
   ).toBeTruthy();
 });
 

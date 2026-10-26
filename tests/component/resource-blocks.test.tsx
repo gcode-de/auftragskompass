@@ -5,10 +5,12 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { ResourceAssignments } from '../../apps/admin/src/ResourceAssignments.js';
 import { ResourceBlocks } from '../../apps/admin/src/ResourceBlocks.js';
+import { ResourcePanel } from '../../apps/admin/src/ResourcePanel.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -30,6 +32,57 @@ const block = {
   state: 'blocked',
   reason: 'Fictional maintenance',
 };
+const resourceRow = {
+  id: 'synthetic-resource',
+  version: 1,
+  name: 'Synthetic box',
+  code: 'SYN-1',
+  category: 'Fotobox',
+  description: 'Fictional',
+  quantity: 1,
+  beforeDays: 2,
+  afterDays: 2,
+  position: 0,
+  state: 'active',
+  blocked: false,
+};
+// BKP009.2: the rare maintenance management is one deliberate disclosure. The
+// list, the creation form and the empty hint only exist once it is open, so
+// every existing test opens it the way an operator does.
+//
+// `summary` is a native disclosure control, but `testing-library` resolves
+// roles through `aria-query`, whose element-role table has no `summary` entry
+// (only `dom-accessibility-api` maps it to `button`). The disclosure is
+// therefore addressed by its region and its visible label; Chromium asserts
+// the real role and the keyboard behaviour in the e2e spec.
+function blocksRegion() {
+  return screen.getByRole('region', { name: 'Zeitweise Ressourcensperren' });
+}
+function blockSummary() {
+  return within(blocksRegion()).getByText(
+    /^Sperrverwaltung (öffnen|schließen)$/,
+  );
+}
+function blockDetails() {
+  return blockSummary().closest('details')!;
+}
+function openBlocks() {
+  const summary = blockSummary();
+  expect(summary.textContent).toBe('Sperrverwaltung öffnen');
+  fireEvent.click(summary);
+}
+function closeBlocks() {
+  const summary = blockSummary();
+  expect(summary.textContent).toBe('Sperrverwaltung schließen');
+  fireEvent.click(summary);
+}
+async function renderBlocks() {
+  render(<ResourceBlocks csrfToken="csrf" />);
+  // The disclosure only exists once the overview loaded; a failed load keeps
+  // the error and the refresh control as its only offered steps.
+  await screen.findByText(/^Sperrverwaltung öffnen$/);
+  openBlocks();
+}
 test('creates a timed maintenance block with stable request ID and releases it while retaining history', async () => {
   const blocks: (typeof block)[] = [];
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
@@ -41,7 +94,7 @@ test('creates a timed maintenance block with stable request ID and releases it w
     return Response.json({ timeZone: 'Europe/Berlin', units: [unit], blocks });
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByRole('option', {
     name: 'Fictional box · Einheit 1 (SYNTH)',
   });
@@ -119,7 +172,7 @@ test.each([
         : Response.json(overview),
     ),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   submit();
   await screen.findByText(text);
@@ -137,7 +190,7 @@ test('an uncertain creation retry retains its request ID until the input actuall
     return Response.json({ ...overview, blocks: [] });
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   submit();
   await screen.findByText(/Verbindung fehlgeschlagen. Vor erneutem/);
@@ -171,7 +224,7 @@ test('manual UTC offset fields are gone from the visible block form', async () =
     'fetch',
     vi.fn(async () => Response.json({ ...overview, blocks: [] })),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByRole('option', {
     name: 'Fictional box · Einheit 1 (SYNTH)',
   });
@@ -188,7 +241,7 @@ test('a spring gap is reported at the block field, focuses it and sends nothing'
     return Response.json({ ...overview, blocks: [] });
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   const start = screen.getByLabelText('Sperrbeginn', { exact: true }),
     end = screen.getByLabelText('Sperrende', { exact: true });
@@ -211,7 +264,7 @@ test('a spring gap at the end focuses the end field instead', async () => {
     return Response.json({ ...overview, blocks: [] });
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   const end = screen.getByLabelText('Sperrende', { exact: true });
   fireEvent.change(end, { target: { value: '2030-03-31T02:45' } });
@@ -233,7 +286,7 @@ test('new repetitions of the autumn hour need an explicit choice before sending'
       return Response.json({ ...overview, blocks: [] });
     }),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   fireEvent.change(screen.getByLabelText('Sperrbeginn', { exact: true }), {
     target: { value: '2030-10-27T02:15' },
@@ -279,7 +332,7 @@ test('an unchanged ambiguous block keeps its exact instant including seconds', a
       });
     }),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByText(/Fictional maintenance.*Gesperrt/);
   // A fresh form stays empty; reviewing the stored block is an explicit step.
   vi.stubGlobal(
@@ -365,7 +418,7 @@ test('a changed date never reuses the previous summer or winter offset', async (
       });
     }),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByRole('option', {
     name: 'Fictional box · Einheit 1 (SYNTH)',
   });
@@ -472,6 +525,8 @@ test('block time error ids stay unique next to the event editor and assignment f
       <ResourceBlocks csrfToken="csrf" />
     </>,
   );
+  await screen.findByText(/^Sperrverwaltung öffnen$/);
+  openBlocks();
   await screen.findByRole('option', {
     name: 'Fictional box · Einheit 1 (SYNTH)',
   });
@@ -518,6 +573,9 @@ test('list refresh and release failures remain visible; historical or inactive u
   fireEvent.click(
     screen.getByRole('button', { name: 'Sperren aktualisieren' }),
   );
+  // The overview is available now, so the deliberate opening is offered.
+  await screen.findByText(/^Sperrverwaltung öffnen$/);
+  openBlocks();
   await screen.findByText(/Historische Einheit/);
   expect(
     (
@@ -552,7 +610,7 @@ test('incomplete or reversed block periods are explained per field and never sen
     return Response.json({ ...overview, blocks: [] });
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   const start = screen.getByLabelText('Sperrbeginn', {
     exact: true,
@@ -598,7 +656,7 @@ test('a confirmed block stays saved when only the reload fails and keeps the dra
     return Response.json({ ...overview, blocks: [] });
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   submit();
   await screen.findByText('Zeitraum gesperrt.');
@@ -640,7 +698,7 @@ test('a background list refresh keeps an unsaved block draft and the saved prese
     });
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByText(/Fictional maintenance.*Gesperrt/);
   fireEvent.change(screen.getByLabelText('Sperrgrund'), {
     target: { value: 'Unsaved fictional draft' },
@@ -706,7 +764,7 @@ test('a stored block is not adopted behind an unsaved draft without confirmation
       });
     }),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByText(/Fictional maintenance.*Gesperrt/);
   fireEvent.change(screen.getByLabelText('Sperrgrund'), {
     target: { value: 'Unsaved fictional draft' },
@@ -762,7 +820,7 @@ test('a fresh block form starts empty even when the list holds a past and a bloc
       }),
     ),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByText(/Fictional maintenance.*Gesperrt/);
   const start = screen.getByLabelText('Sperrbeginn', {
     exact: true,
@@ -808,7 +866,7 @@ test('only an explicitly adopted block fills the form; that window is sent once'
       });
     }),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await screen.findByText(/Fictional maintenance.*Gesperrt/);
   const start = screen.getByLabelText('Sperrbeginn', {
     exact: true,
@@ -856,7 +914,7 @@ test('the end field switches to Normalzeit in the repeated hour as well', async 
       return Response.json({ ...overview, blocks: [] });
     }),
   );
-  render(<ResourceBlocks csrfToken="csrf" />);
+  await renderBlocks();
   await fill();
   fireEvent.change(screen.getByLabelText('Sperrbeginn', { exact: true }), {
     target: { value: '2030-10-27T01:15' },
@@ -899,4 +957,343 @@ test('the end field switches to Normalzeit in the repeated hour as well', async 
     startsAt: '2030-10-26T23:15:00Z',
     endsAt: '2030-10-27T00:45:00Z',
   });
+});
+
+test('the block management opens deliberately and keeps the existing overview reachable', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(overview)),
+  );
+  render(<ResourceBlocks csrfToken="csrf" />);
+  const region = await screen.findByRole('region', {
+    name: 'Zeitweise Ressourcensperren',
+  });
+  // The heading, the status line and the refresh control stay outside the
+  // disclosure, so the area keeps its name and its error path without a click.
+  expect(within(region).getByText('Zeitweise Ressourcensperren')).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Sperren aktualisieren' }),
+  ).toBeTruthy();
+  await screen.findByText(/^Sperrverwaltung öffnen$/);
+  const summary = blockSummary();
+  expect(summary.localName).toBe('summary');
+  expect(blockDetails().hasAttribute('open')).toBe(false);
+  // Nothing of the management is mounted or tabbable before the deliberate
+  // opening: no form control, no primary action, no overview entry.
+  expect(screen.queryByLabelText('Sperrgrund')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Zeitraum sperren' })).toBeNull();
+  expect(screen.queryByText(/Fictional maintenance.*Gesperrt/)).toBeNull();
+  openBlocks();
+  expect(blockDetails().hasAttribute('open')).toBe(true);
+  expect(screen.getByLabelText('Sperrgrund')).toBeTruthy();
+  // The existing overview appears unchanged: same wording, same actions.
+  expect(screen.getByText(/Fictional maintenance.*Gesperrt/)).toBeTruthy();
+  expect(
+    screen.getByRole('button', {
+      name: 'Sperre freigeben: Fictional maintenance',
+    }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', {
+      name: 'Zeiten übernehmen: Fictional maintenance',
+    }),
+  ).toBeTruthy();
+  // The label follows the state; the native element carries the state itself.
+  expect(blockSummary()).toBe(summary);
+  expect(summary.textContent).toBe('Sperrverwaltung schließen');
+  expect(summary.getAttribute('aria-expanded')).toBeNull();
+});
+
+test('closing with an unsaved block draft asks first and discards only on approval', async () => {
+  const bodies: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options) {
+        bodies.push(String(options.body));
+        return Response.json(block, { status: 201 });
+      }
+      return Response.json({ ...overview, blocks: [] });
+    }),
+  );
+  await renderBlocks();
+  await screen.findByRole('option', {
+    name: 'Fictional box · Einheit 1 (SYNTH)',
+  });
+  fireEvent.change(screen.getByLabelText('Sperrgrund'), {
+    target: { value: 'Unsaved fictional draft' },
+  });
+  const confirmation = vi.fn((...call: unknown[]) => {
+    void call;
+    return false;
+  });
+  vi.stubGlobal('confirm', confirmation);
+  closeBlocks();
+  expect(confirmation).toHaveBeenCalledTimes(1);
+  expect(confirmation.mock.calls[0]![0]).toBe(
+    'Ungespeicherte Sperrzeiten verwerfen und die Sperrverwaltung schließen?',
+  );
+  // A declined confirmation leaves the disclosure open and the draft untouched.
+  expect(blockDetails().hasAttribute('open')).toBe(true);
+  expect((screen.getByLabelText('Sperrgrund') as HTMLInputElement).value).toBe(
+    'Unsaved fictional draft',
+  );
+  expect(bodies).toHaveLength(0);
+  confirmation.mockReturnValue(true);
+  closeBlocks();
+  expect(confirmation).toHaveBeenCalledTimes(2);
+  expect(blockDetails().hasAttribute('open')).toBe(false);
+  expect(screen.queryByLabelText('Sperrgrund')).toBeNull();
+  expect(
+    screen.getByRole('region', { name: 'Zeitweise Ressourcensperren' }),
+  ).toBeTruthy();
+  // Focus returns to the control that closed the disclosure.
+  expect(document.activeElement).toBe(blockSummary());
+  expect(bodies).toHaveLength(0);
+  // The discarded draft is gone, not merely hidden.
+  openBlocks();
+  expect((screen.getByLabelText('Sperrgrund') as HTMLInputElement).value).toBe(
+    '',
+  );
+});
+
+test('closing an untouched block form asks nothing', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ ...overview, blocks: [] })),
+  );
+  await renderBlocks();
+  await screen.findByRole('option', {
+    name: 'Fictional box · Einheit 1 (SYNTH)',
+  });
+  const confirmation = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirmation);
+  closeBlocks();
+  expect(confirmation).not.toHaveBeenCalled();
+  expect(blockDetails().hasAttribute('open')).toBe(false);
+  expect(screen.queryByLabelText('Sperrgrund')).toBeNull();
+});
+
+test('a running block request keeps the disclosure open and sends exactly once', async () => {
+  let resolveSave: ((value: Response) => void) | undefined;
+  const bodies: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options) {
+        bodies.push(String(options.body));
+        return new Promise<Response>((resolve) => {
+          resolveSave = resolve;
+        });
+      }
+      return Response.json({ ...overview, blocks: [] });
+    }),
+  );
+  await renderBlocks();
+  await fill();
+  submit();
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  closeBlocks();
+  // Unmounting mid-flight would drop the form and its retry identity.
+  expect(blockDetails().hasAttribute('open')).toBe(true);
+  expect(screen.getByLabelText('Sperrgrund')).toBeTruthy();
+  resolveSave!(Response.json(block, { status: 201 }));
+  await screen.findByText('Zeitraum gesperrt.');
+  expect(bodies).toHaveLength(1);
+  expect(JSON.parse(bodies[0]!).requestId).toMatch(/^[a-f0-9-]{36}$/);
+  expect(blockDetails().hasAttribute('open')).toBe(true);
+  expect((screen.getByLabelText('Sperrgrund') as HTMLInputElement).value).toBe(
+    '',
+  );
+});
+
+test('a confirmed save leaves no draft, so closing afterwards asks nothing', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) =>
+      options
+        ? Response.json(block, { status: 201 })
+        : Response.json({ ...overview, blocks: [] }),
+    ),
+  );
+  await renderBlocks();
+  await fill();
+  submit();
+  await screen.findByText('Zeitraum gesperrt.');
+  const confirmation = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirmation);
+  closeBlocks();
+  expect(confirmation).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('Sperrgrund')).toBeNull();
+  openBlocks();
+  const start = screen.getByLabelText('Sperrbeginn', {
+    exact: true,
+  }) as HTMLInputElement;
+  expect(start.value).toBe('');
+  expect(
+    (screen.getByLabelText('Sperrende', { exact: true }) as HTMLInputElement)
+      .value,
+  ).toBe('');
+  expect(screen.queryByLabelText('Uhrzeitwahl Sperrbeginn')).toBeNull();
+});
+
+test('adopting stored times keeps the management open and focuses the first field', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(overview)),
+  );
+  await renderBlocks();
+  await screen.findByRole('button', {
+    name: 'Zeiten übernehmen: Fictional maintenance',
+  });
+  const confirmation = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirmation);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Zeiten übernehmen: Fictional maintenance',
+    }),
+  );
+  expect(confirmation).not.toHaveBeenCalled();
+  expect(blockDetails().hasAttribute('open')).toBe(true);
+  expect(
+    (screen.getByLabelText('Sperrbeginn', { exact: true }) as HTMLInputElement)
+      .value,
+  ).toBe('2030-10-16T18:00');
+  // The adopted window is only useful once it is actually in view.
+  expect(document.activeElement).toBe(
+    screen.getByLabelText('Zu sperrende Einheit'),
+  );
+  // A second adoption still asks exactly once and a declined confirmation
+  // leaves both the draft and the open state untouched.
+  confirmation.mockReturnValue(false);
+  fireEvent.change(screen.getByLabelText('Sperrgrund'), {
+    target: { value: 'Unsaved fictional draft' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Zeiten übernehmen: Fictional maintenance',
+    }),
+  );
+  expect(confirmation).toHaveBeenCalledTimes(1);
+  expect(blockDetails().hasAttribute('open')).toBe(true);
+  expect(
+    (screen.getByLabelText('Sperrbeginn', { exact: true }) as HTMLInputElement)
+      .value,
+  ).toBe('2030-10-16T18:00');
+});
+
+test('the management is a native summary that Escape never closes', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ ...overview, blocks: [] })),
+  );
+  await renderBlocks();
+  await screen.findByLabelText('Sperrgrund');
+  const summary = blockSummary();
+  // Keyboard activation (Enter/Space) is the native behaviour of this element;
+  // adding a second handler would fire twice in a real browser.
+  expect(summary.localName).toBe('summary');
+  expect(summary.parentElement).toBe(blockDetails());
+  expect(summary.getAttribute('tabindex')).toBeNull();
+  fireEvent.keyDown(summary, { key: 'Escape' });
+  expect(blockDetails().hasAttribute('open')).toBe(true);
+  expect(screen.getByLabelText('Sperrgrund')).toBeTruthy();
+});
+
+test('opening the management does not steal focus', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ ...overview, blocks: [] })),
+  );
+  render(<ResourceBlocks csrfToken="csrf" />);
+  const refresh = screen.getByRole('button', { name: 'Sperren aktualisieren' });
+  // The refresh control is disabled while the list loads; focus it once the
+  // initial read has settled, then open the management from the keyboard state.
+  await waitFor(() =>
+    expect((refresh as HTMLButtonElement).disabled).toBe(false),
+  );
+  refresh.focus();
+  openBlocks();
+  await screen.findByLabelText('Sperrgrund');
+  expect(document.activeElement).toBe(refresh);
+});
+
+test('opening and closing the management never reloads the list', async () => {
+  const fetcher = vi.fn(async (...call: unknown[]) => {
+    void call;
+    return Response.json({ ...overview, blocks: [] });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  await renderBlocks();
+  await screen.findByLabelText('Sperrgrund');
+  const reads = () =>
+    fetcher.mock.calls.filter(([, options]) => !options).length;
+  const before = reads();
+  closeBlocks();
+  openBlocks();
+  closeBlocks();
+  openBlocks();
+  expect(reads()).toBe(before);
+  expect(fetcher.mock.calls.filter(([, options]) => options)).toHaveLength(0);
+});
+
+test('an open management survives resource filters and the editor dialog', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      String(url) === '/api/v1/resources'
+        ? Response.json([resourceRow])
+        : Response.json({ ...overview, blocks: [] }),
+    ),
+  );
+  render(<ResourcePanel csrfToken="csrf" />);
+  await screen.findByText(/Synthetic box/);
+  await screen.findByText(/^Sperrverwaltung öffnen$/);
+  openBlocks();
+  await screen.findByLabelText('Sperrgrund');
+  fireEvent.change(screen.getByLabelText('Ressourcen suchen'), {
+    target: { value: 'nothing matches' },
+  });
+  expect(screen.getByLabelText('Sperrgrund')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Ressource anlegen' }));
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Ressource anlegen',
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Ressource abbrechen' }),
+  );
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByLabelText('Sperrgrund')).toBeTruthy();
+  expect(blockSummary().textContent).toBe('Sperrverwaltung schließen');
+});
+
+test('a failed block load stays visible without an offer to open anything', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ invalid: 'synthetic' })),
+  );
+  render(<ResourceBlocks csrfToken="csrf" />);
+  await screen.findByText('Sperren konnten nicht geladen werden.');
+  // Nothing loaded means nothing to disclose: the error and the refresh
+  // control stay the only offered steps, and no empty form is mounted.
+  expect(screen.queryByText(/^Sperrverwaltung (öffnen|schließen)$/)).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Sperren aktualisieren' }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText('Sperrgrund')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Zeitraum sperren' })).toBeNull();
+  expect(
+    screen.getByText('Sperren konnten nicht geladen werden.'),
+  ).toBeTruthy();
+});
+
+test('the empty block list is announced inside the opened management only', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ ...overview, blocks: [] })),
+  );
+  await renderBlocks();
+  await screen.findByText('Noch keine zeitweisen Sperren.');
+  closeBlocks();
+  expect(screen.queryByText('Noch keine zeitweisen Sperren.')).toBeNull();
 });

@@ -145,6 +145,23 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
   // Reports whether the block form holds unsaved input, so adopting a stored
   // window can ask before it discards that draft.
   const [draft, setDraft] = useState(false);
+  // The rare maintenance management stays one deliberate disclosure; it only
+  // exists while it is open (BKP009.2). The state lives in this component, so
+  // filters, the editor dialog and hash switches keep it without any storage.
+  const [open, setOpen] = useState(false);
+  const summary = useRef<HTMLElement>(null);
+  const details = useRef<HTMLDetailsElement>(null);
+  // Only an explicit adoption moves focus into the form; opening the
+  // disclosure leaves focus on the summary and the fields one Tab away.
+  const focusForm = useRef(false);
+
+  useEffect(() => {
+    if (!open || !focusForm.current) return;
+    focusForm.current = false;
+    details.current
+      ?.querySelector<HTMLElement>('select[name="unitId"]')
+      ?.focus({ preventScroll: true });
+  }, [open, draftKey]);
 
   async function refresh() {
     const response = await fetch('/api/v1/resource-blocks');
@@ -258,6 +275,8 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
       // The remount clears the loaded values; the next block is a new one.
       setPrefill(null);
       setDraftKey((current) => current + 1);
+      // A confirmed save leaves no draft behind, so closing never asks.
+      setDraft(false);
       try {
         await refresh();
         setReloadWarning(false);
@@ -312,6 +331,29 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
       timeZone: zone,
     }).format(new Date(value));
   }
+  function toggle() {
+    if (!open) {
+      setOpen(true);
+      return;
+    }
+    // A running request must not be unmounted mid-flight: the form keeps its
+    // draft and the retry keeps its request ID.
+    if (busy) return;
+    if (
+      draft &&
+      !window.confirm(
+        'Ungespeicherte Sperrzeiten verwerfen und die Sperrverwaltung schließen?',
+      )
+    )
+      return;
+    // Closing discards what the form showed; the next opening starts empty.
+    setOpen(false);
+    setDraft(false);
+    setPrefill(null);
+    setErrorsByField({});
+    setDraftKey((current) => current + 1);
+    summary.current?.focus({ preventScroll: true });
+  }
   return (
     <section
       aria-label="Zeitweise Ressourcensperren"
@@ -349,78 +391,103 @@ export function ResourceBlocks({ csrfToken }: { csrfToken: string }) {
         Sperren aktualisieren
       </button>
       {loading && <p>Sperren werden geladen …</p>}
+      {/* Without a loaded overview there is nothing to disclose: the error and
+          the refresh control above stay the only offered next steps. */}
       {data && (
-        <>
-          <p>
-            Für Wartung, Reparatur oder Eigenbedarf. Zeitzone: {data.timeZone}.
-            Beginn und Ende werden als lokale Uhrzeit in dieser Zeitzone
-            gespeichert; der Versatz wird automatisch ermittelt. Nur doppelte
-            Herbst-Uhrzeiten verlangen eine Auswahl. Der genaue Sperrzeitraum
-            gilt ohne zusätzliche Transportpuffer. Das allgemeine
-            Sperrkennzeichen im Ressourcenstamm bleibt davon unabhängig.
-          </p>
-          <BlockForm
-            draftKey={draftKey}
-            timeZone={data.timeZone}
-            units={data.units}
-            prefill={prefill}
-            errorsByField={errorsByField}
-            onDraft={setDraft}
-            onClear={clearFieldError}
-            onSubmit={(form) => void save(form)}
-            disabled={busy || loading}
-          />
-          {!data.blocks.length && <p>Noch keine zeitweisen Sperren.</p>}
-          <ul>
-            {data.blocks.map((block) => {
-              const unit = data.units.find((unit) => unit.id === block.unitId);
-              return (
-                <li key={block.id}>
-                  {block.reason || 'Zeitweise Sperre'} –{' '}
-                  {unit
-                    ? unit.name + ' · Einheit ' + unit.ordinal
-                    : 'Historische Einheit'}{' '}
-                  – {time(block.startsAt, block.timeZone)} bis{' '}
-                  {time(block.endsAt, block.timeZone)} –{' '}
-                  {block.state === 'released' ? 'Freigegeben' : 'Gesperrt'}{' '}
-                  <button
-                    type="button"
-                    className="tertiary-action"
-                    disabled={busy || loading}
-                    onClick={() => {
-                      // Looking at a stored window never replaces the draft on its
-                      // own; the operator either edits on or discards it.
-                      if (
-                        draft &&
-                        !window.confirm(
-                          'Gespeicherte Sperrzeiten in das Formular übernehmen und den aktuellen Entwurf ersetzen?',
-                        )
-                      )
-                        return;
-                      setPrefill({
-                        startsAt: block.startsAt,
-                        endsAt: block.endsAt,
-                      });
-                      setDraftKey((current) => current + 1);
-                    }}
-                  >
-                    Zeiten übernehmen: {block.reason || 'Zeitweise Sperre'}
-                  </button>
-                  {block.state === 'blocked' && (
-                    <button
-                      type="button"
-                      className="secondary-action"
-                      disabled={busy || loading}
-                      onClick={() => void release(block.id)}
-                    >
-                      Sperre freigeben: {block.reason || 'Zeitweise Sperre'}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </>
+        <details className="resource-blocks" open={open} ref={details}>
+          <summary
+            ref={summary}
+            onClick={(event) => {
+              // The disclosure guards an unsaved draft itself, so the native
+              // toggle must not run behind that guard.
+              event.preventDefault();
+              toggle();
+            }}
+          >
+            {open ? 'Sperrverwaltung schließen' : 'Sperrverwaltung öffnen'}
+          </summary>
+          {open && (
+            <>
+              <p>
+                Für Wartung, Reparatur oder Eigenbedarf. Zeitzone:{' '}
+                {data.timeZone}. Beginn und Ende werden als lokale Uhrzeit in
+                dieser Zeitzone gespeichert; der Versatz wird automatisch
+                ermittelt. Nur doppelte Herbst-Uhrzeiten verlangen eine Auswahl.
+                Der genaue Sperrzeitraum gilt ohne zusätzliche Transportpuffer.
+                Das allgemeine Sperrkennzeichen im Ressourcenstamm bleibt davon
+                unabhängig.
+              </p>
+              <BlockForm
+                draftKey={draftKey}
+                timeZone={data.timeZone}
+                units={data.units}
+                prefill={prefill}
+                errorsByField={errorsByField}
+                onDraft={setDraft}
+                onClear={clearFieldError}
+                onSubmit={(form) => void save(form)}
+                disabled={busy || loading}
+              />
+              {!data.blocks.length && <p>Noch keine zeitweisen Sperren.</p>}
+              <ul>
+                {data.blocks.map((block) => {
+                  const unit = data.units.find(
+                    (unit) => unit.id === block.unitId,
+                  );
+                  return (
+                    <li key={block.id}>
+                      {block.reason || 'Zeitweise Sperre'} –{' '}
+                      {unit
+                        ? unit.name + ' · Einheit ' + unit.ordinal
+                        : 'Historische Einheit'}{' '}
+                      – {time(block.startsAt, block.timeZone)} bis{' '}
+                      {time(block.endsAt, block.timeZone)} –{' '}
+                      {block.state === 'released' ? 'Freigegeben' : 'Gesperrt'}{' '}
+                      <button
+                        type="button"
+                        className="tertiary-action"
+                        disabled={busy || loading}
+                        onClick={() => {
+                          // Looking at a stored window never replaces the draft on its
+                          // own; the operator either edits on or discards it.
+                          if (
+                            draft &&
+                            !window.confirm(
+                              'Gespeicherte Sperrzeiten in das Formular übernehmen und den aktuellen Entwurf ersetzen?',
+                            )
+                          )
+                            return;
+                          setPrefill({
+                            startsAt: block.startsAt,
+                            endsAt: block.endsAt,
+                          });
+                          setDraftKey((current) => current + 1);
+                          // The form now holds unsaved input, and the adopted
+                          // window is only useful once it is actually shown.
+                          setDraft(true);
+                          focusForm.current = true;
+                          setOpen(true);
+                        }}
+                      >
+                        Zeiten übernehmen: {block.reason || 'Zeitweise Sperre'}
+                      </button>
+                      {block.state === 'blocked' && (
+                        <button
+                          type="button"
+                          className="secondary-action"
+                          disabled={busy || loading}
+                          onClick={() => void release(block.id)}
+                        >
+                          Sperre freigeben: {block.reason || 'Zeitweise Sperre'}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </details>
       )}
     </section>
   );

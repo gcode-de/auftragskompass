@@ -47,5 +47,6 @@ gebuchte Events eine feste Fotobox-Zuweisung und schützt zugewiesene Einheiten 
 Bestandsreduktion und Archivierung. Zeitlich begrenzte Sperren sind als eigene
 Reservationen mit Zustand `blocked` umgesetzt und werden im selben
 Überschneidungsschutz abgesichert (Sperrverwaltung „Zeitweise Ressourcensperren“
-im Ressourcenbereich; Details siehe [Reservierungsmodell](reservations.md)). Das
+im Ressourcenbereich, hinter der bewusst zu öffnenden Offenlegung
+„Sperrverwaltung öffnen/schließen“; Details siehe [Reservierungsmodell](reservations.md)). Das
 allgemeine Sperrkennzeichen im Stamm bleibt davon unabhängig ein Stammdatenzustand.

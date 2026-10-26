@@ -8,6 +8,48 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP009.2 — `feat: open temporary resource blocks on demand`** (26.10.2026)
+
+  Zweiter Unter-Slice von BKP009: die seltene Sperrverwaltung „Zeitweise
+  Ressourcensperren“ wird bewusst geöffnet statt dauerhaft aufgeklappt. Benannte
+  native Offenlegung (`<details>/<summary>`, sichtbares Zustandslabel „Sperrverwaltung
+  öffnen/schließen“) um Erklärungsabsatz, Sperrformular, Leerhinweis und Sperrliste;
+  `h2`, Statusmeldung, Reload-Warnung samt „Sperrliste erneut laden“, „Sperren
+  aktualisieren“ und Ladehinweis bleiben außerhalb sichtbar. Inhalt wird nur im
+  offenen Zustand gerendert (jsdom bildet geschlossene `<details>` nicht ab —
+  bedingtes Rendern hält „nicht im Tabpfad“ ehrlich prüfbar). Unverändert: die
+  komplette Sperrübersicht mit allen Zeilenaktionen (Zeiten übernehmen, Freigeben),
+  Formular-/Entwurfs-/Idempotenzverträge (requestId, draftKey, prefill), DST-/Zeit-
+  logik und alle API-/Datenbankverträge. Entwurf beim Zuklappen verlangt bewusstes
+  Verwerfen, unberührtes Formular schließt ohne Rückfrage, während laufender Mutation
+  kein Zuklappen; Schließen gibt den Fokus an das Summary, „Zeiten übernehmen“ öffnet
+  die Offenlegung mit. Kein Refetch beim Öffnen/Schließen; der Offen-/Zustand überlebt
+  Filter-, Dialog- und Hash-Wechsel (Panel bleibt gemountet), ohne Reload-Persistenz.
+  Gleichzeitig wird die notierte Zählempfindlichkeit bereinigt: die Vertragstests
+  liefern gültige fiktive Blockdaten statt eines kaputten Stubs, sodass „eine
+  Primäraktion pro Rahmen“ strukturell gilt (zu = nur „Ressource anlegen“, offen =
+  Sperrformular-Frame mit „Zeitraum sperren“). Tests zuerst rot (Disclosure-Haupttest
+  plus zehn Negativfälle: Entwurf/Bestätigung, unberührt, busy, Wiederöffnung,
+  Übernahme, Tastatur/kein Escape-Schließen, kein Refetch, Zustandswechsel,
+  Fehlerpfad, leere Liste), E2E-Sperrablauf öffnet die Offenlegung, Overflow/Theme-
+  Schleife läuft in beiden Zuständen, zusätzlicher axe-Lauf mit offener Sperrverwaltung.
+  Keine Sperrenfilter/-zählung, kein Listenumbau, keine API-/Migrationsänderung,
+  keine Persistenz über Reload. Coding-Subagent: DeepSeek V4.1 Flash (gleiche
+  Delegationsform wie BKP009.1), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: zuerst rot beobachtet (35 Tests gegen den Altstand via
+  `git stash`-Vergleich, darunter Haupttest und alle zehn Negativfälle sowie
+  drei Rahmenvertragstests mit gültigen Blockdaten), danach grün:
+  `test:component` 580/580, `test:coverage` vollständig grün (ResourceBlocks
+  99,35% Statements/97,29% Zweige), `test:unit` 260, `test:workspace`/`test:docs`
+  grün, schnelle Gates/Build grün; auth-E2E beide Modi komplett grün mit
+  Tastaturbeweis (Enter/Space öffnen/schließen, kein Escape-Schließen),
+  axe-Lauf mit offener Sperrverwaltung (0 Befunde) und Layout-/Theme-Matrix in
+  beiden Offen-Zuständen (16 Screenshots). Bewusste Abweichung: das
+  Disclosure-Element rendert erst mit geladenen Daten (kein toter Aufklapp-
+  Punkt im Fehlerfall; Fehlerpfad bleibt ohne Öffnen sichtbar). Notiert:
+  Übernahme gespeicherter Zeiten markiert den Entwurf als ungespeichert,
+  bestätigtes Speichern löscht die Entwurfsmarkierung.
+
 - [x] **BKP009.1 — `feat: make resource management list-first with explicit editing`** (26.10.2026)
 
   Erster vollständiger Unter-Slice von BKP009 (Ressourcen, UI-Slice ohne Domainänderung),

@@ -134,6 +134,13 @@ function expectAtMostOnePrimary(scope: Element, name: string) {
   ).toEqual([]);
 }
 
+/** The dominant actions of one frame, by their accessible label. */
+function primaryLabels(scope: Element) {
+  return classify(scope)
+    .filter((entry) => entry.tier === 'primary-action' || entry.dominant)
+    .map((entry) => entry.label);
+}
+
 const json = (body: unknown) => Response.json(body);
 
 const masterRow = {
@@ -142,6 +149,31 @@ const masterRow = {
   state: 'active',
   position: 0,
   version: 1,
+};
+const blockUnit = {
+  id: 'synthetic-unit',
+  name: 'Fictional box',
+  code: 'SYNTH',
+  ordinal: 1,
+  enabled: true,
+  state: 'active',
+};
+const blockRow = {
+  id: 'synthetic-block',
+  unitId: blockUnit.id,
+  startsAt: '2030-10-16T16:00:00Z',
+  endsAt: '2030-10-16T18:00:00Z',
+  timeZone: 'Europe/Berlin',
+  state: 'blocked',
+  reason: 'Fictional maintenance',
+};
+// A real block overview: the earlier `[masterRow]` fallback made the panel
+// abort its load, so the frame contract below was never really exercised
+// (BKP009.2).
+const blockOverview = {
+  timeZone: 'Europe/Berlin',
+  units: [blockUnit],
+  blocks: [blockRow],
 };
 const resourceRow = {
   id: 'synthetic',
@@ -264,15 +296,13 @@ const inquiryItem = {
 test('settings lists render one primary action and name every other tier', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) =>
-      json(
-        String(url).includes('/resources')
-          ? [resourceRow]
-          : String(url).includes('/products')
-            ? [productRow]
-            : [masterRow],
-      ),
-    ),
+    vi.fn(async (url: string) => {
+      const path = String(url);
+      if (path.includes('/resource-blocks')) return json(blockOverview);
+      if (path.includes('/resources')) return json([resourceRow]);
+      if (path.includes('/products')) return json([productRow]);
+      return json([masterRow]);
+    }),
   );
   render(
     <MasterDataPanel kind="package" title="Paketwerte" csrfToken="csrf" />,
@@ -302,6 +332,10 @@ test('settings lists render one primary action and name every other tier', async
   // the frame's one primary action is the create glyph in the toolbar; the
   // editor's save primary only exists once the dialog is open.
   expectHierarchy(resources, 'Ressourcen');
+  expect(
+    primaryLabels(resources),
+    'Ressourcen is closed: exactly the create action is dominant',
+  ).toEqual(['Ressource anlegen']);
   const create = within(resources).getByRole('button', {
     name: 'Ressource anlegen',
   });
@@ -330,6 +364,30 @@ test('settings lists render one primary action and name every other tier', async
       }),
     ),
   ).toBe('secondary-action');
+  // BKP009.2: the maintenance management is a disclosure of its own. Closed,
+  // it mounts no form and contributes no action to the page frame; opened, it
+  // is a separate frame with exactly one primary and nothing unnamed.
+  const blocksFrame = within(resources).getByRole('region', {
+    name: 'Zeitweise Ressourcensperren',
+  });
+  expect(
+    primaryLabels(blocksFrame),
+    'closed management: no dominant action at all',
+  ).toEqual([]);
+  expect(
+    within(blocksFrame).queryByRole('button', { name: 'Zeitraum sperren' }),
+  ).toBeNull();
+  fireEvent.click(within(blocksFrame).getByText('Sperrverwaltung öffnen'));
+  expectHierarchy(blocksFrame, 'Sperren geöffnet');
+  expect(
+    primaryLabels(blocksFrame),
+    'opened management: its own frame carries the only primary',
+  ).toEqual(['Zeitraum sperren']);
+  fireEvent.click(within(blocksFrame).getByText('Sperrverwaltung schließen'));
+  expect(
+    primaryLabels(resources),
+    'closing the management returns the page frame to one primary',
+  ).toEqual(['Ressource anlegen']);
   cleanup();
 
   render(<ProductPanel csrfToken="csrf" />);
@@ -693,6 +751,9 @@ test('resource assignment, blocks, documents and website inbox stay on one prima
 
   render(<ResourceBlocks csrfToken="csrf" />);
   const blocks = await screen.findByRole('region', { name: /Zeitweise/ });
+  // BKP009.2: the management mounts its list and form only after a deliberate
+  // opening; the frame contract is asserted in that state.
+  fireEvent.click(await within(blocks).findByText('Sperrverwaltung öffnen'));
   await within(blocks).findByRole('button', {
     name: /^Sperre freigeben: Fictional maintenance$/,
   });
@@ -1295,6 +1356,7 @@ test('resources resolves its create and save primaries through the hidden-page r
     'fetch',
     vi.fn(async (url: string) => {
       const path = String(url);
+      if (path.includes('/resource-blocks')) return json(blockOverview);
       if (path.includes('/resources')) return json([resourceRow]);
       return json([masterRow]);
     }),
@@ -1319,6 +1381,37 @@ test('resources resolves its create and save primaries through the hidden-page r
         control.getAttribute('aria-label') ?? control.textContent?.trim() ?? '',
     ),
     'Ressourcen keeps one primary per mounted editor',
+  ).toEqual(['Ressource anlegen']);
+  // BKP009.2: the maintenance management is a second frame that only exists
+  // while it is opened. Closed it adds nothing; opened it owns exactly one
+  // primary of its own and leaves the page frame's primary alone.
+  const blocksFrame = within(resources).getByRole('region', {
+    name: 'Zeitweise Ressourcensperren',
+  });
+  expect(
+    within(blocksFrame).queryByRole('button', { name: 'Zeitraum sperren' }),
+    'the closed management mounts no form',
+  ).toBeNull();
+  fireEvent.click(within(blocksFrame).getByText('Sperrverwaltung öffnen'));
+  expectAtMostOnePrimary(blocksFrame, 'Sperrverwaltung (offen)');
+  expect(
+    primaryLabels(blocksFrame),
+    'the opened management carries exactly Zeitraum sperren',
+  ).toEqual(['Zeitraum sperren']);
+  expect(
+    primaries().map(
+      (control) =>
+        control.getAttribute('aria-label') ?? control.textContent?.trim() ?? '',
+    ),
+    'two frames, one primary each',
+  ).toEqual(['Ressource anlegen', 'Zeitraum sperren']);
+  fireEvent.click(within(blocksFrame).getByText('Sperrverwaltung schließen'));
+  expect(
+    primaries().map(
+      (control) =>
+        control.getAttribute('aria-label') ?? control.textContent?.trim() ?? '',
+    ),
+    'closing the management removes its primary again',
   ).toEqual(['Ressource anlegen']);
   // Only frames that are not hidden contribute a visible primary.
   const visibleFrames = Array.from(resources.children).filter(
