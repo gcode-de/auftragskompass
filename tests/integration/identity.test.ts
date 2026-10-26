@@ -40,8 +40,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP019.c2: a correction is linked to the document it corrects.
-  expect(applied.at(-1)!.name).toBe('0043_correction.sql');
+  // BKP019.d: an incoming payment is its own append-only row per document.
+  expect(applied.at(-1)!.name).toBe('0044_document_payments.sql');
   // The source is a document of the same tenant, never another tenant's row.
   const sourceForeignKey = (
     await pool.query<{ def: string }>(
@@ -101,6 +101,48 @@ test('migrations serialize, restart safely and detect changed history', async ()
   expect(correctionIndex).toContain(
     "WHERE ((kind = 'correction'::text) AND (state = 'draft'::text))",
   );
+  // BKP019.d: a payment belongs to one document of the same tenant, carries a
+  // positive magnitude and a closed method set, and is never cascaded away.
+  const paymentForeignKey = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='document_payments'::regclass AND contype='f' AND pg_get_constraintdef(oid) ILIKE '%document_id%'",
+    )
+  ).rows.map((row) => row.def);
+  expect(paymentForeignKey).toEqual([
+    'FOREIGN KEY (tenant_id, document_id) REFERENCES documents(tenant_id, id)',
+  ]);
+  const paymentAmountCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='document_payments'::regclass AND conname='document_payments_amount_minor_check'",
+    )
+  ).rows[0]!.def;
+  expect(paymentAmountCheck).toContain('amount_minor >= 1');
+  expect(paymentAmountCheck).toContain(
+    "amount_minor <= '9007199254740991'::bigint",
+  );
+  const paymentMethodCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='document_payments'::regclass AND conname='document_payments_method_check'",
+    )
+  ).rows[0]!.def;
+  expect(paymentMethodCheck).toContain(
+    "ARRAY['bank_transfer'::text, 'cash'::text, 'card'::text, 'other'::text]",
+  );
+  // Partial payments are legitimate, so nothing about the new table is unique
+  // beyond its own key; the audit CHECK names the one new action.
+  const paymentUnique = (
+    await pool.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM pg_indexes WHERE schemaname='public' AND tablename='document_payments' AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%document_id%'",
+    )
+  ).rows[0]!.count;
+  expect(paymentUnique).toBe(0);
+  const auditCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='audit_events'::regclass AND conname='audit_events_action_check'",
+    )
+  ).rows[0]!.def;
+  expect(auditCheck).toContain("'payment.recorded'::text");
+  expect(auditCheck).toContain("'document.finalized'::text");
   // BKP019.a records how an offer was accepted after the status axis.
   // The acceptance references an own library file through the composite key,
   // so a foreign tenant's file can never be attached.

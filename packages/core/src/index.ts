@@ -107,6 +107,25 @@ export {
   type DocumentDependencies,
 } from './documents.js';
 
+export {
+  documentPaymentRepository,
+  registerDocumentPaymentRoutes,
+  paymentState,
+  openMinorOf,
+  paymentBalance,
+  paidMinorOf,
+  paymentMethods,
+  paymentStates,
+  paymentNoteMaxLength,
+  maxPaymentMinor,
+  DocumentPaymentError,
+  type PaymentMethod,
+  type PaymentState,
+  type PaymentInput,
+  type PaymentRow,
+  type PaymentBalance,
+} from './document-payments.js';
+
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
 export { registerLocationRoutes } from './locations.js';

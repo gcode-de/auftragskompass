@@ -429,6 +429,28 @@ Zahlungsverrechnung fehlen noch (eigene Folgeslices); „final“ bedeutet hier
 (Leistungsdatum, Steuernummer, Zahlungsziel, Bankverbindung) sind noch nicht
 ausgestattet. Es wird keine Rechts- oder Steuerbehauptung aufgestellt.
 
+### Zahlungseingänge (BKP019.d, RG-09)
+
+Gegen **finale Rechnungen** werden Zahlungseingänge erfasst: Empfangsdatum
+(nie in der Zukunft, Mandantenzeitzone), Betrag (mindestens ein Cent),
+Zahlweg (Überweisung, Bar, Karte, Sonstiges – eigene bewusste Konvention,
+keine Bank- oder Zahlungsdienst-Anbindung) und optionale Notiz. Zahlungen
+sind **unveränderliche Einträge** (kein Ändern, kein Löschen – Korrekturen
+müssten eigene Folgeschritte sein); jede Erfassung wird auditiert. Eine
+**Überzahlung wird abgelehnt**: zusammen mit den Zahlungen darf der offene
+Saldo nie negativ werden (`offener Saldo = Brutto + Σ Lastschriften − Σ
+Gutschriften − Σ Zahlungen`). Umgekehrt darf eine Gutschrift nur noch das
+gutschreiben, was die Zahlungen übrig gelassen haben – bezahltes Geld wird
+solange nicht gutgeschrieben, wie es keine Rückzahlungslogik gibt
+(dokumentierter Zwischenzustand).
+
+Aus den erfassten Zahlungen entsteht der Zahlungsstand „Offen“,
+„Teilweise bezahlt“ oder „Bezahlt“ samt offenem Betrag – **abgeleitet, nie
+gespeichert**. „Bezahlt“ entsteht ausschließlich aus erfassten Zahlungen,
+nie aus Druck, Versand oder Erzeugung eines Belegs. „Überfällig“ ist noch
+nicht verfügbar: ohne Zahlungsziel/Fälligkeit (RG-07, eigener Folgeslice)
+gibt es kein Datum dafür.
+
 ### Rechnungskorrektur und Storno (BKP019.c2, RG-02)
 
 Eine **Rechnungskorrektur** ist ein eigener Beleg mit einer Richtung

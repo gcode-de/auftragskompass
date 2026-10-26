@@ -20,6 +20,7 @@ import {
   type DocumentDependencies,
   type DocumentOfferRow,
 } from '../../packages/core/src/documents.js';
+import { documentPaymentRepository } from '../../packages/core/src/document-payments.js';
 import { readDocumentPdf } from '../../packages/core/src/document-artifacts.js';
 import {
   StorageError,
@@ -2078,6 +2079,10 @@ const correctionKeys = [
   'correctionState',
   'remainingCredit',
 ];
+// BKP019.d: the payment axis of the same projection. `paymentState` and
+// `openMinor` are derived for a finalized invoice and NULL for every other row -
+// three keys were not enough for the payment slice, two more are all it needs.
+const paymentKeys = ['paymentState', 'openMinor'];
 
 test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
   const scope = randomUUID(),
@@ -3250,6 +3255,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         ...acceptanceKeys,
         ...confirmationKeys,
         ...correctionKeys,
+        ...paymentKeys,
       ].sort(),
     );
     expect(projectedRow).toMatchObject({
@@ -4016,6 +4022,7 @@ test('the offer status route accepts the acceptance details and refuses bad ones
         'sourceDocumentId',
         'sourceNumber',
         ...correctionKeys,
+        ...paymentKeys,
       ].sort(),
     );
     // Repeating the identical details is a no-op, a changed one is refused.
@@ -4858,6 +4865,7 @@ test('the offer projection names the source of a confirmation', async () => {
       'sourceDocumentId',
       'sourceNumber',
       ...correctionKeys,
+      ...paymentKeys,
     ].sort(),
   );
 });
@@ -5547,6 +5555,7 @@ test('the offer projection names the source of an invoice', async () => {
       ...acceptanceKeys,
       ...confirmationKeys,
       ...correctionKeys,
+      ...paymentKeys,
     ].sort(),
   );
 });
@@ -5664,6 +5673,21 @@ test('the invoice route validates auth, body and duplicates', async () => {
 // follow-up document. The stored amounts stay magnitudes; the direction on the
 // document is what turns them into a credit or a follow-up charge. Every test
 // below therefore asserts both: the positive stored sum and the derived meaning.
+// BKP019.d: a payment day is a tenant-local calendar day and may never lie in
+// the future, so the test computes today in the tenant zone instead of pinning
+// a date that would rot.
+function tenantToday() {
+  const [day, month, year] = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Berlin',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+    .format(new Date())
+    .split('/');
+  return `${year}-${month}-${day}`;
+}
+
 async function correctableOrder(scope: string) {
   const order = await invoicedOrder(scope),
     invoice = await order.repo.createInvoice(
@@ -5941,6 +5965,52 @@ test('a credit never exceeds the invoice gross', async () => {
     number: 'RE-2030-0001',
     gross_minor: '52310',
   });
+});
+
+// BKP019.d: money that already arrived narrows the same ceiling. The old rule
+// alone (credits <= gross) would allow the credit below, the extended rule
+// (credits + payments <= gross + debits) refuses it.
+test('a credit never exceeds what the payments left open', async () => {
+  const order = await correctableOrder(randomUUID());
+  await correctionRange(order);
+  await documentPaymentRepository(pool, order.scope).record(
+    order.actor,
+    order.invoice.id,
+    { receivedOn: tenantToday(), amountMinor: 30000, method: 'bank_transfer' },
+  );
+  // 523,10 - 300,00 = 223,10 may still be credited, to the cent.
+  const credit = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'credit',
+    correctionLine(22310),
+  );
+  expect(
+    (await order.repo.finalize(order.actor, credit.id, credit.version)).number,
+  ).toBe('KO-2030-0001');
+  // One cent more is refused although it would fit under the invoice gross.
+  const over = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'credit',
+    correctionLine(1),
+  );
+  await expect(
+    order.repo.finalize(order.actor, over.id, over.version),
+  ).rejects.toMatchObject({ reason: 'credit_exceeds_invoice' });
+  expect(await storedCorrection(order.scope, over.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+  });
+  // Nothing was consumed by the refused draft.
+  expect(
+    await documentNumberRepository(pool, order.scope).preview(
+      'correction',
+      now,
+    ),
+  ).toBe('KO-2030-0002');
 });
 
 test('a debit increases the claim without a ceiling', async () => {

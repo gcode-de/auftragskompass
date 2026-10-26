@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Temporal } from '@js-temporal/polyfill';
 import { OfferDraftEditor } from './OfferDraftEditor.js';
 import { exactMinorUnits } from './FilesPanel.js';
+import { parseHundredths } from './decimal.js';
 
 type DocumentRow = {
   id: string;
@@ -36,9 +38,23 @@ type DocumentRow = {
   correctionDirection?: 'credit' | 'debit' | null;
   correctionState?: 'none' | 'partial' | 'full' | null;
   remainingCredit?: number | null;
+  // BKP019.d: how much money arrived and what is still open on a finalized
+  // invoice. Both are derived on the server and never stored on the row.
+  paymentState?: 'none' | 'partial' | 'paid' | null;
+  openMinor?: number | null;
 };
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
 type CorrectionDirection = 'credit' | 'debit';
+type PaymentMethod = 'bank_transfer' | 'cash' | 'card' | 'other';
+type PaymentRow = {
+  id: string;
+  documentId: string;
+  receivedOn: string;
+  amountMinor: number;
+  method: PaymentMethod;
+  note: string | null;
+  recordedAt: string;
+};
 type AcceptanceChannel = 'email' | 'phone' | 'pdf' | 'other';
 type TemplateRow = { id: string; kind: string; name: string; state: string };
 type LibraryFileRow = {
@@ -80,6 +96,52 @@ const correctionDirectionLabels: Record<CorrectionDirection, string> = {
 const acceptanceChannels = Object.keys(
   acceptanceChannelLabels,
 ) as AcceptanceChannel[];
+// BKP019.d: money that arrived is a record, not a status. "Offen" is the absence
+// of a payment; "bezahlt" only exists because payments were entered. "Überfällig"
+// is deliberately absent - without a payment term there is no honest due date.
+const paymentStateLabels: Record<'none' | 'partial' | 'paid', string> = {
+  none: 'Offen',
+  partial: 'Teilweise bezahlt',
+  paid: 'Bezahlt',
+};
+// Our own documented value set: the requirement names "Zahlweg" without a list.
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+  bank_transfer: 'Überweisung',
+  cash: 'Bar',
+  card: 'Karte',
+  other: 'Sonstiges',
+};
+const paymentMethods = Object.keys(paymentMethodLabels) as PaymentMethod[];
+// The default of the date field is the tenant's own calendar day, never the
+// browser's zone: a payment entered after midnight must not land on "tomorrow".
+function tenantToday(timeZone: string): string {
+  return Temporal.Now.instant()
+    .toZonedDateTimeISO(timeZone)
+    .toPlainDate()
+    .toString();
+}
+// One wording per rejected payment; a 409 is never silently retried.
+function paymentFailureMessage(error: string): string {
+  switch (error) {
+    case 'overpaid':
+      return 'Der Betrag übersteigt den offenen Restbetrag. Bitte Betrag prüfen.';
+    case 'invalid_date':
+      return 'Das Zahlungsdatum ist ungültig oder liegt in der Zukunft.';
+    case 'invalid_amount':
+      return 'Bitte einen Betrag größer als 0 eingeben.';
+    case 'invalid_method':
+      return 'Bitte einen gültigen Zahlweg wählen.';
+    case 'invalid_note':
+      return 'Die Notiz ist zu lang oder enthält unzulässige Zeichen.';
+    case 'invalid_state':
+    case 'invalid_kind':
+      return 'Nur eine finalisierte Rechnung nimmt Zahlungen an. Bitte Liste aktualisieren.';
+    case 'not_found':
+      return 'Die Rechnung wurde nicht gefunden. Bitte Liste aktualisieren.';
+    default:
+      return 'Zahlung konnte nicht erfasst werden. Bitte Angaben prüfen.';
+  }
+}
 // One wording per rejected status change, shared by send/withdraw and accept.
 function statusChangeMessage(error: string): string {
   switch (error) {
@@ -207,6 +269,18 @@ export function EventDocuments({
     [acceptanceTime, setAcceptanceTime] = useState(''),
     [acceptanceNoteText, setAcceptanceNoteText] = useState(''),
     [acceptanceFileId, setAcceptanceFileId] = useState(''),
+    // BKP019.d: the compact payment form of exactly one finalized invoice, the
+    // payments already recorded for it and the state of that read.
+    [paymentId, setPaymentId] = useState(''),
+    [paymentDate, setPaymentDate] = useState(''),
+    [paymentAmount, setPaymentAmount] = useState(''),
+    [paymentMethodValue, setPaymentMethodValue] =
+      useState<PaymentMethod>('bank_transfer'),
+    [paymentNote, setPaymentNote] = useState(''),
+    [payments, setPayments] = useState<PaymentRow[]>([]),
+    [paymentListState, setPaymentListState] = useState<
+      'idle' | 'loading' | 'ready' | 'failed'
+    >('idle'),
     [libraryFiles, setLibraryFiles] = useState<LibraryFileRow[]>([]),
     [libraryState, setLibraryState] = useState<
       'idle' | 'loading' | 'ready' | 'failed'
@@ -654,6 +728,118 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  // BKP019.d: a payment is recorded explicitly and only against a finalized
+  // invoice. The form opens with today's tenant-local day, and the list of what
+  // was already recorded is read from the server, never reconstructed locally.
+  function openPayments(entry: DocumentRow) {
+    if (mutating.current) return;
+    setMessage('');
+    setPaymentId(entry.id);
+    setPaymentDate(tenantToday(timeZone));
+    setPaymentAmount('');
+    setPaymentMethodValue('bank_transfer');
+    setPaymentNote('');
+    setPayments([]);
+    void loadPayments(entry.id);
+  }
+  async function loadPayments(id: string) {
+    setPaymentListState('loading');
+    try {
+      const reply = await fetch('/api/v1/documents/' + id + '/payments');
+      if (!reply.ok) throw new Error('payments');
+      const rows = (await reply.json()) as PaymentRow[];
+      setPayments(
+        Array.isArray(rows)
+          ? rows.filter(
+              (row) =>
+                row &&
+                typeof row.id === 'string' &&
+                /^\d{4}-\d{2}-\d{2}$/.test(row.receivedOn ?? '') &&
+                Number.isSafeInteger(row.amountMinor) &&
+                paymentMethodLabels[row.method] !== undefined,
+            )
+          : [],
+      );
+      setPaymentListState('ready');
+    } catch {
+      // The form stays usable; only the list is unavailable.
+      setPaymentListState('failed');
+    }
+  }
+  async function recordPayment(
+    event: FormEvent<HTMLFormElement>,
+    entry: DocumentRow,
+  ) {
+    event.preventDefault();
+    if (mutating.current || busy !== '') return;
+    let amountMinor: number;
+    try {
+      amountMinor = parseHundredths(paymentAmount);
+    } catch {
+      setMessage('Bitte einen Betrag größer als 0 eingeben.');
+      return;
+    }
+    if (amountMinor < 1) {
+      setMessage('Bitte einen Betrag größer als 0 eingeben.');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) {
+      setMessage('Bitte ein Zahlungsdatum wählen.');
+      return;
+    }
+    mutating.current = true;
+    setBusy(entry.id);
+    setMessage('');
+    try {
+      const reply = await fetch('/api/v1/documents/' + entry.id + '/payments', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          receivedOn: paymentDate,
+          amountMinor,
+          method: paymentMethodValue,
+          ...(paymentNote.trim() ? { note: paymentNote.trim() } : {}),
+        }),
+      });
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(paymentFailureMessage(result.error));
+        // A stale claim is re-read, so the next attempt sees the real balance.
+        if (
+          result.error === 'overpaid' ||
+          result.error === 'invalid_state' ||
+          result.error === 'not_found'
+        ) {
+          await loadPayments(entry.id);
+          try {
+            await load();
+          } catch {
+            setReloadWarning(true);
+          }
+        }
+        return;
+      }
+      await reply.json();
+      setPaymentAmount('');
+      setPaymentNote('');
+      setMessage('Zahlung erfasst.');
+      await loadPayments(entry.id);
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   // BKP019.a: the library the acceptance may reference. Only an own, available
   // row is selectable; the "not scanned" fact stays visible instead of a scan
   // promise we cannot keep.
@@ -878,6 +1064,21 @@ export function EventDocuments({
                     )}
                 </p>
               )}
+            {/* BKP019.d: what arrived and what is still open on this invoice.
+                Both are derived from the recorded payments - the invoice keeps
+                its number, its state and its bytes. */}
+            {entry.kind === 'invoice' &&
+              entry.state === 'final' &&
+              entry.paymentState && (
+                <p className="document-meta document-payment-state">
+                  <span>{paymentStateLabels[entry.paymentState]}</span>
+                  <span>
+                    {' · Offener Betrag: ' +
+                      (exactMinorUnits(entry.openMinor ?? 0) ?? '—') +
+                      ' €'}
+                  </span>
+                </p>
+              )}
             {entry.kind === 'offer' && entry.state === 'final' && (
               <p className="document-offer-status">
                 <span>{offerStatusLabels[entry.offerStatus ?? 'unset']}</span>
@@ -1020,6 +1221,25 @@ export function EventDocuments({
                   onClick={() => openCorrection(entry)}
                 >
                   Korrigieren
+                </button>
+              )}
+              {/* BKP019.d: a finalized invoice accepts incoming money as an
+                  explicit record. Manual only - no bank, card or PSP connection. */}
+              {entry.state === 'final' && entry.kind === 'invoice' && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={busy !== ''}
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' Zahlung erfassen'
+                  }
+                  aria-expanded={paymentId === entry.id}
+                  onClick={() => openPayments(entry)}
+                >
+                  Zahlung erfassen
                 </button>
               )}
               {/* Only a legal next step is offered: no button invents a jump
@@ -1289,6 +1509,122 @@ export function EventDocuments({
                   </fieldset>
                 </form>
               )}
+            {entry.kind === 'invoice' &&
+              entry.state === 'final' &&
+              paymentId === entry.id && (
+                <form
+                  className="offer-draft-editor"
+                  aria-label="Zahlung erfassen"
+                  onSubmit={(event) => void recordPayment(event, entry)}
+                >
+                  <fieldset disabled={busy !== ''}>
+                    <legend>Zahlung erfassen</legend>
+                    <p className="document-hint">
+                      Eine Zahlung ist ein unveränderlicher Eingang: sie wird
+                      nicht bearbeitet und nicht gelöscht. „Bezahlt“ entsteht
+                      ausschließlich aus erfassten Zahlungen, nie aus einem
+                      Ausdruck oder einer Erzeugung. Es gibt keine Bank- oder
+                      Kartenschnittstelle – der Eingang wird manuell erfasst.
+                    </p>
+                    <div className="offer-draft-fields">
+                      <label>
+                        Zahlungsdatum
+                        <input
+                          type="date"
+                          required
+                          value={paymentDate}
+                          onChange={(event) =>
+                            setPaymentDate(event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        Betrag in €
+                        <input
+                          inputMode="decimal"
+                          required
+                          value={paymentAmount}
+                          onChange={(event) =>
+                            setPaymentAmount(event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        Zahlweg
+                        <select
+                          value={paymentMethodValue}
+                          onChange={(event) =>
+                            setPaymentMethodValue(
+                              event.target.value as PaymentMethod,
+                            )
+                          }
+                        >
+                          {paymentMethods.map((method) => (
+                            <option key={method} value={method}>
+                              {paymentMethodLabels[method]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Notiz (optional)
+                        <textarea
+                          rows={2}
+                          maxLength={2000}
+                          value={paymentNote}
+                          onChange={(event) =>
+                            setPaymentNote(event.target.value)
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="document-actions">
+                      <button className="primary-action" disabled={busy !== ''}>
+                        Zahlung speichern
+                      </button>
+                      <button
+                        type="button"
+                        className="tertiary-action"
+                        disabled={busy !== ''}
+                        onClick={() => setPaymentId('')}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </fieldset>
+                  {paymentListState === 'loading' && (
+                    <p role="status">Zahlungen werden geladen …</p>
+                  )}
+                  {paymentListState === 'failed' && (
+                    <p role="alert">
+                      Zahlungen konnten nicht geladen werden. Erfasste Zahlungen
+                      bleiben gespeichert; bitte erneut öffnen.
+                    </p>
+                  )}
+                  {paymentListState === 'ready' &&
+                    (payments.length ? (
+                      <ul
+                        className="document-payments"
+                        aria-label="Erfasste Zahlungen"
+                      >
+                        {payments.map((payment) => (
+                          <li key={payment.id}>
+                            <time dateTime={payment.receivedOn}>
+                              {plainDate(payment.receivedOn)}
+                            </time>
+                            {' · '}
+                            {exactMinorUnits(payment.amountMinor) ?? '—'} €
+                            {' · '}
+                            {paymentMethodLabels[payment.method]}
+                            {payment.note ? ' · ' + payment.note : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>Noch keine Zahlung erfasst.</p>
+                    ))}
+                </form>
+              )}
             {entry.kind === 'offer' &&
               entry.state === 'final' &&
               entry.offerStatus === 'sent' &&
@@ -1556,7 +1892,9 @@ export function EventDocuments({
                   Anzahlungs- und Schlussrechnungen sind noch nicht verfügbar.
                   Eine finalisierte Rechnung wird nie ersetzt, sondern nur durch
                   eine Rechnungskorrektur ergänzt; Entwürfe bleiben bis zur
-                  Finalisierung bearbeitbar.
+                  Finalisierung bearbeitbar. Zahlungseingänge werden manuell
+                  gegen die finalisierte Rechnung erfasst; ein Zahlungsziel und
+                  eine Überfälligkeit gibt es noch nicht.
                 </p>
               )}
               {group.kind === 'correction' && (

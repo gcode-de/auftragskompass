@@ -110,6 +110,8 @@ const draft = {
     correctionDirection: null,
     correctionState: 'none' as const,
     remainingCredit: 24900,
+    paymentState: 'none' as const,
+    openMinor: 24900,
   },
   correctionDraft = {
     id: 'doc-ko-1',
@@ -131,6 +133,29 @@ const draft = {
     correctionState: null,
     remainingCredit: null,
   },
+  // BKP019.d: the same invoice after money arrived, and the payments an operator
+  // recorded. The status is derived on the server; the row only displays it.
+  invoicePartiallyPaid = {
+    ...invoiceFinal,
+    paymentState: 'partial' as const,
+    openMinor: 14900,
+  },
+  invoicePaid = {
+    ...invoiceFinal,
+    paymentState: 'paid' as const,
+    openMinor: 0,
+  },
+  paymentRows = [
+    {
+      id: 'payment-1',
+      documentId: 'doc-re-1',
+      receivedOn: '2030-10-26',
+      amountMinor: 10000,
+      method: 'bank_transfer',
+      note: 'Erste Rate',
+      recordedAt: '2030-10-26T12:00:00Z',
+    },
+  ],
   // BKP019.b2: the stored draft detail the editor reads, and the wording each
   // kind owns. A confirmation names itself, so no offer wording can leak in.
   storedLine = {
@@ -209,6 +234,9 @@ function setup(
     orderConfirmation?: () => Response;
     invoice?: () => Response;
     correction?: () => Response;
+    // BKP019.d: the payments of a document, and the answer to a recorded one.
+    payments?: () => Response | Promise<Response>;
+    recordPayment?: () => Response;
   } = {},
 ) {
   const calls: {
@@ -311,6 +339,22 @@ function setup(
         if (options.correction) return options.correction();
         state.documents = [invoiceFinal, correctionDraft];
         return Response.json(correctionDraft, { status: 201 });
+      }
+      // BKP019.d: only a finalized invoice has this endpoint pair; the list and
+      // the write are separate calls on purpose.
+      if (/\/api\/v1\/documents\/[^/]+\/payments$/.test(url)) {
+        calls.push({
+          url,
+          method,
+          ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+          headers: init?.headers as Record<string, string>,
+        });
+        if (method === 'GET') {
+          if (options.payments) return await options.payments();
+          return Response.json([]);
+        }
+        if (options.recordPayment) return options.recordPayment();
+        return Response.json(paymentRows[0]!, { status: 201 });
       }
       if (url.endsWith('/finalize')) {
         calls.push({ url, method });
@@ -2163,4 +2207,255 @@ test('documents are grouped and labelled by their actual kind', async () => {
   expect(
     within(offers).queryByRole('heading', { name: 'Rechnungen' }),
   ).toBeNull();
+});
+
+// BKP019.d: money that arrived is a record against the finalized invoice, and
+// the row shows the derived state. Nothing here is written by printing.
+test('a finalized invoice shows its payment state and the open amount', async () => {
+  setup({ documents: [invoicePartiallyPaid, invoicePaid] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const rows = within(invoices).getAllByRole('listitem');
+  expect(within(rows[0]!).getByText('Teilweise bezahlt')).toBeTruthy();
+  expect(within(rows[0]!).getByText(/Offener Betrag: 149,00 €/)).toBeTruthy();
+  expect(within(rows[1]!).getByText('Bezahlt')).toBeTruthy();
+  expect(within(rows[1]!).getByText(/Offener Betrag: 0,00 €/)).toBeTruthy();
+  // The payment axis never replaces the cancellation state of the invoice.
+  expect(within(rows[0]!).getByText('Nicht storniert')).toBeTruthy();
+});
+
+test('only a finalized invoice offers the payment action', async () => {
+  setup({
+    documents: [invoiceDraft, finalizedConfirmation, invoiceFinal],
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const orders = screen.getByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  // Per row: the draft invoice can still move, so it takes no money yet; the
+  // finalized one gets exactly this one payment action.
+  const invoiceRows = within(invoices).getAllByRole('listitem');
+  expect(invoiceRows).toHaveLength(2);
+  const draftRow = invoiceRows.find((row) =>
+      row.textContent?.includes('Entwurf'),
+    )!,
+    finalRow = invoiceRows.find((row) =>
+      row.textContent?.includes('RE-2030-0001'),
+    )!;
+  expect(
+    within(draftRow).queryByRole('button', { name: /Zahlung erfassen/ }),
+  ).toBeNull();
+  expect(
+    within(draftRow).getByRole('button', {
+      name: 'Rechnung Entwurf finalisieren',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(finalRow).getAllByRole('button', { name: /Zahlung erfassen/ }),
+  ).toHaveLength(1);
+  // A confirmation is no claim of its own, so it never takes a payment either.
+  expect(
+    within(orders).queryByRole('button', { name: /Zahlung erfassen/ }),
+  ).toBeNull();
+});
+
+test('the payment form defaults to today and posts the typed values', async () => {
+  const { calls } = setup({ documents: [invoiceFinal] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const open = await within(invoices).findByRole('button', {
+    name: 'Rechnung RE-2030-0001 Zahlung erfassen',
+  });
+  fireEvent.click(open);
+  const form = await within(invoices).findByRole('form', {
+    name: 'Zahlung erfassen',
+  });
+  // The immutability and "no print makes it paid" facts are stated, not implied.
+  expect(within(form).getByText(/unveränderlicher Eingang/)).toBeTruthy();
+  expect(within(form).getByText(/nie aus einem Ausdruck/)).toBeTruthy();
+  const date = within(form).getByLabelText('Zahlungsdatum') as HTMLInputElement;
+  expect(date.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  const method = within(form).getByLabelText('Zahlweg') as HTMLSelectElement;
+  expect(Array.from(method.options).map((option) => option.text)).toEqual([
+    'Überweisung',
+    'Bar',
+    'Karte',
+    'Sonstiges',
+  ]);
+  // The recorded payments are read from the server, not reconstructed locally.
+  expect(
+    await within(form).findByText('Noch keine Zahlung erfasst.'),
+  ).toBeTruthy();
+  fireEvent.change(within(form).getByLabelText('Betrag in €'), {
+    target: { value: '100,00' },
+  });
+  fireEvent.change(method, { target: { value: 'cash' } });
+  fireEvent.change(within(form).getByLabelText('Notiz (optional)'), {
+    target: { value: '  Erste Rate  ' },
+  });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Zahlung speichern' }),
+  );
+  await waitFor(() =>
+    expect(
+      calls.filter(
+        (call) => call.method === 'POST' && call.url.endsWith('/payments'),
+      ),
+    ).toHaveLength(1),
+  );
+  const post = calls.find(
+    (call) => call.method === 'POST' && call.url.endsWith('/payments'),
+  )!;
+  expect(post.url).toBe('/api/v1/documents/doc-re-1/payments');
+  expect(post.body).toEqual({
+    receivedOn: date.value,
+    amountMinor: 10000,
+    method: 'cash',
+    note: 'Erste Rate',
+  });
+  expect(await screen.findByText('Zahlung erfasst.')).toBeTruthy();
+});
+
+test('an unusable amount never leaves the browser', async () => {
+  const { calls } = setup({ documents: [invoiceFinal] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  fireEvent.click(
+    await within(invoices).findByRole('button', {
+      name: 'Rechnung RE-2030-0001 Zahlung erfassen',
+    }),
+  );
+  const form = await within(invoices).findByRole('form', {
+    name: 'Zahlung erfassen',
+  });
+  fireEvent.change(within(form).getByLabelText('Betrag in €'), {
+    target: { value: '0,00' },
+  });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Zahlung speichern' }),
+  );
+  expect(
+    await screen.findByText('Bitte einen Betrag größer als 0 eingeben.'),
+  ).toBeTruthy();
+  // A negative amount is not a decimal value this field accepts.
+  fireEvent.change(within(form).getByLabelText('Betrag in €'), {
+    target: { value: '-100' },
+  });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Zahlung speichern' }),
+  );
+  expect(
+    await screen.findByText('Bitte einen Betrag größer als 0 eingeben.'),
+  ).toBeTruthy();
+  expect(
+    calls.filter(
+      (call) => call.method === 'POST' && call.url.endsWith('/payments'),
+    ),
+  ).toHaveLength(0);
+});
+
+test('the recorded payments are listed oldest first with method and note', async () => {
+  setup({
+    documents: [invoicePartiallyPaid],
+    payments: () => Response.json(paymentRows),
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  fireEvent.click(
+    await within(invoices).findByRole('button', {
+      name: 'Rechnung RE-2030-0001 Zahlung erfassen',
+    }),
+  );
+  const list = await within(invoices).findByRole('list', {
+    name: 'Erfasste Zahlungen',
+  });
+  expect(within(list).getByText('26.10.2030')).toBeTruthy();
+  expect(within(list).getByText(/100,00 €/)).toBeTruthy();
+  expect(within(list).getByText(/Überweisung/)).toBeTruthy();
+  expect(within(list).getByText(/Erste Rate/)).toBeTruthy();
+});
+
+test('a loading and a failing payment list are named, never invented', async () => {
+  let release: (() => void) | undefined;
+  setup({
+    documents: [invoiceFinal],
+    payments: () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(Response.json(paymentRows));
+      }),
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  fireEvent.click(
+    await within(invoices).findByRole('button', {
+      name: 'Rechnung RE-2030-0001 Zahlung erfassen',
+    }),
+  );
+  // Loading is an explicit state, not an empty list.
+  expect(
+    await within(invoices).findByText('Zahlungen werden geladen …'),
+  ).toBeTruthy();
+  release!();
+  expect(await within(invoices).findByText('26.10.2030')).toBeTruthy();
+
+  cleanup();
+  setup({
+    documents: [invoiceFinal],
+    payments: () => new Response(null, { status: 500 }),
+  });
+  render(<EventDocuments {...props} />);
+  const secondInvoices = await screen.findByRole('region', {
+    name: 'Rechnungen',
+  });
+  fireEvent.click(
+    await within(secondInvoices).findByRole('button', {
+      name: 'Rechnung RE-2030-0001 Zahlung erfassen',
+    }),
+  );
+  const alert = await within(secondInvoices).findByRole('alert');
+  expect(alert.textContent).toContain('Zahlungen konnten nicht geladen werden');
+  // The form stays usable: only the list is unavailable.
+  expect(
+    within(secondInvoices).getByRole('form', { name: 'Zahlung erfassen' }),
+  ).toBeTruthy();
+});
+
+test('a refused overpayment is explained and never retried', async () => {
+  const { calls } = setup({
+    documents: [invoicePartiallyPaid],
+    recordPayment: () => Response.json({ error: 'overpaid' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  fireEvent.click(
+    await within(invoices).findByRole('button', {
+      name: 'Rechnung RE-2030-0001 Zahlung erfassen',
+    }),
+  );
+  const form = await within(invoices).findByRole('form', {
+    name: 'Zahlung erfassen',
+  });
+  fireEvent.change(within(form).getByLabelText('Betrag in €'), {
+    target: { value: '200' },
+  });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Zahlung speichern' }),
+  );
+  expect(
+    await screen.findByText(
+      'Der Betrag übersteigt den offenen Restbetrag. Bitte Betrag prüfen.',
+    ),
+  ).toBeTruthy();
+  // A 409 is a decision of the server, so the amount stays and no second write
+  // happens behind the operator's back.
+  expect(
+    (within(form).getByLabelText('Betrag in €') as HTMLInputElement).value,
+  ).toBe('200');
+  expect(
+    calls.filter(
+      (call) => call.method === 'POST' && call.url.endsWith('/payments'),
+    ),
+  ).toHaveLength(1);
+  expect(screen.queryByText('Zahlung erfasst.')).toBeNull();
 });

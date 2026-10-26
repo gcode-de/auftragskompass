@@ -8,6 +8,60 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.d — `feat: record incoming payments against a finalized invoice`** (26.10.2026)
+
+  Unter-Slice (d) von BKP019 nach rein lesender DeepSeek-Analyse zu `9d8e8a2`
+  (RG-09 „Zahlungseingänge mit Datum, Betrag, Zahlweg und Notiz“). Staleness:
+  (d) nicht begonnen (keine Tabelle/Route/UI); Zusatzbefunde: kein Zahlungsziel
+  (RG-07 offen) und der c2-Über-Gutschrift-Guard kennt Zahlungen nicht. Neu:
+  Migration `0044_document_payments` (append-only, keine Unique wegen
+  Teilzahlungen, Audit `payment.recorded`); `document-payments.ts` mit
+  Erfassung nur gegen **finale Rechnungen** (`POST /api/v1/documents/:id/
+  payments`: Datum nicht in der Zukunft, Betrag ≥1, Zahlweg
+  `bank_transfer|cash|card|other` = eigene dokumentierte Konvention, Notiz
+  ≤2000), `lockTenant`/Admin/Audit in einer Transaktion; **Überzahlung 409
+  `overpaid`** (Σ Zahlungen + neu ≤ offener Saldo); **erweiterter
+  Kredit-Guard aus c2:** `Σ Gutschriften + Σ Zahlungen ≤ Brutto + Σ
+  Lastschriften` – solange es keine Rückzahlungslogik gibt, darf nicht
+  gutgeschrieben werden, was bezahlt wurde (dokumentierter Zwischenzustand).
+  Abgeleitete Werte (nie gespeichert): Zahlungsstand `none|partial|paid` +
+  offener Betrag (`Brutto + Σdebit − Σcredit − ΣZahlungen`; die fehlende
+  Lastschriftensumme wird in der Projektion ergänzt); „überfällig“ bleibt
+  offen (RG-07 = eigener Slice, nicht erfunden). UI: Zahlungsstand/„Offener
+  Betrag“ auf der Rechnungszeile, kompakte Zahlungserfassung/-liste nur bei
+  finalen Rechnungen, ehrlicher Hinweis „bezahlt“ nur aus erfassten
+  Zahlungen (nie aus Druck), Zahlungen unveränderlich. Referenz ehrlich:
+  RG-08/09 Lastenheft-Soll, Bookitup-Zahlungs-UI unbekannt, keine Rechts-/
+  Steuerabnahme, keine Bank-/PSP-Anbindung. Tests zuerst rot (Negativfälle
+  inkl. Zukunft/0/negativ, Überzahlung, Parallelität, kein PATCH/DELETE,
+  erweiterter Kredit-Guard; `documents.test.ts:298–308` unantastbar).
+  Coding-Subagent: DeepSeek V4.1 Flash (gleiche Delegationsform), MiMo
+  besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (14/15 Integrationstests gegen entfernte
+  Migration – echtes Produkt-RED; ehrlich getrennt: sechs Harness-/Testfehler
+  wurden beim Rotlauf repariert und benannt), danach grün: `test:unit`
+  274/274, `test:component` 729/729 (6 neu), `test:integration` 410/410
+  (16 neu: Erfassung+Audit, Teilzahlung→bezahlt ohne Versionssprung,
+  Überzahlung 409 ohne Zeile/Audit, Datums-/Betrags-/Zahlweg-/Notizgrenzen,
+  Nicht-Rechnung/Entwurf/fremd, Administratorrecht, Parallelzahlung (genau
+  eine), Routen inkl. kein PATCH/DELETE, erweiterter Kredit-Guard
+  „50,00 € gezahlt → höchstens 223,10 € gutgeschrieben“, Projektion nur in
+  `include=offer`, Mandantentrennung, DB-CHECKs/FK/kein Cascade),
+  `test:coverage` 1413 vollständig (Changed 91,8%/80,7%),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. Ablauf zweite Rechnung: offen →
+  40,00 € → teilweise → 60,00 € bar → bezahlt/0,00 € → Überzahlung
+  abgelehnt, DB-/Audit-/Projektionsnachweise, PDF/Hash unverändert,
+  PATCH/DELETE 404. Notiert: „überfällig“ fehlt ehrlich (RG-07 =
+  Zahlungsziel eigener Slice); keine Rückzahlungslogik (bezahlt wird nicht
+  gutgeschrieben – dokumentierter Zwischenzustand); kein
+  Idempotenzschlüssel (UI blockt Doppelklick, Netz-Retry theoretisch
+  möglich – Kandidat für späteren Beleg-Mechanismus); Überzahlungsregel
+  lebt unter `lockTenant`, nicht strukturell in der DB; AJV coerct
+  numerische Strings; Zahlwegwerte sind eigene Konvention; ein
+  vorbestehender Parallelitäts-Flake (testcontainers file-lock in
+  worker-main.test.ts) fiel einmal aus, Wiederholungslauf grün.
+
 - [x] **BKP019.c2 — `feat: correct a finalized invoice with a credit or debit correction`** (26.10.2026)
 
   Unter-Slice (c2) von BKP019 nach rein lesender DeepSeek-Analyse zu `c2e8ef2`

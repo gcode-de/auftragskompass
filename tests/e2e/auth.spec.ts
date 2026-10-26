@@ -36,6 +36,7 @@ import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerDocumentRoutes } from '../../packages/core/src/documents.js';
+import { registerDocumentPaymentRoutes } from '../../packages/core/src/document-payments.js';
 import { registerDocumentTemplateRoutes } from '../../packages/core/src/document-templates.js';
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 import { StorageError } from '../../packages/core/src/storage.js';
@@ -213,6 +214,9 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       render: async (html: string) =>
         Buffer.from('%PDF-1.4 synthetic ' + html.length),
     });
+    // BKP019.d: incoming payments are their own route pair next to the document
+    // routes, guarded by the same auth and CSRF hook.
+    registerDocumentPaymentRoutes(app, pool, config.tenantId);
     // BKP019.0: the offer card reads the real template list, so the seeded
     // template is selectable instead of failing the whole panel load.
     registerDocumentTemplateRoutes(app, pool, config.tenantId);
@@ -1658,6 +1662,294 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       valid_until: offer.valid_until,
       number: offer.number,
     });
+    // BKP019.d: incoming payments are recorded against a finalized invoice, and
+    // "offen / teilweise bezahlt / bezahlt" is derived only from those records.
+    // A second, independent invoice is used because the first one is already
+    // fully credited - a paid invoice may no longer be credited at all.
+    await eventOffers
+      .getByLabel('Vorlage')
+      .selectOption({ label: 'Fictional browser offer' });
+    await eventOffers.getByRole('button', { name: 'Entwurf anlegen' }).click();
+    await expect(page.getByText('Entwurf angelegt.')).toBeVisible();
+    await eventOffers
+      .getByRole('button', { name: 'Angebot Entwurf finalisieren' })
+      .click();
+    await expect(page.getByText(/Finalisiert als AN-/)).toBeVisible();
+    const secondOfferNumber = (
+      await pool.query<{ number: string }>(
+        `SELECT number FROM documents
+          WHERE tenant_id=$1 AND event_id=$2 AND kind='offer' AND number IS NOT NULL
+          ORDER BY number DESC LIMIT 1`,
+        [config.tenantId, offerEventId],
+      )
+    ).rows[0]!.number;
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + secondOfferNumber + ' versendet markieren',
+      })
+      .click();
+    await expect(
+      page.getByText('Angebotsstatus aktualisiert: Versendet.'),
+    ).toBeVisible();
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + secondOfferNumber + ' annehmen',
+      })
+      .click();
+    const secondAcceptance = eventOffers.getByRole('form', {
+      name: 'Annahme erfassen',
+    });
+    await secondAcceptance.getByLabel('Kanal').selectOption('email');
+    await secondAcceptance
+      .getByRole('button', { name: 'Annahme speichern' })
+      .click();
+    await expect(
+      page.getByText('Angebotsstatus aktualisiert: Angenommen.'),
+    ).toBeVisible();
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + secondOfferNumber + ' Auftragsbestätigung erstellen',
+      })
+      .click();
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + secondOfferNumber + ' Auftragsbestätigung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText('Auftragsbestätigung als Entwurf angelegt.'),
+    ).toBeVisible();
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung Entwurf finalisieren',
+      })
+      .click();
+    await expect(page.getByText(/Finalisiert als AB-/)).toBeVisible();
+    const secondConfirmationNumber = (
+      await pool.query<{ number: string }>(
+        `SELECT number FROM documents
+          WHERE tenant_id=$1 AND event_id=$2 AND kind='order_confirmation'
+            AND state='final'
+          ORDER BY number DESC LIMIT 1`,
+        [config.tenantId, offerEventId],
+      )
+    ).rows[0]!.number;
+    await orders
+      .getByRole('button', {
+        name:
+          'Auftragsbestätigung ' +
+          secondConfirmationNumber +
+          ' Rechnung erstellen',
+      })
+      .click();
+    await orders
+      .getByRole('button', {
+        name:
+          'Auftragsbestätigung ' +
+          secondConfirmationNumber +
+          ' Rechnung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText('Rechnung als Entwurf angelegt.'),
+    ).toBeVisible();
+    await invoices
+      .getByRole('button', { name: 'Rechnung Entwurf finalisieren' })
+      .click();
+    await expect(page.getByText(/Finalisiert als RE-/)).toBeVisible();
+    const secondInvoice = (
+      await pool.query<{
+        id: string;
+        number: string;
+        gross_minor: string;
+        pdf_hash: string;
+      }>(
+        `SELECT id, number, gross_minor::text AS gross_minor, pdf_hash
+           FROM documents
+          WHERE tenant_id=$1 AND event_id=$2 AND kind='invoice' AND state='final'
+          ORDER BY number DESC LIMIT 1`,
+        [config.tenantId, offerEventId],
+      )
+    ).rows[0]!;
+    const secondInvoiceRow = invoices
+      .getByRole('listitem')
+      .filter({ hasText: secondInvoice.number });
+    // The open claim of a fresh invoice is its own gross, and the state before
+    // any payment is "Offen" - not "bezahlt", not "teilweise".
+    await expect(
+      secondInvoiceRow.getByText('Offen', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      secondInvoiceRow.getByText(/Offener Betrag: 100,00 €/),
+    ).toBeVisible();
+    // A payment is recorded by hand: day, amount, method and an optional note.
+    await secondInvoiceRow
+      .getByRole('button', {
+        name: 'Rechnung ' + secondInvoice.number + ' Zahlung erfassen',
+      })
+      .click();
+    const paymentForm = invoices.getByRole('form', {
+      name: 'Zahlung erfassen',
+    });
+    await expect(paymentForm).toBeVisible();
+    await expect(
+      paymentForm.getByText(/unveränderlicher Eingang/),
+    ).toBeVisible();
+    await expect(paymentForm.getByText(/nie aus einem Ausdruck/)).toBeVisible();
+    await expect(paymentForm.getByLabel('Zahlungsdatum')).toHaveValue(
+      /^\d{4}-\d{2}-\d{2}$/,
+    );
+    await expect(
+      paymentForm.getByText('Noch keine Zahlung erfasst.'),
+    ).toBeVisible();
+    await paymentForm.getByLabel('Betrag in €').fill('40,00');
+    await paymentForm.getByLabel('Zahlweg').selectOption('bank_transfer');
+    await paymentForm
+      .getByLabel('Notiz (optional)')
+      .fill('Synthetische Teilzahlung');
+    await paymentForm
+      .getByRole('button', { name: 'Zahlung speichern' })
+      .click();
+    await expect(page.getByText('Zahlung erfasst.')).toBeVisible();
+    // A partial payment changes the derived state and the open amount, and the
+    // recorded row is listed with its day, amount, method and note.
+    await expect(
+      secondInvoiceRow.getByText('Teilweise bezahlt', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      secondInvoiceRow.getByText(/Offener Betrag: 60,00 €/),
+    ).toBeVisible();
+    const paymentList = paymentForm.getByRole('list', {
+      name: 'Erfasste Zahlungen',
+    });
+    await expect(paymentList.getByText(/40,00 €/)).toBeVisible();
+    await expect(paymentList.getByText(/Überweisung/)).toBeVisible();
+    await expect(
+      paymentList.getByText(/Synthetische Teilzahlung/),
+    ).toBeVisible();
+    // The rest is paid in cash: the invoice is paid only because two payments
+    // were recorded, never because a PDF was printed.
+    await paymentForm.getByLabel('Betrag in €').fill('60');
+    await paymentForm.getByLabel('Zahlweg').selectOption('cash');
+    await paymentForm
+      .getByRole('button', { name: 'Zahlung speichern' })
+      .click();
+    await expect(
+      secondInvoiceRow.getByText('Bezahlt', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      secondInvoiceRow.getByText(/Offener Betrag: 0,00 €/),
+    ).toBeVisible();
+    await expect(paymentList.getByText(/60,00 €/)).toBeVisible();
+    await expect(paymentList.getByText(/Bar/)).toBeVisible();
+    // Overpaying is refused by the server: no row, no derived state change, the
+    // operator sees why, and the typed amount stays for correction.
+    await paymentForm.getByLabel('Betrag in €').fill('1,00');
+    await paymentForm
+      .getByRole('button', { name: 'Zahlung speichern' })
+      .click();
+    await expect(
+      page.getByText(
+        'Der Betrag übersteigt den offenen Restbetrag. Bitte Betrag prüfen.',
+      ),
+    ).toBeVisible();
+    await expect(paymentForm.getByLabel('Betrag in €')).toHaveValue('1,00');
+    await expect(
+      secondInvoiceRow.getByText('Bezahlt', { exact: true }),
+    ).toBeVisible();
+    const storedPayments = (
+      await pool.query<{
+        amount_minor: string;
+        method: string;
+        note: string | null;
+        recorded_by: string;
+      }>(
+        `SELECT amount_minor::text AS amount_minor, method, note, recorded_by
+           FROM document_payments
+          WHERE tenant_id=$1 AND document_id=$2
+          ORDER BY received_on, recorded_at, id`,
+        [config.tenantId, secondInvoice.id],
+      )
+    ).rows;
+    expect(storedPayments).toEqual([
+      {
+        amount_minor: '4000',
+        method: 'bank_transfer',
+        note: 'Synthetische Teilzahlung',
+        recorded_by: expect.any(String),
+      },
+      {
+        amount_minor: '6000',
+        method: 'cash',
+        note: null,
+        recorded_by: expect.any(String),
+      },
+    ]);
+    // Every payment is audited once, and the projection carries the derived
+    // axis for the invoice - both are read from the same server.
+    expect(
+      (
+        await pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM audit_events
+            WHERE tenant_id=$1 AND action='payment.recorded' AND record_id IN
+              (SELECT id FROM document_payments WHERE document_id=$2)`,
+          [config.tenantId, secondInvoice.id],
+        )
+      ).rows[0]!.count,
+    ).toBe(2);
+    const projectedInvoices = (await (
+      await page.request.get(
+        origin + '/api/v1/documents?eventId=' + offerEventId + '&include=offer',
+      )
+    ).json()) as {
+      id: string;
+      paymentState: string | null;
+      openMinor: number | null;
+    }[];
+    expect(
+      projectedInvoices.find((row) => row.id === secondInvoice.id),
+    ).toMatchObject({ paymentState: 'paid', openMinor: 0 });
+    // Money never rewrites the invoice: same number, same amount, same bytes.
+    const invoiceAfterPayments = (
+      await pool.query<{
+        number: string;
+        gross_minor: string;
+        pdf_hash: string;
+      }>(
+        'SELECT number, gross_minor::text AS gross_minor, pdf_hash FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, secondInvoice.id],
+      )
+    ).rows[0]!;
+    expect(invoiceAfterPayments).toEqual({
+      number: secondInvoice.number,
+      gross_minor: secondInvoice.gross_minor,
+      pdf_hash: secondInvoice.pdf_hash,
+    });
+    const paidInvoicePdf = await page.request.get(
+      origin + '/api/v1/documents/' + secondInvoice.id + '/pdf',
+    );
+    expect(paidInvoicePdf.status()).toBe(200);
+    // A direct edit or deletion of a payment does not exist: with a valid CSRF
+    // token the router itself answers 404, so this is not just a CSRF refusal.
+    for (const method of ['PATCH', 'DELETE'] as const) {
+      const refused = await page.request.fetch(
+        origin + '/api/v1/documents/' + secondInvoice.id + '/payments',
+        {
+          method,
+          headers: { origin, 'x-csrf-token': csrf },
+          failOnStatusCode: false,
+        },
+      );
+      expect(refused.status(), method).toBe(404);
+    }
+    // The fixture is removed by hand and in dependency order: the application
+    // deliberately has no delete path for money, and the foreign key does not
+    // cascade.
+    await pool.query(
+      `DELETE FROM document_payments WHERE tenant_id=$1 AND document_id IN
+        (SELECT id FROM documents WHERE tenant_id=$1 AND event_id=$2)`,
+      [config.tenantId, offerEventId],
+    );
     // The observer below reports the Dateien list only, so the PDF reads and
     // the three status writes of this step are cleared here.
     pdfRequests.length = 0;

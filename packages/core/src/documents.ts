@@ -51,6 +51,13 @@ import {
 } from './document-pdf.js';
 import { storeDocumentPdf, readDocumentPdf } from './document-artifacts.js';
 import { StorageError, type StorageAdapter } from './storage.js';
+import {
+  openMinorOf,
+  paidMinorOf,
+  paymentState,
+  paymentStates,
+  type PaymentState,
+} from './document-payments.js';
 
 export class DocumentError extends Error {
   constructor(
@@ -239,6 +246,12 @@ export type DocumentOfferRow = DocumentListRow & {
   correctionState: CorrectionState | null;
   /** What is still creditable, as a magnitude; NULL for every other row. */
   remainingCredit: number | null;
+  // BKP019.d: how much money arrived and what is still open on a finalized
+  // invoice. Both are derived from `document_payments` and the final
+  // corrections - nothing here is ever written back to the document.
+  paymentState: PaymentState | null;
+  /** `gross + debits - credits - payments`; NULL for every other row. */
+  openMinor: number | null;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -625,8 +638,11 @@ export function documentRepository(
   }
 
   // BKP019.c2: a credit note is bounded by what is still open on its source. A
-  // debit is not: it raises the claim. The balance a later payment slice reads is
-  // `gross + sum(debit) - sum(credit) - sum(payments)`, all magnitudes.
+  // debit is not: it raises the claim.
+  // BKP019.d: money that already arrived is part of "what is still open". As long
+  // as no refund exists, crediting a paid invoice would create a balance the
+  // system cannot settle, so the guard now reads
+  // `sum(credits) + sum(payments) <= gross + sum(debits)`.
   async function assertCorrectionCredit(
     connection: Connection,
     correction: { id: string; grossMinor: number },
@@ -642,12 +658,13 @@ export function documentRepository(
       .from(documents)
       .where(and(scope, eq(documents.id, sourceDocumentId)));
     if (!source) throw new DocumentError('missing_reference');
-    const { credited } = await correctionSums(
-      connection,
-      sourceDocumentId,
-      correction.id,
-    );
-    if (credited + correction.grossMinor > source.grossMinor)
+    const { credited, debited } = await correctionSums(
+        connection,
+        sourceDocumentId,
+        correction.id,
+      ),
+      paid = await paidMinorOf(connection, tenantId, sourceDocumentId);
+    if (credited + paid + correction.grossMinor > source.grossMinor + debited)
       throw new DocumentError('credit_exceeds_invoice');
   }
 
@@ -1026,6 +1043,22 @@ export function documentRepository(
                  AND c.state = 'final'
                  AND c.correction_direction = 'credit'
             )`.as('credited_gross_minor'),
+            // BKP019.d: the other half of the balance. Debits raise the claim and
+            // payments reduce it; both are read in this one query, so the open
+            // amount of a row can never be assembled from two different reads.
+            debitedGrossMinor: sql<string>`(
+              SELECT coalesce(sum(c.gross_minor), 0)::text FROM documents c
+               WHERE c.tenant_id = documents.tenant_id
+                 AND c.source_document_id = documents.id
+                 AND c.kind = 'correction'
+                 AND c.state = 'final'
+                 AND c.correction_direction = 'debit'
+            )`.as('debited_gross_minor'),
+            paidMinor: sql<string>`(
+              SELECT coalesce(sum(p.amount_minor), 0)::text FROM document_payments p
+               WHERE p.tenant_id = documents.tenant_id
+                 AND p.document_id = documents.id
+            )`.as('paid_minor'),
           })
           .from(documents)
           .where(narrowed)
@@ -1079,6 +1112,8 @@ export function documentRepository(
             sourceNumber,
             correctionDirection,
             creditedGrossMinor,
+            debitedGrossMinor,
+            paidMinor: paidGrossMinor,
             ...row
           }) => {
             // BKP019.c2: only a finalized invoice or confirmation owns a
@@ -1089,6 +1124,15 @@ export function documentRepository(
                 row.kind === 'invoice' || row.kind === 'order_confirmation',
               derived = correctable && row.state === 'final',
               credited = Number(creditedGrossMinor ?? 0);
+            // BKP019.d: only a finalized invoice is a claim and can be paid. The
+            // claim is `gross + debits - credits`; what is open subtracts the
+            // payments. Both stay magnitudes and are never stored.
+            const payable = row.kind === 'invoice' && row.state === 'final',
+              claim =
+                row.grossMinor +
+                Number(debitedGrossMinor ?? 0) -
+                Number(creditedGrossMinor ?? 0),
+              paid = Number(paidGrossMinor ?? 0);
             return {
               ...row,
               offerStatus: offerStatus as OfferStatus | null,
@@ -1120,6 +1164,11 @@ export function documentRepository(
               remainingCredit: derived
                 ? Math.max(0, row.grossMinor - credited)
                 : null,
+              // BKP019.d: "bezahlt" is never a print or a written status - it is
+              // the sum of the payments that were recorded for this invoice. A
+              // NULL is the honest value for every document that is no claim.
+              paymentState: payable ? paymentState(claim, paid) : null,
+              openMinor: payable ? openMinorOf(claim, paid) : null,
               // Derived, never stored: the deadline and the tenant day decide.
               offerExpired: offerExpired(
                 validUntil,
@@ -2111,6 +2160,17 @@ export function registerDocumentRoutes(
       anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
     },
   };
+  // BKP019.d: the payment axis, like the correction axis, belongs to the opt-in
+  // projection only. `offerRow` (the status routes) and `listRow` (the metadata
+  // projection) do not grow, so no older route changes its shape.
+  const paymentFields = {
+    paymentState: {
+      anyOf: [{ type: 'string', enum: [...paymentStates] }, { type: 'null' }],
+    },
+    openMinor: {
+      anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+    },
+  };
   const row = {
     type: 'object',
     additionalProperties: false,
@@ -2469,11 +2529,13 @@ export function registerDocumentRoutes(
       ...listRow.required,
       ...Object.keys(offerFields),
       ...Object.keys(correctionFields),
+      ...Object.keys(paymentFields),
     ],
     properties: {
       ...listRow.properties,
       ...offerFields,
       ...correctionFields,
+      ...paymentFields,
     },
   };
   app.get<{ Querystring: DocumentFilters }>(

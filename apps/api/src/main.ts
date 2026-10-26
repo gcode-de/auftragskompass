@@ -26,6 +26,7 @@ import {
   registerDocumentNumberRoutes,
   registerDocumentLayoutRoutes,
   registerDocumentRoutes,
+  registerDocumentPaymentRoutes,
   registerLibraryFileRoutes,
   localStorageAdapter,
   chromiumPdfRenderer,
@@ -120,6 +121,9 @@ try {
       store: documentStore,
       render: documentRender,
     });
+    // BKP019.d: incoming payments are recorded per finalized invoice, right next
+    // to the document routes and with the same auth and CSRF hook.
+    registerDocumentPaymentRoutes(app, pool, auth.tenantId);
     // BKP020.1: the file library shares the storage mount but has its own
     // tenant-bound rows and API.
     registerLibraryFileRoutes(app, pool, auth.tenantId, documentStore);
