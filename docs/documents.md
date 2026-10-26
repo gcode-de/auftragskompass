@@ -90,7 +90,10 @@ vergeben, kein Artefakt abgelegt und kein Geschäfts-/Auditdatensatz verändert.
 Vorschau und Finalisierung verwenden dieselbe Renderaufbereitung. Bei Angeboten
 ergibt sich „Gültig bis“ aus dem jeweiligen Ausgabedatum und der gespeicherten
 Tageszahl in der Mandantenzeitzone. Die Vorschau ist keine Finalisierung und
-kann bei späterem tatsächlichem Ausgabedatum eine andere Frist zeigen.
+kann bei späterem tatsächlichem Ausgabedatum eine andere Frist zeigen. Mit der
+Finalisierung wird die Frist einmalig als `valid_until` fixiert (BKP019.0) –
+genau der Wert, den das finale PDF druckt. Spätere Statusänderungen lassen die
+Frist und die PDF-Bytes unverändert.
 
 Eine Vorschau ungespeicherter Eingaben wird nicht behauptet: zuerst speichern,
 dann die Vorschau der gespeicherten Fassung öffnen. `POST
@@ -347,6 +350,27 @@ bestätigten Anlage (mit oder ohne Vorlage) bleibt der gespeicherte Entwurf in
 der Liste sichtbar und bedienbar, auch wenn der anschließende Listenabruf
 scheitert; das Neuladen wird dann ausdrücklich als reine GET-Wiederholung
 angeboten und nie blind erneut gesendet.
+
+## Angebotsgültigkeit und -Status (BKP019.0)
+
+Angebote tragen zwei getrennte Achsen: `state` beschreibt die Inhaltsreife
+(Entwurf/final/zurückgezogen), der Fachstatus `offer_status` den
+Geschäftsstand (versendet/angenommen/zurückgezogen). Beide werden nie
+vermischt; ein Status ohne finalen Inhalt ist unmöglich. Erlaubte Übergänge:
+auf ein finales Angebot ohne Anspruch „Versendet markieren“ oder
+„Zurückziehen“, auf ein versendetes „Angenommen“ oder „Zurückziehen“, auf ein
+angenommenes „Zurückziehen“; zurückgezogen ist endgültig (eine Kopie ist ein
+neuer Datensatz). Ungültige Übergänge werden mit 409 abgewiesen, die
+erneute identische Aktion ist ein wirkungsloser No-op ohne zweiten
+Audit-Eintrag, jeder echte Wechsel ist versioniert und wird auditiert. Es
+gibt keine Automatik: weder E-Mail-Eingang noch Druck erzeugen einen Status.
+„Abgelaufen“ ist kein gespeicherter Wert, sondern wird aus `valid_until` in
+der Mandantenzeitzone abgeleitet (gültig bis überschritten und weder
+angenommen noch zurückgezogen). In der Event-Dateienansicht zeigt die
+Angebotszeile Fachstatus, „Gültig bis“ und den abgeleiteten Ablauf; die
+globale Dateiliste zeigt weiterhin nur die Inhaltsreife (Frist-/Statusfilter
+folgen in einem späteren Unter-Slice). Rechts- oder Steuerbehauptungen sind
+das ausdrücklich nicht.
 
 ## Dokumentvorlagen verwalten (BKP015.4)
 

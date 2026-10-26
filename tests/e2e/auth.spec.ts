@@ -36,6 +36,7 @@ import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerDocumentRoutes } from '../../packages/core/src/documents.js';
+import { registerDocumentTemplateRoutes } from '../../packages/core/src/document-templates.js';
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 import { StorageError } from '../../packages/core/src/storage.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
@@ -191,17 +192,30 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     // H035: the Dateien area reads the real, protected document list; the steps
     // below intercept its metadata request with synthetic rows instead of
     // touching any document, PDF or storage key.
+    // BKP019.0: the offer status flow needs real artefact bytes, so the store
+    // keeps the synthetic PDF in memory instead of pretending a write.
+    const documentArtifacts = new Map<string, Buffer>();
     registerDocumentRoutes(app, pool, config.tenantId, {
       origin,
       store: {
-        async put() {},
-        async read() {
-          throw new Error('synthetic');
+        async put(key: string, bytes: Buffer) {
+          documentArtifacts.set(key, Buffer.from(bytes));
         },
-        async remove() {},
+        async read(key: string) {
+          const bytes = documentArtifacts.get(key);
+          if (!bytes) throw new StorageError('missing');
+          return bytes;
+        },
+        async remove(key: string) {
+          documentArtifacts.delete(key);
+        },
       },
-      render: async () => Buffer.from('%PDF-1.4 synthetic'),
+      render: async (html: string) =>
+        Buffer.from('%PDF-1.4 synthetic ' + html.length),
     });
+    // BKP019.0: the offer card reads the real template list, so the seeded
+    // template is selectable instead of failing the whole panel load.
+    registerDocumentTemplateRoutes(app, pool, config.tenantId);
     // BKP020.1: the library runs on an in-memory adapter, so the browser
     // uploads and downloads real synthetic bytes without touching the disk.
     const libraryBytes = new Map<string, Buffer>();
@@ -827,6 +841,51 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     // Modifier clicks never change the current route or filters.
     await eventLink.click({ modifiers: ['ControlOrMeta'] });
     expect(new URL(page.url()).hash).toBe('#files');
+    // BKP019.0: the offer validity and status flow, run against the real
+    // document routes of this tenant. Only synthetic fixtures are seeded: one
+    // contact, one offer template with one position, a layout and a number
+    // range. The event is the one the stubbed Dateien row already links to.
+    const offerContactId = randomUUID(),
+      offerTemplateId = randomUUID(),
+      offerEventId = '33333333-3333-4333-8333-333333333333';
+    await pool.query(
+      `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+        email,phone,mobile,phone_key,mobile_key,state,version)
+       VALUES ($1,$2,'private','Fictional Offer Recipient','Robin Example','Fictional Way 1','00000',
+        'Example City','DE','offer-recipient@example.invalid','','','','','active',1)`,
+      [config.tenantId, offerContactId],
+    );
+    await pool.query(
+      `INSERT INTO event_contacts (tenant_id,event_id,contact_id,role)
+       VALUES ($1,$2,$3,'primary')`,
+      [config.tenantId, offerEventId, offerContactId],
+    );
+    await pool.query(
+      `INSERT INTO document_templates (tenant_id,id,kind,name,subject,intro_text,outro_text,
+        validity_days,state,version)
+       VALUES ($1,$2,'offer','Fictional browser offer','Angebot für {{contact}}','Hallo','Ende',
+        14,'active',1)`,
+      [config.tenantId, offerTemplateId],
+    );
+    await pool.query(
+      `INSERT INTO document_template_positions (tenant_id,template_id,id,position,product_id,
+        description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points)
+       VALUES ($1,$2,$3,0,NULL,'Fictional browser service',1,'Stück',10000,1900,0)`,
+      [config.tenantId, offerTemplateId, randomUUID()],
+    );
+    await pool.query(
+      `INSERT INTO document_layouts (tenant_id,sender_name,sender_street,sender_postal_code,
+        sender_city,primary_color,text_color,font_family,show_page_numbers,show_position_numbers,
+        version)
+       VALUES ($1,'Fictional Studio','Fictional Way 1','00000','Example City','#234f3b','#202020',
+        'system',true,true,1) ON CONFLICT DO NOTHING`,
+      [config.tenantId],
+    );
+    await pool.query(
+      `INSERT INTO document_number_sequences (tenant_id,kind,pattern,min_length,next_value,version)
+       VALUES ($1,'offer','AN-{YYYY}-{SEQ}',4,1,1) ON CONFLICT DO NOTHING`,
+      [config.tenantId],
+    );
     // A plain click is ordinary SPA navigation and opens the event details.
     await eventLink.click();
     await expect(page).toHaveURL(
@@ -835,6 +894,162 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       page.locator('#event-33333333-3333-4333-8333-333333333333'),
     ).toBeVisible();
+    // BKP019.0: the offer validity and status flow, seeded above before the
+    // event details load, because the panel reads the event's primary contact.
+    await page
+      .getByRole('navigation', { name: 'Bereiche des Events' })
+      .getByRole('button', { name: 'Dateien' })
+      .click();
+    const eventOffers = page.getByRole('region', { name: 'Angebote' });
+    await eventOffers
+      .getByLabel('Vorlage')
+      .selectOption({ label: 'Fictional browser offer' });
+    await eventOffers.getByRole('button', { name: 'Entwurf anlegen' }).click();
+    await expect(page.getByText('Entwurf angelegt.')).toBeVisible();
+    // One explicit finalization: it freezes number, PDF and the deadline.
+    await eventOffers
+      .getByRole('button', { name: 'Angebot Entwurf finalisieren' })
+      .click();
+    await expect(page.getByText(/Finalisiert als/)).toBeVisible();
+    // Finalization and the business status stay two separate facts.
+    await expect(
+      eventOffers.getByText('Finalisiert', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      eventOffers.getByText('Noch nicht versendet', { exact: true }),
+    ).toBeVisible();
+    await expect(eventOffers.getByText(/Gültig bis/)).toBeVisible();
+    await expect(eventOffers.getByText('Abgelaufen')).toHaveCount(0);
+    const offer = (
+      await pool.query<{
+        id: string;
+        number: string;
+        valid_until: string;
+        offer_status: string | null;
+      }>(
+        `SELECT id, number, to_char(valid_until,'DD.MM.YYYY') AS valid_until, offer_status
+           FROM documents WHERE tenant_id=$1 AND event_id=$2`,
+        [config.tenantId, offerEventId],
+      )
+    ).rows[0]!;
+    expect(offer.offer_status).toBeNull();
+    // The visible deadline is the stored one, not a second computation.
+    await expect(
+      eventOffers.getByText(offer.valid_until, { exact: true }),
+    ).toBeVisible();
+    const pdfOf = async () =>
+      await page.request.get(origin + '/api/v1/documents/' + offer.id + '/pdf');
+    const firstPdf = await pdfOf();
+    expect(firstPdf.status()).toBe(200);
+    const firstBytes = await firstPdf.body();
+    expect(firstBytes.subarray(0, 5).toString()).toBe('%PDF-');
+    // BKP019.0: three explicit operator actions, each one a separate step.
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + offer.number + ' versendet markieren',
+      })
+      .click();
+    await expect(
+      page.getByText('Angebotsstatus aktualisiert: Versendet.'),
+    ).toBeVisible();
+    await expect(
+      eventOffers.getByText('Versendet', { exact: true }),
+    ).toBeVisible();
+    // A sent offer offers "accepted", never "sent" again.
+    await expect(
+      eventOffers.getByRole('button', {
+        name: 'Angebot ' + offer.number + ' versendet markieren',
+      }),
+    ).toHaveCount(0);
+    await eventOffers
+      .getByRole('button', { name: 'Angebot ' + offer.number + ' annehmen' })
+      .click();
+    await expect(
+      page.getByText('Angebotsstatus aktualisiert: Angenommen.'),
+    ).toBeVisible();
+    await expect(
+      eventOffers.getByText('Angenommen', { exact: true }),
+    ).toBeVisible();
+    // No invented jump: an accepted offer cannot be accepted again.
+    await expect(
+      eventOffers.getByRole('button', { name: /annehmen$/ }),
+    ).toHaveCount(0);
+    await audit('event-angebot-angenommen');
+    // Withdrawing asks once, and only then writes.
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + offer.number + ' zurückziehen',
+      })
+      .click();
+    await expect(
+      eventOffers.getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Rückzug bestätigen',
+      }),
+    ).toBeVisible();
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Rückzug bestätigen',
+      })
+      .click();
+    await expect(
+      page.getByText('Angebotsstatus aktualisiert: Zurückgezogen.'),
+    ).toBeVisible();
+    await expect(
+      eventOffers.getByText('Zurückgezogen', { exact: true }),
+    ).toBeVisible();
+    // A withdrawn offer is terminal: no status action and still its PDF.
+    await expect(
+      eventOffers.getByRole('button', {
+        name: /versendet markieren|annehmen$|zurückziehen$/,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      eventOffers.getByRole('link', {
+        name: 'Angebot ' + offer.number + ' als PDF öffnen',
+      }),
+    ).toBeVisible();
+    // Every status change kept the same bytes and the same deadline.
+    const secondPdf = await pdfOf();
+    expect(secondPdf.status()).toBe(200);
+    expect((await secondPdf.body()).equals(firstBytes)).toBe(true);
+    const after = (
+      await pool.query<{
+        state: string;
+        offer_status: string;
+        valid_until: string;
+        number: string;
+      }>(
+        `SELECT state, offer_status, to_char(valid_until,'DD.MM.YYYY') AS valid_until, number
+           FROM documents WHERE tenant_id=$1 AND id=$2`,
+        [config.tenantId, offer.id],
+      )
+    ).rows[0]!;
+    expect(after).toEqual({
+      state: 'final',
+      offer_status: 'withdrawn',
+      valid_until: offer.valid_until,
+      number: offer.number,
+    });
+    // The observer below reports the Dateien list only, so the PDF reads and
+    // the three status writes of this step are cleared here.
+    pdfRequests.length = 0;
+    // Nothing of this step may outlive it: the event is deleted further below.
+    await pool.query(
+      'DELETE FROM documents WHERE tenant_id=$1 AND event_id=$2',
+      [config.tenantId, offerEventId],
+    );
+    await pool.query(
+      'DELETE FROM event_contacts WHERE tenant_id=$1 AND event_id=$2',
+      [config.tenantId, offerEventId],
+    );
+    await pool.query('DELETE FROM contacts WHERE tenant_id=$1 AND id=$2', [
+      config.tenantId,
+      offerContactId,
+    ]);
+    await pool.query(
+      'DELETE FROM document_templates WHERE tenant_id=$1 AND id=$2',
+      [config.tenantId, offerTemplateId],
+    );
     await page.goBack();
     await expect(page).toHaveURL(/status=option/);
     await page.goBack();

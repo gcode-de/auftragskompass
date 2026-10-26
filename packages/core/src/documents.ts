@@ -64,6 +64,8 @@ export class DocumentError extends Error {
       | 'invalid_content'
       | 'artifact_failed'
       | 'invalid_filter'
+      | 'invalid_transition'
+      | 'invalid_kind'
       | 'conflict',
   ) {
     super('Document rejected');
@@ -102,9 +104,59 @@ export type DocumentFilters = {
   /** Explicit page size; omitted keeps the full, unbounded list. */
   limit?: number;
   offset?: number;
-  /** Opt-in projection for the Dateien overview; omitted keeps the old shape. */
-  include?: 'metadata';
+  /** Opt-in projection; omitted keeps the old, unchanged list shape. */
+  include?: 'metadata' | 'offer';
 };
+// The business status of an offer is a second axis next to `state`: the content
+// stays final and byte-identical while the offer is sent, accepted or withdrawn.
+export type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
+export const offerStatuses = ['sent', 'accepted', 'withdrawn'] as const;
+// `null` is "no claim yet" (final, never sent). `withdrawn` is terminal: a
+// correction is a new document, exactly like a corrected final document.
+// `expired` is deliberately absent - it is a date comparison, not an event.
+const offerTransitions: Record<OfferStatus | 'unset', readonly OfferStatus[]> =
+  {
+    unset: ['sent', 'withdrawn'],
+    sent: ['accepted', 'withdrawn'],
+    accepted: ['withdrawn'],
+    withdrawn: [],
+  };
+export function assertOfferTransition(
+  from: OfferStatus | null,
+  to: OfferStatus,
+): void {
+  if (!offerTransitions[from ?? 'unset'].includes(to))
+    throw new DocumentError('invalid_transition');
+}
+// Migration 0039 allows `document.sent|accepted|withdrawn`; the shared
+// `AuditAction` union does not name them yet. The one documented widening keeps
+// `appendAudit` the single audit write path instead of repeating its insert
+// here. A later slice can extend the union and drop this helper unchanged.
+function offerAuditAction(
+  status: OfferStatus,
+): Parameters<typeof appendAudit>[2] {
+  return `document.${status}` as unknown as Parameters<typeof appendAudit>[2];
+}
+// Expiry is derived in the tenant's own calendar day, so a 23- or 25-hour DST
+// day and a late-evening finalization can never shift the deadline by a day.
+export function offerExpired(
+  validUntil: string | null,
+  status: OfferStatus | null,
+  at: Date,
+  timeZone: string,
+): boolean {
+  if (!validUntil || status === 'accepted' || status === 'withdrawn')
+    return false;
+  const today = Temporal.Instant.fromEpochMilliseconds(
+    at.getTime(),
+  ).toZonedDateTimeISO(timeZone);
+  return (
+    Temporal.PlainDate.compare(
+      Temporal.PlainDate.from(validUntil),
+      today.toPlainDate(),
+    ) < 0
+  );
+}
 export type DocumentListRow = {
   id: string;
   kind: DocumentKind;
@@ -127,6 +179,14 @@ export type DocumentMetadataRow = DocumentListRow & {
   issuedDate: string;
   /** Exactly the eligibility of `GET /api/v1/documents/:id/pdf`. */
   pdfAvailable: boolean;
+};
+export type DocumentOfferRow = DocumentListRow & {
+  /** NULL is the honest value for a row without any status claim. */
+  offerStatus: OfferStatus | null;
+  /** Tenant-local plain date the printed PDF shows, fixed at finalization. */
+  validUntil: string | null;
+  /** Derived from `validUntil` and the tenant clock; never stored. */
+  offerExpired: boolean;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -292,6 +352,53 @@ export function documentRepository(
     return { ...document, lines };
   }
 
+  async function tenantTimeZone(connection: Connection) {
+    const [tenant] = await database(connection)
+      .select({ timezone: tenants.timezone })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId));
+    if (!tenant) throw new DocumentError('missing_reference');
+    return tenant.timezone;
+  }
+
+  // BKP019.0 columns are read as reviewed SQL: `date` is cast to text, so the
+  // driver can never turn a tenant-local day into a guessing `Date`.
+  async function offerStateOf(connection: Connection, id: string) {
+    // `database()` narrows to the query builder, so the reviewed-SQL hatch is
+    // named here, the same shape library-files.ts uses.
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const result = (await executor.execute(sql`
+      SELECT to_char(valid_until, 'YYYY-MM-DD') AS valid_until, offer_status
+        FROM documents WHERE tenant_id = ${tenantId} AND id = ${id}`)) as {
+      rows: { valid_until: string | null; offer_status: OfferStatus | null }[];
+    };
+    const row = result.rows[0];
+    return {
+      validUntil: row?.valid_until ?? null,
+      offerStatus: row?.offer_status ?? null,
+    };
+  }
+
+  // One document with its two axes: the unchanged content row plus the offer
+  // status, the frozen deadline and the derived expiry.
+  async function offerRowOf(
+    connection: Connection,
+    id: string,
+    at: Date,
+    zone: string,
+  ) {
+    const row = await readOne(connection, id);
+    if (!row) throw new DocumentError('not_found');
+    const state = await offerStateOf(connection, id);
+    return {
+      ...row,
+      ...state,
+      offerExpired: offerExpired(state.validUntil, state.offerStatus, at, zone),
+    };
+  }
+
   async function snapshotFor(
     connection: Connection,
     document: NonNullable<Awaited<ReturnType<typeof readOne>>>,
@@ -424,7 +531,7 @@ export function documentRepository(
         ? validityDate(issuedAt, validityDays, tenant.timezone)
         : undefined;
     const formattedValidUntil = validUntil?.toString().split('-').reverse();
-    return buildDocumentSnapshot({
+    const snapshot = buildDocumentSnapshot({
       layout: {
         senderName: layout.senderName,
         senderStreet: layout.senderStreet,
@@ -449,6 +556,9 @@ export function documentRepository(
         : {}),
       ...(logoDataUri ? { logoDataUri } : {}),
     });
+    // The deadline the PDF prints is the one frozen at finalization: one
+    // computation feeds both the bytes and `valid_until`, so they cannot drift.
+    return { ...snapshot, validUntil: validUntil?.toString() ?? null };
   }
 
   async function assertReference(
@@ -542,7 +652,7 @@ export function documentRepository(
       // Without pagination and projection the query stays the plain select the
       // established clients already rely on.
       if (
-        !include &&
+        filters.include === undefined &&
         filters.limit === undefined &&
         filters.offset === undefined &&
         !filters.from &&
@@ -559,7 +669,9 @@ export function documentRepository(
         .from(tenants)
         .where(eq(tenants.id, tenantId));
       if (!tenant) throw new DocumentError('missing_reference');
-      const zone = tenant.timezone;
+      const zone = tenant.timezone,
+        // One clock reading for the whole page: expiry is a day comparison.
+        at = now();
       // Inclusive local days become a half-open instant window. The upper bound
       // is the next local midnight, so a 23- or 25-hour DST day stays exact.
       // One offset per boundary comes from `Intl`, not from a fixed +01/+02.
@@ -582,6 +694,37 @@ export function documentRepository(
           ? lt(documents.issuedAt, new Date(upper.epochMilliseconds))
           : undefined,
       );
+      // The offer projection adds the business status, the frozen deadline and
+      // the derived expiry, and nothing else - no hashes, no artefact keys.
+      if (filters.include === 'offer') {
+        const offers = await db
+          .select({
+            ...columns,
+            offerStatus: sql<string | null>`documents.offer_status`.as(
+              'offer_status',
+            ),
+            validUntil: sql<
+              string | null
+            >`to_char(documents.valid_until, 'YYYY-MM-DD')`.as('valid_until'),
+          })
+          .from(documents)
+          .where(narrowed)
+          .orderBy(desc(documents.issuedAt), desc(documents.id))
+          .limit(filters.limit ?? Number.MAX_SAFE_INTEGER)
+          .offset(filters.offset ?? 0);
+        return offers.map(({ offerStatus, validUntil, ...row }) => ({
+          ...row,
+          offerStatus: offerStatus as OfferStatus | null,
+          validUntil,
+          // Derived, never stored: the deadline and the tenant day decide.
+          offerExpired: offerExpired(
+            validUntil,
+            offerStatus as OfferStatus | null,
+            at,
+            zone,
+          ),
+        }));
+      }
       if (!include)
         return db
           .select(columns)
@@ -939,11 +1082,67 @@ export function documentRepository(
               version: document.version + 1,
             })
             .where(and(scope, eq(documents.id, id)));
+          // BKP019.0: the deadline the PDF already prints is frozen at this
+          // instant and never recalculated. Every later status change keeps the
+          // same bytes, and the same number still means the same day.
+          if (snapshot.validUntil)
+            await tx.execute(
+              sql`UPDATE documents SET valid_until = ${snapshot.validUntil}::date
+                  WHERE tenant_id = ${tenantId} AND id = ${id}`,
+            );
         } catch (error) {
           translate(error);
         }
         await appendAudit(tx, tenantId, 'document.finalized', actorId, id);
         return (await readOne(tx, id))!;
+      });
+    },
+    // BKP019.0: an explicit operator action and never a reaction to mail, print
+    // or the clock. The content stays final and byte-identical; only the
+    // business axis, its instant and the version move.
+    async changeOfferStatus(
+      actorId: string,
+      id: string,
+      input: { status: OfferStatus; version: number },
+    ) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [document] = await tx
+          .select()
+          .from(documents)
+          .where(and(scope, eq(documents.id, id)))
+          .for('update');
+        if (!document) throw new DocumentError('not_found');
+        // Only a finalized offer owns a business status: a draft has no claim
+        // yet and every other kind never gets one.
+        if (document.kind !== 'offer' || document.state !== 'final')
+          throw new DocumentError('invalid_kind');
+        if (document.version !== input.version)
+          throw new DocumentError('conflict');
+        const current = await offerStateOf(tx, id),
+          zone = await tenantTimeZone(tx),
+          at = now();
+        // The identical action again is an idempotent no-op: no second audit
+        // entry and no new version, so a double click is harmless.
+        if (current.offerStatus === input.status)
+          return await offerRowOf(tx, id, at, zone);
+        assertOfferTransition(current.offerStatus, input.status);
+        await tx.execute(
+          sql`UPDATE documents
+                 SET offer_status = ${input.status},
+                     status_changed_at = ${at},
+                     version = version + 1
+               WHERE tenant_id = ${tenantId} AND id = ${id}`,
+        );
+        await appendAudit(
+          tx,
+          tenantId,
+          offerAuditAction(input.status),
+          actorId,
+          id,
+        );
+        return await offerRowOf(tx, id, at, zone);
       });
     },
   };
@@ -997,6 +1196,20 @@ export function registerDocumentRoutes(
       required: ['id'],
       properties: { id: { type: 'string', format: 'uuid' } },
     };
+  // BKP019.0: the offer axis, shared by the single-document answer and the
+  // opt-in list projection, so both always describe the same three values.
+  const offerFields = {
+    offerStatus: {
+      anyOf: [{ type: 'string', enum: [...offerStatuses] }, { type: 'null' }],
+    },
+    validUntil: {
+      anyOf: [
+        { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+        { type: 'null' },
+      ],
+    },
+    offerExpired: { type: 'boolean' },
+  };
   const row = {
     type: 'object',
     additionalProperties: false,
@@ -1080,6 +1293,14 @@ export function registerDocumentRoutes(
       },
     },
   };
+  // A new endpoint owns a new response shape: the unchanged document row plus
+  // the offer axis, while every older route keeps exactly its old shape.
+  const offerRow = {
+    type: 'object',
+    additionalProperties: false,
+    required: [...row.required, ...Object.keys(offerFields)],
+    properties: { ...row.properties, ...offerFields },
+  };
   function failure(error: unknown, reply: FastifyReply) {
     if (error instanceof AccessError)
       return reply.code(403).send({ error: 'forbidden' });
@@ -1088,6 +1309,8 @@ export function registerDocumentRoutes(
         return reply.code(404).send({ error: 'not_found' });
       if (error.reason === 'invalid_state')
         return reply.code(409).send({ error: 'invalid_state' });
+      if (error.reason === 'invalid_transition')
+        return reply.code(409).send({ error: 'invalid_transition' });
       if (error.reason === 'conflict')
         return reply.code(409).send({ error: 'conflict' });
       if (error.reason === 'artifact_failed')
@@ -1244,6 +1467,41 @@ export function registerDocumentRoutes(
       }
     },
   );
+  // BKP019.0: the business status of a finished offer. Auth and CSRF come from
+  // the global hook, exactly like every other document write; `version` is the
+  // same optimistic guard as PUT /draft.
+  app.post<{
+    Params: { id: string };
+    Body: { status: OfferStatus; version: number };
+  }>(
+    '/api/v1/documents/:id/offer-status',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['status', 'version'],
+          properties: {
+            status: { type: 'string', enum: [...offerStatuses] },
+            version: { type: 'integer', minimum: 1 },
+          },
+        },
+        response: { 200: offerRow },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.changeOfferStatus(
+          request.authSession!.userId,
+          request.params.id,
+          request.body,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   const listRow = {
     type: 'object',
     additionalProperties: false,
@@ -1280,6 +1538,13 @@ export function registerDocumentRoutes(
       version: { type: 'integer' },
     },
   };
+  // The opt-in offer projection keeps every old key and adds only the axis.
+  const offerListRow = {
+    type: 'object',
+    additionalProperties: false,
+    required: [...listRow.required, ...Object.keys(offerFields)],
+    properties: { ...listRow.properties, ...offerFields },
+  };
   app.get<{ Querystring: DocumentFilters }>(
     '/api/v1/documents',
     {
@@ -1297,7 +1562,7 @@ export function registerDocumentRoutes(
             to: { type: 'string', format: 'date' },
             limit: { type: 'integer', minimum: 1, maximum: 100 },
             offset: { type: 'integer', minimum: 0, maximum: 1_000_000 },
-            include: { type: 'string', enum: ['metadata'] },
+            include: { type: 'string', enum: ['metadata', 'offer'] },
           },
         },
         response: {
@@ -1325,6 +1590,7 @@ export function registerDocumentRoutes(
                     pdfAvailable: { type: 'boolean' },
                   },
                 },
+                offerListRow,
               ],
             },
           },

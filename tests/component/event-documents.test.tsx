@@ -36,6 +36,14 @@ const draft = {
     finalizedAt: '2030-10-26T10:05:00Z',
     version: 2,
   },
+  // BKP019.0: the same final offer after the operator marked it as sent.
+  sentOffer = {
+    ...finalized,
+    offerStatus: 'sent' as const,
+    validUntil: '2030-11-09',
+    offerExpired: false,
+    version: 3,
+  },
   templates = [
     { id: 'tpl-1', kind: 'offer', name: 'Fictional offer', state: 'active' },
     { id: 'tpl-2', kind: 'offer', name: 'Archived offer', state: 'archived' },
@@ -58,9 +66,15 @@ function setup(
     templates?: unknown[];
     finalize?: () => Response;
     create?: (url: string) => Response;
+    offerStatus?: () => Response;
   } = {},
 ) {
-  const calls: { url: string; method: string; body?: unknown }[] = [],
+  const calls: {
+      url: string;
+      method: string;
+      body?: unknown;
+      headers?: Record<string, string>;
+    }[] = [],
     state = {
       documents: options.documents ?? [draft],
       templates: options.templates ?? templates,
@@ -87,6 +101,16 @@ function setup(
             : created,
           { status: 201 },
         );
+      }
+      if (url.endsWith('/offer-status')) {
+        calls.push({
+          url,
+          method,
+          body: JSON.parse(String(init!.body)),
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.offerStatus) return options.offerStatus();
+        return Response.json(sentOffer);
       }
       if (url.endsWith('/finalize')) {
         calls.push({ url, method });
@@ -242,6 +266,277 @@ test('a withdrawn document is listed without actions', async () => {
   expect(await screen.findByText('Zurückgezogen')).toBeTruthy();
   expect(screen.queryByRole('link', { name: /PDF öffnen/ })).toBeNull();
   expect(screen.queryByRole('button', { name: /finalisieren/ })).toBeNull();
+});
+
+// BKP019.0: the business status is its own line, finalization keeps its own,
+// and only a legal next step becomes a button.
+test('a finalized offer shows its status, deadline and next steps', async () => {
+  const { calls } = setup({ documents: [sentOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  // The event file asks for the offer projection explicitly.
+  expect(calls[0]!.url).toContain('include=offer');
+  expect(
+    within(row).getByText('Finalisiert', { selector: '.document-row span' }),
+  ).toBeTruthy();
+  expect(within(row).getByText(/Gültig bis/)).toBeTruthy();
+  expect(within(row).getByText('09.11.2030')).toBeTruthy();
+  expect(within(row).queryByText('Abgelaufen')).toBeNull();
+  expect(
+    within(row).getByRole('link', {
+      name: 'Angebot AN-2030-0001 als PDF öffnen',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  ).toBeTruthy();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 zurückziehen',
+    }),
+  ).toBeTruthy();
+  // No jump back to "sent" and no invented reopening.
+  expect(
+    within(row).queryByRole('button', { name: /versendet markieren/ }),
+  ).toBeNull();
+});
+
+test('an expired offer reads as expired without losing its status', async () => {
+  setup({ documents: [{ ...sentOffer, offerExpired: true }] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  expect(within(row).getByText('Abgelaufen')).toBeTruthy();
+  // The deadline stays visible, so "expired" is checkable, not a claim.
+  expect(within(row).getByText('09.11.2030')).toBeTruthy();
+});
+
+test('a final offer without a claim offers only send and withdraw', async () => {
+  setup({
+    documents: [
+      {
+        ...finalized,
+        offerStatus: null,
+        validUntil: '2030-11-09',
+        offerExpired: false,
+        version: 3,
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Noch nicht versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 versendet markieren',
+    }),
+  ).toBeTruthy();
+  expect(within(row).queryByRole('button', { name: /annehmen/ })).toBeNull();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 zurückziehen',
+    }),
+  ).toBeTruthy();
+});
+
+test('an accepted offer cannot be accepted or sent again', async () => {
+  setup({ documents: [{ ...sentOffer, offerStatus: 'accepted', version: 4 }] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Angenommen')).closest(
+    'li',
+  ) as HTMLElement;
+  expect(within(row).queryByRole('button', { name: /annehmen/ })).toBeNull();
+  expect(
+    within(row).queryByRole('button', { name: /versendet markieren/ }),
+  ).toBeNull();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 zurückziehen',
+    }),
+  ).toBeTruthy();
+});
+
+test('a withdrawn offer keeps its PDF and offers no status action', async () => {
+  setup({
+    documents: [{ ...sentOffer, offerStatus: 'withdrawn', version: 5 }],
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Zurückgezogen')).closest(
+    'li',
+  ) as HTMLElement;
+  // The posted PDF is archive, not content: it stays reachable.
+  expect(
+    within(row).getByRole('link', {
+      name: 'Angebot AN-2030-0001 als PDF öffnen',
+    }),
+  ).toBeTruthy();
+  for (const name of [
+    /versendet markieren/,
+    /annehmen/,
+    /zurückziehen/,
+    /Rückzug/,
+  ])
+    expect(within(row).queryByRole('button', { name })).toBeNull();
+});
+
+test('withdrawing asks once and then posts the status with the version', async () => {
+  const { calls } = setup({ documents: [sentOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 zurückziehen',
+    }),
+  );
+  expect(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Rückzug bestätigen',
+    }),
+  ).toBeTruthy();
+  // Nothing leaves the browser before the confirmation.
+  expect(calls.some((call) => call.url.endsWith('/offer-status'))).toBe(false);
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Rückzug bestätigen',
+    }),
+  );
+  expect(
+    await screen.findByText('Angebotsstatus aktualisiert: Zurückgezogen.'),
+  ).toBeTruthy();
+  expect(
+    calls.find((call) => call.url.endsWith('/offer-status')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-2/offer-status',
+    method: 'POST',
+    body: { status: 'withdrawn', version: 3 },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+});
+
+test('cancelling a withdrawal sends nothing and keeps the actions', async () => {
+  const { calls } = setup({ documents: [sentOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 zurückziehen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Rückzug abbrechen',
+    }),
+  );
+  expect(within(row).queryByRole('button', { name: /Rückzug/ })).toBeNull();
+  expect(calls.some((call) => call.url.endsWith('/offer-status'))).toBe(false);
+});
+
+test('marking an offer as sent posts the status with the current version', async () => {
+  const { calls } = setup({
+    documents: [
+      {
+        ...finalized,
+        offerStatus: null,
+        validUntil: '2030-11-09',
+        offerExpired: false,
+        version: 3,
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Noch nicht versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 versendet markieren',
+    }),
+  );
+  expect(
+    await screen.findByText('Angebotsstatus aktualisiert: Versendet.'),
+  ).toBeTruthy();
+  expect(
+    calls.find((call) => call.url.endsWith('/offer-status')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-2/offer-status',
+    body: { status: 'sent', version: 3 },
+  });
+});
+
+test('a broken connection while changing the status is reported', async () => {
+  setup({
+    documents: [sentOffer],
+    offerStatus: () => {
+      throw new TypeError('offline');
+    },
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  expect(
+    await screen.findByText(
+      'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
+    ),
+  ).toBeTruthy();
+});
+
+test('a status change that cannot be reloaded warns instead of hiding the row', async () => {
+  let listFails = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url === '/api/v1/document-templates') return Response.json(templates);
+      if (url.startsWith('/api/v1/documents?eventId='))
+        return listFails
+          ? new Response(null, { status: 500 })
+          : Response.json([sentOffer]);
+      if (url.endsWith('/offer-status')) {
+        listFails = true;
+        return Response.json({ ...sentOffer, offerStatus: 'accepted' });
+      }
+      throw new Error('unexpected ' + url);
+    }),
+  );
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  expect(
+    await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
+  ).toBeTruthy();
+});
+
+test('a refused transition is explained instead of retried', async () => {
+  setup({
+    documents: [sentOffer],
+    offerStatus: () =>
+      Response.json({ error: 'invalid_transition' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  expect(
+    await screen.findByText('Dieser Statuswechsel ist nicht zulässig.'),
+  ).toBeTruthy();
 });
 
 // BKP013.2: one controllable harness for the create/reload pair. The list

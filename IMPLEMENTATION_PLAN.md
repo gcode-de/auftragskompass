@@ -8,6 +8,61 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.0 — `feat: track offer validity and status transitions`** (26.10.2026)
+
+  Erster Unter-Slice von BKP019 (kommerzieller Dokumentablauf; Ticket verlangt
+  zwingende Unterteilung) nach rein lesender DeepSeek-Analyse zu `27fb085`.
+  Staleness-Befund: (0) ist nicht umgesetzt – `withdrawn` ist ein Enum ohne
+  Schreiber, die Gültigkeit nur eine Tageszahl mit bei jedem Rendern neu
+  berechneter Frist (gedruckte Frist verschiebt sich mit dem
+  Finalisierungszeitpunkt, widerspricht AG-02). Neu: **zweite Statusachse**
+  `offer_status` (sent/accepted/withdrawn) getrennt von `state`
+  (Inhaltsreife draft|final|withdrawn); Migration `0039` mit `valid_until`
+  (beim Finalisieren einmalig fixiert – heutige Drucksemantik eingefroren,
+  danach bytegleiche PDFs über alle Statuswechsel), `status_changed_at`,
+  Audit-CHECK-Erweiterung und datenerhaltendem Backfill (bestehende finale
+  Angebote erhalten die heute gedruckte Frist, `offer_status` bleibt NULL =
+  ehrlich „kein Anspruch“). „Abgelaufen“ wird in der Mandantenzeitzone
+  abgeleitet (kein Worker, keine Schreibaktion). Explizite Übergänge:
+  null→sent, null→withdrawn, sent→accepted, sent→withdrawn,
+  accepted→withdrawn; `withdrawn` terminal (Kopie = neuer Datensatz);
+  ungültige Übergänge 409, erneute identische Aktion idempotent ohne zweiten
+  Audit, versioniert, nur für `kind='offer'`, Audit in derselben Transaktion.
+  UI in EventDocuments: Statuszeile mit Fachstatus/„Gültig bis“/abgeleitetem
+  „Abgelaufen“, Aktionen nur bei zulässigem Übergang, Bestätigung bei
+  Zurückziehen. Der bestehende `state`-Vertrag bleibt unverändert
+  (documents.test.ts:2396: `state=sent` bleibt 400). KEINE Automatik aus
+  E-Mail/Druck, keine Annahme-/Versanddetails (kommen in (a)), keine
+  Rechnungs-/Zahlungslogik, keine Rechts-/Steuerbehauptungen (Referenz: nur
+  Spalten „Status“/„Frist“ belegt, Werte UNBEKANNT). Tests zuerst rot
+  (Übergangsmatrix, DST-Grenze, bytegleiche PDF, CHECK-Verstoß, Backfill,
+  UI). Coding-Subagent: DeepSeek V4.1 Flash (gleiche Delegationsform), MiMo
+  besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (10/12 neue Integrationstests + 8/8
+  Komponententests gegen per `git stash` zurückgesetzten Kern; ehrlich vermerkt:
+  zwei reine DB-Tests waren migrationsabhängig schon grün, kein E2E-RED möglich
+  ohne UI), danach grün: `test:unit` 274/274, `test:component` 692/692,
+  `test:integration` 336/336 (vollständige Übergangsmatrix, verbotene
+  Übergänge ohne Zustandsänderung, Idempotenz ohne zweiten Audit,
+  Versionskonflikt, Tenant/Admin, `invalid_kind`, DB-CHECK 23514,
+  DST-Grenze Europe/Berlin 2029-03-25, bytegleiche PDF über alle Wechsel,
+  `state=sent` bleibt 400, Backfill gegen Vor-0039-Stand), `test:coverage`
+  vollständig grün (1302 Tests; documents.ts 93,38% Statements,
+  EventDocuments.tsx 95,95%; alle neuen Zeilen abgedeckt),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. echtem Ablauf finalisieren →
+  versendet → angenommen → zurückgezogen mit sichtbarer Frist und
+  bytegleichem PDF. Notiert: `AuditAction`-Union ohne die neuen Aktionen –
+  genau eine dokumentierte Typverengung an der Aufrufstelle,
+  `appendAudit` bleibt einziger Audit-Schreibpfad (Folgeslice erweitert die
+  Union); die neuen Spalten sind für Drizzle unsichtbar (schema.ts
+  unverändert), die Achse erscheint nur über `include=offer`/die neue Route –
+  bewusst, um alte Antwortformen schlüsselgleich zu halten; die globale
+  Dateiliste zeigt weiterhin nur die Inhaltsreife (Frist-/Statusfilter folgen
+  in BKP019-(e)); ein finales Angebot ohne Statusclaim liest nach Fristablauf
+  „Abgelaufen“ (wortgetreue Regel); Bytegleichheit mit injiziertem Renderer
+  belegt (nicht mit echtem Chromium-PDF).
+
 - [x] **BKP020.1 — `feat: upload and download library files safely`** (26.10.2026)
 
   Erster vertikaler Unter-Slice von BKP020 (Datei- und Eventbibliothek) nach

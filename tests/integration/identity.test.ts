@@ -40,8 +40,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP020.1 adds the tenant-bound file library after the create receipts.
-  expect(applied.at(-1)!.name).toBe('0038_library_files.sql');
+  // BKP019.0 adds the offer validity and status axis after the file library.
+  expect(applied.at(-1)!.name).toBe('0039_offer_status.sql');
   const templateColumn = (
     await pool.query<{ is_nullable: string }>(
       "SELECT is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='documents' AND column_name='template_id'",

@@ -16,11 +16,24 @@ type DocumentRow = {
   taxMinor: number;
   grossMinor: number;
   version: number;
+  // BKP019.0: the business axis of an offer, only present with include=offer.
+  offerStatus?: OfferStatus | null;
+  validUntil?: string | null;
+  offerExpired?: boolean;
 };
+type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
 type TemplateRow = { id: string; kind: string; name: string; state: string };
 const stateLabels: Record<DocumentRow['state'], string> = {
   draft: 'Entwurf',
   final: 'Finalisiert',
+  withdrawn: 'Zurückgezogen',
+};
+// The business status is a second, independent line: a finalized offer can be
+// sent, accepted or withdrawn and keeps its number and its PDF unchanged.
+const offerStatusLabels: Record<OfferStatus | 'unset', string> = {
+  unset: 'Noch nicht versendet',
+  sent: 'Versendet',
+  accepted: 'Angenommen',
   withdrawn: 'Zurückgezogen',
 };
 // BKP013.1: the event file owns one card per document kind that actually
@@ -83,6 +96,7 @@ export function EventDocuments({
     [initialLoadFailed, setInitialLoadFailed] = useState(false),
     [reloadWarning, setReloadWarning] = useState(false),
     [createUncertain, setCreateUncertain] = useState(false),
+    [confirmWithdrawId, setConfirmWithdrawId] = useState(''),
     mutating = useRef(false),
     editorTrigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -92,7 +106,11 @@ export function EventDocuments({
   }, [editorId]);
   async function load() {
     const [documentReply, templateReply] = await Promise.all([
-      fetch('/api/v1/documents?eventId=' + encodeURIComponent(eventId)),
+      fetch(
+        '/api/v1/documents?eventId=' +
+          encodeURIComponent(eventId) +
+          '&include=offer',
+      ),
       fetch('/api/v1/document-templates'),
     ]);
     if (!documentReply.ok || !templateReply.ok) throw new Error('load');
@@ -243,6 +261,66 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  // BKP019.0: an explicit operator action. The content never changes here, so a
+  // status switch can neither rewrite the PDF nor the number.
+  async function changeStatus(
+    id: string,
+    status: OfferStatus,
+    version: number,
+  ) {
+    if (mutating.current || editorBusy || editorDirty) return;
+    mutating.current = true;
+    setBusy(id);
+    setMessage('');
+    setConfirmWithdrawId('');
+    try {
+      const reply = await fetch('/api/v1/documents/' + id + '/offer-status', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ status, version }),
+      });
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(
+          result.error === 'conflict'
+            ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
+            : result.error === 'invalid_transition'
+              ? 'Dieser Statuswechsel ist nicht zulässig.'
+              : result.error === 'invalid_kind'
+                ? 'Nur ein finalisiertes Angebot hat einen Angebotsstatus.'
+                : 'Statuswechsel nicht möglich.',
+        );
+        if (
+          result.error === 'conflict' ||
+          result.error === 'invalid_transition'
+        )
+          try {
+            await load();
+          } catch {
+            // The message above already says what to do.
+          }
+        return;
+      }
+      await reply.json();
+      setMessage(
+        'Angebotsstatus aktualisiert: ' + offerStatusLabels[status] + '.',
+      );
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   function retryLoad() {
     if (mutating.current) return;
     mutating.current = true;
@@ -272,6 +350,12 @@ export function EventDocuments({
       timeZone,
     }).format(new Date(value));
   }
+  // A stored deadline is already a tenant-local calendar day. Parsing it as an
+  // instant would shift it west of UTC, so it is formatted from its parts.
+  function plainDate(value: string) {
+    const [year, month, day] = value.split('-');
+    return day + '.' + month + '.' + year;
+  }
   function rows(entries: DocumentRow[]) {
     return (
       <ul className="document-list">
@@ -293,6 +377,27 @@ export function EventDocuments({
               {' · '}
               {exactMinorUnits(entry.grossMinor) ?? '—'} €
             </p>
+            {entry.kind === 'offer' && entry.state === 'final' && (
+              <p className="document-offer-status">
+                <span>{offerStatusLabels[entry.offerStatus ?? 'unset']}</span>
+                {entry.validUntil && (
+                  <>
+                    {' · Gültig bis '}
+                    <time dateTime={entry.validUntil}>
+                      {plainDate(entry.validUntil)}
+                    </time>
+                  </>
+                )}
+                {entry.offerExpired && (
+                  <>
+                    {' · '}
+                    <strong className="document-offer-expired">
+                      Abgelaufen
+                    </strong>
+                  </>
+                )}
+              </p>
+            )}
             <div className="document-actions">
               {entry.state === 'draft' && (
                 <>
@@ -340,6 +445,94 @@ export function EventDocuments({
                   PDF öffnen
                 </a>
               )}
+              {/* Only a legal next step is offered: no button invents a jump
+                  such as final → accepted or a reopened withdrawn offer. */}
+              {entry.state === 'final' &&
+                entry.kind === 'offer' &&
+                entry.offerStatus !== 'withdrawn' && (
+                  <>
+                    {(entry.offerStatus ?? null) === null && (
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={busy !== ''}
+                        aria-label={
+                          'Angebot ' +
+                          (entry.number ?? '') +
+                          ' versendet markieren'
+                        }
+                        onClick={() =>
+                          void changeStatus(entry.id, 'sent', entry.version)
+                        }
+                      >
+                        Versendet markieren
+                      </button>
+                    )}
+                    {entry.offerStatus === 'sent' && (
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={busy !== ''}
+                        aria-label={
+                          'Angebot ' + (entry.number ?? '') + ' annehmen'
+                        }
+                        onClick={() =>
+                          void changeStatus(entry.id, 'accepted', entry.version)
+                        }
+                      >
+                        Angenommen
+                      </button>
+                    )}
+                    {confirmWithdrawId === entry.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="secondary-action"
+                          disabled={busy !== ''}
+                          aria-label={
+                            'Angebot ' +
+                            (entry.number ?? '') +
+                            ' Rückzug bestätigen'
+                          }
+                          onClick={() =>
+                            void changeStatus(
+                              entry.id,
+                              'withdrawn',
+                              entry.version,
+                            )
+                          }
+                        >
+                          Ja, zurückziehen
+                        </button>
+                        <button
+                          type="button"
+                          className="tertiary-action"
+                          disabled={busy !== ''}
+                          aria-label={
+                            'Angebot ' +
+                            (entry.number ?? '') +
+                            ' Rückzug abbrechen'
+                          }
+                          onClick={() => setConfirmWithdrawId('')}
+                        >
+                          Abbrechen
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={busy !== ''}
+                        aria-label={
+                          'Angebot ' + (entry.number ?? '') + ' zurückziehen'
+                        }
+                        onClick={() => setConfirmWithdrawId(entry.id)}
+                      >
+                        Zurückziehen
+                      </button>
+                    )}
+                  </>
+                )}
             </div>
             {entry.kind === 'offer' &&
               editorId === entry.id &&

@@ -5,6 +5,7 @@ import {
 } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import { readdir, readFile } from 'node:fs/promises';
 import { migrate } from '../../packages/core/src/identity.js';
 import {
   bootstrapAccess,
@@ -17,6 +18,7 @@ import {
   documentRepository,
   registerDocumentRoutes,
   type DocumentDependencies,
+  type DocumentOfferRow,
 } from '../../packages/core/src/documents.js';
 import { readDocumentPdf } from '../../packages/core/src/document-artifacts.js';
 import {
@@ -2617,5 +2619,718 @@ test('the HTTP list keeps the legacy volume and shape and pages exactly as asked
     expect(foreign.statusCode).toBe(401);
   } finally {
     await app.close();
+  }
+});
+
+// BKP019.0: the second axis. Every case below starts from a really finalized
+// offer, because a business status without frozen content is not a reachable
+// state - and because the printed deadline must be the frozen one.
+async function seedFinalOffer(scope: string, at: Date) {
+  await bootstrapAccess(
+    pool,
+    scope,
+    'offer-status-' + scope + '@example.invalid',
+    'Synthetic offer status',
+    'Europe/Berlin',
+  );
+  const seed = await seedIssuingContext(scope),
+    contact = randomUUID(),
+    run = dependencies({ now: () => at }),
+    repo = documentRepository(pool, scope, run.deps);
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional Offer Customer','Robin Example','Example Street 2','12345',
+      'Fictional Town','DE','offer-status@example.invalid','','','','','active',1)`,
+    [scope, contact],
+  );
+  const draft = await repo.createDraft(seed.actor, {
+      templateId: seed.templateId,
+      contactId: contact,
+    }),
+    finalized = await repo.finalize(seed.actor, draft.id);
+  return {
+    actor: seed.actor,
+    repo,
+    run,
+    id: finalized.id,
+    version: finalized.version,
+    number: finalized.number!,
+  };
+}
+
+async function offerState(scope: string, id: string) {
+  const { rows } = await pool.query<{
+    valid_until: string | null;
+    offer_status: string | null;
+    status_changed_at: Date | null;
+    state: string;
+    number: string | null;
+    snapshot_hash: string | null;
+    pdf_hash: string | null;
+    gross_minor: string;
+    version: number;
+  }>(
+    `SELECT to_char(valid_until,'YYYY-MM-DD') AS valid_until, offer_status,
+            status_changed_at, state, number, snapshot_hash, pdf_hash,
+            gross_minor, version
+       FROM documents WHERE tenant_id=$1 AND id=$2`,
+    [scope, id],
+  );
+  return rows[0]!;
+}
+
+async function offerAudit(scope: string, id: string) {
+  const { rows } = await pool.query<{ action: string }>(
+    `SELECT action FROM audit_events
+      WHERE tenant_id=$1 AND record_id=$2 AND action LIKE 'document.%'
+      ORDER BY action`,
+    [scope, id],
+  );
+  return rows.map((row) => row.action);
+}
+
+// The projected list at one injected instant, so expiry is reproducible.
+async function listedOffer(scope: string, now: string, id: string) {
+  const rows = (await documentRepository(
+    pool,
+    scope,
+    dependencies({ now: () => new Date(now) }).deps,
+  ).list({ include: 'offer' })) as DocumentOfferRow[];
+  return rows.find((row) => row.id === id)!;
+}
+
+test('finalizing an offer freezes exactly the deadline the PDF prints', async () => {
+  const scope = randomUUID(),
+    // 26 October 2030, 12:00 local in Europe/Berlin (still summer time).
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    frozen = await offerState(scope, offer.id);
+  // 26.10.2030 + 14 tenant-local calendar days.
+  expect(frozen.valid_until).toBe('2030-11-09');
+  // A finalized offer that was never sent carries no claim and no instant.
+  expect(frozen.offer_status).toBeNull();
+  expect(frozen.status_changed_at).toBeNull();
+  // The stored day is the day the bytes show; one computation, two outputs.
+  expect(offer.run.rendered.at(-1)).toContain('Gültig bis');
+  expect(offer.run.rendered.at(-1)).toContain('09.11.2030');
+
+  const listAt = async (now: string) => listedOffer(scope, now, offer.id);
+  // 9 November 23:59:59 local is the last minute that is still valid.
+  expect(await listAt('2030-11-09T22:59:59Z')).toMatchObject({
+    validUntil: '2030-11-09',
+    offerStatus: null,
+    offerExpired: false,
+  });
+  // One second later the tenant day has moved on; the deadline did not move.
+  expect(await listAt('2030-11-09T23:00:00Z')).toMatchObject({
+    validUntil: '2030-11-09',
+    offerExpired: true,
+  });
+  expect(await offerState(scope, offer.id)).toEqual(frozen);
+});
+
+test('the derived expiry follows the tenant calendar day across a DST change', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2029-03-10T10:00:00Z'));
+  // 25 March 2029 is the 23-hour spring day in Europe/Berlin.
+  await pool.query(
+    "UPDATE documents SET valid_until = DATE '2029-03-25' WHERE tenant_id=$1 AND id=$2",
+    [scope, offer.id],
+  );
+  const listAt = async (now: string) => listedOffer(scope, now, offer.id);
+  // 23:59:59 local (CEST, +02:00) on the deadline day is still valid.
+  expect((await listAt('2029-03-25T21:59:59Z')).offerExpired).toBe(false);
+  // The next local midnight starts the day after the deadline.
+  expect((await listAt('2029-03-25T22:00:00Z')).offerExpired).toBe(true);
+  // Deriving writes nothing: status, instant and version stay untouched.
+  const stored = await offerState(scope, offer.id);
+  expect(stored.offer_status).toBeNull();
+  expect(stored.status_changed_at).toBeNull();
+  expect(await offerAudit(scope, offer.id)).toEqual([
+    'document.created',
+    'document.finalized',
+  ]);
+});
+
+test('every allowed offer transition moves the axis, the version and the audit', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    before = await offerState(scope, offer.id),
+    sent = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    });
+  expect(sent).toMatchObject({
+    state: 'final',
+    offerStatus: 'sent',
+    validUntil: '2030-11-09',
+    offerExpired: false,
+    version: offer.version + 1,
+  });
+  const accepted = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'accepted',
+    version: offer.version + 1,
+  });
+  expect(accepted).toMatchObject({
+    offerStatus: 'accepted',
+    version: offer.version + 2,
+  });
+  // An accepted offer is never "expired", even long after the deadline.
+  expect(accepted.offerExpired).toBe(false);
+  const withdrawn = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'withdrawn',
+    version: offer.version + 2,
+  });
+  expect(withdrawn).toMatchObject({
+    offerStatus: 'withdrawn',
+    version: offer.version + 3,
+  });
+  expect(await offerAudit(scope, offer.id)).toEqual([
+    'document.accepted',
+    'document.created',
+    'document.finalized',
+    'document.sent',
+    'document.withdrawn',
+  ]);
+  const after = await offerState(scope, offer.id);
+  // `state` stays the content axis and the final content is untouched.
+  expect(after.state).toBe('final');
+  expect(after.number).toBe(before.number);
+  expect(after.snapshot_hash).toBe(before.snapshot_hash);
+  expect(after.pdf_hash).toBe(before.pdf_hash);
+  expect(after.gross_minor).toBe(before.gross_minor);
+  expect(after.status_changed_at).toBeInstanceOf(Date);
+});
+
+test('a final offer may be sent or withdrawn directly, a sent one also withdrawn', async () => {
+  const direct = await seedFinalOffer(
+      randomUUID(),
+      new Date('2030-10-26T10:00:00Z'),
+    ),
+    sentThenWithdrawn = await seedFinalOffer(
+      randomUUID(),
+      new Date('2030-10-26T10:00:00Z'),
+    );
+  expect(
+    await direct.repo.changeOfferStatus(direct.actor, direct.id, {
+      status: 'withdrawn',
+      version: direct.version,
+    }),
+  ).toMatchObject({ offerStatus: 'withdrawn' });
+  await sentThenWithdrawn.repo.changeOfferStatus(
+    sentThenWithdrawn.actor,
+    sentThenWithdrawn.id,
+    { status: 'sent', version: sentThenWithdrawn.version },
+  );
+  expect(
+    await sentThenWithdrawn.repo.changeOfferStatus(
+      sentThenWithdrawn.actor,
+      sentThenWithdrawn.id,
+      { status: 'withdrawn', version: sentThenWithdrawn.version + 1 },
+    ),
+  ).toMatchObject({ offerStatus: 'withdrawn' });
+});
+
+test('an illegal offer transition is refused without changing anything', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    before = await offerState(scope, offer.id);
+  // No silent jump: a final offer cannot be accepted before it was sent.
+  await expect(
+    offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'accepted',
+      version: offer.version,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_transition' });
+  await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'withdrawn',
+    version: offer.version,
+  });
+  // `withdrawn` is terminal: a correction is a new document.
+  for (const status of ['sent', 'accepted'] as const)
+    await expect(
+      offer.repo.changeOfferStatus(offer.actor, offer.id, {
+        status,
+        version: offer.version + 1,
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_transition' });
+  expect(await offerState(scope, offer.id)).toMatchObject({
+    offer_status: 'withdrawn',
+    number: before.number,
+    version: offer.version + 1,
+  });
+  expect(await offerAudit(scope, offer.id)).toEqual([
+    'document.created',
+    'document.finalized',
+    'document.withdrawn',
+  ]);
+});
+
+test('the identical status again is an idempotent no-op without a second audit', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    sent = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+    again = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'sent',
+      version: sent.version,
+    });
+  expect(again).toMatchObject({
+    offerStatus: 'sent',
+    version: sent.version,
+  });
+  expect(await offerAudit(scope, offer.id)).toEqual([
+    'document.created',
+    'document.finalized',
+    'document.sent',
+  ]);
+});
+
+test('a stale version is a conflict and leaves status, instant and audit alone', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    before = await offerState(scope, offer.id);
+  await expect(
+    offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'sent',
+      version: offer.version - 1,
+    }),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(await offerState(scope, offer.id)).toEqual(before);
+  expect(await offerAudit(scope, offer.id)).toEqual([
+    'document.created',
+    'document.finalized',
+  ]);
+  await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'sent',
+    version: offer.version,
+  });
+  // The winning write moved the version, so the same input is now stale.
+  await expect(
+    offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'accepted',
+      version: offer.version,
+    }),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+});
+
+test('only a final offer of this tenant gets a business status', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    repo = documentRepository(pool, scope, dependencies().deps),
+    // A draft offer has no claim yet; an invoice never has one.
+    draft = await repo.createDraft(offer.actor, {
+      templateId: (await documentTemplateRepository(pool, scope).list())[0]!.id,
+      lines: [
+        {
+          description: 'Fictional draft line',
+          quantity: 1,
+          unit: 'Stück',
+          unitPriceMinor: 1000,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 0,
+        },
+      ],
+    }),
+    invoice = randomUUID();
+  await pool.query(
+    `INSERT INTO documents (tenant_id,id,kind,template_id,event_id,contact_id,number,state,
+      issued_at,finalized_at,snapshot_hash,pdf_hash,net_minor,tax_minor,gross_minor,version)
+     VALUES ($1,$2,'invoice',$3,NULL,NULL,'RE-2030-0001','final',$4,$4,$5,$5,1000,0,1000,1)`,
+    [
+      scope,
+      invoice,
+      draft.templateId,
+      new Date('2030-10-26T10:00:00Z'),
+      'b'.repeat(64),
+    ],
+  );
+  for (const [id, version] of [
+    [draft.id, draft.version],
+    [invoice, 1],
+  ] as const)
+    await expect(
+      repo.changeOfferStatus(offer.actor, id, { status: 'sent', version }),
+    ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  // A foreign tenant and an unknown actor see nothing and may do nothing.
+  await expect(
+    documentRepository(
+      pool,
+      otherTenantId,
+      dependencies().deps,
+    ).changeOfferStatus(otherActorId, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    repo.changeOfferStatus(randomUUID(), offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+  ).rejects.toThrow('forbidden');
+});
+
+test('the database itself refuses a status outside a final offer', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    repo = documentRepository(pool, scope, dependencies().deps),
+    draft = await repo.createDraft(offer.actor, {
+      templateId: (await documentTemplateRepository(pool, scope).list())[0]!.id,
+      lines: [
+        {
+          description: 'Fictional draft line',
+          quantity: 1,
+          unit: 'Stück',
+          unitPriceMinor: 1000,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 0,
+        },
+      ],
+    }),
+    code = (query: Promise<unknown>) =>
+      query
+        .then(() => 'accepted')
+        .catch((error: { code?: string }) => error.code);
+  // A draft offer has no business status.
+  expect(
+    await code(
+      pool.query(
+        "UPDATE documents SET offer_status='accepted', status_changed_at=now() WHERE tenant_id=$1 AND id=$2",
+        [scope, draft.id],
+      ),
+    ),
+  ).toBe('23514');
+  // A status without its instant is not a state, it is half a state.
+  expect(
+    await code(
+      pool.query(
+        "UPDATE documents SET offer_status='sent' WHERE tenant_id=$1 AND id=$2",
+        [scope, offer.id],
+      ),
+    ),
+  ).toBe('23514');
+  // A deadline exists only on a final offer.
+  expect(
+    await code(
+      pool.query(
+        "UPDATE documents SET valid_until = DATE '2031-01-01' WHERE tenant_id=$1 AND id=$2",
+        [scope, draft.id],
+      ),
+    ),
+  ).toBe('23514');
+  // The honest state still works: no claim means two NULLs.
+  expect((await offerState(scope, offer.id)).offer_status).toBeNull();
+});
+
+test('the PDF of a finalized offer stays byte-identical across every status', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z')),
+    before = await offer.repo.pdf(offer.id),
+    rendersBefore = offer.run.rendered.length,
+    stored = await offerState(scope, offer.id);
+  await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'sent',
+    version: offer.version,
+  });
+  await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'accepted',
+    version: offer.version + 1,
+  });
+  await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'withdrawn',
+    version: offer.version + 2,
+  });
+  const after = await offer.repo.pdf(offer.id);
+  expect(after.bytes.equals(before.bytes)).toBe(true);
+  expect(after.number).toBe(offer.number);
+  // A status is data, not content: nothing was re-rendered or re-stored.
+  expect(offer.run.rendered.length).toBe(rendersBefore);
+  expect(await offerState(scope, offer.id)).toMatchObject({
+    pdf_hash: stored.pdf_hash,
+    snapshot_hash: stored.snapshot_hash,
+    number: stored.number,
+  });
+});
+
+test('the offer status route keeps auth, CSRF, projection and error contracts', async () => {
+  const scope = randomUUID(),
+    offer = await seedFinalOffer(scope, new Date('2030-10-26T10:00:00Z'));
+  await accessRepository(pool, scope).issueSession(
+    {
+      // seedIssuingContext already bound the grant; its subject must be reused.
+      subject: 'seed-' + scope,
+      email: (await accessRepository(pool, scope).list())[0]!.email,
+    },
+    digest('synthetic-offer-status'),
+  );
+  const config = {
+      origin: site,
+      tenantId: scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, scope, offer.run.deps);
+  const url = '/api/v1/documents/' + offer.id + '/offer-status',
+    cookies = { '__Host-ak-session': 'synthetic-offer-status' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-offer-status'),
+    };
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          payload: { status: 'sent', version: offer.version },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          cookies,
+          payload: { status: 'sent', version: offer.version },
+        })
+      ).statusCode,
+    ).toBe(403);
+    for (const payload of [
+      { status: 'expired', version: offer.version },
+      { status: 'sent' },
+      { status: 'sent', version: 0 },
+      { status: 'sent', version: -1 },
+      {},
+    ])
+      expect(
+        (await app.inject({ method: 'POST', url, cookies, headers, payload }))
+          .statusCode,
+        JSON.stringify(payload),
+      ).toBe(400);
+    const refused = await app.inject({
+      method: 'POST',
+      url,
+      cookies,
+      headers,
+      payload: { status: 'accepted', version: offer.version },
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({ error: 'invalid_transition' });
+    // A draft has no claim yet, so the operator gets a plain 400 and a reason.
+    const draftOffer = await documentRepository(
+      pool,
+      scope,
+      dependencies().deps,
+    ).createDraft(offer.actor, {
+      templateId: (await documentTemplateRepository(pool, scope).list())[0]!.id,
+      lines: [
+        {
+          description: 'Fictional draft line',
+          quantity: 1,
+          unit: 'Stück',
+          unitPriceMinor: 1000,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 0,
+        },
+      ],
+    });
+    const notAnOffer = await app.inject({
+      method: 'POST',
+      url: '/api/v1/documents/' + draftOffer.id + '/offer-status',
+      cookies,
+      headers,
+      payload: { status: 'sent', version: draftOffer.version },
+    });
+    expect(notAnOffer.statusCode).toBe(400);
+    expect(notAnOffer.json()).toEqual({ error: 'invalid_kind' });
+    const sent = await app.inject({
+      method: 'POST',
+      url,
+      cookies,
+      headers,
+      payload: { status: 'sent', version: offer.version },
+    });
+    expect(sent.statusCode).toBe(200);
+    expect(sent.json()).toMatchObject({
+      id: offer.id,
+      state: 'final',
+      number: offer.number,
+      offerStatus: 'sent',
+      validUntil: '2030-11-09',
+      offerExpired: false,
+      version: offer.version + 1,
+    });
+    // The single-document GET keeps its old shape; only the new route adds keys.
+    const single = await app.inject({
+      url: '/api/v1/documents/' + offer.id,
+      cookies,
+    });
+    const singleKeys = Object.keys(single.json()).sort();
+    expect(singleKeys).toContain('subject');
+    expect(singleKeys).not.toContain('offerStatus');
+    expect(Object.keys(sent.json()).sort()).toEqual(
+      [...singleKeys, 'offerStatus', 'validUntil', 'offerExpired'].sort(),
+    );
+    const projected = await app.inject({
+      url: '/api/v1/documents?include=offer',
+      cookies,
+    });
+    expect(projected.statusCode).toBe(200);
+    const projectedRow = projected
+      .json()
+      .find((row: { id: string }) => row.id === offer.id);
+    expect(Object.keys(projectedRow).sort()).toEqual(
+      [...oldListKeys, 'offerStatus', 'validUntil', 'offerExpired'].sort(),
+    );
+    expect(projectedRow).toMatchObject({
+      offerStatus: 'sent',
+      validUntil: '2030-11-09',
+      offerExpired: false,
+    });
+    expect(projected.body).not.toContain('pdfHash');
+    expect(projected.body).not.toContain('snapshotHash');
+    // The unprojected list and the metadata list keep exactly their old keys.
+    const plain = await app.inject({ url: '/api/v1/documents', cookies });
+    expect(Object.keys(plain.json()[0]).sort()).toEqual(oldListKeys);
+    const meta = await app.inject({
+      url: '/api/v1/documents?include=metadata',
+      cookies,
+    });
+    expect(Object.keys(meta.json()[0]).sort()).toEqual(
+      [...oldListKeys, 'eventName', 'issuedDate', 'pdfAvailable'].sort(),
+    );
+    // `state` stays the content axis: `sent` is still not a state value.
+    expect(
+      (await app.inject({ url: '/api/v1/documents?state=sent', cookies }))
+        .statusCode,
+    ).toBe(400);
+  } finally {
+    await app.close();
+  }
+});
+
+test('migration 0039 backfills exactly the deadline that was printed before', async () => {
+  const uri = new URL(container.getConnectionUri());
+  uri.pathname = '/offer_status_backfill';
+  await pool.query('CREATE DATABASE offer_status_backfill');
+  const backfill = new Pool({ connectionString: uri.toString() }),
+    directory = new URL('../../packages/core/migrations/', import.meta.url),
+    migrations = await Promise.all(
+      (await readdir(directory))
+        .filter((name) => name.endsWith('.sql'))
+        .sort()
+        .map(async (name) => ({
+          name,
+          sql: await readFile(new URL(name, directory), 'utf8'),
+        })),
+    ),
+    scope = randomUUID(),
+    template = randomUUID(),
+    legacyFinal = randomUUID(),
+    legacyDraft = randomUUID(),
+    legacyNoDays = randomUUID();
+  try {
+    // The state a running installation was in before this slice.
+    await migrate(
+      backfill,
+      migrations.filter((entry) => entry.name < '0039_offer_status.sql'),
+    );
+    await backfill.query(
+      "INSERT INTO tenants (id,name,timezone) VALUES ($1,'Synthetic backfill','Europe/Berlin')",
+      [scope],
+    );
+    await backfill.query(
+      `INSERT INTO document_templates (tenant_id,id,kind,name,subject,intro_text,outro_text,
+        validity_days,state,version)
+       VALUES ($1,$2,'offer','Synthetic backfill','Angebot','','',14,'active',1)`,
+      [scope, template],
+    );
+    // 23:30 UTC on 30 March 2030 is already 31 March in Berlin (CET), so the
+    // printed deadline used the tenant day, not the UTC day: 31.03 + 14 days.
+    await backfill.query(
+      `INSERT INTO documents (tenant_id,id,kind,template_id,state,issued_at,finalized_at,number,
+        snapshot_hash,pdf_hash,validity_days,subject,intro_text,outro_text,
+        net_minor,tax_minor,gross_minor,version)
+       VALUES ($1,$2,'offer',$3,'final',$4,$4,'AN-2030-0001',$5,$5,14,'Angebot','','',0,0,0,2)`,
+      [
+        scope,
+        legacyFinal,
+        template,
+        new Date('2030-03-30T23:30:00Z'),
+        'b'.repeat(64),
+      ],
+    );
+    await backfill.query(
+      `INSERT INTO documents (tenant_id,id,kind,template_id,state,issued_at,number,validity_days,
+        subject,intro_text,outro_text,net_minor,tax_minor,gross_minor,version)
+       VALUES ($1,$2,'offer',$3,'draft',$4,NULL,14,'Angebot','','',0,0,0,1)`,
+      [scope, legacyDraft, template, new Date('2030-03-30T23:30:00Z')],
+    );
+    // A final offer whose days were never recorded keeps an honest NULL.
+    await backfill.query(
+      `INSERT INTO documents (tenant_id,id,kind,template_id,state,issued_at,finalized_at,number,
+        snapshot_hash,pdf_hash,net_minor,tax_minor,gross_minor,version)
+       VALUES ($1,$2,'offer',$3,'final',$4,$4,'AN-2030-0002',$5,$5,0,0,0,2)`,
+      [
+        scope,
+        legacyNoDays,
+        template,
+        new Date('2030-03-30T23:30:00Z'),
+        'c'.repeat(64),
+      ],
+    );
+    await migrate(backfill, migrations);
+    const deadline = async (id: string) =>
+      (
+        await backfill.query<{ valid_until: string | null }>(
+          "SELECT to_char(valid_until,'YYYY-MM-DD') AS valid_until FROM documents WHERE tenant_id=$1 AND id=$2",
+          [scope, id],
+        )
+      ).rows[0]!.valid_until;
+    // 31.03.2030 + 14 days, exactly the value the old rendering computed - and
+    // one day later than a naive UTC calculation would have produced.
+    expect(await deadline(legacyFinal)).toBe('2030-04-14');
+    // Everything without a claim stays NULL instead of inventing a date.
+    expect(await deadline(legacyDraft)).toBeNull();
+    expect(await deadline(legacyNoDays)).toBeNull();
+    const statuses = (
+      await backfill.query<{
+        offer_status: string | null;
+        status_changed_at: Date | null;
+      }>(
+        'SELECT offer_status, status_changed_at FROM documents WHERE tenant_id=$1',
+        [scope],
+      )
+    ).rows;
+    expect(statuses).toEqual([
+      { offer_status: null, status_changed_at: null },
+      { offer_status: null, status_changed_at: null },
+      { offer_status: null, status_changed_at: null },
+    ]);
+  } finally {
+    await backfill.end();
   }
 });
