@@ -2,6 +2,48 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H067: BKP019.c2 – Rechnungskorrektur/Storno mit Richtungsmodell (RG-02), 26.10.2026
+
+- **BKP019.c2 `e0804c4`** (inkl. Nachtrag c2b): Rechnungskorrektur als eigener
+  Beleg mit Richtung `Gutschrift`/`Lastschrift` und Bezug zu einer finalen
+  Rechnung oder Auftragsbestätigung. **Richtungsmodell B′:** gespeicherte
+  Beträge bleiben nicht-negative Ganzzahlen, die Vorzeichenwirkung entsteht
+  beim Verrechnen exakt (`−1 ×` gespeicherte Summe) – die Analyse fand, dass
+  Negieren mit der bestehenden Rundung ungenau wäre (5/5/0 → −4/−3/−1),
+  weshalb negative Zeilenbeträge verworfen wurden; `document-totals`/DB-
+  CHECKs blieben unangetastet. Über-Gutschrift-Guard beim Finalisieren
+  (409 `credit_exceeds_invoice`), `KO-`-Nummer, Storno-Stand der Rechnung
+  (`none|partial|full`) wird in der Projektion **abgeleitet** (RG-08 ohne
+  Unveränderlichkeitsbruch), verbleibende kreditierbare Summe in der UI,
+  Bezugszeile + Korrektur-Summenblock nur bei gesetztem Bezug (c1-
+  Bytegleichheit bleibt). Ein halbfartiger, fachlich falscher Pfad
+  (Korrektur aus Vorlage) wurde gesperrt: 400 `invalid_kind`, nur der
+  Quellpfad erzeugt Korrekturen. Saldenformel für (d) dokumentiert:
+  `offener Saldo = Brutto + Σ Lastschriften − Σ Gutschriften − Σ Zahlungen`.
+- **Abnahme:** RED beobachtet (27 Fehlschläge gegen ausgeblendeten Kern),
+  dann grün: unit 274, component 722, integration 393 (14 neue Fälle inkl.
+  Über-Gutschrift, bytegleiche Originale, Vorlagenpfad-Ablehnung,
+  Mandantentrennung, DB-CHECKs), coverage vollständig (Changed 93,3%),
+  E2E 16/16 inkl. Ablauf finale Rechnung → Gutschrift → `KO-JJJJ-NNNN` →
+  „storniert“/0,00 € → bytegleiche Quell-PDFs → zweite Gutschrift 409; im
+  Nachtrag c2b: der Korrektur-Entwurf öffnet den geteilten Editor (eigene
+  Überschrift/Verwerfen-Text), Positionsänderungen sind gespeicherbar und
+  finalisierbar, Originale bleiben unverändert. Build grün.
+- **Ehrlich notiert:** keine Kettenkorrekturen (Quelle `correction` = 400);
+  Bezugsdaten reisen als reine Print-Option im Layout-Objekt (ohne Bezug
+  bleibt das HTML zeichengleich); Bytegleichheit über hash-adressierte
+  Artefakte geprüft; ein Vorlagenhinweis in der Verwaltung fehlt noch
+  (Doku benennt es); `debit` ist absichtlich unbegrenzt, der E2E-Test deckt
+  `credit` (derselbe Editorpfad).
+
+**Nächste Unter-Slices BKP019:** c3 (Anzahlung/Schlussrechnung – sinnvoll
+erst mit (d)), (d) Zahlungen/Teilzahlungen/offener Saldo, (e)
+Fristen-/Statusfilter und Export; dazu Pflichtangaben RG-04/RG-07,
+Annahme-Korrekturpfad, BKP020-Reste und BKP021+ (Mailkern bis BKP030).
+Betrieb unverändert: verifiziert live **c21330c**, alleiniger Auto-Updater;
+Checkpoint-/OCI-Nachweis weiterhin offen (Proxmox-Host 192.168.68.201 nicht
+erreichbar).
+
 ## H066: BKP019.c1 – Rechnung aus Auftragsbestätigung (RG-01), 26.10.2026
 
 - **BKP019.c1 `514723b`** – erster Rechnungsweg: aus einer finalen
