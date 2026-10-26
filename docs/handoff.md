@@ -2,6 +2,52 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H062: BKP020.1 – echte Dateibibliothek (Upload/Download/Archiv), 26.10.2026
+
+- **Befund vorab:** BKP016/017/018 sind materiell über frühere Slices geliefert
+  (Plan:941/:939/:937/:931/:929/:923–:842); BKP019/BKP020 waren unberührt.
+  `FilesPanel` ist ein Geschäftsdokumentindex über `documents`, keine
+  Dateibibliothek – der offene Kern war ein neuer Datenbestand.
+- **BKP020.1 `5a6a176`** – vertikaler Slice mit Migration `0038_library_files`
+  (+ Idempotenzbeleg-Tabelle nach Vorlagen-Muster): tenantgebundene
+  Dateimetadaten (`display_name` nur Daten, Schlüssel ausschließlich
+  UUID+Endung), `media_type` pdf/png/jpeg/zip mit serverseitiger
+  Signaturprüfung (MIME-Spoofing → 415 ohne Zeile/Datei), einheitliche
+  10-MiB-Grenze (exakt erlaubt, +1 → 413), Upload als JSON+Base64 (strenge
+  Validierung, Name aus URL/Logs ferngehalten), autorisierter Download als
+  Anhang mit `filename*`-Säuberung und `nosniff` (kein HTML/SVG im
+  App-Origin), ZIP wird nie entpackt, idempotent-Archiv. **Kein Virenscan
+  eingerichtet** – `scan_state='not_scanned'` ist sichtbar ausgewiesen;
+  Mail-Anhänge müssen später daran gebunden bleiben. UI „Dateibibliothek“
+  als eigene benannte Region neben „Geschäftsdokumente“ im `#files`-Bereich
+  (bestehende Testverträge bleiben grün). Dokumentation neu:
+  `docs/files.md`.
+- **Abnahme:** RED beobachtet (Unit/Component gegen fehlende Module;
+  Integration ehrlich als Mit-Entstehen benannt), dann grün: unit 274,
+  component 681, integration 324 (Tenant/ID-Leak, Spoofing, Grenzgröße,
+  bösartige Namen, Storage-Fehler ohne available-Zeile, requestId ohne
+  Doppelzeile, Downloadheader, idempotent-Archiv, Auth/CSRF), coverage
+  vollständig (Changed ≥85/80), E2E 16/16 mit echtem Upload-/Download-
+  Byte-Vergleich, 320/1440 beiden Themes, Tastatur, axe 0 Verstöße,
+  Impeccable-Detektor ohne Befund, Build grün.
+- **Ehrlich notiert:** Auditzeilen `file.*` direkt in der Transaktion
+  (Union in `appendAudit` ohne `file.*`, DB-CHECK sichert ab; späterer
+  Refactor); Replay einer gespeicherten Upload-Antwort kann „available“
+  zeigen, obwohl die Datei später archiviert wurde (Idempotenzbeleg-Muster);
+  Liste ohne Suche/Paginierung; eine notwendige Zusatzzeile in
+  `tests/integration/identity.test.ts` (Migrationserwartung) überschritt die
+  Dateigrenze – ehrlich gemeldet und reviewt.
+
+**Offene Bausteine BKP020:** Eventverknüpfung/Kategorien
+(Upload/Standard/Mailanhang), Ersetzen/Versionierung, Mailanhangpicker,
+DA-07-Standarddateien (Betreiberslice, echte Dateien außerhalb Git),
+Retention/Löschung, Suche/Paginierung bei großen Beständen. **Weiterer
+Backlog:** BKP019 (kommerzieller Dokumentablauf bis Zahlung), BKP021+
+(Mailkern/Postfach/Verfassen/Vorlagen/Geplanter Versand), BKP026–BKP030.
+Betrieb unverändert: verifiziert live **c21330c**, alleiniger Auto-Updater;
+Checkpoint-/OCI-Nachweis weiterhin offen (Proxmox-Host 192.168.68.201 nicht
+erreichbar).
+
 ## H061: BKP014.2 (Ressourcen in der Eventzusammenfassung), 26.10.2026
 
 - **Befund vorab (wie schon bei BKP013.1):** BKP014.1 „scannbare Karten mit
