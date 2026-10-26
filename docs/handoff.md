@@ -2,6 +2,50 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H063: BKP019.0 – Angebotsgültigkeit und Statusübergänge, 26.10.2026
+
+- **BKP019.0 `d60cad1`** – der erste Unter-Slice des kommerziellen
+  Dokumentablaufs (Ticket verlangt zwingende Unterteilung). **Zweite
+  Statusachse:** `state` (Inhaltsreife draft|final|withdrawn) bleibt
+  unverändert, neu `offer_status` (versendet/angenommen/zurückgezogen) mit
+  erlaubten Übergängen null→sent/withdrawn, sent→accepted/withdrawn,
+  accepted→withdrawn; `withdrawn` terminal, ungültige Übergänge 409,
+  erneute identische Aktion idempotent ohne zweiten Audit, versioniert,
+  Audit in derselben Transaktion. Migration `0039`: `valid_until` wird beim
+  Finalisieren einmalig fixiert (genau die gedruckte Frist – heutige
+  Drucksemantik eingefroren, behebt den Drift gegen AG-02), datenerhaltender
+  Backfill (bestehende finale Angebote behalten ihre gedruckte Frist,
+  `offer_status` bleibt NULL = ehrlich „kein Anspruch“), CHECKs verweigern
+  Status/Frist auf Nicht-Angeboten und halbe Angaben. „Abgelaufen“ wird in
+  der Mandantenzeitzone **abgeleitet** (kein Worker, keine Schreibaktion).
+  UI in der Event-Dateienansicht: Statuszeile mit Fachstatus/„Gültig bis“/
+  Ablauf, Aktionen nur bei zulässigem Übergang, Bestätigung vor
+  „Zurückziehen“. Keine Automatik aus E-Mail/Druck; keine Rechts-/
+  Steuerbehauptungen (Referenz: nur „Status“/„Frist“-Spalten belegt).
+- **Abnahme:** RED beobachtet (10/12 Integration + 8/8 Component gegen den
+  zurückgesetzten Kern; DB-Tests migrationsabhängig ehrlich benannt), dann
+  grün: unit 274, component 692, integration 336 (Übergangsmatrix,
+  DST-Grenze Europe/Berlin, bytegleiche PDF über alle Statuswechsel,
+  `state=sent` bleibt 400, Backfill gegen Vor-0039-Stand, CHECK-Verstoß
+  23514), coverage 1302 vollständig (alle neuen Zeilen abgedeckt), E2E
+  16/16 inkl. echtem Ablauf finalisieren → versendet → angenommen →
+  zurückgezogen, Build grün.
+- **Ehrlich notiert:** `AuditAction`-Union ohne die neuen Aktionen (eine
+  dokumentierte Typverengung, `appendAudit` bleibt einziger Schreibpfad;
+  Folgeslice erweitert die Union); neue Spalten für Drizzle unsichtbar
+  (alte Antwortformen bewusst schlüsselgleich); die globale Dateiliste zeigt
+  weiterhin nur die Inhaltsreife (Frist-/Statusfilter folgen in BKP019-(e));
+  Bytegleichheit mit injiziertem Renderer belegt.
+
+**Nächste Unter-Slices BKP019:** (a) Angebotsannahme mit Zeitpunkt/Kanal/
+Notiz/Anhang, (b) Auftragsbestätigung aus angenommenem Angebot, (c)
+Rechnung/Anzahlung/Schlussrechnung/Korrektur, (d) Zahlungen/Salden, (e)
+Fristen-/Statusfilter und Export; dazu BKP020-Reste (Eventverknüpfung,
+Kategorien, Ersetzen) und BKP021+ (Mailkern bis BKP030). Betrieb
+unverändert: verifiziert live **c21330c**, alleiniger Auto-Updater;
+Checkpoint-/OCI-Nachweis weiterhin offen (Proxmox-Host 192.168.68.201 nicht
+erreichbar).
+
 ## H062: BKP020.1 – echte Dateibibliothek (Upload/Download/Archiv), 26.10.2026
 
 - **Befund vorab:** BKP016/017/018 sind materiell über frühere Slices geliefert
