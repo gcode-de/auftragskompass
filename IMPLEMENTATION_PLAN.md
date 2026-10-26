@@ -8,6 +8,36 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP010.2 — `feat: disclose rare product row actions and archive safely`** (26.10.2026)
+
+  Zweiter Unter-Slice von BKP010: „Bearbeiten: <Name>“ bleibt direkt an der
+  Produktzeile; „Duplizieren“ und die neue Archivaktion „Archivieren: <Name>“
+  erscheinen hinter einer benannten kompakten Offenlegung pro Zeile (BKP015.7-
+  Vertrag: höchstens eine offen, Escape/Tab/Outside schließen, sichtbare
+  Fokusrückkehr an den Auslöser). Archivieren setzt über den vorhandenen
+  PUT-Vertrag mit `version` den Zustand `archived`; Busy/Doppelklickschutz und
+  Versionskonflikt verständlich, Reaktivierung weiter über Bearbeiten möglich.
+  Kein Löschen, keine API-/Migrationsänderung. Nachweis im Slice: bestehende
+  Dokumentpositionen/-summen bleiben durch Archivieren unverändert
+  (Integrationstest) und die Zeile aktualisiert nur ihre Anzeige
+  (Komponententest). Tests zuerst rot (Offenlegung zu/anfangs, höchstens eine
+  offen, Fokus/Escape/Outside, Archivpfad inkl. 409/Busy/Doppelklick,
+  Dokument-Unverändertheit, Regression Duplizieren = eigener Datensatz).
+  Coding-Subagent: DeepSeek V4.1 Flash; MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (7 Tests, fehlender Auslöser „Weitere Aktionen
+  für <Name>“; ehrlich vermerkt: Fokus-nach-Filter-Test erst nach Implementierung
+  ergänzt, Dokument-Unverändertheit ist ein Charakterisierungsnachweis für
+  bestehendes DB-Verhalten ohne künstliches Rot, E2E-Schritt nur grün verifiziert),
+  danach grün: `test:component` 599/599, `test:integration` 310/310
+  (inkl. neuem Nachweis: finalisierte Dokumentzeilen/-summen/Snapshot-Hash
+  byte-identisch nach Produktarchivierung), `test:coverage` vollständig grün,
+  `test:unit` 260, `test:workspace`/`test:docs`/schnelle Gates/Build grün;
+  E2E auth+template-product-price 14/14 inklusive Overflow-/Theme-Zusagen.
+  Notiert: die Aktionsgruppe ist ohne eigene CSS-Klasse inline umgesetzt
+  (styles.css war nicht im Slice); Archivieren aktualisiert nur die Zeile aus
+  der PUT-Antwort, unplausible Antworten werden als „Archivierungsstand
+  unklar“ abgewiesen.
+
 - [x] **BKP010.1 — `feat: make product management compact and list-first`** (26.10.2026)
 
   Erster Unter-Slice von BKP010 (Produkte, UI-Slice ohne Domainänderung) nach

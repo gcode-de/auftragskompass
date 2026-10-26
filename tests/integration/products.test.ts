@@ -14,6 +14,14 @@ import {
   productRepository,
   registerProductRoutes,
 } from '../../packages/core/src/products.js';
+import { documentTemplateRepository } from '../../packages/core/src/document-templates.js';
+import { documentLayoutRepository } from '../../packages/core/src/document-layouts.js';
+import { documentNumberRepository } from '../../packages/core/src/document-numbers.js';
+import { documentRepository } from '../../packages/core/src/documents.js';
+import {
+  StorageError,
+  type StorageAdapter,
+} from '../../packages/core/src/storage.js';
 import {
   createHealthServer,
   loadRuntimeConfig,
@@ -260,4 +268,192 @@ test('product API rejects invalid money, requires auth and persists net/gross an
   } finally {
     await app.close();
   }
+});
+
+test('archiving a product leaves historical document lines and totals unchanged', async () => {
+  const products = productRepository(pool, tenantId),
+    product = await products.save(actorId, {
+      ...input,
+      name: 'Synthetic historical product',
+      priceMinor: 19900,
+      taxBasisPoints: 1900,
+    }),
+    contactId = randomUUID(),
+    eventId = randomUUID(),
+    files = new Map<string, Buffer>(),
+    store: StorageAdapter = {
+      async put(key, bytes) {
+        files.set(key, Buffer.from(bytes));
+      },
+      async read(key) {
+        const bytes = files.get(key);
+        if (!bytes) throw new StorageError('missing');
+        return bytes;
+      },
+      async remove(key) {
+        files.delete(key);
+      },
+    };
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional Archive Customer','Robin Example','Example Street 2',
+      '12345','Fictional Town','DE','archive@example.invalid','','','','','active',1)`,
+    [tenantId, contactId],
+  );
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,event_type_id,package_id,location_id,source,
+      event_date,starts_at,ends_at,time_zone,description,notes_html,version)
+     VALUES ($1,$2,'Fictional Archive Wedding','inquiry',NULL,NULL,NULL,'synthetic','2030-11-14',
+      NULL,NULL,'Europe/Berlin','','',1)`,
+    [tenantId, eventId],
+  );
+  const template = await documentTemplateRepository(pool, tenantId).save(
+    actorId,
+    {
+      kind: 'offer',
+      name: 'Fictional historical offer',
+      subject: 'Angebot für {{contact}}',
+      introText: 'Synthetic intro',
+      outroText: 'Gesamt {{total}}',
+      validityDays: 14,
+      state: 'active',
+      positions: [],
+    },
+  );
+  await documentLayoutRepository(pool, tenantId, store).save(actorId, {
+    senderName: 'Fictional Studio',
+    senderStreet: 'Synthetic Street 1',
+    senderPostalCode: '12345',
+    senderCity: 'Fictional Town',
+    primaryColor: '#2f6f4f',
+    textColor: '#1b1b1b',
+    fontFamily: 'sans',
+    showPageNumbers: true,
+    showPositionNumbers: true,
+  });
+  await documentNumberRepository(pool, tenantId).save(actorId, 'offer', {
+    pattern: 'AN-{YYYY}-{SEQ}',
+    minLength: 4,
+    nextValue: 1,
+  });
+  const documents = documentRepository(pool, tenantId, {
+      origin: 'https://admin.example.invalid',
+      store,
+      now: () => new Date('2030-10-26T10:00:00Z'),
+      render: async () => Buffer.from('%PDF-1.4 synthetic historical'),
+    }),
+    draft = await documents.createDraft(actorId, {
+      templateId: template.id,
+      contactId,
+      eventId,
+      lines: [
+        {
+          productId: product.id,
+          description: product.name,
+          quantity: 2,
+          unit: product.unit,
+          unitPriceMinor: product.priceMinor,
+          taxBasisPoints: product.taxBasisPoints,
+          discountBasisPoints: 0,
+        },
+        {
+          productId: null,
+          description: 'Fictional delivery',
+          quantity: 1,
+          unit: 'Pauschale',
+          unitPriceMinor: 5000,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 0,
+        },
+      ],
+    }),
+    finalized = await documents.finalize(actorId, draft.id, draft.version);
+  expect(finalized.state).toBe('final');
+  expect(finalized.grossMinor).toBeGreaterThan(0);
+
+  const archived = await products.save(
+    actorId,
+    {
+      name: product.name,
+      description: product.description,
+      unit: product.unit,
+      priceMinor: product.priceMinor,
+      priceBasis: product.priceBasis as 'net' | 'gross',
+      taxBasisPoints: product.taxBasisPoints,
+      position: product.position,
+      state: 'archived',
+    },
+    product.id,
+    product.version,
+  );
+  expect(archived).toMatchObject({
+    state: 'archived',
+    version: product.version + 1,
+    // The catalogue record keeps its price and name; only the state moved.
+    name: product.name,
+    priceMinor: 19900,
+  });
+
+  const reread = await documents.get(finalized.id);
+  expect(reread).toMatchObject({
+    state: 'final',
+    netMinor: finalized.netMinor,
+    taxMinor: finalized.taxMinor,
+    grossMinor: finalized.grossMinor,
+    snapshotHash: finalized.snapshotHash,
+  });
+  expect(reread!.lines).toEqual(finalized.lines);
+
+  const storedLines = await pool.query(
+    `SELECT position, product_id, description, quantity, unit, unit_price_minor,
+      tax_basis_points, discount_basis_points
+     FROM document_lines WHERE tenant_id=$1 AND document_id=$2 ORDER BY position`,
+    [tenantId, finalized.id],
+  );
+  expect(
+    storedLines.rows.map((line) => ({
+      position: line.position,
+      productId: line.product_id,
+      description: line.description,
+      quantity: Number(line.quantity),
+      unit: line.unit,
+      unitPriceMinor: Number(line.unit_price_minor),
+      taxBasisPoints: Number(line.tax_basis_points),
+      discountBasisPoints: Number(line.discount_basis_points),
+    })),
+  ).toEqual([
+    {
+      position: 0,
+      productId: product.id,
+      description: 'Synthetic historical product',
+      quantity: 2,
+      unit: 'Stück',
+      unitPriceMinor: 19900,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    },
+    {
+      position: 1,
+      productId: null,
+      description: 'Fictional delivery',
+      quantity: 1,
+      unit: 'Pauschale',
+      unitPriceMinor: 5000,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    },
+  ]);
+  const storedDocument = await pool.query(
+    `SELECT state, net_minor, tax_minor, gross_minor, snapshot_hash
+     FROM documents WHERE tenant_id=$1 AND id=$2`,
+    [tenantId, finalized.id],
+  );
+  expect(storedDocument.rows[0]).toMatchObject({
+    state: 'final',
+    net_minor: String(finalized.netMinor),
+    tax_minor: String(finalized.taxMinor),
+    gross_minor: String(finalized.grossMinor),
+    snapshot_hash: finalized.snapshotHash,
+  });
 });

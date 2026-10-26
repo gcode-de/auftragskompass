@@ -427,6 +427,23 @@ test('settings lists render one primary action and name every other tier', async
       }),
     ),
   ).toBe('secondary-action');
+  // BKP010.2: the rare row actions stay behind the row's named disclosure, so
+  // only its trigger is part of the open row's tier contract.
+  const productActions = within(products).getByRole('button', {
+    name: 'Weitere Aktionen für Synthetic product',
+  });
+  expect(tier(productActions)).toBe('tertiary-action');
+  for (const name of [
+    'Produkt duplizieren: Synthetic product',
+    'Produkt archivieren: Synthetic product',
+  ])
+    expect(
+      within(products).queryByRole('button', { name }),
+      `${name} is disclosed only on demand`,
+    ).toBeNull();
+  fireEvent.click(productActions);
+  expect(productActions.getAttribute('aria-expanded')).toBe('true');
+  expectHierarchy(products, 'Produkte mit Offenlegung');
   expect(
     tier(
       within(products).getByRole('button', {
@@ -434,6 +451,14 @@ test('settings lists render one primary action and name every other tier', async
       }),
     ),
   ).toBe('secondary-action');
+  expect(
+    tier(
+      within(products).getByRole('button', {
+        name: 'Produkt archivieren: Synthetic product',
+      }),
+    ),
+  ).toBe('tertiary-action');
+  fireEvent.click(productActions);
   fireEvent.click(productCreate);
   const productDialog = await within(products).findByRole('dialog', {
     name: 'Produkt anlegen',

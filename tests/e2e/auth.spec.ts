@@ -1237,6 +1237,27 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     );
     await products.getByLabel('Zustand filtern').selectOption('');
     await expect(products.getByText(/Synthetic browser product/)).toBeVisible();
+    // BKP010.2: duplicating and archiving stay behind the row's named
+    // disclosure. Escape closes it and returns focus to its trigger.
+    const productActions = products.getByRole('button', {
+      name: 'Weitere Aktionen für Synthetic browser product',
+    });
+    await expect(productActions).toHaveAttribute('aria-expanded', 'false');
+    await expect(
+      products.getByRole('button', {
+        name: 'Produkt duplizieren: Synthetic browser product',
+      }),
+    ).toHaveCount(0);
+    await productActions.click();
+    await expect(productActions).toHaveAttribute('aria-expanded', 'true');
+    await expect(
+      products.getByRole('button', {
+        name: 'Produkt archivieren: Synthetic browser product',
+      }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(productActions).toHaveAttribute('aria-expanded', 'false');
+    await expect(productActions).toBeFocused();
     // BKP010 acceptance: 320, 390 and 1280px in both themes. Neither the
     // product section, its toolbar nor the document may overflow
     // horizontally.

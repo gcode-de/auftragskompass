@@ -47,6 +47,22 @@ const conflictMessage =
   'Inzwischen geändert. Produkte aktualisieren und erneut bearbeiten.';
 const saveFailureMessage =
   'Speichern fehlgeschlagen. Preis, Steuer und Anmeldung prüfen.';
+const archiveFailureMessage =
+  'Archivieren fehlgeschlagen. Produkt und Berechtigung prüfen.';
+const archiveMissingMessage =
+  'Produkt nicht mehr vorhanden. Bitte Produkte aktualisieren.';
+const archiveUnclearMessage =
+  'Archivierungsstand unklar. Bitte Produkte neu laden, bevor du erneut archivierst.';
+// Every message in this set is a failure the user must act on; the rest are
+// progress or confirmation and stay a polite status line.
+const errorMessages = new Set([
+  loadFailureMessage,
+  reloadFailureMessage,
+  conflictMessage,
+  archiveFailureMessage,
+  archiveMissingMessage,
+  archiveUnclearMessage,
+]);
 // decimal.ts owns the exact hundredths conversion. These two patterns only
 // split its single rejection so the field can name its own problem; the
 // arithmetic stays BigInt-based inside parseHundredths.
@@ -116,10 +132,13 @@ function summary(row: Product) {
 export function ProductPanel({ csrfToken }: { csrfToken: string }) {
   const sequence = useRef(0);
   const saving = useRef(false);
+  const archiveInFlight = useRef(false);
   const dialog = useRef<HTMLDivElement>(null);
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const createTrigger = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const actionRowRefs = useRef(new Map<string, HTMLLIElement>());
+  const actionToggleRefs = useRef(new Map<string, HTMLButtonElement>());
   const [rows, setRows] = useState<Product[]>([]),
     [editing, setEditing] = useState<Product | null>(null),
     [open, setOpen] = useState(false),
@@ -135,8 +154,10 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [reloadFailed, setReloadFailed] = useState(false),
-    [locked, setLocked] = useState(false);
+    [locked, setLocked] = useState(false),
+    [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const dirty = open && JSON.stringify(values) !== JSON.stringify(baseline);
+  const messageIsError = errorMessages.has(message);
   const needle = search.trim().toLowerCase();
   const filtered = rows.filter((row) => {
     if (stateFilter && row.state !== stateFilter) return false;
@@ -158,7 +179,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
         setRows(next);
         setReloadFailed(false);
         setLocked(false);
-        setMessage((text) => (text === loadFailureMessage ? '' : text));
+        setMessage((text) => (errorMessages.has(text) ? '' : text));
       }
     } catch (error) {
       if (current === sequence.current) {
@@ -172,6 +193,35 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
   useEffect(() => {
     void refresh().catch(() => setMessage(loadFailureMessage));
   }, []);
+  useEffect(() => {
+    if (!openActionsId) return;
+    const closeIfOutside = (target: EventTarget | null) => {
+      const row = actionRowRefs.current.get(openActionsId);
+      if (row && target instanceof Node && !row.contains(target))
+        setOpenActionsId(null);
+    };
+    const onPointerDown = (event: PointerEvent) => closeIfOutside(event.target);
+    const onFocusIn = (event: FocusEvent) => closeIfOutside(event.target);
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('focusin', onFocusIn);
+    };
+  }, [openActionsId]);
+  function usableFocusTarget(
+    element: HTMLElement | null | undefined,
+  ): element is HTMLElement {
+    return Boolean(
+      element?.isConnected &&
+      !(element instanceof HTMLButtonElement && element.disabled) &&
+      !element.closest('[hidden], [inert], [aria-hidden="true"]'),
+    );
+  }
+  function focusActionToggle(id: string) {
+    const toggle = actionToggleRefs.current.get(id);
+    if (usableFocusTarget(toggle)) toggle.focus({ preventScroll: true });
+  }
   useEffect(() => registerUnsavedChanges(() => dirty), [dirty]);
   useEffect(() => {
     if (!open) return;
@@ -214,6 +264,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
   function start(next: Draft, row: Product | null) {
     rememberTrigger();
     setEditing(row);
+    setOpenActionsId(null);
     setValues(next);
     setBaseline(next);
     // A previous attempt with an unknown outcome stays explained while the
@@ -352,6 +403,92 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
       if (saved) setTimeout(restoreFocus, 0);
     }
   }
+  async function archive(row: Product) {
+    if (
+      row.state === 'archived' ||
+      saving.current ||
+      busy ||
+      archiveInFlight.current
+    )
+      return;
+    archiveInFlight.current = true;
+    // The action belongs to the row's disclosure, which closes on use; the
+    // row itself stays visible and reports progress through the status line.
+    setOpenActionsId(null);
+    setBusy(true);
+    setMessage('Produkt wird archiviert …');
+    let reopen = false;
+    try {
+      const response = await fetch('/api/v1/products/' + row.id, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          name: row.name,
+          description: row.description,
+          unit: row.unit,
+          priceMinor: row.priceMinor,
+          priceBasis: row.priceBasis,
+          taxBasisPoints: row.taxBasisPoints,
+          position: row.position,
+          state: 'archived',
+          version: row.version,
+        }),
+      });
+      if (!response.ok) {
+        const result = (await response
+          .json()
+          .catch(() => ({ error: 'unknown' }))) as { error?: string };
+        reopen = true;
+        setMessage(
+          result.error === 'conflict'
+            ? conflictMessage
+            : response.status === 404
+              ? archiveMissingMessage
+              : archiveFailureMessage,
+        );
+        return;
+      }
+      const stored = (await response
+        .json()
+        .catch(() => null)) as Product | null;
+      // Only a plausible, versioned archive response replaces the row; an
+      // unreadable one keeps the known list and asks for a reload instead.
+      if (
+        !stored ||
+        stored.id !== row.id ||
+        stored.state !== 'archived' ||
+        stored.version !== row.version + 1
+      ) {
+        reopen = true;
+        setMessage(archiveUnclearMessage);
+        return;
+      }
+      setRows((current) =>
+        current.map((entry) => (entry.id === stored.id ? stored : entry)),
+      );
+      setMessage('Produkt archiviert.');
+    } catch {
+      reopen = true;
+      setMessage(archiveUnclearMessage);
+    } finally {
+      archiveInFlight.current = false;
+      setBusy(false);
+      // The action closes its disclosure; a failed one reappears so the user
+      // keeps the row and can retry. Focus stays on the trigger, or falls back
+      // to the create action when the archived row no longer matches a filter.
+      if (reopen) setOpenActionsId(row.id);
+      setTimeout(() => {
+        const toggle = actionToggleRefs.current.get(row.id);
+        const target = usableFocusTarget(toggle)
+          ? toggle
+          : createTrigger.current;
+        if (usableFocusTarget(target)) target.focus({ preventScroll: true });
+      }, 0);
+    }
+  }
   async function retryList() {
     try {
       await refresh();
@@ -475,7 +612,20 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
       )}
       <ul className="product-list">
         {filtered.map((row) => (
-          <li key={row.id} className="product-row">
+          <li
+            key={row.id}
+            className="product-row"
+            ref={(element) => {
+              if (element) actionRowRefs.current.set(row.id, element);
+              else actionRowRefs.current.delete(row.id);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || openActionsId !== row.id) return;
+              event.preventDefault();
+              setOpenActionsId(null);
+              focusActionToggle(row.id);
+            }}
+          >
             <span className="product-summary">{summary(row)}</span>{' '}
             <button
               className="secondary-action"
@@ -486,17 +636,60 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               Bearbeiten
             </button>
             <button
-              className="secondary-action"
+              ref={(element) => {
+                if (element) actionToggleRefs.current.set(row.id, element);
+                else actionToggleRefs.current.delete(row.id);
+              }}
+              type="button"
+              className="tertiary-action"
               disabled={busy}
-              aria-label={`Produkt duplizieren: ${row.name}`}
-              onClick={() => openDuplicate(row)}
+              aria-label={`Weitere Aktionen für ${row.name}`}
+              aria-expanded={openActionsId === row.id}
+              aria-controls={`product-secondary-actions-${row.id}`}
+              onClick={() =>
+                setOpenActionsId((current) =>
+                  current === row.id ? null : row.id,
+                )
+              }
             >
-              Duplizieren
+              Aktionen
             </button>
+            <span
+              id={`product-secondary-actions-${row.id}`}
+              role="group"
+              aria-label={`Aktionen für ${row.name}`}
+              hidden={openActionsId !== row.id}
+            >
+              <button
+                className="secondary-action"
+                disabled={busy}
+                aria-label={`Produkt duplizieren: ${row.name}`}
+                onClick={() => {
+                  // The trigger, not the disappearing group, owns the focus
+                  // the dialog returns to.
+                  focusActionToggle(row.id);
+                  openDuplicate(row);
+                }}
+              >
+                Duplizieren
+              </button>
+              <button
+                className="tertiary-action"
+                type="button"
+                disabled={busy || row.state === 'archived'}
+                aria-label={`Produkt archivieren: ${row.name}`}
+                onClick={() => {
+                  focusActionToggle(row.id);
+                  void archive(row);
+                }}
+              >
+                Archivieren
+              </button>
+            </span>
           </li>
         ))}
       </ul>
-      <p role="status">{message}</p>
+      <p role={messageIsError ? 'alert' : 'status'}>{message}</p>
       {reloadFailed ? (
         <div className="reload-warning">
           <p role="status">{reloadFailureMessage}</p>

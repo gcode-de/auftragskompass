@@ -103,6 +103,14 @@ async function openEdit(name: string) {
   fireEvent.click(trigger);
   return screen.findByRole('dialog', { name: 'Produkt bearbeiten' });
 }
+function actionToggle(name: string) {
+  return screen.getByRole('button', { name: `Weitere Aktionen für ${name}` });
+}
+function openActions(name: string) {
+  const toggle = actionToggle(name);
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+  return toggle;
+}
 function form(dialog: HTMLElement) {
   return within(dialog)
     .getByRole('button', { name: /Produkt speichern|Wird gespeichert/ })
@@ -220,6 +228,7 @@ test('duplicate opens a new record and copies the state one to one', async () =>
   let dialog = await openEdit('Synthetic product');
   fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
   expect(screen.queryByRole('dialog')).toBeNull();
+  openActions('Synthetic product');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Produkt duplizieren: Synthetic product',
@@ -267,6 +276,7 @@ test('duplicate opens a new record and copies the state one to one', async () =>
     'Synthetic product (Kopie) – 0,01 € Netto – 19 % – Stück – Archiviert',
   );
   // A copy of an archived product stays archived: no invented activation rule.
+  openActions('Synthetic retired');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Produkt duplizieren: Synthetic retired',
@@ -798,4 +808,330 @@ test('reports loading, list failures and a retry without inventing rows', async 
   await screen.findByText('Produkte konnten nicht geladen werden.');
   expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   expect(screen.queryByText(/Noch keine Produkte/)).toBeNull();
+});
+
+type ProductWrite = {
+  url: string;
+  method: string;
+  body: Record<string, unknown>;
+};
+function archiveFetcher(
+  rows: (typeof row)[],
+  reply?: (body: Record<string, unknown>) => Response | Promise<Response>,
+) {
+  let current = rows.map((entry) => ({ ...entry }));
+  const writes: ProductWrite[] = [];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (!options) return Response.json(current);
+    const body = JSON.parse(String(options.body)) as Record<string, unknown>;
+    writes.push({ url, method: String(options.method), body });
+    if (reply) return reply(body);
+    const id = String(url).split('/').pop();
+    const stored = {
+      ...current.find((entry) => entry.id === id)!,
+      ...body,
+      id: id!,
+      version: Number(body.version) + 1,
+    };
+    current = current.map((entry) => (entry.id === id ? stored : entry));
+    return Response.json(stored);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  return { fetcher, writes };
+}
+
+test('rare row actions stay behind one named disclosure until it is opened', async () => {
+  vi.stubGlobal('fetch', listFetcher([row, service, retired]));
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(rowText);
+  const toggle = actionToggle('Synthetic product');
+  expect(toggle.textContent).toBe('Aktionen');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(
+    document.getElementById(toggle.getAttribute('aria-controls')!),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', {
+      name: 'Produkt duplizieren: Synthetic product',
+    }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }),
+  ).toBeNull();
+  // The frequent action stays directly reachable and named.
+  expect(
+    screen.getByRole('button', {
+      name: 'Produkt bearbeiten: Synthetic product',
+    }).textContent,
+  ).toBe('Bearbeiten');
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(
+    screen.getByRole('group', { name: 'Aktionen für Synthetic product' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', {
+      name: 'Produkt duplizieren: Synthetic product',
+    }).textContent,
+  ).toBe('Duplizieren');
+  expect(
+    screen.getByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }).textContent,
+  ).toBe('Archivieren');
+  // An archived row cannot be archived twice; its reactivation stays possible.
+  openActions('Synthetic retired');
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Produkt archivieren: Synthetic retired',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    screen.getByRole('button', {
+      name: 'Produkt bearbeiten: Synthetic retired',
+    }),
+  ).toBeTruthy();
+});
+
+test('only one row disclosure is open and Escape, focus leaving the row and an outside click close it', async () => {
+  vi.stubGlobal('fetch', listFetcher([row, service]));
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(rowText);
+  const first = actionToggle('Synthetic product');
+  const second = actionToggle('Synthetic service');
+  fireEvent.click(first);
+  expect(first.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.click(second);
+  expect(first.getAttribute('aria-expanded')).toBe('false');
+  expect(second.getAttribute('aria-expanded')).toBe('true');
+  // A focus move inside the same row keeps the disclosure open.
+  const secondArchive = screen.getByRole('button', {
+    name: 'Produkt archivieren: Synthetic service',
+  });
+  secondArchive.focus();
+  fireEvent.focusIn(secondArchive);
+  expect(second.getAttribute('aria-expanded')).toBe('true');
+  // Escape closes it and returns focus to its trigger.
+  fireEvent.keyDown(secondArchive, { key: 'Escape' });
+  expect(second.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(second);
+  // Tabbing out of the row closes it; focus lands on the outside control.
+  fireEvent.click(second);
+  const refresh = screen.getByRole('button', {
+    name: 'Produkte aktualisieren',
+  });
+  refresh.focus();
+  fireEvent.focusIn(refresh);
+  expect(second.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(refresh);
+  // A pointer outside closes it without stealing the focus the user chose.
+  fireEvent.click(second);
+  const outside = document.createElement('button');
+  outside.textContent = 'Fictional outside action';
+  document.body.append(outside);
+  fireEvent.pointerDown(outside);
+  expect(second.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).not.toBe(second);
+  outside.remove();
+});
+
+test('archiving sends the versioned PUT, updates only that row and keeps its trigger reachable', async () => {
+  const { writes } = archiveFetcher([row, service]);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(rowText);
+  const toggle = openActions('Synthetic product');
+  const archive = screen.getByRole('button', {
+    name: 'Produkt archivieren: Synthetic product',
+  });
+  archive.focus();
+  expect(document.activeElement).toBe(archive);
+  fireEvent.click(archive);
+
+  expect(await screen.findByText('Produkt archiviert.')).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toEqual({
+    url: '/api/v1/products/synthetic',
+    method: 'PUT',
+    body: {
+      name: 'Synthetic product',
+      description: 'Fictional',
+      unit: 'Stück',
+      priceMinor: 1999,
+      priceBasis: 'gross',
+      taxBasisPoints: 1900,
+      position: 0,
+      state: 'archived',
+      version: 1,
+    },
+  });
+  expect(
+    screen.getByText(
+      'Synthetic product – 19,99 € Brutto – 19 % – Stück – Archiviert',
+    ),
+  ).toBeTruthy();
+  // Only the archived row changed; the neighbour keeps its price and state.
+  expect(screen.getByText(serviceText)).toBeTruthy();
+  expect(screen.queryByText(rowText)).toBeNull();
+  // The disclosure closed and its trigger stays visible and focused.
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  await waitFor(() => expect(document.activeElement).toBe(toggle));
+  // No second disclosure was opened by the archive action.
+  expect(
+    screen.queryByRole('button', {
+      name: 'Produkt duplizieren: Synthetic product',
+    }),
+  ).toBeNull();
+});
+
+test('a version conflict while archiving explains it and keeps the row and its actions visible', async () => {
+  const { writes } = archiveFetcher([row], () =>
+    Response.json({ error: 'conflict' }, { status: 409 }),
+  );
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(rowText);
+  const toggle = openActions('Synthetic product');
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }),
+  );
+
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe(
+    'Inzwischen geändert. Produkte aktualisieren und erneut bearbeiten.',
+  );
+  expect(writes).toHaveLength(1);
+  // The row and its data stay exactly as they were read.
+  expect(screen.getByText(rowText)).toBeTruthy();
+  // The action is visible again so the user can retry after reloading.
+  const retry = screen.getByRole('button', {
+    name: 'Produkt archivieren: Synthetic product',
+  });
+  await waitFor(() => expect(document.activeElement).toBe(toggle));
+  fireEvent.click(retry);
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes[1]!.body.version).toBe(1);
+  expect(writes[1]!.body.state).toBe('archived');
+});
+
+test('an archive click sends one request and a rejected archive restores the visible actions', async () => {
+  let finish: (response: Response) => void = () => {};
+  const writes: ProductWrite[] = [];
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (!options) return Response.json([row]);
+    writes.push({
+      url: String(_url),
+      method: String(options.method),
+      body: JSON.parse(String(options.body)) as Record<string, unknown>,
+    });
+    if (writes.length === 1)
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    throw Error('offline');
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(rowText);
+  const toggle = openActions('Synthetic product');
+  const archive = screen.getByRole('button', {
+    name: 'Produkt archivieren: Synthetic product',
+  });
+  fireEvent.click(archive);
+  fireEvent.click(archive);
+  expect(writes).toHaveLength(1);
+  // While the write is pending every row action is disabled and the
+  // disclosure cannot be used to fire a second archive.
+  expect((toggle as HTMLButtonElement).disabled).toBe(true);
+  expect(
+    screen.queryByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }),
+  ).toBeNull();
+  await act(async () =>
+    finish(Response.json({ error: 'unavailable' }, { status: 503 })),
+  );
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe(
+    'Archivieren fehlgeschlagen. Produkt und Berechtigung prüfen.',
+  );
+  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  // The actions are visible again; a retry without a response is reported
+  // honestly instead of pretending the product was archived.
+  const retry = screen.getByRole('button', {
+    name: 'Produkt archivieren: Synthetic product',
+  });
+  fireEvent.click(retry);
+  await waitFor(() =>
+    expect(
+      screen.getByText(
+        'Archivierungsstand unklar. Bitte Produkte neu laden, bevor du erneut archivierst.',
+      ),
+    ).toBeTruthy(),
+  );
+  expect(writes).toHaveLength(2);
+  expect(screen.getByText(rowText)).toBeTruthy();
+});
+
+test('an archived product can still be reactivated through the edit dialog', async () => {
+  const { writes } = archiveFetcher([row]);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(rowText);
+  openActions('Synthetic product');
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }),
+  );
+  await screen.findByText(
+    'Synthetic product – 19,99 € Brutto – 19 % – Stück – Archiviert',
+  );
+  const dialog = await openEdit('Synthetic product');
+  expect(
+    (within(dialog).getByLabelText('Produktzustand') as HTMLSelectElement)
+      .value,
+  ).toBe('archived');
+  fireEvent.change(within(dialog).getByLabelText('Produktzustand'), {
+    target: { value: 'active' },
+  });
+  submitSave(dialog);
+  await screen.findByText(
+    'Synthetic product – 19,99 € Brutto – 19 % – Stück – Aktiv',
+  );
+  expect(writes).toHaveLength(2);
+  expect(writes[1]!.body.version).toBe(2);
+  expect(writes[1]!.body.state).toBe('active');
+});
+
+test('archiving a filtered row hands the focus to the create action', async () => {
+  const { writes } = archiveFetcher([row, service]);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(rowText);
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: 'active' },
+  });
+  openActions('Synthetic product');
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }),
+  );
+  await screen.findByText('Produkt archiviert.');
+  expect(writes).toHaveLength(1);
+  // The archived row no longer matches the filter, so the focus goes to the
+  // create action instead of being lost with the removed row.
+  expect(screen.queryByText(rowText)).toBeNull();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Produkt anlegen' })).toBe(
+      document.activeElement,
+    ),
+  );
+  expect(
+    (screen.getByLabelText('Zustand filtern') as HTMLSelectElement).value,
+  ).toBe('active');
 });
