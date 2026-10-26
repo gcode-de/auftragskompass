@@ -2,6 +2,74 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H056: BKP009-/BKP010-Welle abgeschlossen, 26.10.2026
+
+Vier nummerierte Unter-Slices auf `codex/ux-event-simplification`, einzeln committet
+und gepusht; MiMo V2.6 Pro (Hermes) koordinierte und reviewte, DeepSeek V4.1 Flash
+arbeitete als Coding-Subagent über die Hermes-CLI
+(`hermes -z … -m deepseek-v4.1-flash --provider opencode-go`); die Modellkennung
+war in jedem der acht Delegats (drei rein lesende Analysen, fünf Coding-Läufe)
+bestätigt, Dateizuständigkeiten waren getrennt, jeder Commit wurde von MiMo nach
+vollständigem Diff-Review und eigenen Gate-Läufen gestaged und gepusht.
+
+- **BKP009.1 `5e6f7a8`** – Ressourcen liste-zuerst: kompakte Werkzeugleiste
+  (Suche Name/Code/Kategorie, Kategorie- und Zustandsauswahl), Anlegen/Bearbeiten
+  im accessiblen Dialog mit Fokusfalle/Dirtyschutz/Doppelklick-Guard,
+  `code_exists`-Meldung, ehrliche Save-vs-GET-Trennung, getrennte Leerzustände.
+  13 eigene Komponententests plus geteilte Vertragstests mitgezogen;
+  320/390/768/1280 × light/dark Matrix mit Screenshots.
+- **BKP009.2 `99e9eac`** – Zeitweise Sperren bewusst geöffnet (native
+  Offenlegung „Sperrverwaltung öffnen/schließen“, bedingtes Rendern,
+  Entwurfsschutz/Fokusrückkehr), Rahmenvertrag „eine Primäraktion pro Rahmen“
+  mit gültigen Blockdaten echt geprüft; E2E-Tastaturbeweis (Enter/Space, kein
+  Escape-Schließen), axe mit offener Sperrverwaltung, Matrix in beiden
+  Offen-Zuständen (16 Screenshots).
+- **BKP010.1 `442d19c`** – Produkte liste-zuerst: Dialog für Anlegen/Bearbeiten/
+  Duplikat, Suche Name/Beschreibung/Einheit + Zustandsauswahl, Zeile mit
+  Preisbasis/Steuer/Einheit, exakte Dezimalhelfer, feldbezogene Dezimalfehler,
+  Save-vs-GET-Trennung, Sperre bei unklarem Ausgang ohne zweiten POST.
+  `GET /api/v1/products` bleibt querylos.
+- **BKP010.2 `f576235`** – Seltene Produktzeilenaktionen hinter benannter
+  Offenlegung (BKP015.7-Vertrag), neue Archivaktion über PUT mit `version`;
+  Integrationsnachweis: finalisierte Dokumentzeilen/-summen/Snapshot-Hash bleiben
+  nach Produktarchivierung byte-identisch.
+
+Tests je Slice zuerst rot beobachtet (Gesamt jetzt `test:component` 599,
+`test:integration` 310, `test:unit` 260, `test:coverage` vollständig grün,
+`test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E auth + template-
+product-price 14/14 mit Theme-/Breitenmatrizen und axe). Ehrlich vermerkt:
+einzelne nachgereichte Tests waren nicht separat rot; der Dokument-Unverändertheits-
+Nachweis charakterisiert bestehendes DB-Verhalten.
+
+CI: 40256380963 (`5e6f7a8`) grün, 40259626189 (`99e9eac`) grün, 40262925543
+(`442d19c`) grün nach gezieltem Re-Run – der Erstlauf scheiterte an einem
+transienten `net::ERR_NETWORK_CHANGED` des Chromium-Stacks im Runner (Konsolen-
+und Netzwerktrace im CI-Artefakt `chromium-evidence`; kein Produktfehler, kein
+Test geändert), 40266669441 (`f576235`) grün. Jeweils quality+images.
+
+Betrieb: zuletzt verifiziert live bleibt **c21330c**. Der alleinige Auto-Updater
+auf dem Proxmox-Host übernimmt Heads der UX-Branch nach grünem quality-Lauf und
+beiden Images automatisch; keine parallele manuelle Aktualisierung. Registry-
+Nachweis aus den CI-Logs: beide Images mit
+`org.opencontainers.image.revision` = jeweiliger SHA publiziert. Der
+Checkpoint-/OCI-/Drei-Container-Nachweis für die neuen Stände war von hier
+**nicht möglich**: SSH zum Proxmox-Host (192.168.68.201) antwortet nicht
+(Timeout/Host down). Nachzuholen, sobald der Host erreichbar ist; vorher keine
+Live-Aussage zu `5e6f7a8`–`f576235`.
+
+Design: Impeccable-Kontext einmal geladen (Launcher ohne Exec-Bit, über `sh`
+gestartet; `apps/admin/DESIGN.md` ist die Designwelt), Finish-Detektor über die
+drei geänderten Panels ohne Befund (`[]`). Ponytail full für die kleinsten
+vollständigen Lösungen; REA war für diese Slices ohne zusätzlichen
+Referenzbedarf (B27/B28-Belege genügten), Taste v2 blieb außerhalb der
+Adminscreens.
+
+Offen als Nächstes: **BKP011** (lesende Kontaktdetails, kleinster Slice) und
+**BKP012** (Kontaktpicker im Event); optional **BKP010.3** (Backend-Auftragsbeleg
+für unklare Speicherausgänge); weiterhin offen: Vorlagenfilter/Platzhalter-
+Einfügewerkzeuge, BKP007-Folge nach Referenzbeobachtung, Betriebsprüfung siehe
+oben. Keine vollständige Parität behaupten.
+
 ## Abschluss und vorbereiteter Hermes-Goal, 26.10.2026
 
 Funktionsstand: **45add395a201a98e179a4d8fc54c0a2d279714d5** auf
