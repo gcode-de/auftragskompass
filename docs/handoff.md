@@ -2,6 +2,49 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H061: BKP014.2 (Ressourcen in der Eventzusammenfassung), 26.10.2026
+
+- **Befund vorab (wie schon bei BKP013.1):** BKP014.1 „scannbare Karten mit
+  Datumsspalte“ war bereits am 23.10.2026 erledigt (Plan:917); die veralteten
+  Statuszeilen in tasks-core/observations sind bereinigt. Offen war der
+  eigentliche Kern des Tickets: echte Ressourcendaten in der Liste.
+- **BKP014.2 `08449e0`** – jede Eventzeile von `GET /api/v1/events` trägt
+  jetzt `resources`: zugewiesene physische Boxen/Einheiten (Name, Einheiten-
+  nummer, `Gebucht`/`Vormerkung`) aus GENAU EINER mandantengebundenen
+  Abfrage auf `reservations` für alle gelisteten IDs (Integrationstest hält
+  auch bei 50 Events genau ein Statement fest – kein N+1); Konflikt nur bei
+  echten überschneidenden aktiven Fremdbelegungen (korreliertes `exists`;
+  `booked`/`blocked` sind per Exclusion-Constraint überlappungsfrei).
+  Kompakte Kartenzeile: „Noch keine Ressource“ ohne Zuordnung, abgelaufene
+  Vormerkungen/archivierte Einheiten ausdrücklich markiert, „Überschneidung
+  offen“ nur bei gemeldetem Konflikt – bewusst ohne Verfügbarkeitsaussage
+  (Referenz unbekannt; EV-04/RE-12 sind Lastenheft-IDs). Keine Migration;
+  Antwort-Schema additiv erweitert, bestehende Felder unverändert.
+  Abnahme: RED real beobachtet (Component/Integration/E2E), dann grün –
+  component 669, integration 313 (Projektionsmatrix gegen echtes PostgreSQL,
+  Mandantentrennung, Drahtschema), unit 265, coverage 1247 vollständig
+  (events.ts 96,77% Statements), E2E 16/16, Build grün. `docs/event-search.md`
+  beschreibt den neuen Vertrag.
+
+**Betriebsbefund (ehrlich):** Zwei CI-Läufe (40284692007, 40317554236)
+erreichten auf langsamen Runnern die 25-Minuten-Jobgrenze
+(„The operation was canceled.“, ohne Testfehler); beide waren im gezielten
+Re-Run komplett grün. Die Grenze ist bewusst NICHT angehoben worden; bei
+anhäufigendem Auftreten ist `timeout-minutes` in `quality.yml` eine eigene,
+bewusste Betriebsentscheidung. Ebenfalls notiert: `tests/unit/password.test.ts`
+(scrypt) fiel einmal unter Last aus und war isoliert/im Wiederholungslauf grün
+(vorbestehend flaky).
+
+**Nächste offene Paritätsaufgaben:** BKP015+ (Dokumente/Mailreste laut
+Tickets), Dateien, kommerzielle Dokumentabläufe, Mailkern, Postfach/Verfassen,
+Aufgaben/Verträge/Fragebögen, Websiteformulare, BKP007-Folge nach
+Referenzbeobachtung; notierte Kleinslices: BKP010.3 optional,
+`registerUnsavedChanges` des Event-Editors, Platzhalter-Werkzeuge im
+Angebotsentwurfs-Editor, BKP011-Landauswahl, Konflikt-Index bei sehr großen
+Beständen. Betrieb unverändert: verifiziert live **c21330c**, alleiniger
+Auto-Updater; Checkpoint-/OCI-Nachweis weiterhin offen (Proxmox-Host
+192.168.68.201 nicht erreichbar).
+
 ## H060: BKP013.2 (Dokumententwurf bei Neuladefehler) und Statuskorrektur, 26.10.2026
 
 - **Befund vorab:** BKP013.1 war bereits über `605f75b` (23.10.2026) umgesetzt,
