@@ -8,6 +8,58 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP011.1 — `feat: show contact details and related events`** (26.10.2026)
+
+  Erster Unter-Slice von BKP011 (Kontakt-Details, rein lesende Akte) nach rein
+  lesender DeepSeek-Quellanalyse zu `e2b5646`. Der Kontaktname wird ein nativer
+  Link (`#contact-<id>`, bestehende Route bleibt der Vertrag) auf eine lesende
+  Detailansicht, die inline in der Zeile aufklappt (Zeilenzusammenfassung solange
+  verborgen): Kopf mit Typ (Privat/Firma), Name/Firma und deutlichem
+  Archivzustand; Kontaktweg (Ansprechpartner, Mail, Telefon – sichtbarer Text
+  bleibt der gespeicherte Wert, `mailto:`/`tel:` korrekt escaped); Anschrift
+  vollständig mit Land als verständlicher Bezeichnung (`Intl.DisplayNames`,
+  Fallback auf gespeicherten ISO-Code; gespeicherter Wert bleibt unverändert);
+  zugehörige Events aus der vorhandenen tenantgesicherten Projektion
+  `GET /api/v1/contacts/:id/events` (Name, Datum bzw. „Ohne Datum“, Status;
+  kein N+1, keine alle-Kunden-Abfrage, keine Notizeninhalte). Fehlende Werte
+  ehrlich leer statt erfunden; unvollständige Anschrift wird als solche
+  gezeigt. Genau eine sekundäre Bearbeiten-Aktion (öffnet den vorhandenen
+  Dialog mit dessen unveränderten Dirty-/409-/Fokusverträgen) und eine
+  tertiäre Schließen-Aktion; Schließen gibt `#contacts` frei und stellt
+  Suche/Scroll/Fokus wieder her (Suche bleibt lokaler Panel-Zustand). Der
+  bisherige panelweite „Events anzeigen“-Pfad (Zeilenaktion + Block unter der
+  Liste) wird ersetzt; keine funktionslosen Mail-/Datei-Tabs, keine
+  Geburtstags-/Gruppen-/Partnerfelder, keine Namensaufspaltung, keine
+  automatische Dublettenzusammenführung, keine API-/Migrationsänderung.
+  Tests zuerst rot: kein Event/mehrere Events, Firma mit Ansprechpartner,
+  archiviert, fremder Tenant (fehlender Projektionstest in
+  `tests/integration/events.test.ts` ergänzen), lange fiktive Werte, fehlende
+  Anschrift/leere optionale Werte, Back/Reload/Dirty/409 über den Dialog,
+  Escape in mailto/tel-Attributen. Geteilte Vertragstests bewusst mitgezogen
+  (contacts.test.tsx, action-hierarchy Kontaktvertrag, ui-language H1/H2,
+  auth.spec.ts-Kontaktflüsse). Neu eigene Dateien: `contact-links.ts`,
+  `ContactDetails.tsx`, `tests/unit/contact-links.test.ts`,
+  `tests/component/contact-details.test.tsx`. Coding-Subagent: DeepSeek
+  V4.1 Flash (gleiche Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (15 neue Akten-Tests + umgestellte Verträge, u. a.
+  fehlender Name-Link und überencodiertes `mailto:`; ehrlich vermerkt: der
+  Tenant-Isolationstest ist ein Regressionsbeweis bestehender Absicherung, sein
+  erstes Rot kam aus der Fixture-Reihenfolge), danach grün: `test:component`
+  614/614, `test:integration` 311/311, `test:unit` 265/265, `test:coverage`
+  vollständig grün (contact-links 100% Zeilen, ContactDetails 97,43%,
+  ContactPanel 97,33%), `test:workspace`/`test:docs`/schnelle Gates/Build grün;
+  E2E auth+template-product-price 14/14 mit neuer Akten-Matrix 320/390/1280 ×
+  light/dark (sechs Screenshots, Overflow-/Umbruch-/Kollisionsprüfungen) und
+  axe je Kombination 0 Verstöße. Die Abnahme-Prüfung deckte einen echten
+  a11y-Defekt auf (axe `heading-order`: Akte mit `h3` unter Seiten-`h1`);
+  behoben auf `h2`/`h3` analog EventDetails, mit anschließend angeglichenen
+  CSS-Selektoren und echten Stil-Nachweisen (Titel 19,2 px,
+  `overflow-wrap: anywhere`, Scroll-Offset 96 px, gemessen in Chromium bei
+  320/390/1280 in beiden Themes). Notiert: Langnamen-Umbruch ist im CI über die
+  Component-Assertion mit angewandtem Stylesheet belegt, in Chromium über eine
+  einmalige Messung (190 Zeichen); px-Werte der Typo-Skala sind bewusst in
+  einer Test-Assertion verankert. Keine API-/Migrationsänderung.
+
 - [x] **BKP010.2 — `feat: disclose rare product row actions and archive safely`** (26.10.2026)
 
   Zweiter Unter-Slice von BKP010: „Bearbeiten: <Name>“ bleibt direkt an der

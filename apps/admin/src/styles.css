@@ -1080,6 +1080,99 @@ time {
 .contact-list > li {
   scroll-margin-top: 6rem;
 }
+.contact-row > button {
+  margin: 0.25rem;
+}
+/* BKP011.1: the reading record opens inline in its row; it stays secondary to
+   the page's single primary action and shows the stored values unabridged. */
+.contact-record {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-block: 0.5rem;
+  padding-inline-start: 0.5rem;
+  border-inline-start: 2px solid var(--border);
+}
+.contact-record-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-block: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.contact-record-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.contact-record-state {
+  color: var(--ink);
+}
+.contact-record-head h2 {
+  scroll-margin-top: 6rem;
+  margin: 0;
+  font-size: 1.2rem;
+  overflow-wrap: anywhere;
+}
+.contact-record dl {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  margin-block: 1rem 0.75rem;
+}
+.contact-record dt {
+  color: var(--muted);
+}
+.contact-record dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.contact-record h3 {
+  font-size: 0.9rem;
+  font-weight: 650;
+  margin-block: 1.25em 0.35em;
+}
+.contact-record-address address {
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+.contact-record-address address > span {
+  display: block;
+}
+.contact-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+.contact-event-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.75rem;
+  margin: 0;
+}
+.contact-event-date,
+.contact-event-status {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.contact-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
 .sr-only {
   position: absolute;
   width: 1px;

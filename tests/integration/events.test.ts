@@ -533,3 +533,117 @@ test('hundreds of fictional contacts and events remain complete, isolated and re
     }),
   );
 });
+
+test('the contact event projection never answers with a foreign tenant record', async () => {
+  // BKP011.1: the reading contact record asks this projection for the events of
+  // one contact. Two tenants each own one linked event, so an empty answer for
+  // the foreign contact id is a real isolation proof and not a node without
+  // data. The route stays a plain 200 with `[]` – no 404, no foreign row.
+  const local = { tenant: randomUUID(), slug: 'local-contact-events' },
+    foreign = { tenant: randomUUID(), slug: 'foreign-contact-events' };
+  const people: Record<string, string> = {};
+  const events: Record<string, string> = {};
+  for (const tenant of [local, foreign]) {
+    const email = tenant.slug + '@example.invalid';
+    await bootstrapAccess(
+      pool,
+      tenant.tenant,
+      email,
+      'Fictional ' + tenant.slug,
+      'Europe/Berlin',
+    );
+    const access = accessRepository(pool, tenant.tenant);
+    await access.issueSession(
+      { subject: tenant.slug, email },
+      digest('synthetic-' + tenant.slug),
+    );
+    // The first sign-in creates the user, so the actor exists only afterwards.
+    const actor = (await access.list())[0]!.userId!;
+    const contact = await contactRepository(pool, tenant.tenant).save(actor, {
+      kind: 'company' as const,
+      name: 'Fictional ' + tenant.slug,
+      contactPerson: '',
+      street: '',
+      postalCode: '',
+      city: '',
+      country: 'DE',
+      email,
+      phone: '',
+      mobile: '',
+      state: 'active' as const,
+    });
+    people[tenant.slug] = contact.id;
+    const event = await eventRepository(pool, tenant.tenant).save(actor, {
+      ...input,
+      name: 'Fictional ' + tenant.slug + ' event',
+      notesHtml: '',
+      eventDate: '2026-11-20',
+      startsAt: null,
+      endsAt: null,
+      primaryContactId: contact.id,
+      additionalContactIds: [],
+      eventTypeId: null,
+      packageId: null,
+      locationId: null,
+    });
+    events[tenant.slug] = event.id;
+  }
+  const config = {
+    origin: 'https://admin.example.invalid',
+    tenantId: local.tenant,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerEventRoutes(app, pool, local.tenant);
+  const cookies = { '__Host-ak-session': 'synthetic-' + local.slug };
+  try {
+    const own = await app.inject({
+      url: '/api/v1/contacts/' + people[local.slug] + '/events',
+      cookies,
+    });
+    expect(own.statusCode).toBe(200);
+    expect(own.json().map((row: { id: string }) => row.id)).toEqual([
+      events[local.slug],
+    ]);
+    // The foreign event exists and is reachable only inside its own tenant.
+    expect(
+      await eventRepository(pool, foreign.tenant).list(people[foreign.slug]!),
+    ).toHaveLength(1);
+    for (const contactId of [people[foreign.slug]!, randomUUID()]) {
+      const answer = await app.inject({
+        url: '/api/v1/contacts/' + contactId + '/events',
+        cookies,
+      });
+      expect(answer.statusCode).toBe(200);
+      expect(answer.json()).toEqual([]);
+    }
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/contacts/' + people[local.slug] + '/events',
+        })
+      ).statusCode,
+    ).toBe(401);
+  } finally {
+    await app.close();
+  }
+});

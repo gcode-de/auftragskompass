@@ -86,18 +86,17 @@ test('the contact page starts with the search toolbar and the list directly belo
   expect(create.getAttribute('title')).toBe('Kontakt anlegen');
   expect(create.getAttribute('aria-label')).toBe('Kontakt anlegen');
   expect(create.textContent).toBe('');
-  const rowActions: [string, string][] = [
-    ['Events anzeigen: Synthetic Company', 'Events anzeigen'],
-    ['Kontakt bearbeiten: Synthetic Company', 'Kontakt bearbeiten'],
-  ];
-  for (const [name, title] of rowActions) {
-    const action = screen.getByRole('button', { name });
-    expect(action.getAttribute('title')).toBe(title);
-    expect(action.textContent).toBe('');
-    expect(action.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
-      'true',
-    );
-  }
+  // BKP011.1: the name itself is the reading entry; the icon row keeps only
+  // the edit action, which must still name itself and hide its glyph.
+  const nameLink = screen.getByRole('link', { name: 'Synthetic Company' });
+  expect(nameLink.getAttribute('href')).toBe('#contact-synthetic');
+  const action = screen.getByRole('button', {
+    name: 'Kontakt bearbeiten: Synthetic Company',
+  });
+  expect(action.getAttribute('title')).toBe('Kontakt bearbeiten');
+  expect(action.textContent).toBe('');
+  expect(action.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  expect(screen.queryByRole('button', { name: /Events anzeigen/ })).toBeNull();
   expect(screen.getByRole('region', { name: 'Kontakte' })).toBeTruthy();
 });
 test('the plus action opens an accessible dialog with focus, focus trap, cancel and focus return', async () => {
@@ -646,7 +645,7 @@ test('deep links without a matching row stay honest and never open a stale edito
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByText('Synthetic Company')).toBeNull();
 });
-test('contacts reveal related events and handle empty or unavailable relations', async () => {
+test('the contact name opens its record and the related events stay honest for one, none and unavailable answers', async () => {
   let calls = 0;
   vi.stubGlobal(
     'fetch',
@@ -661,19 +660,38 @@ test('contacts reveal related events and handle empty or unavailable relations',
     }),
   );
   render(<ContactPanel csrfToken="csrf" />);
-  const button = await screen.findByRole('button', {
-    name: 'Events anzeigen: Synthetic Company',
+  const link = await screen.findByRole('link', { name: 'Synthetic Company' });
+  fireEvent.click(link);
+  const details = await screen.findByRole('region', {
+    name: 'Kontakt-Details',
   });
-  fireEvent.click(button);
   expect(
     (
-      await screen.findByRole('link', { name: 'Fictional linked event' })
+      await within(details).findByRole('link', {
+        name: 'Fictional linked event',
+      })
     ).getAttribute('href'),
   ).toBe('#event-synthetic-event');
-  fireEvent.click(button);
-  await screen.findByText('Keine zugeordneten Events.');
-  fireEvent.click(button);
-  await screen.findByText(/Zugeordnete Events konnten nicht geladen/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Kontakt-Details schließen' }),
+  );
+  await waitFor(() => expect(window.location.hash).toBe('#contacts'));
+  fireEvent.click(screen.getByRole('link', { name: 'Synthetic Company' }));
+  await within(
+    await screen.findByRole('region', { name: 'Kontakt-Details' }),
+  ).findByText('Keine zugeordneten Events.');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Kontakt-Details schließen' }),
+  );
+  await waitFor(() => expect(window.location.hash).toBe('#contacts'));
+  fireEvent.click(screen.getByRole('link', { name: 'Synthetic Company' }));
+  await within(
+    await screen.findByRole('region', { name: 'Kontakt-Details' }),
+  ).findByText('Zugeordnete Events konnten nicht geladen werden.');
+  // The old panel-wide block under the list is gone with the event action.
+  expect(
+    screen.queryByRole('navigation', { name: 'Zugeordnete Events' }),
+  ).toBeNull();
 });
 test('contact search keeps the newest result when an older request finishes later', async () => {
   let resolveOld!: (response: Response) => void;
@@ -721,12 +739,19 @@ test('reapplying the global query resets a local contact search even when the UR
     (screen.getByLabelText('Kontakte suchen') as HTMLInputElement).value,
   ).toBe('Synthetic');
 });
-test('a contact deep link reaches the matching existing list entry and its editor', async () => {
+test('a contact deep link opens the matching record and keeps its editor reachable', async () => {
   window.history.replaceState(null, '', '/#contact-synthetic');
   vi.stubGlobal('fetch', listFetcher());
   render(<ContactPanel csrfToken="csrf" />);
   await screen.findByText('Synthetic Company');
   expect(document.getElementById('contact-synthetic')).toBeTruthy();
+  // BKP011.1: the hash does not only scroll, it opens the reading record.
+  const details = await screen.findByRole('region', {
+    name: 'Kontakt-Details',
+  });
+  expect(
+    within(details).getByRole('heading', { name: 'Synthetic Company' }),
+  ).toBeTruthy();
   const dialog = await openEdit('Synthetic Company');
   expect(
     (screen.getByLabelText('Name / Firma') as HTMLInputElement).value,
@@ -783,11 +808,13 @@ test('contacts suggest duplicates and archive through the edit dialog with direc
   render(<ContactPanel csrfToken="csrf" />);
   await screen.findByText('Synthetic Company');
   const dialog = await openEdit('Synthetic Company');
+  // BKP011.1: `@` stays literal (RFC 6068) and the number reaches the dialler
+  // without the formatting characters of the stored value.
   expect(
     screen
       .getByRole('link', { name: 'E-Mail: Synthetic Company' })
       .getAttribute('href'),
-  ).toBe('mailto:synthetic%40example.invalid');
+  ).toBe('mailto:synthetic@example.invalid');
   expect(
     screen
       .getByRole('link', { name: 'Anrufen: Synthetic Company' })
@@ -799,6 +826,7 @@ test('contacts suggest duplicates and archive through the edit dialog with direc
     target: { value: 'archived' },
   });
   submitSave(dialog);
-  await screen.findByText('Synthetic Company – Archiviert');
+  await screen.findByText('Synthetic Company');
+  expect(screen.getByText('Archiviert')).toBeTruthy();
   expect(screen.queryByRole('dialog')).toBeNull();
 });

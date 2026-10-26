@@ -486,11 +486,13 @@ test('settings lists render one primary action and name every other tier', async
   ).toEqual(['Produkt anlegen']);
 });
 
-test('contact list and dialog keep exactly one primary action', async () => {
+test('contact list, record and dialog keep exactly one primary action', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (_url: string, options?: RequestInit) =>
-      json(options ? contactRow : [contactRow]),
+    vi.fn(async (url: string, options?: RequestInit) =>
+      url.endsWith('/events')
+        ? json([])
+        : json(options ? contactRow : [contactRow]),
     ),
   );
   render(<ContactPanel csrfToken="csrf" />);
@@ -505,11 +507,40 @@ test('contact list and dialog keep exactly one primary action', async () => {
   expect(
     tier(screen.getByRole('link', { name: 'Kontakte als CSV exportieren' })),
   ).toBe('secondary-action');
-  for (const name of [
-    'Events anzeigen: Synthetic Company',
-    'Kontakt bearbeiten: Synthetic Company',
-  ])
-    iconTier(within(section).getByRole('button', { name }), name);
+  // BKP011.1: the row keeps one icon action; the reading entry is the name
+  // link, not a competing button.
+  iconTier(
+    within(section).getByRole('button', {
+      name: 'Kontakt bearbeiten: Synthetic Company',
+    }),
+    'Kontakt bearbeiten',
+  );
+  expect(
+    within(section).queryByRole('button', { name: /Events anzeigen/ }),
+  ).toBeNull();
+  fireEvent.click(
+    within(section).getByRole('link', { name: 'Synthetic Company' }),
+  );
+  const record = await screen.findByRole('region', {
+    name: 'Kontakt-Details',
+  });
+  // The open record stays secondary/tertiary: the create action of the page
+  // frame remains the only dominant one.
+  expectHierarchy(section, 'Kontakte mit offener Akte');
+  expect(
+    tier(
+      within(record).getByRole('button', {
+        name: 'Kontakt bearbeiten: Synthetic Company',
+      }),
+    ),
+  ).toBe('secondary-action');
+  expect(
+    tier(
+      within(record).getByRole('button', {
+        name: 'Kontakt-Details schließen',
+      }),
+    ),
+  ).toBe('tertiary-action');
   fireEvent.click(screen.getByRole('button', { name: 'Kontakt anlegen' }));
   const dialog = await screen.findByRole('dialog', { name: 'Kontakt anlegen' });
   expectHierarchy(dialog, 'Kontakt-Dialog');

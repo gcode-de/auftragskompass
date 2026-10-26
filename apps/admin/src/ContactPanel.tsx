@@ -1,21 +1,8 @@
-import { updateUrlSearch, emptyEventFilters } from './url-state.js';
 import { useEffect, useState, useRef, type KeyboardEvent } from 'react';
+import { ContactDetails, type ContactRecord } from './ContactDetails.js';
+import { mailtoHref, telHref } from './contact-links.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
-type Contact = {
-  id: string;
-  version: number;
-  kind: string;
-  name: string;
-  contactPerson: string;
-  street: string;
-  postalCode: string;
-  city: string;
-  country: string;
-  email: string;
-  phone: string;
-  mobile: string;
-  state: string;
-};
+type Contact = ContactRecord & { version: number };
 type ContactInput = Omit<Contact, 'id' | 'version'>;
 const fields = [
   ['name', 'Name / Firma', 200],
@@ -92,9 +79,7 @@ export function ContactPanel({
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [reloadFailed, setReloadFailed] = useState(false),
-    [linkedEvents, setLinkedEvents] = useState<{ id: string; name: string }[]>(
-      [],
-    );
+    [detailId, setDetailId] = useState<string | null>(null);
   const dirty = open && JSON.stringify(values) !== JSON.stringify(baseline);
   async function refresh(query = '') {
     const current = ++sequence.current;
@@ -121,7 +106,18 @@ export function ContactPanel({
     }
   }
   useEffect(() => {
+    // A fragment navigation (for example opening a contact record) carries no
+    // new query, so it must never throw away a local search. A deliberate
+    // re-application through `updateUrlSearch` keeps the whole address and
+    // still resets the local search, as before.
+    let seen = window.location.href;
     const changed = () => {
+      const href = window.location.href;
+      if (href !== seen && new URL(href).search === new URL(seen).search) {
+        seen = href;
+        return;
+      }
+      seen = href;
       const value = new URLSearchParams(window.location.search).get('q') ?? '';
       setSearch(value);
       void refresh(value).catch(() => setMessage(loadFailureMessage));
@@ -131,10 +127,18 @@ export function ContactPanel({
     return () => window.removeEventListener('popstate', changed);
   }, []);
   useEffect(() => {
+    // BKP011.1: the hash selects the reading record, exactly like the event
+    // panel. A hash without a loaded row stays silent – no stale editor.
     const changed = () => {
       const id = window.location.hash.slice(1);
-      if (!id.startsWith('contact-')) return;
-      document.getElementById(id)?.scrollIntoView?.();
+      if (!id.startsWith('contact-')) {
+        setDetailId(null);
+        return;
+      }
+      if (rows.some((row) => 'contact-' + row.id === id)) {
+        setDetailId(id.slice('contact-'.length));
+        document.getElementById(id)?.scrollIntoView?.();
+      } else setDetailId(null);
     };
     changed();
     window.addEventListener('hashchange', changed);
@@ -362,18 +366,18 @@ export function ContactPanel({
       first.focus();
     }
   }
-  async function showEvents(id: string) {
-    setLinkedEvents([]);
-    setMessage('');
-    try {
-      const response = await fetch('/api/v1/contacts/' + id + '/events');
-      if (!response.ok) throw Error('load');
-      const rows = (await response.json()) as { id: string; name: string }[];
-      setLinkedEvents(rows);
-      if (!rows.length) setMessage('Keine zugeordneten Events.');
-    } catch {
-      setMessage('Zugeordnete Events konnten nicht geladen werden.');
-    }
+  // Closing the record returns to the list without touching the local search,
+  // the loaded rows or the scroll position: only the hash changes.
+  function closeDetail(id: string) {
+    window.location.hash = 'contacts';
+    setDetailId(null);
+    requestAnimationFrame(() => {
+      const link = document
+        .getElementById('contact-' + id)
+        ?.querySelector<HTMLAnchorElement>('.contact-name-link');
+      if (link) link.focus({ preventScroll: true });
+      else createTrigger.current?.focus({ preventScroll: true });
+    });
   }
   const title = editing ? 'Kontakt bearbeiten' : 'Kontakt anlegen';
   return (
@@ -449,73 +453,67 @@ export function ContactPanel({
         <p>Keine Kontakte gefunden.</p>
       )}
       <ul className="contact-list">
-        {rows.map((row) => (
-          <li key={row.id} id={'contact-' + row.id}>
-            <span>
-              {row.name}
-              {row.state === 'archived' ? ' – Archiviert' : ''}
-            </span>{' '}
-            {row.contactPerson && <span>{row.contactPerson} </span>}
-            {row.email && (
-              <a
-                aria-label={`E-Mail: ${row.name}`}
-                href={'mailto:' + encodeURIComponent(row.email)}
-              >
-                E-Mail
-              </a>
-            )}{' '}
-            {(row.phone || row.mobile) && (
-              <a
-                aria-label={`Anrufen: ${row.name}`}
-                href={
-                  'tel:' + (row.phone || row.mobile).replace(/[^+0-9]/g, '')
-                }
-              >
-                Anrufen
-              </a>
-            )}{' '}
-            <button
-              type="button"
-              className="icon-action tier-quiet-icon"
-              disabled={busy}
-              title="Events anzeigen"
-              aria-label={`Events anzeigen: ${row.name}`}
-              onClick={() => void showEvents(row.id)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="icon-action tier-quiet-icon"
-              disabled={busy}
-              title="Kontakt bearbeiten"
-              aria-label={`Kontakt bearbeiten: ${row.name}`}
-              onClick={() => openEdit(row)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-              </svg>
-            </button>
-          </li>
-        ))}
+        {rows.map((row) => {
+          const shown = detailId === row.id;
+          return (
+            <li key={row.id} id={'contact-' + row.id}>
+              {/* The summary steps aside while the record is open; the row
+              itself stays mounted so search, scroll and focus survive. */}
+              <div className="contact-row" hidden={shown}>
+                <a className="contact-name-link" href={'#contact-' + row.id}>
+                  {row.name}
+                </a>{' '}
+                {row.state === 'archived' && (
+                  <span className="contact-archived">Archiviert</span>
+                )}{' '}
+                {row.contactPerson && <span>{row.contactPerson} </span>}
+                {row.email && (
+                  <a
+                    aria-label={`E-Mail: ${row.name}`}
+                    href={mailtoHref(row.email)}
+                  >
+                    E-Mail
+                  </a>
+                )}{' '}
+                {(row.phone || row.mobile) && (
+                  <a
+                    aria-label={`Anrufen: ${row.name}`}
+                    href={telHref(row.phone || row.mobile)}
+                  >
+                    Anrufen
+                  </a>
+                )}{' '}
+                <button
+                  type="button"
+                  className="icon-action tier-quiet-icon"
+                  disabled={busy}
+                  title="Kontakt bearbeiten"
+                  aria-label={`Kontakt bearbeiten: ${row.name}`}
+                  onClick={() => openEdit(row)}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
+              </div>
+              {shown && (
+                <ContactDetails
+                  contact={row}
+                  onEdit={() => openEdit(row)}
+                  onClose={() => closeDetail(row.id)}
+                />
+              )}
+            </li>
+          );
+        })}
       </ul>
       <p role="status">{message}</p>
       {reloadFailed && (
@@ -540,19 +538,6 @@ export function ContactPanel({
         >
           Kontakte erneut laden
         </button>
-      )}
-      {linkedEvents.length > 0 && (
-        <nav aria-label="Zugeordnete Events">
-          {linkedEvents.map((event) => (
-            <a
-              key={event.id}
-              href={'#event-' + event.id}
-              onClick={() => updateUrlSearch(emptyEventFilters)}
-            >
-              {event.name}
-            </a>
-          ))}
-        </nav>
       )}
       {open && (
         <div className="form-dialog-backdrop">

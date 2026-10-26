@@ -1608,19 +1608,22 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     const contactEdit = contacts.getByRole('button', {
       name: 'Kontakt bearbeiten: Synthetic browser contact',
     });
-    const contactEvents = contacts.getByRole('button', {
-      name: 'Events anzeigen: Synthetic browser contact',
-    });
-    for (const [action, title] of [
-      [contactEdit, 'Kontakt bearbeiten'],
-      [contactEvents, 'Events anzeigen'],
-    ] as const) {
-      await expect(action).toHaveAttribute('title', title);
-      await expect(action).toHaveText('');
-      const actionBox = (await action.boundingBox())!;
-      expect(actionBox.width).toBeGreaterThanOrEqual(44);
-      expect(actionBox.height).toBeGreaterThanOrEqual(44);
-    }
+    // BKP011.1: the row keeps one icon action. The reading record opens from
+    // the contact name itself, so the old "Events anzeigen" button is gone.
+    await expect(
+      contacts.getByRole('link', {
+        name: 'Synthetic browser contact',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      contacts.getByRole('button', { name: /Events anzeigen/ }),
+    ).toHaveCount(0);
+    await expect(contactEdit).toHaveAttribute('title', 'Kontakt bearbeiten');
+    await expect(contactEdit).toHaveText('');
+    const contactActionBox = (await contactEdit.boundingBox())!;
+    expect(contactActionBox.width).toBeGreaterThanOrEqual(44);
+    expect(contactActionBox.height).toBeGreaterThanOrEqual(44);
     await contactEdit.click();
     const contactEditDialog = contacts.getByRole('dialog', {
       name: 'Kontakt bearbeiten',
@@ -1735,7 +1738,14 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(contactRetry).toBeVisible();
     await contactRetry.click();
     await expect(
-      contacts.getByText('Synthetic browser contact – Archiviert'),
+      contacts.getByRole('link', {
+        name: 'Synthetic browser contact',
+        exact: true,
+      }),
+    ).toBeVisible();
+    // The archive state is its own labelled text next to the name link.
+    await expect(
+      contacts.getByText('Archiviert', { exact: true }),
     ).toBeVisible();
     await expect(contactRetry).toBeHidden();
     const download = page.waitForEvent('download');
@@ -2158,13 +2168,206 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       record.getByText(/Status von Anfrage auf Option geändert/),
     ).toBeVisible();
     await navigate('Kontakte');
-    await contacts
-      .getByRole('button', {
-        name: 'Events anzeigen: Synthetic browser contact',
-      })
-      .click();
+    const contactNameLink = contacts.getByRole('link', {
+      name: 'Synthetic browser contact',
+      exact: true,
+    });
+    await expect(contactNameLink).toHaveAttribute('href', /^#contact-/);
+    const contactHref = (await contactNameLink.getAttribute('href'))!;
+    await contactNameLink.click();
+    const contactRecord = contacts.getByRole('region', {
+      name: 'Kontakt-Details',
+    });
+    await expect(contactRecord).toBeVisible();
     await expect(
-      contacts.getByRole('link', { name: 'Synthetic browser event' }),
+      contactRecord.getByRole('link', { name: 'Synthetic browser event' }),
+    ).toBeVisible();
+    const contactRecordClose = contactRecord.getByRole('button', {
+      name: 'Kontakt-Details schließen',
+    });
+    // BKP011.1b: the opened record is measured, not assumed. At 320, 390 and
+    // 1280px in both themes neither the record, its list row nor the document
+    // may scroll sideways, every value and event line wraps inside the record
+    // instead of colliding, and the one close control stays visible and
+    // operable. A line that cannot break would show up as a clipped box here,
+    // not only as a hidden page overflow.
+    const contactRecordReport = () =>
+      contactRecord.evaluate((record) => {
+        const overflow = (element: Element) =>
+          element.scrollWidth - element.clientWidth;
+        const box = (element: Element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+          };
+        };
+        const recordBox = box(record);
+        const inside = (element: Element) => {
+          const rect = box(element);
+          return (
+            rect.left >= recordBox.left - 1 && rect.right <= recordBox.right + 1
+          );
+        };
+        const collides = (first: Element, second: Element) => {
+          const a = box(first);
+          const b = box(second);
+          return (
+            Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+            Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1
+          );
+        };
+        const textLines = Array.from(
+          record.querySelectorAll(
+            '.contact-record-head h2, dl dd, .contact-record-address address > span, .contact-record-address p',
+          ),
+        );
+        const eventRows = Array.from(
+          record.querySelectorAll('.contact-event-list > li'),
+        );
+        const eventParts = eventRows.flatMap((row) => Array.from(row.children));
+        const collisions: boolean[] = [];
+        for (const row of eventRows) {
+          const parts = Array.from(row.children);
+          for (let first = 0; first < parts.length; first += 1)
+            for (let second = first + 1; second < parts.length; second += 1)
+              collisions.push(collides(parts[first]!, parts[second]!));
+        }
+        const address = record.querySelector('.contact-record-address');
+        // BKP011.1d: the heading rename moved the record from h3 to h2 without
+        // the stylesheet. The measured style is the regression guard: an h2 the
+        // sheet does not select keeps the UA 24px/margins, has no jump offset
+        // and no explicit overflow-wrap.
+        const heading = record.querySelector<HTMLElement>(
+          '.contact-record-head h2',
+        );
+        const headingStyle = heading ? getComputedStyle(heading) : null;
+        const events = record.querySelector('.contact-record-events');
+        const close = record.querySelector(
+          '.contact-record-actions .tertiary-action',
+        );
+        let closeCovered = true;
+        if (close) {
+          const rect = box(close);
+          const hit = document.elementFromPoint(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+          );
+          closeCovered = hit !== close && !close.contains(hit);
+        }
+        return {
+          record: overflow(record),
+          row: record.parentElement ? overflow(record.parentElement) : -1,
+          document:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+          textLines: textLines.length,
+          textLinesInside: textLines.every(inside),
+          textLinesClipped: textLines.some((element) => overflow(element) > 1),
+          headingPresent: Boolean(heading),
+          headingInside: heading ? inside(heading) : false,
+          headingClipped: heading ? overflow(heading) > 1 : true,
+          headingWrap: headingStyle?.overflowWrap ?? '',
+          headingJump: headingStyle?.scrollMarginTop ?? '',
+          headingSize: headingStyle?.fontSize ?? '',
+          headingMargins: headingStyle
+            ? `${headingStyle.marginBlockStart} ${headingStyle.marginBlockEnd}`
+            : '',
+          eventParts: eventParts.length,
+          eventPartsInside: eventParts.every(inside),
+          eventPartsClipped: eventParts.some(
+            (element) => overflow(element) > 1,
+          ),
+          eventRowsWrap: eventRows.every(
+            (row) => getComputedStyle(row).flexWrap === 'wrap',
+          ),
+          eventCollisions: collisions.some(Boolean),
+          addressEventsCollide: Boolean(
+            address && events && collides(address, events),
+          ),
+          closeCovered,
+        };
+      });
+    for (const [width, theme] of [
+      [320, 'light'],
+      [320, 'dark'],
+      [390, 'light'],
+      [390, 'dark'],
+      [1280, 'light'],
+      [1280, 'dark'],
+    ] as const) {
+      await page.setViewportSize({ width, height: 844 });
+      if (
+        (await themeToggle.getAttribute('aria-pressed')) !==
+        String(theme === 'dark')
+      )
+        await themeToggle.click();
+      await expect(themeToggle).toHaveAttribute(
+        'aria-pressed',
+        String(theme === 'dark'),
+      );
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await expect(contactRecord).toBeVisible();
+      // The close control is reached the way a reader reaches it, so the
+      // element-from-point check below measures a control that is in view.
+      await contactRecordClose.scrollIntoViewIfNeeded();
+      await expect(contactRecordClose).toBeVisible();
+      await expect(contactRecordClose).toBeEnabled();
+      const recordCloseBox = (await contactRecordClose.boundingBox())!;
+      expect(recordCloseBox.x).toBeGreaterThanOrEqual(0);
+      expect(recordCloseBox.x + recordCloseBox.width).toBeLessThanOrEqual(
+        width,
+      );
+      const report = await contactRecordReport();
+      expect(report.record).toBeLessThanOrEqual(1);
+      expect(report.row).toBeLessThanOrEqual(1);
+      expect(report.document).toBeLessThanOrEqual(1);
+      expect(report.textLines).toBeGreaterThan(2);
+      expect(report.textLinesInside).toBe(true);
+      expect(report.textLinesClipped).toBe(false);
+      expect(report.headingPresent).toBe(true);
+      expect(report.headingInside).toBe(true);
+      expect(report.headingClipped).toBe(false);
+      expect(report.headingWrap).toBe('anywhere');
+      // The documented 6rem jump offset and the record sizes, not the UA h2.
+      expect(report.headingJump).toBe('96px');
+      expect(report.headingSize).toBe('19.2px');
+      expect(report.headingMargins).toBe('0px 0px');
+      expect(report.eventParts).toBeGreaterThan(2);
+      expect(report.eventPartsInside).toBe(true);
+      expect(report.eventPartsClipped).toBe(false);
+      expect(report.eventRowsWrap).toBe(true);
+      expect(report.eventCollisions).toBe(false);
+      expect(report.addressEventsCollide).toBe(false);
+      expect(report.closeCovered).toBe(false);
+      // The screenshot lands before the scan, so a failing audit still leaves
+      // the visual evidence of the state that failed.
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `tests/test-results/contact-record-${width}-${theme}.png`,
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await audit(`contact-record-${width}-${theme}`);
+    }
+    // Leave the run in the light theme the contact steps assert in.
+    if ((await themeToggle.getAttribute('aria-pressed')) !== 'false')
+      await themeToggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    // Closing returns to the list and the record stays a real deep link.
+    await contactRecord
+      .getByRole('button', { name: 'Kontakt-Details schließen' })
+      .click();
+    await expect(contactRecord).toBeHidden();
+    await expect(page).toHaveURL(/#contacts$/);
+    await page.goto(new URL(contactHref, page.url()).href);
+    await page.reload();
+    await expect(
+      contacts.getByRole('region', { name: 'Kontakt-Details' }),
     ).toBeVisible();
     await navigate('Events');
     await events
@@ -2827,11 +3030,13 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events.getByRole('radio', { name: /^Ohne Datum/ }).check();
     await expect(events.getByText('Keine Events gefunden.')).toBeVisible();
     await contacts
-      .getByRole('button', {
-        name: 'Events anzeigen: Synthetic browser contact',
-      })
+      .getByRole('link', { name: 'Synthetic browser contact', exact: true })
       .click();
-    await contacts
+    const searchRecord = contacts.getByRole('region', {
+      name: 'Kontakt-Details',
+    });
+    await expect(searchRecord).toBeVisible();
+    await searchRecord
       .getByRole('link', { name: 'Synthetic browser event' })
       .click();
     await expect(
