@@ -7,8 +7,12 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import { DocumentTemplatesPanel } from '../../apps/admin/src/DocumentTemplatesPanel.js';
+import {
+  DocumentTemplatesPanel,
+  templatePlaceholderOffers,
+} from '../../apps/admin/src/DocumentTemplatesPanel.js';
 import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
+import { templatePlaceholders } from '../../packages/core/src/document-templates.js';
 
 afterEach(() => {
   cleanup();
@@ -1253,7 +1257,11 @@ test('templates load with their positions, save exact minor units and archive wi
     (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
       .value,
   ).toBe('199.00');
-  expect(screen.getByText(/\{\{documentLink\}\}/)).toBeTruthy();
+  expect(
+    screen.getByText(
+      /Platzhalter: nur in Betreff, Einleitungstext und Schlusstext/,
+    ),
+  ).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Einzelpreis (Brutto) in Euro'), {
     target: { value: '199.00' },
   });
@@ -2801,3 +2809,308 @@ test.each([
     ).toBeTruthy();
   },
 );
+
+// Placeholder pickers: an explicit user requirement. No Bookitup placeholder
+// menu was observed, so the interaction follows the product picker pattern of
+// this codebase and only offers the eight server-side tokens.
+function openPlaceholderPicker(field: string) {
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: `Platzhalter in den ${field} einfügen`,
+    }),
+  );
+  return screen.getByRole('group', { name: `Platzhalter für den ${field}` });
+}
+function choosePlaceholder(group: HTMLElement, name: string) {
+  fireEvent.change(within(group).getByLabelText('Platzhalter'), {
+    target: { value: name },
+  });
+}
+function insertChosenPlaceholder(group: HTMLElement) {
+  fireEvent.click(within(group).getByRole('button', { name: 'Einfügen' }));
+}
+
+test('the placeholder picker inserts at the caret and leaves a dirty draft', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  const subject = screen.getByLabelText('Betreff') as HTMLInputElement;
+  const typed = 'Fiktiver Betreff ';
+  fireEvent.change(subject, { target: { value: typed } });
+  subject.focus();
+  subject.setSelectionRange(typed.length, typed.length);
+  fireEvent.select(subject);
+  expect(hasUnsavedChanges()).toBe(true);
+
+  const group = openPlaceholderPicker('Betreff');
+  choosePlaceholder(group, 'contact');
+  insertChosenPlaceholder(group);
+
+  expect(subject.value).toBe('Fiktiver Betreff {{contact}}');
+  expect(subject.selectionStart).toBe('Fiktiver Betreff {{contact}}'.length);
+  expect(subject.selectionEnd).toBe('Fiktiver Betreff {{contact}}'.length);
+  expect(document.activeElement).toBe(subject);
+  expect(hasUnsavedChanges()).toBe(true);
+  expect(writes).toHaveLength(0);
+  expect(
+    screen.queryByRole('group', { name: 'Platzhalter für den Betreff' }),
+  ).toBeNull();
+});
+
+test('choosing a placeholder without inserting keeps the draft clean and the preview valid', async () => {
+  setupPreview(() => pdfResponse());
+  const create = vi.fn(() => 'blob:fictional-preview');
+  const revoke = vi.fn();
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke });
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  expect(
+    await screen.findByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeTruthy();
+  expect(hasUnsavedChanges()).toBe(false);
+
+  const group = openPlaceholderPicker('Einleitungstext');
+  choosePlaceholder(group, 'event');
+
+  expect(
+    screen.getByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText('Entwurf geändert. Bitte Vorschau erneut erstellen.'),
+  ).toBeNull();
+  expect(revoke).not.toHaveBeenCalled();
+  expect(hasUnsavedChanges()).toBe(false);
+
+  insertChosenPlaceholder(group);
+
+  expect(
+    screen.queryByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeNull();
+  expect(
+    screen.getByText('Entwurf geändert. Bitte Vorschau erneut erstellen.'),
+  ).toBeTruthy();
+  expect(revoke).toHaveBeenCalledTimes(1);
+});
+
+test('inserting a placeholder invalidates a current preview exactly once', async () => {
+  setupPreview(() => pdfResponse());
+  const create = vi.fn(() => 'blob:fictional-preview');
+  const revoke = vi.fn();
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke });
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  await screen.findByRole('link', { name: 'Vorschau-PDF herunterladen' });
+
+  const group = openPlaceholderPicker('Schlusstext');
+  choosePlaceholder(group, 'date');
+  insertChosenPlaceholder(group);
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  expect(revoke).toHaveBeenCalledTimes(1);
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByText('Entwurf geändert. Bitte Vorschau erneut erstellen.'),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeNull();
+});
+
+test('inserting into a full field is refused without changing the value', async () => {
+  const requests = setupPreview(() => pdfResponse());
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  const subject = screen.getByLabelText('Betreff') as HTMLInputElement;
+  const full = 'x'.repeat(200);
+  fireEvent.change(subject, { target: { value: full } });
+
+  const group = openPlaceholderPicker('Betreff');
+  choosePlaceholder(group, 'contact');
+  insertChosenPlaceholder(group);
+
+  expect(subject.value).toBe(full);
+  expect(
+    screen.getByText(
+      'Das Feld ist voll. Der Platzhalter wurde nicht eingefügt.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('group', { name: 'Platzhalter für den Betreff' }),
+  ).toBeTruthy();
+  expect(requests).toHaveLength(0);
+});
+
+test('inserting without a prior caret appends at the end', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  const intro = screen.getByLabelText('Einleitungstext') as HTMLTextAreaElement;
+  expect(intro.value).toBe('');
+
+  const group = openPlaceholderPicker('Einleitungstext');
+  choosePlaceholder(group, 'documentLink');
+  insertChosenPlaceholder(group);
+
+  expect(intro.value).toBe('{{documentLink}}');
+  expect(document.activeElement).toBe(intro);
+  expect(intro.selectionStart).toBe('{{documentLink}}'.length);
+  expect(hasUnsavedChanges()).toBe(true);
+});
+
+test('choosing a placeholder alone never changes the submitted payload', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+
+  const group = openPlaceholderPicker('Betreff');
+  choosePlaceholder(group, 'contact');
+  expect(hasUnsavedChanges()).toBe(false);
+
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]!.body.subject).toBe(template.subject);
+  expect(writes[0]!.body.introText).toBe(template.introText);
+  expect(writes[0]!.body.outroText).toBe(template.outroText);
+});
+
+test('a saved template carries the inserted placeholder', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  const group = openPlaceholderPicker('Betreff');
+  choosePlaceholder(group, 'contact');
+  insertChosenPlaceholder(group);
+  expect(hasUnsavedChanges()).toBe(true);
+
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]!.body.subject).toBe('Angebot für {{contact}}{{contact}}');
+  expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('every text field owns a distinct, keyboard reachable picker', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  openCreate();
+  expect(document.activeElement).toBe(screen.getByLabelText('Bezeichnung'));
+  expect(
+    screen.getAllByRole('button', { name: /^Platzhalter in den / }).length,
+  ).toBe(3);
+
+  const [subjectToggle, introToggle, outroToggle] = [
+    'Betreff',
+    'Einleitungstext',
+    'Schlusstext',
+  ].map(
+    (field) =>
+      screen.getByRole('button', {
+        name: `Platzhalter in den ${field} einfügen`,
+      }) as HTMLButtonElement,
+  );
+  for (const toggle of [subjectToggle!, introToggle!, outroToggle!])
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+  fireEvent.click(subjectToggle!);
+  expect(subjectToggle!.getAttribute('aria-expanded')).toBe('true');
+  const panelId = subjectToggle!.getAttribute('aria-controls')!;
+  expect(panelId).toBeTruthy();
+  const group = document.getElementById(panelId)!;
+  expect(group).toBeTruthy();
+  expect(
+    screen.getByRole('group', { name: 'Platzhalter für den Betreff' }),
+  ).toBe(group);
+  expect(within(group).getByLabelText('Platzhalter')).toBeTruthy();
+  expect(
+    within(group)
+      .getByRole('button', { name: 'Einfügen' })
+      .hasAttribute('disabled'),
+  ).toBe(true);
+
+  fireEvent.click(introToggle!);
+  expect(subjectToggle!.getAttribute('aria-expanded')).toBe('false');
+  expect(document.getElementById(panelId)).toBeNull();
+
+  const outroGroup = openPlaceholderPicker('Schlusstext');
+  expect(outroGroup).toBeTruthy();
+  expect(introToggle!.getAttribute('aria-expanded')).toBe('false');
+
+  const introGroup = openPlaceholderPicker('Einleitungstext');
+  fireEvent.keyDown(within(introGroup).getByLabelText('Platzhalter'), {
+    key: 'Escape',
+  });
+  expect(
+    screen.queryByRole('group', {
+      name: 'Platzhalter für den Einleitungstext',
+    }),
+  ).toBeNull();
+  expect(introToggle!.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(introToggle);
+});
+
+test('deleting an inserted placeholder makes the draft clean again', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+
+  const group = openPlaceholderPicker('Betreff');
+  choosePlaceholder(group, 'contact');
+  insertChosenPlaceholder(group);
+  expect(hasUnsavedChanges()).toBe(true);
+
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: template.subject },
+  });
+  expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('the offered placeholders match the server list', () => {
+  expect(templatePlaceholderOffers.map((offer) => offer.name)).toEqual([
+    ...templatePlaceholders,
+  ]);
+  for (const offer of templatePlaceholderOffers) {
+    expect(offer.label.length).toBeGreaterThan(0);
+    expect(offer.meaning.length).toBeGreaterThan(0);
+    expect(offer.description.length).toBeGreaterThan(offer.meaning.length);
+  }
+});

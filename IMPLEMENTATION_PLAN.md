@@ -8,6 +8,47 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.10 — `feat: insert template placeholders from a picker`** (26.10.2026)
+
+  Vorlagenrest II gemäß Übergabeprompt (Zusatzanforderung): verständlich
+  auswählbare Platzhalter-Einfügewerkzeuge an den drei Textfeldern des
+  Vorlagen-Editors (Betreff/Einleitung/Schluss). Zweistufiger Picker nach dem
+  Hausmuster des Produktwählers (Umschalter mit `aria-expanded`, Auswahl mit
+  Klartextbeschreibung je der acht AK-Tokens, Knopf „Einfügen“) – ausdrücklich
+  **Nutzerwunsch**, keine belegte Bookitup-Funktion (Platzhalterwelt
+  unbeobachtet). Einfügen an der Cursorposition (ohne Caret: ans Ende),
+  Längenwächter gegen `maxLength`, Fokus zurück ins Feld; GENAU EINE
+  Vorschau-Invalidierung pro Einfügen (Doppelfeuer leert die Warnung),
+  bloße Auswahl im Picker verwirft keine gültige Vorschau, Dirty-Baseline
+  bleibt DOM-basiert und wird nicht von Picker-Steuerung ausgelöst. Der
+  statische Hilfsabsatz weicht den Pickern; die Aussage „nur in Betreff/
+  Einleitung/Schluss“ bleibt. Drift-Schutz: die UI-Tokenliste wird exportiert
+  und per Test gegen `templatePlaceholders` aus dem Kern geprüft (Test darf
+  beide importieren). Markup außerhalb der Labels, damit `getByLabelText`-
+  Verträge gültig bleiben; kein neues `role="status"`, Editor-Startfokus
+  unverändert. Tests zuerst rot (zehn Fälle inkl. genau-einer-Invalidierung,
+  Längenwächter, Zugänglichkeit/Escape, Drift), kompakter E2E-Beweis
+  (Einfügen → Vorschau verworfen → Speichern mit Token). Nicht im Slice:
+  Angebotsentwurfs-Editor, Positionsbeschreibungen (Tokens bleiben dort
+  wörtlich), Fehlformen wie `{{contact-name}}`, Kern-/APIänderung.
+  Coding-Subagent: DeepSeek V4.1 Flash (gleiche Delegationsform), MiMo
+  besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (10 Tests gegen den Altstand; nach der
+  Implementierung zusätzlich ein echter Vertragsbruch der statischen
+  Tokenlisten-Assertion bewusst auf die neue Aussage umgestellt – „Editor
+  erklärt die Platzhalter“ bleibt), danach grün: `test:component` 658/658
+  (Vorlagendatei 95 Tests), `test:integration` 311/311, `test:unit` 265/265,
+  `test:coverage` vollständig grün (DocumentTemplatesPanel 96,25% Zeilen),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inklusive Chromium-Fall (Auswahl allein
+  lässt Vorschau stehen, Einfügen verwirft sie genau einmal, Caret-/Fokus-
+  verhalten, Tastaturpfad, PUT-Nutzlast mit Token, keine unerwarteten
+  Schreibzugriffe). Drift-Test sichert die UI-Tokenliste gegen den Kern ab;
+  eine additive CSS-Regel nutzt die Formularzeile des Feldes (explizit
+  gemeldet). Notiert: Passt ein vollständiger Platzhalter nicht ins
+  Restlimit, wird gar nicht eingefügt (kein halbes Token im Kunden-PDF),
+  Feldwert bleibt erhalten – bewusste Lesart des Längenwächters.
+
 - [x] **BKP015.9 — `feat: filter document templates by search, kind and archive`** (26.10.2026)
 
   Vorlagenrest I gemäß Übergabeprompt (Zusatzanforderung): kompakte

@@ -346,8 +346,13 @@ Hauptkontakt, erklärt der Abschnitt das und deaktiviert die Anlage.
 
 Unter Einstellungen → Dokumentvorlagen erscheinen zuerst die Liste und
 „Vorlage anlegen“. Anlegen, Bearbeiten und Duplizieren öffnen genau einen
-Inline-Editor mit dem bestehenden Feld-/Positionsmodell. Platzhalterhilfe wird
-erst dort angezeigt. Abbrechen und erfolgreich abgeschlossener Speicherablauf
+Inline-Editor mit dem bestehenden Feld-/Positionsmodell. Platzhalter lassen
+sich in Betreff, Einleitungstext und Schlusstext über kompakte Einfügewerkzeuge
+wählen (Umschalter mit Klartextbeschreibung je Platzhalter und „Einfügen“ an
+der Cursorposition; die Auswahl allein verändert weder Text noch Vorschau,
+das Einfügen verwirft eine gültige Vorschau genau einmal). Passt ein
+vollständiger Platzhalter nicht mehr ins Feld, wird nichts eingefügt und der
+Feldwert bleibt erhalten. Die Werkzeuge werden erst im Editor angezeigt. Abbrechen und erfolgreich abgeschlossener Speicherablauf
 führen zurück zur Liste. Ungespeicherte Texte und Positionen werden vor
 Abbrechen oder Wechsel auf eine andere Vorlage mit einer Rückfrage geschützt;
 ein bestätigter Wechsel auf dieselbe Vorlage lädt ihre gespeicherten Werte neu.

@@ -109,16 +109,6 @@ function matchesTemplateFilters(
   }
   return stateFilter === '' || row.state === stateFilter;
 }
-const placeholders = [
-  'contact',
-  'event',
-  'date',
-  'location',
-  'eventType',
-  'package',
-  'total',
-  'documentLink',
-];
 const emptyPosition = (): DraftPosition => ({
   productId: '',
   description: '',
@@ -244,6 +234,171 @@ function matchesTemplateWrite(
   );
 }
 
+type PlaceholderField = 'subject' | 'introText' | 'outroText';
+// The plain-language meaning of every offered placeholder follows the actual
+// render sites in packages/core/src/documents.ts: contact → contact.name,
+// event → event.name, date → the event date in the tenant timezone,
+// location → the venue override or the linked venue (it may stay empty),
+// eventType/package → the master data name, total → the gross sum of the
+// positions, documentLink → a link back into the administration. Exported so a
+// test can prove the offer matches templatePlaceholders of the core package.
+export const templatePlaceholderOffers = [
+  {
+    name: 'contact',
+    label: 'Kunde',
+    meaning: 'Name des Hauptkontakts',
+    description:
+      'Ersetzt durch den Namen des Hauptkontakts, zum Beispiel Alex Beispiel.',
+  },
+  {
+    name: 'event',
+    label: 'Veranstaltung',
+    meaning: 'Name der Veranstaltung',
+    description:
+      'Ersetzt durch den Namen der Veranstaltung, zum Beispiel Fiktives Sommerfest.',
+  },
+  {
+    name: 'date',
+    label: 'Datum',
+    meaning: 'Datum der Veranstaltung',
+    description:
+      'Ersetzt durch das Datum der Veranstaltung, zum Beispiel 26.10.2030.',
+  },
+  {
+    name: 'location',
+    label: 'Ort',
+    meaning: 'Ort der Veranstaltung',
+    description:
+      'Ersetzt durch den Ort der Veranstaltung, zum Beispiel Beispielsaal. Ohne hinterlegten Ort bleibt die Stelle leer.',
+  },
+  {
+    name: 'eventType',
+    label: 'Veranstaltungsart',
+    meaning: 'Art der Veranstaltung',
+    description: 'Ersetzt durch die Art der Veranstaltung, zum Beispiel Feier.',
+  },
+  {
+    name: 'package',
+    label: 'Paket',
+    meaning: 'Name des gebuchten Pakets',
+    description:
+      'Ersetzt durch den Namen des gebuchten Pakets, zum Beispiel Paket Beispiel.',
+  },
+  {
+    name: 'total',
+    label: 'Gesamtbetrag',
+    meaning: 'Bruttosumme der Positionen',
+    description:
+      'Ersetzt durch die Bruttosumme aller Positionen mit Euro-Zeichen.',
+  },
+  {
+    name: 'documentLink',
+    label: 'Dokumentlink',
+    meaning: 'Verweis in die Verwaltung',
+    description:
+      'Ersetzt durch einen Verweis in die Verwaltung, zum Beispiel https://example.invalid/vorschau.',
+  },
+] as const;
+const placeholderFields: Record<PlaceholderField, string> = {
+  subject: 'Betreff',
+  introText: 'Einleitungstext',
+  outroText: 'Schlusstext',
+};
+
+// Explicit user requirement; no Bookitup placeholder menu was observed. The
+// interaction mirrors the product picker: a disclosure, a described choice and
+// a separate insert action, so nothing is written before the user confirms.
+function PlaceholderPicker({
+  field,
+  label,
+  open,
+  selected,
+  notice,
+  onToggle,
+  onSelect,
+  onInsert,
+  onEscape,
+  toggleRef,
+}: {
+  field: PlaceholderField;
+  label: string;
+  open: boolean;
+  selected: string;
+  notice: string;
+  onToggle: () => void;
+  onSelect: (name: string) => void;
+  onInsert: () => void;
+  onEscape: () => void;
+  toggleRef: (element: HTMLButtonElement | null) => void;
+}) {
+  const panelId = `template-placeholder-${field}`,
+    descriptionId = `${panelId}-description`,
+    chosen = templatePlaceholderOffers.find((offer) => offer.name === selected);
+  return (
+    <div className="template-placeholder-picker">
+      <button
+        ref={toggleRef}
+        type="button"
+        className="secondary-action"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        {open
+          ? 'Platzhalterauswahl schließen'
+          : `Platzhalter in den ${label} einfügen`}
+      </button>
+      {open && (
+        <div
+          id={panelId}
+          role="group"
+          aria-label={`Platzhalter für den ${label}`}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.stopPropagation();
+            onEscape();
+          }}
+        >
+          <label>
+            Platzhalter
+            <select
+              value={selected}
+              aria-describedby={descriptionId}
+              onChange={(event) => {
+                // Choosing is not editing: without stopping here the change
+                // bubbles to the form handler and discards a valid preview.
+                event.stopPropagation();
+                onSelect(event.currentTarget.value);
+              }}
+            >
+              <option value="">Platzhalter auswählen</option>
+              {templatePlaceholderOffers.map((offer) => (
+                <option key={offer.name} value={offer.name}>
+                  {offer.label} — {offer.meaning}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p id={descriptionId}>
+            {chosen
+              ? chosen.description
+              : 'Wähle einen Platzhalter aus, um seine Bedeutung zu lesen.'}
+          </p>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={!chosen}
+            onClick={onInsert}
+          >
+            Einfügen
+          </button>
+        </div>
+      )}
+      {notice && <p className="document-hint">{notice}</p>}
+    </div>
+  );
+}
+
 export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const [rows, setRows] = useState<Template[]>([]),
     [products, setProducts] = useState<Product[]>([]),
@@ -270,6 +425,13 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
+  const [openPlaceholderPicker, setOpenPlaceholderPicker] =
+    useState<PlaceholderField | null>(null);
+  const [selectedPlaceholder, setSelectedPlaceholder] = useState('');
+  const [placeholderNotice, setPlaceholderNotice] = useState<{
+    field: PlaceholderField;
+    text: string;
+  } | null>(null);
   const archiveInFlight = useRef(false);
   const saveInFlight = useRef(false);
   const previewInFlight = useRef(false);
@@ -298,6 +460,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const saveRetryButtonRef = useRef<HTMLButtonElement>(null);
   const saveReconcileButtonRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const placeholderCaret = useRef(
+    new Map<PlaceholderField, { start: number; end: number }>(),
+  );
+  const placeholderToggleRefs = useRef(
+    new Map<PlaceholderField, HTMLButtonElement>(),
+  );
   // A narrowing filter removes rows from the list. An open disclosure whose row
   // disappeared would keep aria-expanded pointing at nothing, so it closes with
   // the row instead of staying silently open.
@@ -587,6 +755,10 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setConversionError(false);
     }
     invalidatePreview(false);
+    placeholderCaret.current.clear();
+    setOpenPlaceholderPicker(null);
+    setSelectedPlaceholder('');
+    setPlaceholderNotice(null);
     const nextDraft =
       template && copy
         ? { ...template, name: `${template.name.slice(0, 112)} (Kopie)` }
@@ -653,6 +825,72 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     if (showStale && (hadPreview || wasBusy))
       setPreviewMessage('Entwurf geändert. Bitte Vorschau erneut erstellen.');
     else setPreviewMessage('');
+  }
+  function rememberPlaceholderCaret(field: PlaceholderField) {
+    const element = editorFormRef.current?.querySelector<
+      HTMLInputElement | HTMLTextAreaElement
+    >(`[name="${field}"]`);
+    if (!element || element.selectionStart === null) return;
+    const start = element.selectionStart;
+    placeholderCaret.current.set(field, {
+      start,
+      end: element.selectionEnd ?? start,
+    });
+  }
+  function insertPlaceholder(field: PlaceholderField) {
+    const offer = templatePlaceholderOffers.find(
+      (entry) => entry.name === selectedPlaceholder,
+    );
+    const element = editorFormRef.current?.querySelector<
+      HTMLInputElement | HTMLTextAreaElement
+    >(`[name="${field}"]`);
+    if (!offer || !element) return;
+    const text = `{{${offer.name}}}`;
+    const value = element.value;
+    // A field that was never focused has no remembered caret; appending at the
+    // end is deterministic and never splits existing text.
+    const caret = placeholderCaret.current.get(field);
+    const start = Math.min(
+      Math.max(caret?.start ?? value.length, 0),
+      value.length,
+    );
+    const end = Math.min(
+      Math.max(caret?.end ?? value.length, start),
+      value.length,
+    );
+    // maxLength does not apply to programmatic writes, and a token cut in half
+    // would reach the customer as literal text. A token that does not fit is
+    // therefore not inserted at all and the field keeps its value.
+    if (
+      element.maxLength >= 0 &&
+      value.length - (end - start) + text.length > element.maxLength
+    ) {
+      setPlaceholderNotice({
+        field,
+        text: 'Das Feld ist voll. Der Platzhalter wurde nicht eingefügt.',
+      });
+      return;
+    }
+    const setter = Object.getOwnPropertyDescriptor(
+      element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype,
+      'value',
+    )?.set;
+    if (!setter) return;
+    // React remembers the last value of an uncontrolled field. Writing through
+    // the native setter keeps that memory stale, so the bubbling input event
+    // reaches the form's onChange exactly once: the preview is invalidated once
+    // (a second invalidation would clear the stale warning again).
+    setter.call(element, value.slice(0, start) + text + value.slice(end));
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    const caretAfter = start + text.length;
+    placeholderCaret.current.set(field, { start: caretAfter, end: caretAfter });
+    setPlaceholderNotice(null);
+    setOpenPlaceholderPicker(null);
+    setSelectedPlaceholder('');
+    element.focus();
+    element.setSelectionRange(caretAfter, caretAfter);
   }
   function templatePayload(form: HTMLFormElement): TemplatePayload {
     const data = new FormData(form);
@@ -1308,6 +1546,37 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     setKindFilter('');
     setStateFilter('');
   }
+  function placeholderPickerFor(field: PlaceholderField) {
+    const open = openPlaceholderPicker === field;
+    const label = placeholderFields[field];
+    return (
+      <PlaceholderPicker
+        field={field}
+        label={label}
+        open={open}
+        selected={open ? selectedPlaceholder : ''}
+        notice={
+          placeholderNotice?.field === field ? placeholderNotice.text : ''
+        }
+        toggleRef={(element) => {
+          if (element) placeholderToggleRefs.current.set(field, element);
+          else placeholderToggleRefs.current.delete(field);
+        }}
+        onToggle={() => {
+          setPlaceholderNotice(null);
+          setSelectedPlaceholder('');
+          setOpenPlaceholderPicker(open ? null : field);
+        }}
+        onSelect={setSelectedPlaceholder}
+        onInsert={() => insertPlaceholder(field)}
+        onEscape={() => {
+          setOpenPlaceholderPicker(null);
+          setSelectedPlaceholder('');
+          placeholderToggleRefs.current.get(field)?.focus();
+        }}
+      />
+    );
+  }
   const visibleRows = rows.filter((row) =>
     matchesTemplateFilters(row, search, kindFilter, stateFilter),
   );
@@ -1359,8 +1628,9 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           }}
         >
           <p>
-            Platzhalter: {placeholders.map((name) => `{{${name}}}`).join(', ')}.
-            Unbekannte Platzhalter werden beim Speichern abgewiesen.
+            Platzhalter: nur in Betreff, Einleitungstext und Schlusstext
+            verwendbar. Jedes dieser Felder bietet die Platzhalter mit Erklärung
+            direkt an. Unbekannte Platzhalter werden beim Speichern abgewiesen.
           </p>
           <p>
             Die Vorschau verwendet Beispieldaten und neutrales Briefpapier.
@@ -1400,24 +1670,39 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                 name="subject"
                 maxLength={200}
                 defaultValue={draft?.subject ?? ''}
+                onFocus={() => rememberPlaceholderCaret('subject')}
+                onKeyUp={() => rememberPlaceholderCaret('subject')}
+                onSelect={() => rememberPlaceholderCaret('subject')}
+                onMouseUp={() => rememberPlaceholderCaret('subject')}
               />
             </label>
+            {placeholderPickerFor('subject')}
             <label>
               Einleitungstext
               <textarea
                 name="introText"
                 maxLength={4000}
                 defaultValue={draft?.introText ?? ''}
+                onFocus={() => rememberPlaceholderCaret('introText')}
+                onKeyUp={() => rememberPlaceholderCaret('introText')}
+                onSelect={() => rememberPlaceholderCaret('introText')}
+                onMouseUp={() => rememberPlaceholderCaret('introText')}
               />
             </label>
+            {placeholderPickerFor('introText')}
             <label>
               Schlusstext
               <textarea
                 name="outroText"
                 maxLength={4000}
                 defaultValue={draft?.outroText ?? ''}
+                onFocus={() => rememberPlaceholderCaret('outroText')}
+                onKeyUp={() => rememberPlaceholderCaret('outroText')}
+                onSelect={() => rememberPlaceholderCaret('outroText')}
+                onMouseUp={() => rememberPlaceholderCaret('outroText')}
               />
             </label>
+            {placeholderPickerFor('outroText')}
             <label>
               Angebotsgültigkeit in Tagen
               <input

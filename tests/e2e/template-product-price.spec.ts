@@ -1390,6 +1390,118 @@ test('template content preview uses only the unsaved synthetic draft and preserv
   await captureTemplateEvidence(page, 'template-preview-error-preserves-draft');
 });
 
+test('the template editor inserts a described placeholder and keeps the preview contract', async ({
+  page,
+}) => {
+  const api = await stubTemplateApis(page, sourceProducts, {
+    previewResponses: [
+      {
+        status: 200,
+        body: Buffer.from('%PDF-1.4\n% fictional browser preview\n%%EOF\n'),
+        contentType: 'application/pdf',
+        headers: {
+          'cache-control': 'no-store',
+          'content-disposition': 'inline; filename="VORSCHAU.pdf"',
+        },
+      },
+    ],
+  });
+  await openTemplateEditor(page);
+  const region = page.getByRole('region', { name: 'Dokumentvorlagen' });
+  const subject = region.getByLabel('Betreff');
+  const inserted = 'Fiktives Platzhalterangebot an {{contact}}';
+  await subject.fill('Fiktives Platzhalterangebot an ');
+  await subject.press('End');
+
+  const toggle = region.getByRole('button', {
+    name: 'Platzhalter in den Betreff einfügen',
+  });
+  await toggle.click();
+  // The same control renames itself while open, so the open state is asserted
+  // through its accessible name.
+  const closeToggle = region.getByRole('button', {
+    name: 'Platzhalterauswahl schließen',
+  });
+  await expect(closeToggle).toHaveCount(1);
+  await expect(closeToggle).toHaveAttribute('aria-expanded', 'true');
+  const panel = region.getByRole('group', {
+    name: 'Platzhalter für den Betreff',
+  });
+
+  await page.getByRole('button', { name: 'Inhaltsvorschau erstellen' }).click();
+  await expect(
+    page.getByText('PDF-Vorschau erstellt.', { exact: true }),
+  ).toBeVisible();
+  const downloadLink = page.getByRole('link', {
+    name: 'Vorschau-PDF herunterladen',
+  });
+  await expect(downloadLink).toBeVisible();
+
+  // Choosing alone is not an edit and must keep the valid preview.
+  await panel.getByLabel('Platzhalter').selectOption('contact');
+  await expect(
+    panel.getByText(
+      'Ersetzt durch den Namen des Hauptkontakts, zum Beispiel Alex Beispiel.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(downloadLink).toBeVisible();
+  await expect(
+    page.getByText('Entwurf geändert. Bitte Vorschau erneut erstellen.', {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+
+  await panel.getByRole('button', { name: 'Einfügen' }).click();
+  await expect(subject).toHaveValue(inserted);
+  await expect(closeToggle).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(downloadLink).toHaveCount(0);
+  await expect(
+    page.getByText('Entwurf geändert. Bitte Vorschau erneut erstellen.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('PDF-Vorschau erstellt.', { exact: true }),
+  ).toHaveCount(0);
+  await expect(subject).toBeFocused();
+  expect(
+    await subject.evaluate(
+      (element) => (element as HTMLInputElement).selectionStart,
+    ),
+  ).toBe(inserted.length);
+
+  // The disclosure is keyboard reachable: Enter opens it, Escape closes it and
+  // returns focus to its toggle.
+  const introToggle = region.getByRole('button', {
+    name: 'Platzhalter in den Einleitungstext einfügen',
+  });
+  await introToggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(closeToggle).toHaveCount(1);
+  await expect(closeToggle).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Tab');
+  await expect(
+    region
+      .getByRole('group', { name: 'Platzhalter für den Einleitungstext' })
+      .getByLabel('Platzhalter'),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(introToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(introToggle).toBeFocused();
+
+  await page.getByRole('button', { name: 'Vorlage speichern' }).click();
+  await expect(page.getByText('Gespeichert.', { exact: true })).toBeVisible();
+  expect(api.writes).toHaveLength(1);
+  expect(api.writes[0]).toMatchObject({
+    method: 'PUT',
+    path: `/api/v1/document-templates/${templateId}`,
+  });
+  expect(api.writes[0]?.body.subject).toBe(inserted);
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
+
 test('late template preview is ignored after the draft changes while it is pending', async ({
   page,
 }) => {

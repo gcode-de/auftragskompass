@@ -2078,6 +2078,14 @@ summary {
 .document-hint {
   color: var(--muted);
 }
+/* The placeholder picker belongs to the text field above it and uses the whole
+   form row instead of an own field column. */
+.template-placeholder-picker {
+  display: grid;
+  grid-column: 1 / -1;
+  justify-items: start;
+  gap: 0.4rem;
+}
 .offer-draft-editor {
   margin-top: 1rem;
   padding-top: 1rem;
