@@ -249,13 +249,15 @@ test('related events show name, date or no date and status without their notes',
   );
   await screen.findByText('Synthetic Company');
   const details = await openRecord();
-  const first = within(details).getByRole('link', {
+  // The related events arrive from their own request, so every lookup of a
+  // fetched row value has to wait for that commit instead of racing it.
+  const first = await within(details).findByRole('link', {
     name: 'Fictional linked event',
   });
   expect(first.getAttribute('href')).toBe('#event-event-one');
   expect(within(details).getByText('16.10.2026')).toBeTruthy();
   expect(within(details).getByText('Gebucht')).toBeTruthy();
-  const second = within(details).getByRole('link', {
+  const second = await within(details).findByRole('link', {
     name: 'Fictional undated event',
   });
   expect(second.getAttribute('href')).toBe('#event-event-two');
