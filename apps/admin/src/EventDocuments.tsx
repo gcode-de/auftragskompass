@@ -20,9 +20,22 @@ type DocumentRow = {
   offerStatus?: OfferStatus | null;
   validUntil?: string | null;
   offerExpired?: boolean;
+  // BKP019.a: how and when the customer accepted; it outlives a withdrawal.
+  acceptedAt?: string | null;
+  acceptanceChannel?: AcceptanceChannel | null;
+  acceptanceNote?: string | null;
+  acceptanceFileId?: string | null;
+  acceptanceFileName?: string | null;
+  acceptanceFileState?: 'available' | 'archived' | null;
 };
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
+type AcceptanceChannel = 'email' | 'phone' | 'pdf' | 'other';
 type TemplateRow = { id: string; kind: string; name: string; state: string };
+type LibraryFileRow = {
+  id: string;
+  displayName: string;
+  state: 'available' | 'archived' | 'rejected';
+};
 const stateLabels: Record<DocumentRow['state'], string> = {
   draft: 'Entwurf',
   final: 'Finalisiert',
@@ -36,6 +49,41 @@ const offerStatusLabels: Record<OfferStatus | 'unset', string> = {
   accepted: 'Angenommen',
   withdrawn: 'Zurückgezogen',
 };
+// AG-06 names the four channels a customer can say yes through.
+const acceptanceChannelLabels: Record<AcceptanceChannel, string> = {
+  email: 'E-Mail',
+  phone: 'Telefon',
+  pdf: 'Unterschriebenes PDF',
+  other: 'Sonstiges',
+};
+const acceptanceChannels = Object.keys(
+  acceptanceChannelLabels,
+) as AcceptanceChannel[];
+// One wording per rejected status change, shared by send/withdraw and accept.
+function statusChangeMessage(error: string): string {
+  switch (error) {
+    case 'conflict':
+      return 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.';
+    case 'invalid_transition':
+      return 'Dieser Statuswechsel ist nicht zulässig.';
+    case 'invalid_kind':
+      return 'Nur ein finalisiertes Angebot hat einen Angebotsstatus.';
+    case 'acceptance_conflict':
+      return 'Für dieses Angebot ist bereits eine andere Annahme gespeichert. Bitte Liste aktualisieren.';
+    case 'invalid_channel':
+      return 'Bitte einen gültigen Annahmekanal wählen.';
+    case 'invalid_time':
+      return 'Der Annahmezeitpunkt ist ungültig oder liegt in der Zukunft.';
+    case 'invalid_note':
+      return 'Die Notiz ist zu lang oder enthält unzulässige Zeichen.';
+    case 'invalid_attachment':
+      return 'Der Anhang ist nicht mehr verfügbar. Bitte eine andere Datei wählen.';
+    case 'not_found':
+      return 'Die Datei wurde nicht gefunden. Bitte Liste aktualisieren.';
+    default:
+      return 'Statuswechsel nicht möglich.';
+  }
+}
 // BKP013.1: the event file owns one card per document kind that actually
 // exists. The offer card is always shown because it also carries the existing
 // creation surface; any other kind appears only with real stored rows, so no
@@ -97,6 +145,18 @@ export function EventDocuments({
     [reloadWarning, setReloadWarning] = useState(false),
     [createUncertain, setCreateUncertain] = useState(false),
     [confirmWithdrawId, setConfirmWithdrawId] = useState(''),
+    // BKP019.a: the compact acceptance form of exactly one row.
+    [acceptanceId, setAcceptanceId] = useState(''),
+    [acceptanceChannel, setAcceptanceChannel] = useState<
+      '' | AcceptanceChannel
+    >(''),
+    [acceptanceTime, setAcceptanceTime] = useState(''),
+    [acceptanceNoteText, setAcceptanceNoteText] = useState(''),
+    [acceptanceFileId, setAcceptanceFileId] = useState(''),
+    [libraryFiles, setLibraryFiles] = useState<LibraryFileRow[]>([]),
+    [libraryState, setLibraryState] = useState<
+      'idle' | 'loading' | 'ready' | 'failed'
+    >('idle'),
     mutating = useRef(false),
     editorTrigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -284,15 +344,7 @@ export function EventDocuments({
       });
       if (!reply.ok) {
         const result = (await reply.json()) as { error: string };
-        setMessage(
-          result.error === 'conflict'
-            ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
-            : result.error === 'invalid_transition'
-              ? 'Dieser Statuswechsel ist nicht zulässig.'
-              : result.error === 'invalid_kind'
-                ? 'Nur ein finalisiertes Angebot hat einen Angebotsstatus.'
-                : 'Statuswechsel nicht möglich.',
-        );
+        setMessage(statusChangeMessage(result.error));
         if (
           result.error === 'conflict' ||
           result.error === 'invalid_transition'
@@ -308,6 +360,108 @@ export function EventDocuments({
       setMessage(
         'Angebotsstatus aktualisiert: ' + offerStatusLabels[status] + '.',
       );
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
+  // BKP019.a: the library the acceptance may reference. Only an own, available
+  // row is selectable; the "not scanned" fact stays visible instead of a scan
+  // promise we cannot keep.
+  async function loadLibraryFiles() {
+    setLibraryState('loading');
+    try {
+      const reply = await fetch('/api/v1/library-files');
+      if (!reply.ok) throw new Error('library');
+      const rows = (await reply.json()) as LibraryFileRow[];
+      setLibraryFiles(
+        Array.isArray(rows)
+          ? rows.filter(
+              (row) => row && typeof row.id === 'string' && !!row.displayName,
+            )
+          : [],
+      );
+      setLibraryState('ready');
+    } catch {
+      // The typed input stays; only the optional picker is unavailable.
+      setLibraryState('failed');
+    }
+  }
+  function openAcceptance(id: string) {
+    if (mutating.current) return;
+    setMessage('');
+    setAcceptanceId(id);
+    setAcceptanceChannel('');
+    setAcceptanceTime('');
+    setAcceptanceNoteText('');
+    setAcceptanceFileId('');
+    void loadLibraryFiles();
+  }
+  function closeAcceptance() {
+    setAcceptanceId('');
+  }
+  // The acceptance is a record of the customer's yes: the channel is required,
+  // the instant defaults to the server clock, note and file are optional.
+  async function accept(
+    event: FormEvent<HTMLFormElement>,
+    id: string,
+    version: number,
+  ) {
+    event.preventDefault();
+    if (mutating.current || busy !== '') return;
+    if (!acceptanceChannel) {
+      setMessage('Bitte einen Annahmekanal wählen.');
+      return;
+    }
+    mutating.current = true;
+    setBusy(id);
+    setMessage('');
+    try {
+      const reply = await fetch('/api/v1/documents/' + id + '/offer-status', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          status: 'accepted',
+          version,
+          channel: acceptanceChannel,
+          // A datetime-local value is a wall-clock time; the server reads it in
+          // the tenant zone, so the browser's own zone never decides.
+          ...(acceptanceTime ? { acceptedAt: acceptanceTime } : {}),
+          ...(acceptanceNoteText.trim()
+            ? { note: acceptanceNoteText.trim() }
+            : {}),
+          ...(acceptanceFileId ? { attachmentFileId: acceptanceFileId } : {}),
+        }),
+      });
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(statusChangeMessage(result.error));
+        if (
+          result.error === 'conflict' ||
+          result.error === 'invalid_transition' ||
+          result.error === 'not_found'
+        )
+          try {
+            await load();
+          } catch {
+            // The message above already says what to do.
+          }
+        return;
+      }
+      await reply.json();
+      setAcceptanceId('');
+      setMessage('Angebotsstatus aktualisiert: Angenommen.');
       try {
         await load();
         setReloadWarning(false);
@@ -356,6 +510,14 @@ export function EventDocuments({
     const [year, month, day] = value.split('-');
     return day + '.' + month + '.' + year;
   }
+  // An acceptance instant is a real point in time, read in the tenant zone.
+  function stamp(value: string) {
+    return new Intl.DateTimeFormat('de-DE', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone,
+    }).format(new Date(value));
+  }
   function rows(entries: DocumentRow[]) {
     return (
       <ul className="document-list">
@@ -394,6 +556,53 @@ export function EventDocuments({
                     <strong className="document-offer-expired">
                       Abgelaufen
                     </strong>
+                  </>
+                )}
+              </p>
+            )}
+            {/* BKP019.a: the recorded acceptance stays readable, also after a
+                withdrawal - only the archived attachment loses its link. */}
+            {entry.kind === 'offer' && entry.acceptedAt && (
+              <p className="document-meta">
+                <span>Angenommen am </span>
+                <time dateTime={entry.acceptedAt}>
+                  {stamp(entry.acceptedAt)}
+                </time>
+                {entry.acceptanceChannel && (
+                  <span>
+                    {' · '}
+                    {acceptanceChannelLabels[entry.acceptanceChannel]}
+                  </span>
+                )}
+                {entry.acceptanceNote && (
+                  <span>{' · ' + entry.acceptanceNote}</span>
+                )}
+                {entry.acceptanceFileId && (
+                  <>
+                    {' · Anhang: '}
+                    {entry.acceptanceFileState === 'available' ? (
+                      <a
+                        href={
+                          '/api/v1/library-files/' +
+                          entry.acceptanceFileId +
+                          '/content'
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={
+                          'Anhang ' +
+                          (entry.acceptanceFileName ?? 'Datei') +
+                          ' öffnen'
+                        }
+                      >
+                        {entry.acceptanceFileName ?? 'Datei'}
+                      </a>
+                    ) : (
+                      <span>
+                        {(entry.acceptanceFileName ?? 'Datei') +
+                          ' (nicht mehr verfügbar)'}
+                      </span>
+                    )}
                   </>
                 )}
               </p>
@@ -476,9 +685,8 @@ export function EventDocuments({
                         aria-label={
                           'Angebot ' + (entry.number ?? '') + ' annehmen'
                         }
-                        onClick={() =>
-                          void changeStatus(entry.id, 'accepted', entry.version)
-                        }
+                        aria-expanded={acceptanceId === entry.id}
+                        onClick={() => openAcceptance(entry.id)}
                       >
                         Angenommen
                       </button>
@@ -534,6 +742,111 @@ export function EventDocuments({
                   </>
                 )}
             </div>
+            {entry.kind === 'offer' &&
+              entry.state === 'final' &&
+              entry.offerStatus === 'sent' &&
+              acceptanceId === entry.id && (
+                <form
+                  className="offer-draft-editor"
+                  aria-label="Annahme erfassen"
+                  onSubmit={(event) =>
+                    void accept(event, entry.id, entry.version)
+                  }
+                >
+                  <fieldset disabled={busy !== ''}>
+                    <legend>Annahme erfassen</legend>
+                    <p className="document-hint">
+                      Wie hat der Kunde zugesagt? Pflicht ist nur der Kanal;
+                      Zeitpunkt, Notiz und Anhang sind freiwillig.
+                    </p>
+                    <div className="offer-draft-fields">
+                      <label>
+                        Kanal
+                        <select
+                          value={acceptanceChannel}
+                          onChange={(event) =>
+                            setAcceptanceChannel(
+                              event.target.value as '' | AcceptanceChannel,
+                            )
+                          }
+                        >
+                          <option value="">Bitte wählen</option>
+                          {acceptanceChannels.map((channel) => (
+                            <option key={channel} value={channel}>
+                              {acceptanceChannelLabels[channel]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Zeitpunkt (optional)
+                        <input
+                          type="datetime-local"
+                          value={acceptanceTime}
+                          onChange={(event) =>
+                            setAcceptanceTime(event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        Notiz (optional)
+                        <textarea
+                          rows={2}
+                          maxLength={2000}
+                          value={acceptanceNoteText}
+                          onChange={(event) =>
+                            setAcceptanceNoteText(event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        Anhang (optional)
+                        <select
+                          value={acceptanceFileId}
+                          onChange={(event) =>
+                            setAcceptanceFileId(event.target.value)
+                          }
+                        >
+                          <option value="">Kein Anhang</option>
+                          {libraryFiles
+                            .filter((file) => file.state === 'available')
+                            .map((file) => (
+                              <option key={file.id} value={file.id}>
+                                {file.displayName}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    </div>
+                    {libraryState === 'loading' && (
+                      <p role="status">Anhänge werden geladen …</p>
+                    )}
+                    {libraryState === 'failed' && (
+                      <p role="alert">
+                        Anhänge konnten nicht geladen werden. Die Annahme ist
+                        auch ohne Anhang möglich; Eingaben bleiben erhalten.
+                      </p>
+                    )}
+                    <p className="document-hint">
+                      Bibliotheksdateien sind hochgeladen und unverprüft: es
+                      findet keine Prüfung auf Schadsoftware statt.
+                    </p>
+                    <div className="document-actions">
+                      <button className="primary-action" disabled={busy !== ''}>
+                        Annahme speichern
+                      </button>
+                      <button
+                        type="button"
+                        className="tertiary-action"
+                        disabled={busy !== ''}
+                        onClick={closeAcceptance}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </fieldset>
+                </form>
+              )}
             {entry.kind === 'offer' &&
               editorId === entry.id &&
               entry.state === 'draft' && (

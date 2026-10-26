@@ -66,7 +66,12 @@ export class DocumentError extends Error {
       | 'invalid_filter'
       | 'invalid_transition'
       | 'invalid_kind'
-      | 'conflict',
+      | 'conflict'
+      | 'invalid_channel'
+      | 'invalid_time'
+      | 'invalid_note'
+      | 'invalid_attachment'
+      | 'acceptance_conflict',
   ) {
     super('Document rejected');
   }
@@ -114,6 +119,21 @@ export const offerStatuses = ['sent', 'accepted', 'withdrawn'] as const;
 // `null` is "no claim yet" (final, never sent). `withdrawn` is terminal: a
 // correction is a new document, exactly like a corrected final document.
 // `expired` is deliberately absent - it is a date comparison, not an event.
+// BKP019.a: how the customer said yes. AG-06 names the four channels; the
+// internal codes are ours, the wording on screen is German.
+export type AcceptanceChannel = 'email' | 'phone' | 'pdf' | 'other';
+export const acceptanceChannels = ['email', 'phone', 'pdf', 'other'] as const;
+export const acceptanceNoteMaxLength = 2000;
+export type OfferStatusChange = {
+  status: OfferStatus;
+  version: number;
+  /** Mandatory for `accepted`; refused for every other status. */
+  channel?: string;
+  /** Operator-entered instant; omitted means the transaction clock. */
+  acceptedAt?: string;
+  note?: string;
+  attachmentFileId?: string;
+};
 const offerTransitions: Record<OfferStatus | 'unset', readonly OfferStatus[]> =
   {
     unset: ['sent', 'withdrawn'],
@@ -187,6 +207,14 @@ export type DocumentOfferRow = DocumentListRow & {
   validUntil: string | null;
   /** Derived from `validUntil` and the tenant clock; never stored. */
   offerExpired: boolean;
+  // BKP019.a: the acceptance record. It outlives a withdrawal, so a reader can
+  // still see how and when the customer accepted.
+  acceptedAt: Date | null;
+  acceptanceChannel: AcceptanceChannel | null;
+  acceptanceNote: string | null;
+  acceptanceFileId: string | null;
+  acceptanceFileName: string | null;
+  acceptanceFileState: 'available' | 'archived' | null;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -288,6 +316,57 @@ function translate(error: unknown): never {
 const maxOffset = 1_000_000;
 // A real calendar day, not a rollover such as 2031-02-30.
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+const acceptanceUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// BKP019.a: the channel is a closed set, and the database repeats it.
+function acceptanceChannelOf(value: unknown): AcceptanceChannel {
+  if (
+    typeof value !== 'string' ||
+    !(acceptanceChannels as readonly string[]).includes(value)
+  )
+    throw new DocumentError('invalid_channel');
+  return value as AcceptanceChannel;
+}
+// A note is text an operator typed: trimmed, bounded, no control characters.
+function acceptanceNoteOf(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') throw new DocumentError('invalid_note');
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.length > acceptanceNoteMaxLength ||
+    [...trimmed].some((character) => {
+      const code = character.codePointAt(0)!;
+      return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+    })
+  )
+    throw new DocumentError('invalid_note');
+  return trimmed;
+}
+// A plain wall-clock value ("2030-10-26T10:30" from a datetime-local field) is
+// read in the tenant zone; an explicit offset is taken as the exact instant.
+// Anything else, or anything after "now", is a typing mistake - never a guess.
+function acceptanceInstantOf(value: unknown, zone: string, at: Date): Date {
+  if (typeof value !== 'string' || !value.trim())
+    throw new DocumentError('invalid_time');
+  const text = value.trim();
+  let instant: Temporal.Instant;
+  try {
+    if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(text))
+      instant = Temporal.Instant.from(text);
+    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(text))
+      instant = Temporal.PlainDateTime.from(text)
+        .toZonedDateTime(zone)
+        .toInstant();
+    else throw new DocumentError('invalid_time');
+  } catch {
+    throw new DocumentError('invalid_time');
+  }
+  const acceptedAt = new Date(instant.epochMilliseconds);
+  if (acceptedAt.getTime() > at.getTime())
+    throw new DocumentError('invalid_time');
+  return acceptedAt;
+}
 function plainDate(day: string): Temporal.PlainDate | null {
   if (!isoDatePattern.test(day)) return null;
   try {
@@ -363,6 +442,8 @@ export function documentRepository(
 
   // BKP019.0 columns are read as reviewed SQL: `date` is cast to text, so the
   // driver can never turn a tenant-local day into a guessing `Date`.
+  // BKP019.a adds the acceptance record; the joined file is tenant-scoped, so a
+  // foreign id could never surface a name here.
   async function offerStateOf(connection: Connection, id: string) {
     // `database()` narrows to the query builder, so the reviewed-SQL hatch is
     // named here, the same shape library-files.ts uses.
@@ -370,14 +451,38 @@ export function documentRepository(
       execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
     };
     const result = (await executor.execute(sql`
-      SELECT to_char(valid_until, 'YYYY-MM-DD') AS valid_until, offer_status
-        FROM documents WHERE tenant_id = ${tenantId} AND id = ${id}`)) as {
-      rows: { valid_until: string | null; offer_status: OfferStatus | null }[];
+      SELECT to_char(d.valid_until, 'YYYY-MM-DD') AS valid_until, d.offer_status,
+             to_char(d.accepted_at AT TIME ZONE 'UTC',
+                     'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS accepted_at,
+             d.acceptance_channel, d.acceptance_note,
+             d.acceptance_file_id, f.display_name AS acceptance_file_name,
+             f.state AS acceptance_file_state
+        FROM documents d
+        LEFT JOIN library_files f
+          ON f.tenant_id = d.tenant_id AND f.id = d.acceptance_file_id
+       WHERE d.tenant_id = ${tenantId} AND d.id = ${id}`)) as {
+      rows: {
+        valid_until: string | null;
+        offer_status: OfferStatus | null;
+        accepted_at: string | null;
+        acceptance_channel: AcceptanceChannel | null;
+        acceptance_note: string | null;
+        acceptance_file_id: string | null;
+        acceptance_file_name: string | null;
+        acceptance_file_state: 'available' | 'archived' | null;
+      }[];
     };
     const row = result.rows[0];
     return {
       validUntil: row?.valid_until ?? null,
       offerStatus: row?.offer_status ?? null,
+      // UTC text is cast here, so no driver guess can shift the instant.
+      acceptedAt: row?.accepted_at ? new Date(row.accepted_at) : null,
+      acceptanceChannel: row?.acceptance_channel ?? null,
+      acceptanceNote: row?.acceptance_note ?? null,
+      acceptanceFileId: row?.acceptance_file_id ?? null,
+      acceptanceFileName: row?.acceptance_file_name ?? null,
+      acceptanceFileState: row?.acceptance_file_state ?? null,
     };
   }
 
@@ -706,24 +811,93 @@ export function documentRepository(
             validUntil: sql<
               string | null
             >`to_char(documents.valid_until, 'YYYY-MM-DD')`.as('valid_until'),
+            acceptedAt: sql<
+              string | null
+            >`to_char(documents.accepted_at AT TIME ZONE 'UTC',
+              'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`.as('accepted_at'),
+            acceptanceChannel: sql<
+              string | null
+            >`documents.acceptance_channel`.as('acceptance_channel'),
+            acceptanceNote: sql<string | null>`documents.acceptance_note`.as(
+              'acceptance_note',
+            ),
+            acceptanceFileId: sql<
+              string | null
+            >`documents.acceptance_file_id`.as('acceptance_file_id'),
           })
           .from(documents)
           .where(narrowed)
           .orderBy(desc(documents.issuedAt), desc(documents.id))
           .limit(filters.limit ?? Number.MAX_SAFE_INTEGER)
           .offset(filters.offset ?? 0);
-        return offers.map(({ offerStatus, validUntil, ...row }) => ({
-          ...row,
-          offerStatus: offerStatus as OfferStatus | null,
-          validUntil,
-          // Derived, never stored: the deadline and the tenant day decide.
-          offerExpired: offerExpired(
+        // One batched read for the attached file names, never a lookup per row.
+        const fileIds = [
+            ...new Set(
+              offers
+                .map((offer) => offer.acceptanceFileId)
+                .filter((fileId): fileId is string => fileId !== null),
+            ),
+          ],
+          attached = new Map<
+            string,
+            { name: string; state: 'available' | 'archived' }
+          >();
+        if (fileIds.length) {
+          const executor = db as unknown as {
+            execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+          };
+          const found = (await executor.execute(sql`
+            SELECT id, display_name, state FROM library_files
+             WHERE tenant_id = ${tenantId}
+               AND id IN (${sql.join(
+                 fileIds.map((fileId) => sql`${fileId}::uuid`),
+                 sql`, `,
+               )})`)) as {
+            rows: {
+              id: string;
+              display_name: string;
+              state: 'available' | 'archived';
+            }[];
+          };
+          for (const file of found.rows)
+            attached.set(file.id, {
+              name: file.display_name,
+              state: file.state,
+            });
+        }
+        return offers.map(
+          ({
+            offerStatus,
             validUntil,
-            offerStatus as OfferStatus | null,
-            at,
-            zone,
-          ),
-        }));
+            acceptedAt,
+            acceptanceChannel,
+            acceptanceNote,
+            acceptanceFileId,
+            ...row
+          }) => ({
+            ...row,
+            offerStatus: offerStatus as OfferStatus | null,
+            validUntil,
+            acceptedAt: acceptedAt ? new Date(acceptedAt) : null,
+            acceptanceChannel: acceptanceChannel as AcceptanceChannel | null,
+            acceptanceNote,
+            acceptanceFileId,
+            // A later archived file stays readable as "no longer available".
+            acceptanceFileName: acceptanceFileId
+              ? (attached.get(acceptanceFileId)?.name ?? null)
+              : null,
+            acceptanceFileState: acceptanceFileId
+              ? (attached.get(acceptanceFileId)?.state ?? null)
+              : null,
+            // Derived, never stored: the deadline and the tenant day decide.
+            offerExpired: offerExpired(
+              validUntil,
+              offerStatus as OfferStatus | null,
+              at,
+              zone,
+            ),
+          }),
+        );
       }
       if (!include)
         return db
@@ -1100,10 +1274,12 @@ export function documentRepository(
     // BKP019.0: an explicit operator action and never a reaction to mail, print
     // or the clock. The content stays final and byte-identical; only the
     // business axis, its instant and the version move.
+    // BKP019.a: accepting records *how* the customer said yes. It stays the one
+    // lock/audit path: no second route, no second transaction.
     async changeOfferStatus(
       actorId: string,
       id: string,
-      input: { status: OfferStatus; version: number },
+      input: OfferStatusChange,
     ) {
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
@@ -1122,16 +1298,79 @@ export function documentRepository(
           throw new DocumentError('conflict');
         const current = await offerStateOf(tx, id),
           zone = await tenantTimeZone(tx),
-          at = now();
+          at = now(),
+          accepting = input.status === 'accepted',
+          hasDetails =
+            input.channel !== undefined ||
+            input.acceptedAt !== undefined ||
+            input.note !== undefined ||
+            input.attachmentFileId !== undefined;
+        // A record that belongs to an acceptance is never attached to any other
+        // status: nothing is silently dropped.
+        if (!accepting && hasDetails)
+          throw new DocumentError('invalid_content');
+        // An illegal transition is illegal before any detail is judged, so the
+        // existing 409 contract stays exactly as it was.
+        if (current.offerStatus !== input.status)
+          assertOfferTransition(current.offerStatus, input.status);
+        // Validated before the no-op branch, so a repeat is judged on the same
+        // rules as the first write and no rejection changes the row.
+        const channel = accepting ? acceptanceChannelOf(input.channel) : null,
+          acceptedAt = accepting
+            ? input.acceptedAt === undefined
+              ? at
+              : acceptanceInstantOf(input.acceptedAt, zone, at)
+            : null,
+          note = accepting ? acceptanceNoteOf(input.note) : null;
         // The identical action again is an idempotent no-op: no second audit
-        // entry and no new version, so a double click is harmless.
-        if (current.offerStatus === input.status)
+        // entry and no new version, so a double click is harmless. A changed
+        // record is a conflict instead of a silent overwrite.
+        if (current.offerStatus === input.status) {
+          if (!accepting) return await offerRowOf(tx, id, at, zone);
+          const same =
+            current.acceptanceChannel === channel &&
+            (input.acceptedAt === undefined ||
+              current.acceptedAt?.getTime() === acceptedAt!.getTime()) &&
+            (input.note === undefined || current.acceptanceNote === note) &&
+            (input.attachmentFileId === undefined ||
+              current.acceptanceFileId === input.attachmentFileId);
+          if (!same) throw new DocumentError('acceptance_conflict');
           return await offerRowOf(tx, id, at, zone);
-        assertOfferTransition(current.offerStatus, input.status);
+        }
+        // The referenced file is read only now: an archived or foreign file can
+        // never become an acceptance, and a repeat above stays a no-op.
+        let attachmentFileId: string | null = null;
+        if (accepting && input.attachmentFileId !== undefined) {
+          const candidate = input.attachmentFileId;
+          if (
+            typeof candidate !== 'string' ||
+            !acceptanceUuidPattern.test(candidate)
+          )
+            throw new DocumentError('invalid_attachment');
+          const executor = database(tx) as unknown as {
+            execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+          };
+          const files = (await executor.execute(sql`
+            SELECT state FROM library_files
+             WHERE tenant_id = ${tenantId} AND id = ${candidate}`)) as {
+            rows: { state: 'available' | 'archived' }[];
+          };
+          const file = files.rows[0];
+          if (!file) throw new DocumentError('not_found');
+          if (file.state !== 'available')
+            throw new DocumentError('invalid_attachment');
+          attachmentFileId = candidate;
+        }
+        // One statement keeps status, instant and record atomic; a later status
+        // change leaves the acceptance columns exactly as they were.
         await tx.execute(
           sql`UPDATE documents
                  SET offer_status = ${input.status},
                      status_changed_at = ${at},
+                     accepted_at = coalesce(${acceptedAt}::timestamptz, accepted_at),
+                     acceptance_channel = coalesce(${channel}::text, acceptance_channel),
+                     acceptance_note = coalesce(${note}::text, acceptance_note),
+                     acceptance_file_id = coalesce(${attachmentFileId}::uuid, acceptance_file_id),
                      version = version + 1
                WHERE tenant_id = ${tenantId} AND id = ${id}`,
         );
@@ -1197,7 +1436,8 @@ export function registerDocumentRoutes(
       properties: { id: { type: 'string', format: 'uuid' } },
     };
   // BKP019.0: the offer axis, shared by the single-document answer and the
-  // opt-in list projection, so both always describe the same three values.
+  // opt-in list projection, so both always describe the same values.
+  // BKP019.a adds the acceptance record to the same shared shape.
   const offerFields = {
     offerStatus: {
       anyOf: [{ type: 'string', enum: [...offerStatuses] }, { type: 'null' }],
@@ -1209,6 +1449,24 @@ export function registerDocumentRoutes(
       ],
     },
     offerExpired: { type: 'boolean' },
+    acceptedAt: {
+      anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+    },
+    acceptanceChannel: {
+      anyOf: [
+        { type: 'string', enum: [...acceptanceChannels] },
+        { type: 'null' },
+      ],
+    },
+    acceptanceNote: nullableText,
+    acceptanceFileId: nullableUuid,
+    acceptanceFileName: nullableText,
+    acceptanceFileState: {
+      anyOf: [
+        { type: 'string', enum: ['available', 'archived'] },
+        { type: 'null' },
+      ],
+    },
   };
   const row = {
     type: 'object',
@@ -1313,6 +1571,8 @@ export function registerDocumentRoutes(
         return reply.code(409).send({ error: 'invalid_transition' });
       if (error.reason === 'conflict')
         return reply.code(409).send({ error: 'conflict' });
+      if (error.reason === 'acceptance_conflict')
+        return reply.code(409).send({ error: 'acceptance_conflict' });
       if (error.reason === 'artifact_failed')
         return reply.code(500).send({ error: 'artifact_failed' });
       return reply.code(400).send({ error: error.reason });
@@ -1472,7 +1732,7 @@ export function registerDocumentRoutes(
   // same optimistic guard as PUT /draft.
   app.post<{
     Params: { id: string };
-    Body: { status: OfferStatus; version: number };
+    Body: OfferStatusChange;
   }>(
     '/api/v1/documents/:id/offer-status',
     {
@@ -1485,6 +1745,13 @@ export function registerDocumentRoutes(
           properties: {
             status: { type: 'string', enum: [...offerStatuses] },
             version: { type: 'integer', minimum: 1 },
+            // BKP019.a: the acceptance. Length and enum are judged by the
+            // domain, so every rejected detail answers with one stable error
+            // instead of two different 400 shapes.
+            channel: { type: 'string', maxLength: 40 },
+            acceptedAt: { type: 'string', maxLength: 40 },
+            note: { type: 'string' },
+            attachmentFileId: { type: 'string', format: 'uuid' },
           },
         },
         response: { 200: offerRow },

@@ -8,6 +8,53 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.a — `feat: record how an offer was accepted`** (26.10.2026)
+
+  Unter-Slice (a) von BKP019 nach rein lesender DeepSeek-Analyse zu `44a055f`
+  (Lastenheft AG-06/AG-08). Zwei zentrale Befunde werden behoben: der
+  Annahmezeitpunkt darf NICHT `status_changed_at` sein (beim Rückzug
+  überschrieben – eigene Spalte `accepted_at`), und der Idempotenz-No-op darf
+  abweichende Angaben nicht still verschlucken (identische Wiederholung =
+  No-op, abweichende = 409 `acceptance_conflict`). Migration `0040`:
+  `accepted_at`, `acceptance_channel` (email|phone|pdf|other aus AG-06),
+  `acceptance_note` (≤2000), `acceptance_file_id` (FK auf `library_files`,
+  zusammengesetzt mandantengebunden), vier benannte CHECKs, kein Backfill,
+  `schema.ts` unverändert. „Angenommen“ öffnet eine kompakte Eingabe
+  (Kanal Pflicht, Zeitpunkt optional mit Default jetzt – Zukunft verboten,
+  Notiz optional, Anhang optional als Verweis auf eine eigene nicht
+  archivierte `available`-Datei; „unverprüft“ bleibt sichtbar, kein
+  Scan-Versprechen, ohne Eventverknüpfung alle eigenen Dateien). Rückzug
+  erhält die Annahmedaten unverändert lesbar (Regressionstest). Erweiterung
+  der bestehenden Route/Prozedur (genau ein Lock/Version/Audit-Pfad),
+  Projektion `include=offer` zeigt die Annahmedaten, Eventansicht zeigt
+  Kanal/Zeitpunkt/Notiz/Anhang-Dateiname. Referenz ehrlich: Kanalwerte nur
+  aus AG-06/08, Bookitup-Annahme-UI unbekannt, keine Rechtsaussage.
+  Tests zuerst rot (≥16 Fälle inkl. Ungültigfällen, FK/CHECK 23514, Tenant,
+  Version, unveränderte Übergangsmatrix/`state`-Verträge).
+  Coding-Subagent: DeepSeek V4.1 Flash (gleiche Delegationsform), MiMo
+  besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (Typfehler der fehlenden Details +
+  Component-Suite 10/35 gegen den Altstand; ehrlich vermerkt: der
+  Integrationslauf traf teilweise bereits gebauten Kern – als
+  „Feature-fehlte“-Beleg dienen Typfehler und Component-Lauf), danach grün:
+  `test:unit` 274/274, `test:component` 699/699 (7 neu), `test:integration`
+  348/348 (12 neu: Kanal/Zeit/Notiz/Anhang, fünf ungültige Kanalwerte,
+  Zukunfts-/Grenzzeitpunkte, Notizgrenzen, fremde/unbekannte/archivierte
+  Anhang-ID, No-op vs. `acceptance_conflict`, Regression „Annahme → Rückzug →
+  Daten bleiben lesbar“, vier DB-CHECKs + Fremdmandanten-FK, Routenverträge,
+  Unveränderlichkeit von state/Nummer/Snapshot/PDF/Summen), `test:coverage`
+  vollständig grün (Changed-Code 91,0% Zeilen/85,8% Zweige),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. echter synthetischer
+  Bibliotheksdatei (Anhang, Bytevergleich-Download), Annahmeformular ohne
+  Schreibzugriff beim Öffnen, Rückzug lässt Annahme sichtbar. Impeccable-
+  Finish-Detektor ohne Befund. Notiert: eine gespeicherte Annahme ist im UI
+  nicht korrigierbar (409 bei Abweichung – ausdrücklicher Korrekturpfad als
+  eigener späterer Slice); DB-CHECK erlaubt Annahmedaten auch bei
+  `withdrawn` (Voraussetzung für den Regressionstest, Domäne unterscheidet);
+  Anhang-Picker ohne Eventbezug listet alle eigenen Dateien (BKP020-Reste);
+  `datetime-local` wird als Mandanten-Wandzeit gedeutet.
+
 - [x] **BKP019.0 — `feat: track offer validity and status transitions`** (26.10.2026)
 
   Erster Unter-Slice von BKP019 (kommerzieller Dokumentablauf; Ticket verlangt

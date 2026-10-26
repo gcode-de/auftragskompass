@@ -372,6 +372,24 @@ globale Dateiliste zeigt weiterhin nur die Inhaltsreife (Frist-/Statusfilter
 folgen in einem späteren Unter-Slice). Rechts- oder Steuerbehauptungen sind
 das ausdrücklich nicht.
 
+### Annahmedaten (BKP019.a, AG-06/AG-08)
+
+Die Annahme wird als kompakte Eingabe erfasst: Kanal ist Pflicht
+(E-Mail, Telefon, unterschriebenes PDF, Sonstiges), dazu optional ein
+Annahmezeitpunkt (Vorgabe jetzt, niemals in der Zukunft – gemeint ist die
+Mandantenzeitzone), eine Notiz (bis 2000 Zeichen) und ein Anhang. Der Anhang
+ist ein Verweis auf eine Datei der eigenen Bibliothek (nur nicht archivierte,
+verfügbare Dateien wählbar; der Hinweis „unverprüft“ bleibt sichtbar – es
+gibt weiterhin keinen Virenscan). Der Annahmezeitpunkt wird als eigener Wert
+gespeichert und bleibt auch nach einem späteren Rückzug erhalten und lesbar;
+derselbe Rückzug lässt die Annahmedaten unangetastet stehen. Eine erneute
+Annahme mit identischen Angaben ist wirkungslos; abweichende Angaben werden
+mit 409 abgewiesen (ein Korrekturpfad für bereits gespeicherte Annahmedaten
+ist ein eigener späterer Slice). Eine gespeicherte Annahme verändert nie den
+finalen Inhalt, die Nummer oder die PDF-Bytes des Angebots. Auch hier gilt:
+keine Automatik aus E-Mail, keine Rechts- oder Beweiskraftbehauptung für ein
+angehängtes unterschriebenes PDF.
+
 ## Dokumentvorlagen verwalten (BKP015.4)
 
 Unter Einstellungen → Dokumentvorlagen erscheinen zuerst die Liste und

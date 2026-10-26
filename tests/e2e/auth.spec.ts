@@ -961,8 +961,45 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         name: 'Angebot ' + offer.number + ' versendet markieren',
       }),
     ).toHaveCount(0);
+    // BKP019.a: the acceptance is a compact record, not a one-click jump. A
+    // real synthetic library file stands in for the signed PDF and is uploaded
+    // through the real route, so the download below is a real download.
+    const signedPdf = Buffer.from(
+        '%PDF-1.4 synthetic signed acceptance\n%%EOF\n',
+        'latin1',
+      ),
+      csrf = (
+        (await (await page.request.get(origin + '/auth/me')).json()) as {
+          csrfToken: string;
+        }
+      ).csrfToken,
+      uploaded = await page.request.post(origin + '/api/v1/library-files', {
+        headers: { origin, 'x-csrf-token': csrf },
+        data: {
+          displayName: 'synthetic-signed-offer.pdf',
+          mediaType: 'application/pdf',
+          contentBase64: signedPdf.toString('base64'),
+        },
+      });
+    expect(uploaded.status()).toBe(201);
+    const signedFile = (await uploaded.json()) as { id: string };
     await eventOffers
       .getByRole('button', { name: 'Angebot ' + offer.number + ' annehmen' })
+      .click();
+    // Opening the form writes nothing: the channel is a real operator choice.
+    const acceptanceForm = eventOffers.getByRole('form', {
+      name: 'Annahme erfassen',
+    });
+    await expect(acceptanceForm).toBeVisible();
+    await acceptanceForm.getByLabel('Kanal').selectOption({ label: 'Telefon' });
+    await acceptanceForm
+      .getByLabel('Notiz (optional)')
+      .fill('Mündliche Zusage, unterschriebene Fassung liegt vor.');
+    await acceptanceForm
+      .getByLabel('Anhang (optional)')
+      .selectOption({ label: 'synthetic-signed-offer.pdf' });
+    await acceptanceForm
+      .getByRole('button', { name: 'Annahme speichern' })
       .click();
     await expect(
       page.getByText('Angebotsstatus aktualisiert: Angenommen.'),
@@ -970,6 +1007,20 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       eventOffers.getByText('Angenommen', { exact: true }),
     ).toBeVisible();
+    // The record reads back with its own instant, channel, note and file.
+    await expect(eventOffers.getByText(/Angenommen am/)).toBeVisible();
+    await expect(eventOffers.getByText(/Telefon/)).toBeVisible();
+    await expect(
+      eventOffers.getByText(/Mündliche Zusage, unterschriebene Fassung/),
+    ).toBeVisible();
+    await expect(
+      eventOffers.getByRole('link', { name: /synthetic-signed-offer\.pdf/ }),
+    ).toBeVisible();
+    const signedDownload = await page.request.get(
+      origin + '/api/v1/library-files/' + signedFile.id + '/content',
+    );
+    expect(signedDownload.status()).toBe(200);
+    expect((await signedDownload.body()).equals(signedPdf)).toBe(true);
     // No invented jump: an accepted offer cannot be accepted again.
     await expect(
       eventOffers.getByRole('button', { name: /annehmen$/ }),
@@ -996,6 +1047,16 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeVisible();
     await expect(
       eventOffers.getByText('Zurückgezogen', { exact: true }),
+    ).toBeVisible();
+    // The withdrawal overwrites `status_changed_at`, so the acceptance record
+    // must stay readable: same instant, same channel, same note and file.
+    await expect(eventOffers.getByText(/Angenommen am/)).toBeVisible();
+    await expect(eventOffers.getByText(/Telefon/)).toBeVisible();
+    await expect(
+      eventOffers.getByText(/Mündliche Zusage, unterschriebene Fassung/),
+    ).toBeVisible();
+    await expect(
+      eventOffers.getByRole('link', { name: /synthetic-signed-offer\.pdf/ }),
     ).toBeVisible();
     // A withdrawn offer is terminal: no status action and still its PDF.
     await expect(
@@ -1038,6 +1099,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       'DELETE FROM documents WHERE tenant_id=$1 AND event_id=$2',
       [config.tenantId, offerEventId],
     );
+    // The acceptance's signed copy goes with it, so the library step below
+    // still starts from an empty, honest library.
+    await pool.query('DELETE FROM library_files WHERE tenant_id=$1 AND id=$2', [
+      config.tenantId,
+      signedFile.id,
+    ]);
     await pool.query(
       'DELETE FROM event_contacts WHERE tenant_id=$1 AND event_id=$2',
       [config.tenantId, offerEventId],

@@ -44,6 +44,32 @@ const draft = {
     offerExpired: false,
     version: 3,
   },
+  // BKP019.a: the library a signed acceptance may attach; one row is already
+  // archived, so it must never be offered as a choice.
+  libraryFiles = [
+    {
+      id: 'file-1',
+      displayName: 'synthetic-signed-offer.pdf',
+      mediaType: 'application/pdf',
+      sizeBytes: 42,
+      state: 'available',
+      scanState: 'not_scanned',
+      uploadedAt: '2030-10-26T09:00:00Z',
+      uploadedDate: '2030-10-26',
+      archivedAt: null,
+    },
+    {
+      id: 'file-2',
+      displayName: 'synthetic-archived-offer.pdf',
+      mediaType: 'application/pdf',
+      sizeBytes: 42,
+      state: 'archived',
+      scanState: 'not_scanned',
+      uploadedAt: '2030-10-26T09:00:00Z',
+      uploadedDate: '2030-10-26',
+      archivedAt: '2030-10-26T09:30:00Z',
+    },
+  ],
   templates = [
     { id: 'tpl-1', kind: 'offer', name: 'Fictional offer', state: 'active' },
     { id: 'tpl-2', kind: 'offer', name: 'Archived offer', state: 'archived' },
@@ -67,6 +93,7 @@ function setup(
     finalize?: () => Response;
     create?: (url: string) => Response;
     offerStatus?: () => Response;
+    library?: () => Response;
   } = {},
 ) {
   const calls: {
@@ -84,6 +111,11 @@ function setup(
       if (url.startsWith('/api/v1/documents?eventId=')) {
         calls.push({ url, method });
         return Response.json(state.documents);
+      }
+      if (url === '/api/v1/library-files') {
+        calls.push({ url, method });
+        if (options.library) return options.library();
+        return Response.json(libraryFiles);
       }
       if (url === '/api/v1/document-templates') {
         calls.push({ url, method });
@@ -485,6 +517,10 @@ test('a broken connection while changing the status is reported', async () => {
   fireEvent.click(
     within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
   );
+  fireEvent.change(within(row).getByLabelText('Kanal'), {
+    target: { value: 'phone' },
+  });
+  fireEvent.submit(within(row).getByRole('form', { name: 'Annahme erfassen' }));
   expect(
     await screen.findByText(
       'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
@@ -498,6 +534,7 @@ test('a status change that cannot be reloaded warns instead of hiding the row', 
     'fetch',
     vi.fn(async (url: string) => {
       if (url === '/api/v1/document-templates') return Response.json(templates);
+      if (url === '/api/v1/library-files') return Response.json(libraryFiles);
       if (url.startsWith('/api/v1/documents?eventId='))
         return listFails
           ? new Response(null, { status: 500 })
@@ -516,6 +553,10 @@ test('a status change that cannot be reloaded warns instead of hiding the row', 
   fireEvent.click(
     within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
   );
+  fireEvent.change(within(row).getByLabelText('Kanal'), {
+    target: { value: 'email' },
+  });
+  fireEvent.submit(within(row).getByRole('form', { name: 'Annahme erfassen' }));
   expect(
     await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
   ).toBeTruthy();
@@ -534,9 +575,227 @@ test('a refused transition is explained instead of retried', async () => {
   fireEvent.click(
     within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
   );
+  fireEvent.change(within(row).getByLabelText('Kanal'), {
+    target: { value: 'other' },
+  });
+  fireEvent.submit(within(row).getByRole('form', { name: 'Annahme erfassen' }));
   expect(
     await screen.findByText('Dieser Statuswechsel ist nicht zulässig.'),
   ).toBeTruthy();
+});
+
+// BKP019.a: an acceptance is a compact record, not a one-click guess: the
+// channel is mandatory, the instant, note and attachment are optional.
+test('accepting opens a form instead of writing immediately', async () => {
+  const { calls } = setup({ documents: [sentOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  expect(within(row).getByLabelText('Kanal')).toBeTruthy();
+  expect(within(row).getByLabelText('Zeitpunkt (optional)')).toBeTruthy();
+  expect(within(row).getByLabelText('Notiz (optional)')).toBeTruthy();
+  expect(
+    within(row).getByRole('button', { name: 'Annahme speichern' }),
+  ).toBeTruthy();
+  // Nothing left the browser yet - the status is not set by opening a form.
+  expect(calls.some((call) => call.url.endsWith('/offer-status'))).toBe(false);
+  // The library is read once, when the form asks for it.
+  expect(
+    calls.filter((call) => call.url === '/api/v1/library-files'),
+  ).toHaveLength(1);
+});
+
+test('the acceptance form refuses to send without a channel', async () => {
+  const { calls } = setup({ documents: [sentOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  fireEvent.submit(within(row).getByRole('form', { name: 'Annahme erfassen' }));
+  expect(
+    await screen.findByText('Bitte einen Annahmekanal wählen.'),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/offer-status'))).toBe(false);
+});
+
+test('an acceptance sends channel, time, note and attachment and reads them back', async () => {
+  const { calls } = setup({ documents: [sentOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  fireEvent.change(within(row).getByLabelText('Kanal'), {
+    target: { value: 'phone' },
+  });
+  fireEvent.change(within(row).getByLabelText('Zeitpunkt (optional)'), {
+    target: { value: '2030-10-26T10:30' },
+  });
+  fireEvent.change(within(row).getByLabelText('Notiz (optional)'), {
+    target: { value: '  Zusage am Telefon.  ' },
+  });
+  // The picker fills from the library request, so its option must exist first.
+  await waitFor(() =>
+    expect(
+      within(row).getByRole('option', { name: 'synthetic-signed-offer.pdf' }),
+    ).toBeTruthy(),
+  );
+  fireEvent.change(within(row).getByLabelText('Anhang (optional)'), {
+    target: { value: 'file-1' },
+  });
+  fireEvent.submit(within(row).getByRole('form', { name: 'Annahme erfassen' }));
+  expect(
+    await screen.findByText('Angebotsstatus aktualisiert: Angenommen.'),
+  ).toBeTruthy();
+  expect(
+    calls.find((call) => call.url.endsWith('/offer-status')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-2/offer-status',
+    method: 'POST',
+    body: {
+      status: 'accepted',
+      version: 3,
+      channel: 'phone',
+      acceptedAt: '2030-10-26T10:30',
+      note: 'Zusage am Telefon.',
+      attachmentFileId: 'file-1',
+    },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  // The form closes after a confirmed write; the row shows the reloaded state.
+  expect(
+    within(row).queryByRole('form', { name: 'Annahme erfassen' }),
+  ).toBeNull();
+});
+
+test('an accepted offer reads in tenant time with channel, note and file', async () => {
+  setup({
+    documents: [
+      {
+        ...sentOffer,
+        offerStatus: 'accepted',
+        version: 4,
+        acceptedAt: '2030-10-26T08:30:00Z',
+        acceptanceChannel: 'phone',
+        acceptanceNote: 'Kurz notiert.',
+        acceptanceFileId: 'file-1',
+        acceptanceFileName: 'synthetic-signed-offer.pdf',
+        acceptanceFileState: 'available',
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Angenommen')).closest(
+    'li',
+  ) as HTMLElement;
+  // 08:30 UTC is 10:30 in the tenant zone: the record reads in tenant time.
+  const when = within(row).getByText(/10:30/);
+  expect((when.closest('time') as HTMLTimeElement).dateTime).toBe(
+    '2030-10-26T08:30:00Z',
+  );
+  expect(within(row).getByText(/Telefon/)).toBeTruthy();
+  expect(within(row).getByText(/Kurz notiert\./)).toBeTruthy();
+  expect(
+    within(row)
+      .getByRole('link', { name: /synthetic-signed-offer\.pdf/ })
+      .getAttribute('href'),
+  ).toBe('/api/v1/library-files/file-1/content');
+  expect(within(row).queryByText(/nicht mehr verfügbar/)).toBeNull();
+});
+
+test('only available library files are offered as an attachment', async () => {
+  setup({ documents: [sentOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  const picker = within(row).getByLabelText('Anhang (optional)');
+  await waitFor(() =>
+    expect(
+      Array.from((picker as HTMLSelectElement).options).map(
+        (option) => option.text,
+      ),
+    ).toContain('synthetic-signed-offer.pdf'),
+  );
+  expect(
+    Array.from((picker as HTMLSelectElement).options).map(
+      (option) => option.text,
+    ),
+  ).not.toContain('synthetic-archived-offer.pdf');
+  // The scan fact stays visible: attached bytes are uploaded, not checked.
+  expect(within(row).getByText(/unverprüft/)).toBeTruthy();
+});
+
+test('a failed library load keeps the acceptance input', async () => {
+  setup({
+    documents: [sentOffer],
+    library: () => new Response(null, { status: 500 }),
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Versendet')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Angebot AN-2030-0001 annehmen' }),
+  );
+  fireEvent.change(within(row).getByLabelText('Kanal'), {
+    target: { value: 'pdf' },
+  });
+  fireEvent.change(within(row).getByLabelText('Notiz (optional)'), {
+    target: { value: 'Unterschrift liegt vor.' },
+  });
+  expect(
+    await screen.findByText(/Anhänge konnten nicht geladen werden/),
+  ).toBeTruthy();
+  expect((within(row).getByLabelText('Kanal') as HTMLSelectElement).value).toBe(
+    'pdf',
+  );
+  expect(
+    (within(row).getByLabelText('Notiz (optional)') as HTMLTextAreaElement)
+      .value,
+  ).toBe('Unterschrift liegt vor.');
+});
+
+test('an archived attachment stays readable without a dead link', async () => {
+  setup({
+    documents: [
+      {
+        ...sentOffer,
+        offerStatus: 'withdrawn',
+        version: 6,
+        acceptedAt: '2030-10-26T08:30:00Z',
+        acceptanceChannel: 'pdf',
+        acceptanceNote: 'Unterschriebene Fassung lag vor.',
+        acceptanceFileId: 'file-2',
+        acceptanceFileName: 'synthetic-archived-offer.pdf',
+        acceptanceFileState: 'archived',
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Zurückgezogen')).closest(
+    'li',
+  ) as HTMLElement;
+  // The acceptance survives the withdrawal; only the file is gone.
+  expect(within(row).getByText(/Angenommen am/)).toBeTruthy();
+  expect(within(row).getByText(/Unterschriebenes PDF/)).toBeTruthy();
+  expect(within(row).getByText(/synthetic-archived-offer\.pdf/)).toBeTruthy();
+  expect(within(row).getByText(/nicht mehr verfügbar/)).toBeTruthy();
+  expect(
+    within(row).queryByRole('link', { name: /synthetic-archived-offer\.pdf/ }),
+  ).toBeNull();
 });
 
 // BKP013.2: one controllable harness for the create/reload pair. The list

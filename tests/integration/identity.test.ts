@@ -40,8 +40,18 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP019.0 adds the offer validity and status axis after the file library.
-  expect(applied.at(-1)!.name).toBe('0039_offer_status.sql');
+  // BKP019.a records how an offer was accepted after the status axis.
+  expect(applied.at(-1)!.name).toBe('0040_offer_acceptance.sql');
+  // The acceptance references an own library file through the composite key,
+  // so a foreign tenant's file can never be attached.
+  const acceptanceForeignKey = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND contype='f' AND pg_get_constraintdef(oid) ILIKE '%acceptance_file_id%'",
+    )
+  ).rows.map((row) => row.def);
+  expect(acceptanceForeignKey).toContain(
+    'FOREIGN KEY (tenant_id, acceptance_file_id) REFERENCES library_files(tenant_id, id)',
+  );
   const templateColumn = (
     await pool.query<{ is_nullable: string }>(
       "SELECT is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='documents' AND column_name='template_id'",
