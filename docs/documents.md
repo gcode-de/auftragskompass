@@ -340,7 +340,11 @@ Versionskonflikte und unklarer Speicherstatus erhalten die Eingaben und bieten
 einen ausdrücklichen Neuabruf an. Nach bestätigtem Speichern ist die Vorschau
 der gespeicherten Fassung verfügbar. Finalisieren erzeugt die nummerierte PDF;
 der fertige Download bleibt in der Liste. Fehlt eine aktive Vorlage oder ein
-Hauptkontakt, erklärt der Abschnitt das und deaktiviert die Anlage.
+Hauptkontakt, erklärt der Abschnitt das und deaktiviert die Anlage. Nach einer
+bestätigten Anlage (mit oder ohne Vorlage) bleibt der gespeicherte Entwurf in
+der Liste sichtbar und bedienbar, auch wenn der anschließende Listenabruf
+scheitert; das Neuladen wird dann ausdrücklich als reine GET-Wiederholung
+angeboten und nie blind erneut gesendet.
 
 ## Dokumentvorlagen verwalten (BKP015.4)
 

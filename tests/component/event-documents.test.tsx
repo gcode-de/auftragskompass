@@ -40,13 +40,24 @@ const draft = {
     { id: 'tpl-1', kind: 'offer', name: 'Fictional offer', state: 'active' },
     { id: 'tpl-2', kind: 'offer', name: 'Archived offer', state: 'archived' },
     { id: 'tpl-3', kind: 'invoice', name: 'Invoice', state: 'active' },
-  ];
+  ],
+  // BKP013.2: the stored row of a create must never be the row the list request
+  // already returned, otherwise a test cannot tell which response put it on
+  // screen. Same event and contact, own id, own amount.
+  created = {
+    ...draft,
+    id: 'doc-new',
+    issuedAt: '2030-10-26T11:30:00Z',
+    netMinor: 10925,
+    taxMinor: 2075,
+    grossMinor: 13000,
+  };
 function setup(
   options: {
     documents?: unknown[];
     templates?: unknown[];
     finalize?: () => Response;
-    create?: () => Response;
+    create?: (url: string) => Response;
   } = {},
 ) {
   const calls: { url: string; method: string; body?: unknown }[] = [],
@@ -64,10 +75,18 @@ function setup(
         calls.push({ url, method });
         return Response.json(state.templates);
       }
-      if (url === '/api/v1/documents') {
+      if (
+        url === '/api/v1/documents' ||
+        url === '/api/v1/documents/blank-offer'
+      ) {
         calls.push({ url, method, body: JSON.parse(String(init!.body)) });
-        if (options.create) return options.create();
-        return Response.json(draft, { status: 201 });
+        if (options.create) return options.create(url);
+        return Response.json(
+          url === '/api/v1/documents/blank-offer'
+            ? { ...created, templateId: null }
+            : created,
+          { status: 201 },
+        );
       }
       if (url.endsWith('/finalize')) {
         calls.push({ url, method });
@@ -225,43 +244,238 @@ test('a withdrawn document is listed without actions', async () => {
   expect(screen.queryByRole('button', { name: /finalisieren/ })).toBeNull();
 });
 
-test('a confirmed draft is not recreated when the reload fails and the load can be retried', async () => {
-  let failDocuments = false,
-    posts = 0;
-  const fetcher = vi.fn(async (url: string) => {
-    if (url === '/api/v1/document-templates') return Response.json(templates);
-    if (url.startsWith('/api/v1/documents?eventId=')) {
-      if (failDocuments) return new Response(null, { status: 503 });
-      return Response.json([draft]);
-    }
-    if (url === '/api/v1/documents') {
-      posts += 1;
-      return Response.json(draft, { status: 201 });
-    }
-    throw new Error('unexpected ' + url);
-  });
-  vi.stubGlobal('fetch', fetcher);
+// BKP013.2: one controllable harness for the create/reload pair. The list
+// request and the confirmed create answer with different rows, so every
+// assertion below proves where a row on screen came from.
+function reloadHarness(
+  options: { stored?: unknown[]; templates?: unknown[] } = {},
+) {
+  const lists: string[] = [],
+    posts: { url: string; body: Record<string, unknown> }[] = [],
+    finals: { body: Record<string, unknown> }[] = [],
+    control = {
+      listReply: () => Response.json(options.stored ?? []),
+      createReply: () => Response.json(created, { status: 201 }),
+    };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/document-templates')
+        return Response.json(options.templates ?? templates);
+      if (url.startsWith('/api/v1/documents?eventId=')) {
+        lists.push(url);
+        return control.listReply();
+      }
+      if (
+        url === '/api/v1/documents' ||
+        url === '/api/v1/documents/blank-offer'
+      ) {
+        posts.push({ url, body: JSON.parse(String(init!.body)) });
+        return control.createReply();
+      }
+      if (url.endsWith('/finalize')) {
+        finals.push({ body: JSON.parse(String(init!.body)) });
+        return Response.json({
+          ...created,
+          number: 'AN-2030-0009',
+          state: 'final',
+          version: 3,
+        });
+      }
+      if (url.startsWith('/api/v1/documents/'))
+        return new Response(null, { status: 500 });
+      throw new Error('unexpected ' + url);
+    }),
+  );
+  return { lists, posts, finals, control };
+}
+
+test('a draft created from a template stays visible when the list reload fails', async () => {
+  const { lists, posts, control } = reloadHarness();
   render(<EventDocuments {...props} />);
-  const create = await screen.findByRole('button', { name: 'Entwurf anlegen' });
-  failDocuments = true;
-  const form = create.closest('form')!;
-  fireEvent.submit(form);
-  fireEvent.submit(form);
+  expect(
+    ((await screen.findByLabelText('Vorlage')) as HTMLSelectElement).value,
+  ).toBe('tpl-1');
+  control.listReply = () => new Response(null, { status: 500 });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(await screen.findByText('Entwurf angelegt.')).toBeTruthy();
   expect(
     await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
   ).toBeTruthy();
-  // BKP013.1: the confirmed success and the rows loaded before the failed
-  // reload stay readable instead of leaving an unexplained empty list.
-  expect(screen.getByText(/Angelegt am/)).toBeTruthy();
-  expect(posts).toBe(1);
-  failDocuments = false;
+  // The row carries the amount and the reachable edit control of the create
+  // answer, which the failing list request never returned.
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  expect(within(offers).getByText(/130,00/)).toBeTruthy();
+  expect(
+    within(offers).getByText('Entwurf', { selector: '.document-row span' }),
+  ).toBeTruthy();
+  const edit = within(offers).getByRole('button', {
+    name: 'Angebot Entwurf bearbeiten',
+  }) as HTMLButtonElement;
+  expect(edit.disabled).toBe(false);
+  expect(posts.map((post) => post.url)).toEqual(['/api/v1/documents']);
+  expect(lists).toHaveLength(2);
+});
+
+test('a draft created without a template also stays visible when the reload fails', async () => {
+  const { posts, control } = reloadHarness();
+  render(<EventDocuments {...props} />);
+  fireEvent.change(await screen.findByLabelText('Vorlage'), {
+    target: { value: '' },
+  });
+  control.createReply = () =>
+    Response.json({ ...created, templateId: null }, { status: 201 });
+  control.listReply = () => new Response(null, { status: 500 });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  expect(
+    await screen.findByText('Leerer Angebotsentwurf angelegt.'),
+  ).toBeTruthy();
+  expect(
+    await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
+  ).toBeTruthy();
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  expect(within(offers).getByText(/130,00/)).toBeTruthy();
+  expect(
+    within(offers).getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  ).toBeTruthy();
+  expect(posts).toHaveLength(1);
+  expect(posts[0]!.url).toBe('/api/v1/documents/blank-offer');
+  expect(posts[0]!.body).toEqual({
+    eventId: 'event-1',
+    contactId: 'contact-1',
+  });
+});
+
+test('retrying the failed list reload only reads and never posts again', async () => {
+  const { lists, posts, control } = reloadHarness();
+  render(<EventDocuments {...props} />);
+  await screen.findByLabelText('Vorlage');
+  control.listReply = () => new Response(null, { status: 503 });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await screen.findByText(/Dateiliste konnte nicht neu geladen werden/);
+  fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
+  await waitFor(() => expect(lists).toHaveLength(3));
+  expect(posts).toHaveLength(1);
+  expect(screen.getByText('Entwurf angelegt.')).toBeTruthy();
+  expect(
+    screen.getByText(/Dateiliste konnte nicht neu geladen werden/),
+  ).toBeTruthy();
+  // A failed retry is still a read problem: the created row stays reachable.
+  expect(screen.getByText(/130,00/)).toBeTruthy();
+});
+
+test('a successful retry replaces the local row with the stored version', async () => {
+  const { posts, finals, control } = reloadHarness();
+  render(<EventDocuments {...props} />);
+  await screen.findByLabelText('Vorlage');
+  control.listReply = () => new Response(null, { status: 503 });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await screen.findByText(/Dateiliste konnte nicht neu geladen werden/);
+  // The local row is on screen before the retry; the retry must replace it.
+  expect(screen.getByText(/130,00/)).toBeTruthy();
+  // The server answers the retry with the same id at a later version and its
+  // own amount: the list must show that row once, not beside the local copy.
+  control.listReply = () =>
+    Response.json([{ ...created, version: 2, grossMinor: 14900 }]);
   fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
   await waitFor(() =>
     expect(
       screen.queryByText(/Dateiliste konnte nicht neu geladen werden/),
     ).toBeNull(),
   );
+  expect(screen.queryByText(/130,00/)).toBeNull();
+  expect(screen.getAllByText(/149,00/)).toHaveLength(1);
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  expect(within(offers).getAllByRole('listitem')).toHaveLength(1);
+  expect(posts).toHaveLength(1);
+  // The visible row is the server's version, and the next write proves it.
+  fireEvent.click(
+    within(offers).getByRole('button', {
+      name: 'Angebot Entwurf finalisieren',
+    }),
+  );
+  await waitFor(() => expect(finals).toHaveLength(1));
+  expect(finals[0]!.body).toEqual({ version: 2 });
+});
+
+test('an unanswered create leaves the list exactly as it was', async () => {
+  const { posts, control } = reloadHarness({ stored: [] });
+  control.createReply = () => new Response(null, { status: 500 });
+  render(<EventDocuments {...props} />);
+  await screen.findByLabelText('Vorlage');
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  expect(await screen.findByText(/Der Angebotsstatus ist unklar/)).toBeTruthy();
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  expect(
+    within(offers).getByText('Noch kein Angebot zu diesem Event.'),
+  ).toBeTruthy();
+  expect(
+    within(offers).queryByRole('button', { name: /bearbeiten/i }),
+  ).toBeNull();
+  expect(screen.queryByText('Entwurf angelegt.')).toBeNull();
+  expect(
+    screen.queryByText(/Dateiliste konnte nicht neu geladen werden/),
+  ).toBeNull();
+  expect(posts).toHaveLength(1);
+});
+
+test('a create answer for another event is unclear and never listed', async () => {
+  const { control } = reloadHarness({ stored: [] });
+  control.createReply = () =>
+    Response.json({ ...created, eventId: 'event-2' }, { status: 201 });
+  render(<EventDocuments {...props} />);
+  await screen.findByLabelText('Vorlage');
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  expect(await screen.findByText(/Der Angebotsstatus ist unklar/)).toBeTruthy();
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  expect(
+    within(offers).getByText('Noch kein Angebot zu diesem Event.'),
+  ).toBeTruthy();
+  expect(screen.queryByText(/130,00/)).toBeNull();
+});
+
+test('the new draft joins the offers without disturbing the other cards', async () => {
+  const invoice = { ...finalized, kind: 'invoice', number: 'RE-2030-0002' };
+  const { control } = reloadHarness({ stored: [draft, invoice] });
+  render(<EventDocuments {...props} />);
+  expect(await screen.findByText('RE-2030-0002')).toBeTruthy();
+  control.listReply = () => new Response(null, { status: 500 });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await screen.findByText(/Dateiliste konnte nicht neu geladen werden/);
+  const offers = screen.getByRole('region', { name: 'Angebote' });
+  const invoices = screen.getByRole('region', { name: 'Rechnungen' });
+  expect(within(invoices).getByText('RE-2030-0002')).toBeTruthy();
+  expect(within(offers).getByText(/249,00/)).toBeTruthy();
+  expect(within(offers).getByText(/130,00/)).toBeTruthy();
+  expect(within(offers).getAllByRole('listitem')).toHaveLength(2);
+});
+
+test('the success message and the reload warning stay truthful', async () => {
+  const { control } = reloadHarness();
+  render(<EventDocuments {...props} />);
+  await screen.findByLabelText('Vorlage');
+  control.listReply = () => new Response(null, { status: 500 });
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await waitFor(() =>
+    expect(screen.getByRole('status').textContent).toBe('Entwurf angelegt.'),
+  );
+  const warning = screen.getByText(
+    /Gespeichert, aber die Dateiliste konnte nicht neu geladen werden/,
+  );
+  expect(warning.closest('[role="alert"]')).toBeTruthy();
+  // A stale list is never announced as current.
+  expect(screen.queryByText(/Liste aktualisiert/)).toBeNull();
+  // The new draft is operable, not just painted: the control takes focus.
+  const edit = within(
+    screen.getByRole('region', { name: 'Angebote' }),
+  ).getByRole('button', { name: 'Angebot Entwurf bearbeiten' });
+  edit.focus();
+  expect(document.activeElement).toBe(edit);
+  // While the list is stale, a second create is impossible.
+  expect(
+    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
+      .disabled,
+  ).toBe(true);
 });
 
 test('documents are grouped and labelled by their actual kind', async () => {

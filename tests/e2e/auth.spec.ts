@@ -2188,6 +2188,128 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       record.getByText(/Status von Anfrage auf Option geändert/),
     ).toBeVisible();
+    // BKP013.2: a confirmed create is stored data. Its row has to stay
+    // reachable when the following list read fails, so an operator never loses
+    // a draft that already exists — and the retry only re-reads. Both answers
+    // come from stubs with different rows so the row on screen has a source.
+    const storedEvent = (
+      await pool.query<{ id: string; contactId: string | null }>(
+        'SELECT e.id, ec.contact_id AS "contactId" FROM events e LEFT JOIN event_contacts ec ON ec.tenant_id=e.tenant_id AND ec.event_id=e.id AND ec.role=$3 WHERE e.tenant_id=$1 AND e.name=$2',
+        [config.tenantId, 'Synthetic browser event', 'primary'],
+      )
+    ).rows[0]!;
+    expect(storedEvent.contactId).toBeTruthy();
+    const offerTemplateRow = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      kind: 'offer',
+      name: 'Synthetic fallback offer',
+      state: 'active',
+    };
+    const eventFileRow = {
+      id: '99999999-9999-4999-8999-999999999999',
+      kind: 'offer',
+      templateId: offerTemplateRow.id,
+      eventId: storedEvent.id,
+      contactId: storedEvent.contactId,
+      number: null,
+      state: 'draft',
+      issuedAt: '2031-05-03T09:00:00.000Z',
+      finalizedAt: null,
+      netMinor: 10925,
+      taxMinor: 2075,
+      grossMinor: 13000,
+      version: 1,
+    };
+    let failEventFileRead = false,
+      eventFilePosts = 0,
+      eventFileRows: unknown[] = [];
+    const isEventFileRequest = (url: URL) =>
+      url.pathname === '/api/v1/documents' &&
+      url.searchParams.get('include') !== 'metadata';
+    const eventFilesRoute = async (route: Route) => {
+      if (route.request().method() === 'POST') {
+        eventFilePosts += 1;
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify(eventFileRow),
+        });
+        return;
+      }
+      await route.fulfill(
+        failEventFileRead
+          ? { status: 503, body: '' }
+          : {
+              status: 200,
+              contentType: 'application/json',
+              body: JSON.stringify(eventFileRows),
+            },
+      );
+    };
+    const offerTemplatesRoute = async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([offerTemplateRow]),
+      });
+    };
+    await page.route(isEventFileRequest, eventFilesRoute);
+    await page.route(
+      (url) => url.pathname === '/api/v1/document-templates',
+      offerTemplatesRoute,
+    );
+    // The record has to mount again, otherwise its file area already read the
+    // list before these stubs existed.
+    await page.goBack();
+    await expect(
+      events.getByRole('region', { name: 'Event-Details' }),
+    ).toHaveCount(0);
+    await events.getByRole('link', { name: /Synthetic browser event/ }).click();
+    await expect(record.locator('.event-record-head h2')).toBeVisible();
+    await record.getByRole('button', { name: 'Dateien', exact: true }).click();
+    const createdOffer = record.getByRole('region', { name: 'Angebote' });
+    await expect(createdOffer).toBeVisible();
+    await expect(
+      record.getByText('Noch kein Angebot zu diesem Event.'),
+    ).toBeVisible();
+    await expect(record.getByLabel('Vorlage')).toHaveValue(offerTemplateRow.id);
+    failEventFileRead = true;
+    await record.getByRole('button', { name: 'Entwurf anlegen' }).click();
+    await expect(
+      record.getByText('Entwurf angelegt.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      record.getByText(
+        /Gespeichert, aber die Dateiliste konnte nicht neu geladen werden/,
+      ),
+    ).toBeVisible();
+    // The row from the create answer is readable and operable although the
+    // list read failed: no lost draft, no blind second create.
+    await expect(createdOffer.getByText('130,00 €')).toBeVisible();
+    const createdOfferEdit = createdOffer.getByRole('button', {
+      name: 'Angebot Entwurf bearbeiten',
+    });
+    await expect(createdOfferEdit).toBeEnabled();
+    expect(eventFilePosts).toBe(1);
+    // The retry re-reads. The stored row replaces the local one exactly once.
+    failEventFileRead = false;
+    eventFileRows = [{ ...eventFileRow, version: 2 }];
+    await record.getByRole('button', { name: 'Dateien erneut laden' }).click();
+    await expect(
+      record.getByText(/Dateiliste konnte nicht neu geladen werden/),
+    ).toHaveCount(0);
+    await expect(createdOffer.locator('li')).toHaveCount(1);
+    await expect(createdOfferEdit).toBeVisible();
+    expect(eventFilePosts).toBe(1);
+    await page.unroute(isEventFileRequest, eventFilesRoute);
+    await page.unroute(
+      (url) => url.pathname === '/api/v1/document-templates',
+      offerTemplatesRoute,
+    );
+    await page.goBack();
+    await expect(
+      events.getByRole('region', { name: 'Event-Details' }),
+    ).toHaveCount(0);
     await navigate('Kontakte');
     const contactNameLink = contacts.getByRole('link', {
       name: 'Synthetic browser contact',

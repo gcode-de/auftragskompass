@@ -159,11 +159,15 @@ export function EventDocuments({
         throw new Error('uncertain-create');
       if (isBlank) {
         editorTrigger.current = createTrigger;
-        setDocuments((current) => [
-          created,
-          ...current.filter((row) => row.id !== created.id),
-        ]);
       }
+      // BKP013.2: a confirmed create is real stored data, so both paths show
+      // the row at once instead of waiting for the list. A failed reload can
+      // then never hide a draft that already exists, and the reload below
+      // replaces this row with the server's version of the same id.
+      setDocuments((current) => [
+        created,
+        ...current.filter((row) => row.id !== created.id),
+      ]);
       // Confirmed write: report it before the list reload. A later GET failure
       // must never read as a reason to create the draft again.
       setMessage(

@@ -8,6 +8,40 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP013.2 — `fix: keep a created draft reachable when the files list cannot reload`** (26.10.2026)
+
+  Tatsächlicher Rest von BKP013 (BKP013.1 ist bereits über `605f75b`
+  abgeschlossen und live ausgeliefert – die älteren Statuszeilen in
+  tasks-core/handoff waren veraltet). Das Ticketkriterium „Dokumenterfolg
+  bleibt bei Neuladefehler sichtbar“ ist im Vorlagenpfad (Normalfall) nur
+  halb erfüllt: `EventDocuments.tsx` setzt die bestätigte Zeile nur im Pfad
+  „ohne Vorlage“ in die Liste ein; scheitert danach das Neuladen, verschwindet
+  der gerade angelegte Entwurf aus der Ansicht. Behebung im bewährten
+  Save-vs-GET-Muster: jede bestätigte Anlage (mit und ohne Vorlage) setzt die
+  gespeicherte Zeile aus der Antwort lokal in die Liste; der GET-Fehler ist
+  nur ein Reload-Problem mit GET-only-Wiederholung, kein blindes POST.
+  Bestehende Vertragstests werden geschärft (GET-/POST-Mocks trennen, damit
+  die Aussage echte Beweiskraft bekommt), E2E-Beweis im Dokumenten-Event-
+  segment. Unverändert: atomare Status-/Ressourcenmutationen, die 13
+  erfüllten BKP013-Kriterien, keine API-/Kernänderung. Bewusst offen und
+  nicht in diesem Slice: Bereichs-Deep-Links (Referenz unbekannt),
+  Notizbearbeitung in der Akte (dokumentierter Weg über das Eventformular),
+  Kürzen der unteren Bereichsleiste. Coding-Subagent: DeepSeek V4.1 Flash
+  (gleiche Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (5 Komponententests gegen den Altstand, darunter
+  die Vorlagenanlage mit GET 500; zusätzlich beide E2E-Szenarien gegen den
+  zurückgesetzten Stand gescheitert – echte Beweiskraft der zuvor blinden
+  Mocks durch getrennte Fixtures hergestellt), danach grün: `test:component`
+  665/665, `test:integration` 311/311, `test:unit` 265/265, `test:coverage`
+  vollständig grün (EventDocuments 98,42% Zeilen/91,85% Zweige),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inklusive neuem Beweis (Vorlagenanlage →
+  GET 503 → Entwurf „130,00 €“ sichtbar/bedienbar, genau ein POST, Retry nur
+  GET, genau eine Zeile). Notiert: ersetzt ein erfolgreicher Reload die
+  lokale Zeile nicht (z. B. Replikationsverzug), verschwindet sie wie zuvor –
+  Altzustand, nicht neu; im Vorlagenpfad öffnet sich der Editor nach der
+  Anlage nicht automatisch (bewusst unverändert).
+
 - [x] **BKP015.10 — `feat: insert template placeholders from a picker`** (26.10.2026)
 
   Vorlagenrest II gemäß Übergabeprompt (Zusatzanforderung): verständlich
