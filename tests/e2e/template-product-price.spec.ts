@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const templateId = '11111111-1111-4111-8111-111111111111';
@@ -362,17 +362,35 @@ async function openTemplateEditor(page: Page) {
   return page.getByRole('group', { name: 'Position 1' });
 }
 
-async function captureTemplateEvidence(page: Page, prefix: string) {
+async function captureTemplateEvidence(
+  page: Page,
+  prefix: string,
+  visibleTarget?: Locator,
+  disclosureTrigger?: Locator,
+) {
   for (const theme of ['light', 'dark'] as const) {
     const toggle = page.getByRole('button', { name: /modus aktivieren/i });
     if ((await page.locator('html').getAttribute('data-theme')) !== theme)
       await toggle.click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    if (
+      disclosureTrigger &&
+      (await disclosureTrigger.getAttribute('aria-expanded')) !== 'true'
+    )
+      await disclosureTrigger.click();
     for (const width of [1280, 320] as const) {
       await page.setViewportSize({ width, height: 844 });
       await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
         .toBeLessThanOrEqual(width + 1);
+      if (visibleTarget) {
+        const bounds = await visibleTarget.boundingBox();
+        expect(bounds, `${prefix} action visible at ${width}px`).not.toBeNull();
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
+        expect(bounds!.y).toBeGreaterThanOrEqual(0);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(845);
+      }
       const accessibility = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
         .analyze();
@@ -386,6 +404,27 @@ async function captureTemplateEvidence(page: Page, prefix: string) {
       });
     }
   }
+}
+
+async function templateRowActions(page: Page, templateName: string) {
+  const trigger = page.getByRole('button', {
+    name: `Weitere Aktionen für ${templateName}`,
+    exact: true,
+  });
+  const controls = await trigger.getAttribute('aria-controls');
+  expect(
+    controls,
+    `${templateName} action disclosure controls a row`,
+  ).toBeTruthy();
+  return { trigger, menu: page.locator(`#${controls}`) };
+}
+
+async function openTemplateRowActions(page: Page, templateName: string) {
+  const disclosure = await templateRowActions(page, templateName);
+  await disclosure.trigger.click();
+  await expect(disclosure.trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(disclosure.menu).toBeVisible();
+  return disclosure;
 }
 
 test('template list groups every populated document kind and preserves unknown and archived rows', async ({
@@ -458,6 +497,109 @@ test('template list groups every populated document kind and preserves unknown a
   expect(api.unexpectedApiWrites).toEqual([]);
 });
 
+test('template row action disclosures stay quiet by default and dismiss with stable focus', async ({
+  page,
+}) => {
+  const templates = [
+    structuredClone(originalTemplate),
+    templateForKind(
+      'invoice',
+      'Fiktive Rechnungsaktionsvorlage',
+      '77777777-7777-4777-8777-777777777771',
+      '88888888-8888-4888-8888-000000000001',
+    ),
+    templateForKind(
+      'order_confirmation',
+      'Fiktive Auftragsaktionsvorlage',
+      '77777777-7777-4777-8777-777777777772',
+      '88888888-8888-4888-8888-000000000002',
+    ),
+  ];
+  const api = await stubTemplateApis(page, sourceProducts, {
+    initialTemplates: templates,
+  });
+  await openTemplateList(page);
+
+  const first = await templateRowActions(page, originalTemplate.name);
+  await expect(first.trigger).toBeVisible();
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(first.menu).toBeHidden();
+  await expect(
+    first.menu.getByRole('button', {
+      name: `Vorlage duplizieren: ${originalTemplate.name}`,
+      exact: true,
+    }),
+  ).toBeHidden();
+
+  await first.trigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    first.menu.getByRole('button', {
+      name: `Vorlage duplizieren: ${originalTemplate.name}`,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(first.trigger).toBeFocused();
+
+  await first.trigger.click();
+  const second = await templateRowActions(
+    page,
+    'Fiktive Rechnungsaktionsvorlage',
+  );
+  await second.trigger.click();
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(second.trigger).toHaveAttribute('aria-expanded', 'true');
+  await first.trigger.click();
+  await expect(second.trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'true');
+  const firstDuplicate = first.menu.getByRole('button', {
+    name: `Vorlage duplizieren: ${originalTemplate.name}`,
+    exact: true,
+  });
+  await firstDuplicate.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(
+    page.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fiktive Auftragsaktionsvorlage',
+      exact: true,
+    }),
+  ).toBeFocused();
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'false');
+
+  await first.trigger.click();
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'true');
+  const outsideButton = page.getByRole('button', { name: /modus aktivieren/i });
+  await outsideButton.click();
+  await expect(first.trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(outsideButton).toBeFocused();
+
+  const createButton = page.getByRole('button', { name: 'Vorlage anlegen' });
+  await createButton.click();
+  await page.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(createButton).toBeFocused();
+
+  const { trigger, menu } = await openTemplateRowActions(
+    page,
+    originalTemplate.name,
+  );
+  const duplicateAction = menu.getByRole('button', {
+    name: `Vorlage duplizieren: ${originalTemplate.name}`,
+    exact: true,
+  });
+  await captureTemplateEvidence(
+    page,
+    'template-row-actions-open',
+    duplicateAction,
+    trigger,
+  );
+  expect(api.writes).toEqual([]);
+  expect(api.unexpectedApiWrites).toEqual([]);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+});
+
 test('templates start as a list and open a focused on-demand editor with safe cancel and duplication', async ({
   page,
 }) => {
@@ -524,9 +666,30 @@ test('templates start as a list and open a focused on-demand editor with safe ca
   await expect(name).toBeFocused();
   expect(api.writes).toEqual([]);
 
-  await page
+  const originalActions = await openTemplateRowActions(
+    page,
+    'Fiktive Bruttopreisvorlage',
+  );
+  await originalActions.menu
     .getByRole('button', {
       name: 'Vorlage duplizieren: Fiktive Bruttopreisvorlage',
+      exact: true,
+    })
+    .click();
+  await expect(name).toHaveValue('Fiktive Bruttopreisvorlage (Kopie)');
+  await page.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
+  await expect(originalActions.trigger).toBeFocused();
+  expect(api.writes).toEqual([]);
+
+  const duplicateActions = await openTemplateRowActions(
+    page,
+    'Fiktive Bruttopreisvorlage',
+  );
+  await duplicateActions.menu
+    .getByRole('button', {
+      name: 'Vorlage duplizieren: Fiktive Bruttopreisvorlage',
+      exact: true,
     })
     .click();
   await expect(name).toHaveValue('Fiktive Bruttopreisvorlage (Kopie)');
@@ -543,12 +706,7 @@ test('templates start as a list and open a focused on-demand editor with safe ca
   await page.getByRole('button', { name: 'Vorlage speichern' }).click();
   await expect(page.getByText('Gespeichert.', { exact: true })).toBeVisible();
   await expect(templates.getByLabel('Bezeichnung')).toHaveCount(0);
-  await expect(
-    page.getByRole('button', {
-      name: 'Vorlage duplizieren: Fiktive Bruttopreisvorlage',
-      exact: true,
-    }),
-  ).toBeFocused();
+  await expect(duplicateActions.trigger).toBeFocused();
   expect(api.writes).toMatchObject([
     {
       method: 'POST',
@@ -737,7 +895,7 @@ test('lost template-create response blocks mutations and safely retries the same
   ).toBeDisabled();
   await expect(
     page.getByRole('button', {
-      name: 'Vorlage duplizieren: Fiktive Bruttopreisvorlage',
+      name: 'Weitere Aktionen für Fiktive Bruttopreisvorlage',
     }),
   ).toBeDisabled();
   expect(api.getCreateAttempts()).toBe(1);
@@ -926,9 +1084,14 @@ test('archive conflict reconciles by GET while the open template draft stays int
   await subject.fill('Fiktiver noch nicht gespeicherter Betreff');
   await description.fill('Fiktive noch nicht gespeicherte Position');
 
-  await page
+  const rowActions = await openTemplateRowActions(
+    page,
+    'Fiktive Bruttopreisvorlage',
+  );
+  await rowActions.menu
     .getByRole('button', {
       name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
+      exact: true,
     })
     .click();
   await expect(page.getByRole('alert')).toContainText(
@@ -965,11 +1128,7 @@ test('archive conflict reconciles by GET while the open template draft stays int
 
   await reconcileButton.click();
   await expect.poll(api.getListGets).toBe(2);
-  await expect(
-    page.getByRole('button', {
-      name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
-    }),
-  ).toBeFocused();
+  await expect(rowActions.trigger).toBeFocused();
   await expect(subject).toHaveValue(
     'Fiktiver noch nicht gespeicherter Betreff',
   );
@@ -1021,9 +1180,14 @@ test('confirmed archive remains successful when list refresh fails and retry per
   await subject.fill('Fiktiver gespeicherter Entwurf bleibt offen');
   await description.fill('Fiktive offene Positionsbearbeitung');
 
-  await page
+  const rowActions = await openTemplateRowActions(
+    page,
+    'Fiktive Bruttopreisvorlage',
+  );
+  await rowActions.menu
     .getByRole('button', {
       name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
+      exact: true,
     })
     .click();
   await expect(page.getByRole('alert')).toContainText(
@@ -1044,11 +1208,7 @@ test('confirmed archive remains successful when list refresh fails and retry per
     name: 'Vorlagen neu laden',
   });
   await expect(reconcileButton).toBeFocused();
-  await expect(
-    page.getByRole('button', {
-      name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
-    }),
-  ).toBeDisabled();
+  await expect(rowActions.trigger).toBeDisabled();
   await page.setViewportSize({ width: 320, height: 844 });
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
@@ -1070,6 +1230,15 @@ test('confirmed archive remains successful when list refresh fails and retry per
 
   await reconcileButton.click();
   await expect.poll(api.getListGets).toBe(3);
+  await expect(rowActions.trigger).toBeFocused();
+  await expect(rowActions.trigger).toBeEnabled();
+  await rowActions.trigger.click();
+  await expect(
+    rowActions.menu.getByRole('button', {
+      name: 'Vorlage archivieren: Fiktive Bruttopreisvorlage',
+      exact: true,
+    }),
+  ).toBeDisabled();
   await expect(
     page.getByText(/Fiktive Bruttopreisvorlage.*Archiviert/),
   ).toBeVisible();

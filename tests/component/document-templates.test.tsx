@@ -160,6 +160,25 @@ function createdResponse(body: Record<string, unknown>) {
 function openCreate() {
   fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));
 }
+function openRowActions(name: string) {
+  const toggle = screen.getByRole('button', {
+    name: `Weitere Aktionen für ${name}`,
+  });
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+  return toggle;
+}
+function getArchiveButton(name: string) {
+  openRowActions(name);
+  return screen.getByRole('button', {
+    name: `Vorlage archivieren: ${name}`,
+  });
+}
+function getDuplicateButton(name: string) {
+  openRowActions(name);
+  return screen.getByRole('button', {
+    name: `Vorlage duplizieren: ${name}`,
+  });
+}
 test('document templates are grouped by supported kind and retain unknown kinds', async () => {
   const invoice = {
     ...template,
@@ -214,6 +233,78 @@ test('an empty document-template list explains how to begin', async () => {
     await screen.findByText('Noch keine Dokumentvorlagen vorhanden.'),
   ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Vorlage anlegen' })).toBeTruthy();
+});
+test('secondary template actions open one row at a time and dismiss accessibly', async () => {
+  const other = {
+    ...template,
+    id: 'fictional-other-template',
+    name: 'Fictional other offer',
+  };
+  setup(
+    () => Response.json(template),
+    () => Response.json([template, other]),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+
+  const firstToggle = screen.getByRole('button', {
+    name: 'Weitere Aktionen für Fictional offer',
+  });
+  const secondToggle = screen.getByRole('button', {
+    name: 'Weitere Aktionen für Fictional other offer',
+  });
+  expect(firstToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(
+    screen.queryByRole('button', {
+      name: 'Vorlage duplizieren: Fictional offer',
+    }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', {
+      name: 'Vorlage archivieren: Fictional offer',
+    }),
+  ).toBeNull();
+  expect(
+    screen.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fictional offer',
+    }),
+  ).toBeTruthy();
+
+  fireEvent.click(firstToggle);
+  expect(firstToggle.getAttribute('aria-expanded')).toBe('true');
+  expect(
+    screen.getByRole('button', {
+      name: 'Vorlage duplizieren: Fictional offer',
+    }),
+  ).toBeTruthy();
+  fireEvent.click(secondToggle);
+  expect(firstToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(secondToggle.getAttribute('aria-expanded')).toBe('true');
+
+  const secondDuplicate = screen.getByRole('button', {
+    name: 'Vorlage duplizieren: Fictional other offer',
+  });
+  secondDuplicate.focus();
+  fireEvent.keyDown(secondDuplicate, { key: 'Escape' });
+  expect(secondToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(secondToggle);
+
+  fireEvent.click(firstToggle);
+  const outside = document.createElement('button');
+  outside.textContent = 'Fictional outside action';
+  document.body.append(outside);
+  fireEvent.pointerDown(outside);
+  expect(firstToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).not.toBe(firstToggle);
+
+  fireEvent.click(firstToggle);
+  firstToggle.focus();
+  expect(firstToggle.getAttribute('aria-expanded')).toBe('true');
+  outside.focus();
+  fireEvent.focusIn(outside);
+  expect(firstToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(outside);
+  outside.remove();
 });
 test('a confirmed create remains saved when the following list GET fails', async () => {
   let listReads = 0;
@@ -752,9 +843,7 @@ test('templates load with their positions, save exact minor units and archive wi
     },
   ]);
   writes.length = 0;
-  const archiveButton = screen.getByRole('button', {
-    name: 'Vorlage archivieren: Fictional offer',
-  });
+  const archiveButton = getArchiveButton('Fictional offer');
   archiveButton.focus();
   fireEvent.click(archiveButton);
   await vi.waitFor(() => expect(writes).toHaveLength(1));
@@ -778,7 +867,7 @@ test('templates load with their positions, save exact minor units and archive wi
   ).toBeNull();
   expect(document.activeElement).toBe(
     screen.getByRole('button', {
-      name: 'Vorlage bearbeiten: Fictional offer',
+      name: 'Weitere Aktionen für Fictional offer',
     }),
   );
 });
@@ -805,9 +894,7 @@ test('archive conflict keeps the open template draft and reports reconciliation'
     target: { value: 'Fictional edited position' },
   });
 
-  const archiveButton = screen.getByRole('button', {
-    name: 'Vorlage archivieren: Fictional offer',
-  });
+  const archiveButton = getArchiveButton('Fictional offer');
   archiveButton.focus();
   fireEvent.click(archiveButton);
 
@@ -829,20 +916,22 @@ test('archive conflict keeps the open template draft and reports reconciliation'
     screen.getByRole('button', { name: 'Vorlagen neu laden' }),
   );
   expect(
-    screen
-      .getByRole('button', { name: 'Vorlage archivieren: Fictional offer' })
-      .hasAttribute('disabled'),
+    (
+      screen.getByRole('button', {
+        name: 'Weitere Aktionen für Fictional offer',
+      }) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
   expect(
-    screen
-      .getByRole('button', {
-        name: 'Vorlage archivieren: Fictional other offer',
-      })
-      .hasAttribute('disabled'),
+    (
+      screen.getByRole('button', {
+        name: 'Weitere Aktionen für Fictional other offer',
+      }) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
   fireEvent.click(
     screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional other offer',
+      name: 'Weitere Aktionen für Fictional other offer',
     }),
   );
   expect(writes).toHaveLength(1);
@@ -869,7 +958,7 @@ test('archive conflict keeps the open template draft and reports reconciliation'
   );
   expect(document.activeElement).toBe(
     screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
+      name: 'Weitere Aktionen für Fictional offer',
     }),
   );
 });
@@ -887,11 +976,7 @@ test('archive network failure keeps the open template draft and does not reject 
     target: { value: 'Fictional offline subject' },
   });
 
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
 
   const alert = await screen.findByRole('alert');
   expect(alert.textContent).toMatch(/unklar|Verbindung/i);
@@ -936,11 +1021,7 @@ test.each([
     fireEvent.change(screen.getByLabelText('Betreff'), {
       target: { value: 'Fictional draft survives HTTP failure' },
     });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Vorlage archivieren: Fictional offer',
-      }),
-    );
+    fireEvent.click(getArchiveButton('Fictional offer'));
     expect(await screen.findByText(copy)).toBeTruthy();
     expect(listReads).toBe(1);
     expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
@@ -982,11 +1063,7 @@ test('malformed successful archive JSON stays unknown until a list GET succeeds'
   fireEvent.change(screen.getByLabelText('Betreff'), {
     target: { value: 'Fictional draft survives malformed success' },
   });
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
   expect(await screen.findByText(/Archivierungsstand ist unklar/)).toBeTruthy();
   expect(listReads).toBe(1);
   expect(writes).toHaveLength(1);
@@ -1030,11 +1107,7 @@ test('confirmed archive remains confirmed when list reload fails and retry is GE
   fireEvent.change(screen.getByLabelText('Betreff'), {
     target: { value: 'Fictional subject during confirmed archive' },
   });
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
   expect(
     await screen.findByText(
       /Vorlage archiviert\. Die Liste konnte nicht aktualisiert werden/,
@@ -1090,11 +1163,7 @@ test('reconciliation accepts and presents a strictly newer server template versi
   fireEvent.change(screen.getByLabelText('Betreff'), {
     target: { value: 'Fictional unsaved subject during concurrent edit' },
   });
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
   expect(
     await screen.findByText(
       /Vorlage archiviert\. Die Liste konnte nicht aktualisiert werden/,
@@ -1154,9 +1223,7 @@ test('automatic list refresh accepts a newer valid server template snapshot', as
   );
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
-  const archiveButton = screen.getByRole('button', {
-    name: 'Vorlage archivieren: Fictional offer',
-  });
+  const archiveButton = getArchiveButton('Fictional offer');
   archiveButton.focus();
   fireEvent.click(archiveButton);
   expect(
@@ -1170,7 +1237,7 @@ test('automatic list refresh accepts a newer valid server template snapshot', as
   expect(writes).toHaveLength(1);
   expect(document.activeElement).toBe(
     screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
+      name: 'Weitere Aktionen für Fictional offer',
     }),
   );
   fireEvent.click(
@@ -1194,11 +1261,7 @@ test('malformed archive success stays locked until a validated list is loaded', 
   );
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
   expect(
     await screen.findByText(/Archivierungsantwort war unplausibel/),
   ).toBeTruthy();
@@ -1223,11 +1286,7 @@ test('a contradictory automatic list response keeps confirmed archive locked', a
   );
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
   expect(
     await screen.findByText(/Vorlage archiviert\. Der Listenstand weicht ab/),
   ).toBeTruthy();
@@ -1269,9 +1328,7 @@ test('archive ignores a duplicate click while the PUT is pending', async () => {
     </>,
   );
   await screen.findAllByText(/Fictional offer/);
-  const archiveButton = screen.getByRole('button', {
-    name: 'Vorlage archivieren: Fictional offer',
-  });
+  const archiveButton = getArchiveButton('Fictional offer');
   archiveButton.focus();
   fireEvent.click(archiveButton);
   fireEvent.click(archiveButton);
@@ -1319,9 +1376,7 @@ test('unmount during an archive request removes the temporary focus listener', a
     <DocumentTemplatesPanel csrfToken="fictional-csrf" />,
   );
   await screen.findAllByText(/Fictional offer/);
-  const archiveButton = screen.getByRole('button', {
-    name: 'Vorlage archivieren: Fictional offer',
-  });
+  const archiveButton = getArchiveButton('Fictional offer');
   archiveButton.focus();
   fireEvent.click(archiveButton);
   unmount();
@@ -1365,11 +1420,7 @@ test('archive carries the stored archived product reference and exact version', 
   );
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
   await screen.findByText('Vorlage archiviert.');
   expect(writes).toHaveLength(1);
   expect(writes[0]!.body.version).toBe(1);
@@ -1409,11 +1460,7 @@ test.each([
     fireEvent.change(screen.getByLabelText('Betreff'), {
       target: { value: 'Fictional preserved rejection draft' },
     });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Vorlage archivieren: Fictional offer',
-      }),
-    );
+    fireEvent.click(getArchiveButton('Fictional offer'));
     expect(await screen.findByText(copy)).toBeTruthy();
     expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
       'Fictional preserved rejection draft',
@@ -1576,12 +1623,14 @@ test('opening another template draft clears the previous product conversion erro
     target: { value: overflowProduct.id },
   });
   expect(await screen.findByRole('alert')).toBeTruthy();
-  fireEvent.click(
+  fireEvent.click(getDuplicateButton('Fictional offer'));
+  expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(document.activeElement).toBe(
     screen.getByRole('button', {
-      name: 'Vorlage duplizieren: Fictional offer',
+      name: 'Weitere Aktionen für Fictional offer',
     }),
   );
-  expect(screen.queryByRole('alert')).toBeNull();
 });
 test('edits every position field, removes a row and cancels the draft', async () => {
   setup();
@@ -1616,11 +1665,7 @@ test('duplicating opens a copy with the stored positions intact', async () => {
   setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage duplizieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getDuplicateButton('Fictional offer'));
   expect((screen.getByLabelText('Bezeichnung') as HTMLInputElement).value).toBe(
     'Fictional offer (Kopie)',
   );
@@ -1796,11 +1841,7 @@ test('an unchanged duplicate remains SPA-dirty while its create is pending', asy
   const writes = setup(() => pending);
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage duplizieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getDuplicateButton('Fictional offer'));
   expect(hasUnsavedChanges()).toBe(false);
   fireEvent.submit(
     screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
@@ -1879,11 +1920,7 @@ test('changing to another template asks before discarding the open draft', async
     target: { value: 'Fictional edited subject' },
   });
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage duplizieren: Fictional other offer',
-    }),
-  );
+  fireEvent.click(getDuplicateButton('Fictional other offer'));
   expect(confirm).toHaveBeenCalledWith('Ungespeicherte Änderungen verwerfen?');
   expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
     'Fictional edited subject',
@@ -1949,11 +1986,7 @@ test('an unchanged editor stays clean while an archive request disables the form
     screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
   );
   expect(hasUnsavedChanges()).toBe(false);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'Vorlage archivieren: Fictional offer',
-    }),
-  );
+  fireEvent.click(getArchiveButton('Fictional offer'));
   expect(hasUnsavedChanges()).toBe(false);
   finish(
     archivedResponse({

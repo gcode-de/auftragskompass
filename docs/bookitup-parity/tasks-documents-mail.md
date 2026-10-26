@@ -148,6 +148,18 @@ Keinen großen Filter-/Vorschau-/Mailumbau oder generisches Mutationsframework
 hineinziehen. Nach dieser Korrektur folgen getrennt Suche/Art-/Archivfilter und
 deterministische Vorlagenvorschau ohne Nummernverbrauch/Datei-/Vorlagenmutation.
 
+### BKP015.7: seltene Aktionen gezielt öffnen
+
+B35 belegt ruhige Zeilenmenüs in Bookitup. AuftragsKompass behält Bearbeiten
+direkt sichtbar und öffnet Duplizieren/Archivieren hinter „Aktionen“ pro Zeile.
+Nur eine Gruppe ist offen. Native Tastaturbedienung, Escape zum sichtbaren
+Schalter und Schließen bei Wechsel nach außen erhalten eine vorhersehbare
+Fokusfolge. Die Gruppe bricht im normalen Layoutfluss mobil um. Es kommt keine
+Löschenfunktion hinzu; bestehende sichere Schreib-, Dirty- und Archivverträge
+gelten unverändert. Such-/Archivfilter bleiben eine Zusatzanforderung, die auf
+der untersuchten Bookitup-Desktopansicht nicht sichtbar war. Die deterministische
+Vorschau bleibt ein eigener nachfolgender Slice; BKP015 insgesamt bleibt offen.
+
 ## BKP016 — Dokumententwürfe vollständig und unabhängig bearbeiten
 
 **P1 für alltagstaugliche Angebote, nach bestehender C051-Basis.** Lesen `EventDocuments.tsx`, `documents.ts`, `document-templates.ts`, `document-snapshot.ts`, `document-totals.ts`, `document-pdf.ts`, `document-artifacts.ts`, `schema.ts`, Migrationen 0026–0031 (unverändert lassen), Dokumentkomponenten-/Integrationstests und Rendering-/Geldtests.

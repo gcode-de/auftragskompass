@@ -2753,6 +2753,14 @@ summary {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+.document-template-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.document-template-secondary-actions[hidden] {
+  display: none;
+}
 .document-template-empty {
   margin: 1rem 0 0;
   color: var(--muted);

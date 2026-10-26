@@ -956,9 +956,48 @@ test('password, import, template and number panels name a tier for every action'
   });
   expect(tier(createTemplate)).toBe('primary-action');
   expect(
+    within(templates).queryByRole('button', {
+      name: 'Vorlage duplizieren: Synthetic offer template',
+    }),
+  ).toBeNull();
+  expect(
+    within(templates).queryByRole('button', {
+      name: 'Vorlage archivieren: Synthetic offer template',
+    }),
+  ).toBeNull();
+  expect(
+    tier(
+      within(templates).getByRole('button', {
+        name: 'Vorlage bearbeiten: Synthetic offer template',
+      }),
+    ),
+  ).toBe('secondary-action');
+  const templateActions = within(templates).getByRole('button', {
+    name: 'Weitere Aktionen für Synthetic offer template',
+  });
+  expect(tier(templateActions)).toBe('tertiary-action');
+  expect(
     within(templates).queryByRole('button', { name: 'Vorlage speichern' }),
   ).toBeNull();
+  fireEvent.click(templateActions);
+  expect(templateActions.getAttribute('aria-expanded')).toBe('true');
+  expect(
+    tier(
+      within(templates).getByRole('button', {
+        name: 'Vorlage duplizieren: Synthetic offer template',
+      }),
+    ),
+  ).toBe('secondary-action');
+  expect(
+    tier(
+      within(templates).getByRole('button', {
+        name: 'Vorlage archivieren: Synthetic offer template',
+      }),
+    ),
+  ).toBe('tertiary-action');
+  fireEvent.click(templateActions);
   fireEvent.click(createTemplate);
+  fireEvent.click(templateActions);
   expectHierarchy(templates, 'Dokumentvorlageneditor');
   expect(
     tier(within(templates).getByRole('button', { name: 'Vorlage speichern' })),

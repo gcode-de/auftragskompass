@@ -39,7 +39,7 @@ type ArchiveReconciliation = {
   outcome: 'unknown' | 'stale' | 'confirmed';
   confirmed?: Template;
 };
-type ArchiveFocusTarget = 'archive' | 'edit' | 'reconcile' | 'heading';
+type ArchiveFocusTarget = 'actions' | 'reconcile' | 'heading';
 type ArchiveFocusRequest = {
   id: string;
   target: ArchiveFocusTarget;
@@ -239,6 +239,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     [uncertainCreate, setUncertainCreate] = useState(false),
     [archiveFocusRequest, setArchiveFocusRequest] =
       useState<ArchiveFocusRequest | null>(null);
+  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const archiveInFlight = useRef(false);
   const saveInFlight = useRef(false);
   const listGeneration = useRef(0);
@@ -248,7 +249,8 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const deferredSaveReturnTarget = useRef<HTMLElement | null>(null);
   const createAttempt = useRef<CreateAttempt | null>(null);
   const archiveFocusIntent = useRef<ArchiveFocusIntent | null>(null);
-  const archiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const actionRowRefs = useRef(new Map<string, HTMLLIElement>());
+  const actionToggleRefs = useRef(new Map<string, HTMLButtonElement>());
   const editButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const createButtonRef = useRef<HTMLButtonElement>(null);
   const editorFormRef = useRef<HTMLFormElement>(null);
@@ -270,6 +272,22 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     },
     [],
   );
+  useEffect(() => {
+    if (!openActionsId) return;
+    const closeIfOutside = (target: EventTarget | null) => {
+      const row = actionRowRefs.current.get(openActionsId);
+      if (row && target instanceof Node && !row.contains(target))
+        setOpenActionsId(null);
+    };
+    const onPointerDown = (event: PointerEvent) => closeIfOutside(event.target);
+    const onFocusIn = (event: FocusEvent) => closeIfOutside(event.target);
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('focusin', onFocusIn);
+    };
+  }, [openActionsId]);
   function trackArchiveFocus(id: string, origin: HTMLElement) {
     archiveFocusIntent.current?.stop();
     archiveFocusIntent.current = null;
@@ -299,13 +317,11 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     archiveFocusIntent.current = null;
     if (intent.moved) return;
     const target =
-      archiveFocusRequest.target === 'archive'
-        ? archiveButtonRefs.current.get(archiveFocusRequest.id)
-        : archiveFocusRequest.target === 'edit'
-          ? editButtonRefs.current.get(archiveFocusRequest.id)
-          : archiveFocusRequest.target === 'reconcile'
-            ? reconcileButtonRef.current
-            : headingRef.current;
+      archiveFocusRequest.target === 'actions'
+        ? actionToggleRefs.current.get(archiveFocusRequest.id)
+        : archiveFocusRequest.target === 'reconcile'
+          ? reconcileButtonRef.current
+          : headingRef.current;
     const unavailable =
       !target ||
       (target instanceof HTMLButtonElement && target.disabled) ||
@@ -903,10 +919,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             'Archivierung bestätigt. Die Vorlage wurde inzwischen erneut geändert; der aktuelle Stand wurde geladen.',
           );
           setConversionError(false);
-          requestArchiveFocus(
-            current.id,
-            row.state === 'active' ? 'archive' : 'edit',
-          );
+          requestArchiveFocus(current.id, 'actions');
           return;
         }
         if (
@@ -917,7 +930,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           setRows(result);
           setArchiveReconciliation(null);
           setMessage('Vorlagen neu geladen. Die Archivierung ist bestätigt.');
-          requestArchiveFocus(current.id, 'edit');
+          requestArchiveFocus(current.id, 'actions');
           return;
         }
         const withoutTarget = result.filter(
@@ -941,10 +954,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             ? 'Vorlagen neu geladen. Die Vorlage ist archiviert.'
             : 'Vorlagen neu geladen. Die Vorlage ist nicht archiviert; du kannst den Vorgang erneut starten.',
       );
-      requestArchiveFocus(
-        current.id,
-        !row ? 'heading' : row.state === 'active' ? 'archive' : 'edit',
-      );
+      requestArchiveFocus(current.id, !row ? 'heading' : 'actions');
     } catch {
       setMessage(
         current.outcome === 'confirmed'
@@ -1003,7 +1013,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         }),
       });
       if (!response.ok) {
-        let focusTarget: ArchiveFocusTarget = 'archive';
+        let focusTarget: ArchiveFocusTarget = 'actions';
         if (response.status === 404 || response.status === 409) {
           focusTarget = 'reconcile';
           setArchiveReconciliation({ id: row.id, outcome: 'stale' });
@@ -1081,10 +1091,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             'Vorlage archiviert. Die Vorlage wurde inzwischen erneut geändert; der aktuelle Stand wurde geladen.',
           );
           setConversionError(false);
-          requestArchiveFocus(
-            row.id,
-            archived.state === 'active' ? 'archive' : 'edit',
-          );
+          requestArchiveFocus(row.id, 'actions');
           return;
         }
         if (
@@ -1095,7 +1102,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           setRows(refreshed);
           setArchiveReconciliation(null);
           setMessage('Vorlage archiviert.');
-          requestArchiveFocus(row.id, 'edit');
+          requestArchiveFocus(row.id, 'actions');
         } else {
           setRows([
             ...refreshed.filter((template) => template.id !== result.id),
@@ -1416,7 +1423,29 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               <h3 id={`document-template-group-${group.key}`}>{group.name}</h3>
               <ul className="document-template-list">
                 {group.rows.map((row) => (
-                  <li className="document-template-row" key={row.id}>
+                  <li
+                    ref={(element) => {
+                      if (element) actionRowRefs.current.set(row.id, element);
+                      else actionRowRefs.current.delete(row.id);
+                    }}
+                    className="document-template-row"
+                    key={row.id}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Escape' || openActionsId !== row.id)
+                        return;
+                      event.preventDefault();
+                      setOpenActionsId(null);
+                      const toggle = actionToggleRefs.current.get(row.id);
+                      if (
+                        toggle?.isConnected &&
+                        !toggle.disabled &&
+                        !toggle.closest(
+                          '[hidden], [inert], [aria-hidden="true"]',
+                        )
+                      )
+                        toggle.focus({ preventScroll: true });
+                    }}
+                  >
                     <span className="document-template-summary">
                       {kinds.find(([value]) => value === row.kind)?.[1] ??
                         row.kind}
@@ -1438,51 +1467,88 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                           uncertainCreate
                         }
                         aria-label={`Vorlage bearbeiten: ${row.name}`}
-                        onClick={(event) =>
-                          begin(row, false, event.currentTarget)
-                        }
+                        onClick={(event) => {
+                          setOpenActionsId(null);
+                          begin(row, false, event.currentTarget);
+                        }}
                       >
                         Bearbeiten
                       </button>
                       <button
-                        className="secondary-action"
-                        disabled={
-                          busy ||
-                          archiveReconciliation !== null ||
-                          saveRecovery !== null ||
-                          uncertainCreate
-                        }
-                        aria-label={`Vorlage duplizieren: ${row.name}`}
-                        onClick={(event) =>
-                          begin(row, true, event.currentTarget)
-                        }
-                      >
-                        Duplizieren
-                      </button>
-                      <button
                         ref={(element) => {
                           if (element)
-                            archiveButtonRefs.current.set(row.id, element);
-                          else archiveButtonRefs.current.delete(row.id);
+                            actionToggleRefs.current.set(row.id, element);
+                          else actionToggleRefs.current.delete(row.id);
                         }}
-                        className="tertiary-action"
+                        className="tertiary-action document-template-action-toggle"
                         type="button"
                         disabled={
                           busy ||
-                          row.state === 'archived' ||
                           archiveReconciliation !== null ||
                           saveRecovery !== null ||
                           uncertainCreate
                         }
-                        aria-label={`Vorlage archivieren: ${row.name}`}
-                        onClick={(event) =>
-                          void archive(row, event.currentTarget)
+                        aria-label={`Weitere Aktionen für ${row.name}`}
+                        aria-expanded={openActionsId === row.id}
+                        aria-controls={`document-template-secondary-actions-${row.id}`}
+                        onClick={() =>
+                          setOpenActionsId((current) =>
+                            current === row.id ? null : row.id,
+                          )
                         }
                       >
-                        {archivePendingId === row.id
-                          ? 'Archivierung läuft …'
-                          : 'Archivieren'}
+                        Aktionen
                       </button>
+                      <div
+                        id={`document-template-secondary-actions-${row.id}`}
+                        className="document-template-secondary-actions"
+                        role="group"
+                        aria-label={`Aktionen für ${row.name}`}
+                        hidden={openActionsId !== row.id}
+                      >
+                        <button
+                          className="secondary-action"
+                          disabled={
+                            busy ||
+                            archiveReconciliation !== null ||
+                            saveRecovery !== null ||
+                            uncertainCreate
+                          }
+                          aria-label={`Vorlage duplizieren: ${row.name}`}
+                          onClick={(event) => {
+                            const origin = actionToggleRefs.current.get(row.id);
+                            if (origin?.isConnected && !origin.disabled)
+                              origin.focus({ preventScroll: true });
+                            setOpenActionsId(null);
+                            begin(row, true, origin ?? event.currentTarget);
+                          }}
+                        >
+                          Duplizieren
+                        </button>
+                        <button
+                          className="tertiary-action"
+                          type="button"
+                          disabled={
+                            busy ||
+                            row.state === 'archived' ||
+                            archiveReconciliation !== null ||
+                            saveRecovery !== null ||
+                            uncertainCreate
+                          }
+                          aria-label={`Vorlage archivieren: ${row.name}`}
+                          onClick={(event) => {
+                            const origin = actionToggleRefs.current.get(row.id);
+                            if (origin?.isConnected && !origin.disabled)
+                              origin.focus({ preventScroll: true });
+                            setOpenActionsId(null);
+                            void archive(row, origin ?? event.currentTarget);
+                          }}
+                        >
+                          {archivePendingId === row.id
+                            ? 'Archivierung läuft …'
+                            : 'Archivieren'}
+                        </button>
+                      </div>
                     </div>
                   </li>
                 ))}

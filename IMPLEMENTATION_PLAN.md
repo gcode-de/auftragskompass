@@ -8,6 +8,32 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.7 — `feat: disclose secondary document template actions`** (26.10.2026)
+
+  Auf B35 aufbauender fokussierter UI-Slice: Bearbeiten bleibt direkt erreichbar;
+  Duplizieren und Archivieren erscheinen erst hinter einem benannten kompakten
+  Aktionsschalter pro Zeile. Höchstens eine Auswahl offen. Bestehende Aktionen,
+  Daten, Dirtyschutz und alle sicheren Speicher-/Archivverträge unverändert;
+  keine Löschenfunktion, neue API, Abhängigkeit, Animation oder Filter/Vorschau.
+  Native Buttons/benannte Offenlegung verwenden; keine falsche ARIA-Menürolle
+  ohne vollständigen dazu passenden Tastaturvertrag. Enter/Space/Tab, Escape,
+  außerhalb klicken und Fokus nach Auswahl/Abbruch/Fehler/Erfolg berücksichtigen.
+  Kein Fokus auf versteckte/entfernte Aktionen, keine externen Fokuswechsel
+  zurückreißen. Auch bei umgruppierter Zeile und archiviertem Eintrag sicher.
+  Vorhandene Tokens/Touchziele, beide Themes, keine abgeschnittenen Overlay-Aktionen
+  oder horizontaler Überlauf bei320px. Kein allgemeines Menüframework.
+  Tests zuerst: anfangs seltene Aktionen verborgen, genau eine offen, Keyboard/
+  Escape/Outside, bestehende Duplikat-/Archiv-/Fehler-/Dirty-/Fokusfälle erhalten.
+  Komponenten, betroffene Chromiumabläufe mit fiktiven Daten, axe/Screenshots
+  Mobil/Desktop beider Themes, unabhängiger Review vor finalen Gesamtläufen,
+  Coverage, expliziter Commit und sofortiger Push. Lieferung getrennt verifizieren.
+  Abgenommen:1114 Tests mit Coverage,63 Panelkomponenten, zehn Chromiumabläufe;
+  geändert48/49 Zeilen und41/49 Branches, bestehende Gates erfüllt. Native
+  Tastatur-/Außenwechsel und gesperrte Archivabgleich-Zustände geprüft; 320/1280px
+  in beiden Themes mit axe/Überlauf/Aktionsgrenzen und Screenshots. Unabhängiger
+  Luna-Review klar, Impeccable-Paneldetektor ohne Befund und DESIGN.md ergänzt.
+  Keine Änderung von API, Datenbank oder sicheren Schreibverträgen.
+
 - [x] **H054 — `docs: verify template delivery and resume handoff`** (26.10.2026)
 
   Vor Wiederaufnahme echtes neues Fenster mit regulärer Nutzung geprüft.
