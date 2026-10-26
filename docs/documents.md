@@ -429,6 +429,37 @@ Zahlungsverrechnung fehlen noch (eigene Folgeslices); „final“ bedeutet hier
 (Leistungsdatum, Steuernummer, Zahlungsziel, Bankverbindung) sind noch nicht
 ausgestattet. Es wird keine Rechts- oder Steuerbehauptung aufgestellt.
 
+### Rechnungskorrektur und Storno (BKP019.c2, RG-02)
+
+Eine **Rechnungskorrektur** ist ein eigener Beleg mit einer Richtung
+(`Gutschrift` senkt den Rechnungsbetrag, `Lastschrift` erhöht ihn) und einem
+Bezug zu einer finalen Rechnung oder Auftragsbestätigung. Die gespeicherten
+Beträge bleiben – wie überall – nicht-negative Ganzzahlen in Hundertsteln;
+die **Richtung** steht auf dem Beleg, die Vorzeichenwirkung entsteht beim
+Verrechnen exakt (`−1 ×` gespeicherte Summe). Damit bleiben die
+Geldrechnungsverträge unverändert; es wird nie negativ gerundet. Positionen
+werden standardmäßig 1:1 als Betragsmagnituden übernommen und bleiben
+bearbeitbar; der Betreff lautet „Rechnungskorrektur für {{contact}}“, die
+Richtung nennt der Beleg selbst. Korrekturen finalisieren mit eigener Nummer
+im Nummernkreis `KO-`.
+
+Eine **Gutschrift darf den Rechnungsbetrag nicht übersteigen**: beim
+Finalisieren wird geprüft, dass die Summe aller Gutschriften der Quelle plus
+die neue Bruttosumme höchstens dem ursprünglichen Bruttobetrag entspricht
+(409 sonst); die verbleibende kreditierbare Summe zeigt die Oberfläche vorab
+an. Eine Rechnung gilt als abgeleiteten Storno-Stand „nicht storniert“,
+„teilweise storniert“ oder „storniert“ – dieser Stand wird **nie gespeichert**,
+sondern aus den Gutschriften berechnet (RG-08), sodass die Unveränderlichkeit
+finaler Belege erhalten bleibt. Finalisierte Belege werden nie ersetzt oder
+gelöscht; Korrekturen sind ausschließlich eigene Folgedokumente. Für die
+künftige Zahlungsverrechnung gilt rechnerisch:
+`offener Saldo = Bruttobetrag + Σ Lastschriften − Σ Gutschriften − Σ Zahlungen`.
+
+**Ehrliche Grenzen:** Korrekturen von Korrekturen (Ketten) sind noch nicht
+möglich; Anzahlungs-, Schlussrechnung und Zahlungsbuchung fehlen weiter;
+Korrektur-Vorlagen erzeugen bewusst keine Entwürfe (nur der Quellpfad);
+es wird keine Rechts- oder Steuerbehauptung aufgestellt.
+
 ## Dokumentvorlagen verwalten (BKP015.4)
 
 Unter Einstellungen → Dokumentvorlagen erscheinen zuerst die Liste und

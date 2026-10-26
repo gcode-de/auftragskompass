@@ -230,14 +230,19 @@ function percentInvalid(value: string) {
 // BKP019.b2: the same editor edits an offer, an order confirmation and an
 // invoice draft. The heading says which document is being corrected; anything
 // else keeps the offer wording that existed before.
+// BKP019.c2b: a correction draft is a draft like any other, so it is corrected
+// here too - a wrong position must not be fixable only through the API.
 function editorHeading(kind: string | undefined) {
   if (kind === 'order_confirmation') return 'Auftragsbestätigung bearbeiten';
+  if (kind === 'correction') return 'Rechnungskorrektur bearbeiten';
   return kind === 'invoice' ? 'Rechnung bearbeiten' : 'Angebot bearbeiten';
 }
 
 function editorDiscardMessage(kind: string | undefined) {
   if (kind === 'order_confirmation')
     return 'Ungespeicherte Änderungen an der Auftragsbestätigung verwerfen?';
+  if (kind === 'correction')
+    return 'Ungespeicherte Änderungen an der Rechnungskorrektur verwerfen?';
   return kind === 'invoice'
     ? 'Ungespeicherte Rechnungsänderungen verwerfen?'
     : 'Ungespeicherte Angebotsänderungen verwerfen?';

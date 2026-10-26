@@ -8,6 +8,64 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.c2 — `feat: correct a finalized invoice with a credit or debit correction`** (26.10.2026)
+
+  Unter-Slice (c2) von BKP019 nach rein lesender DeepSeek-Analyse zu `c2e8ef2`
+  (RG-02 „Rechnungskorrektur/Storno“). Zwei Befunde prägen den Slice: (1)
+  Negieren ist mit der bestehenden `roundedRatio`-Rundung NICHT exakt
+  (BigInt-Schnitt zur Null: 5/5/0 wird zu −4/−3/−1) – negative Beträge auf
+  Zeilenebene wären also ungenau; (2) ein halbfertiger, fachlich falscher
+  Pfad existiert (Vorlagenart `correction` erzeugt unbearbeitbare Entwürfe
+  mit `KO-`-Nummer und positiven Beträgen). Gewähltes Modell B′:
+  `correction_direction` (`credit|debit`) auf Belegebene, gespeicherte
+  Summen bleiben nicht-negative Magnituden, die signierte Summe ist
+  `−1 ×` gespeichert (per Konstruktion exakt – `document-totals`/DB-CHECKs
+  unangetastet). Migration `0043`: Richtungs-CHECK, Quellpflicht für
+  `correction` (Quelle = finalisierte `invoice` ODER `order_confirmation`,
+  keine Kettenkorrekturen in diesem Slice), Blanko-Regel nur additiv
+  (`invoice`-Klausel wörtlich, `correction` ohne Quelle bleibt 23514),
+  partieller Unique nur auf offene Entwürfe. Erzeugung
+  `POST /api/v1/documents/:id/correction` (Pflicht-`version`, Richtung),
+  bearbeitbarer Entwurf mit Positionen als Magnituden (Standard 1:1),
+  Betreff „Rechnungskorrektur für {{contact}}“, Finalisierung mit `KO-`-Nummer;
+  Über-Gutschrift-Guard beim Finalisieren (`credit`-Summe der Quelle +
+  neue Bruttosumme ≤ Quellbrutto, `lockTenant`); Storno-Stand der Rechnung
+  (`none|partial|full`) wird in der Projektion ABGELEITET (nie gespeichert,
+  RG-08 „storniert“ ohne Unveränderlichkeitsbruch); UI zeigt Richtungswahl,
+  verbleibende kreditierbare Summe und abgeleiteten Stand; Bezugszeile +
+  Korrektur-Summenblock nur bei gesetztem Bezug (c1-Bytegleichheit bleibt).
+  Halbfertiger Vorlagen-Korrekturpfad wird gesperrt (klarer Fehler).
+  Saldenformel für (d) dokumentiert: `gross + Σdebit − Σcredit − ΣZahlungen`.
+  Referenz ehrlich: RG-02/08/NK-01 sind Lastenheft-Soll, Bookitup-Korrektur-
+  belege unbekannt, keine Rechts-/Steuerabnahme. Tests zuerst rot (18 Fälle
+  inkl. Über-Gutschrift, bytegleiche Originale, Vorlagenpfad-Ablehnung;
+  gepinnte Projektionsschlüssel bewusst um drei erweitert,
+  `documents.test.ts:298–308` unantastbar). Coding-Subagent: DeepSeek
+  V4.1 Flash (gleiche Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen (inkl. Nachtrag c2b „Korrektur-Entwurf in der UI bearbeitbar“):
+  rot beobachtet (27 Fehlschläge gegen per `git stash` ausgeblendeten Kern –
+  fehlende Methode/Spalte/Schlüssel/Route/Projektion; Nachtrag: fehlende
+  Bearbeiten-Aktion), danach grün: `test:unit` 274/274, `test:component`
+  722/722 (5+1 neu), `test:integration` 393/393 (14 neu: Quelltyp/Status,
+  Doppelentwurf, Über-Gutschrift 409 `credit_exceeds_invoice`, `KO-`-Nummer/
+  Parallelität/Rollback, bytegleiche Originale, Mandantentrennung,
+  23514/23503, Projektion `correctionState`/`remainingCredit`, Route,
+  Vorlagenpfad-Ablehnung 400 `invalid_kind`), `test:coverage` vollständig
+  grün (Changed 93,3% Zeilen), `test:workspace`/`test:docs`/schnelle
+  Gates/Build grün; E2E auth+template-product-price 16/16 inkl. Ablauf
+  finale Rechnung → Gutschrift → `KO-JJJJ-NNNN` → abgeleiteter Stand
+  „storniert“/0,00 € → bytegleiche Quell-PDFs → zweite Gutschrift 409, im
+  Nachtrag: Korrektur-Entwurf öffnet den geteilten Editor (eigene
+  Überschrift/Verwerfen-Text), Positionsänderung wird gespeichert und
+  finalisiert, Original bleibt unverändert. Notiert: keine Kettenkorrekturen
+  (Quelle `correction` = 400); Bezugsdaten reisen als reine Print-Option im
+  Layout-Objekt (document-snapshot.ts nicht im Satz; ohne Bezug bleibt das
+  HTML zeichengleich – Bedingung der c1-Bytegleichheit); Bytegleichheit über
+  hash-adressierte Artefakte geprüft, nicht über zweiten Renderlauf;
+  Vorlagenhinweis in der Verwaltung fehlt noch (DocumentTemplatesPanel nicht
+  im Satz – Doku benennt es ehrlich); `debit` ist absichtlich unbegrenzt,
+  E2E deckt nur `credit` (derselbe Editorpfad).
+
 - [x] **BKP019.c1 — `feat: invoice a confirmed order with its own number`** (26.10.2026)
 
   Erster Unter-Slice von BKP019.(c) nach rein lesender DeepSeek-Analyse zu

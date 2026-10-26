@@ -76,6 +76,32 @@ export type DocumentLayoutInput = {
   fontFamily: 'system' | 'sans' | 'serif';
   showPageNumbers: boolean;
   showPositionNumbers: boolean;
+  /**
+   * BKP019.c2: the printed reference of a correction - a print option, never a
+   * stored layout field. `documents.ts` builds it per render and the snapshot
+   * forwards the layout object unchanged, so a document without a reference
+   * keeps byte-identical HTML. `save` strips it, and no route accepts it.
+   */
+  correctionReference?: DocumentCorrectionReference;
+};
+
+/**
+ * What a correction prints about the document it corrects. Every amount is a
+ * magnitude in minor units, exactly like the stored ones; the direction is what
+ * turns them into a credit or a follow-up charge.
+ */
+export type DocumentCorrectionReference = {
+  /** Number of the corrected document, e.g. `RE-2030-0001`. */
+  number: string;
+  /** Its issue date, already formatted the way the PDF prints dates. */
+  date: string;
+  direction: 'credit' | 'debit';
+  /** The corrected document's gross. */
+  sourceGrossMinor: number;
+  /** This correction's own gross. */
+  correctionGrossMinor: number;
+  /** What stays open after this correction. */
+  correctedGrossMinor: number;
 };
 
 const fontStacks: Record<DocumentLayoutInput['fontFamily'], string> = {
@@ -147,6 +173,12 @@ export type DocumentRenderInput = {
 export function renderDocumentHtml(input: DocumentRenderInput): string {
   const { layout } = input,
     totals = documentTotals(input.lines),
+    // BKP019.c2: a credit note prints the signed sum of the same magnitudes it
+    // stores - the negation happens here, never in `document-totals` and never
+    // in the row. Positive amounts stay positive for a debit.
+    reference = layout.correctionReference,
+    sign = reference?.direction === 'credit' ? -1 : 1,
+    printed = (minor: number) => sign * minor,
     rows = input.lines.map((line, index) => {
       const computed = totals.lines[index]!,
         cells = [
@@ -176,12 +208,12 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
               (group) =>
                 `      <tr><td>Umsatzsteuer ${percent(
                   group.taxBasisPoints,
-                )} %</td><td>${formatMinorUnits(group.taxMinor)} €</td></tr>`,
+                )} %</td><td>${formatMinorUnits(printed(group.taxMinor))} €</td></tr>`,
             )
             .join('\n')
         : `      <tr><td>Umsatzsteuer ${percent(
             totals.taxGroups[0]?.taxBasisPoints ?? 0,
-          )} %</td><td>${formatMinorUnits(totals.taxMinor)} €</td></tr>`;
+          )} %</td><td>${formatMinorUnits(printed(totals.taxMinor))} €</td></tr>`;
   const pageNumbers = layout.showPageNumbers
     ? `      @page {
         @bottom-right {
@@ -229,7 +261,15 @@ ${
       <p>Nummer ${escapeHtml(input.documentNumber)}</p>
       <p>Datum ${formatDocumentDate(input.issuedAt, input.timeZone)}</p>
     </div>
-${input.validUntil ? `    <p>Gültig bis ${escapeHtml(input.validUntil)}</p>\n` : ''}    <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
+${
+  reference
+    ? `    <p>Korrektur zu ${escapeHtml(reference.number)} vom ${escapeHtml(reference.date)}</p>\n`
+    : ''
+}${
+    input.validUntil
+      ? `    <p>Gültig bis ${escapeHtml(input.validUntil)}</p>\n`
+      : ''
+  }    <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
     <p>${lines(renderTemplate(input.introText, input.values))}</p>
     <table>
       <thead><tr>${head.map((cell) => `<th>${cell}</th>`).join('')}</tr></thead>
@@ -238,11 +278,27 @@ ${rows.join('\n')}
       </tbody>
     </table>
     <table class="totals">
-      <tr><td>Netto</td><td>${formatMinorUnits(totals.netMinor)} €</td></tr>
+      <tr><td>Netto</td><td>${formatMinorUnits(printed(totals.netMinor))} €</td></tr>
 ${taxRows}
-      <tr><td>Brutto</td><td>${formatMinorUnits(totals.grossMinor)} €</td></tr>
+      <tr><td>Brutto</td><td>${formatMinorUnits(printed(totals.grossMinor))} €</td></tr>
     </table>
-    <p>${lines(renderTemplate(input.outroText, input.values))}</p>
+${
+  reference
+    ? `    <table class="totals">
+      <tr><td>Rechnungsbetrag</td><td>${formatMinorUnits(reference.sourceGrossMinor)} €</td></tr>
+      <tr><td>${
+        reference.direction === 'credit'
+          ? 'Offene Gutschrift'
+          : 'Nachberechnung'
+      }</td><td>${formatMinorUnits(
+        printed(reference.correctionGrossMinor),
+      )} €</td></tr>
+      <tr><td>Korrigierter Betrag</td><td>${formatMinorUnits(
+        reference.correctedGrossMinor,
+      )} €</td></tr>
+    </table>\n`
+    : ''
+}    <p>${lines(renderTemplate(input.outroText, input.values))}</p>
   </body>
 </html>
 `;
@@ -271,9 +327,19 @@ export function documentLayoutRepository(
           throw new DocumentLayoutError('not_found');
         if (old && old.version !== version)
           throw new DocumentLayoutError('conflict');
+        // BKP019.c2: the correction reference is a per-render print option, not
+        // a layout column. The stored values are therefore listed explicitly
+        // instead of spreading the input.
         const values = {
-          ...input,
           senderName: input.senderName.trim(),
+          senderStreet: input.senderStreet,
+          senderPostalCode: input.senderPostalCode,
+          senderCity: input.senderCity,
+          primaryColor: input.primaryColor,
+          textColor: input.textColor,
+          fontFamily: input.fontFamily,
+          showPageNumbers: input.showPageNumbers,
+          showPositionNumbers: input.showPositionNumbers,
           version: (old?.version ?? 0) + 1,
         };
         const [row] = old

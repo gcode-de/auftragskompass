@@ -99,6 +99,38 @@ const draft = {
     outroText: 'Freundliche Grüße',
     validityDays: 14,
   },
+  // BKP019.c2: the finalized invoice with the derived cancellation state, and the
+  // correction draft an operator creates from it.
+  invoiceFinal = {
+    ...invoiceDraft,
+    number: 'RE-2030-0001',
+    state: 'final' as const,
+    finalizedAt: '2030-10-26T10:25:00Z',
+    version: 2,
+    correctionDirection: null,
+    correctionState: 'none' as const,
+    remainingCredit: 24900,
+  },
+  correctionDraft = {
+    id: 'doc-ko-1',
+    kind: 'correction',
+    templateId: null,
+    eventId: 'event-1',
+    contactId: 'contact-1',
+    number: null,
+    state: 'draft' as const,
+    issuedAt: '2030-10-26T10:30:00Z',
+    finalizedAt: null,
+    netMinor: 20925,
+    taxMinor: 3975,
+    grossMinor: 24900,
+    version: 1,
+    sourceDocumentId: 'doc-re-1',
+    sourceNumber: 'RE-2030-0001',
+    correctionDirection: 'credit' as const,
+    correctionState: null,
+    remainingCredit: null,
+  },
   // BKP019.b2: the stored draft detail the editor reads, and the wording each
   // kind owns. A confirmation names itself, so no offer wording can leak in.
   storedLine = {
@@ -176,6 +208,7 @@ function setup(
     library?: () => Response;
     orderConfirmation?: () => Response;
     invoice?: () => Response;
+    correction?: () => Response;
   } = {},
 ) {
   const calls: {
@@ -197,6 +230,14 @@ function setup(
         lines: [storedLine],
       },
       'doc-re-1': { ...invoiceDraft, ...invoiceWording, lines: [storedLine] },
+      // BKP019.c2b: the correction draft owns the texts the server copied, so
+      // the shared editor can read and rewrite it like any other draft.
+      'doc-ko-1': {
+        ...correctionDraft,
+        ...invoiceWording,
+        subject: 'Rechnungskorrektur für {{contact}}',
+        lines: [storedLine],
+      },
     },
     fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
@@ -258,6 +299,18 @@ function setup(
         if (options.invoice) return options.invoice();
         state.documents = [acceptedOffer, finalizedConfirmation, invoiceDraft];
         return Response.json(invoiceDraft, { status: 201 });
+      }
+      // BKP019.c2: the correction is created from a finalized invoice.
+      if (url.endsWith('/correction')) {
+        calls.push({
+          url,
+          method,
+          body: JSON.parse(String(init!.body)),
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.correction) return options.correction();
+        state.documents = [invoiceFinal, correctionDraft];
+        return Response.json(correctionDraft, { status: 201 });
       }
       if (url.endsWith('/finalize')) {
         calls.push({ url, method });
@@ -1351,11 +1404,180 @@ test('an invoice row names its source confirmation, its own kind and the open st
   ).toBeTruthy();
   // An invoice is no offer: no deadline, no offer status.
   expect(within(row).queryByText(/Gültig bis/)).toBeNull();
-  // The open gaps are named instead of implying a complete invoicing feature.
+  // The remaining gap is named instead of implying complete invoicing, and a
+  // correction is described as its own document (BKP019.c2).
   expect(
     within(invoices).getByText(
-      /Anzahlungs-, Schluss- und Korrekturrechnungen sind noch nicht verfügbar/,
+      /Anzahlungs- und Schlussrechnungen sind noch nicht verfügbar/,
     ),
+  ).toBeTruthy();
+  expect(
+    within(invoices).getByText(/sondern nur durch eine Rechnungskorrektur/),
+  ).toBeTruthy();
+});
+
+// BKP019.c2: a finalized invoice is corrected by its own follow-up document. The
+// step asks once, names the direction, and never touches the invoice itself.
+test('only a finalized invoice offers the correction action', async () => {
+  setup({ documents: [invoiceFinal] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  expect(
+    within(row).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  ).toBeTruthy();
+  // Nothing writes before the operator opens and confirms the step.
+  expect(row.querySelector('form')).toBeNull();
+  cleanup();
+  for (const entry of [invoiceDraft, finalizedConfirmation, finalized]) {
+    setup({ documents: [entry] });
+    const other = render(<EventDocuments {...props} />);
+    await screen.findByText(/Angelegt am|Finalisiert am/);
+    expect(screen.queryByRole('button', { name: /korrigieren$/ })).toBeNull();
+    other.unmount();
+    cleanup();
+  }
+});
+
+test('the correction form asks for a direction and shows the remaining credit', async () => {
+  const { calls } = setup({ documents: [invoiceFinal] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  // The derived state and the open amount are visible before anything happens.
+  expect(within(row).getByText('Nicht storniert')).toBeTruthy();
+  expect(within(row).getByText(/Noch kreditierbar: 249,00 €/)).toBeTruthy();
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  );
+  const form = within(row).getByRole('form', {
+    name: 'Rechnungskorrektur anlegen',
+  });
+  const direction = within(form).getByLabelText(
+    'Richtung',
+  ) as HTMLSelectElement;
+  // The default direction is the credit note; the operator can switch it.
+  expect(direction.value).toBe('credit');
+  expect(
+    within(form).getByText('Gutschrift (mindert den Betrag)'),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/correction'))).toBe(false);
+  fireEvent.change(direction, { target: { value: 'debit' } });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Korrektur anlegen' }),
+  );
+  expect(
+    await screen.findByText('Rechnungskorrektur als Entwurf angelegt.'),
+  ).toBeTruthy();
+  // Exactly the two facts the server cannot guess are sent.
+  expect(calls.find((call) => call.url.endsWith('/correction'))).toMatchObject({
+    url: '/api/v1/documents/doc-re-1/correction',
+    method: 'POST',
+    body: { version: 2, direction: 'debit' },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  const corrections = await screen.findByRole('region', {
+    name: 'Rechnungskorrekturen',
+  });
+  const correctionRow = within(corrections).getByRole('listitem');
+  // The correction names the invoice it corrects, as a real link.
+  expect(within(correctionRow).getByText(/Korrektur zu/)).toBeTruthy();
+  expect(
+    within(correctionRow)
+      .getByRole('link', { name: 'Beleg RE-2030-0001 als PDF öffnen' })
+      .getAttribute('href'),
+  ).toBe('/api/v1/documents/doc-re-1/pdf');
+});
+
+test('a fully credited invoice warns before a second credit', async () => {
+  setup({
+    documents: [
+      { ...invoiceFinal, correctionState: 'full' as const, remainingCredit: 0 },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  // RG-08 reads "storniert" from the derived state, not from a rewritten row.
+  expect(within(row).getByText('Storniert')).toBeTruthy();
+  expect(within(row).getByText(/Noch kreditierbar: 0,00 €/)).toBeTruthy();
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  );
+  const form = within(row).getByRole('form', {
+    name: 'Rechnungskorrektur anlegen',
+  });
+  // The guard is the server's; the form says so before the round trip.
+  expect(within(form).getByRole('alert').textContent).toContain(
+    'bereits vollständig gutgeschrieben',
+  );
+});
+
+test('a refused credit is explained instead of retried', async () => {
+  const { calls } = setup({
+    documents: [invoiceFinal],
+    correction: () =>
+      Response.json({ error: 'credit_exceeds_invoice' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Korrektur anlegen' }),
+  );
+  expect(
+    await screen.findByText(
+      'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.',
+    ),
+  ).toBeTruthy();
+  // One request, no silent retry, and no invented correction row.
+  expect(calls.filter((call) => call.url.endsWith('/correction'))).toHaveLength(
+    1,
+  );
+  expect(
+    screen.queryByRole('region', { name: 'Rechnungskorrekturen' }),
+  ).toBeNull();
+});
+
+test('a partially credited invoice derives its state and its open amount', async () => {
+  setup({
+    documents: [
+      {
+        ...invoiceFinal,
+        correctionState: 'partial' as const,
+        remainingCredit: 10000,
+      },
+      correctionDraft,
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  expect(within(invoices).getByText('Teilweise storniert')).toBeTruthy();
+  expect(
+    within(invoices).getByText(/Noch kreditierbar: 100,00 €/),
+  ).toBeTruthy();
+  // The correction stays its own draft: finalizing it gets its own number.
+  const corrections = await screen.findByRole('region', {
+    name: 'Rechnungskorrekturen',
+  });
+  expect(
+    within(corrections).getByRole('button', {
+      name: 'Rechnungskorrektur Entwurf finalisieren',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(corrections).getByText(/als Gutschrift mindert sie/),
   ).toBeTruthy();
 });
 
@@ -1367,10 +1589,129 @@ test('an invoice draft opens the shared editor with its own texts', async () => 
   fireEvent.click(
     within(row).getByRole('button', { name: 'Rechnung Entwurf bearbeiten' }),
   );
+  // The invoice keeps exactly the heading it had before the correction became
+  // editable - the new kind must not relabel it.
+  expect(
+    await within(row).findByRole('heading', { name: 'Rechnung bearbeiten' }),
+  ).toBeTruthy();
+  expect(
+    within(row).queryByRole('heading', {
+      name: 'Rechnungskorrektur bearbeiten',
+    }),
+  ).toBeNull();
   const editor = await within(row).findByLabelText('Einleitung');
   expect((editor as HTMLTextAreaElement).value).toBe(
     'Vielen Dank für Ihren Auftrag.',
   );
+});
+
+// BKP019.c2b: a correction draft is correctable in the same editor, under its
+// own heading. The position text - the part the correction actually exists for -
+// is what the write carries; the amount stays a positive magnitude.
+test('a correction draft opens the shared editor under its own heading and saves its position text', async () => {
+  const confirm = vi.fn(() => false);
+  vi.stubGlobal('confirm', confirm);
+  const { calls } = setup({ documents: [invoiceFinal, correctionDraft] });
+  render(<EventDocuments {...props} />);
+  const corrections = await screen.findByRole('region', {
+    name: 'Rechnungskorrekturen',
+  });
+  const row = within(corrections).getByRole('listitem');
+  // Nothing opens on its own: the editor appears only when asked for.
+  expect(within(row).queryByRole('heading')).toBeNull();
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Rechnungskorrektur Entwurf bearbeiten',
+    }),
+  );
+  expect(
+    await within(row).findByRole('heading', {
+      name: 'Rechnungskorrektur bearbeiten',
+    }),
+  ).toBeTruthy();
+  // No other kind's heading labels the correction.
+  expect(
+    within(row).queryByRole('heading', { name: 'Rechnung bearbeiten' }),
+  ).toBeNull();
+  expect(
+    within(row).queryByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  const description = (await within(row).findByLabelText(
+    'Beschreibung',
+  )) as HTMLInputElement;
+  expect(description.value).toBe('Fiktives Fotobox-Paket');
+  fireEvent.change(description, {
+    target: {
+      value: 'Fiktive Korrekturposition nach Rücksprache mit dem Kunden',
+    },
+  });
+  // Leaving a changed correction asks with the correction's own wording.
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(confirm).toHaveBeenCalledWith(
+    'Ungespeicherte Änderungen an der Rechnungskorrektur verwerfen?',
+  );
+  expect(
+    within(row).getByRole('heading', {
+      name: 'Rechnungskorrektur bearbeiten',
+    }),
+  ).toBeTruthy();
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Änderungen speichern' }),
+  );
+  expect(await within(row).findByText('Änderungen gespeichert.')).toBeTruthy();
+  const writes = calls.filter((call) => call.method === 'PUT');
+  // Exactly the correction is written; the invoice it corrects is not.
+  expect(writes).toHaveLength(1);
+  expect(writes[0]!.url).toBe('/api/v1/documents/doc-ko-1/draft');
+  expect(writes[0]!.headers).toMatchObject({
+    'content-type': 'application/json',
+    'x-csrf-token': 'fictional-csrf',
+  });
+  expect(writes[0]!.body).toMatchObject({
+    version: 1,
+    subject: 'Rechnungskorrektur für {{contact}}',
+    introText: 'Vielen Dank für Ihren Auftrag.',
+    outroText: 'Freundliche Grüße',
+    validityDays: 14,
+  });
+  const lines = (
+    writes[0]!.body as {
+      lines: {
+        description: string;
+        unitPriceMinor: number;
+        quantity: number;
+      }[];
+    }
+  ).lines;
+  expect(lines).toHaveLength(1);
+  expect(lines[0]!.description).toBe(
+    'Fiktive Korrekturposition nach Rücksprache mit dem Kunden',
+  );
+  // A credit is a direction, never a negative price.
+  expect(lines[0]!.unitPriceMinor).toBe(24900);
+  expect(lines[0]!.quantity).toBe(1);
+  expect(
+    calls.some(
+      (call) => call.method === 'PUT' && call.url.includes('doc-re-1'),
+    ),
+  ).toBe(false);
+  // Closing an unchanged correction returns to the row without a question.
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(
+    within(row).queryByRole('heading', {
+      name: 'Rechnungskorrektur bearbeiten',
+    }),
+  ).toBeNull();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Rechnungskorrektur Entwurf bearbeiten',
+    }),
+  ).toBeTruthy();
 });
 
 // BKP019.b2: a confirmation draft is correctable in the same editor an offer

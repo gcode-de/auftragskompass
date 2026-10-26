@@ -74,6 +74,8 @@ export class DocumentError extends Error {
       | 'acceptance_conflict'
       | 'offer_not_accepted'
       | 'order_withdrawn'
+      // BKP019.c2: a credit note may never exceed the corrected document's gross.
+      | 'credit_exceeds_invoice'
       | 'duplicate',
   ) {
     super('Document rejected');
@@ -126,6 +128,14 @@ export const offerStatuses = ['sent', 'accepted', 'withdrawn'] as const;
 // internal codes are ours, the wording on screen is German.
 export type AcceptanceChannel = 'email' | 'phone' | 'pdf' | 'other';
 export const acceptanceChannels = ['email', 'phone', 'pdf', 'other'] as const;
+// BKP019.c2: a correction carries a direction, never a negative amount. `credit`
+// is a credit note (it reduces the claim), `debit` is a follow-up charge.
+export type CorrectionDirection = 'credit' | 'debit';
+export const correctionDirections = ['credit', 'debit'] as const;
+// The cancellation state of a corrected document is derived from its finalized
+// credit notes and never stored - the same pattern as an expired offer.
+export type CorrectionState = 'none' | 'partial' | 'full';
+export const correctionStates = ['none', 'partial', 'full'] as const;
 export const acceptanceNoteMaxLength = 2000;
 export type OfferStatusChange = {
   status: OfferStatus;
@@ -222,6 +232,13 @@ export type DocumentOfferRow = DocumentListRow & {
   // row, including the offer itself.
   sourceDocumentId: string | null;
   sourceNumber: string | null;
+  // BKP019.c2: the direction of a correction (NULL for every other kind) and the
+  // state of the document it corrects. Both are projection-only: nothing here is
+  // stored on the row, and `state` of a corrected invoice never moves.
+  correctionDirection: CorrectionDirection | null;
+  correctionState: CorrectionState | null;
+  /** What is still creditable, as a magnitude; NULL for every other row. */
+  remainingCredit: number | null;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -512,6 +529,128 @@ export function documentRepository(
     };
   }
 
+  // BKP019.c2: the direction of a correction and its source are read as reviewed
+  // SQL, for the same reason the link is written that way: `schema.ts` stays
+  // unchanged for every other row contract.
+  async function correctionOf(connection: Connection, id: string) {
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const result = (await executor.execute(sql`
+      SELECT correction_direction, source_document_id
+        FROM documents
+       WHERE tenant_id = ${tenantId} AND id = ${id}`)) as {
+      rows: {
+        correction_direction: CorrectionDirection | null;
+        source_document_id: string | null;
+      }[];
+    };
+    const row = result.rows[0];
+    return {
+      direction: row?.correction_direction ?? null,
+      sourceDocumentId: row?.source_document_id ?? null,
+    };
+  }
+
+  // Only finalized corrections move a balance: a draft is still allowed to
+  // change, so it must not count anywhere. `excludeId` keeps the document being
+  // finalized out of its own sum.
+  async function correctionSums(
+    connection: Connection,
+    sourceId: string,
+    excludeId?: string,
+  ) {
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const result = (await executor.execute(sql`
+      SELECT coalesce(sum(documents.gross_minor) FILTER (
+               WHERE documents.correction_direction = 'credit'), 0)::text AS credited,
+             coalesce(sum(documents.gross_minor) FILTER (
+               WHERE documents.correction_direction = 'debit'), 0)::text AS debited
+        FROM documents
+       WHERE documents.tenant_id = ${tenantId}
+         AND documents.source_document_id = ${sourceId}::uuid
+         AND documents.kind = 'correction'
+         AND documents.state = 'final'
+         AND (${excludeId ?? null}::uuid IS NULL
+              OR documents.id <> ${excludeId ?? null}::uuid)`)) as {
+      rows: { credited: string; debited: string }[];
+    };
+    const row = result.rows[0];
+    return {
+      credited: Number(row?.credited ?? 0),
+      debited: Number(row?.debited ?? 0),
+    };
+  }
+
+  // Everything a correction prints about its source. All amounts stay magnitudes;
+  // the direction decides the sign in the layout, not in the row.
+  async function correctionPrints(
+    connection: Connection,
+    documentId: string,
+    correctionGrossMinor: number,
+    timeZone: string,
+  ) {
+    const { direction, sourceDocumentId } = await correctionOf(
+      connection,
+      documentId,
+    );
+    if (!direction || !sourceDocumentId)
+      throw new DocumentError('missing_reference');
+    const [source] = await database(connection)
+      .select({
+        number: documents.number,
+        issuedAt: documents.issuedAt,
+        grossMinor: documents.grossMinor,
+      })
+      .from(documents)
+      .where(and(scope, eq(documents.id, sourceDocumentId)));
+    if (!source?.number) throw new DocumentError('missing_reference');
+    const { credited, debited } = await correctionSums(
+        connection,
+        sourceDocumentId,
+        documentId,
+      ),
+      signed =
+        direction === 'credit' ? -correctionGrossMinor : correctionGrossMinor;
+    return {
+      number: source.number,
+      date: formatDocumentDate(source.issuedAt, timeZone),
+      direction,
+      sourceGrossMinor: source.grossMinor,
+      correctionGrossMinor,
+      correctedGrossMinor: source.grossMinor + debited - credited + signed,
+    };
+  }
+
+  // BKP019.c2: a credit note is bounded by what is still open on its source. A
+  // debit is not: it raises the claim. The balance a later payment slice reads is
+  // `gross + sum(debit) - sum(credit) - sum(payments)`, all magnitudes.
+  async function assertCorrectionCredit(
+    connection: Connection,
+    correction: { id: string; grossMinor: number },
+  ) {
+    const { direction, sourceDocumentId } = await correctionOf(
+      connection,
+      correction.id,
+    );
+    if (direction !== 'credit') return;
+    if (!sourceDocumentId) throw new DocumentError('missing_reference');
+    const [source] = await database(connection)
+      .select({ grossMinor: documents.grossMinor })
+      .from(documents)
+      .where(and(scope, eq(documents.id, sourceDocumentId)));
+    if (!source) throw new DocumentError('missing_reference');
+    const { credited } = await correctionSums(
+      connection,
+      sourceDocumentId,
+      correction.id,
+    );
+    if (credited + correction.grossMinor > source.grossMinor)
+      throw new DocumentError('credit_exceeds_invoice');
+  }
+
   // One document with its two axes: the unchanged content row plus the offer
   // status, the frozen deadline and the derived expiry.
   async function offerRowOf(
@@ -662,6 +801,18 @@ export function documentRepository(
         ? validityDate(issuedAt, validityDays, tenant.timezone)
         : undefined;
     const formattedValidUntil = validUntil?.toString().split('-').reverse();
+    // BKP019.c2: a correction prints what it corrects. The reference travels with
+    // the layout, which the snapshot forwards unchanged, so every other document
+    // keeps byte-identical HTML.
+    const correctionReference =
+      document.kind === 'correction'
+        ? await correctionPrints(
+            connection,
+            document.id,
+            totals.grossMinor,
+            tenant.timezone,
+          )
+        : undefined;
     const snapshot = buildDocumentSnapshot({
       layout: {
         senderName: layout.senderName,
@@ -673,6 +824,7 @@ export function documentRepository(
         fontFamily: layout.fontFamily as 'system' | 'sans' | 'serif',
         showPageNumbers: layout.showPageNumbers,
         showPositionNumbers: layout.showPositionNumbers,
+        ...(correctionReference ? { correctionReference } : {}),
       },
       template: content,
       documentNumber,
@@ -860,6 +1012,20 @@ export function documentRepository(
                WHERE s.tenant_id = documents.tenant_id
                  AND s.id = documents.source_document_id
             )`.as('source_number'),
+            // BKP019.c2: the direction of this correction, and - for a source -
+            // the sum of its finalized credit notes. Both are read in the same
+            // query; the state and the remaining credit are derived below.
+            correctionDirection: sql<
+              string | null
+            >`documents.correction_direction`.as('correction_direction'),
+            creditedGrossMinor: sql<string>`(
+              SELECT coalesce(sum(c.gross_minor), 0)::text FROM documents c
+               WHERE c.tenant_id = documents.tenant_id
+                 AND c.source_document_id = documents.id
+                 AND c.kind = 'correction'
+                 AND c.state = 'final'
+                 AND c.correction_direction = 'credit'
+            )`.as('credited_gross_minor'),
           })
           .from(documents)
           .where(narrowed)
@@ -911,33 +1077,58 @@ export function documentRepository(
             acceptanceFileId,
             sourceDocumentId,
             sourceNumber,
+            correctionDirection,
+            creditedGrossMinor,
             ...row
-          }) => ({
-            ...row,
-            offerStatus: offerStatus as OfferStatus | null,
-            validUntil,
-            acceptedAt: acceptedAt ? new Date(acceptedAt) : null,
-            acceptanceChannel: acceptanceChannel as AcceptanceChannel | null,
-            acceptanceNote,
-            acceptanceFileId,
-            // A later archived file stays readable as "no longer available".
-            acceptanceFileName: acceptanceFileId
-              ? (attached.get(acceptanceFileId)?.name ?? null)
-              : null,
-            acceptanceFileState: acceptanceFileId
-              ? (attached.get(acceptanceFileId)?.state ?? null)
-              : null,
-            // BKP019.b: a confirmation names the offer it was copied from.
-            sourceDocumentId,
-            sourceNumber,
-            // Derived, never stored: the deadline and the tenant day decide.
-            offerExpired: offerExpired(
+          }) => {
+            // BKP019.c2: only a finalized invoice or confirmation owns a
+            // cancellation state, and only finalized credit notes count. A draft
+            // changes nothing, and RG-08 reads "storniert" from this derivation
+            // instead of from a status on the immutable source.
+            const correctable =
+                row.kind === 'invoice' || row.kind === 'order_confirmation',
+              derived = correctable && row.state === 'final',
+              credited = Number(creditedGrossMinor ?? 0);
+            return {
+              ...row,
+              offerStatus: offerStatus as OfferStatus | null,
               validUntil,
-              offerStatus as OfferStatus | null,
-              at,
-              zone,
-            ),
-          }),
+              acceptedAt: acceptedAt ? new Date(acceptedAt) : null,
+              acceptanceChannel: acceptanceChannel as AcceptanceChannel | null,
+              acceptanceNote,
+              acceptanceFileId,
+              // A later archived file stays readable as "no longer available".
+              acceptanceFileName: acceptanceFileId
+                ? (attached.get(acceptanceFileId)?.name ?? null)
+                : null,
+              acceptanceFileState: acceptanceFileId
+                ? (attached.get(acceptanceFileId)?.state ?? null)
+                : null,
+              // BKP019.b: a confirmation names the offer it was copied from.
+              sourceDocumentId,
+              sourceNumber,
+              correctionDirection:
+                correctionDirection as CorrectionDirection | null,
+              correctionState: derived
+                ? credited === 0
+                  ? 'none'
+                  : credited >= row.grossMinor
+                    ? 'full'
+                    : 'partial'
+                : null,
+              // A magnitude, never a signed amount: what may still be credited.
+              remainingCredit: derived
+                ? Math.max(0, row.grossMinor - credited)
+                : null,
+              // Derived, never stored: the deadline and the tenant day decide.
+              offerExpired: offerExpired(
+                validUntil,
+                offerStatus as OfferStatus | null,
+                at,
+                zone,
+              ),
+            };
+          },
         );
       }
       if (!include)
@@ -1022,6 +1213,11 @@ export function documentRepository(
             ),
           );
         if (!template) throw new DocumentError('not_found');
+        // BKP019.c2: a correction only exists with a source document, never from
+        // a template. The template stays manageable, but it can create nothing -
+        // a clear 400 instead of a CHECK violation.
+        if (template.kind === 'correction')
+          throw new DocumentError('invalid_kind');
         await assertReference(tx, 'event', input.eventId);
         await assertReference(tx, 'contact', input.contactId);
         const source = input.lines
@@ -1338,6 +1534,123 @@ export function documentRepository(
       }
       return (await readOne(db, id))!;
     },
+    // BKP019.c2: a finalized invoice (or order confirmation) is corrected by its
+    // own follow-up document. The direction lives on the document and every
+    // stored amount stays a magnitude, so the original keeps its number, its
+    // state and its bytes while the correction prints the signed sum.
+    // The order of the checks is the contract, exactly like `createInvoice`:
+    //   1. missing row      -> not_found
+    //   2. wrong kind       -> invalid_kind (no chain, no blank correction)
+    //   3. not final yet    -> invalid_state (a draft can still move)
+    //   4. stale version    -> conflict (nothing copied, nothing written)
+    //   5. bad direction    -> invalid_content
+    //   6. unusable source  -> missing_reference / empty_lines / invalid_line
+    //   7. duplicate        -> duplicate, decided by the partial unique index
+    async createCorrection(
+      actorId: string,
+      sourceId: string,
+      expectedVersion: number,
+      direction: CorrectionDirection,
+      lines?: DocumentLineDraft[],
+    ) {
+      if (!(correctionDirections as readonly string[]).includes(direction))
+        throw new DocumentError('invalid_content');
+      const id = randomUUID();
+      try {
+        await db.transaction(async (tx) => {
+          await lockTenant(tx, tenantId);
+          await requireAdministrator(tx, tenantId, actorId);
+          const [source] = await tx
+            .select()
+            .from(documents)
+            .where(and(scope, eq(documents.id, sourceId)))
+            .for('update');
+          if (!source) throw new DocumentError('not_found');
+          // Only an invoice or an order confirmation is correctable, and only a
+          // finalized one. A correction of a correction is not part of this
+          // slice: the chain rule has to be decided on its own.
+          if (source.kind !== 'invoice' && source.kind !== 'order_confirmation')
+            throw new DocumentError('invalid_kind');
+          if (source.state !== 'final')
+            throw new DocumentError('invalid_state');
+          if (source.version !== expectedVersion)
+            throw new DocumentError('conflict');
+          // A correction lives in the event file and carries no template, so the
+          // blank-document rule needs both references and the three texts.
+          if (!source.eventId || !source.contactId)
+            throw new DocumentError('missing_reference');
+          if (
+            source.introText === null ||
+            source.outroText === null ||
+            source.validityDays === null
+          )
+            throw new DocumentError('missing_reference');
+          const positions =
+            lines ??
+            (await tx
+              .select(lineColumns)
+              .from(documentLines)
+              .where(
+                and(
+                  eq(documentLines.tenantId, tenantId),
+                  eq(documentLines.documentId, sourceId),
+                ),
+              )
+              .orderBy(asc(documentLines.position)));
+          if (!positions.length) throw new DocumentError('empty_lines');
+          positions.forEach(assertLine);
+          // Only positions an operator typed need a product check; a copied
+          // position already passed it on its own document.
+          if (lines)
+            for (const line of positions)
+              await assertReference(tx, 'product', line.productId);
+          // Sums are recomputed from the magnitudes that are actually printed, so
+          // they cannot drift from the positions - and never become negative.
+          const totals = documentTotals(positions),
+            at = now();
+          // The blank-document rule demands the source at insert time, so the row
+          // is written as one reviewed-SQL insert. `schema.ts` stays unchanged for
+          // the same reason as in BKP019.b/.c1.
+          await tx.execute(sql`INSERT INTO documents
+              (tenant_id, id, kind, template_id, event_id, contact_id, number,
+               state, issued_at, finalized_at, subject, intro_text, outro_text,
+               validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
+               gross_minor, version, source_document_id, correction_direction)
+            VALUES (
+              ${tenantId}, ${id}::uuid, 'correction', NULL,
+              ${source.eventId}::uuid, ${source.contactId}::uuid,
+              NULL, 'draft', ${at}, NULL,
+              ${'Rechnungskorrektur für {{contact}}'}, ${source.introText},
+              ${source.outroText}, ${source.validityDays},
+              NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
+              ${totals.grossMinor}, 1, ${sourceId}::uuid, ${direction})`);
+          await tx.insert(documentLines).values(
+            positions.map((line, position) => ({
+              tenantId,
+              documentId: id,
+              id: randomUUID(),
+              position,
+              productId: line.productId ?? null,
+              description: line.description.trim(),
+              quantity: line.quantity,
+              unit: line.unit.trim(),
+              // Verbatim: the gross price and both basis-point rates, never a
+              // conversion, never a negation, never a second rounding.
+              unitPriceMinor: line.unitPriceMinor,
+              taxBasisPoints: line.taxBasisPoints,
+              discountBasisPoints: line.discountBasisPoints,
+            })),
+          );
+          await appendAudit(tx, tenantId, 'document.created', actorId, id);
+        });
+      } catch (error) {
+        // The partial unique index is the duplicate guard: one open correction
+        // per source, while finalized partial credits stay legal.
+        if (uniqueViolation(error)) throw new DocumentError('duplicate');
+        throw error;
+      }
+      return (await readOne(db, id))!;
+    },
     // Number, snapshot, PDF and state are one transaction: either the document
     // is final with all four, or the number goes back to the sequence.
     async updateDraftContent(
@@ -1377,13 +1690,16 @@ export function documentRepository(
         // BKP019.b: a confirmation draft owns its own texts and positions, so
         // correcting them is the same right an offer draft has.
         // BKP019.c1: an invoice draft copied from a confirmation does too - a
-        // finalized document is never edited, its draft is. Every other kind
-        // stays refused - this is not a global opening.
+        // finalized document is never edited, its draft is.
+        // BKP019.c2: the same right for a correction draft. Its direction and its
+        // source are fixed by the create step and are not part of this content.
+        // Every other kind stays refused - this is not a global opening.
         if (
           document.state !== 'draft' ||
           (document.kind !== 'offer' &&
             document.kind !== 'order_confirmation' &&
-            document.kind !== 'invoice')
+            document.kind !== 'invoice' &&
+            document.kind !== 'correction')
         )
           throw new DocumentError('invalid_state');
         if (document.version !== content.version)
@@ -1496,6 +1812,11 @@ export function documentRepository(
         } catch {
           throw new DocumentError('invalid_state');
         }
+        // BKP019.c2: a credit note is bounded by what is still open on its
+        // source. The check runs under the tenant lock and only here, so a draft
+        // stays editable and two partial credits can coexist.
+        if (document.kind === 'correction')
+          await assertCorrectionCredit(tx, document);
         const at = now();
         try {
           const completeDocument = await readOne(tx, id);
@@ -1770,6 +2091,26 @@ export function registerDocumentRoutes(
     sourceDocumentId: nullableUuid,
     sourceNumber: nullableText,
   };
+  // BKP019.c2: the correction axis belongs to the opt-in projection only. The
+  // offer-status routes keep exactly their own shape, like every older route:
+  // `offerRow` does not grow, `offerListRow` does.
+  const correctionFields = {
+    correctionDirection: {
+      anyOf: [
+        { type: 'string', enum: [...correctionDirections] },
+        { type: 'null' },
+      ],
+    },
+    correctionState: {
+      anyOf: [
+        { type: 'string', enum: [...correctionStates] },
+        { type: 'null' },
+      ],
+    },
+    remainingCredit: {
+      anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+    },
+  };
   const row = {
     type: 'object',
     additionalProperties: false,
@@ -1882,6 +2223,9 @@ export function registerDocumentRoutes(
       // nothing to invoice - the code names the reason, not just the refusal.
       if (error.reason === 'order_withdrawn')
         return reply.code(409).send({ error: 'order_withdrawn' });
+      // BKP019.c2: the credit note would exceed what is still open.
+      if (error.reason === 'credit_exceeds_invoice')
+        return reply.code(409).send({ error: 'credit_exceeds_invoice' });
       if (error.reason === 'duplicate')
         return reply.code(409).send({ error: 'duplicate' });
       if (error.reason === 'artifact_failed')
@@ -2117,11 +2461,20 @@ export function registerDocumentRoutes(
     },
   };
   // The opt-in offer projection keeps every old key and adds only the axis.
+  // BKP019.c2: the correction axis joins the projection and nowhere else.
   const offerListRow = {
     type: 'object',
     additionalProperties: false,
-    required: [...listRow.required, ...Object.keys(offerFields)],
-    properties: { ...listRow.properties, ...offerFields },
+    required: [
+      ...listRow.required,
+      ...Object.keys(offerFields),
+      ...Object.keys(correctionFields),
+    ],
+    properties: {
+      ...listRow.properties,
+      ...offerFields,
+      ...correctionFields,
+    },
   };
   app.get<{ Querystring: DocumentFilters }>(
     '/api/v1/documents',
@@ -2242,6 +2595,53 @@ export function registerDocumentRoutes(
               request.authSession!.userId,
               request.params.id,
               request.body.version,
+            ),
+          );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // BKP019.c2: the correction is derived from a finalized invoice or order
+  // confirmation. Same auth, CSRF, tenant lock, version guard and audit path as
+  // every other document write; the body names the one extra decision.
+  app.post<{
+    Params: { id: string };
+    Body: {
+      version: number;
+      direction: CorrectionDirection;
+      lines?: DocumentLineDraft[];
+    };
+  }>(
+    '/api/v1/documents/:id/correction',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version', 'direction'],
+          properties: {
+            version: { type: 'integer', minimum: 1 },
+            direction: { type: 'string', enum: [...correctionDirections] },
+            // Optional: omitted positions are copied 1:1 from the source.
+            lines: { type: 'array', minItems: 1, maxItems: 1000, items: line },
+          },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createCorrection(
+              request.authSession!.userId,
+              request.params.id,
+              request.body.version,
+              request.body.direction,
+              request.body.lines,
             ),
           );
       } catch (error) {

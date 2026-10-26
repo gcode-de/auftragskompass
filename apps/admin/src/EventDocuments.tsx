@@ -31,8 +31,14 @@ type DocumentRow = {
   // offer projection.
   sourceDocumentId?: string | null;
   sourceNumber?: string | null;
+  // BKP019.c2: the direction of a correction and the state derived for a
+  // finalized invoice or confirmation. Never stored on the row itself.
+  correctionDirection?: 'credit' | 'debit' | null;
+  correctionState?: 'none' | 'partial' | 'full' | null;
+  remainingCredit?: number | null;
 };
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
+type CorrectionDirection = 'credit' | 'debit';
 type AcceptanceChannel = 'email' | 'phone' | 'pdf' | 'other';
 type TemplateRow = { id: string; kind: string; name: string; state: string };
 type LibraryFileRow = {
@@ -59,6 +65,17 @@ const acceptanceChannelLabels: Record<AcceptanceChannel, string> = {
   phone: 'Telefon',
   pdf: 'Unterschriebenes PDF',
   other: 'Sonstiges',
+};
+// BKP019.c2: the cancellation state of an invoice is derived on the server from
+// its finalized credit notes - the invoice itself is never rewritten.
+const correctionStateLabels: Record<'none' | 'partial' | 'full', string> = {
+  none: 'Nicht storniert',
+  partial: 'Teilweise storniert',
+  full: 'Storniert',
+};
+const correctionDirectionLabels: Record<CorrectionDirection, string> = {
+  credit: 'Gutschrift (mindert den Betrag)',
+  debit: 'Nachberechnung (erhöht den Betrag)',
 };
 const acceptanceChannels = Object.keys(
   acceptanceChannelLabels,
@@ -124,10 +141,13 @@ function kindName(entry: { kind: string }) {
 // offer draft, so both open the one editor.
 // BKP019.c1: an invoice draft copied from a confirmation is correctable the same
 // way - a finalized document is never edited, its draft is.
+// BKP019.c2b: a correction draft is the same right: its copied position text is
+// correctable until finalization fixes it.
 const editableDraftKinds = new Set<string>([
   'offer',
   'order_confirmation',
   'invoice',
+  'correction',
 ]);
 
 // One off-shape row must never take the whole event file down with it.
@@ -174,6 +194,11 @@ export function EventDocuments({
     [confirmConfirmationId, setConfirmConfirmationId] = useState(''),
     // BKP019.c1: the finalized confirmation whose invoice is being confirmed.
     [confirmInvoiceId, setConfirmInvoiceId] = useState(''),
+    // BKP019.c2: the finalized invoice whose correction is being prepared, and
+    // the direction that correction will carry.
+    [correctionId, setCorrectionId] = useState(''),
+    [correctionDirection, setCorrectionDirection] =
+      useState<CorrectionDirection>('credit'),
     // BKP019.a: the compact acceptance form of exactly one row.
     [acceptanceId, setAcceptanceId] = useState(''),
     [acceptanceChannel, setAcceptanceChannel] = useState<
@@ -318,7 +343,9 @@ export function EventDocuments({
               ? 'Der Entwurf wurde geändert. Bitte erneut laden und prüfen.'
               : result.error === 'artifact_failed'
                 ? 'PDF konnte nicht erzeugt werden. Bitte Betreiber informieren.'
-                : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
+                : result.error === 'credit_exceeds_invoice'
+                  ? 'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.'
+                  : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
         );
         if (result.error === 'conflict') setEditorId('');
         // Refresh a possibly stale row, but keep the explanatory message.
@@ -542,6 +569,91 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  // BKP019.c2: a finalized invoice is corrected by its own follow-up document.
+  // The direction is the one operator decision; the positions are copied and the
+  // invoice itself keeps its number, its state and its bytes.
+  function openCorrection(entry: DocumentRow) {
+    if (mutating.current) return;
+    setMessage('');
+    setCorrectionDirection('credit');
+    setCorrectionId(entry.id);
+  }
+  async function createCorrection(
+    event: FormEvent<HTMLFormElement>,
+    entry: DocumentRow,
+  ) {
+    event.preventDefault();
+    if (mutating.current || busy !== '') return;
+    mutating.current = true;
+    setBusy(entry.id);
+    setMessage('');
+    try {
+      const reply = await fetch(
+        '/api/v1/documents/' + entry.id + '/correction',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify({
+            version: entry.version,
+            direction: correctionDirection,
+          }),
+        },
+      );
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(
+          result.error === 'duplicate'
+            ? 'Für diese Rechnung gibt es bereits einen offenen Korrektur-Entwurf.'
+            : result.error === 'credit_exceeds_invoice'
+              ? 'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.'
+              : result.error === 'invalid_kind'
+                ? 'Nur eine finalisierte Rechnung oder Auftragsbestätigung lässt sich korrigieren.'
+                : result.error === 'invalid_state' ||
+                    result.error === 'conflict'
+                  ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
+                  : 'Rechnungskorrektur konnte nicht erstellt werden. Bitte Angaben prüfen.',
+        );
+        try {
+          await load();
+        } catch {
+          // The message above already says what to do.
+        }
+        return;
+      }
+      const created = (await reply.json()) as DocumentRow;
+      const confirmed =
+        typeof created?.id === 'string' &&
+        created.id.length > 0 &&
+        created.kind === 'correction' &&
+        created.state === 'draft' &&
+        created.eventId === eventId;
+      if (confirmed) {
+        setDocuments((current) => [
+          created,
+          ...current.filter((row) => row.id !== created.id),
+        ]);
+        setMessage('Rechnungskorrektur als Entwurf angelegt.');
+      } else
+        setMessage(
+          'Rechnungskorrektur angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+        );
+      setCorrectionId('');
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   // BKP019.a: the library the acceptance may reference. Only an own, available
   // row is selectable; the "not scanned" fact stays visible instead of a scan
   // promise we cannot keep.
@@ -709,18 +821,21 @@ export function EventDocuments({
               {exactMinorUnits(entry.grossMinor) ?? '—'} €
             </p>
             {/* BKP019.b: a confirmation names the offer it was copied from.
-                BKP019.c1: an invoice names the confirmation in the same way. The
-                row kind decides which source it must be, because the projection
-                deliberately carries no source kind. The link opens that source
-                document's own PDF. */}
+                BKP019.c1: an invoice names the confirmation in the same way.
+                BKP019.c2: a correction names the document it corrects, whose kind
+                the projection deliberately does not carry - the wording stays
+                neutral ("Korrektur zu"). The link opens that source PDF. */}
             {(entry.kind === 'order_confirmation' ||
-              entry.kind === 'invoice') &&
+              entry.kind === 'invoice' ||
+              entry.kind === 'correction') &&
               entry.sourceNumber && (
                 <p className="document-meta">
                   <span>
                     {entry.kind === 'invoice'
                       ? 'Aus Auftragsbestätigung '
-                      : 'Aus Angebot '}
+                      : entry.kind === 'correction'
+                        ? 'Korrektur zu '
+                        : 'Aus Angebot '}
                   </span>
                   {entry.sourceDocumentId ? (
                     <a
@@ -732,7 +847,9 @@ export function EventDocuments({
                       aria-label={
                         (entry.kind === 'invoice'
                           ? 'Auftragsbestätigung '
-                          : 'Angebot ') +
+                          : entry.kind === 'correction'
+                            ? 'Beleg '
+                            : 'Angebot ') +
                         entry.sourceNumber +
                         ' als PDF öffnen'
                       }
@@ -742,6 +859,23 @@ export function EventDocuments({
                   ) : (
                     <span>{entry.sourceNumber}</span>
                   )}
+                </p>
+              )}
+            {/* BKP019.c2: the cancellation state is derived, not stored - the
+                invoice keeps its number, its state and its bytes. */}
+            {entry.kind === 'invoice' &&
+              entry.state === 'final' &&
+              entry.correctionState && (
+                <p className="document-meta document-correction-state">
+                  <span>{correctionStateLabels[entry.correctionState]}</span>
+                  {typeof entry.remainingCredit === 'number' &&
+                    Number.isSafeInteger(entry.remainingCredit) && (
+                      <span>
+                        {' · Noch kreditierbar: ' +
+                          (exactMinorUnits(entry.remainingCredit) ?? '—') +
+                          ' €'}
+                      </span>
+                    )}
                 </p>
               )}
             {entry.kind === 'offer' && entry.state === 'final' && (
@@ -867,6 +1001,26 @@ export function EventDocuments({
                 >
                   PDF öffnen
                 </a>
+              )}
+              {/* BKP019.c2: only a finalized invoice is corrected, and only as an
+                  explicit step - the correction starts as a draft with its own
+                  number. The direction is the one decision the operator makes. */}
+              {entry.state === 'final' && entry.kind === 'invoice' && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={busy !== ''}
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' korrigieren'
+                  }
+                  aria-expanded={correctionId === entry.id}
+                  onClick={() => openCorrection(entry)}
+                >
+                  Korrigieren
+                </button>
               )}
               {/* Only a legal next step is offered: no button invents a jump
                   such as final → accepted or a reopened withdrawn offer. */}
@@ -1073,6 +1227,68 @@ export function EventDocuments({
                   </button>
                 ))}
             </div>
+            {entry.kind === 'invoice' &&
+              entry.state === 'final' &&
+              correctionId === entry.id && (
+                <form
+                  className="offer-draft-editor"
+                  aria-label="Rechnungskorrektur anlegen"
+                  onSubmit={(event) => void createCorrection(event, entry)}
+                >
+                  <fieldset disabled={busy !== ''}>
+                    <legend>Rechnungskorrektur anlegen</legend>
+                    <p className="document-hint">
+                      Eine Korrektur ist ein eigener Beleg mit eigener Nummer
+                      und lässt die Rechnung unverändert. Die Positionen werden
+                      zunächst übernommen.
+                    </p>
+                    <div className="offer-draft-fields">
+                      <label>
+                        Richtung
+                        <select
+                          value={correctionDirection}
+                          onChange={(event) =>
+                            setCorrectionDirection(
+                              event.target.value as CorrectionDirection,
+                            )
+                          }
+                        >
+                          {(
+                            Object.keys(
+                              correctionDirectionLabels,
+                            ) as CorrectionDirection[]
+                          ).map((direction) => (
+                            <option key={direction} value={direction}>
+                              {correctionDirectionLabels[direction]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    {correctionDirection === 'credit' &&
+                      entry.remainingCredit === 0 && (
+                        <p role="alert">
+                          Diese Rechnung ist bereits vollständig gutgeschrieben.
+                          Eine weitere Gutschrift wird beim Finalisieren
+                          abgelehnt.
+                        </p>
+                      )}
+                    <div className="document-actions">
+                      <button className="primary-action" disabled={busy !== ''}>
+                        Korrektur anlegen
+                      </button>
+                      <button
+                        type="button"
+                        className="tertiary-action"
+                        disabled={busy !== ''}
+                        onClick={() => setCorrectionId('')}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </fieldset>
+                </form>
+              )}
             {entry.kind === 'offer' &&
               entry.state === 'final' &&
               entry.offerStatus === 'sent' &&
@@ -1332,13 +1548,23 @@ export function EventDocuments({
               <h4 id={'event-documents-kind-' + group.kind}>{group.label}</h4>
               {/* BKP019.c1: an invoice is a real document, but invoicing is not
                   complete yet. The open paths are named here instead of letting
-                  the card imply deposit, final and correction invoices exist. */}
+                  the card imply deposit, final and correction invoices exist.
+                  BKP019.c2: corrections and cancellations do exist now - as
+                  their own documents, never as an edit of the invoice. */}
               {group.kind === 'invoice' && (
                 <p className="document-card-hint">
-                  Anzahlungs-, Schluss- und Korrekturrechnungen sind noch nicht
-                  verfügbar. Eine finalisierte Rechnung wird nie ersetzt,
-                  sondern später nur durch ein Korrektur- oder Stornodokument
-                  ergänzt; Entwürfe bleiben bis zur Finalisierung bearbeitbar.
+                  Anzahlungs- und Schlussrechnungen sind noch nicht verfügbar.
+                  Eine finalisierte Rechnung wird nie ersetzt, sondern nur durch
+                  eine Rechnungskorrektur ergänzt; Entwürfe bleiben bis zur
+                  Finalisierung bearbeitbar.
+                </p>
+              )}
+              {group.kind === 'correction' && (
+                <p className="document-card-hint">
+                  Eine Rechnungskorrektur ist ein eigener Beleg mit eigener
+                  Nummer: als Gutschrift mindert sie den Rechnungsbetrag, als
+                  Nachberechnung erhöht sie ihn. Die korrigierte Rechnung bleibt
+                  unverändert.
                 </p>
               )}
               {rows(group.rows)}

@@ -40,8 +40,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP019.c1: an invoice is linked to the confirmation it was copied from.
-  expect(applied.at(-1)!.name).toBe('0042_invoice_source.sql');
+  // BKP019.c2: a correction is linked to the document it corrects.
+  expect(applied.at(-1)!.name).toBe('0043_correction.sql');
   // The source is a document of the same tenant, never another tenant's row.
   const sourceForeignKey = (
     await pool.query<{ def: string }>(
@@ -75,8 +75,31 @@ test('migrations serialize, restart safely and detect changed history', async ()
       "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_source_kind_check'",
     )
   ).rows[0]!.def;
+  // BKP019.c2: the same link now also carries a correction, and only these three
+  // kinds ever own a source.
   expect(sourceKindCheck).toContain(
-    "kind = ANY (ARRAY['order_confirmation'::text, 'invoice'::text])",
+    "kind = ANY (ARRAY['order_confirmation'::text, 'invoice'::text, 'correction'::text])",
+  );
+  // A correction carries its direction on the document, never as a sign.
+  const correctionDirectionCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_correction_direction_check'",
+    )
+  ).rows[0]!.def;
+  expect(correctionDirectionCheck).toContain(
+    "(kind = 'correction'::text) = (correction_direction IS NOT NULL)",
+  );
+  expect(correctionDirectionCheck).toContain("'credit'::text, 'debit'::text");
+  // At most one *open* correction per source; finalized partial credits stay
+  // legal, so the index is partial in both dimensions.
+  const correctionIndex = (
+    await pool.query<{ indexdef: string }>(
+      "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='documents_one_open_correction'",
+    )
+  ).rows[0]!.indexdef;
+  expect(correctionIndex).toContain('(tenant_id, source_document_id)');
+  expect(correctionIndex).toContain(
+    "WHERE ((kind = 'correction'::text) AND (state = 'draft'::text))",
   );
   // BKP019.a records how an offer was accepted after the status axis.
   // The acceptance references an own library file through the composite key,

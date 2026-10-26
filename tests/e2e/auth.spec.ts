@@ -1376,6 +1376,223 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       true,
     );
     await audit('event-auftragsbestaetigung');
+    // BKP019.c2: the finalized invoice becomes a credit note of its own. The
+    // correction owns the correction number range and the direction; the invoice
+    // keeps its number, its state and its bytes, and its cancellation state is
+    // derived from the credit notes instead of being stored on it.
+    await pool.query(
+      `INSERT INTO document_number_sequences
+        (tenant_id,kind,pattern,min_length,next_value,version)
+       VALUES ($1,'correction','KO-{YYYY}-{SEQ}',4,1,1)`,
+      [config.tenantId],
+    );
+    const invoicePdfBytes = await (
+      await page.request.get(
+        origin + '/api/v1/documents/' + invoice.id + '/pdf',
+      )
+    ).body();
+    await invoices
+      .getByRole('button', {
+        name: 'Rechnung ' + invoiceNumber + ' korrigieren',
+      })
+      .click();
+    const correctionForm = invoices.getByRole('form', {
+      name: 'Rechnungskorrektur anlegen',
+    });
+    await expect(correctionForm).toBeVisible();
+    // The derived state and the open amount are visible before the write.
+    await expect(invoices.getByText('Nicht storniert')).toBeVisible();
+    await expect(
+      invoices.getByText(/Noch kreditierbar: 100,00 €/),
+    ).toBeVisible();
+    await expect(correctionForm.getByLabel('Richtung')).toHaveValue('credit');
+    await correctionForm.getByLabel('Richtung').selectOption('credit');
+    await correctionForm
+      .getByRole('button', { name: 'Korrektur anlegen' })
+      .click();
+    await expect(
+      page.getByText('Rechnungskorrektur als Entwurf angelegt.'),
+    ).toBeVisible();
+    const corrections = page.getByRole('region', {
+      name: 'Rechnungskorrekturen',
+    });
+    await expect(corrections.getByRole('listitem')).toHaveCount(1);
+    // The correction names the invoice it corrects, as a real link.
+    await expect(
+      corrections.getByRole('link', {
+        name: 'Beleg ' + invoiceNumber + ' als PDF öffnen',
+      }),
+    ).toHaveAttribute('href', '/api/v1/documents/' + invoice.id + '/pdf');
+    const correction = (
+      await pool.query<{
+        id: string;
+        number: string | null;
+        correction_direction: string;
+        source_document_id: string;
+        gross_minor: string;
+        state: string;
+      }>(
+        `SELECT id, number, correction_direction, source_document_id, gross_minor, state
+           FROM documents WHERE tenant_id=$1 AND kind='correction'`,
+        [config.tenantId],
+      )
+    ).rows[0]!;
+    // Stored as a magnitude with a direction, never as a negative amount.
+    expect(correction.correction_direction).toBe('credit');
+    expect(correction.source_document_id).toBe(invoice.id);
+    expect(correction.gross_minor).toBe(invoice.gross_minor);
+    expect(correction.number).toBeNull();
+    // BKP019.c2b: the copied position text is correctable in the UI before it is
+    // frozen - a wrong position is not only fixable through the API.
+    const editedCorrectionDescription =
+      'Fiktive Korrekturposition nach Rücksprache, vor der Finalisierung korrigiert.';
+    await corrections
+      .getByRole('button', {
+        name: 'Rechnungskorrektur Entwurf bearbeiten',
+      })
+      .click();
+    const correctionEditor = corrections.locator('.offer-draft-editor');
+    await expect(
+      correctionEditor.getByRole('heading', {
+        name: 'Rechnungskorrektur bearbeiten',
+      }),
+    ).toBeVisible();
+    // Neither the invoice's nor the offer's heading labels the correction.
+    await expect(
+      correctionEditor.getByRole('heading', { name: 'Rechnung bearbeiten' }),
+    ).toHaveCount(0);
+    await expect(
+      correctionEditor.getByRole('heading', { name: 'Angebot bearbeiten' }),
+    ).toHaveCount(0);
+    await expect(correctionEditor.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional browser service',
+    );
+    await correctionEditor
+      .getByLabel('Beschreibung')
+      .fill(editedCorrectionDescription);
+    await correctionEditor
+      .getByRole('button', { name: 'Änderungen speichern' })
+      .click();
+    await expect(
+      correctionEditor.getByText('Änderungen gespeichert.'),
+    ).toBeVisible();
+    // The correction owns the change; its amount stays the invoice's magnitude.
+    const editedCorrection = (await (
+      await page.request.get(origin + '/api/v1/documents/' + correction.id)
+    ).json()) as Detail;
+    expect(editedCorrection.lines.map((line) => line.description)).toEqual([
+      editedCorrectionDescription,
+    ]);
+    expect(editedCorrection.subject).toBe('Rechnungskorrektur für {{contact}}');
+    await correctionEditor
+      .getByRole('button', { name: 'Bearbeitung schließen' })
+      .click();
+    await expect(correctionEditor).toHaveCount(0);
+    // Finalizing uses the correction's own number range.
+    await corrections
+      .getByRole('button', {
+        name: 'Rechnungskorrektur Entwurf finalisieren',
+      })
+      .click();
+    await expect(page.getByText(/Finalisiert als KO-/)).toBeVisible();
+    const correctionNumber = (
+      await pool.query<{ number: string }>(
+        'SELECT number FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, correction.id],
+      )
+    ).rows[0]!.number;
+    expect(correctionNumber).toMatch(/^KO-\d{4}-\d{4}$/);
+    await expect(
+      corrections.getByText(correctionNumber, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      corrections.getByRole('link', {
+        name: 'Rechnungskorrektur ' + correctionNumber + ' als PDF öffnen',
+      }),
+    ).toBeVisible();
+    const correctionPdf = await page.request.get(
+      origin + '/api/v1/documents/' + correction.id + '/pdf',
+    );
+    expect(correctionPdf.status()).toBe(200);
+    expect((await correctionPdf.body()).subarray(0, 5).toString()).toBe(
+      '%PDF-',
+    );
+    // The frozen correction shows the edited position, not the copied one.
+    const frozenCorrection = (await (
+      await page.request.get(origin + '/api/v1/documents/' + correction.id)
+    ).json()) as Detail & { state: string; pdfHash: string | null };
+    expect(frozenCorrection.state).toBe('final');
+    expect(frozenCorrection.pdfHash).toBeTruthy();
+    expect(frozenCorrection.lines.map((line) => line.description)).toEqual([
+      editedCorrectionDescription,
+    ]);
+    // The invoice it corrects keeps its own position text.
+    const invoiceAfterCorrection = (await (
+      await page.request.get(origin + '/api/v1/documents/' + invoice.id)
+    ).json()) as Detail;
+    expect(
+      invoiceAfterCorrection.lines.map((line) => line.description),
+    ).toEqual(['Fictional browser service']);
+    // The full credit reads as "storniert", derived from the credit note.
+    await expect(
+      invoices.getByText('Storniert', { exact: true }),
+    ).toBeVisible();
+    await expect(invoices.getByText(/Noch kreditierbar: 0,00 €/)).toBeVisible();
+    // The corrected invoice and everything above it keep their bytes.
+    expect(
+      (
+        await (
+          await page.request.get(
+            origin + '/api/v1/documents/' + invoice.id + '/pdf',
+          )
+        ).body()
+      ).equals(invoicePdfBytes),
+    ).toBe(true);
+    expect(
+      (
+        await (
+          await page.request.get(
+            origin + '/api/v1/documents/' + confirmation.id + '/pdf',
+          )
+        ).body()
+      ).equals(confirmationPdfBytes),
+    ).toBe(true);
+    expect((await (await pdfOf()).body()).equals(firstBytes)).toBe(true);
+    await audit('event-rechnungskorrektur');
+    // A second credit is refused by the finalization guard: the draft stays a
+    // draft, the invoice keeps its number, and the operator is told why.
+    await invoices
+      .getByRole('button', {
+        name: 'Rechnung ' + invoiceNumber + ' korrigieren',
+      })
+      .click();
+    // The form warns before the write; the guard is still the server's.
+    await expect(
+      invoices.getByText(/bereits vollständig gutgeschrieben/),
+    ).toBeVisible();
+    await invoices.getByRole('button', { name: 'Korrektur anlegen' }).click();
+    await expect(
+      page.getByText('Rechnungskorrektur als Entwurf angelegt.'),
+    ).toBeVisible();
+    await corrections
+      .getByRole('button', {
+        name: 'Rechnungskorrektur Entwurf finalisieren',
+      })
+      .click();
+    await expect(
+      page.getByText(
+        'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.',
+      ),
+    ).toBeVisible();
+    expect(
+      (
+        await pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM documents
+            WHERE tenant_id=$1 AND kind='correction' AND state='final'`,
+          [config.tenantId],
+        )
+      ).rows[0]!.count,
+    ).toBe(1);
     // Withdrawing asks once, and only then writes.
     await eventOffers
       .getByRole('button', {

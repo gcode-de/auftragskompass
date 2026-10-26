@@ -1956,13 +1956,17 @@ async function listRows(
     grossMinor?: number;
     eventId?: string | null;
     templateId: string;
+    // BKP019.c2: a correction row is only legal with a source and a direction.
+    sourceId?: string;
+    direction?: 'credit' | 'debit';
   }[],
 ) {
   for (const row of rows)
     await connection.query(
       `INSERT INTO documents (tenant_id,id,kind,template_id,event_id,contact_id,number,state,
-        issued_at,finalized_at,snapshot_hash,pdf_hash,net_minor,tax_minor,gross_minor,version)
-       VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,$11,$12,0,$12,1)`,
+        issued_at,finalized_at,snapshot_hash,pdf_hash,net_minor,tax_minor,gross_minor,version,
+        source_document_id,correction_direction)
+       VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,$11,$12,0,$12,1,$13,$14)`,
       [
         scope,
         row.id,
@@ -1978,6 +1982,8 @@ async function listRows(
         // that needs exactly that state drops the hash afterwards.
         row.pdfHash ?? (row.finalized ? 'c'.repeat(64) : null),
         row.grossMinor ?? 0,
+        row.sourceId ?? null,
+        row.direction ?? null,
       ],
     );
 }
@@ -2063,6 +2069,15 @@ const acceptanceKeys = [
 // BKP019.b: a confirmation names the offer it was copied from. The two keys
 // belong to the projection only; the unpaged list keeps its old shape.
 const confirmationKeys = ['sourceDocumentId', 'sourceNumber'];
+// BKP019.c2: the correction axis. `correctionDirection` is this row's own
+// direction, `correctionState` and `remainingCredit` are derived for a finalized
+// source document and NULL for every other row. Three keys, deliberately pinned
+// here: the projection grows only where a correction needs it.
+const correctionKeys = [
+  'correctionDirection',
+  'correctionState',
+  'remainingCredit',
+];
 
 test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
   const scope = randomUUID(),
@@ -2206,6 +2221,9 @@ test('the metadata projection adds event name, local date and PDF eligibility on
       kind: 'correction',
       state: 'withdrawn',
       issuedAt: '2031-05-04T10:00:00Z',
+      // BKP019.c2: a correction is only legal with a source and a direction.
+      sourceId: finalWithPdf,
+      direction: 'credit',
     },
     {
       id: orphan,
@@ -3231,12 +3249,17 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         'offerExpired',
         ...acceptanceKeys,
         ...confirmationKeys,
+        ...correctionKeys,
       ].sort(),
     );
     expect(projectedRow).toMatchObject({
       offerStatus: 'sent',
       validUntil: '2030-11-09',
       offerExpired: false,
+      // BKP019.c2: an offer is no correction source, so it answers NULL.
+      correctionDirection: null,
+      correctionState: null,
+      remainingCredit: null,
     });
     expect(projected.body).not.toContain('pdfHash');
     expect(projected.body).not.toContain('snapshotHash');
@@ -3992,6 +4015,7 @@ test('the offer status route accepts the acceptance details and refuses bad ones
         'acceptanceFileState',
         'sourceDocumentId',
         'sourceNumber',
+        ...correctionKeys,
       ].sort(),
     );
     // Repeating the identical details is a no-op, a changed one is refused.
@@ -4833,6 +4857,7 @@ test('the offer projection names the source of a confirmation', async () => {
       ...acceptanceKeys,
       'sourceDocumentId',
       'sourceNumber',
+      ...correctionKeys,
     ].sort(),
   );
 });
@@ -5521,6 +5546,7 @@ test('the offer projection names the source of an invoice', async () => {
       'offerExpired',
       ...acceptanceKeys,
       ...confirmationKeys,
+      ...correctionKeys,
     ].sort(),
   );
 });
@@ -5632,4 +5658,886 @@ test('the invoice route validates auth, body and duplicates', async () => {
   } finally {
     await app.close();
   }
+});
+
+// BKP019.c2: a finalized invoice (or order confirmation) is corrected by its own
+// follow-up document. The stored amounts stay magnitudes; the direction on the
+// document is what turns them into a credit or a follow-up charge. Every test
+// below therefore asserts both: the positive stored sum and the derived meaning.
+async function correctableOrder(scope: string) {
+  const order = await invoicedOrder(scope),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await documentNumberRepository(pool, scope).save(order.actor, 'invoice', {
+    pattern: 'RE-{YYYY}-{SEQ}',
+    minLength: 4,
+    nextValue: 1,
+  });
+  const finalized = await order.repo.finalize(
+    order.actor,
+    invoice.id,
+    invoice.version,
+  );
+  return { ...order, invoice: finalized };
+}
+
+async function correctionRange(
+  order: Awaited<ReturnType<typeof correctableOrder>>,
+) {
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'correction',
+    { pattern: 'KO-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+}
+
+// One position with an exact gross amount, so the ceiling can be tested to the
+// cent instead of through a copied document.
+function correctionLine(unitPriceMinor: number) {
+  return [
+    {
+      productId: null,
+      description: 'Fiktive Korrekturposition',
+      quantity: 1,
+      unit: 'Pauschale',
+      unitPriceMinor,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    },
+  ];
+}
+
+async function storedCorrection(scope: string, id: string) {
+  return (
+    await pool.query<Record<string, unknown>>(
+      `SELECT kind, state, number, template_id, subject, intro_text, outro_text,
+              validity_days, correction_direction, source_document_id,
+              gross_minor, net_minor, tax_minor, version, offer_status,
+              to_char(valid_until,'YYYY-MM-DD') AS valid_until
+         FROM documents WHERE tenant_id=$1 AND id=$2`,
+      [scope, id],
+    )
+  ).rows[0]!;
+}
+
+async function correctionCount(scope: string) {
+  return (
+    await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM documents
+        WHERE tenant_id=$1 AND kind='correction'`,
+      [scope],
+    )
+  ).rows[0]!.count;
+}
+
+async function correctionSequence(scope: string) {
+  return (
+    await pool.query<{ next_value: number }>(
+      'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+      [scope, 'correction'],
+    )
+  ).rows[0]?.next_value;
+}
+
+test('the correction copies every position as a magnitude and links its invoice', async () => {
+  const order = await correctableOrder(randomUUID()),
+    correction = await order.repo.createCorrection(
+      order.actor,
+      order.invoice.id,
+      order.invoice.version,
+      'credit',
+    ),
+    stored = await storedCorrection(order.scope, correction.id);
+  // 1:1 from the invoice: descriptions, quantities, units, gross prices and both
+  // basis-point rates - no conversion, no negation, no second rounding.
+  expect(await storedLines(order.scope, correction.id)).toEqual(
+    await storedLines(order.scope, order.invoice.id),
+  );
+  expect(stored).toMatchObject({
+    kind: 'correction',
+    template_id: null,
+    // Neutral in the wording: the direction stands in the document itself.
+    subject: 'Rechnungskorrektur für {{contact}}',
+    intro_text: confirmationTexts.introText,
+    outro_text: confirmationTexts.outroText,
+    validity_days: 14,
+    state: 'draft',
+    number: null,
+    version: 1,
+    correction_direction: 'credit',
+    source_document_id: order.invoice.id,
+    // A magnitude, not a sign: the sum of a credit note is stored positively.
+    gross_minor: '52310',
+    net_minor: '44429',
+    tax_minor: '7881',
+    // A correction is no offer: it never gets a status or a deadline.
+    offer_status: null,
+    valid_until: null,
+  });
+  expect(correction).toMatchObject({
+    kind: 'correction',
+    templateId: null,
+    eventId: order.event,
+    contactId: order.contact,
+    state: 'draft',
+    number: null,
+    grossMinor: 52310,
+  });
+  expect(correction.grossMinor).toBe(order.invoice.grossMinor);
+  expect(correction.grossMinor).toBe(correction.netMinor + correction.taxMinor);
+  expect(
+    (await order.repo.get(correction.id))!.lines.map(
+      (line) => line.description,
+    ),
+  ).toEqual(['Fictional photo box', 'Fictional delivery']);
+});
+
+test('only a finalized invoice or confirmation is a correction source', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    // A draft invoice can still move, so nothing may be corrected from it.
+    draftInvoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await expect(
+    order.repo.createCorrection(
+      order.actor,
+      draftInvoice.id,
+      draftInvoice.version,
+      'credit',
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // An offer is corrected through its invoice, never directly.
+  await expect(
+    order.repo.createCorrection(
+      order.actor,
+      order.offerId,
+      order.version,
+      'credit',
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  // The finalized order confirmation is a legal source of its own.
+  const fromConfirmation = await order.repo.createCorrection(
+    order.actor,
+    order.confirmation.id,
+    order.confirmation.version,
+    'credit',
+  );
+  expect(fromConfirmation).toMatchObject({
+    kind: 'correction',
+    grossMinor: 52310,
+  });
+  expect(
+    (await storedCorrection(order.scope, fromConfirmation.id))
+      .source_document_id,
+  ).toBe(order.confirmation.id);
+  // No chain in this slice: a correction is not the source of a correction.
+  const chained = await correctableOrder(randomUUID()),
+    first = await chained.repo.createCorrection(
+      chained.actor,
+      chained.invoice.id,
+      chained.invoice.version,
+      'credit',
+    );
+  await expect(
+    chained.repo.createCorrection(
+      chained.actor,
+      first.id,
+      first.version,
+      'credit',
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  // An unknown id is a missing row, never a guess.
+  await expect(
+    order.repo.createCorrection(order.actor, randomUUID(), 1, 'credit'),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  // A direction outside the closed set is refused before anything is written.
+  await expect(
+    order.repo.createCorrection(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+      'refund' as 'credit',
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_content' });
+});
+
+test('a second open correction draft for one invoice is refused', async () => {
+  const order = await correctableOrder(randomUUID()),
+    first = await order.repo.createCorrection(
+      order.actor,
+      order.invoice.id,
+      order.invoice.version,
+      'credit',
+    );
+  await expect(
+    order.repo.createCorrection(
+      order.actor,
+      order.invoice.id,
+      order.invoice.version,
+      'debit',
+    ),
+  ).rejects.toMatchObject({ reason: 'duplicate' });
+  expect(await correctionCount(order.scope)).toBe(1);
+  // A refused draft cannot burn a number, because creating never allocates one.
+  expect(await correctionSequence(order.scope)).toBeUndefined();
+  expect(await offerAudit(order.scope, first.id)).toEqual(['document.created']);
+});
+
+test('a credit never exceeds the invoice gross', async () => {
+  const order = await correctableOrder(randomUUID());
+  await correctionRange(order);
+  // Two partial credit notes that add up to the invoice exactly are allowed.
+  const first = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'credit',
+    correctionLine(30000),
+  );
+  expect(
+    (await order.repo.finalize(order.actor, first.id, first.version)).number,
+  ).toBe('KO-2030-0001');
+  const second = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'credit',
+    correctionLine(22310),
+  );
+  expect(
+    (await order.repo.finalize(order.actor, second.id, second.version)).number,
+  ).toBe('KO-2030-0002');
+  // One cent more is refused, and the draft keeps its number and its state.
+  const third = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'credit',
+    correctionLine(1),
+  );
+  await expect(
+    order.repo.finalize(order.actor, third.id, third.version),
+  ).rejects.toMatchObject({ reason: 'credit_exceeds_invoice' });
+  expect(await storedCorrection(order.scope, third.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+  });
+  // Nothing was consumed: the next real credit still gets 0003.
+  expect(
+    await documentNumberRepository(pool, order.scope).preview(
+      'correction',
+      now,
+    ),
+  ).toBe('KO-2030-0003');
+  // The invoice itself never moved.
+  expect(await storedDocument(order.scope, order.invoice.id)).toMatchObject({
+    state: 'final',
+    number: 'RE-2030-0001',
+    gross_minor: '52310',
+  });
+});
+
+test('a debit increases the claim without a ceiling', async () => {
+  const order = await correctableOrder(randomUUID());
+  await correctionRange(order);
+  // A follow-up charge is not limited by the invoice amount: it raises it.
+  for (const expected of ['KO-2030-0001', 'KO-2030-0002']) {
+    const correction = await order.repo.createCorrection(
+      order.actor,
+      order.invoice.id,
+      order.invoice.version,
+      'debit',
+    );
+    expect(
+      (
+        await order.repo.finalize(
+          order.actor,
+          correction.id,
+          correction.version,
+        )
+      ).number,
+    ).toBe(expected);
+    expect(await storedCorrection(order.scope, correction.id)).toMatchObject({
+      correction_direction: 'debit',
+      state: 'final',
+      // Still a magnitude: the direction carries the sign.
+      gross_minor: '52310',
+    });
+  }
+});
+
+test('the correction finalizes with its own KO- number and its own PDF', async () => {
+  const order = await correctableOrder(randomUUID());
+  await correctionRange(order);
+  const invoicePdf = await order.repo.pdf(order.invoice.id),
+    confirmationPdf = await order.repo.pdf(order.confirmation.id),
+    offerPdf = await order.repo.pdf(order.offerId),
+    correction = await order.repo.createCorrection(
+      order.actor,
+      order.invoice.id,
+      order.invoice.version,
+      'credit',
+    ),
+    finalized = await order.repo.finalize(
+      order.actor,
+      correction.id,
+      correction.version,
+    );
+  expect(finalized.number).toBe('KO-2030-0001');
+  expect(await storedCorrection(order.scope, correction.id)).toMatchObject({
+    state: 'final',
+    number: 'KO-2030-0001',
+    gross_minor: '52310',
+  });
+  // The invoice and everything above it keep their number, their state and
+  // their bytes - a correction is a follow-up document, never an edit.
+  expect(await storedDocument(order.scope, order.invoice.id)).toMatchObject({
+    state: 'final',
+    number: 'RE-2030-0001',
+  });
+  expect(
+    (await order.repo.pdf(order.invoice.id)).bytes.equals(invoicePdf.bytes),
+  ).toBe(true);
+  expect(
+    (await order.repo.pdf(order.confirmation.id)).bytes.equals(
+      confirmationPdf.bytes,
+    ),
+  ).toBe(true);
+  expect(
+    (await order.repo.pdf(order.offerId)).bytes.equals(offerPdf.bytes),
+  ).toBe(true);
+  const correctionPdf = await order.repo.pdf(correction.id);
+  expect(correctionPdf.number).toBe('KO-2030-0001');
+  expect(correctionPdf.bytes.equals(invoicePdf.bytes)).toBe(false);
+  // The printed page names its source and prints the signed sum, while the
+  // stored sum stays positive.
+  const html = order.run.rendered.at(-1)!;
+  expect(html).toContain('Korrektur zu RE-2030-0001');
+  expect(html).toContain('<tr><td>Rechnungsbetrag</td><td>523,10 €</td></tr>');
+  expect(html).toContain(
+    '<tr><td>Offene Gutschrift</td><td>-523,10 €</td></tr>',
+  );
+  expect(html).toContain(
+    '<tr><td>Korrigierter Betrag</td><td>0,00 €</td></tr>',
+  );
+  expect(html).toContain('<tr><td>Brutto</td><td>-523,10 €</td></tr>');
+});
+
+test('a failing renderer rolls the correction number back', async () => {
+  const order = await correctableOrder(randomUUID()),
+    correction = await order.repo.createCorrection(
+      order.actor,
+      order.invoice.id,
+      order.invoice.version,
+      'credit',
+    );
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'correction',
+    { pattern: 'KO-{YYYY}-{SEQ}', minLength: 4, nextValue: 7 },
+  );
+  const failing = documentRepository(pool, order.scope, {
+    ...dependencies().deps,
+    render: async () => {
+      throw new Error('synthetic correction renderer failure');
+    },
+  });
+  await expect(
+    failing.finalize(order.actor, correction.id, correction.version),
+  ).rejects.toMatchObject({ reason: 'artifact_failed' });
+  expect(await storedCorrection(order.scope, correction.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+  });
+  expect(
+    await documentNumberRepository(pool, order.scope).preview(
+      'correction',
+      new Date('2030-10-26T10:00:00Z'),
+    ),
+  ).toBe('KO-2030-0007');
+});
+
+test('the correction draft is editable, the final correction is not', async () => {
+  const order = await correctableOrder(randomUUID());
+  await correctionRange(order);
+  const invoiceBefore = await storedDocument(order.scope, order.invoice.id),
+    invoiceLines = await storedLines(order.scope, order.invoice.id),
+    invoicePdf = await order.repo.pdf(order.invoice.id),
+    correction = await order.repo.createCorrection(
+      order.actor,
+      order.invoice.id,
+      order.invoice.version,
+      'credit',
+    ),
+    edited = await order.repo.updateDraftContent(order.actor, correction.id, {
+      version: correction.version,
+      subject: 'Rechnungskorrektur, gekürzt',
+      introText: 'Gekürzte Einleitung.',
+      outroText: 'Gekürzter Schluss.',
+      validityDays: 14,
+      lines: correctionLine(20000),
+    });
+  // A correction draft owns its texts and positions, exactly like every other
+  // derived draft; its direction, source and kind are not part of the edit.
+  expect(edited).toMatchObject({
+    kind: 'correction',
+    subject: 'Rechnungskorrektur, gekürzt',
+    version: correction.version + 1,
+    grossMinor: 20000,
+  });
+  expect(await storedCorrection(order.scope, correction.id)).toMatchObject({
+    correction_direction: 'credit',
+    source_document_id: order.invoice.id,
+  });
+  expect(await storedDocument(order.scope, order.invoice.id)).toEqual(
+    invoiceBefore,
+  );
+  expect(await storedLines(order.scope, order.invoice.id)).toEqual(
+    invoiceLines,
+  );
+  expect(
+    (await order.repo.pdf(order.invoice.id)).bytes.equals(invoicePdf.bytes),
+  ).toBe(true);
+  const finalized = await order.repo.finalize(
+    order.actor,
+    correction.id,
+    edited.version,
+  );
+  await expect(
+    order.repo.updateDraftContent(order.actor, correction.id, {
+      version: finalized.version,
+      subject: 'Zu spät',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // A finalized correction is no offer either.
+  await expect(
+    order.repo.changeOfferStatus(order.actor, correction.id, {
+      status: 'sent',
+      version: finalized.version,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+});
+
+test('a correction of another tenant, actor or unknown source is invisible', async () => {
+  const order = await correctableOrder(randomUUID());
+  await expect(
+    documentRepository(
+      pool,
+      otherTenantId,
+      dependencies().deps,
+    ).createCorrection(
+      otherActorId,
+      order.invoice.id,
+      order.invoice.version,
+      'credit',
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    order.repo.createCorrection(
+      randomUUID(),
+      order.invoice.id,
+      order.invoice.version,
+      'credit',
+    ),
+  ).rejects.toThrow('forbidden');
+  expect(await correctionCount(order.scope)).toBe(0);
+  expect(await correctionSequence(order.scope)).toBeUndefined();
+});
+
+test('two simultaneous corrections produce exactly one document', async () => {
+  const order = await correctableOrder(randomUUID()),
+    results = await Promise.allSettled([
+      order.repo.createCorrection(
+        order.actor,
+        order.invoice.id,
+        order.invoice.version,
+        'credit',
+      ),
+      order.repo.createCorrection(
+        order.actor,
+        order.invoice.id,
+        order.invoice.version,
+        'debit',
+      ),
+    ]),
+    fulfilled = results.filter((result) => result.status === 'fulfilled'),
+    rejected = results.filter((result) => result.status === 'rejected');
+  // The partial unique index on open drafts decides, not a \"check first\".
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+    reason: 'duplicate',
+  });
+  expect(await correctionCount(order.scope)).toBe(1);
+});
+
+test('the database refuses a correction without source, without direction or with a foreign source', async () => {
+  const order = await correctableOrder(randomUUID()),
+    code = (query: Promise<unknown>) =>
+      query
+        .then(() => 'accepted')
+        .catch((error: { code?: string }) => error.code),
+    foreignId = randomUUID();
+  await listRows(pool, otherTenantId, [
+    {
+      id: foreignId,
+      templateId: otherTemplateId,
+      issuedAt: '2030-10-26T10:00:00Z',
+    },
+  ]);
+  // A correction without a source is refused even with a template.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,correction_direction)
+         VALUES ($1,$2,'correction',$3,$4,$5,$6,'credit')`,
+        [
+          order.scope,
+          randomUUID(),
+          order.templateId,
+          order.event,
+          order.contact,
+          now,
+        ],
+      ),
+    ),
+  ).toBe('23514');
+  // A correction without a direction is not a document.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,source_document_id)
+         VALUES ($1,$2,'correction',$3,$4,$5,$6,$7)`,
+        [
+          order.scope,
+          randomUUID(),
+          order.templateId,
+          order.event,
+          order.contact,
+          now,
+          order.invoice.id,
+        ],
+      ),
+    ),
+  ).toBe('23514');
+  // No other kind carries a direction.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,source_document_id,
+           correction_direction)
+         VALUES ($1,$2,'invoice',$3,$4,$5,$6,$7,'credit')`,
+        [
+          order.scope,
+          randomUUID(),
+          order.templateId,
+          order.event,
+          order.contact,
+          now,
+          order.confirmation.id,
+        ],
+      ),
+    ),
+  ).toBe('23514');
+  // A blank correction without a template keeps the old blank-document rule.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days,correction_direction)
+         VALUES ($1,$2,'correction',NULL,$3,$4,$5,'Rechnungskorrektur','','',14,'credit')`,
+        [order.scope, randomUUID(), order.event, order.contact, now],
+      ),
+    ),
+  ).toBe('23514');
+  // A document of another tenant can never become the source.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,source_document_id,
+           correction_direction)
+         VALUES ($1,$2,'correction',$3,$4,$5,$6,$7,'credit')`,
+        [
+          order.scope,
+          randomUUID(),
+          order.templateId,
+          order.event,
+          order.contact,
+          now,
+          foreignId,
+        ],
+      ),
+    ),
+  ).toBe('23503');
+  // The same row with this tenant's invoice is legal.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,source_document_id,
+           correction_direction)
+         VALUES ($1,$2,'correction',$3,$4,$5,$6,$7,'credit')`,
+        [
+          order.scope,
+          randomUUID(),
+          order.templateId,
+          order.event,
+          order.contact,
+          now,
+          order.invoice.id,
+        ],
+      ),
+    ),
+  ).toBe('accepted');
+});
+
+test('the projection derives the cancellation state and the remaining credit', async () => {
+  const order = await correctableOrder(randomUUID());
+  await correctionRange(order);
+  const listed = async () =>
+      (await order.repo.list({ include: 'offer' })) as DocumentOfferRow[],
+    invoiceRow = async () =>
+      (await listed()).find((row) => row.id === order.invoice.id)!;
+  // Nothing credited yet: the invoice names its confirmation and stays open.
+  expect(await invoiceRow()).toMatchObject({
+    kind: 'invoice',
+    sourceDocumentId: order.confirmation.id,
+    sourceNumber: 'AB-2030-0001',
+    correctionDirection: null,
+    correctionState: 'none',
+    remainingCredit: 52310,
+  });
+  // A draft correction changes nothing: only finalized credit notes count.
+  const partial = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'credit',
+    correctionLine(20000),
+  );
+  expect(await invoiceRow()).toMatchObject({
+    correctionState: 'none',
+    remainingCredit: 52310,
+  });
+  // The correction row carries its own direction and no source state.
+  expect((await listed()).find((row) => row.id === partial.id)).toMatchObject({
+    kind: 'correction',
+    correctionDirection: 'credit',
+    correctionState: null,
+    remainingCredit: null,
+    sourceDocumentId: order.invoice.id,
+    sourceNumber: 'RE-2030-0001',
+  });
+  await order.repo.finalize(order.actor, partial.id, partial.version);
+  expect(await invoiceRow()).toMatchObject({
+    correctionState: 'partial',
+    remainingCredit: 32310,
+  });
+  const full = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'credit',
+    correctionLine(32310),
+  );
+  await order.repo.finalize(order.actor, full.id, full.version);
+  // RG-08 reads \"storniert\" without a stored status on the invoice: the state
+  // is derived from the credit notes and the invoice keeps its own bytes.
+  expect(await invoiceRow()).toMatchObject({
+    state: 'final',
+    correctionState: 'full',
+    remainingCredit: 0,
+  });
+  // A debit never reduces the creditable remainder.
+  const debit = await order.repo.createCorrection(
+    order.actor,
+    order.invoice.id,
+    order.invoice.version,
+    'debit',
+    correctionLine(500),
+  );
+  await order.repo.finalize(order.actor, debit.id, debit.version);
+  expect(await invoiceRow()).toMatchObject({
+    correctionState: 'full',
+    remainingCredit: 0,
+  });
+});
+
+test('the correction route validates auth, body, direction and duplicates', async () => {
+  const order = await correctableOrder(randomUUID()),
+    granted = (await accessRepository(pool, order.scope).list())[0]!;
+  await accessRepository(pool, order.scope).issueSession(
+    { subject: 'seed-' + order.scope, email: granted.email },
+    digest('synthetic-correction'),
+  );
+  const config = {
+      origin: site,
+      tenantId: order.scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, order.scope, order.run.deps);
+  const url = '/api/v1/documents/' + order.invoice.id + '/correction',
+    cookies = { '__Host-ak-session': 'synthetic-correction' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-correction'),
+    },
+    post = (payload: Record<string, unknown>, secured = true) =>
+      app.inject({
+        method: 'POST',
+        url,
+        cookies,
+        ...(secured ? { headers } : {}),
+        payload,
+      });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          payload: { version: order.invoice.version, direction: 'credit' },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await post(
+          { version: order.invoice.version, direction: 'credit' },
+          false,
+        )
+      ).statusCode,
+    ).toBe(403);
+    // Fastify's schema refuses a missing or unknown direction before the domain
+    // sees the body, and a non-integer version with it.
+    for (const payload of [
+      {},
+      { version: order.invoice.version },
+      { version: order.invoice.version, direction: 'refund' },
+      { version: 0, direction: 'credit' },
+      { version: 1.5, direction: 'credit' },
+    ])
+      expect((await post(payload)).statusCode, JSON.stringify(payload)).toBe(
+        400,
+      );
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + randomUUID() + '/correction',
+          cookies,
+          headers,
+          payload: { version: 1, direction: 'credit' },
+        })
+      ).statusCode,
+    ).toBe(404);
+    // A stale version is a conflict before anything is copied.
+    expect((await post({ version: 1, direction: 'credit' })).statusCode).toBe(
+      409,
+    );
+    expect((await post({ version: 1, direction: 'credit' })).json()).toEqual({
+      error: 'conflict',
+    });
+    const created = await post({
+      version: order.invoice.version,
+      direction: 'credit',
+    });
+    expect(created.statusCode).toBe(201);
+    const single = await app.inject({
+      url: '/api/v1/documents/' + (created.json() as { id: string }).id,
+      cookies,
+    });
+    expect(Object.keys(created.json() as object).sort()).toEqual(
+      Object.keys(single.json() as object).sort(),
+    );
+    expect(created.json()).toMatchObject({
+      kind: 'correction',
+      state: 'draft',
+      number: null,
+      templateId: null,
+      subject: 'Rechnungskorrektur für {{contact}}',
+      grossMinor: 52310,
+    });
+    // The create answer keeps the old document shape: the projection, not this
+    // route, names the direction and the source.
+    expect(created.body).not.toContain('correctionDirection');
+    expect(created.body).not.toContain('correctionState');
+    const again = await post({
+      version: order.invoice.version,
+      direction: 'debit',
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: 'duplicate' });
+    expect(await correctionCount(order.scope)).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a correction template no longer creates a draft', async () => {
+  const context = await confirmationContext(randomUUID()),
+    template = await documentTemplateRepository(pool, context.scope).save(
+      context.actor,
+      {
+        kind: 'correction',
+        name: 'Fiktive Korrekturvorlage',
+        subject: 'Rechnungskorrektur für {{contact}}',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+        state: 'active',
+        positions: confirmationLines,
+      },
+    );
+  // A correction only exists with a source. The template path is refused with a
+  // clear reason instead of running into the database CHECK.
+  await expect(
+    context.repo.createDraft(context.actor, {
+      templateId: template.id,
+      eventId: context.event,
+      contactId: context.contact,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  expect(await correctionCount(context.scope)).toBe(0);
+  // The template stays manageable, so an operator sees why it exists.
+  expect(
+    (await documentTemplateRepository(pool, context.scope).list()).some(
+      (row) => row.id === template.id,
+    ),
+  ).toBe(true);
 });
