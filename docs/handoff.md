@@ -2,6 +2,59 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H068: BKP019.d – Zahlungseingänge und offener Saldo (RG-09), 26.10.2026
+
+- **BKP019.d `e5f9ac3`** – manuelle Erfassung von Zahlungseingängen gegen
+  finale Rechnungen: Empfangsdatum (nie Zukunft), Betrag ≥ 1 Cent, Zahlweg
+  (Überweisung/Bar/Karte/Sonstiges – eigene dokumentierte Konvention) und
+  optionale Notiz; append-only (kein Ändern/Löschen), auditiert, mandanten-
+  gebunden. **Überzahlung wird abgelehnt** (409 `overpaid`); der
+  Über-Gutschrift-Guard aus c2 wurde um Zahlungen erweitert: bezahltes Geld
+  wird nicht gutgeschrieben, solange es keine Rückzahlungslogik gibt
+  (dokumentierter Zwischenzustand). Zahlungsstand `none|partial|paid` und
+  offener Saldo (`Brutto + Σdebit − Σcredit − ΣZahlungen`) werden
+  **abgeleitet** (nie gespeichert); „Bezahlt“ entsteht nur aus erfassten
+  Zahlungen, nie aus Druck. UI: Zahlungsstand/„Offener Betrag“ auf der
+  Rechnungszeile, kompakte Erfassung und Zahlungsliste je Rechnung.
+  **Ehrlich offen:** „Überfällig“ fehlt, weil ein Zahlungsziel (RG-07)
+  eigener Slice ist – nicht erfunden.
+- **Abnahme:** echtes Produkt-RED beobachtet (14/15 Integrationstests gegen
+  entfernte Migration; sechs Harness-/Testfehler ehrlich getrennt repariert),
+  danach grün: unit 274, component 729, integration 410 (16 neue Fälle inkl.
+  Teilzahlung→bezahlt ohne Versionssprung, Überzahlung, Parallelzahlung,
+  kein PATCH/DELETE, erweiterter Kredit-Guard „50,00 € gezahlt → höchstens
+  223,10 € gutgeschrieben“, Mandantentrennung, DB-CHECKs/FK/kein Cascade),
+  coverage 1413 vollständig (Changed 91,8%/80,7%), E2E 16/16 inkl. Ablauf
+  offen → 40,00 € → teilweise → 60,00 € bar → bezahlt/0,00 € →
+  Überzahlung abgelehnt, PDF/Hash unverändert, Build grün.
+- **Ehrlich notiert:** kein Idempotenzschlüssel für Zahlungen (UI blockt
+  Doppelklick, Netz-Retry theoretisch möglich – Kandidat für den späteren
+  Beleg-Mechanismus); Überzahlungsregel lebt unter `lockTenant`, nicht
+  strukturell in der DB; ein vorbestehender testcontainers-Parallelitäts-
+  Flake (worker-main.test.ts) fiel einmal aus, Wiederholungslauf grün.
+
+**Nächste Unter-Slices BKP019:** c3 (Anzahlung/Schlussrechnung – jetzt mit
+Zahlungsaussage sinnvoll), (e) Fristen-/Statusfilter und Export, RG-07
+(Zahlungsziel/„überfällig“); dazu Pflichtangaben RG-04, Annahme-Korrekturpfad,
+BKP020-Reste und BKP021+ (Mailkern bis BKP030). Betrieb unverändert:
+verifiziert live **c21330c**, alleiniger Auto-Updater; Checkpoint-/OCI-
+Nachweis weiterhin offen (Proxmox-Host 192.168.68.201 nicht erreichbar).
+
+**Betriebsbefund (wachsend):** Der CI-Lauf zu `e5f9ac3` (40414170015) riss
+zuerst an der 25-Minuten-Jobgrenze ab (drittes Mal dieser Grenztyp; alle
+sichtbaren Phasen liefen, `images` blieb aus). Der erste Re-Run scheiterte
+anschließend an einem **zweiten Mal** aufgetretenen transienten
+`net::ERR_NETWORK_CHANGED` des Runner-Chromiums (diesmal auf
+`/api/v1/access`, Konsolennachweis im Artefakt – die Zeile „Erste Anmeldung
+ausstehend“ konnte deshalb nie erscheinen; die übrigen 404/409 im Log sind
+die bewusst injizierten Negativfälle). Kein Produktfehler, kein Test
+geändert; ein weiterer gezielter Re-Run verifiziert den Stand (siehe
+Folgeabschnitt). Da beide Abbrucharten zunehmen, sind zwei Betriebs-
+entscheidungen zu prüfen: `timeout-minutes` in `quality.yml` und der Umgang
+mit Runner-Netzwerkflakes – beides wurde hier **nicht** eigenmächtig
+geändert (keine Verhaltensänderung an Tests/Gates). Der zweite
+Re-Run ist komplett grün (quality 18m08s + images 2m04s).
+
 ## H067: BKP019.c2 – Rechnungskorrektur/Storno mit Richtungsmodell (RG-02), 26.10.2026
 
 - **BKP019.c2 `e0804c4`** (inkl. Nachtrag c2b): Rechnungskorrektur als eigener
