@@ -2,6 +2,43 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H064: BKP019.a – Annahmedaten (AG-06/AG-08), 26.10.2026
+
+- **BKP019.a `e9d72b3`** – die Angebotsannahme erfasst jetzt Kanal
+  (E-Mail/Telefon/unterschriebenes PDF/Sonstiges, Pflicht), optionalen
+  Annahmezeitpunkt (Vorgabe jetzt, nie Zukunft, Mandantenzeitzone), Notiz
+  (≤2000) und optionalen Anhang (Verweis auf eine eigene verfügbare
+  Bibliotheksdatei; „unverprüft“ bleibt sichtbar – kein Scan-Versprechen).
+  Zwei Analysefunde wurden behoben: der Annahmezeitpunkt ist eine eigene
+  Spalte `accepted_at` (ein `status_changed_at` ginge beim Rückzug verloren),
+  und eine Wiederholung mit abweichenden Angaben wird mit 409
+  `acceptance_conflict` abgewiesen statt still verschluckt (identische
+  Wiederholung bleibt wirkungsloser No-op). Migration `0040` mit vier
+  benannten CHECKs und zusammengesetztem mandantengebundenem Anhang-FK;
+  Rückzug erhält die Annahmedaten unverändert lesbar (Regressionstest);
+  finaler Inhalt/Nummer/PDF-Bytes bleiben unberührt.
+- **Abnahme:** RED beobachtet (Typfehler + Component 10/35 gegen den
+  Altstand), dann grün: unit 274, component 699, integration 348 (fünf
+  ungültige Kanalwerte, Zukunfts-/Grenzzeitpunkte, Notizgrenzen, fremde/
+  archivierte Anhang-ID, No-op vs. 409, DB-CHECKs + FK, Unveränderlichkeit
+  finaler Artefakte), coverage vollständig (Changed 91,0%/85,8%), E2E
+  16/16 inkl. echter Bibliotheksdatei als Anhang mit Byte-Download,
+  Build grün, Impeccable-Detektor ohne Befund.
+- **Ehrlich notiert:** eine gespeicherte Annahme ist im UI nicht
+  korrigierbar (Korrekturpfad = eigener späterer Slice); der DB-CHECK
+  erlaubt Annahmedaten bei `withdrawn` (nötig für den Regressionstest, die
+  Domäne unterscheidet); der Anhang-Picker listet ohne Eventbezug alle
+  eigenen Dateien (BKP020-Reste); `datetime-local` zählt als
+  Mandanten-Wandzeit.
+
+**Nächste Unter-Slices BKP019:** (b) Auftragsbestätigung aus angenommenem
+Angebot ohne Positionsneueingabe, (c) Rechnung/Anzahlung/Schlussrechnung/
+Korrektur, (d) Zahlungen/Salden, (e) Fristen-/Statusfilter und Export; dazu
+Annahme-Korrekturpfad, BKP020-Reste und BKP021+ (Mailkern bis BKP030).
+Betrieb unverändert: verifiziert live **c21330c**, alleiniger Auto-Updater;
+Checkpoint-/OCI-Nachweis weiterhin offen (Proxmox-Host 192.168.68.201 nicht
+erreichbar).
+
 ## H063: BKP019.0 – Angebotsgültigkeit und Statusübergänge, 26.10.2026
 
 - **BKP019.0 `d60cad1`** – der erste Unter-Slice des kommerziellen
