@@ -392,7 +392,7 @@ test('opens a compact create dialog without disturbing the grouped list', async 
   fireEvent.click(trigger);
   const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
   expect(within(dialog).getByLabelText('Eventdatum')).toBeTruthy();
-  expect(within(dialog).getByLabelText('Kunde')).toBeTruthy();
+  expect(within(dialog).getByLabelText('Kunde suchen')).toBeTruthy();
   expect(within(dialog).getByLabelText('Eventart')).toBeTruthy();
   expect(within(dialog).queryByLabelText('Eventbeginn')).toBeTruthy();
   fireEvent.click(
@@ -1252,7 +1252,7 @@ test('the main contact is excluded from further contacts and changing it clears 
       return Response.json({ timeZone: 'Europe/Berlin', events: rows });
     if (url === '/api/v1/statuses')
       return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
-    if (url === '/api/v1/contacts') return Response.json(contacts);
+    if (url.startsWith('/api/v1/contacts')) return Response.json(contacts);
     return Response.json([]);
   });
   vi.stubGlobal('fetch', fetcher);
@@ -1262,9 +1262,13 @@ test('the main contact is excluded from further contacts and changing it clears 
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic contact event' },
   });
-  fireEvent.change(screen.getByLabelText('Kunde'), {
-    target: { value: 'contact-main' },
-  });
+  // BKP012.1: the create dialog searches instead of listing every contact; the
+  // exclusion rule between main and further contacts stays exactly the same.
+  const search = screen.getByLabelText('Kunde suchen');
+  fireEvent.change(search, { target: { value: 'Synthetic main' } });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Synthetic main/ }),
+  );
   const additional = screen.getByLabelText(
     'Weitere Kontakte',
   ) as HTMLSelectElement;
@@ -1273,9 +1277,10 @@ test('the main contact is excluded from further contacts and changing it clears 
   ).toBeNull();
   fireEvent.change(additional, { target: { value: 'contact-extra' } });
   expect(additional.value).toBe('contact-extra');
-  fireEvent.change(screen.getByLabelText('Kunde'), {
-    target: { value: 'contact-extra' },
-  });
+  fireEvent.change(search, { target: { value: 'Synthetic extra' } });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Synthetic extra/ }),
+  );
   expect(additional.value).toBe('');
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,

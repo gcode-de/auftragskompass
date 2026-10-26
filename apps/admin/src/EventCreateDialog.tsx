@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
+import { ContactDialog, contactDialogTitleId } from './ContactDialog.js';
 import { EventTimeField } from './EventTimeField.js';
 import type { EventRow } from './EventPanel.js';
 import {
@@ -16,6 +17,17 @@ type ScheduleErrors = {
   endsAt?: string;
   eventDate?: string;
 };
+/** A contact as the search answers it: the stored row, never a projection. */
+type ContactHit = {
+  id: string;
+  name: string;
+  state: string;
+  kind?: string;
+  contactPerson?: string;
+  city?: string;
+};
+/** The visible result count stays small enough to stay readable. */
+export const contactHitLimit = 20;
 
 export function generatedEventName(
   eventTypeId: string,
@@ -27,6 +39,17 @@ export function generatedEventName(
     contact = contacts.find((choice) => choice.id === primaryContactId)?.name;
   if (type && contact) return `${type} – ${contact}`;
   return type || contact || 'Neues Event';
+}
+
+/** The quiet second line of a hit: company form, person and town. */
+function contactLine(hit: ContactHit) {
+  const parts = [
+    hit.kind === 'company' ? 'Firma' : '',
+    hit.contactPerson ?? '',
+    hit.city ?? '',
+  ].filter(Boolean);
+  if (hit.state !== 'active') parts.push('Archiviert/Inaktiv');
+  return parts.length ? parts.join(' · ') : 'Privatperson';
 }
 
 export function EventCreateDialog({
@@ -54,6 +77,9 @@ export function EventCreateDialog({
 }) {
   const dialog = useRef<HTMLDivElement>(null),
     saving = useRef(false),
+    searchSequence = useRef(0),
+    pickerInput = useRef<HTMLInputElement>(null),
+    pickerFocus = useRef(false),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
     [eventDate, setEventDate] = useState(
@@ -67,6 +93,7 @@ export function EventCreateDialog({
     [primaryContactId, setPrimaryContactId] = useState(
       initial?.primaryContactId ?? '',
     ),
+    [pickedContact, setPickedContact] = useState<ContactHit | null>(null),
     [additionalContactIds, setAdditionalContactIds] = useState<string[]>(
       (initial?.additionalContactIds ?? []).filter(
         (id) => id !== (initial?.primaryContactId ?? ''),
@@ -81,7 +108,14 @@ export function EventCreateDialog({
       ),
     ),
     [venueEdited, setVenueEdited] = useState(false),
-    [scheduleErrors, setScheduleErrors] = useState<ScheduleErrors>({});
+    [scheduleErrors, setScheduleErrors] = useState<ScheduleErrors>({}),
+    // The contact form is a view inside this dialog box, never a second one.
+    [view, setView] = useState<'event' | 'contact'>('event'),
+    [searchQuery, setSearchQuery] = useState(''),
+    [searchState, setSearchState] = useState<
+      'idle' | 'loading' | 'ready' | 'failed'
+    >('idle'),
+    [hits, setHits] = useState<ContactHit[]>([]);
   // Locations may arrive after the dialog opened. Hydration only fills an
   // untouched field and never overwrites text the operator already entered.
   useEffect(() => {
@@ -92,17 +126,82 @@ export function EventCreateDialog({
     );
     setVenue((current) => (current === next ? current : next));
   }, [initial, locations, venueEdited]);
+  // A stored assignment stays readable even when it is not among the choices.
+  const chosen: ContactHit | null = primaryContactId
+    ? ((pickedContact?.id === primaryContactId
+        ? pickedContact
+        : contacts.find((choice) => choice.id === primaryContactId)) ?? null)
+    : null;
+  // The freshly stored contact is not part of the panel's list yet; the name
+  // generation and the further contacts still have to know it.
+  const contactChoices: Choice[] =
+    chosen && !contacts.some((choice) => choice.id === chosen.id)
+      ? [...contacts, chosen]
+      : contacts;
   const generated = generatedEventName(
     eventTypeId,
     primaryContactId,
     types,
-    contacts,
+    contactChoices,
   );
   useEffect(() => {
     dialog.current
       ?.querySelector<HTMLInputElement>('input[name="eventDate"]')
       ?.focus();
   }, []);
+  useEffect(() => {
+    if (view !== 'event' || !pickerFocus.current) return;
+    pickerFocus.current = false;
+    pickerInput.current?.focus();
+  }, [view]);
+  function runSearch(value: string) {
+    setSearchQuery(value);
+    const current = ++searchSequence.current,
+      query = value.trim();
+    if (!query) {
+      setHits([]);
+      setSearchState('idle');
+      return;
+    }
+    setSearchState('loading');
+    void fetch('/api/v1/contacts?q=' + encodeURIComponent(query))
+      .then(async (response) => {
+        if (!response.ok) throw Error('search');
+        return (await response.json()) as ContactHit[];
+      })
+      .then((rows) => {
+        // Only the newest request may write the list; a late answer is void.
+        if (current !== searchSequence.current) return;
+        setHits(Array.isArray(rows) ? rows : []);
+        setSearchState('ready');
+      })
+      .catch(() => {
+        if (current !== searchSequence.current) return;
+        setHits([]);
+        setSearchState('failed');
+      });
+  }
+  function clearContact() {
+    setPrimaryContactId('');
+    setPickedContact(null);
+  }
+  function chooseContact(row: ContactHit) {
+    setPrimaryContactId(row.id);
+    setPickedContact(row);
+    setAdditionalContactIds((current) => current.filter((id) => id !== row.id));
+  }
+  function backToPicker() {
+    setView('event');
+    pickerFocus.current = true;
+  }
+  function contactSaved(row: ContactHit) {
+    // The stored row is the truth: the selection never depends on a list load.
+    setPrimaryContactId(row.id);
+    setPickedContact(row);
+    setAdditionalContactIds((current) => current.filter((id) => id !== row.id));
+    backToPicker();
+    if (searchQuery.trim()) runSearch(searchQuery);
+  }
   function clearScheduleError(field: keyof ScheduleErrors) {
     setScheduleErrors((current) => {
       if (!current[field]) return current;
@@ -112,6 +211,8 @@ export function EventCreateDialog({
     });
   }
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // While the contact view is open it owns Escape and Tab completely.
+    if (view === 'contact') return;
     if (event.key === 'Escape') {
       event.preventDefault();
       if (saving.current || busy) return;
@@ -203,7 +304,8 @@ export function EventCreateDialog({
     const typeId = value('eventTypeId'),
       contactId = value('primaryContactId');
     const resolvedName = (
-      name.trim() || generatedEventName(typeId, contactId, types, contacts)
+      name.trim() ||
+      generatedEventName(typeId, contactId, types, contactChoices)
     ).slice(0, 200);
     saving.current = true;
     setBusy(true);
@@ -287,13 +389,17 @@ export function EventCreateDialog({
         className="event-create-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="event-create-title"
+        aria-labelledby={
+          view === 'contact'
+            ? contactDialogTitleId('event-create')
+            : 'event-create-title'
+        }
         ref={dialog}
         onKeyDown={onKeyDown}
       >
-        <header className="event-create-header">
+        <header className="event-create-header" hidden={view === 'contact'}>
           <div>
-            <h3 id="event-create-title">Neues Event</h3>
+            <h2 id="event-create-title">Neues Event</h2>
             <p>
               Datum, Kunde oder Eventart genügen. Alles Weitere ist optional.
             </p>
@@ -313,6 +419,7 @@ export function EventCreateDialog({
           </button>
         </header>
         <form
+          hidden={view === 'contact'}
           onSubmit={(event) => {
             event.preventDefault();
             void save(event.currentTarget);
@@ -353,23 +460,104 @@ export function EventCreateDialog({
                 {scheduleErrors.eventDate}
               </p>
             )}
-            <label>
-              Kunde
-              <select
+            <div className="contact-picker">
+              <label>
+                Kunde suchen
+                <input
+                  ref={pickerInput}
+                  name="contactSearch"
+                  type="search"
+                  maxLength={200}
+                  autoComplete="off"
+                  value={searchQuery}
+                  aria-describedby="event-create-contact-help"
+                  aria-controls="event-create-contact-hits"
+                  onChange={(event) => runSearch(event.currentTarget.value)}
+                  // Enter belongs to the event form, not to a search that runs
+                  // while typing: it must never save the event by accident.
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.preventDefault();
+                  }}
+                />
+              </label>
+              <p id="event-create-contact-help">
+                Sucht nach Name, Ansprechpartner, Ort und Kontaktdaten.
+              </p>
+              <input
+                type="hidden"
                 name="primaryContactId"
                 value={primaryContactId}
-                onChange={(event) => {
-                  const next = event.currentTarget.value;
-                  setPrimaryContactId(next);
-                  setAdditionalContactIds((current) =>
-                    current.filter((id) => id !== next),
-                  );
-                }}
+              />
+              <p className="contact-picker-current">
+                <span>
+                  {primaryContactId
+                    ? `Kunde: ${chosen?.name ?? 'Zugeordneter Kontakt'}${
+                        chosen && chosen.state !== 'active'
+                          ? ' (Archiviert/Inaktiv)'
+                          : ''
+                      }`
+                    : 'Kein Kunde ausgewählt – das Event bleibt ohne Kundenbezug.'}
+                </span>
+                {primaryContactId && (
+                  <button
+                    type="button"
+                    className="tertiary-action"
+                    onClick={clearContact}
+                  >
+                    Kunde entfernen
+                  </button>
+                )}
+              </p>
+              {searchState === 'loading' && (
+                <p role="status">Kontakte werden gesucht …</p>
+              )}
+              {searchState === 'ready' && hits.length === 0 && (
+                <p role="status">Keine Kontakte gefunden.</p>
+              )}
+              {searchState === 'failed' && (
+                <p role="status">
+                  Kontakte konnten nicht gesucht werden. Die bisherige Auswahl
+                  bleibt bestehen.
+                </p>
+              )}
+              {hits.length > 0 && (
+                <ul
+                  className="contact-picker-hits"
+                  id="event-create-contact-hits"
+                  aria-label="Kontakte gefunden"
+                >
+                  {hits.slice(0, contactHitLimit).map((row) => (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        className="contact-picker-hit"
+                        aria-pressed={row.id === primaryContactId}
+                        disabled={row.state !== 'active'}
+                        onClick={() => chooseContact(row)}
+                      >
+                        <span className="contact-picker-name">{row.name}</span>
+                        <span className="contact-picker-detail">
+                          {contactLine(row)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {hits.length > contactHitLimit && (
+                <p>
+                  {`Suche eingrenzen: nur die ersten ${contactHitLimit} Treffer werden angezeigt.`}
+                </p>
+              )}
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={busy}
+                onClick={() => setView('contact')}
               >
-                <option value="">Kunde wählen</option>
-                {options(contacts, primaryContactId || null)}
-              </select>
-            </label>
+                Neuen Kunden anlegen
+              </button>
+            </div>
             <label>
               Eventart
               <select
@@ -464,7 +652,7 @@ export function EventCreateDialog({
                     }
                   >
                     {options(
-                      contacts.filter(
+                      contactChoices.filter(
                         (choice) => choice.id !== primaryContactId,
                       ),
                       additionalContactIds,
@@ -532,6 +720,16 @@ export function EventCreateDialog({
             </div>
           </fieldset>
         </form>
+        {view === 'contact' && (
+          <ContactDialog
+            inline
+            csrfToken={csrfToken}
+            idPrefix="event-create"
+            discardMessage="Ungespeicherte Eingaben verwerfen und zur Eventanlage zurückkehren?"
+            onClose={backToPicker}
+            onSaved={contactSaved}
+          />
+        )}
       </div>
     </div>
   );

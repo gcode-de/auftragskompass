@@ -1859,11 +1859,34 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(createTrigger).toBeFocused();
     await createTrigger.click();
     await expect(createDialog).toBeVisible();
-    await expect(
-      events
-        .getByLabel('Kunde')
-        .getByRole('option', { name: 'Synthetic browser contact' }),
-    ).toBeEnabled();
+    // The contact form is a view inside this dialog box, never a second dialog
+    // level: the filled draft stays mounted and comes back untouched.
+    await events.getByLabel('Eventdatum').fill('2026-10-16');
+    await events.getByRole('button', { name: 'Neuen Kunden anlegen' }).click();
+    const inlineContact = events.getByRole('dialog', {
+      name: 'Kontakt anlegen',
+    });
+    await expect(inlineContact).toBeVisible();
+    await expect(events.getByRole('dialog')).toHaveCount(1);
+    await expect(events.getByLabel('Eventdatum')).toBeHidden();
+    await expect(events.getByLabel('Kunde suchen')).toBeHidden();
+    await expect(events.getByLabel('Kontaktart')).toBeFocused();
+    await audit('event-create-inline-contact');
+    await events
+      .getByRole('button', { name: 'Kontaktanlage schließen' })
+      .click();
+    await expect(inlineContact).toBeHidden();
+    await expect(events.getByLabel('Eventdatum')).toHaveValue('2026-10-16');
+    await expect(events.getByLabel('Kunde suchen')).toBeFocused();
+    // BKP012.1: the create dialog searches for the stored contact instead of
+    // listing every one of them.
+    const pickerSearch = events.getByLabel('Kunde suchen');
+    await pickerSearch.fill('Synthetic browser');
+    const browserContact = events.getByRole('button', {
+      name: /Synthetic browser contact/,
+    });
+    await expect(browserContact).toBeEnabled();
+    await audit('event-create-contact-picker');
     await expect(events.getByLabel('Eventname', { exact: true })).toBeHidden();
     await expect(
       events.getByLabel('Eventbeginn', { exact: true }),
@@ -1878,9 +1901,7 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await events
       .getByLabel('Eventname', { exact: true })
       .fill('Synthetic browser event');
-    await events
-      .getByLabel('Kunde')
-      .selectOption({ label: 'Synthetic browser contact' });
+    await browserContact.click();
     await events
       .getByRole('combobox', { name: 'Eventart', exact: true })
       .selectOption({ label: 'Hochzeit' });

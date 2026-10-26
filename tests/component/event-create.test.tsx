@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +10,7 @@ import {
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { EventCreateDialog } from '../../apps/admin/src/EventCreateDialog.js';
+import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -42,21 +44,84 @@ const contacts = [
   { id: 'contact-main', name: 'Synthetic contact', state: 'active' },
   { id: 'contact-extra', name: 'Synthetic extra', state: 'active' },
 ];
+type ContactHit = {
+  id: string;
+  name: string;
+  state: string;
+  kind?: string;
+  contactPerson?: string;
+  city?: string;
+};
+const hit = (
+  id: string,
+  name: string,
+  extra: Partial<ContactHit> = {},
+): ContactHit => ({
+  id,
+  name,
+  state: 'active',
+  kind: 'company',
+  contactPerson: '',
+  city: 'Fictional Town',
+  ...extra,
+});
+const dialogProps = {
+  csrfToken: 'csrf',
+  timeZone: 'Europe/Berlin',
+  statuses: [{ code: 'inquiry', label: 'Anfrage' }],
+  types,
+  packages: [],
+  locations: [],
+  contacts,
+  initial: null,
+  onClose: vi.fn(),
+  onCreated: vi.fn().mockResolvedValue(undefined),
+};
 function setup({
   supplied = {},
   listFailsAfter = 0,
   locationChoices = [
     { id: 'location-main', name: 'Synthetic venue', state: 'active' },
   ],
+  contactRows = contacts,
+  contactPost,
 }: {
   supplied?: Record<string, unknown>;
   listFailsAfter?: number;
   locationChoices?: Record<string, unknown>[];
+  contactRows?: ContactHit[];
+  contactPost?: (body: Record<string, unknown>) => Response;
 } = {}) {
   let listLoads = 0,
-    rows = [{ ...row, ...supplied }];
+    rows = [{ ...row, ...supplied }],
+    searchFails = false;
   const posts: Record<string, unknown>[] = [];
+  const contactPosts: Record<string, unknown>[] = [];
+  const searches: string[] = [];
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.startsWith('/api/v1/contacts')) {
+      if (options) {
+        const body = JSON.parse(String(options.body)) as Record<
+          string,
+          unknown
+        >;
+        contactPosts.push(body);
+        return (
+          contactPost?.(body) ??
+          Response.json({ ...body, id: 'contact-created', version: 1 })
+        );
+      }
+      searches.push(url);
+      if (searchFails) return new Response(null, { status: 503 });
+      const query = decodeURIComponent(
+        new URL(url, 'https://synthetic.invalid').searchParams.get('q') ?? '',
+      ).toLowerCase();
+      return Response.json(
+        contactRows.filter(
+          (entry) => !query || entry.name.toLowerCase().includes(query),
+        ),
+      );
+    }
     if (options) {
       const body = JSON.parse(String(options.body)) as Record<string, unknown>;
       posts.push(body);
@@ -74,7 +139,6 @@ function setup({
         { code: 'booked', label: 'Gebucht' },
       ]);
     if (url === '/api/v1/master-data/event_type') return Response.json(types);
-    if (url === '/api/v1/contacts') return Response.json(contacts);
     if (url === '/api/v1/master-data/package')
       return Response.json([
         { id: 'package-main', name: 'Synthetic package', state: 'active' },
@@ -83,11 +147,32 @@ function setup({
     return Response.json([]);
   });
   vi.stubGlobal('fetch', fetcher);
-  return { fetcher, posts, setRows: (next: typeof rows) => (rows = next) };
+  return {
+    fetcher,
+    posts,
+    contactPosts,
+    searches,
+    failSearch: () => {
+      searchFails = true;
+    },
+    setRows: (next: typeof rows) => (rows = next),
+  };
 }
 async function openCreate() {
   fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
   return screen.findByRole('dialog', { name: 'Neues Event' });
+}
+/** The picker is the only way to a stored contact: search, then choose. */
+async function pickContact(name: string) {
+  fireEvent.change(screen.getByLabelText('Kunde suchen'), {
+    target: { value: name },
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: new RegExp(name) }),
+  );
+}
+function submitContact(form: HTMLElement) {
+  fireEvent.submit(form);
 }
 async function ready() {
   render(<EventPanel csrfToken="csrf" />);
@@ -110,15 +195,13 @@ test('a date-only create stores the business date and never invents midnight', a
     element.getAttribute('id'),
   );
   expect(new Set(ids).size).toBe(ids.length);
-  fireEvent.change(screen.getByLabelText('Kunde'), {
-    target: { value: 'contact-main' },
-  });
   fireEvent.change(screen.getByLabelText('Eventart'), {
     target: { value: 'type-wedding' },
   });
   fireEvent.change(screen.getByLabelText('Eventdatum'), {
     target: { value: '2027-05-20' },
   });
+  await pickContact('Synthetic contact');
   fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
   await screen.findByText('Event gespeichert.');
   expect(posts).toHaveLength(1);
@@ -143,9 +226,7 @@ test('the generated name is only a placeholder until a manual override is typed'
   fireEvent.change(screen.getByLabelText('Eventart'), {
     target: { value: 'type-wedding' },
   });
-  fireEvent.change(screen.getByLabelText('Kunde'), {
-    target: { value: 'contact-main' },
-  });
+  await pickContact('Synthetic contact');
   expect(name.value).toBe('');
   expect(name.placeholder).toBe('Hochzeit – Synthetic contact');
   expect(posts).toHaveLength(0);
@@ -667,4 +748,342 @@ test('late location data hydrates an untouched field but never typed text', asyn
       (screen.getByLabelText('Ort / Adresse') as HTMLTextAreaElement).value,
     ).toBe('Synthetic typed place'),
   );
+});
+
+test('the contact search keeps only the newest answer when an older request finishes later', async () => {
+  let resolveOlder!: (response: Response) => void;
+  const fetcher = vi.fn((url: string) => {
+    const query = decodeURIComponent(url);
+    if (query.endsWith('q=Synt'))
+      return Promise.resolve(
+        Response.json([hit('contact-newer', 'Synthetic Newer')]),
+      );
+    if (query.endsWith('q=Syn'))
+      return new Promise<Response>((resolve) => {
+        resolveOlder = resolve;
+      });
+    return Promise.resolve(Response.json([]));
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventCreateDialog {...dialogProps} />);
+  const search = screen.getByLabelText('Kunde suchen');
+  fireEvent.change(search, { target: { value: 'Syn' } });
+  fireEvent.change(search, { target: { value: 'Synt' } });
+  await screen.findByRole('button', { name: /Synthetic Newer/ });
+  await act(async () =>
+    resolveOlder(Response.json([hit('contact-older', 'Synthetic Older')])),
+  );
+  expect(screen.queryByRole('button', { name: /Synthetic Older/ })).toBeNull();
+  expect(screen.getByRole('button', { name: /Synthetic Newer/ })).toBeTruthy();
+});
+
+test('an empty contact search says so and still offers the deliberate creation', async () => {
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    // An empty answer is honest: this store has no matching contact yet.
+    if (options) throw Error('unexpected mutation');
+    expect(
+      new URL(url, 'https://synthetic.invalid').searchParams.get('q'),
+    ).toBe('Synthetic missing');
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventCreateDialog {...dialogProps} />);
+  fireEvent.change(screen.getByLabelText('Kunde suchen'), {
+    target: { value: 'Synthetic missing' },
+  });
+  await screen.findByText('Keine Kontakte gefunden.');
+  expect(
+    screen.getByRole('button', { name: 'Neuen Kunden anlegen' }),
+  ).toBeTruthy();
+  expect(screen.getByText(/Kein Kunde ausgewählt/)).toBeTruthy();
+  expect(fetcher.mock.calls.every(([, options]) => !options)).toBe(true);
+});
+
+test('the picker shows at most twenty hits and points to narrowing the search', async () => {
+  const many = Array.from({ length: 25 }, (_, index) =>
+    hit(
+      `contact-${index}`,
+      `Synthetic limit ${String(index).padStart(2, '0')}`,
+    ),
+  );
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(many)),
+  );
+  render(<EventCreateDialog {...dialogProps} />);
+  fireEvent.change(screen.getByLabelText('Kunde suchen'), {
+    target: { value: 'Synthetic limit' },
+  });
+  await screen.findByText(/Suche eingrenzen/);
+  const list = screen.getByRole('list', { name: 'Kontakte gefunden' });
+  expect(within(list).getAllByRole('button')).toHaveLength(20);
+  expect(screen.getByText(/nur die ersten 20 Treffer/)).toBeTruthy();
+});
+
+test('without a contact the event stays possible and the picker says so', async () => {
+  const { posts } = setup();
+  await ready();
+  await openCreate();
+  expect(screen.getByText(/Kein Kunde ausgewählt/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
+  await screen.findByText('Event gespeichert.');
+  expect(posts[0]).toMatchObject({ primaryContactId: null });
+  cleanup();
+  const chosen = setup();
+  await ready();
+  await openCreate();
+  await pickContact('Synthetic contact');
+  expect(screen.getByText(/Kunde: Synthetic contact/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Kunde entfernen' }));
+  expect(screen.getByText(/Kein Kunde ausgewählt/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
+  await screen.findByText('Event gespeichert.');
+  expect(chosen.posts[0]).toMatchObject({ primaryContactId: null });
+});
+
+test('an archived assignment stays readable but is never offered as a new choice', async () => {
+  const archived = [
+    hit('contact-old', 'Synthetic archived contact', { state: 'archived' }),
+  ];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json([
+        ...archived,
+        hit('contact-live', 'Synthetic live contact'),
+      ]),
+    ),
+  );
+  render(
+    <EventCreateDialog
+      {...dialogProps}
+      contacts={archived}
+      initial={{ ...row, primaryContactId: 'contact-old' }}
+    />,
+  );
+  expect(
+    screen.getByText(/Synthetic archived contact \(Archiviert\/Inaktiv\)/),
+  ).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Kunde suchen'), {
+    target: { value: 'Synthetic' },
+  });
+  const archivedButton = await screen.findByRole('button', {
+    name: /Synthetic archived contact/,
+  });
+  expect((archivedButton as HTMLButtonElement).disabled).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: /Synthetic live contact/,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+});
+
+test('cancelling the inline contact form keeps the event draft and the chosen contact', async () => {
+  const { posts, contactPosts } = setup();
+  const confirm = vi.fn(() => false);
+  vi.stubGlobal('confirm', confirm);
+  await ready();
+  await openCreate();
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2027-05-20' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventart'), {
+    target: { value: 'type-wedding' },
+  });
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic kept draft' },
+  });
+  fireEvent.change(screen.getByLabelText('Anfragequelle'), {
+    target: { value: 'Synthetic source' },
+  });
+  await pickContact('Synthetic contact');
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  await screen.findByRole('dialog', {
+    name: 'Kontakt anlegen',
+  });
+  // One dialog box only: the event draft is hidden, not unmounted.
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  expect((screen.getByLabelText('Eventdatum') as HTMLInputElement).value).toBe(
+    '2027-05-20',
+  );
+  const contactName = screen.getByLabelText('Name / Firma');
+  fireEvent.change(contactName, {
+    target: { value: 'Synthetic cancelled contact' },
+  });
+  fireEvent.keyDown(contactName, { key: 'Escape' });
+  expect(confirm).toHaveBeenCalledWith(
+    'Ungespeicherte Eingaben verwerfen und zur Eventanlage zurückkehren?',
+  );
+  expect(screen.getByRole('dialog', { name: 'Kontakt anlegen' })).toBeTruthy();
+  confirm.mockReturnValue(true);
+  fireEvent.keyDown(contactName, { key: 'Escape' });
+  await screen.findByRole('dialog', { name: 'Neues Event' });
+  expect((screen.getByLabelText('Eventdatum') as HTMLInputElement).value).toBe(
+    '2027-05-20',
+  );
+  expect((screen.getByLabelText('Eventart') as HTMLSelectElement).value).toBe(
+    'type-wedding',
+  );
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic kept draft',
+  );
+  expect(
+    (screen.getByLabelText('Anfragequelle') as HTMLInputElement).value,
+  ).toBe('Synthetic source');
+  expect(screen.getByText(/Kunde: Synthetic contact/)).toBeTruthy();
+  expect(contactPosts).toHaveLength(0);
+  expect(posts).toHaveLength(0);
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByLabelText('Kunde suchen')),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
+  await screen.findByText('Event gespeichert.');
+  expect(posts[0]).toMatchObject({
+    name: 'Synthetic kept draft',
+    primaryContactId: 'contact-main',
+    eventDate: '2027-05-20',
+    eventTypeId: 'type-wedding',
+    source: 'Synthetic source',
+  });
+});
+
+test('the inline contact view keeps focus, the trap and the discard confirmation', async () => {
+  setup();
+  await ready();
+  await openCreate();
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  const contactView = await screen.findByRole('dialog', {
+    name: 'Kontakt anlegen',
+  });
+  expect(contactView.getAttribute('aria-modal')).toBe('true');
+  expect(document.activeElement).toBe(screen.getByLabelText('Kontaktart'));
+  expect(hasUnsavedChanges()).toBe(false);
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic focus draft' },
+  });
+  expect(hasUnsavedChanges()).toBe(true);
+  const save = within(contactView).getByRole('button', {
+    name: 'Kontakt speichern',
+  });
+  save.focus();
+  // Tab is pressed on the control that holds the focus, exactly like a
+  // browser delivers it.
+  fireEvent.keyDown(save, { key: 'Tab' });
+  const close = within(contactView).getByRole('button', {
+    name: 'Kontaktanlage schließen',
+  });
+  expect(document.activeElement).toBe(close);
+  fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+  expect(document.activeElement).toBe(save);
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirm);
+  fireEvent.keyDown(save, { key: 'Escape' });
+  await screen.findByRole('dialog', { name: 'Neues Event' });
+  expect(hasUnsavedChanges()).toBe(false);
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByLabelText('Kunde suchen')),
+  );
+  fireEvent.keyDown(screen.getByLabelText('Eventdatum'), { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('a failed contact POST keeps the contact form, its values and the error focus', async () => {
+  const { posts, contactPosts } = setup({
+    contactPost: () => Response.json({ error: 'invalid' }, { status: 409 }),
+  });
+  await ready();
+  await openCreate();
+  await pickContact('Synthetic contact');
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  const contactView = await screen.findByRole('dialog', {
+    name: 'Kontakt anlegen',
+  });
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic kept contact' },
+  });
+  submitContact(
+    within(contactView)
+      .getByRole('button', { name: 'Kontakt speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText(
+    'Speichern fehlgeschlagen. Eingaben und Anmeldung prüfen.',
+  );
+  const alert = screen.getByRole('alert');
+  expect(contactView.contains(alert)).toBe(true);
+  await waitFor(() => expect(document.activeElement).toBe(alert));
+  expect(
+    (screen.getByLabelText('Name / Firma') as HTMLInputElement).value,
+  ).toBe('Synthetic kept contact');
+  expect(contactPosts).toHaveLength(1);
+  expect(posts).toHaveLength(0);
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirm);
+  fireEvent.keyDown(alert, { key: 'Escape' });
+  await screen.findByRole('dialog', { name: 'Neues Event' });
+  // The attempt changed nothing: the previous choice still stands.
+  expect(screen.getByText(/Kunde: Synthetic contact/)).toBeTruthy();
+});
+
+test('a confirmed contact stays selected even when the following search fails', async () => {
+  const { posts, contactPosts, failSearch } = setup();
+  await ready();
+  await openCreate();
+  fireEvent.change(screen.getByLabelText('Kunde suchen'), {
+    target: { value: 'Synthetic created' },
+  });
+  await screen.findByText('Keine Kontakte gefunden.');
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  const contactView = await screen.findByRole('dialog', {
+    name: 'Kontakt anlegen',
+  });
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic created contact' },
+  });
+  failSearch();
+  submitContact(
+    within(contactView)
+      .getByRole('button', { name: 'Kontakt speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText(/Kunde: Synthetic created contact/);
+  await screen.findByText(
+    'Kontakte konnten nicht gesucht werden. Die bisherige Auswahl bleibt bestehen.',
+  );
+  expect(contactPosts).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('Eventart'), {
+    target: { value: 'type-wedding' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
+  await screen.findByText('Event gespeichert.');
+  expect(posts).toHaveLength(1);
+  expect(posts[0]).toMatchObject({
+    primaryContactId: 'contact-created',
+    name: 'Hochzeit – Synthetic created contact',
+  });
+  expect(contactPosts).toHaveLength(1);
+});
+
+test('a double submit creates exactly one contact', async () => {
+  const { contactPosts, posts } = setup();
+  await ready();
+  await openCreate();
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  const contactView = await screen.findByRole('dialog', {
+    name: 'Kontakt anlegen',
+  });
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic single contact' },
+  });
+  const form = within(contactView)
+    .getByRole('button', { name: 'Kontakt speichern' })
+    .closest('form')!;
+  submitContact(form);
+  submitContact(form);
+  await screen.findByText(/Kunde: Synthetic single contact/);
+  expect(contactPosts).toHaveLength(1);
+  expect(posts).toHaveLength(0);
 });

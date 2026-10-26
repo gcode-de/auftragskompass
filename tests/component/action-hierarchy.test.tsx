@@ -708,6 +708,29 @@ test('event create dialog keeps save primary and close tertiary', async () => {
   expect(
     tier(within(dialog).getByRole('button', { name: 'Dialog schließen' })),
   ).toBe('tertiary-action');
+  // BKP012.1: creating a contact is a quiet secondary action of the customer
+  // field; the inline view it opens keeps exactly one primary action.
+  const createContact = within(dialog).getByRole('button', {
+    name: 'Neuen Kunden anlegen',
+  });
+  expect(tier(createContact)).toBe('secondary-action');
+  fireEvent.click(createContact);
+  const contactView = await screen.findByRole('dialog', {
+    name: 'Kontakt anlegen',
+  });
+  expectHierarchy(contactView, 'Kontaktansicht im Event-Dialog');
+  expect(
+    tier(
+      within(contactView).getByRole('button', { name: 'Kontakt speichern' }),
+    ),
+  ).toBe('primary-action');
+  expect(
+    tier(
+      within(contactView).getByRole('button', {
+        name: 'Kontaktanlage schließen',
+      }),
+    ),
+  ).toBe('tertiary-action');
 });
 
 test('event details keep status save primary and quiet the rest', async () => {

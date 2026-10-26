@@ -8,6 +8,53 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP012.1 — `feat: select or create contacts within the event flow`** (26.10.2026)
+
+  Erster Unter-Slice von BKP012 (Kontaktpicker im Event) nach rein lesender
+  DeepSeek-Quellanalyse zu `57183a4`. Nur der Event-Anlege-Dialog: die bisherige
+  Volllisten-Auswahl `Kunde` wird ein suchbarer Picker gemäß B30
+  („Kundensuche/neuen Kunden anbieten“) über die vorhandene Suche
+  `GET /api/v1/contacts?q=…` mit Sequenzschutz (verspätete/vertauschte
+  Antworten werden verworfen), Trefferliste mit Name und Firma/Ansprechpartner,
+  begrenzte sichtbare Trefferzahl. Bewusste Inline-Anlage als Ansichtswechsel
+  INNERHALB derselben Dialogbox (keine zweite Dialogebene): das Eventformular
+  bleibt gemountet und damit Datum/Art/Angaben-Entwurf erhalten; das
+  Kontaktanlageformular wird aus `ContactPanel` als gemeinsame `ContactDialog.tsx`
+  extrahiert (idPrefix-Muster) und nutzt weiterhin den EINEN vorhandenen
+  Validator (Client-Pflichtfelder/Längen + serverseitige `contactFields`;
+  KEIN zweiter Validator). Erst der tatsächlich bestätigt gespeicherte Kontakt
+  (Auswahl aus der POST-Antwort, nicht aus einem Listenrefresh) wird im Event
+  ausgewählt; Abbruch/Fehler lassen den Evententwurf unberührt, kein heimliches
+  Gemeinschaftsspeichern von Event und Kontakt. Kontaktlose Events bleiben
+  möglich; historische archivierte Zuordnungen bleiben lesbar, werden aber nicht
+  als neue Auswahl angeboten (bestehende Filterlogik unverändert). Tests zuerst
+  rot: vertauschte langsame Suchantworten, kein Treffer, abgebrochene Anlage,
+  Kontakt-POST-Fehler, bestätigter Kontakt mit anschließendem GET-Fehler
+  (Auswahl bleibt), keine Doppelanlage, Fokus/Dirty/Zurück; dazu
+  Vertragsanpassungen (event-create, action-hierarchy, ui-language, auth.spec).
+  Nicht in diesem Slice: Editor/Hauptkontakt-Bearbeitung des Events (eigener
+  Folgeslice BKP012.2), Dublettenblockade-Neuerungen, Datenmodelländerung.
+  Referenzgrenzen: nur B30 ist belegt (Suche + Neuanlage-Auswahl); Picker-/
+  Dialogdetails sind bewusste vorsichtige Vereinfachungen, keine Bookitup-
+  Nachbauten. Coding-Subagent: DeepSeek V4.1 Flash (gleiche Delegationsform),
+  MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (12 Tests gegen den Altstand, u. a. fehlende
+  „Kunde suchen“-Oberfläche; ehrlich vermerkt: zwei Vertragstests in
+  `events.test.tsx` mussten außerhalb der Freigabeliste mitgezogen werden, da
+  sie die entfernte Volllisten-Auswahl bedienten – Aussagen unverändert),
+  danach grün: `test:component` 624/624, `test:integration` 311/311,
+  `test:unit` 265/265, `test:coverage` vollständig grün (ContactDialog 97,39%
+  Zeilen, EventCreateDialog 97,14%), `test:workspace`/`test:docs`/schnelle
+  Gates/Build grün; E2E auth+template-product-price 14/14 mit realen
+  Picker-/Inline-Pfaden, „nur eine Dialogbox“-Prüfung, Entwurfserhalt und zwei
+  neuen axe-Audits (0 Verstöße). Der neue Audit deckte wie schon in BKP011.1
+  einen bestehenden `heading-order`-Befund in den Dialogtiteln auf (h3 unter
+  Seiten-h1); Dialogtitel sind jetzt h2 samt angeglichenem CSS-Selektor.
+  Notiert: Picker ohne Pfeiltasten-Listbox (normale Schaltflächen, vollständig
+  tastaturbedienbar); nach Inline-Anlage lädt die Panelliste erst nach
+  Eventspeichern neu (bewusst, GET-Fehlerpfad bleibt außerhalb der Auswahl);
+  Panel-Texte des Kontakt-Dialogs unverändert.
+
 - [x] **BKP011.1 — `feat: show contact details and related events`** (26.10.2026)
 
   Erster Unter-Slice von BKP011 (Kontakt-Details, rein lesende Akte) nach rein

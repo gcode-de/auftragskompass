@@ -1218,7 +1218,11 @@ time {
   justify-content: space-between;
   gap: 1rem;
 }
+/* A dialog title is the top heading of its own dialog box; the page heading is
+   its first level, so the dialog names itself with an h2. */
+.event-create-header h2,
 .event-create-header h3,
+.form-dialog-header h2,
 .form-dialog-header h3 {
   margin: 0;
   font-size: 1.25rem;
@@ -1257,6 +1261,58 @@ time {
   display: flex;
   justify-content: flex-end;
   margin-top: 0.25rem;
+}
+/* BKP012.1: the customer search keeps this dialog compact – one field, a short
+   list of real buttons and the deliberate creation action beside it. */
+.contact-picker {
+  display: grid;
+  gap: 0.4rem;
+}
+.contact-picker-hits {
+  display: grid;
+  gap: 0.2rem;
+  max-height: 11rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.contact-picker-hit {
+  display: grid;
+  justify-items: start;
+  gap: 0.1rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  font-weight: 600;
+}
+.contact-picker-hit:hover:not(:disabled) {
+  background: var(--hover-surface);
+}
+.contact-picker-hit[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+.contact-picker-name {
+  font-weight: 600;
+}
+.contact-picker-detail {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 450;
+}
+.contact-picker-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+.contact-dialog-inline {
+  margin-top: 0.75rem;
 }
 .form-dialog-footer {
   display: flex;
