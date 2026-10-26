@@ -10,7 +10,17 @@ legt keine erfundenen verkaufbaren Positionen oder Preise an.
 Die Verwaltung liegt seit H033 unter Einstellungen (`#settings-products`) und
 nicht mehr in der Hauptnavigation. Der alte Deep Link `#products` öffnet
 denselben Abschnitt ohne Neuladen; die Produktauswahl in Angeboten und Events
-bleibt unverändert erreichbar.
+bleibt unverändert erreichbar. Die Oberfläche führt mit der Katalogliste:
+eine kompakte Werkzeugleiste bietet Suche über Name, Beschreibung und Einheit
+sowie eine Zustandsauswahl (aktiv, inaktiv, archiviert); die Zeile nennt Preis
+mit sichtbarer Preisbasis (Netto/Brutto), Steuersatz, Einheit und Zustand.
+Anlegen, Bearbeiten und Duplizieren öffnen bewusst denselben Dialog, das
+Formular ist sonst nicht im Tabpfad; ungespeicherte Entwürfe werden vor dem
+Schließen bewusst bestätigt. Nach bestätigtem Speichern gilt das Produkt als
+gespeichert; scheitert nur das Neuladen der Liste, wird das ehrlich gemeldet
+und ausschließlich per GET wiederholt. Bei unklarem Ausgang (keine Antwort)
+bleibt das Speichern gesperrt, bis die Liste erneut geladen wurde; es wird nie
+blind erneut gesendet.
 
 Preise werden ausschließlich als ganze Euro-Centwerte (`priceMinor`) gespeichert.
 Die Datenbank begrenzt sie auf 0 bis 9007199254740991, damit auch die JSON-/JavaScript-

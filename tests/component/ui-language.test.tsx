@@ -275,7 +275,15 @@ test('settings keep resource and product panels mounted once and retain drafts a
 
   await go('/?q=Synthetic#settings-products');
   const products = await screen.findByRole('region', { name: 'Produkte' });
-  const productName = within(products).getByLabelText(
+  // BKP010.1: the product editor is mounted on demand. Open the dialog and
+  // keep its draft dirty; the hash switches below must not remount it.
+  fireEvent.click(
+    within(products).getByRole('button', { name: 'Produkt anlegen' }),
+  );
+  const productDialog = await within(products).findByRole('dialog', {
+    name: 'Produkt anlegen',
+  });
+  const productName = within(productDialog).getByLabelText(
     'Produktname',
   ) as HTMLInputElement;
   fireEvent.change(productName, {
@@ -294,6 +302,13 @@ test('settings keep resource and product panels mounted once and retain drafts a
       ) as HTMLInputElement
     ).value,
   ).toBe('Synthetic draft product');
+  expect(
+    within(screen.getByRole('region', { name: 'Produkte' })).getByRole(
+      'dialog',
+      { name: 'Produkt anlegen' },
+    ),
+    'the open product editor survives the hash switch',
+  ).toBe(productDialog);
   expect(window.location.search).toBe('?q=Synthetic');
 
   await go('/?q=Synthetic#settings-resources');

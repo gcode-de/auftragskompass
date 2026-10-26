@@ -1050,23 +1050,32 @@ time {
   margin-left: 0;
 }
 /* BKP009: the resource panel leads with its list; search and the two
-   narrowing selects sit in one compact toolbar beside the create action. */
-.resource-toolbar {
+   narrowing selects sit in one compact toolbar beside the create action.
+   BKP010: the product panel reuses that compact toolbar. */
+.resource-toolbar,
+.product-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.75rem;
   margin-bottom: 1rem;
 }
-.resource-toolbar label {
+.resource-toolbar label,
+.product-toolbar label {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   font-size: 0.8rem;
   color: var(--muted);
 }
-.resource-toolbar .section-actions {
+.resource-toolbar .section-actions,
+.product-toolbar .section-actions {
   margin-left: 0;
+}
+/* BKP010: one line per product keeps name, price basis, tax, unit and state
+   aligned without a second column set. */
+.product-summary {
+  font-variant-numeric: tabular-nums;
 }
 .contact-list > li {
   scroll-margin-top: 6rem;

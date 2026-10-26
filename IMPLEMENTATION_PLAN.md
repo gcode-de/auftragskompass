@@ -8,6 +8,51 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP010.1 — `feat: make product management compact and list-first`** (26.10.2026)
+
+  Erster Unter-Slice von BKP010 (Produkte, UI-Slice ohne Domainänderung) nach
+  rein lesender DeepSeek-Quellanalyse zu `99e9eac`. Liste zuerst: Produktformular
+  nur noch im Dialog (Anlegen/Bearbeiten/Duplikat – Duplizieren öffnet „… (Kopie)“-
+  Entwurf als eigenen Datensatz, `state` wird 1:1 mitkopiert), kompakte
+  Werkzeugleiste mit clientseitiger Suche über Name/Beschreibung/Einheit und
+  Zustandsauswahl; `GET /api/v1/products` bleibt querylos (vorhandener
+  Testvertrag), Sortierung unverändert servers. Zeile zeigt Preis mit deutlicher
+  Preisbasis (Netto/Brutto), Steuer, Einheit und Zustand. Dialogverträge wie
+  BKP009.1: Fokusfalle/Escape/Fokusrückkehr, Dirtyschutz über
+  `unsaved-changes`, Doppelklick-Guard, Dialog bleibt während Busy offen,
+  Filterzustand über Öffnen/Schließen/Speichern erhalten. Deutscher Dezimaltext
+  ausschließlich über `decimal.ts`-Helper (Regex/BigInt), kein `parseFloat*100`;
+  Feldvertrag und Defaults (Stück/0/brutto/1900 bp) unverändert. Ehrliche
+  Save-vs-GET-Trennung (heutiger Defekt: bestätigtes Speichern mit
+  fehlgeschlagenem Nachladen wird als Verbindungsfehler gemeldet und erneutes
+  Speichern könnte duplizieren): Erfolg wird zuerst gemeldet, Nachladen nur per
+  GET wiederholt; unklarer Ausgang sperrt erneutes Speichern mit verständlichem
+  Hinweis, KEIN zweiter POST, keine Idempotenz behauptet (die ist möglicher
+  vertikaler Folgeslice BKP010.3 mit Backend-Auftragsbeleg analog
+  Vorlagen-Idempotenz). Ungültige Dezimalwerte feldbezogen getrennt
+  (Nachkommastellen vs. zu groß) ohne POST; 409 behält Eingaben mit Fokus.
+  Geteilte Vertragstests bewusst mitgezogen: Produktvertrag in
+  `action-hierarchy.test.tsx`, Produktsegment in `ui-language.test.tsx` und
+  Produktabläufe in `tests/e2e/auth.spec.ts` inklusive kompakter
+  320/390/1280-×-Theme-Prüfung der Produktfläche. Nicht dabei (eigene
+  Folgeslices): Archiv-Zeilenaktion mit Nachweis unveränderter historischer
+  Dokumente (BKP010.2), Backend-Idempotenz (BKP010.3), Mengen/Rabatt/
+  Ressourcenfelder, Format-Vereinheitlichung, API-/Migrationsänderung.
+  Coding-Subagent: DeepSeek V4.1 Flash (gleiche Delegationsform), MiMo besitzt
+  Plan/Docs und reviewt.
+  Abgenommen: zuerst rot beobachtet (13 Tests gegen den Altstand, darunter
+  Liste/Dialog/Suche/Filter/Leerzustand; ehrlich vermerkt: zwei Tests erst nach
+  der ersten Grünrunde ergänzt, Vertragstest-Anpassungen nicht separat rot),
+  danach grün: `test:component` 592/592, `test:coverage` vollständig grün
+  (ProductPanel 98,19% Zeilen/90,90% Zweige), `test:unit` 260,
+  `test:workspace`/`test:docs` grün, schnelle Gates/Build grün; E2E auth beide
+  Modi plus template-product-price vollständig grün (14 Tests) mit
+  320/390/1280-×-Theme-Matrix der Produktfläche (sechs Screenshots) und
+  Entwurfserhalt über Hash-/History-Wechsel ohne API-Lesefläche. Nicht
+  abgedeckte Zweige in ProductPanel (Antwort-JSON unlesbar, GET-Wiederholung
+  nach unklarem Ausgang scheitert, Warnung bei gesperrtem Speichern mit
+  geschlossenem Dialog) sind implementiert, aber nur review-belegt.
+
 - [x] **BKP009.2 — `feat: open temporary resource blocks on demand`** (26.10.2026)
 
   Zweiter Unter-Slice von BKP009: die seltene Sperrverwaltung „Zeitweise

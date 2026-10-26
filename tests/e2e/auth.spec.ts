@@ -1195,22 +1195,81 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         exact: true,
       }),
     ).toHaveCount(1);
+    // BKP010.1: the product page leads with its list; its editor is a dialog
+    // that is mounted on demand, so no form field sits in the tab path.
+    await expect(
+      products.getByLabel('Produktname', { exact: true }),
+    ).toHaveCount(0);
+    const productCreate = products.getByRole('button', {
+      name: 'Produkt anlegen',
+    });
+    await expect(productCreate).toHaveAttribute('title', 'Produkt anlegen');
+    await productCreate.click();
+    const productDialog = products.getByRole('dialog', {
+      name: 'Produkt anlegen',
+    });
+    await expect(productDialog).toBeVisible();
+    await expect(
+      products.getByLabel('Produktname', { exact: true }),
+    ).toBeFocused();
     await products
       .getByLabel('Produktname', { exact: true })
       .fill('Synthetic browser product');
     await products.getByLabel('Preis in Euro').fill('19,99');
     await products.getByRole('button', { name: 'Produkt speichern' }).click();
+    await expect(productDialog).toBeHidden();
     await expect(
-      products.getByText('Synthetic browser product – 19,99 € Brutto', {
-        exact: true,
-      }),
+      products.getByText(
+        'Synthetic browser product – 19,99 € Brutto – 19 % – Stück – Aktiv',
+        { exact: true },
+      ),
     ).toBeVisible();
-    for (const width of [768, 390, 320]) {
+    // The compact toolbar narrows the list client-side; it never refetches.
+    const productSearch = products.getByLabel('Produkte suchen');
+    await productSearch.fill('no-such-synthetic-product');
+    await expect(
+      products.getByText('Keine Treffer für die aktuellen Filter.'),
+    ).toBeVisible();
+    await products.getByRole('button', { name: 'Filter zurücksetzen' }).click();
+    await products.getByLabel('Zustand filtern').selectOption('archived');
+    await expect(products.getByText(/Synthetic browser product/)).toHaveCount(
+      0,
+    );
+    await products.getByLabel('Zustand filtern').selectOption('');
+    await expect(products.getByText(/Synthetic browser product/)).toBeVisible();
+    // BKP010 acceptance: 320, 390 and 1280px in both themes. Neither the
+    // product section, its toolbar nor the document may overflow
+    // horizontally.
+    for (const [width, theme] of [
+      [320, 'light'],
+      [320, 'dark'],
+      [390, 'light'],
+      [390, 'dark'],
+      [1280, 'light'],
+      [1280, 'dark'],
+    ] as const) {
       await page.setViewportSize({ width, height: 844 });
+      if (
+        (await themeToggle.getAttribute('aria-pressed')) !==
+        String(theme === 'dark')
+      )
+        await themeToggle.click();
+      await expect(themeToggle).toHaveAttribute(
+        'aria-pressed',
+        String(theme === 'dark'),
+      );
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       expect(
         await products.evaluate(
           (section) => section.scrollWidth <= section.clientWidth + 1,
         ),
+      ).toBe(true);
+      expect(
+        await products
+          .locator('.product-toolbar')
+          .evaluate(
+            (element) => element.scrollWidth <= element.clientWidth + 1,
+          ),
       ).toBe(true);
       expect(
         await page.evaluate(
@@ -1222,21 +1281,38 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           (element) => element.scrollWidth <= element.clientWidth + 1,
         ),
       ).toBe(true);
-      await expect(settingsSelect).toBeVisible();
-      await expect(
-        settingsNavigation.getByRole('combobox', {
-          name: 'Einstellungsbereich',
-          exact: true,
-        }),
-      ).toBeVisible();
-      await expect(settingsSelect).toHaveValue('#settings-products');
-      await expect(
-        settingsNavigation.getByRole('link', {
-          name: 'Produkte',
-          exact: true,
-        }),
-      ).toHaveCount(0);
+      if (width <= 900) {
+        await expect(settingsSelect).toBeVisible();
+        await expect(settingsSelect).toHaveValue('#settings-products');
+      }
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `tests/test-results/product-${width}-${theme}.png`,
+        fullPage: true,
+        animations: 'disabled',
+      });
     }
+    // The editor fits the narrowest viewport as well; it is untouched, so
+    // Escape closes it without a discard prompt.
+    await page.setViewportSize({ width: 320, height: 844 });
+    await productCreate.click();
+    await expect(productDialog).toBeVisible();
+    const mobileProductDialog = (await productDialog.boundingBox())!;
+    expect(mobileProductDialog.x).toBeGreaterThanOrEqual(0);
+    expect(
+      mobileProductDialog.x + mobileProductDialog.width,
+    ).toBeLessThanOrEqual(320);
+    expect(
+      await productDialog.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(productDialog).toBeHidden();
+    // Leave the run in the light theme the rest of the scenario asserts in.
+    if ((await themeToggle.getAttribute('aria-pressed')) !== 'false')
+      await themeToggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await page.setViewportSize({ width: 1280, height: 720 });
     const productsTimeOrigin = await page.evaluate(
       () => performance.timeOrigin,
@@ -1286,12 +1362,25 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       .getByRole('link', { name: 'Produkte', exact: true })
       .click();
     await expect(page).toHaveURL(/#settings-products$/);
+    // BKP010.1: the product editor is mounted on demand. Open the row's
+    // dialog so the draft below is typed into a real form field.
+    await products
+      .getByRole('button', {
+        name: 'Produkt bearbeiten: Synthetic browser product',
+        exact: true,
+      })
+      .click();
+    await expect(
+      products.getByRole('dialog', { name: 'Produkt bearbeiten' }),
+    ).toBeVisible();
     await products
       .getByLabel('Produktname', { exact: true })
       .fill('Synthetic draft product');
-    await settingsNavigation
-      .getByRole('link', { name: 'Ressourcen', exact: true })
-      .click();
+    // The open dialog covers the sub-navigation, so the hash switch is made
+    // the way the browser makes it.
+    await page.evaluate(() => {
+      window.location.hash = 'settings-resources';
+    });
     await expect(page).toHaveURL(/#settings-resources$/);
     // BKP009: the resource editor is mounted on demand. Open the row's dialog
     // so the draft below is typed into a real form field.
@@ -1343,6 +1432,16 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       historyTimeOrigin,
     );
     expect(await page.evaluate(() => location.search)).toBe(queryBeforeHistory);
+    // The product dialog is still open and dirty; dismiss it through its
+    // documented discard prompt so the mobile drawer below is reachable.
+    page.once('dialog', (prompt) => void prompt.accept());
+    await products
+      .getByRole('button', { name: 'Abbrechen', exact: true })
+      .click();
+    await expect(
+      products.getByRole('dialog', { name: 'Produkt bearbeiten' }),
+    ).toBeHidden();
+    expect(productApiRequests).toBe(0);
 
     // The same sub-navigation is keyboard reachable from the mobile drawer.
     await page.setViewportSize({ width: 390, height: 844 });

@@ -393,10 +393,33 @@ test('settings lists render one primary action and name every other tier', async
   render(<ProductPanel csrfToken="csrf" />);
   const products = screen.getByRole('region', { name: 'Produkte' });
   await within(products).findByText(/Synthetic product/);
+  // BKP010.1: the product page leads with its list too. The dialog is mounted
+  // on demand, so the frame's one primary action is the create glyph in the
+  // toolbar; the editor's save primary only exists once the dialog is open.
   expectHierarchy(products, 'Produkte');
   expect(
-    tier(within(products).getByRole('button', { name: 'Produkt speichern' })),
-  ).toBe('primary-action');
+    primaryLabels(products),
+    'Produkte is closed: exactly the create action is dominant',
+  ).toEqual(['Produkt anlegen']);
+  const productCreate = within(products).getByRole('button', {
+    name: 'Produkt anlegen',
+  });
+  expect(tier(productCreate), 'Produkt anlegen is an icon-only action').toBe(
+    'icon-action',
+  );
+  expect(
+    productCreate.getAttribute('class'),
+    'Produkt anlegen carries the dominant icon modifier',
+  ).toContain('tier-primary-icon');
+  expect(
+    within(products).queryByRole('button', { name: 'Produkt speichern' }),
+    'the editor is not mounted until it is opened',
+  ).toBeNull();
+  expect(
+    tier(
+      within(products).getByRole('button', { name: 'Produkte aktualisieren' }),
+    ),
+  ).toBe('tertiary-action');
   expect(
     tier(
       within(products).getByRole('button', {
@@ -411,6 +434,31 @@ test('settings lists render one primary action and name every other tier', async
       }),
     ),
   ).toBe('secondary-action');
+  fireEvent.click(productCreate);
+  const productDialog = await within(products).findByRole('dialog', {
+    name: 'Produkt anlegen',
+  });
+  expectHierarchy(productDialog, 'Produkt-Dialog');
+  expect(
+    tier(
+      within(productDialog).getByRole('button', { name: 'Produkt speichern' }),
+    ),
+  ).toBe('primary-action');
+  expect(
+    tier(within(productDialog).getByRole('button', { name: 'Abbrechen' })),
+  ).toBe('secondary-action');
+  expect(
+    tier(
+      within(productDialog).getByRole('button', { name: 'Dialog schließen' }),
+    ),
+  ).toBe('tertiary-action');
+  fireEvent.click(
+    within(productDialog).getByRole('button', { name: 'Abbrechen' }),
+  );
+  expect(
+    primaryLabels(products),
+    'closing the editor returns the page frame to one primary',
+  ).toEqual(['Produkt anlegen']);
 });
 
 test('contact list and dialog keep exactly one primary action', async () => {
