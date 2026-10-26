@@ -15,6 +15,12 @@ import {
 } from './calendar-range.js';
 import { EventTimeField } from './EventTimeField.js';
 import { EventCreateDialog } from './EventCreateDialog.js';
+import { ContactDialog } from './ContactDialog.js';
+import {
+  ContactPicker,
+  useContactSearch,
+  type ContactHit,
+} from './ContactPicker.js';
 import {
   initialVenueText,
   legacyPlaceText,
@@ -164,6 +170,15 @@ export function EventPanel({
       endsAt?: string;
       eventDate?: string;
     }>({});
+  // BKP012.2: the main contact is chosen through the same search the create
+  // dialog uses; the contact form is a view inside the editor, never a second
+  // dialog level.
+  const contactSearch = useContactSearch();
+  const [view, setView] = useState<'event' | 'contact'>('event'),
+    [pickedContact, setPickedContact] = useState<ContactHit | null>(null),
+    [pickerFocus, setPickerFocus] = useState(0),
+    // Rows the operator created here are not in the panel's list yet.
+    [createdContacts, setCreatedContacts] = useState<ContactHit[]>([]);
   async function refresh() {
     const current = ++sequence.current;
     setLoading(true);
@@ -274,7 +289,51 @@ export function EventPanel({
     );
     setDateDerived(Boolean(draft?.startsAt));
     setScheduleErrors({});
+    // A new draft starts in the event view with an empty contact search.
+    setView('event');
+    setPickedContact(null);
+    contactSearch.reset();
   }, [draft]);
+  // A stored assignment stays readable even when the loaded list no longer
+  // offers it; a freshly stored contact is merged locally until the panel
+  // reloads its contact list with the events.
+  const contactChoices: ContactHit[] = [
+    ...contacts,
+    ...createdContacts.filter(
+      (row) => !contacts.some((choice) => choice.id === row.id),
+    ),
+  ];
+  const chosen: ContactHit | null = primaryContactId
+    ? ((pickedContact?.id === primaryContactId
+        ? pickedContact
+        : contactChoices.find((choice) => choice.id === primaryContactId)) ??
+      null)
+    : null;
+  function chooseContact(row: ContactHit) {
+    setPrimaryContactId(row.id);
+    setPickedContact(row);
+    setAdditionalContactIds((current) => current.filter((id) => id !== row.id));
+  }
+  function clearContact() {
+    setPrimaryContactId('');
+    setPickedContact(null);
+  }
+  function backToPicker() {
+    setView('event');
+    setPickerFocus((value) => value + 1);
+  }
+  function contactSaved(row: ContactHit) {
+    // The stored row is the truth: the selection never depends on a list load.
+    setCreatedContacts((current) => [
+      ...current.filter((entry) => entry.id !== row.id),
+      row,
+    ]);
+    setPrimaryContactId(row.id);
+    setPickedContact(row);
+    setAdditionalContactIds((current) => current.filter((id) => id !== row.id));
+    backToPicker();
+    if (contactSearch.query.trim()) contactSearch.search(contactSearch.query);
+  }
   function clearScheduleError(field: 'startsAt' | 'endsAt' | 'eventDate') {
     setScheduleErrors((current) => {
       if (!current[field]) return current;
@@ -981,6 +1040,8 @@ export function EventPanel({
               <form
                 id="event-editor"
                 key={`${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
+                // The draft stays mounted while the contact form is shown.
+                hidden={view === 'contact'}
                 onSubmit={(event) => {
                   event.preventDefault();
                   void save(event.currentTarget);
@@ -1026,23 +1087,21 @@ export function EventPanel({
                     Gebucht wird mit einer konkreten Ressourcenzuweisung
                     verfügbar.
                   </p>
-                  <label>
-                    Hauptkontakt
-                    <select
-                      name="primaryContactId"
+                  <fieldset>
+                    <legend>Hauptkontakt</legend>
+                    <ContactPicker
+                      idPrefix="event-editor"
+                      search={contactSearch}
                       value={primaryContactId}
-                      onChange={(event) => {
-                        const next = event.currentTarget.value;
-                        setPrimaryContactId(next);
-                        setAdditionalContactIds((current) =>
-                          current.filter((id) => id !== next),
-                        );
-                      }}
-                    >
-                      <option value="">Noch offen</option>
-                      {options(contacts, primaryContactId || null)}
-                    </select>
-                  </label>
+                      selected={chosen}
+                      hiddenName="primaryContactId"
+                      disabled={busy}
+                      focusRequest={pickerFocus}
+                      onSelect={chooseContact}
+                      onClear={clearContact}
+                      onCreate={() => setView('contact')}
+                    />
+                  </fieldset>
                   <fieldset>
                     <legend>Termin</legend>
                     <label>
@@ -1171,7 +1230,7 @@ export function EventPanel({
                           }
                         >
                           {options(
-                            contacts.filter(
+                            contactChoices.filter(
                               (choice) => choice.id !== primaryContactId,
                             ),
                             additionalContactIds,
@@ -1227,6 +1286,18 @@ export function EventPanel({
                   )}
                 </fieldset>
               </form>
+              {/* The contact form is a view inside the editor: no backdrop, no
+                  second dialog role, and the draft above stays mounted. */}
+              {view === 'contact' && (
+                <ContactDialog
+                  inline
+                  csrfToken={csrfToken}
+                  idPrefix="event-editor"
+                  discardMessage="Ungespeicherte Eingaben verwerfen und zur Eventbearbeitung zurückkehren?"
+                  onClose={backToPicker}
+                  onSaved={contactSaved}
+                />
+              )}
             </details>
           )}
           <p role="status">{message}</p>
@@ -1475,6 +1546,8 @@ export function EventPanel({
                               editReturnFocus.current = event.currentTarget;
                               setCreating(false);
                               setCreateInitial(null);
+                              // A new editing context always starts on the event.
+                              setView('event');
                               setVenue(
                                 initialVenueText(
                                   row,
@@ -1522,6 +1595,8 @@ export function EventPanel({
                           onEdit={(event) => {
                             setCreating(false);
                             setCreateInitial(null);
+                            // A new editing context always starts on the event.
+                            setView('event');
                             setVenue(
                               initialVenueText(
                                 event,

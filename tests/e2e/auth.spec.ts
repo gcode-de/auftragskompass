@@ -4042,7 +4042,130 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         name: 'Stammdaten bearbeiten: Fictional Website Browser',
       })
       .click();
-    await page.getByLabel('Hauptkontakt').selectOption(laterContact);
+    // BKP012.2: the main contact is picked through the same search the create
+    // dialog uses. The stored assignment stays a deliberate edit.
+    const editorContact = page.getByRole('group', { name: 'Hauptkontakt' });
+    const editorContactSearch = editorContact.getByLabel('Kunde suchen');
+    await editorContactSearch.fill('Fictional later contact');
+    const laterContactHit = editorContact.getByRole('button', {
+      name: /Fictional later contact/,
+    });
+    await expect(laterContactHit).toBeEnabled();
+    await audit('event-editor-contact-picker');
+    // The contact form is a view inside the editor: no backdrop, no dialog
+    // role, and the filled event draft stays mounted behind it.
+    await editorContact
+      .getByRole('button', { name: 'Neuen Kunden anlegen' })
+      .click();
+    const editorContactForm = page.locator('.contact-dialog-inline');
+    await expect(
+      editorContactForm.getByRole('heading', { name: 'Kontakt anlegen' }),
+    ).toBeVisible();
+    await expect(page.locator('#event-editor')).toBeHidden();
+    expect(
+      await editorContactForm.evaluate((element) =>
+        element.closest('[role="dialog"]'),
+      ),
+    ).toBeNull();
+    await audit('event-editor-inline-contact');
+    await editorContactForm
+      .getByRole('button', { name: 'Kontaktanlage schließen' })
+      .click();
+    await expect(editorContactForm).toHaveCount(0);
+    await expect(page.locator('#event-editor')).toBeVisible();
+    await expect(editorContactSearch).toBeFocused();
+    await expect(
+      page.locator('#event-editor').getByLabel('Eventname', { exact: true }),
+    ).toHaveValue('Fictional Website Browser');
+    // BKP012.2b: the inline contact view is a real surface of the editor, so it
+    // is measured at the three frame widths in both themes. Every cycle opens
+    // the view, leaves it, and re-reads the untouched event draft.
+    if (mode === 'password') {
+      for (const [width, theme] of [
+        [1280, 'light'],
+        [1280, 'dark'],
+        [390, 'dark'],
+        [390, 'light'],
+        [320, 'dark'],
+        [320, 'light'],
+      ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        const toggle = page.getByRole('button', { name: /modus aktivieren/ });
+        if (
+          (await toggle.getAttribute('aria-pressed')) !==
+          String(theme === 'dark')
+        )
+          await toggle.click();
+        await expect(toggle).toHaveAttribute(
+          'aria-pressed',
+          String(theme === 'dark'),
+        );
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await editorContact
+          .getByRole('button', { name: 'Neuen Kunden anlegen' })
+          .click();
+        const narrowContactView = page.locator('.contact-dialog-inline');
+        await expect(
+          narrowContactView.getByRole('heading', { name: 'Kontakt anlegen' }),
+        ).toBeVisible();
+        // Neither the view nor the document scrolls sideways in the frame.
+        expect(
+          await narrowContactView.evaluate(
+            (element) => element.scrollWidth <= element.clientWidth + 1,
+          ),
+        ).toBe(true);
+        expect(
+          await page.evaluate(
+            () =>
+              document.documentElement.scrollWidth <=
+              document.documentElement.clientWidth + 1,
+          ),
+        ).toBe(true);
+        // Every field and button of the view stays inside the frame and keeps
+        // its whole content: nothing is cut off at the narrow widths.
+        const viewControls = narrowContactView.locator('input, select, button');
+        const viewControlCount = await viewControls.count();
+        expect(viewControlCount).toBeGreaterThan(0);
+        for (let index = 0; index < viewControlCount; index += 1) {
+          const viewControl = viewControls.nth(index);
+          const box = (await viewControl.boundingBox())!;
+          expect(box.width).toBeGreaterThan(0);
+          expect(box.x).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+          expect(
+            await viewControl.evaluate(
+              (element) => element.scrollWidth <= element.clientWidth + 1,
+            ),
+          ).toBe(true);
+        }
+        if (width === 320)
+          await audit(`event-editor-contact-${width}-${theme}`);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path: `tests/test-results/event-editor-contact-${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+        await narrowContactView
+          .getByRole('button', { name: 'Kontaktanlage schließen' })
+          .click();
+        await expect(narrowContactView).toHaveCount(0);
+        await expect(page.locator('#event-editor')).toBeVisible();
+        await expect(
+          page
+            .locator('#event-editor')
+            .getByLabel('Eventname', { exact: true }),
+        ).toHaveValue('Fictional Website Browser');
+        await expect(editorContactSearch).toHaveValue(
+          'Fictional later contact',
+        );
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+    await laterContactHit.click();
+    await expect(
+      editorContact.getByText(/Kunde: Fictional later contact/),
+    ).toBeVisible();
     await page
       .locator('#event-editor')
       .getByRole('button', { name: 'Event speichern', exact: true })

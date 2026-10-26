@@ -8,6 +8,56 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP012.2 — `feat: choose the main contact through the picker in the event editor`** (26.10.2026)
+
+  Zweiter Unter-Slice von BKP012: der Hauptkontakt im Event-Editor (Bearbeiten)
+  wird wie im Anlege-Dialog über den suchbaren Picker gewählt. Der Picker wird
+  dafür aus `EventCreateDialog.tsx` in eine gemeinsame `ContactPicker.tsx`
+  extrahiert (`useContactSearch()` mit Sequenzschutz, Trefferliste, 20er-Schnitt);
+  der Anlege-Dialog wird umgestellt und muss verhaltenstreu bleiben. Label
+  „Hauptkontakt“ bleibt, „Kunde entfernen“ setzt auf „Noch offen“
+  (`primaryContactId: null`); archivierte historische Zuordnung bleibt lesbar
+  und wird unverändert mitgesendet, ist aber nicht erneut wählbar; der
+  Ausschlussvertrag Hauptkontakt ↔ „Weitere Kontakte“ bleibt unverändert
+  (Weiterer Multi-Select, kein Picker). „Neuen Kunden anlegen“ wechselt
+  INNERHALB des Editors auf die `inline`-Variante des gemeinsamen
+  `ContactDialog` (keine zweite Dialogebene, kein zweiter Validator); das
+  Event-Formular bleibt gemountet, Datum/Art/Angaben-Eingaben bleiben über den
+  Ansichtswechsel erhalten; Auswahl aus der bestätigten POST-Antwort inkl.
+  lokaler Zusammenführung in die Auswahlliste, Abbruch/POST-Fehler ohne
+  Entwurfsverlust; Enter im Suchfeld speichert das Event nicht;
+  `view`-Reset beim Öffnen/Schließen/Abbrechen. 409/`version`/Busy-/Fokus-
+  Verträge des Editors unverändert. Tests zuerst rot (13 Fälle laut
+  Auftrag: Suche+Entwurfserhalt, Enter, Ausschluss, Archiv lesbar/nicht
+  wählbar, Abbruch, POST-Fehler, POST ok + GET-Fehler, keine Doppelanlage,
+  409, kontaktlos, vertauschte Antworten, „Kunde entfernen“, keine zweite
+  Dialogebene); geteilte Vertragstests (events.test.tsx ~:1099/:2632,
+  auth.spec.ts ~:4032–4091) bewusst mitgezogen, Aussagen erhalten.
+  Nicht im Slice: „Weitere Kontakte“ als Picker, Panel-Refresh nach Anlage,
+  `registerUnsavedChanges`-Registrierung des Event-Editors (eigener
+  Folgeslice), Datenmodell-/APIänderung. Referenz: nur B30 belegt; Editor-
+  Picker-Details sind vorsichtige Vereinfachungen. Coding-Subagent: DeepSeek
+  V4.1 Flash (gleiche Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (14 Tests gegen den Altstand; nach dem ersten
+  Implementierungsschritt blieben drei Verhaltensnachweise rot, darunter ein
+  echter Produktfehler – frisch angelegte Kontakte verschwanden nach einem
+  Hauptkontaktwechsel aus „Weitere Kontakte“, behoben über eine eigene
+  Sichtungsliste – sowie zwei Fixture-Korrekturen), danach grün:
+  `test:component` 637/637 (Anlege-Dialog 29/29 verhaltenstreu),
+  `test:integration` 311/311, `test:unit` 265/265, `test:coverage` vollständig
+  grün (ContactPicker 91,48% Statements, EventPanel 94,83%),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 14/14 mit zwei neuen axe-Audits der
+  Editor-Kontaktansicht (0 Verstöße) und Nachtragsabnahme 320/390/1280 ×
+  light/dark der geöffneten Inline-Kontaktansicht (sechs Screenshots,
+  Überlauf-/Beschnittprüfungen aller Bedienelemente, axe bei 320 px 0
+  Verstöße; ehrlich gemeldet: zwei axe-„incomplete“-Stellen der Shell bzw.
+  ein Icon-Button-Label, keine Verstöße). Notiert: der Picker teilt `value`
+  (zu sendende ID) und `selected` (aufgelöste Zeile), damit eine gespeicherte,
+  nicht mehr gelistete Zuordnung beim Speichern nicht still auf `null` wird;
+  der Editor registriert weiterhin keinen globalen Dirty-Check (eigener
+  Folgeslice); Leerzustand nennt jetzt konsistent „Kein Kunde ausgewählt“.
+
 - [x] **BKP012.1 — `feat: select or create contacts within the event flow`** (26.10.2026)
 
   Erster Unter-Slice von BKP012 (Kontaktpicker im Event) nach rein lesender

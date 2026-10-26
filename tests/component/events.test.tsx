@@ -12,6 +12,7 @@ import {
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { Navigation } from '../../apps/admin/src/Navigation.js';
+import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -1096,7 +1097,9 @@ test('the normal editor keeps advanced values in Weitere Angaben and preserves t
   expect(advanced.open).toBe(false);
   expect(screen.getByLabelText('Eventname')).toBeTruthy();
   expect(screen.getByLabelText('Eventstatus')).toBeTruthy();
-  expect(screen.getByLabelText('Hauptkontakt')).toBeTruthy();
+  // BKP012.2: the main contact is a labelled search group, not a full list.
+  expect(screen.getByRole('group', { name: 'Hauptkontakt' })).toBeTruthy();
+  expect(screen.getByLabelText('Kunde suchen')).toBeTruthy();
   expect(screen.getByLabelText('Eventdatum')).toBeTruthy();
   fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
   expect(advanced.open).toBe(true);
@@ -2629,9 +2632,18 @@ test('the event list carries website options with a quiet origin label and no ex
       name: 'Stammdaten bearbeiten: Fictional website option',
     }),
   );
-  fireEvent.change(await screen.findByLabelText('Hauptkontakt'), {
-    target: { value: 'fictional-contact' },
+  // BKP012.2: the later assignment is a deliberate search, not a list choice.
+  const editorContact = await screen.findByRole('group', {
+    name: 'Hauptkontakt',
   });
+  fireEvent.change(within(editorContact).getByLabelText('Kunde suchen'), {
+    target: { value: 'Fictional Contact' },
+  });
+  fireEvent.click(
+    await within(editorContact).findByRole('button', {
+      name: /Fictional Contact/,
+    }),
+  );
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
@@ -2659,4 +2671,550 @@ test('the event list carries website options with a quiet origin label and no ex
   expect(saved.querySelector('.event-status')?.textContent?.trim()).toBe(
     'Option',
   );
+});
+
+// BKP012.2: the event editor picks its main contact through the same search the
+// create dialog uses. These helpers keep one synthetic contact store per test
+// and read the editor's own form surfaces, never the page around it.
+type EditorContact = {
+  id: string;
+  name: string;
+  state: string;
+  kind?: string;
+  contactPerson?: string;
+  city?: string;
+};
+const editorContactStore = [
+  { id: 'contact-main', name: 'Synthetic main', state: 'active' },
+  { id: 'contact-extra', name: 'Synthetic extra', state: 'active' },
+];
+function editorContacts({
+  contacts = editorContactStore,
+  supplied = {},
+  contactPost,
+  eventErrors = [],
+}: {
+  contacts?: EditorContact[];
+  supplied?: Record<string, unknown>;
+  contactPost?: (body: Record<string, unknown>) => Response;
+  eventErrors?: string[];
+} = {}) {
+  let rows = [{ ...row, ...supplied }],
+    searchFails = false;
+  const puts: Record<string, unknown>[] = [],
+    contactPosts: Record<string, unknown>[] = [];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.startsWith('/api/v1/contacts')) {
+      if (options) {
+        const body = JSON.parse(String(options.body)) as Record<
+          string,
+          unknown
+        >;
+        contactPosts.push(body);
+        return (
+          contactPost?.(body) ??
+          Response.json({ ...body, id: 'contact-created', version: 1 })
+        );
+      }
+      if (searchFails) return new Response(null, { status: 503 });
+      const query = decodeURIComponent(
+        new URL(url, 'https://synthetic.invalid').searchParams.get('q') ?? '',
+      ).toLowerCase();
+      return Response.json(
+        contacts.filter(
+          (entry) => !query || entry.name.toLowerCase().includes(query),
+        ),
+      );
+    }
+    if (options) {
+      const body = JSON.parse(String(options.body)) as Record<string, unknown>;
+      puts.push(body);
+      if (eventErrors.length)
+        return Response.json({ error: eventErrors.shift() }, { status: 409 });
+      rows = [{ ...row, ...supplied, ...body }];
+      return Response.json(rows[0]);
+    }
+    if (url === '/api/v1/statuses')
+      return Response.json([
+        { code: 'inquiry', label: 'Anfrage' },
+        { code: 'booked', label: 'Gebucht' },
+      ]);
+    if (
+      url === '/api/v1/master-data/event_type' ||
+      url === '/api/v1/master-data/package'
+    )
+      return Response.json([
+        { id: 'fictional-option', name: 'Synthetic choice', state: 'active' },
+      ]);
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: rows,
+        filterCounts: { undated: 0, inquiries: 0 },
+      });
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  return {
+    fetcher,
+    puts,
+    contactPosts,
+    failSearch: () => {
+      searchFails = true;
+    },
+  };
+}
+async function openEditor(name = 'Synthetic event') {
+  fireEvent.click(
+    await screen.findByRole('button', { name: `Event bearbeiten: ${name}` }),
+  );
+  return screen.getByRole('group', { name: 'Hauptkontakt' });
+}
+/** The picker is the only way to a stored contact: search, then choose. */
+async function pickInEditor(group: HTMLElement, query: string) {
+  fireEvent.change(within(group).getByLabelText('Kunde suchen'), {
+    target: { value: query },
+  });
+  fireEvent.click(
+    await within(group).findByRole('button', { name: new RegExp(query) }),
+  );
+}
+function submitEditor() {
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+}
+/** The editor holds at most one active form: the event form or the contact form. */
+function activeEditorForms() {
+  const details = document.querySelector('.event-editor');
+  if (!details) return [];
+  return Array.from(details.querySelectorAll('form')).filter(
+    (form) => !form.hidden && !form.closest('[hidden]'),
+  );
+}
+
+test('the editor picks the main contact through the search and keeps the whole draft', async () => {
+  const store = editorContacts();
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic kept name' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2027-05-20' },
+  });
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  fireEvent.change(screen.getByLabelText('Anfragequelle'), {
+    target: { value: 'Synthetic source' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventbeschreibung'), {
+    target: { value: 'Synthetic description' },
+  });
+  await pickInEditor(group, 'Synthetic main');
+  expect(screen.getByText(/Kunde: Synthetic main/)).toBeTruthy();
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts).toHaveLength(1);
+  expect(store.puts[0]).toMatchObject({
+    name: 'Synthetic kept name',
+    primaryContactId: 'contact-main',
+    additionalContactIds: [],
+    source: 'Synthetic source',
+    description: 'Synthetic description',
+    eventDate: '2027-05-20',
+    version: 1,
+  });
+});
+
+test('Enter in the editor contact search never saves the event', async () => {
+  const store = editorContacts();
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic enter draft' },
+  });
+  const search = within(group).getByLabelText('Kunde suchen');
+  fireEvent.change(search, { target: { value: 'Synthetic main' } });
+  await within(group).findByRole('button', { name: /Synthetic main/ });
+  // The key is swallowed: Enter belongs to the search, never to the event form.
+  expect(fireEvent.keyDown(search, { key: 'Enter' })).toBe(false);
+  expect(store.puts).toHaveLength(0);
+  expect(screen.queryByText('Event gespeichert.')).toBeNull();
+  // The deliberate save still works with the same draft.
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts).toHaveLength(1);
+});
+
+test('promoting a further contact in the editor removes it from the further contacts', async () => {
+  const store = editorContacts({
+    supplied: {
+      primaryContactId: 'contact-main',
+      additionalContactIds: ['contact-extra'],
+    },
+  });
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  const additional = screen.getByLabelText(
+    'Weitere Kontakte',
+  ) as HTMLSelectElement;
+  expect(additional.value).toBe('contact-extra');
+  expect(
+    within(additional).queryByRole('option', { name: 'Synthetic main' }),
+  ).toBeNull();
+  await pickInEditor(group, 'Synthetic extra');
+  expect(additional.value).toBe('');
+  expect(
+    within(additional).queryByRole('option', { name: 'Synthetic extra' }),
+  ).toBeNull();
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts[0]).toMatchObject({
+    primaryContactId: 'contact-extra',
+    additionalContactIds: [],
+  });
+});
+
+test('an archived main contact in the editor stays readable and is never offered again', async () => {
+  const store = editorContacts({
+    contacts: [
+      {
+        id: 'contact-old',
+        name: 'Synthetic archived contact',
+        state: 'archived',
+      },
+      { id: 'contact-live', name: 'Synthetic live contact', state: 'active' },
+    ],
+    supplied: { primaryContactId: 'contact-old' },
+  });
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  expect(
+    screen.getByText(/Synthetic archived contact \(Archiviert\/Inaktiv\)/),
+  ).toBeTruthy();
+  fireEvent.change(within(group).getByLabelText('Kunde suchen'), {
+    target: { value: 'Synthetic' },
+  });
+  const archived = await within(group).findByRole('button', {
+    name: /Synthetic archived contact/,
+  });
+  expect((archived as HTMLButtonElement).disabled).toBe(true);
+  expect(
+    (
+      within(group).getByRole('button', {
+        name: /Synthetic live contact/,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+  // An untouched archived assignment is sent unchanged, not silently dropped.
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts[0]).toMatchObject({ primaryContactId: 'contact-old' });
+});
+
+test('aborting the inline contact form keeps the whole editor draft', async () => {
+  const store = editorContacts();
+  const confirm = vi.fn(() => false);
+  vi.stubGlobal('confirm', confirm);
+  render(<EventPanel csrfToken="csrf" />);
+  await openEditor();
+  fireEvent.change(screen.getByLabelText('Eventdatum'), {
+    target: { value: '2027-05-20' },
+  });
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic kept draft' },
+  });
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  fireEvent.change(screen.getByLabelText('Eventart'), {
+    target: { value: 'fictional-option' },
+  });
+  fireEvent.change(screen.getByLabelText('Anfragequelle'), {
+    target: { value: 'Synthetic source' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  // One form surface only: the contact form is a view inside the editor.
+  expect(screen.getByRole('heading', { name: 'Kontakt anlegen' })).toBeTruthy();
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(0);
+  expect(document.querySelector('.contact-dialog-inline')).not.toBeNull();
+  const eventForm = screen.getByLabelText('Eventname').closest('form')!;
+  expect((eventForm as HTMLFormElement).hidden).toBe(true);
+  expect(activeEditorForms()).toHaveLength(1);
+  const contactName = screen.getByLabelText('Name / Firma');
+  fireEvent.change(contactName, {
+    target: { value: 'Synthetic cancelled contact' },
+  });
+  expect(hasUnsavedChanges()).toBe(true);
+  fireEvent.keyDown(contactName, { key: 'Escape' });
+  expect(confirm).toHaveBeenCalledWith(
+    'Ungespeicherte Eingaben verwerfen und zur Eventbearbeitung zurückkehren?',
+  );
+  expect(screen.getByRole('heading', { name: 'Kontakt anlegen' })).toBeTruthy();
+  confirm.mockReturnValue(true);
+  fireEvent.keyDown(contactName, { key: 'Escape' });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByLabelText('Kunde suchen')),
+  );
+  // The contact detour neither lost nor changed the event draft.
+  expect((eventForm as HTMLFormElement).hidden).toBe(false);
+  expect(activeEditorForms()).toEqual([eventForm]);
+  expect(hasUnsavedChanges()).toBe(false);
+  expect((screen.getByLabelText('Eventdatum') as HTMLInputElement).value).toBe(
+    '2027-05-20',
+  );
+  expect((screen.getByLabelText('Eventart') as HTMLSelectElement).value).toBe(
+    'fictional-option',
+  );
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic kept draft',
+  );
+  expect(
+    (screen.getByLabelText('Anfragequelle') as HTMLInputElement).value,
+  ).toBe('Synthetic source');
+  expect(store.contactPosts).toHaveLength(0);
+  expect(store.puts).toHaveLength(0);
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts[0]).toMatchObject({
+    name: 'Synthetic kept draft',
+    eventDate: '2027-05-20',
+    eventTypeId: 'fictional-option',
+    source: 'Synthetic source',
+    primaryContactId: null,
+  });
+});
+
+test('a failed contact POST in the editor keeps the contact form, its values and the error focus', async () => {
+  const store = editorContacts({
+    contactPost: () => Response.json({ error: 'invalid' }, { status: 409 }),
+  });
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  await pickInEditor(group, 'Synthetic main');
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic kept contact' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Kontakt speichern' }).closest('form')!,
+  );
+  await screen.findByText(
+    'Speichern fehlgeschlagen. Eingaben und Anmeldung prüfen.',
+  );
+  const alert = screen.getByRole('alert');
+  await waitFor(() => expect(document.activeElement).toBe(alert));
+  expect(
+    (screen.getByLabelText('Name / Firma') as HTMLInputElement).value,
+  ).toBe('Synthetic kept contact');
+  expect(activeEditorForms()).toHaveLength(1);
+  expect(store.contactPosts).toHaveLength(1);
+  expect(store.puts).toHaveLength(0);
+});
+
+test('a confirmed contact stays selected in the editor when the following search fails', async () => {
+  const store = editorContacts();
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  fireEvent.change(within(group).getByLabelText('Kunde suchen'), {
+    target: { value: 'Synthetic created' },
+  });
+  await screen.findByText('Keine Kontakte gefunden.');
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic created contact' },
+  });
+  store.failSearch();
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Kontakt speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Kunde: Synthetic created contact/);
+  await screen.findByText(
+    'Kontakte konnten nicht gesucht werden. Die bisherige Auswahl bleibt bestehen.',
+  );
+  expect(store.contactPosts).toHaveLength(1);
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts[0]).toMatchObject({
+    primaryContactId: 'contact-created',
+  });
+});
+
+test('a freshly created contact stays choosable in the editor without a list reload', async () => {
+  const store = editorContacts();
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  fireEvent.change(within(group).getByLabelText('Kunde suchen'), {
+    target: { value: 'Synthetic created' },
+  });
+  await screen.findByText('Keine Kontakte gefunden.');
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic created contact' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Kontakt speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Kunde: Synthetic created contact/);
+  // The stored row becomes the main contact and is therefore not a further
+  // contact; the panel list still does not contain it.
+  fireEvent.click(screen.getByText('Weitere Angaben', { exact: true }));
+  const additional = screen.getByLabelText(
+    'Weitere Kontakte',
+  ) as HTMLSelectElement;
+  expect(
+    within(additional).queryByRole('option', {
+      name: 'Synthetic created contact',
+    }),
+  ).toBeNull();
+  await pickInEditor(group, 'Synthetic main');
+  expect(
+    within(additional).getByRole('option', {
+      name: 'Synthetic created contact',
+    }),
+  ).toBeTruthy();
+  fireEvent.change(additional, { target: { value: 'contact-created' } });
+  expect(additional.value).toBe('contact-created');
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts[0]).toMatchObject({
+    primaryContactId: 'contact-main',
+    additionalContactIds: ['contact-created'],
+  });
+});
+
+test('a double submit in the editor creates exactly one contact', async () => {
+  const store = editorContacts();
+  render(<EventPanel csrfToken="csrf" />);
+  await openEditor();
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  fireEvent.change(screen.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic single contact' },
+  });
+  const form = screen
+    .getByRole('button', { name: 'Kontakt speichern' })
+    .closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  await screen.findByText(/Kunde: Synthetic single contact/);
+  expect(store.contactPosts).toHaveLength(1);
+  expect(store.puts).toHaveLength(0);
+});
+
+test('a conflict on the event save keeps the draft and the chosen contact', async () => {
+  const store = editorContacts({ eventErrors: ['conflict'] });
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Synthetic conflicted name' },
+  });
+  await pickInEditor(group, 'Synthetic main');
+  submitEditor();
+  await screen.findByText(
+    'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.',
+  );
+  expect(store.puts).toHaveLength(1);
+  expect(store.puts[0]).toMatchObject({
+    name: 'Synthetic conflicted name',
+    primaryContactId: 'contact-main',
+    version: 1,
+  });
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic conflicted name',
+  );
+  expect(screen.getByText(/Kunde: Synthetic main/)).toBeTruthy();
+  expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('a contactless event stays possible and removing the main contact reopens it', async () => {
+  const store = editorContacts();
+  render(<EventPanel csrfToken="csrf" />);
+  await openEditor();
+  expect(screen.getByText(/Kein Kunde ausgewählt/)).toBeTruthy();
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts[0]).toMatchObject({ primaryContactId: null });
+  const group = await openEditor();
+  await pickInEditor(group, 'Synthetic main');
+  fireEvent.click(screen.getByRole('button', { name: 'Kunde entfernen' }));
+  expect(screen.getByText(/Kein Kunde ausgewählt/)).toBeTruthy();
+  expect(screen.queryByText(/Kunde: /)).toBeNull();
+  submitEditor();
+  await screen.findByText('Event gespeichert.');
+  expect(store.puts[1]).toMatchObject({ primaryContactId: null });
+});
+
+test('the editor contact search keeps only the newest answer', async () => {
+  let resolveOlder!: (response: Response) => void;
+  const fetcher = vi.fn((url: string, options?: RequestInit) => {
+    if (options) return Promise.resolve(Response.json(row));
+    if (url.startsWith('/api/v1/contacts')) {
+      const query = decodeURIComponent(url);
+      if (query.endsWith('q=Synt'))
+        return Promise.resolve(
+          Response.json([
+            { id: 'contact-newer', name: 'Synthetic Newer', state: 'active' },
+          ]),
+        );
+      if (query.endsWith('q=Syn'))
+        return new Promise<Response>((resolve) => {
+          resolveOlder = resolve;
+        });
+      return Promise.resolve(Response.json([]));
+    }
+    if (url === '/api/v1/statuses')
+      return Promise.resolve(
+        Response.json([{ code: 'inquiry', label: 'Anfrage' }]),
+      );
+    return Promise.resolve(
+      Response.json(
+        url.startsWith('/api/v1/events')
+          ? { timeZone: 'Europe/Berlin', events: [{ ...row }] }
+          : [],
+      ),
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  const group = await openEditor();
+  const search = within(group).getByLabelText('Kunde suchen');
+  fireEvent.change(search, { target: { value: 'Syn' } });
+  fireEvent.change(search, { target: { value: 'Synt' } });
+  await within(group).findByRole('button', { name: /Synthetic Newer/ });
+  await act(async () =>
+    resolveOlder(
+      Response.json([
+        { id: 'contact-older', name: 'Synthetic Older', state: 'active' },
+      ]),
+    ),
+  );
+  expect(
+    within(group).queryByRole('button', { name: /Synthetic Older/ }),
+  ).toBeNull();
+  expect(
+    within(group).getByRole('button', { name: /Synthetic Newer/ }),
+  ).toBeTruthy();
+});
+
+test('opening another event returns from the contact view to the event form', async () => {
+  const store = editorContacts({
+    supplied: { primaryContactId: 'contact-main' },
+  });
+  render(<EventPanel csrfToken="csrf" />);
+  await openEditor();
+  fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
+  expect(screen.getByRole('heading', { name: 'Kontakt anlegen' })).toBeTruthy();
+  // The row action is the same deliberate edit the list always allowed.
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  expect(screen.queryByRole('heading', { name: 'Kontakt anlegen' })).toBeNull();
+  expect(activeEditorForms()).toHaveLength(1);
+  expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
+    'Synthetic event',
+  );
+  expect(screen.getByText(/Kunde: Synthetic main/)).toBeTruthy();
+  expect(store.puts).toHaveLength(0);
+  expect(store.contactPosts).toHaveLength(0);
 });

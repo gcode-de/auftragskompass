@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { localDateTime, resolveEventTime } from './event-time.js';
 import { ContactDialog, contactDialogTitleId } from './ContactDialog.js';
+import {
+  ContactPicker,
+  useContactSearch,
+  type ContactHit,
+} from './ContactPicker.js';
 import { EventTimeField } from './EventTimeField.js';
 import type { EventRow } from './EventPanel.js';
 import {
@@ -17,17 +22,6 @@ type ScheduleErrors = {
   endsAt?: string;
   eventDate?: string;
 };
-/** A contact as the search answers it: the stored row, never a projection. */
-type ContactHit = {
-  id: string;
-  name: string;
-  state: string;
-  kind?: string;
-  contactPerson?: string;
-  city?: string;
-};
-/** The visible result count stays small enough to stay readable. */
-export const contactHitLimit = 20;
 
 export function generatedEventName(
   eventTypeId: string,
@@ -42,16 +36,6 @@ export function generatedEventName(
 }
 
 /** The quiet second line of a hit: company form, person and town. */
-function contactLine(hit: ContactHit) {
-  const parts = [
-    hit.kind === 'company' ? 'Firma' : '',
-    hit.contactPerson ?? '',
-    hit.city ?? '',
-  ].filter(Boolean);
-  if (hit.state !== 'active') parts.push('Archiviert/Inaktiv');
-  return parts.length ? parts.join(' · ') : 'Privatperson';
-}
-
 export function EventCreateDialog({
   csrfToken,
   timeZone,
@@ -77,9 +61,7 @@ export function EventCreateDialog({
 }) {
   const dialog = useRef<HTMLDivElement>(null),
     saving = useRef(false),
-    searchSequence = useRef(0),
-    pickerInput = useRef<HTMLInputElement>(null),
-    pickerFocus = useRef(false),
+    contactSearch = useContactSearch(),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
     [eventDate, setEventDate] = useState(
@@ -111,11 +93,7 @@ export function EventCreateDialog({
     [scheduleErrors, setScheduleErrors] = useState<ScheduleErrors>({}),
     // The contact form is a view inside this dialog box, never a second one.
     [view, setView] = useState<'event' | 'contact'>('event'),
-    [searchQuery, setSearchQuery] = useState(''),
-    [searchState, setSearchState] = useState<
-      'idle' | 'loading' | 'ready' | 'failed'
-    >('idle'),
-    [hits, setHits] = useState<ContactHit[]>([]);
+    [pickerFocus, setPickerFocus] = useState(0);
   // Locations may arrive after the dialog opened. Hydration only fills an
   // untouched field and never overwrites text the operator already entered.
   useEffect(() => {
@@ -149,38 +127,6 @@ export function EventCreateDialog({
       ?.querySelector<HTMLInputElement>('input[name="eventDate"]')
       ?.focus();
   }, []);
-  useEffect(() => {
-    if (view !== 'event' || !pickerFocus.current) return;
-    pickerFocus.current = false;
-    pickerInput.current?.focus();
-  }, [view]);
-  function runSearch(value: string) {
-    setSearchQuery(value);
-    const current = ++searchSequence.current,
-      query = value.trim();
-    if (!query) {
-      setHits([]);
-      setSearchState('idle');
-      return;
-    }
-    setSearchState('loading');
-    void fetch('/api/v1/contacts?q=' + encodeURIComponent(query))
-      .then(async (response) => {
-        if (!response.ok) throw Error('search');
-        return (await response.json()) as ContactHit[];
-      })
-      .then((rows) => {
-        // Only the newest request may write the list; a late answer is void.
-        if (current !== searchSequence.current) return;
-        setHits(Array.isArray(rows) ? rows : []);
-        setSearchState('ready');
-      })
-      .catch(() => {
-        if (current !== searchSequence.current) return;
-        setHits([]);
-        setSearchState('failed');
-      });
-  }
   function clearContact() {
     setPrimaryContactId('');
     setPickedContact(null);
@@ -192,7 +138,7 @@ export function EventCreateDialog({
   }
   function backToPicker() {
     setView('event');
-    pickerFocus.current = true;
+    setPickerFocus((value) => value + 1);
   }
   function contactSaved(row: ContactHit) {
     // The stored row is the truth: the selection never depends on a list load.
@@ -200,7 +146,7 @@ export function EventCreateDialog({
     setPickedContact(row);
     setAdditionalContactIds((current) => current.filter((id) => id !== row.id));
     backToPicker();
-    if (searchQuery.trim()) runSearch(searchQuery);
+    if (contactSearch.query.trim()) contactSearch.search(contactSearch.query);
   }
   function clearScheduleError(field: keyof ScheduleErrors) {
     setScheduleErrors((current) => {
@@ -460,104 +406,18 @@ export function EventCreateDialog({
                 {scheduleErrors.eventDate}
               </p>
             )}
-            <div className="contact-picker">
-              <label>
-                Kunde suchen
-                <input
-                  ref={pickerInput}
-                  name="contactSearch"
-                  type="search"
-                  maxLength={200}
-                  autoComplete="off"
-                  value={searchQuery}
-                  aria-describedby="event-create-contact-help"
-                  aria-controls="event-create-contact-hits"
-                  onChange={(event) => runSearch(event.currentTarget.value)}
-                  // Enter belongs to the event form, not to a search that runs
-                  // while typing: it must never save the event by accident.
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') event.preventDefault();
-                  }}
-                />
-              </label>
-              <p id="event-create-contact-help">
-                Sucht nach Name, Ansprechpartner, Ort und Kontaktdaten.
-              </p>
-              <input
-                type="hidden"
-                name="primaryContactId"
-                value={primaryContactId}
-              />
-              <p className="contact-picker-current">
-                <span>
-                  {primaryContactId
-                    ? `Kunde: ${chosen?.name ?? 'Zugeordneter Kontakt'}${
-                        chosen && chosen.state !== 'active'
-                          ? ' (Archiviert/Inaktiv)'
-                          : ''
-                      }`
-                    : 'Kein Kunde ausgewählt – das Event bleibt ohne Kundenbezug.'}
-                </span>
-                {primaryContactId && (
-                  <button
-                    type="button"
-                    className="tertiary-action"
-                    onClick={clearContact}
-                  >
-                    Kunde entfernen
-                  </button>
-                )}
-              </p>
-              {searchState === 'loading' && (
-                <p role="status">Kontakte werden gesucht …</p>
-              )}
-              {searchState === 'ready' && hits.length === 0 && (
-                <p role="status">Keine Kontakte gefunden.</p>
-              )}
-              {searchState === 'failed' && (
-                <p role="status">
-                  Kontakte konnten nicht gesucht werden. Die bisherige Auswahl
-                  bleibt bestehen.
-                </p>
-              )}
-              {hits.length > 0 && (
-                <ul
-                  className="contact-picker-hits"
-                  id="event-create-contact-hits"
-                  aria-label="Kontakte gefunden"
-                >
-                  {hits.slice(0, contactHitLimit).map((row) => (
-                    <li key={row.id}>
-                      <button
-                        type="button"
-                        className="contact-picker-hit"
-                        aria-pressed={row.id === primaryContactId}
-                        disabled={row.state !== 'active'}
-                        onClick={() => chooseContact(row)}
-                      >
-                        <span className="contact-picker-name">{row.name}</span>
-                        <span className="contact-picker-detail">
-                          {contactLine(row)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {hits.length > contactHitLimit && (
-                <p>
-                  {`Suche eingrenzen: nur die ersten ${contactHitLimit} Treffer werden angezeigt.`}
-                </p>
-              )}
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={busy}
-                onClick={() => setView('contact')}
-              >
-                Neuen Kunden anlegen
-              </button>
-            </div>
+            <ContactPicker
+              idPrefix="event-create"
+              search={contactSearch}
+              value={primaryContactId}
+              selected={chosen}
+              hiddenName="primaryContactId"
+              disabled={busy}
+              focusRequest={pickerFocus}
+              onSelect={chooseContact}
+              onClear={clearContact}
+              onCreate={() => setView('contact')}
+            />
             <label>
               Eventart
               <select
