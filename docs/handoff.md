@@ -2,6 +2,59 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## Abschluss und vorbereiteter Hermes-Goal, 26.10.2026
+
+Funktionsstand: **45add395a201a98e179a4d8fc54c0a2d279714d5** auf
+codex/ux-event-simplification, einzeln sofort gepusht. Davor24ea155 für BKP015.7.
+Arbeitscheckout: `/Users/gp/Developer/GitHub/auftragskompass-bkp`.
+
+- BKP015.7 öffnet seltene Vorlagenaktionen gezielt pro Zeile. Bearbeiten bleibt
+  sichtbar; native Tastatur, Escape/Tab/Outside und sichtbare Fokusrückkehr sowie
+  Sperren während unklarer Archivierung erhalten.1114 Tests und zehn Chromium-
+  abläufe grün; geändert48/49 Zeilen und41/49 Branches.
+- BKP015.8 ergänzt die fiktive Inhaltsvorschau des ungespeicherten Entwurfs mit
+  demselben HTML-/PDF-Renderer wie echte Dokumente, neutralem Briefpapier ohne
+  Logo und festen Beispieldaten. Strikter authentifizierter/CSRF-POST; keine
+  Nummern, Vorlagen, Dokumente, Audit- oder Storage-Writes. UI prüft PDF-Typ,
+  Signatur/10MiB, bewusster44px-Download; veraltete Antworten/URLs werden verworfen.
+  Entwurf/Dirtyzustand und sichere Speicher-/Archivverträge bleiben erhalten.
+  1126 Tests/Coverage,74 Panelkomponenten, zwölf Vorlagen-Chromiumabläufe und ein
+  echter lokaler angemeldeter API-/PostgreSQL-/Chromium-PDF-Lauf grün. Geändert
+  117/122 Zeilen und102/117 Branches, global97,06% Zeilen/93,05% Branches.
+  Schnelle Gates/Build, unabhängige Luna-Reviews, Impeccable-Panelscan und visuelle
+  Mobil-/Desktop-/Theme-/PDF-Prüfung grün. API-Integration allein injiziert PDF-
+  Bytes; der zusätzliche document-layout.spec.ts-Lauf beweist echtes Chromium.
+
+CI40251062521 zu45add39 war nach Push noch pending. H055 dokumentiert den Goal
+als eigenen Folgecommit und erhält eine neue maßgebliche CI. **Neue Funktionen
+noch nicht als live behaupten.** Erneut verifiziert läuft c21330c auf drei
+gesunden Containern, Timer aktiv/Service inaktiv, kein needs-attention, Drain off.
+Checkpoint CT/Host/Betreiber identisch:2853190 Bytes, SHA256
+`35982b46689057711423436bb6946cd3284e3693b413d95688c966abac1c7f0a`.
+Kein paralleles manuelles Update. Vor weiterem Implementierungspush grüne
+quality+images abwarten, damit der laufende Lieferstand nicht ständig abgebrochen
+wird; inzwischen rein lesende Ressourcenanalyse sinnvoll delegieren.
+
+Der [vollständige aktuelle Hermes-Goal](bookitup-parity/hermes-handoff.md) ersetzt
+den alten BKP001-Einstieg. Erste nächste Welle: BKP009–BKP012, jeweils kleinste
+nummerierte Unter-Slices und getrennte Dateizuständigkeiten; danach tatsächliche
+Lücken des gesamten Paritätsbacklogs weiterführen. Vorlagenfilter und auswählbare
+Platzhalter bleiben Zusatzanforderungen, keine vollständige Parität behaupten.
+MiMo V2.6 Pro koordiniert; DeepSeek V4.1 Flash übernimmt Coding-Subagents.
+Ponytail full, Impeccable Operate, REA mit ehrlichen Werkzeuggrenzen, Tastev2
+nur außerhalb der ausgeschlossenen Adminscreens; emil/animate nur passend.
+
+Hermes ist erreichbar über die aktive lokale Build-Installation unter
+`/Users/gp/.hermes/hermes-agent/apps/desktop/release/mac-arm64/Hermes.app`.
+Die daneben installierte /Applications-Version war nicht erreichbar; das ist
+kein Beweis einer Mac-Sperre. Neue leere Session mit MiMo ausgewählt vorbereitet.
+**Dieser Dokumentationsstand enthält noch keinen Goal-Startnachweis.** Nach dem
+Commit per Computer Use übergeben und tatsächlichen MiMo-/DeepSeek-Arbeitsstart
+kontrollieren, sonst konkreten Blocker melden. Keine Zugangsdaten übertragen.
+Die einmalige Codex-Automation anschließend löschen, keine Wiederaufnahme planen.
+Bei73% begann der Übergabeabschluss, reguläre Nutzung verfügbar und Zusatzcredits
+unverändert; das ist ein datierter Snapshot und kein neues dauerhaftes Limit.
+
 ## Wiederaufnahme und Auslieferungsnachweis, 26.10.2026
 
 Neues reguläres Fünf-Stunden-Fenster tatsächlich geprüft: 0% bei Start,

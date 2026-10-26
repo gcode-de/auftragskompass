@@ -8,6 +8,18 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H055 — `docs: prepare current Hermes parity goal`** (26.10.2026)
+
+  Nach BKP015.7/.8 tatsächlichen Abschlussstand, Tests, offenen CI-/Liefernachweis
+  und nächste priorisierte Ressourcen-/Produkt-/Kontaktwelle im dauerhaften Goal-
+  Prompt aktualisieren. Alte BKP001-Einstiegsanweisung ersetzen. MiMo-Koordination,
+  DeepSeek-Coding mit getrennten Dateien, Skills/Geltungsgrenzen, Referenzlücken,
+  Abnahme und Datenschutz/Betriebsgrenzen eigenständig verständlich festhalten.
+  Unabhängiger Luna-Dokumentenreview und Dokumentationsgates, expliziter Commit/
+  sofortiger Push. Computer-Use-Übergabe/Modell-/Arbeitsstart anschließend wirklich
+  prüfen; dieser vorbereitende Dokumentationscommit behauptet keinen Start.
+  Einmalige Codex-Automation nach Übergabe oder dokumentiertem Blocker löschen.
+
 - [x] **BKP015.8 — `feat: preview document templates with synthetic data`** (26.10.2026)
 
   Ein vertikaler Slice für eine ausdrücklich fiktive Inhaltsvorschau des offenen,
