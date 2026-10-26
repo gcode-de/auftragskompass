@@ -8,6 +8,18 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **H054 — `docs: verify template delivery and resume handoff`** (26.10.2026)
+
+  Vor Wiederaufnahme echtes neues Fenster mit regulärer Nutzung geprüft.
+  H053-CI40228205140 zu c21330c komplett grün einschließlich Images; automatisches
+  Update tatsächlich abgeschlossen. Drei gesunde Container mit identischer OCI-
+  Revision, Timer aktiv/Service inaktiv, kein needs-attention, Option-Drain off.
+  Checkpoint CT/Host/Betreiber identisch; neun Vorlagen-Chromiumabläufe gegen
+  echte statische Auslieferung mit lokalen fiktiven APIs und Versionslabel grün.
+  Keine Änderung echter Daten oder paralleles manuelles Update. Übergabe an
+  Hermes/MiMo/DeepSeek ausdrücklich vor Ende dieses Fensters vorbereiten und
+  tatsächlichen Start kontrollieren; keine weitere Codex-Wiederaufnahme.
+
 - [x] **H053 — `test: await loaded event detail language`** (25.10.2026)
 
   CI40227220526 zu249aa47 scheitert in ui-language.test.tsx:88: Region ist

@@ -1,6 +1,34 @@
 # Projektübergabe AuftragsKompass
 
-Stand der Fortsetzung: **25.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+
+## Wiederaufnahme und Auslieferungsnachweis, 26.10.2026
+
+Neues reguläres Fünf-Stunden-Fenster tatsächlich geprüft: 0% bei Start,
+resetsAt1792991455, Wochenlimit43%, ordinaryUsageAllowed=true. Zusatzcredits
+unverändert. Werte sind datiert, vor Weiterarbeit erneut prüfen. Dies ist die
+bereits autorisierte einmalige zusätzliche Phase. Nutzer verlangt am Ende eine
+konkrete Hermes-Goal-Übergabe: MiMo koordiniert, DeepSeek-Coding-Subagents erhalten
+getrennte Dateien und prüfbare Abnahme. Rechtzeitig vor Erschöpfung Reserve für
+Prompt/Repo/Computer Use lassen; tatsächlichen Modell-/Arbeitsstart kontrollieren.
+Hermes-native Erreichbarkeitsprüfung lieferte zunächst einen Timeout, keinen
+Startnachweis und keinen sicheren Beleg für eine Mac-Sperre. Später erneut prüfen;
+bei echtem Blocker fertigen Prompt dauerhaft sichern und ehrlich berichten.
+Nach Abschluss dieser Phase die einmalige Codex-Automation löschen.
+
+**Verifiziert ausgeliefert:** c21330c6967e2edb4da2607769f85f40a198c6cf.
+CI40228205140 quality+images komplett grün. Alle drei App-Container gesund und
+exakte OCI-Revision, Timer aktiv/Service inaktiv, kein needs-attention, Option-
+Drain off. Vorab-Checkpoint CT114/Host/Betreiber identisch:2853190 Bytes,
+SHA256 `35982b46689057711423436bb6946cd3284e3693b413d95688c966abac1c7f0a`.
+Betreiberkopie und runtime-proof.json privat unter
+`/Users/gp/Documents/AuftragsKompass-Sicherung/delivery-2026-10-25/c21330c/`.
+Neun Chromium-Vorlagenabläufe gegen die wirklich ausgelieferten statischen Dateien
+mit ausschließlich lokal synthetischen APIs und exaktem Versionslabel grün;
+Ergebnisse privat unter delivery-2026-10-26/templates-live-c21330c. Keine echten
+Geschäfts-API-Schreibtests. Damit sind auch sichere Speicherung und Gruppierung
+BKP015.5b/.6 samt H053 im Testbetrieb angekommen. Keine vollständige Parität
+oder Produktivfreigabe daraus ableiten.
 
 ## Abschluss dieses Fensters: H053, 25.10.2026
 
