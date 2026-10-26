@@ -2,6 +2,44 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H059: Vorlagenrest abgeschlossen (Filter + Platzhalterwerkzeuge), 26.10.2026
+
+Die beiden im Übergabeprompt gesondert offenen Vorlagen-Zusatzanforderungen
+sind umgesetzt – ausdrücklich als **Nutzerwunsch**, nicht als belegte
+Bookitup-Funktion (B35 sah keine Filter; die Platzhalterwelt ist unbeobachtet):
+
+- **BKP015.9 `7bf9d0f`** – Suche über den Vorlagennamen, Art-Auswahl
+  (fünf Gruppenlabels + „Weitere Dokumentarten“) und Zustandsauswahl
+  (Alle/Aktiv/Inaktiv/Archiviert) als kompakte Werkzeugleiste über den
+  Gruppen; clientseitig, `GET` bleibt querylos; Gruppierung aus der
+  gefilterten Menge, getrennte Leerzustände mit „Filter zurücksetzen“,
+  Filtererhalt über Editieren/Vorschau/Archivieren, additiv sichtbares
+  „ – Inaktiv“. 11 Tests zuerst rot; E2E-Abnahme 320/390/1280 × light/dark
+  (sechs Screenshots, axe 0 Verstöße).
+- **BKP015.10 `efc04d1`** – Platzhalter-Einfügewerkzeuge an Betreff/
+  Einleitung/Schluss: zweistufiger Picker (Umschalter + Klartextbeschreibung
+  je der acht AK-Tokens + „Einfügen“) an der Cursorposition; Auswahl allein
+  verändert nichts, Einfügen verwirft eine gültige Vorschau genau einmal
+  (kein Doppelfeuer), Dirty-Baseline bleibt DOM-basiert, Längenwächter
+  schützt die Feldgrenzen (kein halbes Token im Kunden-PDF: passt ein
+  vollständiger Platzhalter nicht, wird nichts eingefügt). Drift-Test sichert
+  die UI-Tokenliste gegen `templatePlaceholders` aus dem Kern. 10 Tests zuerst
+  rot; kompakter Chromium-Beweis inkl. Tastaturpfad und PUT-Nutzlast.
+
+Gates je Slice vollständig grün (zuletzt component 658, integration 311,
+unit 265, coverage 1234 Tests, E2E auth+template-product-price 16/16,
+Build). CI: 40303632178 (`7bf9d0f`) grün, 40308379097 (`efc04d1`) komplett
+grün (quality 17m03s + images 1m44s).
+
+**Nächste offene Paritätsaufgaben:** BKP013/BKP014 (Eventkontext gliedern,
+Eventliste mit echten Ressourcen), danach der weitere Backlog (Dateien,
+kommerzielle Dokumentabläufe, Mailkern, Aufgaben/Verträge/Fragebögen,
+Websiteformulare); notierte Folgeslices: BKP010.3 optional,
+`registerUnsavedChanges` des Event-Editors, Platzhalter-Werkzeuge auch im
+Angebotsentwurfs-Editor (Nutzerwunsch), BKP011-Landauswahl. Betrieb
+unverändert: verifiziert live **c21330c**, alleiniger Auto-Updater;
+Checkpoint-/OCI-Nachweis weiterhin offen (Proxmox-Host nicht erreichbar).
+
 ## H058: BKP012.2 abgeschlossen – Welle BKP009–BKP012 komplett, 26.10.2026
 
 - **BKP012.2 `999354f`** – Hauptkontakt im Event-Editor über den suchbaren

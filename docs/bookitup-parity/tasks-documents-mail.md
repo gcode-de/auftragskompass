@@ -1,6 +1,6 @@
 # Tickets: Dokumente, Dateibibliothek und Kommunikation
 
-Alle Pakete **offen**. [Ausführungsanleitung](agent-playbook.md) und [Designvertrag](design-contract.md) gelten. Die größeren Pakete vor Start in kleine vertikale Unter-Slices im Hauptplan zerlegen. Kein „alles mit einem Commit“. Referenzen B05–B06/B09–B10/B15–B20/B23–B25/B31–B32; Quellbasis cf68f1e.
+Alle Pakete **offen**. [Ausführungsanleitung](agent-playbook.md) und [Designvertrag](design-contract.md) gelten. Die größeren Pakete vor Start in kleine vertikale Unter-Slices im Hauptplan zerlegen. Kein „alles mit einem Commit“. Referenzen B05–B06/B09–B10/B15–B20/B23–B25/B31–B32; Quellbasis cf68f1e. **Nachtrag 26.10.2026:** die gesondert offenen Vorlagen-Zusatzanforderungen sind mit BKP015.9 (Suche/Art-/Zustandsfilter) und BKP015.10 (Platzhalter-Einfügewerkzeuge) umgesetzt – ausdrücklicher Nutzerwunsch, keine belegte Bookitup-Funktion; Abnahmen im Implementierungsplan.
 
 ## BKP015 — Dokumentvorlagen als Liste mit fokussiertem Editor und Vorschau
 
