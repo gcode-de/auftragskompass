@@ -2,6 +2,45 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H066: BKP019.c1 – Rechnung aus Auftragsbestätigung (RG-01), 26.10.2026
+
+- **BKP019.c1 `514723b`** – erster Rechnungsweg: aus einer finalen
+  Auftragsbestätigung entsteht „Rechnung erstellen“ ein bearbeitbarer
+  Rechnungsentwurf (Positionen 1:1, Summen exakt wie die Quelle, Betreff
+  „Rechnung für {{contact}}“), finalisiert mit eigener Nummer im
+  Rechnungsnummernkreis (NK-01/NK-05 bestehende Verträge). Migration `0042`
+  weitet die Quellmechanik auf `invoice` aus (mandantengebundener FK,
+  genau eine Rechnung je Quelle – Dublette 409 ohne Nummernverbrauch);
+  Quellanzeige „Aus Auftragsbestätigung AB-…“. Keine Rechnung für
+  zurückgezogene Aufträge; die Blanko-Sperre bleibt unverändert (ohne Quelle
+  oder Vorlage gibt es keine Rechnung). **Ersatzbeleg-Entscheidung:**
+  Dublettensperren bleiben endgültig; finalisierte Belege werden nie ersetzt,
+  nur durch künftige Korrektur-/Storno-Folgedokumente ergänzt (c2 bringt das
+  Vorzeichenmodell – negative Beträge sind heute auf vier Ebenen verboten).
+- **Abnahme:** RED beobachtet (13 Integrationsfehler fehlender Methode,
+  DB-Vertrag/Migration, 7 Component-/E2E-Feeler), dann grün: unit 274,
+  component 716, integration 379 (Positions-/Summengleichheit, Dublette,
+  Parallelität/Rollback, `RE-`-Nummer, Unveränderlichkeit, Mandantentrennung,
+  DB-CHECKs; `:298–308` unantastbar), coverage 1369 vollständig (Changed
+  93,24%/85,53%), E2E 16/16 inkl. Ablauf finale Bestätigung → Rechnung →
+  Dublette → Finalisierung `RE-JJJJ-NNNN` → PDF, Quell-PDFs bytegleich,
+  Build grün.
+- **Ehrlich notiert:** „final“ heißt „eingefroren“, nicht „rechtlich
+  vollständig“ – Pflichtangaben § 14 UStG (Leistungsdatum, Steuernummer,
+  Zahlungsziel, Bankverbindung) fehlen; Anzahlungs-/Schluss-/Korrektur-
+  rechnungen und Zahlungsverrechnung fehlen (eigene Folgeslices, in der UI
+  sichtbar benannt); Doppelverrechnung über den Vorlagenpfad bleibt möglich
+  (Unique deckt nur den Quellpfad, bewusst); MiMo-Reviewfix machte
+  Editor-Überschrift/Verwerfen-Dialog auch für Rechnungen artabhängig.
+
+**Nächste Unter-Slices BKP019:** c2 (Korrektur/Storno mit Vorzeichenmodell),
+c3 (Anzahlung/Schlussrechnung – erst sinnvoll mit (d)), (d) Zahlungen/
+Teilzahlungen/offener Saldo, (e) Fristen-/Statusfilter und Export; dazu
+Pflichtangaben-Ausstattung RG-04/RG-07, Annahme-Korrekturpfad, BKP020-Reste
+und BKP021+ (Mailkern bis BKP030). Betrieb unverändert: verifiziert live
+**c21330c**, alleiniger Auto-Updater; Checkpoint-/OCI-Nachweis weiterhin
+offen (Proxmox-Host 192.168.68.201 nicht erreichbar).
+
 ## H065: BKP019.b – Auftragsbestätigung ohne Positionsneueingabe (AG-05), 26.10.2026
 
 - **BKP019.b `436fe54`** (inkl. Nachtrag b2): aus einem finalen, angenommenen
