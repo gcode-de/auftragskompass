@@ -2904,6 +2904,53 @@ summary {
   min-width: 44px;
   min-height: 44px;
 }
+/* BKP020.1: the library is a second region in the same Dateien area, so it
+   reuses the document table and action tiers and only adds its own rhythm. */
+.workspace-page > section.library-files {
+  margin-top: 1rem;
+}
+.library-files-hint {
+  color: var(--muted);
+  max-width: 70ch;
+  margin: 0 0 1rem;
+}
+.library-files-upload {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+.library-files-upload label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.library-files-upload input {
+  min-height: 44px;
+  max-width: 24rem;
+  padding: 0.35rem 0.5rem;
+  color: var(--ink);
+  background: var(--field-surface);
+  border: 1px solid var(--field-border);
+  border-radius: 0.375rem;
+}
+.library-files-error {
+  color: var(--alert-ink);
+}
+.library-files-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.library-files-actions > a,
+.library-files-actions > button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
 .document-template-groups {
   display: grid;
   gap: 1.25rem;

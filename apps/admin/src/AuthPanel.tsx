@@ -13,6 +13,7 @@ import {
 import { EventPanel } from './EventPanel.js';
 import { ContactPanel } from './ContactPanel.js';
 import { FilesPanel } from './FilesPanel.js';
+import { LibraryFiles } from './LibraryFiles.js';
 import { ProductPanel } from './ProductPanel.js';
 import { DocumentTemplatesPanel } from './DocumentTemplatesPanel.js';
 import { DocumentNumbersPanel } from './DocumentNumbersPanel.js';
@@ -170,6 +171,10 @@ export function AuthPanel() {
           </div>
           <div className="workspace-page" hidden={route !== 'files'}>
             <FilesPanel active={route === 'files'} />
+            <LibraryFiles
+              csrfToken={user.csrfToken}
+              active={route === 'files'}
+            />
           </div>
           <div className="workspace-page" hidden={route !== 'calendar'}>
             <CalendarPanel key={importRevision} />

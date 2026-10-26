@@ -36,6 +36,8 @@ import { registerResourceRoutes } from '../../packages/core/src/resources.js';
 import { registerMasterDataRoutes } from '../../packages/core/src/master-data.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerDocumentRoutes } from '../../packages/core/src/documents.js';
+import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
+import { StorageError } from '../../packages/core/src/storage.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 async function signInScenario(browser: Browser, mode: 'google' | 'password') {
   // Password mode runs 75 full axe scans; expand only its total journey budget.
@@ -199,6 +201,22 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         async remove() {},
       },
       render: async () => Buffer.from('%PDF-1.4 synthetic'),
+    });
+    // BKP020.1: the library runs on an in-memory adapter, so the browser
+    // uploads and downloads real synthetic bytes without touching the disk.
+    const libraryBytes = new Map<string, Buffer>();
+    registerLibraryFileRoutes(app, pool, config.tenantId, {
+      async put(key, bytes) {
+        libraryBytes.set(key, Buffer.from(bytes));
+      },
+      async read(key) {
+        const bytes = libraryBytes.get(key);
+        if (!bytes) throw new StorageError('missing');
+        return bytes;
+      },
+      async remove(key) {
+        libraryBytes.delete(key);
+      },
     });
     registerImportRoutes(app, pool, config.tenantId);
     registerInquiryPreviewRoute(app);
@@ -833,6 +851,90 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       "DELETE FROM events WHERE tenant_id=$1::uuid AND id='33333333-3333-4333-8333-333333333333'",
       [config.tenantId],
     );
+    // BKP020.1: uploading, downloading and archiving a synthetic library file.
+    // The library is its own named region beside the document index, with its
+    // own heading and endpoint.
+    const library = page.getByRole('region', { name: 'Dateibibliothek' });
+    await expect(library).toBeVisible();
+    await expect(
+      library.getByRole('heading', { level: 2, name: 'Dateibibliothek' }),
+    ).toBeVisible();
+    await expect(
+      library.getByText(/nicht auf Schadsoftware geprüft/),
+    ).toBeVisible();
+    await expect(
+      library.getByText('Noch keine Dateien hochgeladen.'),
+    ).toBeVisible();
+    const syntheticPdf = Buffer.from(
+      '%PDF-1.4 synthetic library invoice\n%%EOF\n',
+      'latin1',
+    );
+    await library.getByLabel('Datei auswählen').setInputFiles({
+      name: 'synthetic-invoice.pdf',
+      mimeType: 'application/pdf',
+      buffer: syntheticPdf,
+    });
+    await library.getByRole('button', { name: 'Hochladen' }).click();
+    await expect(library.getByText(/wurde hochgeladen/)).toBeVisible();
+    const libraryRow = library.getByRole('row', {
+      name: /synthetic-invoice\.pdf/,
+    });
+    await expect(libraryRow).toContainText('PDF');
+    await expect(libraryRow).toContainText('Verfügbar');
+    await expect(libraryRow).toContainText('Unverprüft');
+    const downloadLink = library.getByRole('link', {
+      name: 'Herunterladen: synthetic-invoice.pdf',
+    });
+    await downloadLink.focus();
+    expect(
+      await downloadLink.evaluate(
+        (element) => element === document.activeElement,
+      ),
+    ).toBe(true);
+    const downloadEvent = page.waitForEvent('download');
+    await downloadLink.click();
+    const libraryDownload = await downloadEvent;
+    expect(libraryDownload.suggestedFilename()).toBe('synthetic-invoice.pdf');
+    expect(
+      (await readFile((await libraryDownload.path())!)).equals(syntheticPdf),
+    ).toBe(true);
+    await library
+      .getByRole('button', { name: 'Archivieren: synthetic-invoice.pdf' })
+      .click();
+    await expect(
+      library.getByRole('group', {
+        name: 'Datei synthetic-invoice.pdf archivieren?',
+      }),
+    ).toBeVisible();
+    await library
+      .getByRole('button', { name: 'Archivieren bestätigen' })
+      .click();
+    await expect(library.getByText(/wurde archiviert/)).toBeVisible();
+    await expect(libraryRow).toContainText('Archiviert');
+    await expect(
+      library.getByRole('link', { name: /Herunterladen/ }),
+    ).toHaveCount(0);
+    for (const [width, height, theme] of [
+      [320, 740, 'light'],
+      [1440, 900, 'dark'],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const toggle = page.getByRole('button', { name: /modus aktivieren/ });
+      if (
+        (await toggle.getAttribute('aria-pressed')) !== String(theme === 'dark')
+      )
+        await toggle.click();
+      await audit(`dateibibliothek-${width}-${theme}`);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const libraryThemeToggle = page.getByRole('button', {
+      name: /modus aktivieren/,
+    });
+    if ((await libraryThemeToggle.getAttribute('aria-pressed')) === 'true')
+      await libraryThemeToggle.click();
     await navigate('Einstellungen', 'Konto & Zugriff');
     if (mode === 'google') {
       await page

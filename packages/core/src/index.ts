@@ -113,6 +113,24 @@ export { registerLocationRoutes } from './locations.js';
 
 export { registerEventRoutes } from './events.js';
 
+export {
+  libraryFileMaxBytes,
+  libraryMediaTypes,
+  sniffLibraryMediaType,
+  checkLibraryBytes,
+  normalizeLibraryDisplayName,
+  libraryFileExtension,
+  libraryStorageKey,
+  decodeLibraryBase64,
+  contentDispositionHeader,
+  libraryFileRepository,
+  registerLibraryFileRoutes,
+  LibraryFileError,
+  type LibraryMediaType,
+  type LibraryFileRow,
+  type LibraryFileUploadInput,
+} from './library-files.js';
+
 export { startReservationExpiry } from './reservation-worker.js';
 
 export { registerImportRoutes } from './import-routes.js';

@@ -8,6 +8,64 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP020.1 — `feat: upload and download library files safely`** (26.10.2026)
+
+  Erster vertikaler Unter-Slice von BKP020 (Datei- und Eventbibliothek) nach
+  rein lesender DeepSeek-Analyse zu `3feceda`. Staleness-Befund: BKP016/017/018
+  sind materiell über frühere Slices geliefert (Plan:941/:939/:937/:931,
+  :929, :923–:842), BKP019/BKP020 sind unberührt; `FilesPanel` ist ein
+  Dokumentindex über `documents`, keine Dateibibliothek. Neu: tenantgebundene
+  Dateientität `library_files` (Migration `0038`): `display_name` nur als
+  Daten (Schlüssel ausschließlich aus UUID + abgeleiteter Endung),
+  `media_type` pdf/png/jpeg/zip mit serverseitiger Signaturprüfung
+  (MIME-Spoofing → 415 ohne Zeile/Datei), `size_bytes`/`sha256`, einheitliche
+  10-MiB-Grenze (exakt erlaubt, +1 → 413), `scan_state='not_scanned'`
+  (KEIN Virenscan eingerichtet – ehrlich dokumentiert; Mail-Anhänge bleiben
+  später davon abhängig), `state` available/archived/rejected (rejected wird
+  nicht persistiert: abgewiesene Uploads = HTTP-Ergebnis + Audit). Upload
+  transport über JSON+Base64 (strenge Validierung, Name bleibt aus URL/Logs),
+  Download nur autorisiert mit `Content-Disposition: attachment`,
+  `filename*`-Säuberung, `nosniff`, kein HTML/SVG im App-Origin; ZIP wird
+  NIEMALS entpackt. UI `LibraryFiles.tsx` als EIGENE benannte Region neben
+  `FilesPanel` im `#files`-Bereich (Testverträge auth.test.tsx:327 /
+  auth.spec.ts:741 bleiben sonst rot; Listenantwort als Array wegen
+  files.test.tsx:95 / auth-Stub), Upload-/Liste-/Download-/Archivweg mit
+  getrennten Leer-/Lade-/Fehlerzuständen und sichtbarem „unverprüft“-Hinweis;
+  `FilesPanel`-Untertitel künftig „Geschäftsdokumente“. Archivieren
+  idempotent; KEINE Dedupe-Unique auf sha256. Nicht im Slice: Eventverknüpfung,
+  Ersetzen/Versionierung, Kategorien, Mailanhangpicker, DA-07-Import,
+  Retention, Virenscan. Referenz ehrlich: Bibliotheksaufbau unbekannt (B05
+  belegt nur die Event-Kartengliederung). Tests zuerst rot (Ticketliste:
+  Typen, Tenant/ID-Leak, MIME-Spoofing, Grenzgröße, ZIP nie entpackt,
+  bösartige Namen, Storage-Fehler ohne available-Zeile, keine Doppelzeile,
+  Downloadheader, idempotent-Archiv, UI-Zustände); Migration + Integrationstest
+  im selben Slice. Coding-Subagent: DeepSeek V4.1 Flash (gleiche
+  Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (Unit-/Component-Suites gegen fehlende Module;
+  ehrlich vermerkt: der Integrationstest entstand zusammen mit dem Kern und
+  wurde beim ersten echten Lauf von einem Testfehler bereinigt, kein
+  Feature-Defekt), danach grün: `test:unit` 274/274 (9 neu),
+  `test:component` 681/681 (12 neu; bestehende Verträge „genau ein Abruf“ /
+  auth.test.tsx:327 unverändert grün), `test:integration` 324/324 (11 neu:
+  vier Typen, Tenant/ID-Leak, MIME-Spoofing, exakt/+1 MiB, ZIP nie entpackt,
+  bösartige Namen, Storage-Fehler ohne available-Zeile, requestId ohne
+  Doppelzeile, Downloadheader, idempotent-Archiv, Auth/CSRF),
+  `test:coverage` vollständig grün (library-files.ts 94,48% Zeilen/86,11%
+  Zweige, LibraryFiles.tsx 99,23%/90,40% – Changed-Gate ≥85/80 erfüllt),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. echtem Upload-/Download-/Archiv-
+  Fluss mit Byte-Vergleich, Tastaturfokus, 320/1440 beiden Themes, axe
+  0 Verstöße (ein anfänglicher `scrollable-region-focusable`-Befund der
+  Tabelle wurde durch eine fokussierbare benannte Fläche behoben);
+  Impeccable-Detektor ohne Befund. Notiert: Auditzeilen `file.*` werden
+  direkt in der Transaktion geschrieben (Union in `appendAudit` ohne
+  `file.*`, DB-CHECK sichert ab – späterer Refactor); Replay einer
+  gespeicherten Upload-Antwort kann „available“ zeigen, obwohl die Datei
+  später archiviert wurde (Idempotenzbeleg-Muster); Liste ohne
+  Suche/Paginierung (Folgeslice bei Bedarf); eine notwendige Zusatzzeile in
+  `tests/integration/identity.test.ts` (Migrationserwartung 0038) war als
+  Überschreibung der Dateigrenze ehrlich gemeldet und reviewt.
+
 - [x] **BKP014.2 — `feat: show assigned resources in event summaries`** (26.10.2026)
 
   Tatsächlicher offener Teil von BKP014 (BKP014.1 „scannbare Karten mit

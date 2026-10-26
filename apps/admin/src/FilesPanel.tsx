@@ -9,7 +9,8 @@ import {
 } from './url-state.js';
 
 // H035: the Dateien page lists the existing business documents. It shows only
-// what the document list actually knows; there is no upload library yet.
+// what the document list actually knows; uploaded files live in the separate
+// library region below (BKP020.1).
 export const fileKinds = [
   ['', 'Alle Arten'],
   ['offer', 'Angebot'],
@@ -205,7 +206,7 @@ export function FilesPanel({
     <section id="files" className="files-panel" aria-label="Dateien">
       <p className="files-subtitle">
         Geschäftsdokumente aus Angeboten und Rechnungen. Hochgeladene Dateien
-        gibt es noch nicht.
+        stehen in der Dateibibliothek darunter.
       </p>
       <div className="files-filters" role="group" aria-label="Dateifilter">
         <label>

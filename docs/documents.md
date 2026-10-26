@@ -318,9 +318,11 @@ Pagination, neueste zuerst (`issued_at` absteigend, dann `id` absteigend).
 Die Oberfläche unter „Dateien“ (`#files`) nutzt die Projektion, zeigt Art und
 Nummer, Datum, Eventname, Status und den exakten Bruttobetrag. Eine PDF wird
 nur für `pdfAvailable` verlinkt und erst beim Klick geladen; Entwürfe verweisen
-auf ihr Event. Es gibt keinen Upload, keinen Portalstatus und keine
-Gesamtsumme. Hochgeladene Dateien, Standarddateien und Eventdateien bleiben
-offen und brauchen eine eigene Ablage samt Prüfung.
+auf ihr Event. Es gibt keinen Portalstatus und keine Gesamtsumme. Der
+Geschäftsdokumentindex wird seit BKP020.1 von der eigenen „Dateibibliothek“
+unterhalb ergänzt (Upload/Download/Archiv von PDF/PNG/JPEG/ZIP, siehe
+[Dateibibliothek](files.md)); Standarddateien und Eventverknüpfungen bleiben
+offene Folgeslices.
 
 ## Oberfläche
 

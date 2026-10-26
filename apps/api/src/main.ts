@@ -26,6 +26,7 @@ import {
   registerDocumentNumberRoutes,
   registerDocumentLayoutRoutes,
   registerDocumentRoutes,
+  registerLibraryFileRoutes,
   localStorageAdapter,
   chromiumPdfRenderer,
 } from '@auftragskompass/core';
@@ -119,6 +120,9 @@ try {
       store: documentStore,
       render: documentRender,
     });
+    // BKP020.1: the file library shares the storage mount but has its own
+    // tenant-bound rows and API.
+    registerLibraryFileRoutes(app, pool, auth.tenantId, documentStore);
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);
