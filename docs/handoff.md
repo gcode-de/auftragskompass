@@ -2,6 +2,46 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H065: BKP019.b – Auftragsbestätigung ohne Positionsneueingabe (AG-05), 26.10.2026
+
+- **BKP019.b `436fe54`** (inkl. Nachtrag b2): aus einem finalen, angenommenen
+  Angebot entsteht „ohne erneute Positionserfassung“ eine Auftragsbestätigung
+  – Positionen 1:1 (Bruttopreise, Steuer-/Rabatt-Basispunkte unverändert),
+  Summen serverseitig exakt = Angebotsendsummen, Texte übernommen (Betreff
+  „Auftragsbestätigung für {{contact}}“), Entwurf vollständig bearbeitbar
+  (geteilte Editor-Komponente mit eigener Überschrift und artabhängigem
+  Verwerfen-Dialog), Finalisierung mit eigener Nummer. Quellverknüpfung
+  `source_document_id` (Migration `0041`, mandantengebundener FK, genau eine
+  Bestätigung je Angebot per partiellem Unique-Index – Dublette 409 ohne
+  Nummernverbrauch); Angebot und Bestätigung sind danach unabhängig.
+  Zwei vor dem Bau gefundene Blockaden wurden behoben: der Blanko-CHECK
+  erlaubte vorlagenlos nur Angebote, und `PUT /draft` verweigerte
+  Nicht-Angebotsarten (eine Bestätigung hätte den Angebotstext unkorrigierbar
+  gedruckt). Statusvertrag: nur `final`+`accepted`, Pflicht-`version`;
+  `documents.test.ts:298–308` (Rechnung bleibt gesperrt) unantastbar.
+- **Abnahme:** RED beobachtet (13 Integrationsfehler fehlender
+  Methode/Route/UI, Migrationserwartung; Nachtrag: fehlende
+  Bearbeiten-Aktion), dann grün: unit 274, component 707, integration 364
+  (16 neue Pflichttests inkl. Übernahme-Gleichheit, Dublette, Parallelität/
+  Rollback, Unabhängigkeit beide Richtungen, DB-CHECKs 23514/23503/23505),
+  coverage 1343 vollständig (Changed ≥85/80), E2E 16/16 inkl. Ablauf
+  angenommenes Angebot → Bestätigung (kopierte Positionen, kein Editor
+  geöffnet) → Dublettenerklärung → Finalisierung mit eigener Nummer →
+  Quellhinweis, Angebots-PDF bytegleich, Build grün.
+- **Ehrlich notiert:** die Dublettensperre ist endgültig (ein Ersatzbeleg
+  braucht eine Entscheidung in (c)); `validity_days` wird aus
+  Vorlagengründen mitkopiert, fachlich inert für Bestätigungen; ein Angebot
+  ohne Kontakt/Event wird mit `missing_reference` abgelehnt statt mit
+  erfundenem Inhalt bestätigt; ein Coverage-Lauf flackerte einmal (1/113
+  Dateien, zwei Wiederholungen grün).
+
+**Nächste Unter-Slices BKP019:** (c) Rechnung/Anzahlung/Schlussrechnung/
+Korrektur (inkl. Ersatzbeleg-Entscheidung), (d) Zahlungen/Salden, (e)
+Fristen-/Statusfilter und Export; dazu Annahme-Korrekturpfad, BKP020-Reste
+und BKP021+ (Mailkern bis BKP030). Betrieb unverändert: verifiziert live
+**c21330c**, alleiniger Auto-Updater; Checkpoint-/OCI-Nachweis weiterhin
+offen (Proxmox-Host 192.168.68.201 nicht erreichbar).
+
 ## H064: BKP019.a – Annahmedaten (AG-06/AG-08), 26.10.2026
 
 - **BKP019.a `e9d72b3`** – die Angebotsannahme erfasst jetzt Kanal
