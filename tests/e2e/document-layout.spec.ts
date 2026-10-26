@@ -5,7 +5,7 @@ import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -853,6 +853,97 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       store,
     ).get();
     expect(finalRow?.version).toBe(6);
+
+    const templatePreviewInput = {
+      kind: 'offer',
+      name: 'Fictional renderer proof',
+      subject: 'Angebot für {{contact}} <script>',
+      introText: 'Hallo {{contact}} — {{event}} am {{date}}',
+      outroText: '{{package}} / {{total}} / {{documentLink}}',
+      validityDays: 14,
+      state: 'active',
+      positions: [
+        {
+          productId: null,
+          description: 'Fictional box & light',
+          quantity: 2,
+          unit: 'Stück',
+          unitPriceMinor: 19900,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 500,
+        },
+      ],
+    };
+    const businessCounts = async () =>
+      (
+        await pool.query(
+          `SELECT
+          (SELECT count(*) FROM document_templates WHERE tenant_id=$1::uuid) AS templates,
+          (SELECT count(*) FROM document_template_positions WHERE tenant_id=$1::uuid) AS positions,
+          (SELECT count(*) FROM documents WHERE tenant_id=$1::uuid) AS documents,
+          (SELECT count(*) FROM document_number_sequences WHERE tenant_id=$1::uuid) AS numbers,
+          (SELECT count(*) FROM audit_events WHERE tenant_id=$1::uuid) AS audits`,
+          [tenantId],
+        )
+      ).rows;
+    const countsBeforeTemplatePreview = await businessCounts();
+    const layoutBeforeTemplatePreview = await documentLayoutRepository(
+      pool,
+      tenantId,
+      store,
+    ).get();
+    const storageKeysBeforeTemplatePreview = [...storage.keys()].sort();
+    const templatePreview = await context.request.post(
+      `${origin}/api/v1/document-templates/preview`,
+      {
+        headers: {
+          origin,
+          'x-csrf-token': logoRequests[2]!.headers['x-csrf-token']!,
+        },
+        data: templatePreviewInput,
+      },
+    );
+    expect(templatePreview.status()).toBe(200);
+    expect(templatePreview.headers()['content-type']).toMatch(
+      /application\/pdf/i,
+    );
+    expect(templatePreview.headers()['cache-control']).toBe('no-store');
+    expect(templatePreview.headers()['content-disposition']).toContain(
+      'VORSCHAU.pdf',
+    );
+    const templatePreviewBytes = await templatePreview.body();
+    expect(templatePreviewBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(templatePreviewBytes.length).toBeGreaterThan(5);
+    expect(templatePreviewBytes.length).toBe(renderedPdfLength);
+    expect(Number(templatePreview.headers()['content-length'])).toBe(
+      templatePreviewBytes.length,
+    );
+    expect(renderedHtml).toContain('<title>VORSCHAU</title>');
+    expect(renderedHtml).toContain('Fiktive Inhaltsvorschau');
+    expect(renderedHtml).toContain('Angebot für Alex Beispiel &lt;script&gt;');
+    expect(renderedHtml).toContain(
+      'Hallo Alex Beispiel — Fiktives Sommerfest am 26.10.2030',
+    );
+    expect(renderedHtml).toContain('Paket Beispiel / 378,10 € /');
+    expect(renderedHtml).not.toContain('<script>');
+    expect(renderedHtml).not.toContain(
+      `data:image/jpeg;base64,${jpeg.toString('base64')}`,
+    );
+    const templatePdfPath = testInfo.outputPath(
+      'template-preview-real-chromium.pdf',
+    );
+    await writeFile(templatePdfPath, templatePreviewBytes);
+    await testInfo.attach('template-preview-real-chromium.pdf', {
+      path: templatePdfPath,
+      contentType: 'application/pdf',
+    });
+    expect(await businessCounts()).toEqual(countsBeforeTemplatePreview);
+    expect(await documentLayoutRepository(pool, tenantId, store).get()).toEqual(
+      layoutBeforeTemplatePreview,
+    );
+    expect([...storage.keys()].sort()).toEqual(
+      storageKeysBeforeTemplatePreview,
+    );
 
     // The preview response uses the same headers that nginx serves in the
     // deployed admin path; a browser security error here is a test failure.

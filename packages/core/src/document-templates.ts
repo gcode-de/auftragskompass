@@ -88,6 +88,52 @@ export type DocumentTemplateInput = {
   positions: TemplatePositionInput[];
 };
 
+export const documentTemplateFields = {
+  kind: { type: 'string', enum: [...documentKinds] },
+  name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' },
+  subject: { type: 'string', maxLength: 200 },
+  introText: { type: 'string', maxLength: 4000 },
+  outroText: { type: 'string', maxLength: 4000 },
+  validityDays: { type: 'integer', minimum: 1, maximum: 365 },
+  state: { type: 'string', enum: ['active', 'inactive', 'archived'] },
+  positions: {
+    type: 'array',
+    maxItems: 200,
+    items: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'description',
+        'quantity',
+        'unit',
+        'unitPriceMinor',
+        'taxBasisPoints',
+        'discountBasisPoints',
+      ],
+      properties: {
+        productId: {
+          anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
+        },
+        description: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 300,
+          pattern: '\\S',
+        },
+        quantity: { type: 'integer', minimum: 1, maximum: 100000 },
+        unit: { type: 'string', minLength: 1, maxLength: 40, pattern: '\\S' },
+        unitPriceMinor: {
+          type: 'integer',
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
+        taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+        discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+      },
+    },
+  },
+};
+
 function documentTemplateRequestHash(input: DocumentTemplateInput): string {
   const canonical = {
     kind: input.kind,
@@ -311,48 +357,7 @@ export function registerDocumentTemplateRoutes(
   tenantId: string,
 ) {
   const repo = documentTemplateRepository(pool, tenantId);
-  const position = {
-    type: 'object',
-    additionalProperties: false,
-    required: [
-      'description',
-      'quantity',
-      'unit',
-      'unitPriceMinor',
-      'taxBasisPoints',
-      'discountBasisPoints',
-    ],
-    properties: {
-      productId: {
-        anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
-      },
-      description: {
-        type: 'string',
-        minLength: 1,
-        maxLength: 300,
-        pattern: '\\S',
-      },
-      quantity: { type: 'integer', minimum: 1, maximum: 100000 },
-      unit: { type: 'string', minLength: 1, maxLength: 40, pattern: '\\S' },
-      unitPriceMinor: {
-        type: 'integer',
-        minimum: 0,
-        maximum: Number.MAX_SAFE_INTEGER,
-      },
-      taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
-      discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
-    },
-  };
-  const fields = {
-    kind: { type: 'string', enum: [...documentKinds] },
-    name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' },
-    subject: { type: 'string', maxLength: 200 },
-    introText: { type: 'string', maxLength: 4000 },
-    outroText: { type: 'string', maxLength: 4000 },
-    validityDays: { type: 'integer', minimum: 1, maximum: 365 },
-    state: { type: 'string', enum: ['active', 'inactive', 'archived'] },
-    positions: { type: 'array', maxItems: 200, items: position },
-  };
+  const fields = documentTemplateFields;
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',

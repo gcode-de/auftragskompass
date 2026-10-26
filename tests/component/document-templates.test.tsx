@@ -116,6 +116,39 @@ function setup(
   vi.stubGlobal('fetch', fetcher);
   return writes;
 }
+function setupPreview(
+  preview: (body: Record<string, unknown>) => Response | Promise<Response>,
+) {
+  const requests: {
+    url: string;
+    options?: RequestInit;
+    body?: unknown;
+  }[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (url === '/api/v1/products') return Response.json(products);
+      if (url === '/api/v1/document-templates')
+        return Response.json([template]);
+      if (url === '/api/v1/document-templates/preview') {
+        const body = JSON.parse(String(options?.body)) as Record<
+          string,
+          unknown
+        >;
+        requests.push({ url, options: options!, body });
+        return preview(body);
+      }
+      requests.push(options ? { url, options } : { url });
+      throw new Error(`Unexpected template write: ${String(options?.method)}`);
+    }),
+  );
+  return requests;
+}
+function pdfResponse() {
+  return new Response('%PDF-1.4 fictional preview', {
+    headers: { 'content-type': 'application/pdf' },
+  });
+}
 function archivedResponse(body: Record<string, unknown>) {
   const sentPositions = body.positions as Array<Record<string, unknown>>;
   return Response.json({
@@ -2029,3 +2062,336 @@ test('a successful delayed save does not steal focus from another control', asyn
   await screen.findByText('Gespeichert.');
   expect(document.activeElement).toBe(external);
 });
+
+test('template preview renders the unsaved form snapshot without saving or clearing dirty state', async () => {
+  const requests = setupPreview(() => pdfResponse());
+  const create = vi.fn(() => 'blob:fictional-preview');
+  const revoke = vi.fn();
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke });
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  expect(
+    screen.getByText(
+      'Die Vorschau verwendet Beispieldaten und neutrales Briefpapier. Gespeicherte Geschäftsdaten und Logos werden nicht verwendet.',
+    ),
+  ).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional unsaved preview subject' },
+  });
+  fireEvent.change(screen.getByLabelText('Einleitungstext'), {
+    target: { value: 'Fictional unsaved introduction' },
+  });
+  fireEvent.change(screen.getByLabelText('Einzelpreis (Brutto) in Euro'), {
+    target: { value: '250,00' },
+  });
+  expect(hasUnsavedChanges()).toBe(true);
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+
+  expect(
+    await screen.findByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeTruthy();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]!.url).toBe('/api/v1/document-templates/preview');
+  expect(requests[0]!.options?.method).toBe('POST');
+  expect(requests[0]!.options?.headers).toEqual({
+    'content-type': 'application/json',
+    'x-csrf-token': 'fictional-csrf',
+  });
+  expect(requests[0]!.body).toEqual({
+    kind: 'offer',
+    name: 'Fictional offer',
+    subject: 'Fictional unsaved preview subject',
+    introText: 'Fictional unsaved introduction',
+    outroText: template.outroText,
+    validityDays: 14,
+    state: 'active',
+    positions: [
+      {
+        productId: null,
+        description: position.description,
+        quantity: 1,
+        unit: position.unit,
+        unitPriceMinor: 25000,
+        taxBasisPoints: 1900,
+        discountBasisPoints: 0,
+      },
+    ],
+  });
+  expect(JSON.stringify(requests[0]!.body)).not.toMatch(
+    /"(id|version|requestId)"/,
+  );
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(revoke).not.toHaveBeenCalled();
+  expect(hasUnsavedChanges()).toBe(true);
+  expect(screen.getByLabelText('Betreff')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Vorlage speichern' }),
+  ).toBeTruthy();
+});
+
+test.each([
+  [
+    'wrong MIME',
+    () =>
+      new Response('%PDF-1.4 fictional preview', {
+        headers: { 'content-type': 'text/html' },
+      }),
+  ],
+  [
+    'wrong signature',
+    () =>
+      new Response('not a PDF', {
+        headers: { 'content-type': 'application/pdf' },
+      }),
+  ],
+  [
+    'oversized content length',
+    () =>
+      new Response('%PDF-1.4 fictional preview', {
+        headers: {
+          'content-type': 'application/pdf',
+          'content-length': String(10 * 1024 * 1024 + 1),
+        },
+      }),
+  ],
+  [
+    'oversized PDF body',
+    () => {
+      const bytes = new Uint8Array(10 * 1024 * 1024 + 1);
+      bytes.set(new TextEncoder().encode('%PDF-'));
+      return new Response(bytes, {
+        headers: { 'content-type': 'application/pdf' },
+      });
+    },
+  ],
+])(
+  'a preview with %s is rejected without exposing a download',
+  async (_name, makeResponse) => {
+    setupPreview(() => makeResponse());
+    const create = vi.fn(() => 'blob:fictional-preview');
+    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
+    render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+    await screen.findAllByText(/Fictional offer/);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Vorlage bearbeiten: Fictional offer',
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+    );
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+    ).toBeNull();
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Bezeichnung')).toBeTruthy();
+  },
+);
+
+test('editing a draft invalidates an in-flight preview response', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const requests = setupPreview(() => pending);
+  const create = vi.fn(() => 'blob:fictional-preview');
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  expect(requests).toHaveLength(1);
+  expect(screen.getAllByText('Inhaltsvorschau wird erstellt …')).toHaveLength(
+    1,
+  );
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Inhaltsvorschau erstellen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  expect(requests).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fictional changed during preview' },
+  });
+  expect(
+    screen.getByText('Entwurf geändert. Bitte Vorschau erneut erstellen.'),
+  ).toBeTruthy();
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    'Fictional changed during preview',
+  );
+  await act(async () => {
+    finish(pdfResponse());
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(
+    screen.queryByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeNull();
+  expect(create).not.toHaveBeenCalled();
+});
+
+test('a current preview URL is revoked when the draft changes and when the editor unmounts', async () => {
+  const requests = setupPreview(() => pdfResponse());
+  const create = vi
+    .fn<() => string>()
+    .mockReturnValueOnce('blob:fictional-preview-one')
+    .mockReturnValueOnce('blob:fictional-preview-two')
+    .mockReturnValueOnce('blob:fictional-preview-three');
+  const revoke = vi.fn();
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke });
+  const view = render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  const previewButton = screen.getByRole('button', {
+    name: 'Inhaltsvorschau erstellen',
+  });
+  fireEvent.click(previewButton);
+  expect(
+    await screen.findByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeTruthy();
+  expect(hasUnsavedChanges()).toBe(false);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }));
+  expect(
+    screen.queryByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeNull();
+  expect(revoke).toHaveBeenCalledWith('blob:fictional-preview-one');
+  fireEvent.click(previewButton);
+  expect(
+    await screen.findByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeTruthy();
+  expect(requests).toHaveLength(2);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(revoke).toHaveBeenCalledWith('blob:fictional-preview-two');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  expect(
+    await screen.findByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeTruthy();
+  expect(requests).toHaveLength(3);
+  view.unmount();
+  expect(revoke).toHaveBeenCalledWith('blob:fictional-preview-three');
+});
+
+test('closing the editor while preview is pending drops the late PDF response', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const requests = setupPreview(() => pending);
+  const create = vi.fn(() => 'blob:fictional-preview');
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(screen.queryByLabelText('Bezeichnung')).toBeNull();
+  await act(async () => {
+    finish(pdfResponse());
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(requests).toHaveLength(1);
+  expect(create).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeNull();
+});
+
+test('unmounting while preview is pending cannot create a late blob URL', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  setupPreview(() => pending);
+  const create = vi.fn(() => 'blob:fictional-preview');
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
+  const view = render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  view.unmount();
+  await act(async () => {
+    finish(pdfResponse());
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(create).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['unknown_placeholder', 'unknown'],
+  ['invalid_template', 'invalid'],
+])(
+  'a rejected template preview (%s) keeps the editor draft and creates no link',
+  async (error) => {
+    const requests = setupPreview(() =>
+      Response.json({ error }, { status: 400 }),
+    );
+    const create = vi.fn(() => 'blob:fictional-preview');
+    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
+    render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+    await screen.findAllByText(/Fictional offer/);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Vorlage bearbeiten: Fictional offer',
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('Betreff'), {
+      target: { value: `Fictional ${error} draft` },
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+    );
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+    ).toBeNull();
+    expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+      `Fictional ${error} draft`,
+    );
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.options?.method).toBe('POST');
+    expect(create).not.toHaveBeenCalled();
+    expect(hasUnsavedChanges()).toBe(true);
+    expect(
+      screen.queryByRole('button', { name: 'Vorlage speichern' }),
+    ).toBeTruthy();
+  },
+);

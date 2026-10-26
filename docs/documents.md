@@ -1,6 +1,6 @@
 # Geschäftsdokumente: Entwurf, Nummer und finale PDF
 
-Stand: 24.10.2026, einschließlich BKP017.1. Dokumente entstehen aus einer
+Stand: 26.10.2026, einschließlich BKP015.8 und BKP017.1. Dokumente entstehen aus einer
 Dokumentvorlage; Angebote können auch ohne Vorlage beginnen. Sie tragen eigene
 Inhalte und Positionen als Snapshot und werden
 beim Finalisieren mit einer Nummer aus dem Nummernkreis unveränderlich
@@ -447,7 +447,46 @@ lesenden Repeatable-Read-Transaktion (BKP015.3). Eine parallel gespeicherte
 Ein nachfolgender Schreibversuch aus einem älteren Snapshot wird weiterhin
 über die vorhandene Versionsprüfung abgewiesen; API und Sortierung bleiben gleich.
 
-Suche/Art-/Archivfilter und eigenständige Vorlagenvorschau sind noch offen;
+## Fiktive Inhaltsvorschau einer Vorlage (BKP015.8)
+
+Im geöffneten Vorlageneditor erstellt „Inhaltsvorschau erstellen“ eine PDF aus
+den aktuellen, auch ungespeicherten Texten und Positionen. Ein eigener Link lädt
+das geprüfte PDF bewusst herunter. Die Vorschau speichert die Vorlage nicht und
+setzt ihren Änderungszustand nicht zurück. Nach Eingabeänderungen oder Wechsel
+des Entwurfs wird sie ungültig; verspätete Antworten werden verworfen und lokale
+Blob-URLs wieder freigegeben. Fehler erhalten sämtliche Eingaben.
+
+`POST /api/v1/document-templates/preview` verlangt den Vorlageninhalt mit
+`kind`, `name`, `subject`, `introText`, `outroText`, `validityDays`, `state` und
+`positions` nach denselben Feldgrenzen wie die Vorlagenverwaltung. Positionen
+tragen Beschreibung, Menge, Einheit, Brutto-Centpreis, Steuer-/Rabattbasispunkte
+und optional eine Produkt-UUID; diese UUID wird nicht nachgeschlagen. Zusätzliche
+Felder wie `requestId`, Version, Kontakt-/Event-/Mandantenbezug sowie zusätzliche
+Positionsfelder und numerische Strings werden zurückgewiesen. Bestehende
+Speicherendpunkte behalten ihren Vertrag. Anmeldung, Administratorberechtigung
+und CSRF-Schutz sind erforderlich.
+
+Es wird nur die Berechtigung gelesen. Keine Dokumentnummer, kein Dokument, keine
+Vorlage, kein Audit-Eintrag und keine gespeicherte Datei entstehen. Der bestehende
+HTML-/PDF-Renderer verwendet feste fiktive Empfänger-/Eventwerte, Beispieldatum
+26.10.2030, `VORSCHAU` als Nummer und neutrales fiktives Briefpapier ohne Logo.
+Die Inhaltsvorschau zeigt damit ausdrücklich nicht das betriebliche Briefpapier;
+dieses wird separat unter Dokumentlayout geprüft. Alle acht unterstützten
+Platzhalter werden ersetzt, `{{total}}` stammt aus der exakten Bruttosumme der
+Positionen, `{{documentLink}}` verweist auf `example.invalid`. Angebotsgültigkeit
+verwendet dieselbe Datumsregel wie echte Angebote. Texte werden wie bei echten
+Dokumenten escaped; unbekannte Platzhalter und unsichere Summen werden abgelehnt.
+Gleiche Eingaben ergeben gleiche Beispielinhalte/HTML; zeitabhängige PDF-Metadaten
+sind keine zugesicherte bytegleiche Ausgabe.
+
+Erfolg: `application/pdf`, `Cache-Control: no-store`,
+`Content-Disposition: inline; filename="VORSCHAU.pdf"`. Ungültige Rohstruktur oder
+unsichere Summen ergeben400 `invalid_template`, unbekannte Platzhalter400
+`unknown_placeholder`, Renderfehler500 `preview_failed`. Sonstige Schemafehler
+verwenden die vorhandene API-Validierungsantwort. Die Oberfläche prüft Medientyp,
+PDF-Signatur und höchstens10MiB Antwortgröße, bevor sie einen Download anbietet.
+
+Suche/Art-/Archivfilter und auswählbare Platzhalter-Einfügewerkzeuge bleiben offen;
 das übergeordnete Paritätsticket BKP015 bleibt offen.
 
 ## Protokoll

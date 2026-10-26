@@ -18,6 +18,7 @@ import {
   logoLimit,
   type DocumentLayoutInput,
 } from '../../packages/core/src/document-layouts.js';
+import type { DocumentTemplateInput } from '../../packages/core/src/document-templates.js';
 import type { PdfRenderer } from '../../packages/core/src/document-pdf.js';
 import {
   StorageError,
@@ -951,6 +952,364 @@ test('layout preview is authenticated, synthetic, read-only and returns a no-sto
       ),
     ).rejects.toBeInstanceOf(AccessError);
     expect(unauthorizedReads.value).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('document template preview uses fixed fictional data and does not write business state', async () => {
+  const config = {
+      origin: 'https://admin.example.invalid',
+      tenantId,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    writes: string[] = [],
+    reads: string[] = [],
+    rendered: string[] = [];
+  let renderFailure: Error | null = null;
+  const previewStore: StorageAdapter = {
+    async put(key, bytes) {
+      writes.push(key);
+      await store.adapter.put(key, bytes);
+    },
+    async read(key) {
+      reads.push(key);
+      return store.adapter.read(key);
+    },
+    async remove(key) {
+      await store.adapter.remove(key);
+    },
+  };
+  const render: PdfRenderer = async (html) => {
+    rendered.push(html);
+    if (renderFailure) throw renderFailure;
+    return Buffer.from('%PDF-1.4 synthetic template preview');
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentLayoutRoutes(app, pool, tenantId, previewStore, render);
+  const cookies = { '__Host-ak-session': 'synthetic-layout' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-layout'),
+    },
+    input: DocumentTemplateInput = {
+      kind: 'offer',
+      name: 'Fictional preview template',
+      subject: 'Angebot für {{contact}} <script>',
+      introText:
+        'Hallo {{contact}} — {{event}} am {{date}} in {{location}} ({{eventType}})',
+      outroText: '{{package}} / {{total}} / {{documentLink}}',
+      validityDays: 14,
+      state: 'active',
+      positions: [
+        {
+          productId: null,
+          description: 'Fictional box & light',
+          quantity: 2,
+          unit: 'Stück',
+          unitPriceMinor: 19900,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 500,
+        },
+      ],
+    };
+  async function businessCounts() {
+    return (
+      await pool.query(
+        `SELECT
+        (SELECT count(*) FROM document_templates WHERE tenant_id=$1) AS templates,
+        (SELECT count(*) FROM document_template_positions WHERE tenant_id=$1) AS positions,
+        (SELECT count(*) FROM documents WHERE tenant_id=$1) AS documents,
+        (SELECT count(*) FROM document_number_sequences WHERE tenant_id=$1) AS numbers,
+        (SELECT count(*) FROM audit_events WHERE tenant_id=$1) AS audits`,
+        [tenantId],
+      )
+    ).rows;
+  }
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/document-templates/preview',
+          payload: input,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/document-templates/preview',
+          cookies: { '__Host-ak-session': 'synthetic-other-layout' },
+          headers,
+          payload: input,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/document-templates/preview',
+          cookies,
+          headers: { origin: config.origin },
+          payload: input,
+        })
+      ).statusCode,
+    ).toBe(403);
+    for (const extra of [
+      { requestId: randomUUID() },
+      { version: 1 },
+      { contactId: randomUUID() },
+      { eventId: randomUUID() },
+      { tenantId: otherTenantId },
+    ]) {
+      const rejected = await app.inject({
+        method: 'POST',
+        url: '/api/v1/document-templates/preview',
+        cookies,
+        headers,
+        payload: { ...input, ...extra },
+      });
+      expect(rejected.statusCode).toBe(400);
+    }
+    for (const payload of [
+      {
+        ...input,
+        positions: [{ ...input.positions[0]!, tenantId }],
+      },
+      { ...input, validityDays: '14' },
+      {
+        ...input,
+        positions: [{ ...input.positions[0]!, unitPriceMinor: '19900' }],
+      },
+    ]) {
+      const rejected = await app.inject({
+        method: 'POST',
+        url: '/api/v1/document-templates/preview',
+        cookies,
+        headers,
+        payload,
+      });
+      expect(rejected.statusCode).toBe(400);
+    }
+    const countsBefore = await businessCounts(),
+      storageFilesBefore = store.files.size,
+      foreignConfig = { ...config, tenantId: otherTenantId },
+      foreignApp = createHealthServer(
+        loadRuntimeConfig(
+          {
+            AK_DB_HOST: 'synthetic',
+            AK_DB_NAME: 'synthetic',
+            AK_DB_USER: 'synthetic',
+            AK_DB_PASSWORD_FILE: 'synthetic',
+            AK_LOG_LEVEL: 'silent',
+          },
+          () => 'synthetic-long-secret',
+        ),
+        { database: async () => true, worker: async () => true },
+      );
+    await registerAuth(
+      foreignApp,
+      pool,
+      foreignConfig,
+      (await syntheticGoogle(foreignConfig)).provider,
+    );
+    registerDocumentLayoutRoutes(
+      foreignApp,
+      pool,
+      tenantId,
+      previewStore,
+      render,
+    );
+    try {
+      const forbidden = await foreignApp.inject({
+        method: 'POST',
+        url: '/api/v1/document-templates/preview',
+        cookies: { '__Host-ak-session': 'synthetic-other-layout' },
+        headers: {
+          origin: foreignConfig.origin,
+          'x-csrf-token': digest('csrf:synthetic-other-layout'),
+        },
+        payload: input,
+      });
+      expect(forbidden.statusCode).toBe(403);
+      expect(forbidden.json()).toEqual({ error: 'forbidden' });
+      expect(rendered).toHaveLength(0);
+      expect(await businessCounts()).toEqual(countsBefore);
+      expect(store.files.size).toBe(storageFilesBefore);
+      expect(reads).toEqual([]);
+      expect(writes).toEqual([]);
+    } finally {
+      await foreignApp.close();
+    }
+
+    const firstPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(firstPreview.statusCode).toBe(200);
+    expect(firstPreview.headers['content-type']).toContain('application/pdf');
+    expect(firstPreview.headers['cache-control']).toBe('no-store');
+    expect(firstPreview.headers['content-disposition']).toContain(
+      'VORSCHAU.pdf',
+    );
+    expect(firstPreview.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0]).toContain('<title>VORSCHAU</title>');
+    expect(rendered[0]).toContain('Fiktive Inhaltsvorschau');
+    expect(rendered[0]).toContain('Angebot für Alex Beispiel &lt;script&gt;');
+    expect(rendered[0]).toContain(
+      'Hallo Alex Beispiel — Fiktives Sommerfest am 26.10.2030 in Beispielsaal (Feier)',
+    );
+    expect(rendered[0]).toContain('Paket Beispiel / 378,10 € /');
+    expect(rendered[0]).toContain('https://example.invalid/vorschau');
+    expect(rendered[0]).toContain('Gültig bis 09.11.2030');
+    expect(rendered[0]).toContain('Fictional box &amp; light');
+    expect(rendered[0]).not.toContain('<script>');
+    expect(rendered[0]).not.toContain('layout@example.invalid');
+    const secondPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(secondPreview.statusCode).toBe(200);
+    expect(rendered[1]).toBe(rendered[0]);
+
+    const emptyPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: { ...input, positions: [] },
+    });
+    expect(emptyPreview.statusCode).toBe(200);
+    expect(rendered[2]).toContain('<tbody>\n\n      </tbody>');
+    expect(rendered[2]).toContain('<td>Brutto</td><td>0,00 €</td>');
+
+    const maximumExactPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: {
+        ...input,
+        outroText: '{{total}}',
+        positions: [
+          {
+            ...input.positions[0]!,
+            quantity: 1,
+            unitPriceMinor: Number.MAX_SAFE_INTEGER,
+            taxBasisPoints: 0,
+            discountBasisPoints: 0,
+          },
+        ],
+      },
+    });
+    expect(maximumExactPreview.statusCode).toBe(200);
+    expect(rendered[3]).toContain('90.071.992.547.409,91 €');
+
+    const nonOfferPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: { ...input, kind: 'invoice' },
+    });
+    expect(nonOfferPreview.statusCode).toBe(200);
+    expect(rendered[4]).not.toContain('Gültig bis');
+
+    const unknownToken = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: { ...input, subject: 'Fictional {{unknownToken}}' },
+    });
+    expect(unknownToken.statusCode).toBe(400);
+    expect(unknownToken.json()).toEqual({ error: 'unknown_placeholder' });
+    const invalidMoney = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: {
+        ...input,
+        positions: [
+          {
+            ...input.positions[0]!,
+            unitPriceMinor: Number.MAX_SAFE_INTEGER + 1,
+          },
+        ],
+      },
+    });
+    expect(invalidMoney.statusCode).toBe(400);
+    expect(rendered).toHaveLength(5);
+
+    const overflowTotal = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: {
+        ...input,
+        positions: [
+          {
+            ...input.positions[0]!,
+            quantity: 2,
+            unitPriceMinor: Number.MAX_SAFE_INTEGER,
+            taxBasisPoints: 0,
+            discountBasisPoints: 0,
+          },
+        ],
+      },
+    });
+    expect(overflowTotal.statusCode).toBe(400);
+    expect(overflowTotal.json()).toEqual({ error: 'invalid_template' });
+    expect(rendered).toHaveLength(5);
+
+    renderFailure = new Error('synthetic renderer detail');
+    const failedPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: input,
+    });
+    expect(failedPreview.statusCode).toBe(500);
+    expect(failedPreview.json()).toEqual({ error: 'preview_failed' });
+    expect(failedPreview.body).not.toContain('synthetic renderer detail');
+    expect(rendered).toHaveLength(6);
+
+    expect(await businessCounts()).toEqual(countsBefore);
+    expect(store.files.size).toBe(storageFilesBefore);
+    expect(reads).toEqual([]);
+    expect(writes).toEqual([]);
   } finally {
     await app.close();
   }

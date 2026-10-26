@@ -160,6 +160,20 @@ gelten unverändert. Such-/Archivfilter bleiben eine Zusatzanforderung, die auf
 der untersuchten Bookitup-Desktopansicht nicht sichtbar war. Die deterministische
 Vorschau bleibt ein eigener nachfolgender Slice; BKP015 insgesamt bleibt offen.
 
+### BKP015.8: fiktive Inhaltsvorschau des offenen Entwurfs
+
+Die sekundäre Vorschauaktion verwendet den aktuellen ungespeicherten Inhalt und
+die vorhandene exakte Positionskonvertierung. Ein eigener authentifizierter,
+CSRF-geschützter Preview-POST verwendet denselben HTML-/PDF-Renderer mit festen
+fiktiven Beispielwerten und neutralem Briefpapier ohne Logo. Keine Nummern,
+Dokumente, Vorlagen, Audits oder gespeicherten Dateien entstehen. PDF-Antworten
+werden vor dem bewussten Download geprüft. Eingabeänderungen und Entwurfswechsel
+verwerfen alte/verspätete Ergebnisse; Fehler und Vorschau verändern den Dirty-
+Zustand nicht. Die Vorschau des betrieblichen Briefpapiers bleibt im separaten
+Dokumentlayout. Offene Zusatzanforderungen: Suche/Art-/Archivfilter und verständlich
+auswählbare Platzhalter-Einfügewerkzeuge; keine vollständige BKP015-Parität daraus
+ableiten. Vertrag und Grenzen stehen in [Dokumente](../documents.md).
+
 ## BKP016 — Dokumententwürfe vollständig und unabhängig bearbeiten
 
 **P1 für alltagstaugliche Angebote, nach bestehender C051-Basis.** Lesen `EventDocuments.tsx`, `documents.ts`, `document-templates.ts`, `document-snapshot.ts`, `document-totals.ts`, `document-pdf.ts`, `document-artifacts.ts`, `schema.ts`, Migrationen 0026–0031 (unverändert lassen), Dokumentkomponenten-/Integrationstests und Rendering-/Geldtests.

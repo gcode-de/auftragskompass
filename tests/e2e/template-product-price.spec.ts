@@ -87,12 +87,20 @@ type Write = {
   body: Record<string, unknown>;
   rawBody?: string;
 };
+type PreviewRequest = Write & { headers: Record<string, string> };
 
 type TemplateStubOptions = {
   conflictArchiveOnce?: boolean;
   failListGetAfterArchiveOnce?: boolean;
   loseFirstCreateResponse?: boolean;
   initialTemplates?: (typeof originalTemplate)[];
+  previewResponses?: Array<{
+    status: number;
+    body: string | Buffer;
+    contentType: string;
+    headers?: Record<string, string>;
+  }>;
+  deferFirstPreview?: boolean;
 };
 
 async function stubTemplateApis(
@@ -115,6 +123,7 @@ async function stubTemplateApis(
     { payload: string; response: typeof originalTemplate }
   >();
   const writes: Write[] = [];
+  const previewRequests: PreviewRequest[] = [];
   const unexpectedApiWrites: string[] = [];
   const queuedTemplateLists: unknown[] = [];
   let listGets = 0;
@@ -122,6 +131,9 @@ async function stubTemplateApis(
   let archived = false;
   let createAttempts = 0;
   let failNextTemplateListGet = false;
+  let previewAttempts = 0;
+  let previewFulfillCount = 0;
+  let releaseDeferredPreview: (() => void) | null = null;
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -167,6 +179,37 @@ async function stubTemplateApis(
         })
       : route.fulfill({ status: 405, body: '' }),
   );
+  await page.route('**/api/v1/document-templates/preview', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fulfill({ status: 405, body: '' });
+      return;
+    }
+    previewRequests.push({
+      method: route.request().method(),
+      path: '/api/v1/document-templates/preview',
+      body: route.request().postDataJSON() as Record<string, unknown>,
+      rawBody: route.request().postData() ?? '',
+      headers: route.request().headers(),
+    });
+    previewAttempts += 1;
+    if (options.deferFirstPreview && previewAttempts === 1) {
+      await new Promise<void>((resolve) => {
+        releaseDeferredPreview = resolve;
+      });
+    }
+    const response = options.previewResponses?.[previewAttempts - 1] ?? {
+      status: 500,
+      body: JSON.stringify({ error: 'unexpected synthetic preview request' }),
+      contentType: 'application/json',
+    };
+    await route.fulfill({
+      status: response.status,
+      contentType: response.contentType,
+      ...(response.headers ? { headers: response.headers } : {}),
+      body: response.body,
+    });
+    previewFulfillCount++;
+  });
   await page.route('**/api/v1/document-templates', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -329,6 +372,7 @@ async function stubTemplateApis(
 
   return {
     writes,
+    previewRequests,
     unexpectedApiWrites,
     products: structuredClone(catalog),
     getListGets: () => listGets,
@@ -336,11 +380,16 @@ async function stubTemplateApis(
     getCreateAttempts: () => createAttempts,
     getCreateReceipts: () => createReceipts,
     getCreatedTemplates: () => createdTemplates,
+    getPreviewFulfillCount: () => previewFulfillCount,
     failNextTemplateListGet: () => {
       failNextTemplateListGet = true;
     },
     queueTemplateList: (response: unknown) => {
       queuedTemplateLists.push(response);
+    },
+    releaseDeferredPreview: () => {
+      releaseDeferredPreview?.();
+      releaseDeferredPreview = null;
     },
   };
 }
@@ -384,12 +433,14 @@ async function captureTemplateEvidence(
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
         .toBeLessThanOrEqual(width + 1);
       if (visibleTarget) {
+        await visibleTarget.scrollIntoViewIfNeeded();
         const bounds = await visibleTarget.boundingBox();
         expect(bounds, `${prefix} action visible at ${width}px`).not.toBeNull();
         expect(bounds!.x).toBeGreaterThanOrEqual(0);
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
         expect(bounds!.y).toBeGreaterThanOrEqual(0);
         expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(845);
+        expect(bounds!.height).toBeGreaterThanOrEqual(44);
       }
       const accessibility = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
@@ -1035,6 +1086,242 @@ test('template copies net product prices as gross, keeps overrides and guards ov
   ]);
   expect(unexpectedApiWrites).toEqual([]);
   expect(products).toEqual(sourceProducts);
+});
+
+test('template content preview uses only the unsaved synthetic draft and preserves edits on error', async ({
+  page,
+}) => {
+  const previewPdf = Buffer.from(
+    '%PDF-1.4\n% fictional browser preview\n%%EOF\n',
+  );
+  const api = await stubTemplateApis(page, sourceProducts, {
+    previewResponses: [
+      {
+        status: 200,
+        body: previewPdf,
+        contentType: 'application/pdf',
+        headers: {
+          'cache-control': 'no-store',
+          'content-disposition': 'inline; filename="VORSCHAU.pdf"',
+        },
+      },
+      {
+        status: 400,
+        body: JSON.stringify({ error: 'unknown_placeholder' }),
+        contentType: 'application/json',
+      },
+    ],
+  });
+  const firstPosition = await openTemplateEditor(page);
+  const templateRegion = page.getByRole('region', { name: 'Dokumentvorlagen' });
+  const name = templateRegion.getByLabel('Bezeichnung');
+  const subject = templateRegion.getByLabel('Betreff');
+  const intro = templateRegion.getByLabel('Einleitungstext');
+  const outro = templateRegion.getByLabel('Schlusstext');
+
+  await name.fill('Fiktive Vorschauversion');
+  await subject.fill('Fiktives Vorschauangebot an {{contact}}');
+  await intro.fill('Fiktive geänderte Einleitung');
+  await outro.fill('Fiktiver geänderter Schlusstext');
+  await templateRegion.getByLabel('Angebotsgültigkeit in Tagen').fill('21');
+  await firstPosition
+    .getByLabel('Beschreibung')
+    .fill('Fiktive geänderte Leistung');
+  await firstPosition.getByLabel('Menge').fill('2');
+  await firstPosition.getByLabel('Einheit').fill('Stück');
+  await firstPosition.getByLabel('Einzelpreis (Brutto) in Euro').fill('123.45');
+  await firstPosition.getByLabel('Rabatt in Prozent').fill('5.00');
+
+  await page.getByRole('button', { name: 'Position hinzufügen' }).click();
+  const secondPosition = page.getByRole('group', { name: 'Position 2' });
+  await secondPosition
+    .getByLabel('Beschreibung')
+    .fill('Fiktive Zusatzleistung');
+  await secondPosition.getByLabel('Einheit').fill('Pauschale');
+  await secondPosition.getByLabel('Einzelpreis (Brutto) in Euro').fill('50.00');
+  await secondPosition.getByLabel('Steuersatz in Prozent').fill('7.00');
+
+  await expect(
+    page.getByText(
+      'Die Vorschau verwendet Beispieldaten und neutrales Briefpapier. Gespeicherte Geschäftsdaten und Logos werden nicht verwendet.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Inhaltsvorschau erstellen' }).click();
+  await expect(
+    page.getByText('PDF-Vorschau erstellt.', { exact: true }),
+  ).toBeVisible();
+  const downloadLink = page.getByRole('link', {
+    name: 'Vorschau-PDF herunterladen',
+    exact: true,
+  });
+  await expect(downloadLink).toBeVisible();
+
+  expect(api.previewRequests).toHaveLength(1);
+  expect(api.previewRequests[0]?.path).toBe(
+    '/api/v1/document-templates/preview',
+  );
+  expect(api.previewRequests[0]?.method).toBe('POST');
+  expect(api.previewRequests[0]?.headers['x-csrf-token']).toBe(
+    'fictional-template-csrf',
+  );
+  expect(Object.keys(api.previewRequests[0]?.body ?? {}).sort()).toEqual(
+    [
+      'kind',
+      'name',
+      'subject',
+      'introText',
+      'outroText',
+      'validityDays',
+      'state',
+      'positions',
+    ].sort(),
+  );
+  expect(api.previewRequests[0]?.body).toEqual({
+    kind: 'offer',
+    name: 'Fiktive Vorschauversion',
+    subject: 'Fiktives Vorschauangebot an {{contact}}',
+    introText: 'Fiktive geänderte Einleitung',
+    outroText: 'Fiktiver geänderter Schlusstext',
+    validityDays: 21,
+    state: 'active',
+    positions: [
+      {
+        productId: null,
+        description: 'Fiktive geänderte Leistung',
+        quantity: 2,
+        unit: 'Stück',
+        unitPriceMinor: 12345,
+        taxBasisPoints: 1900,
+        discountBasisPoints: 500,
+      },
+      {
+        productId: null,
+        description: 'Fiktive Zusatzleistung',
+        quantity: 1,
+        unit: 'Pauschale',
+        unitPriceMinor: 5000,
+        taxBasisPoints: 700,
+        discountBasisPoints: 0,
+      },
+    ],
+  });
+  expect(api.writes).toEqual([]);
+  expect(api.unexpectedApiWrites).toEqual([]);
+
+  await captureTemplateEvidence(page, 'template-preview-success', downloadLink);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    downloadLink.click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
+
+  await subject.fill('Fiktiver Fehler {{unknownToken}}');
+  await expect(downloadLink).toHaveCount(0);
+  await expect(
+    page.getByText('Entwurf geändert. Bitte Vorschau erneut erstellen.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('PDF-Vorschau erstellt.', { exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Inhaltsvorschau erstellen' }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Unbekannter Platzhalter. Nur die aufgeführten Platzhalter verwenden.',
+  );
+  await expect(name).toHaveValue('Fiktive Vorschauversion');
+  await expect(subject).toHaveValue('Fiktiver Fehler {{unknownToken}}');
+  await expect(intro).toHaveValue('Fiktive geänderte Einleitung');
+  await expect(outro).toHaveValue('Fiktiver geänderter Schlusstext');
+  await expect(secondPosition.getByLabel('Beschreibung')).toHaveValue(
+    'Fiktive Zusatzleistung',
+  );
+  expect(api.previewRequests).toHaveLength(2);
+  expect(api.previewRequests[1]?.body.subject).toBe(
+    'Fiktiver Fehler {{unknownToken}}',
+  );
+  expect(api.writes).toEqual([]);
+  expect(api.unexpectedApiWrites).toEqual([]);
+  await captureTemplateEvidence(page, 'template-preview-error-preserves-draft');
+});
+
+test('late template preview is ignored after the draft changes while it is pending', async ({
+  page,
+}) => {
+  const api = await stubTemplateApis(page, sourceProducts, {
+    deferFirstPreview: true,
+    previewResponses: [
+      {
+        status: 200,
+        body: Buffer.from('%PDF-1.4\n% stale fictional preview\n%%EOF\n'),
+        contentType: 'application/pdf',
+        headers: {
+          'cache-control': 'no-store',
+          'content-disposition': 'inline; filename="VORSCHAU.pdf"',
+        },
+      },
+    ],
+  });
+  const position = await openTemplateEditor(page);
+  const subject = page.getByLabel('Betreff');
+  await subject.fill('Fiktiver vorläufiger Vorschautext');
+  const createPreview = page.getByRole('button', {
+    name: 'Inhaltsvorschau erstellen',
+  });
+  await createPreview.click();
+  try {
+    await expect.poll(() => api.previewRequests.length).toBe(1);
+    await subject.fill('Fiktiver neuer Text nach Vorschauaufruf');
+    await expect(
+      page.getByText('Entwurf geändert. Bitte Vorschau erneut erstellen.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    const latePreviewResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/v1/document-templates/preview') &&
+        response.request().method() === 'POST',
+    );
+    api.releaseDeferredPreview();
+    const response = await latePreviewResponse;
+    expect(response.status()).toBe(200);
+    await expect.poll(() => api.getPreviewFulfillCount()).toBe(1);
+    await expect(
+      page.getByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText('PDF-Vorschau erstellt.', { exact: true }),
+    ).toHaveCount(0);
+    await expect(subject).toHaveValue(
+      'Fiktiver neuer Text nach Vorschauaufruf',
+    );
+    expect(api.previewRequests[0]?.body.subject).toBe(
+      'Fiktiver vorläufiger Vorschautext',
+    );
+    expect(api.writes).toEqual([]);
+    expect(api.unexpectedApiWrites).toEqual([]);
+    await captureTemplateEvidence(
+      page,
+      'template-preview-stale-response-ignored',
+    );
+    await expect(
+      page.getByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText('PDF-Vorschau erstellt.', { exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    api.releaseDeferredPreview();
+  }
+  await position
+    .getByLabel('Beschreibung')
+    .fill('Fiktive unveränderte Position');
+  await expect(subject).toHaveValue('Fiktiver neuer Text nach Vorschauaufruf');
+  expect(api.writes).toEqual([]);
 });
 
 test('empty product catalog keeps a free template position editable and saveable', async ({

@@ -240,8 +240,15 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     [archiveFocusRequest, setArchiveFocusRequest] =
       useState<ArchiveFocusRequest | null>(null);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewMessage, setPreviewMessage] = useState('');
+  const [previewError, setPreviewError] = useState('');
   const archiveInFlight = useRef(false);
   const saveInFlight = useRef(false);
+  const previewInFlight = useRef(false);
+  const previewSequence = useRef(0);
+  const previewUrlRef = useRef('');
   const listGeneration = useRef(0);
   const saveFocusWasInForm = useRef(false);
   const saveReconcileFocusOrigin = useRef<SaveRecovery | null>(null);
@@ -269,6 +276,10 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     () => () => {
       archiveFocusIntent.current?.stop();
       archiveFocusIntent.current = null;
+      previewSequence.current++;
+      previewInFlight.current = false;
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = '';
     },
     [],
   );
@@ -540,6 +551,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setMessage('');
       setConversionError(false);
     }
+    invalidatePreview(false);
     const nextDraft =
       template && copy
         ? { ...template, name: `${template.name.slice(0, 112)} (Kopie)` }
@@ -576,6 +588,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     )
       return;
     editorOpenRef.current = false;
+    invalidatePreview(false);
     restoreFocusAfterClose.current = true;
     setEditorOpen(false);
     setDraft(null);
@@ -588,6 +601,137 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         at === index ? { ...position, ...patch } : position,
       ),
     );
+  }
+  function clearPreview() {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = '';
+    setPreviewUrl('');
+  }
+  function invalidatePreview(showStale = true) {
+    const hadPreview = Boolean(previewUrlRef.current);
+    const wasBusy = previewInFlight.current;
+    previewSequence.current++;
+    previewInFlight.current = false;
+    setPreviewBusy(false);
+    clearPreview();
+    setPreviewError('');
+    if (showStale && (hadPreview || wasBusy))
+      setPreviewMessage('Entwurf geändert. Bitte Vorschau erneut erstellen.');
+    else setPreviewMessage('');
+  }
+  function templatePayload(form: HTMLFormElement): TemplatePayload {
+    const data = new FormData(form);
+    return {
+      kind: String(data.get('kind')),
+      name: String(data.get('name')),
+      subject: String(data.get('subject')),
+      introText: String(data.get('introText')),
+      outroText: String(data.get('outroText')),
+      validityDays: Number(data.get('validityDays')),
+      state: String(data.get('state')),
+      positions: positions
+        .filter((position) => position.description.trim().length > 0)
+        .map((position) => ({
+          productId: position.productId || null,
+          description: position.description,
+          quantity: Number(position.quantity),
+          unit: position.unit,
+          unitPriceMinor: parseHundredths(position.price),
+          taxBasisPoints: parseHundredths(position.tax),
+          discountBasisPoints: parseHundredths(position.discount),
+        })),
+    };
+  }
+  async function preview(form: HTMLFormElement) {
+    if (
+      previewInFlight.current ||
+      busy ||
+      archiveReconciliation !== null ||
+      saveRecovery !== null ||
+      uncertainCreate ||
+      !editorOpenRef.current
+    )
+      return;
+    const sequence = ++previewSequence.current;
+    previewInFlight.current = true;
+    clearPreview();
+    setPreviewBusy(true);
+    setPreviewMessage('Inhaltsvorschau wird erstellt …');
+    setPreviewError('');
+    try {
+      const input = templatePayload(form);
+      const response = await fetch('/api/v1/document-templates/preview', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify(input),
+      });
+      if (sequence !== previewSequence.current) return;
+      if (!response.ok) {
+        let errorCode = '';
+        try {
+          const result: unknown = await response.json();
+          if (result && typeof result === 'object' && 'error' in result)
+            errorCode = String(result.error);
+        } catch {
+          // The HTTP status still has a safe, actionable fallback.
+        }
+        if (sequence !== previewSequence.current) return;
+        setPreviewError(
+          errorCode === 'unknown_placeholder'
+            ? 'Unbekannter Platzhalter. Nur die aufgeführten Platzhalter verwenden. Deine Eingaben bleiben erhalten.'
+            : errorCode === 'invalid_template'
+              ? 'Vorlage ist ungültig. Angaben und Preise prüfen. Deine Eingaben bleiben erhalten.'
+              : response.status === 401
+                ? 'Bitte erneut anmelden, um die Vorschau zu erstellen. Deine Eingaben bleiben erhalten.'
+                : response.status === 403
+                  ? 'Du darfst keine Vorschau erstellen. Bitte deine Berechtigung prüfen. Deine Eingaben bleiben erhalten.'
+                  : 'PDF-Vorschau konnte nicht erstellt werden. Deine Eingaben bleiben erhalten.',
+        );
+        setPreviewMessage('');
+        return;
+      }
+      const contentType = response.headers
+        .get('content-type')
+        ?.split(';', 1)[0]
+        ?.trim()
+        .toLowerCase();
+      if (contentType !== 'application/pdf') throw new Error('preview');
+      const contentLength = Number(response.headers.get('content-length'));
+      if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024)
+        throw new Error('preview');
+      const blob = await response.blob();
+      if (
+        blob.size > 10 * 1024 * 1024 ||
+        !(await blob.slice(0, 5).text()).startsWith('%PDF-')
+      )
+        throw new Error('preview');
+      if (sequence !== previewSequence.current) return;
+      const url = URL.createObjectURL(blob);
+      if (sequence !== previewSequence.current) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      previewUrlRef.current = url;
+      setPreviewUrl(url);
+      setPreviewMessage('PDF-Vorschau erstellt.');
+    } catch (error) {
+      if (sequence === previewSequence.current) {
+        setPreviewError(
+          error instanceof Error && error.message === 'Ungültiger Dezimalwert'
+            ? 'Preise, Steuer und Rabatt mit höchstens zwei Nachkommastellen eingeben.'
+            : 'PDF-Vorschau konnte nicht erstellt werden. Deine Eingaben bleiben erhalten.',
+        );
+        setPreviewMessage('');
+      }
+    } finally {
+      if (sequence === previewSequence.current) {
+        previewInFlight.current = false;
+        setPreviewBusy(false);
+      }
+    }
   }
   function applyProduct(index: number, productId: string) {
     const product = products.find((row) => row.id === productId);
@@ -620,7 +764,13 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     }
   }
   async function save(form: HTMLFormElement, retryCreate = false) {
-    if (saveInFlight.current || busy || archiveReconciliation || saveRecovery)
+    if (
+      saveInFlight.current ||
+      previewInFlight.current ||
+      busy ||
+      archiveReconciliation ||
+      saveRecovery
+    )
       return;
     if (uncertainCreate && !retryCreate) return;
     saveFocusWasInForm.current =
@@ -634,27 +784,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     try {
       const attempt = retryCreate ? createAttempt.current : null;
       if (retryCreate && (!attempt || editing)) return;
-      const data = retryCreate ? null : new FormData(form);
-      const input: TemplatePayload = attempt?.payload ?? {
-        kind: String(data!.get('kind')),
-        name: String(data!.get('name')),
-        subject: String(data!.get('subject')),
-        introText: String(data!.get('introText')),
-        outroText: String(data!.get('outroText')),
-        validityDays: Number(data!.get('validityDays')),
-        state: String(data!.get('state')),
-        positions: positions
-          .filter((position) => position.description.trim().length > 0)
-          .map((position) => ({
-            productId: position.productId || null,
-            description: position.description,
-            quantity: Number(position.quantity),
-            unit: position.unit,
-            unitPriceMinor: parseHundredths(position.price),
-            taxBasisPoints: parseHundredths(position.tax),
-            discountBasisPoints: parseHundredths(position.discount),
-          })),
-      };
+      const input: TemplatePayload = attempt?.payload ?? templatePayload(form);
       const requestId = retryCreate
         ? attempt!.requestId
         : editing
@@ -803,6 +933,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       restoreFocusAfterClose.current =
         activeElement === document.body ||
         editorFormRef.current?.contains(activeElement) === true;
+      invalidatePreview(false);
       editorOpenRef.current = false;
       setEditorOpen(false);
       setDraft(null);
@@ -1175,6 +1306,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         <form
           ref={editorFormRef}
           key={`${editorGeneration}:${draft?.id ?? 'new'}:${draft?.version ?? 0}:${editing}`}
+          onChange={() => invalidatePreview()}
           onSubmit={(event) => {
             event.preventDefault();
             void save(event.currentTarget);
@@ -1183,6 +1315,10 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           <p>
             Platzhalter: {placeholders.map((name) => `{{${name}}}`).join(', ')}.
             Unbekannte Platzhalter werden beim Speichern abgewiesen.
+          </p>
+          <p>
+            Die Vorschau verwendet Beispieldaten und neutrales Briefpapier.
+            Gespeicherte Geschäftsdaten und Logos werden nicht verwendet.
           </p>
           <fieldset
             disabled={
@@ -1341,11 +1477,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                   type="button"
                   className="secondary-action"
                   disabled={positions.length === 1}
-                  onClick={() =>
+                  onClick={() => {
+                    invalidatePreview();
                     setPositions((current) =>
                       current.filter((_row, at) => at !== index),
-                    )
-                  }
+                    );
+                  }}
                 >
                   Position entfernen
                 </button>
@@ -1354,13 +1491,41 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             <button
               type="button"
               className="secondary-action"
-              onClick={() =>
-                setPositions((current) => [...current, emptyPosition()])
-              }
+              onClick={() => {
+                invalidatePreview();
+                setPositions((current) => [...current, emptyPosition()]);
+              }}
             >
               Position hinzufügen
             </button>
-            <button className="primary-action">Vorlage speichern</button>
+            <button className="primary-action" disabled={previewBusy}>
+              Vorlage speichern
+            </button>
+            <button
+              type="button"
+              className="secondary-action"
+              disabled={
+                previewBusy ||
+                busy ||
+                archiveReconciliation !== null ||
+                saveRecovery !== null ||
+                uncertainCreate
+              }
+              onClick={(event) => void preview(event.currentTarget.form!)}
+            >
+              Inhaltsvorschau erstellen
+            </button>
+            {previewError && <p role="alert">{previewError}</p>}
+            {previewMessage && <p role="status">{previewMessage}</p>}
+            {previewUrl && (
+              <a
+                className="document-download"
+                href={previewUrl}
+                download="VORSCHAU.pdf"
+              >
+                Vorschau-PDF herunterladen
+              </a>
+            )}
             <button
               type="button"
               className="tertiary-action"

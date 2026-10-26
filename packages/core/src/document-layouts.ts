@@ -11,17 +11,23 @@ import {
   renderDocumentPdf,
   type PdfRenderer,
 } from './document-pdf.js';
-import {
-  renderTemplate,
-  type TemplatePlaceholder,
-} from './document-templates.js';
 import { StorageError, type StorageAdapter } from './storage.js';
 import {
+  DocumentTotalsError,
   documentTotals,
   formatDocumentDate,
   formatMinorUnits,
   type TotalsLine,
 } from './document-totals.js';
+import { validityDate } from './document-snapshot.js';
+import {
+  assertTemplateText,
+  documentTemplateFields,
+  DocumentTemplateError,
+  renderTemplate,
+  type DocumentTemplateInput,
+  type TemplatePlaceholder,
+} from './document-templates.js';
 
 export class DocumentLayoutError extends Error {
   constructor(
@@ -31,6 +37,7 @@ export class DocumentLayoutError extends Error {
       | 'invalid_logo'
       | 'logo_too_large'
       | 'missing_reference'
+      | 'invalid_template'
       | 'preview_failed',
   ) {
     super('Document layout rejected');
@@ -75,6 +82,18 @@ const fontStacks: Record<DocumentLayoutInput['fontFamily'], string> = {
   system: 'system-ui, "Segoe UI", sans-serif',
   sans: '"Helvetica Neue", Arial, sans-serif',
   serif: 'Georgia, "Times New Roman", serif',
+};
+
+const fictionalPreviewLayout: DocumentLayoutInput = {
+  senderName: 'Fiktive Inhaltsvorschau',
+  senderStreet: 'Example Street 1',
+  senderPostalCode: '12345',
+  senderCity: 'Example Town',
+  primaryColor: '#444444',
+  textColor: '#1b1b1b',
+  fontFamily: 'system',
+  showPageNumbers: false,
+  showPositionNumbers: true,
 };
 
 // Every interpolated value goes through this before it reaches markup.
@@ -343,6 +362,70 @@ export function documentLayoutRepository(
         throw error;
       }
     },
+    async previewTemplate(
+      actorId: string,
+      input: DocumentTemplateInput,
+      render: PdfRenderer,
+    ) {
+      await database(pool).transaction(async (tx) => {
+        await tx.execute(
+          sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`,
+        );
+        await requireAdministrator(tx, tenantId, actorId);
+      });
+      try {
+        assertTemplateText(input.subject, input.introText, input.outroText);
+        const issuedAt = new Date('2030-10-26T10:00:00.000Z'),
+          timeZone = 'Europe/Berlin',
+          totals = documentTotals(input.positions),
+          values: Partial<Record<TemplatePlaceholder, string>> = {
+            contact: 'Alex Beispiel',
+            event: 'Fiktives Sommerfest',
+            date: formatDocumentDate(issuedAt, timeZone),
+            location: 'Beispielsaal',
+            eventType: 'Feier',
+            package: 'Paket Beispiel',
+            total: `${formatMinorUnits(totals.grossMinor)} €`,
+            documentLink: 'https://example.invalid/vorschau',
+          };
+        return await renderDocumentPdf(
+          renderDocumentHtml({
+            layout: fictionalPreviewLayout,
+            documentNumber: 'VORSCHAU',
+            issuedAt,
+            ...(input.kind === 'offer'
+              ? {
+                  validUntil: validityDate(
+                    issuedAt,
+                    input.validityDays,
+                    timeZone,
+                  )
+                    .toString()
+                    .split('-')
+                    .reverse()
+                    .join('.'),
+                }
+              : {}),
+            timeZone,
+            recipientName: 'Alex Beispiel',
+            recipientAddress: 'Beispielweg 7\n12345 Beispielstadt',
+            subject: input.subject,
+            introText: input.introText,
+            outroText: input.outroText,
+            lines: input.positions,
+            values,
+          }),
+          render,
+        );
+      } catch (error) {
+        if (error instanceof DocumentTemplateError) throw error;
+        if (error instanceof DocumentTotalsError)
+          throw new DocumentLayoutError('invalid_template');
+        if (error instanceof DocumentPdfError)
+          throw new DocumentLayoutError('preview_failed');
+        throw error;
+      }
+    },
     // The logo lives outside the row: the bytes go to the storage adapter and
     // the layout only keeps the derived key and media type.
     // Keep old and uncertain-upload bytes: checkpoints and in-flight renders
@@ -409,6 +492,8 @@ export function registerDocumentLayoutRoutes(
   function failure(error: unknown, reply: FastifyReply) {
     if (error instanceof AccessError)
       return reply.code(403).send({ error: 'forbidden' });
+    if (error instanceof DocumentTemplateError)
+      return reply.code(400).send({ error: error.reason });
     if (error instanceof DocumentLayoutError) {
       if (error.reason === 'not_found')
         return reply.code(404).send({ error: 'not_found' });
@@ -418,6 +503,8 @@ export function registerDocumentLayoutRoutes(
         return reply.code(404).send({ error: 'missing_reference' });
       if (error.reason === 'preview_failed')
         return reply.code(500).send({ error: 'preview_failed' });
+      if (error.reason === 'invalid_template')
+        return reply.code(400).send({ error: 'invalid_template' });
       // The parser limit already rejects oversized bodies, so a size error
       // here can only come from a direct repository caller.
       return reply.code(400).send({ error: error.reason });
@@ -500,6 +587,89 @@ export function registerDocumentLayoutRoutes(
     async (request, reply) => {
       try {
         const pdf = await repo.preview(
+          request.authSession!.userId,
+          request.body,
+          render,
+        );
+        return reply
+          .type('application/pdf')
+          .header('Cache-Control', 'no-store')
+          .header('Content-Disposition', 'inline; filename="VORSCHAU.pdf"')
+          .send(pdf.bytes);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Body: DocumentTemplateInput }>(
+    '/api/v1/document-templates/preview',
+    {
+      preValidation: async (request, reply) => {
+        const body = request.body;
+        const input = body as Record<string, unknown> | null;
+        const fields = Object.keys(documentTemplateFields);
+        const positionFields = [
+          'description',
+          'quantity',
+          'unit',
+          'unitPriceMinor',
+          'taxBasisPoints',
+          'discountBasisPoints',
+        ];
+        const validPosition = (position: unknown) => {
+          if (
+            !position ||
+            typeof position !== 'object' ||
+            Array.isArray(position)
+          )
+            return false;
+          const row = position as Record<string, unknown>;
+          const keys = Object.keys(row);
+          return (
+            keys.every(
+              (key) => positionFields.includes(key) || key === 'productId',
+            ) &&
+            positionFields.every((key) => key in row) &&
+            typeof row.description === 'string' &&
+            typeof row.unit === 'string' &&
+            [
+              'quantity',
+              'unitPriceMinor',
+              'taxBasisPoints',
+              'discountBasisPoints',
+            ].every((key) => typeof row[key] === 'number') &&
+            (!('productId' in row) ||
+              row.productId === null ||
+              typeof row.productId === 'string')
+          );
+        };
+        if (
+          !input ||
+          typeof input !== 'object' ||
+          Array.isArray(input) ||
+          Object.keys(input).length !== fields.length ||
+          fields.some((field) => !Object.hasOwn(input, field)) ||
+          !['kind', 'name', 'subject', 'introText', 'outroText', 'state'].every(
+            (field) => typeof input[field] === 'string',
+          ) ||
+          typeof input.validityDays !== 'number' ||
+          !Array.isArray(input.positions) ||
+          !input.positions.every(validPosition)
+        )
+          return reply.code(400).send({ error: 'invalid_template' });
+      },
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: Object.keys(documentTemplateFields),
+          properties: documentTemplateFields,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const pdf = await repo.previewTemplate(
           request.authSession!.userId,
           request.body,
           render,

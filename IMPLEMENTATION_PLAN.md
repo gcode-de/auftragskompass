@@ -8,6 +8,37 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.8 — `feat: preview document templates with synthetic data`** (26.10.2026)
+
+  Ein vertikaler Slice für eine ausdrücklich fiktive Inhaltsvorschau des offenen,
+  ungespeicherten Vorlagenentwurfs. Bestehende Vorlagenvalidierung und exakten
+  Preis-/Steuerregeln wiederverwenden; serverseitig acht unterstützte Platzhalter,
+  feste Beispieldaten/-datum und neutrales fiktives Briefpapier ohne gespeichertes
+  Logo durch denselben HTML-/PDF-Renderer wie echte Dokumente rendern. Gleiche
+  Eingaben erzeugen gleiche Beispielinhalte/HTML; keine Garantie identischer
+  PDF-Metadatenbytes. Authentifizierter, CSRF-geschützter strikter POST-Preview-
+  Vertrag, PDF/no-store, neutrale Fehler; nur Autorisierung lesen, weder Nummern
+  noch Dokumente, Vorlagen, Audit oder Dateien schreiben. Keine Migration.
+  Im vorhandenen Inline-Editor eine sekundäre Vorschauaktion und nach Prüfung
+  der PDF-Antwort ein bewusst betätigbarer Downloadlink. Kein Speichern, Öffnen
+  eines Popups oder Dirty-Reset durch Vorschau. Veraltete/verspätete Vorschau nach
+  Eingabeänderung, anderem Entwurf, Schließen oder Unmount verwerfen; Blob-URLs
+  freigeben. Unbekannte Tokens/ungültige Beträge und Renderfehler verständlich
+  melden, Entwurf und bestehende Wiederhol-/Archiv-/Fokusverträge erhalten.
+  Keine Suchfilter, Platzhalter-Einfügewerkzeuge, Mailvorlagen oder Layoutbuilder
+  hineinziehen. Tests zuerst: Escaping/alle Tokens/Geld/Gültigkeit, strikte
+  Validierung/Auth/CSRF und nachweislich keine fachlichen Writes; Komponenten für
+  ungespeicherten Inhalt, PDF-Prüfung, Fehler, Rennen/URL-Cleanup und Dirtyschutz.
+  Chromium mit fiktiven APIs, beide Themes/Mobil/Desktop, axe und Screenshots;
+  unabhängiger Review vor finalen Gates, Coverage, expliziter Commit/sofort Push.
+  Abgenommen:1126 Tests/Coverage,74 Panelkomponenten, zwölf Vorlagen-Chromium-
+  abläufe plus echter angemeldeter API-/PostgreSQL-/Chromium-PDF-Lauf im vorhandenen
+  Layout-E2E. Geändert117/122 Zeilen und102/117 Branches; globale Coverage97,06%
+  Zeilen/93,05% Branches. Fiktives einseitiges PDF visuell geprüft; 320/1280px,
+  beide Themes, axe/Überlauf und44px-Downloadziel grün. Unabhängige Luna-Reviews,
+  Impeccable ohne Panelbefund, Design-/API-Doku ergänzt. Schnelle Gates/Build grün.
+  Lieferung/CI getrennt prüfen; kein echter Geschäftsvorgang wurde erzeugt.
+
 - [x] **BKP015.7 — `feat: disclose secondary document template actions`** (26.10.2026)
 
   Auf B35 aufbauender fokussierter UI-Slice: Bearbeiten bleibt direkt erreichbar;
