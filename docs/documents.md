@@ -409,6 +409,26 @@ Rechts- oder Steuerbehauptung. Das Angebot selbst bleibt final und
 unveränderlich; sein Angebotsstatus wird durch die Bestätigung nicht
 berührt.
 
+### Rechnung aus einer Auftragsbestätigung (BKP019.c1, RG-01)
+
+Aus einer **finalen Auftragsbestätigung** entsteht mit „Rechnung erstellen“
+ein Rechnungsentwurf: Positionen 1:1 (Bruttopreise, Steuer- und
+Rabattbasispunkte unverändert), Summen exakt wie die Quelle, Betreff
+„Rechnung für {{contact}}“, Einleitung/Schluss aus der Quelle – der Entwurf
+bleibt bearbeitbar und finalisiert mit eigener Nummer im
+Rechnungsnummernkreis. Genau eine Rechnung je Auftragsbestätigung (Dublette
+wird mit 409 abgewiesen, ohne Nummernverbrauch); die Quelle bleibt als
+„Aus Auftragsbestätigung AB-…“ sichtbar. Für zurückgezogene Aufträge
+entsteht keine Rechnung; die bestehende Blanko-Sperre bleibt unverändert
+(ohne Quelle oder Vorlage gibt es keine Rechnung). Finalisierte Belege werden
+nie ersetzt – Korrekturen erfolgen später durch eigene Folgedokumente.
+
+**Ehrliche Grenze:** Anzahlungs-, Schluss- und Korrekturrechnungen sowie
+Zahlungsverrechnung fehlen noch (eigene Folgeslices); „final“ bedeutet hier
+„eingefroren“, nicht „rechtlich vollständig“ – Pflichtangaben nach § 14 UStG
+(Leistungsdatum, Steuernummer, Zahlungsziel, Bankverbindung) sind noch nicht
+ausgestattet. Es wird keine Rechts- oder Steuerbehauptung aufgestellt.
+
 ## Dokumentvorlagen verwalten (BKP015.4)
 
 Unter Einstellungen → Dokumentvorlagen erscheinen zuerst die Liste und

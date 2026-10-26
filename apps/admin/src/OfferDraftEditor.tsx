@@ -227,18 +227,19 @@ function percentInvalid(value: string) {
   }
 }
 
-// BKP019.b2: the same editor edits an offer and an order confirmation draft.
-// The heading says which document is being corrected; anything else keeps the
-// offer wording that existed before.
+// BKP019.b2: the same editor edits an offer, an order confirmation and an
+// invoice draft. The heading says which document is being corrected; anything
+// else keeps the offer wording that existed before.
 function editorHeading(kind: string | undefined) {
-  return kind === 'order_confirmation'
-    ? 'Auftragsbestätigung bearbeiten'
-    : 'Angebot bearbeiten';
+  if (kind === 'order_confirmation') return 'Auftragsbestätigung bearbeiten';
+  return kind === 'invoice' ? 'Rechnung bearbeiten' : 'Angebot bearbeiten';
 }
 
 function editorDiscardMessage(kind: string | undefined) {
-  return kind === 'order_confirmation'
-    ? 'Ungespeicherte Änderungen an der Auftragsbestätigung verwerfen?'
+  if (kind === 'order_confirmation')
+    return 'Ungespeicherte Änderungen an der Auftragsbestätigung verwerfen?';
+  return kind === 'invoice'
+    ? 'Ungespeicherte Rechnungsänderungen verwerfen?'
     : 'Ungespeicherte Angebotsänderungen verwerfen?';
 }
 

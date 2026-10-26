@@ -40,8 +40,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP019.b: a confirmation is linked to the offer it was copied from.
-  expect(applied.at(-1)!.name).toBe('0041_order_confirmation.sql');
+  // BKP019.c1: an invoice is linked to the confirmation it was copied from.
+  expect(applied.at(-1)!.name).toBe('0042_invoice_source.sql');
   // The source is a document of the same tenant, never another tenant's row.
   const sourceForeignKey = (
     await pool.query<{ def: string }>(
@@ -60,6 +60,23 @@ test('migrations serialize, restart safely and detect changed history', async ()
   expect(confirmationIndex).toContain('(tenant_id, source_document_id)');
   expect(confirmationIndex).toContain(
     "WHERE (kind = 'order_confirmation'::text)",
+  );
+  // BKP019.c1: exactly one invoice per confirmation, and the source CHECK grew
+  // from confirmations to confirmations and invoices - no other kind.
+  const invoiceIndex = (
+    await pool.query<{ indexdef: string }>(
+      "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='documents_one_invoice'",
+    )
+  ).rows[0]!.indexdef;
+  expect(invoiceIndex).toContain('(tenant_id, source_document_id)');
+  expect(invoiceIndex).toContain("WHERE (kind = 'invoice'::text)");
+  const sourceKindCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_source_kind_check'",
+    )
+  ).rows[0]!.def;
+  expect(sourceKindCheck).toContain(
+    "kind = ANY (ARRAY['order_confirmation'::text, 'invoice'::text])",
   );
   // BKP019.a records how an offer was accepted after the status axis.
   // The acceptance references an own library file through the composite key,

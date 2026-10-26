@@ -4689,12 +4689,49 @@ test('the database keeps the source link inside confirmations of this tenant', a
       issuedAt: '2030-10-26T10:00:00Z',
     },
   ]);
-  // A source is reserved for confirmations.
+  // BKP019.c1: a source is reserved for confirmations and invoices. An invoice
+  // may name the confirmation it was copied from ...
   expect(
     await code(
       pool.query(
         'UPDATE documents SET source_document_id=$3 WHERE tenant_id=$1 AND id=$2',
         [offer.scope, invoiceId, offer.offerId],
+      ),
+    ),
+  ).toBe('accepted');
+  // ... and every kind that owns no source path yet still refuses one. A
+  // deposit invoice is refused until its own slice decides the amount model.
+  const depositId = randomUUID();
+  await listRows(pool, offer.scope, [
+    {
+      id: depositId,
+      templateId: offer.templateId,
+      kind: 'deposit_invoice',
+      issuedAt: '2030-10-26T10:00:00Z',
+    },
+  ]);
+  expect(
+    await code(
+      pool.query(
+        'UPDATE documents SET source_document_id=$3 WHERE tenant_id=$1 AND id=$2',
+        [offer.scope, depositId, offer.offerId],
+      ),
+    ),
+  ).toBe('23514');
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,source_document_id)
+         VALUES ($1,$2,'deposit_invoice',NULL,$3,$4,$5,$6)`,
+        [
+          offer.scope,
+          randomUUID(),
+          offer.event,
+          offer.contact,
+          now,
+          offer.offerId,
+        ],
       ),
     ),
   ).toBe('23514');
@@ -4933,4 +4970,666 @@ test('an acceptance of another tenant or actor is invisible', async () => {
     }),
   ).rejects.toThrow('forbidden');
   expect((await offerState(scope, offer.id)).offer_status).toBe('sent');
+});
+
+// BKP019.c1: a finalized order confirmation becomes an invoice draft without a
+// single retyped position. The invoice is its own document, owns the invoice
+// number range, and is never a replacement: a finalized document is corrected by
+// a later document, not rewritten.
+async function invoicedOrder(scope: string) {
+  const offer = await confirmedOffer(scope),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    );
+  await documentNumberRepository(pool, scope).save(
+    offer.actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const confirmationFinal = await offer.repo.finalize(
+    offer.actor,
+    confirmation.id,
+    confirmation.version,
+  );
+  return { ...offer, confirmation: confirmationFinal };
+}
+
+async function invoiceCount(scope: string) {
+  return (
+    await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM documents
+        WHERE tenant_id=$1 AND kind='invoice'`,
+      [scope],
+    )
+  ).rows[0]!.count;
+}
+
+async function invoiceSequence(scope: string) {
+  return (
+    await pool.query<{ next_value: number }>(
+      'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+      [scope, 'invoice'],
+    )
+  ).rows[0]?.next_value;
+}
+
+test('the invoice copies every position, price, tax and discount of the confirmation', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    stored = await storedDocument(order.scope, invoice.id);
+  // 1:1 from the confirmation: descriptions, quantities, units, gross prices and
+  // both basis-point rates - no conversion, no second rounding of its own.
+  expect(await storedLines(order.scope, invoice.id)).toEqual(
+    await storedLines(order.scope, order.confirmation.id),
+  );
+  expect(stored).toMatchObject({
+    kind: 'invoice',
+    template_id: null,
+    event_id: order.event,
+    contact_id: order.contact,
+    number: null,
+    state: 'draft',
+    // Addressed as an invoice; the rest is the confirmation's own wording.
+    subject: 'Rechnung für {{contact}}',
+    intro_text: confirmationTexts.introText,
+    outro_text: confirmationTexts.outroText,
+    validity_days: 14,
+    snapshot_hash: null,
+    pdf_hash: null,
+    version: 1,
+    source_document_id: order.confirmation.id,
+    // No offer axis, no deadline: an invoice is no offer.
+    offer_status: null,
+    valid_until: null,
+  });
+  // The sums are recomputed from the copied gross prices and are exactly the
+  // confirmation's own totals, across both tax groups.
+  const source = await order.repo.get(order.confirmation.id);
+  expect(invoice).toMatchObject({
+    netMinor: source!.netMinor,
+    taxMinor: source!.taxMinor,
+    grossMinor: source!.grossMinor,
+  });
+  expect(invoice.grossMinor).toBe(52310);
+  expect(invoice.grossMinor).toBe(invoice.netMinor + invoice.taxMinor);
+});
+
+test('the invoice needs a finalized confirmation as its source', async () => {
+  const context = await confirmationContext(randomUUID()),
+    offer = await confirmedOffer(randomUUID());
+  // A draft confirmation is not billable: its content can still move.
+  const draftConfirmation = await offer.repo.createOrderConfirmation(
+    offer.actor,
+    offer.offerId,
+    offer.version,
+  );
+  await expect(
+    offer.repo.createInvoice(
+      offer.actor,
+      draftConfirmation.id,
+      draftConfirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // An offer is invoiced through a confirmation, never directly.
+  await expect(
+    offer.repo.createInvoice(offer.actor, offer.offerId, offer.version),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  // No chain either: an invoice is not the source of another invoice.
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await expect(
+    order.repo.createInvoice(order.actor, invoice.id, invoice.version),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  await expect(
+    context.repo.createInvoice(context.actor, randomUUID(), 1),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  expect(await invoiceCount(context.scope)).toBe(0);
+});
+
+test('a withdrawn order is never invoiced', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    withdrawn = await order.repo.changeOfferStatus(order.actor, order.offerId, {
+      status: 'withdrawn',
+      version: order.version,
+    });
+  expect(withdrawn.offerStatus).toBe('withdrawn');
+  // The confirmation itself stays final and untouched; the order behind it is
+  // gone, so it can no longer be billed.
+  await expect(
+    order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'order_withdrawn' });
+  expect(await invoiceCount(order.scope)).toBe(0);
+  // A source whose own content state is withdrawn is refused just the same -
+  // the check is on the order, not on a status word.
+  await pool.query(
+    `UPDATE documents SET state='withdrawn' WHERE tenant_id=$1 AND id=$2`,
+    [order.scope, order.confirmation.id],
+  );
+  await expect(
+    order.repo.createInvoice(order.actor, order.confirmation.id, 1),
+  ).rejects.toMatchObject({ reason: 'order_withdrawn' });
+  expect(await invoiceCount(order.scope)).toBe(0);
+  expect(await invoiceSequence(order.scope)).toBeUndefined();
+});
+
+test('a second invoice is refused without consuming a number', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    first = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await expect(
+    order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'duplicate' });
+  const rows = (
+    await pool.query<{ id: string }>(
+      `SELECT id FROM documents WHERE tenant_id=$1 AND kind='invoice'`,
+      [order.scope],
+    )
+  ).rows;
+  expect(rows.map((row) => row.id)).toEqual([first.id]);
+  // Creating never touches the invoice range, so a rejected duplicate cannot
+  // burn a number.
+  expect(await invoiceSequence(order.scope)).toBeUndefined();
+  expect(await offerAudit(order.scope, first.id)).toEqual(['document.created']);
+});
+
+test('two simultaneous invoices produce exactly one document', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    results = await Promise.allSettled([
+      order.repo.createInvoice(
+        order.actor,
+        order.confirmation.id,
+        order.confirmation.version,
+      ),
+      order.repo.createInvoice(
+        order.actor,
+        order.confirmation.id,
+        order.confirmation.version,
+      ),
+    ]),
+    fulfilled = results.filter((result) => result.status === 'fulfilled'),
+    rejected = results.filter((result) => result.status === 'rejected');
+  // The partial unique index decides, not an application-side "check first".
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+    reason: 'duplicate',
+  });
+  expect(await invoiceCount(order.scope)).toBe(1);
+});
+
+test('an invoice of another tenant, actor or unknown confirmation is invisible', async () => {
+  const order = await invoicedOrder(randomUUID());
+  await expect(
+    documentRepository(pool, otherTenantId, dependencies().deps).createInvoice(
+      otherActorId,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    order.repo.createInvoice(
+      randomUUID(),
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toThrow('forbidden');
+  expect(await invoiceCount(order.scope)).toBe(0);
+});
+
+test('a stale confirmation version is a conflict and writes nothing', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    auditBefore = await offerAudit(order.scope, order.confirmation.id);
+  await expect(
+    order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version - 1,
+    ),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(await invoiceCount(order.scope)).toBe(0);
+  expect(await offerAudit(order.scope, order.confirmation.id)).toEqual(
+    auditBefore,
+  );
+});
+
+test('the invoice finalizes with its own number and its own PDF', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    offerPdf = await order.repo.pdf(order.offerId),
+    confirmationPdf = await order.repo.pdf(order.confirmation.id);
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'invoice',
+    { pattern: 'RE-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await order.repo.finalize(
+      order.actor,
+      invoice.id,
+      invoice.version,
+    ),
+    stored = await storedDocument(order.scope, invoice.id);
+  expect(finalized.number).toBe('RE-2030-0001');
+  expect(stored).toMatchObject({
+    kind: 'invoice',
+    state: 'final',
+    number: 'RE-2030-0001',
+    offer_status: null,
+    valid_until: null,
+    source_document_id: order.confirmation.id,
+    // Integer minor units, read back as the driver's exact numeric string.
+    gross_minor: '52310',
+  });
+  // Both originals keep their number, their state and their bytes.
+  expect(
+    await storedDocument(order.scope, order.confirmation.id),
+  ).toMatchObject({ number: 'AB-2030-0001', state: 'final' });
+  expect(
+    (await order.repo.pdf(order.offerId)).bytes.equals(offerPdf.bytes),
+  ).toBe(true);
+  expect(
+    (await order.repo.pdf(order.confirmation.id)).bytes.equals(
+      confirmationPdf.bytes,
+    ),
+  ).toBe(true);
+  const invoicePdf = await order.repo.pdf(invoice.id);
+  expect(invoicePdf.number).toBe('RE-2030-0001');
+  expect(invoicePdf.bytes.equals(confirmationPdf.bytes)).toBe(false);
+});
+
+test('a missing number range keeps the invoice a draft', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await expect(
+    order.repo.finalize(order.actor, invoice.id, invoice.version),
+  ).rejects.toMatchObject({ reason: 'number_not_configured' });
+  expect(await storedDocument(order.scope, invoice.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+    snapshot_hash: null,
+    pdf_hash: null,
+  });
+  expect(await invoiceSequence(order.scope)).toBeUndefined();
+  // Nothing was consumed: the first real finalization still gets 0001.
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'invoice',
+    { pattern: 'RE-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  expect(
+    (await order.repo.finalize(order.actor, invoice.id, invoice.version))
+      .number,
+  ).toBe('RE-2030-0001');
+});
+
+test('a failing renderer rolls the invoice number back', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'invoice',
+    { pattern: 'RE-{YYYY}-{SEQ}', minLength: 4, nextValue: 7 },
+  );
+  const failing = documentRepository(pool, order.scope, {
+    ...dependencies().deps,
+    render: async () => {
+      throw new Error('synthetic invoice renderer failure');
+    },
+  });
+  await expect(
+    failing.finalize(order.actor, invoice.id, invoice.version),
+  ).rejects.toMatchObject({ reason: 'artifact_failed' });
+  expect(await storedDocument(order.scope, invoice.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+  });
+  expect(
+    await documentNumberRepository(pool, order.scope).preview(
+      'invoice',
+      new Date('2030-10-26T10:00:00Z'),
+    ),
+  ).toBe('RE-2030-0007');
+});
+
+test('a finalized invoice is immutable and has no offer status', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'invoice',
+    { pattern: 'RE-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await order.repo.finalize(
+      order.actor,
+      invoice.id,
+      invoice.version,
+    ),
+    pdf = await order.repo.pdf(invoice.id);
+  // Final content is final: a correction is a new document, never an edit.
+  await expect(
+    order.repo.updateDraftContent(order.actor, invoice.id, {
+      version: finalized.version,
+      subject: 'Zu spät',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // An invoice is no offer: it never gains a business status.
+  await expect(
+    order.repo.changeOfferStatus(order.actor, invoice.id, {
+      status: 'sent',
+      version: finalized.version,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  expect((await order.repo.pdf(invoice.id)).bytes.equals(pdf.bytes)).toBe(true);
+});
+
+test('editing the invoice draft never changes the confirmation', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    beforeConfirmation = await storedDocument(
+      order.scope,
+      order.confirmation.id,
+    ),
+    beforeLines = await storedLines(order.scope, order.confirmation.id),
+    confirmationPdf = await order.repo.pdf(order.confirmation.id),
+    edited = await order.repo.updateDraftContent(order.actor, invoice.id, {
+      version: invoice.version,
+      subject: 'Rechnung, korrigiert',
+      introText: 'Korrigierte Einleitung.',
+      outroText: 'Korrigierter Schluss.',
+      validityDays: 14,
+      lines: [
+        {
+          productId: null,
+          description: 'Korrigierte Position',
+          quantity: 3,
+          unit: 'Stück',
+          unitPriceMinor: 1000,
+          taxBasisPoints: 700,
+          discountBasisPoints: 0,
+        },
+      ],
+    });
+  // The invoice draft is editable, exactly like an offer or confirmation draft.
+  expect(edited).toMatchObject({
+    kind: 'invoice',
+    subject: 'Rechnung, korrigiert',
+    version: invoice.version + 1,
+    grossMinor: 3000,
+  });
+  expect(await storedDocument(order.scope, order.confirmation.id)).toEqual(
+    beforeConfirmation,
+  );
+  expect(await storedLines(order.scope, order.confirmation.id)).toEqual(
+    beforeLines,
+  );
+  expect(
+    (await order.repo.pdf(order.confirmation.id)).bytes.equals(
+      confirmationPdf.bytes,
+    ),
+  ).toBe(true);
+});
+
+test('the database keeps the invoice source inside invoices of this tenant', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    code = (query: Promise<unknown>) =>
+      query
+        .then(() => 'accepted')
+        .catch((error: { code?: string }) => error.code),
+    foreignId = randomUUID();
+  await listRows(pool, otherTenantId, [
+    {
+      id: foreignId,
+      templateId: otherTemplateId,
+      issuedAt: '2030-10-26T10:00:00Z',
+    },
+  ]);
+  // A template-less invoice without a source stays refused - the blank-document
+  // rule of this database was not widened, only given its invoice path.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days)
+         VALUES ($1,$2,'invoice',NULL,$3,$4,$5,'Rechnung','','',14)`,
+        [order.scope, randomUUID(), order.event, order.contact, now],
+      ),
+    ),
+  ).toBe('23514');
+  // Copied from a confirmation of this tenant, it is allowed ...
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days,source_document_id)
+         VALUES ($1,$2,'invoice',NULL,$3,$4,$5,'Rechnung','','',14,$6)`,
+        [
+          order.scope,
+          randomUUID(),
+          order.event,
+          order.contact,
+          now,
+          order.confirmation.id,
+        ],
+      ),
+    ),
+  ).toBe('accepted');
+  // ... exactly once, also against a second direct insert.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days,source_document_id)
+         VALUES ($1,$2,'invoice',NULL,$3,$4,$5,'Rechnung','','',14,$6)`,
+        [
+          order.scope,
+          randomUUID(),
+          order.event,
+          order.contact,
+          now,
+          order.confirmation.id,
+        ],
+      ),
+    ),
+  ).toBe('23505');
+  // A document of another tenant can never become the source.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days,source_document_id)
+         VALUES ($1,$2,'invoice',NULL,$3,$4,$5,'Rechnung','','',14,$6)`,
+        [order.scope, randomUUID(), order.event, order.contact, now, foreignId],
+      ),
+    ),
+  ).toBe('23503');
+});
+
+test('the offer projection names the source of an invoice', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    listed = (await order.repo.list({
+      include: 'offer',
+    })) as DocumentOfferRow[],
+    byId = (id: string) => listed.find((row) => row.id === id)!;
+  expect(byId(invoice.id)).toMatchObject({
+    kind: 'invoice',
+    sourceDocumentId: order.confirmation.id,
+    sourceNumber: 'AB-2030-0001',
+    offerStatus: null,
+    validUntil: null,
+  });
+  // The key set of the pinned projection did not grow: no source kind, no
+  // invoice-only field.
+  expect(Object.keys(byId(invoice.id)).sort()).toEqual(
+    [
+      ...oldListKeys,
+      'offerStatus',
+      'validUntil',
+      'offerExpired',
+      ...acceptanceKeys,
+      ...confirmationKeys,
+    ].sort(),
+  );
+});
+
+test('the invoice route validates auth, body and duplicates', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    granted = (await accessRepository(pool, order.scope).list())[0]!;
+  await accessRepository(pool, order.scope).issueSession(
+    { subject: 'seed-' + order.scope, email: granted.email },
+    digest('synthetic-invoice'),
+  );
+  const config = {
+      origin: site,
+      tenantId: order.scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, order.scope, order.run.deps);
+  const url = '/api/v1/documents/' + order.confirmation.id + '/invoice',
+    cookies = { '__Host-ak-session': 'synthetic-invoice' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-invoice'),
+    },
+    post = (payload: Record<string, unknown>, secured = true) =>
+      app.inject({
+        method: 'POST',
+        url,
+        cookies,
+        ...(secured ? { headers } : {}),
+        payload,
+      });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          payload: { version: order.confirmation.version },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (await post({ version: order.confirmation.version }, false)).statusCode,
+    ).toBe(403);
+    // Fastify's schema strips unknown keys; a missing or non-integer version is
+    // refused with 400.
+    for (const payload of [{}, { version: 0 }, { version: 1.5 }])
+      expect((await post(payload)).statusCode, JSON.stringify(payload)).toBe(
+        400,
+      );
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + randomUUID() + '/invoice',
+          cookies,
+          headers,
+          payload: { version: 1 },
+        })
+      ).statusCode,
+    ).toBe(404);
+    // A stale version is a conflict before anything is copied.
+    expect((await post({ version: 1 })).statusCode).toBe(409);
+    expect((await post({ version: 1 })).json()).toEqual({ error: 'conflict' });
+    const created = await post({ version: order.confirmation.version });
+    expect(created.statusCode).toBe(201);
+    const single = await app.inject({
+      url: '/api/v1/documents/' + (created.json() as { id: string }).id,
+      cookies,
+    });
+    expect(Object.keys(created.json() as object).sort()).toEqual(
+      Object.keys(single.json() as object).sort(),
+    );
+    expect(created.json()).toMatchObject({
+      kind: 'invoice',
+      state: 'draft',
+      number: null,
+      templateId: null,
+      subject: 'Rechnung für {{contact}}',
+      grossMinor: 52310,
+    });
+    // The create answer keeps the old document shape: the offer projection, not
+    // this route, names the source.
+    expect(created.body).not.toContain('sourceDocumentId');
+    const again = await post({ version: order.confirmation.version });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: 'duplicate' });
+    expect(await invoiceCount(order.scope)).toBe(1);
+  } finally {
+    await app.close();
+  }
 });

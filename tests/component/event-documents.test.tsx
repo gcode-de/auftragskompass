@@ -75,6 +75,30 @@ const draft = {
     finalizedAt: '2030-10-26T10:15:00Z',
     version: 2,
   },
+  // BKP019.c1: the invoice copied from that finalized confirmation.
+  invoiceDraft = {
+    id: 'doc-re-1',
+    kind: 'invoice',
+    templateId: null,
+    eventId: 'event-1',
+    contactId: 'contact-1',
+    number: null,
+    state: 'draft' as const,
+    issuedAt: '2030-10-26T10:20:00Z',
+    finalizedAt: null,
+    netMinor: 20925,
+    taxMinor: 3975,
+    grossMinor: 24900,
+    version: 1,
+    sourceDocumentId: 'doc-ab-1',
+    sourceNumber: 'AB-2030-0001',
+  },
+  invoiceWording = {
+    subject: 'Rechnung für {{contact}}',
+    introText: 'Vielen Dank für Ihren Auftrag.',
+    outroText: 'Freundliche Grüße',
+    validityDays: 14,
+  },
   // BKP019.b2: the stored draft detail the editor reads, and the wording each
   // kind owns. A confirmation names itself, so no offer wording can leak in.
   storedLine = {
@@ -151,6 +175,7 @@ function setup(
     offerStatus?: () => Response;
     library?: () => Response;
     orderConfirmation?: () => Response;
+    invoice?: () => Response;
   } = {},
 ) {
   const calls: {
@@ -171,6 +196,7 @@ function setup(
         ...confirmationWording,
         lines: [storedLine],
       },
+      'doc-re-1': { ...invoiceDraft, ...invoiceWording, lines: [storedLine] },
     },
     fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
@@ -221,6 +247,17 @@ function setup(
         // The confirmed row replaces the old list on the following reload.
         state.documents = [acceptedOffer, confirmationDraft];
         return Response.json(confirmationDraft, { status: 201 });
+      }
+      if (url.endsWith('/invoice')) {
+        calls.push({
+          url,
+          method,
+          body: JSON.parse(String(init!.body)),
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.invoice) return options.invoice();
+        state.documents = [acceptedOffer, finalizedConfirmation, invoiceDraft];
+        return Response.json(invoiceDraft, { status: 201 });
       }
       if (url.endsWith('/finalize')) {
         calls.push({ url, method });
@@ -1071,6 +1108,269 @@ test('a confirmation row names its source offer and its own kind', async () => {
     }),
   ).toBeTruthy();
   expect(within(orders).queryByText(/Gültig bis/)).toBeNull();
+});
+
+// BKP019.c1: the invoice is copied from a finalized confirmation. The step asks
+// once, writes nothing before the confirmation and retypes no position.
+test('only a finalized confirmation offers the invoice action', async () => {
+  setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  ).toBeTruthy();
+  // Nothing writes before the operator confirms the step.
+  expect(row.querySelector('form')).toBeNull();
+  cleanup();
+  for (const entry of [confirmationDraft, acceptedOffer, finalized]) {
+    setup({ documents: [entry] });
+    const other = render(<EventDocuments {...props} />);
+    await screen.findByText(/Angelegt am|Finalisiert am/);
+    expect(
+      screen.queryByRole('button', { name: /Rechnung erstellen/ }),
+    ).toBeNull();
+    other.unmount();
+    cleanup();
+  }
+});
+
+test('creating the invoice asks once and posts the confirmation version', async () => {
+  const { calls } = setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  );
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
+    }),
+  ).toBeTruthy();
+  // Nothing left the browser before the confirmation.
+  expect(calls.some((call) => call.url.endsWith('/invoice'))).toBe(false);
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText('Rechnung als Entwurf angelegt.'),
+  ).toBeTruthy();
+  expect(calls.find((call) => call.url.endsWith('/invoice'))).toMatchObject({
+    url: '/api/v1/documents/doc-ab-1/invoice',
+    method: 'POST',
+    body: { version: 2 },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  // The invoice lands in its own card and names the confirmation it came from.
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const source = within(invoices).getByRole('link', {
+    name: 'Auftragsbestätigung AB-2030-0001 als PDF öffnen',
+  });
+  expect(source.getAttribute('href')).toBe('/api/v1/documents/doc-ab-1/pdf');
+  expect(within(invoices).getByText(/Aus Auftragsbestätigung/)).toBeTruthy();
+});
+
+test('cancelling the invoice sends nothing', async () => {
+  const { calls } = setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung abbrechen',
+    }),
+  );
+  expect(
+    within(row).queryByRole('button', { name: /Rechnung anlegen/ }),
+  ).toBeNull();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/invoice'))).toBe(false);
+});
+
+test('an existing invoice is explained instead of retried', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation],
+    invoice: () => Response.json({ error: 'duplicate' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText(
+      'Für diese Auftragsbestätigung gibt es bereits eine Rechnung.',
+    ),
+  ).toBeTruthy();
+  expect(calls.filter((call) => call.url.endsWith('/invoice'))).toHaveLength(1);
+});
+
+test('a withdrawn order cannot be invoiced and says why', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation],
+    invoice: () => Response.json({ error: 'order_withdrawn' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText(
+      'Der Auftrag wurde zurückgezogen. Eine Rechnung ist nicht möglich.',
+    ),
+  ).toBeTruthy();
+  expect(calls.filter((call) => call.url.endsWith('/invoice'))).toHaveLength(1);
+});
+
+test('an invoice refused for another reason names it instead of guessing', async () => {
+  for (const [error, message] of [
+    [
+      'invalid_kind',
+      'Nur eine finalisierte Auftragsbestätigung lässt sich abrechnen.',
+    ],
+    [
+      'conflict',
+      'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.',
+    ],
+  ] as const) {
+    setup({
+      documents: [finalizedConfirmation],
+      invoice: () => Response.json({ error }, { status: 409 }),
+    });
+    render(<EventDocuments {...props} />);
+    const orders = await screen.findByRole('region', {
+      name: 'Auftragsbestätigungen',
+    });
+    const row = within(orders).getByRole('listitem');
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+      }),
+    );
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
+      }),
+    );
+    expect(await screen.findByText(message)).toBeTruthy();
+    cleanup();
+  }
+});
+
+test('an invoice answer for another event is unclear and never listed', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation],
+    invoice: () =>
+      Response.json({ ...invoiceDraft, eventId: 'event-2' }, { status: 201 }),
+  });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText(
+      'Rechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+    ),
+  ).toBeTruthy();
+  // The row was not shown as if it belonged to this event, and nothing retries.
+  expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
+  expect(calls.filter((call) => call.url.endsWith('/invoice'))).toHaveLength(1);
+});
+
+test('an invoice row names its source confirmation, its own kind and the open steps', async () => {
+  setup({ documents: [finalizedConfirmation, invoiceDraft] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  // The source is the confirmation's own number, linked to its PDF.
+  expect(within(row).getByText(/Aus Auftragsbestätigung/)).toBeTruthy();
+  const source = within(row).getByRole('link', {
+    name: 'Auftragsbestätigung AB-2030-0001 als PDF öffnen',
+  });
+  expect(source.getAttribute('href')).toBe('/api/v1/documents/doc-ab-1/pdf');
+  // Its own actions are named as an invoice, not as an offer.
+  expect(
+    within(row).getByRole('button', { name: 'Rechnung Entwurf finalisieren' }),
+  ).toBeTruthy();
+  expect(
+    within(row).getByRole('button', { name: 'Rechnung Entwurf bearbeiten' }),
+  ).toBeTruthy();
+  // An invoice is no offer: no deadline, no offer status.
+  expect(within(row).queryByText(/Gültig bis/)).toBeNull();
+  // The open gaps are named instead of implying a complete invoicing feature.
+  expect(
+    within(invoices).getByText(
+      /Anzahlungs-, Schluss- und Korrekturrechnungen sind noch nicht verfügbar/,
+    ),
+  ).toBeTruthy();
+});
+
+test('an invoice draft opens the shared editor with its own texts', async () => {
+  setup({ documents: [invoiceDraft] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', { name: 'Rechnung Entwurf bearbeiten' }),
+  );
+  const editor = await within(row).findByLabelText('Einleitung');
+  expect((editor as HTMLTextAreaElement).value).toBe(
+    'Vielen Dank für Ihren Auftrag.',
+  );
 });
 
 // BKP019.b2: a confirmation draft is correctable in the same editor an offer

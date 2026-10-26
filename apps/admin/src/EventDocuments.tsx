@@ -121,9 +121,14 @@ function kindName(entry: { kind: string }) {
   return kindSingular[entry.kind] ?? 'Dokument';
 }
 // BKP019.b2: a confirmation draft owns its texts and positions exactly like an
-// offer draft, so both open the one editor. No other draft kind is editable
-// server-side, so no other kind offers an editor here.
-const editableDraftKinds = new Set<string>(['offer', 'order_confirmation']);
+// offer draft, so both open the one editor.
+// BKP019.c1: an invoice draft copied from a confirmation is correctable the same
+// way - a finalized document is never edited, its draft is.
+const editableDraftKinds = new Set<string>([
+  'offer',
+  'order_confirmation',
+  'invoice',
+]);
 
 // One off-shape row must never take the whole event file down with it.
 async function validDocuments(reply: Response): Promise<DocumentRow[]> {
@@ -167,6 +172,8 @@ export function EventDocuments({
     [confirmWithdrawId, setConfirmWithdrawId] = useState(''),
     // BKP019.b: the accepted offer whose confirmation is being confirmed.
     [confirmConfirmationId, setConfirmConfirmationId] = useState(''),
+    // BKP019.c1: the finalized confirmation whose invoice is being confirmed.
+    [confirmInvoiceId, setConfirmInvoiceId] = useState(''),
     // BKP019.a: the compact acceptance form of exactly one row.
     [acceptanceId, setAcceptanceId] = useState(''),
     [acceptanceChannel, setAcceptanceChannel] = useState<
@@ -466,6 +473,75 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  // BKP019.c1: a finalized confirmation is invoiced as one explicit step.
+  // Nothing is retyped: the positions come from the confirmation, and the
+  // invoice is a draft that is finalised with its own number later.
+  async function createInvoice(id: string, version: number) {
+    if (mutating.current || editorBusy || editorDirty) return;
+    mutating.current = true;
+    setBusy(id);
+    setMessage('');
+    setConfirmInvoiceId('');
+    try {
+      const reply = await fetch('/api/v1/documents/' + id + '/invoice', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ version }),
+      });
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(
+          result.error === 'duplicate'
+            ? 'Für diese Auftragsbestätigung gibt es bereits eine Rechnung.'
+            : result.error === 'order_withdrawn'
+              ? 'Der Auftrag wurde zurückgezogen. Eine Rechnung ist nicht möglich.'
+              : result.error === 'invalid_kind'
+                ? 'Nur eine finalisierte Auftragsbestätigung lässt sich abrechnen.'
+                : result.error === 'invalid_state' ||
+                    result.error === 'conflict'
+                  ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
+                  : 'Rechnung konnte nicht erstellt werden. Bitte Angaben prüfen.',
+        );
+        try {
+          await load();
+        } catch {
+          // The message above already says what to do.
+        }
+        return;
+      }
+      const created = (await reply.json()) as DocumentRow;
+      const confirmed =
+        typeof created?.id === 'string' &&
+        created.id.length > 0 &&
+        created.kind === 'invoice' &&
+        created.state === 'draft' &&
+        created.eventId === eventId;
+      if (confirmed) {
+        setDocuments((current) => [
+          created,
+          ...current.filter((row) => row.id !== created.id),
+        ]);
+        setMessage('Rechnung als Entwurf angelegt.');
+      } else
+        setMessage(
+          'Rechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+        );
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   // BKP019.a: the library the acceptance may reference. Only an own, available
   // row is selectable; the "not scanned" fact stays visible instead of a scan
   // promise we cannot keep.
@@ -632,29 +708,42 @@ export function EventDocuments({
               {' · '}
               {exactMinorUnits(entry.grossMinor) ?? '—'} €
             </p>
-            {/* BKP019.b: a confirmation names the offer it was copied from. The
-                number is the offer's own, and the link opens that document. */}
-            {entry.kind === 'order_confirmation' && entry.sourceNumber && (
-              <p className="document-meta">
-                <span>Aus Angebot </span>
-                {entry.sourceDocumentId ? (
-                  <a
-                    href={
-                      '/api/v1/documents/' + entry.sourceDocumentId + '/pdf'
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={
-                      'Angebot ' + entry.sourceNumber + ' als PDF öffnen'
-                    }
-                  >
-                    {entry.sourceNumber}
-                  </a>
-                ) : (
-                  <span>{entry.sourceNumber}</span>
-                )}
-              </p>
-            )}
+            {/* BKP019.b: a confirmation names the offer it was copied from.
+                BKP019.c1: an invoice names the confirmation in the same way. The
+                row kind decides which source it must be, because the projection
+                deliberately carries no source kind. The link opens that source
+                document's own PDF. */}
+            {(entry.kind === 'order_confirmation' ||
+              entry.kind === 'invoice') &&
+              entry.sourceNumber && (
+                <p className="document-meta">
+                  <span>
+                    {entry.kind === 'invoice'
+                      ? 'Aus Auftragsbestätigung '
+                      : 'Aus Angebot '}
+                  </span>
+                  {entry.sourceDocumentId ? (
+                    <a
+                      href={
+                        '/api/v1/documents/' + entry.sourceDocumentId + '/pdf'
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={
+                        (entry.kind === 'invoice'
+                          ? 'Auftragsbestätigung '
+                          : 'Angebot ') +
+                        entry.sourceNumber +
+                        ' als PDF öffnen'
+                      }
+                    >
+                      {entry.sourceNumber}
+                    </a>
+                  ) : (
+                    <span>{entry.sourceNumber}</span>
+                  )}
+                </p>
+              )}
             {entry.kind === 'offer' && entry.state === 'final' && (
               <p className="document-offer-status">
                 <span>{offerStatusLabels[entry.offerStatus ?? 'unset']}</span>
@@ -929,6 +1018,60 @@ export function EventDocuments({
                     Auftragsbestätigung erstellen
                   </button>
                 ))}
+              {/* BKP019.c1: only a finalized confirmation can be invoiced, and
+                  only as an explicit step - the invoice starts as a draft with
+                  its own number range. */}
+              {entry.state === 'final' &&
+                entry.kind === 'order_confirmation' &&
+                (confirmInvoiceId === entry.id ? (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Rechnung anlegen'
+                      }
+                      onClick={() =>
+                        void createInvoice(entry.id, entry.version)
+                      }
+                    >
+                      Ja, Rechnung anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Rechnung abbrechen'
+                      }
+                      onClick={() => setConfirmInvoiceId('')}
+                    >
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== ''}
+                    aria-label={
+                      kindName(entry) +
+                      ' ' +
+                      (entry.number ?? '') +
+                      ' Rechnung erstellen'
+                    }
+                    onClick={() => setConfirmInvoiceId(entry.id)}
+                  >
+                    Rechnung erstellen
+                  </button>
+                ))}
             </div>
             {entry.kind === 'offer' &&
               entry.state === 'final' &&
@@ -1187,6 +1330,17 @@ export function EventDocuments({
               aria-labelledby={'event-documents-kind-' + group.kind}
             >
               <h4 id={'event-documents-kind-' + group.kind}>{group.label}</h4>
+              {/* BKP019.c1: an invoice is a real document, but invoicing is not
+                  complete yet. The open paths are named here instead of letting
+                  the card imply deposit, final and correction invoices exist. */}
+              {group.kind === 'invoice' && (
+                <p className="document-card-hint">
+                  Anzahlungs-, Schluss- und Korrekturrechnungen sind noch nicht
+                  verfügbar. Eine finalisierte Rechnung wird nie ersetzt,
+                  sondern später nur durch ein Korrektur- oder Stornodokument
+                  ergänzt; Entwürfe bleiben bis zur Finalisierung bearbeitbar.
+                </p>
+              )}
               {rows(group.rows)}
             </section>
           ))}

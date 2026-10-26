@@ -1237,6 +1237,139 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       orders.locator('.document-meta', { hasText: 'Aus Angebot' }),
     ).toBeVisible();
+    // BKP019.c1: the finalized confirmation becomes an invoice draft with the
+    // same positions. The invoice owns the invoice number range, so neither the
+    // offer nor the confirmation can lose its number or its bytes.
+    const confirmationPdfBytes = await (
+      await page.request.get(
+        origin + '/api/v1/documents/' + confirmation.id + '/pdf',
+      )
+    ).body();
+    await pool.query(
+      `INSERT INTO document_number_sequences
+        (tenant_id,kind,pattern,min_length,next_value,version)
+       VALUES ($1,'invoice','RE-{YYYY}-{SEQ}',4,1,1)`,
+      [config.tenantId],
+    );
+    const invoiceCount = async () =>
+      (
+        await pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM documents
+            WHERE tenant_id=$1 AND kind='invoice'`,
+          [config.tenantId],
+        )
+      ).rows[0]!.count;
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung erstellen',
+      })
+      .click();
+    // The step asks once and writes nothing before the confirmation.
+    await expect(
+      orders.getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung anlegen',
+      }),
+    ).toBeVisible();
+    expect(await invoiceCount()).toBe(0);
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText('Rechnung als Entwurf angelegt.'),
+    ).toBeVisible();
+    const invoices = page.getByRole('region', { name: 'Rechnungen' });
+    await expect(invoices.getByRole('listitem')).toHaveCount(1);
+    await expect(invoices.locator('.document-row span').first()).toHaveText(
+      'Entwurf',
+    );
+    const invoice = (
+      await pool.query<{
+        id: string;
+        number: string | null;
+        source_document_id: string;
+        gross_minor: string;
+      }>(
+        `SELECT id, number, source_document_id, gross_minor FROM documents
+          WHERE tenant_id=$1 AND kind='invoice'`,
+        [config.tenantId],
+      )
+    ).rows[0]!;
+    // The link points at the confirmation, no number is allocated yet and the
+    // amount is the confirmation's own - nothing was retyped or recomputed.
+    expect(invoice.source_document_id).toBe(confirmation.id);
+    expect(invoice.number).toBeNull();
+    expect(invoice.gross_minor).toBe(confirmation.gross_minor);
+    const invoiceDetail = (await (
+      await page.request.get(origin + '/api/v1/documents/' + invoice.id)
+    ).json()) as Detail;
+    expect(copied(invoiceDetail.lines)).toEqual(
+      copied(confirmationDetail.lines),
+    );
+    expect(invoiceDetail.subject).toBe('Rechnung für {{contact}}');
+    await expect(
+      invoices.locator('.document-meta', {
+        hasText: 'Aus Auftragsbestätigung',
+      }),
+    ).toBeVisible();
+    await expect(
+      invoices.getByRole('link', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' als PDF öffnen',
+      }),
+    ).toHaveAttribute('href', '/api/v1/documents/' + confirmation.id + '/pdf');
+    // A second invoice is explained, never silently written twice.
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung erstellen',
+      })
+      .click();
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText(
+        'Für diese Auftragsbestätigung gibt es bereits eine Rechnung.',
+      ),
+    ).toBeVisible();
+    expect(await invoiceCount()).toBe(1);
+    // Finalizing uses the invoice's own number range.
+    await invoices
+      .getByRole('button', { name: 'Rechnung Entwurf finalisieren' })
+      .click();
+    await expect(page.getByText(/Finalisiert als RE-/)).toBeVisible();
+    const invoiceNumber = (
+      await pool.query<{ number: string }>(
+        'SELECT number FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, invoice.id],
+      )
+    ).rows[0]!.number;
+    expect(invoiceNumber).toMatch(/^RE-\d{4}-\d{4}$/);
+    await expect(
+      invoices.getByText(invoiceNumber, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      invoices.getByRole('link', {
+        name: 'Rechnung ' + invoiceNumber + ' als PDF öffnen',
+      }),
+    ).toBeVisible();
+    const invoicePdf = await page.request.get(
+      origin + '/api/v1/documents/' + invoice.id + '/pdf',
+    );
+    expect(invoicePdf.status()).toBe(200);
+    expect((await invoicePdf.body()).subarray(0, 5).toString()).toBe('%PDF-');
+    // The confirmation it was copied from keeps its number and its bytes.
+    expect(
+      (
+        await (
+          await page.request.get(
+            origin + '/api/v1/documents/' + confirmation.id + '/pdf',
+          )
+        ).body()
+      ).equals(confirmationPdfBytes),
+    ).toBe(true);
     // The offer keeps its own bytes and its own number.
     const offerPdfAfterConfirmation = await pdfOf();
     expect((await offerPdfAfterConfirmation.body()).equals(firstBytes)).toBe(

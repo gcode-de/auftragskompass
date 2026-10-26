@@ -73,6 +73,7 @@ export class DocumentError extends Error {
       | 'invalid_attachment'
       | 'acceptance_conflict'
       | 'offer_not_accepted'
+      | 'order_withdrawn'
       | 'duplicate',
   ) {
     super('Document rejected');
@@ -1207,6 +1208,136 @@ export function documentRepository(
       }
       return (await readOne(db, id))!;
     },
+    // BKP019.c1: a finalized confirmation becomes an invoice draft without a
+    // single retyped position. The copy is its own document with the invoice
+    // number range, so the confirmation and the offer it came from keep their
+    // numbers, their bytes and their status untouched.
+    // The order of the checks is the contract, not an accident:
+    //   1. missing row        -> not_found (a foreign tenant's row is missing)
+    //   2. wrong kind         -> invalid_kind (only a confirmation is billable)
+    //   3. withdrawn order    -> order_withdrawn (also a withdrawn source state)
+    //   4. not final yet      -> invalid_state (a draft can still move)
+    //   5. stale version      -> conflict (nothing copied, nothing written)
+    //   6. unusable source    -> missing_reference / empty_lines
+    //   7. duplicate          -> duplicate, decided by the partial unique index
+    async createInvoice(
+      actorId: string,
+      confirmationId: string,
+      expectedVersion: number,
+    ) {
+      const id = randomUUID();
+      try {
+        await db.transaction(async (tx) => {
+          await lockTenant(tx, tenantId);
+          await requireAdministrator(tx, tenantId, actorId);
+          // The confirmation row is locked, so a simultaneous withdrawal can
+          // never slip between the order check and the copy.
+          const [confirmation] = await tx
+            .select()
+            .from(documents)
+            .where(and(scope, eq(documents.id, confirmationId)))
+            .for('update');
+          if (!confirmation) throw new DocumentError('not_found');
+          if (confirmation.kind !== 'order_confirmation')
+            throw new DocumentError('invalid_kind');
+          // A withdrawn order is not billable. The confirmation stays final and
+          // readable - only the order behind it is gone.
+          if (confirmation.state === 'withdrawn')
+            throw new DocumentError('order_withdrawn');
+          if (confirmation.state !== 'final')
+            throw new DocumentError('invalid_state');
+          if (confirmation.version !== expectedVersion)
+            throw new DocumentError('conflict');
+          // The confirmation keeps no status of its own; the order it was copied
+          // from does. A withdrawn offer withdraws the order, so it is refused
+          // here even though the confirmation itself says `final`. The status is
+          // read as reviewed SQL for the same reason the link is written that
+          // way: `schema.ts` stays unchanged.
+          const source = await offerStateOf(tx, confirmationId);
+          if (source.sourceDocumentId) {
+            const executor = database(tx) as unknown as {
+              execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+            };
+            const withdrawnSource = (await executor.execute(sql`
+              SELECT 1 FROM documents c
+                JOIN documents o
+                  ON o.tenant_id = c.tenant_id
+                 AND o.id = c.source_document_id
+               WHERE c.tenant_id = ${tenantId} AND c.id = ${confirmationId}
+                 AND o.offer_status = 'withdrawn'`)) as { rows: unknown[] };
+            if (withdrawnSource.rows.length)
+              throw new DocumentError('order_withdrawn');
+          }
+          // An invoice lives in the event file, and a template-less document
+          // needs both references; an unfinalized source cannot supply them.
+          if (!confirmation.eventId || !confirmation.contactId)
+            throw new DocumentError('missing_reference');
+          if (
+            confirmation.introText === null ||
+            confirmation.outroText === null ||
+            confirmation.validityDays === null
+          )
+            throw new DocumentError('missing_reference');
+          const lines = await tx
+            .select(lineColumns)
+            .from(documentLines)
+            .where(
+              and(
+                eq(documentLines.tenantId, tenantId),
+                eq(documentLines.documentId, confirmationId),
+              ),
+            )
+            .orderBy(asc(documentLines.position));
+          if (!lines.length) throw new DocumentError('empty_lines');
+          // Sums are recomputed from the copied gross prices, so they cannot
+          // drift from the positions that are actually printed.
+          const totals = documentTotals(lines),
+            at = now();
+          // The blank-document rule demands the source at insert time, so the
+          // row is written as one reviewed-SQL insert instead of an insert plus
+          // a later link. `schema.ts` stays unchanged for the same reason as in
+          // BKP019.b: its CHECK, its tenant-bound FK and the partial unique index
+          // decide, not the application.
+          await tx.execute(sql`INSERT INTO documents
+              (tenant_id, id, kind, template_id, event_id, contact_id, number,
+               state, issued_at, finalized_at, subject, intro_text, outro_text,
+               validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
+               gross_minor, version, source_document_id)
+            VALUES (
+              ${tenantId}, ${id}::uuid, 'invoice', NULL,
+              ${confirmation.eventId}::uuid, ${confirmation.contactId}::uuid,
+              NULL, 'draft', ${at}, NULL,
+              ${'Rechnung für {{contact}}'}, ${confirmation.introText},
+              ${confirmation.outroText}, ${confirmation.validityDays},
+              NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
+              ${totals.grossMinor}, 1, ${confirmationId}::uuid)`);
+          await tx.insert(documentLines).values(
+            lines.map((line, position) => ({
+              tenantId,
+              documentId: id,
+              id: randomUUID(),
+              position,
+              productId: line.productId,
+              description: line.description,
+              quantity: line.quantity,
+              unit: line.unit,
+              // Verbatim: the gross price and both basis-point rates, never a
+              // conversion and never a second rounding.
+              unitPriceMinor: line.unitPriceMinor,
+              taxBasisPoints: line.taxBasisPoints,
+              discountBasisPoints: line.discountBasisPoints,
+            })),
+          );
+          await appendAudit(tx, tenantId, 'document.created', actorId, id);
+        });
+      } catch (error) {
+        // The partial unique index is the duplicate guard: a second invoice is
+        // refused, and the first one keeps its number and its bytes.
+        if (uniqueViolation(error)) throw new DocumentError('duplicate');
+        throw error;
+      }
+      return (await readOne(db, id))!;
+    },
     // Number, snapshot, PDF and state are one transaction: either the document
     // is final with all four, or the number goes back to the sequence.
     async updateDraftContent(
@@ -1244,11 +1375,15 @@ export function documentRepository(
           .for('update');
         if (!document) throw new DocumentError('not_found');
         // BKP019.b: a confirmation draft owns its own texts and positions, so
-        // correcting them is the same right an offer draft has. Every other kind
+        // correcting them is the same right an offer draft has.
+        // BKP019.c1: an invoice draft copied from a confirmation does too - a
+        // finalized document is never edited, its draft is. Every other kind
         // stays refused - this is not a global opening.
         if (
           document.state !== 'draft' ||
-          (document.kind !== 'offer' && document.kind !== 'order_confirmation')
+          (document.kind !== 'offer' &&
+            document.kind !== 'order_confirmation' &&
+            document.kind !== 'invoice')
         )
           throw new DocumentError('invalid_state');
         if (document.version !== content.version)
@@ -1743,6 +1878,10 @@ export function registerDocumentRoutes(
       // BKP019.b: the offer was not accepted, or the confirmation already exists.
       if (error.reason === 'offer_not_accepted')
         return reply.code(409).send({ error: 'offer_not_accepted' });
+      // BKP019.c1: the order behind the confirmation was withdrawn, so there is
+      // nothing to invoice - the code names the reason, not just the refusal.
+      if (error.reason === 'order_withdrawn')
+        return reply.code(409).send({ error: 'order_withdrawn' });
       if (error.reason === 'duplicate')
         return reply.code(409).send({ error: 'duplicate' });
       if (error.reason === 'artifact_failed')
@@ -2067,6 +2206,39 @@ export function registerDocumentRoutes(
           .code(201)
           .send(
             await repo.createOrderConfirmation(
+              request.authSession!.userId,
+              request.params.id,
+              request.body.version,
+            ),
+          );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // BKP019.c1: the invoice is copied from a finalized confirmation. Same auth,
+  // CSRF, tenant lock, version guard and audit path as every other document
+  // write; only the source is a confirmation instead of a template.
+  app.post<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/documents/:id/invoice',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version: { type: 'integer', minimum: 1 } },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createInvoice(
               request.authSession!.userId,
               request.params.id,
               request.body.version,

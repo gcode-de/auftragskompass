@@ -8,6 +8,56 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.c1 — `feat: invoice a confirmed order with its own number`** (26.10.2026)
+
+  Erster Unter-Slice von BKP019.(c) nach rein lesender DeepSeek-Analyse zu
+  `87e5b99`. Staleness-Befund: (c) fehlt vollständig – die Rechnungsarten sind
+  nur Enum/Vorlagenart/Nummernkreis; die eigentliche Blockade ist der
+  Blanko-CHECK (`documents.test.ts:298–308`: vorlagenlose `invoice` = 23514).
+  Neu: `POST /api/v1/documents/:id/invoice` erzeugt aus einer **finalen
+  Auftragsbestätigung** einen bearbeitbaren Rechnungsentwurf (Positionen 1:1,
+  Summen exakt = Quellendsummen, Betreff „Rechnung für {{contact}}“,
+  Einleitung/Schluss kopiert, `PUT /draft`-Rechte für `invoice`), finalisiert
+  mit eigener Nummer im Rechnungsnummernkreis (NK-01/NK-05 bestehende
+  Verträge). Migration `0042` weitet die Quellmechanik aus 0041 auf
+  `invoice` aus (CHECK/mandantengebundener FK/partieller Unique-Index =
+  genau eine Rechnung je Quelle, Dublette 409 ohne Nummernverbrauch);
+  Quellanzeige über die bestehende `include=offer`-Projektion (keine neuen
+  Schlüssel in gepinnte Antwortformen). Keine Rechnung für zurückgezogene
+  Quellen; die Blanko-Sperre bleibt unverändert (nur der Quellpfad ist neu).
+  **Ersatzbeleg-Entscheidung (dokumentiert):** Dublettensperren bleiben
+  endgültig; finalisierte Belege werden nie ersetzt, sondern nur durch
+  Korrektur-/Storno-Folgedokumente ergänzt (c2 mit Vorzeichenmodell –
+  negative Beträge sind heute auf vier Ebenen verboten). Nicht im Slice:
+  Anzahlung/Schlussrechnung (brauchen Zahlungsaussage aus (d)),
+  Korrektur/Storno, Pflichtangaben RG-04/RG-07 (eigener Slice) – die Lücken
+  werden ehrlich benannt statt durch einen „vollständig“-Eindruck verdeckt.
+  Referenz ehrlich: RG/NK sind Lastenheft-Soll, Bookitup-Rechnungs-UI
+  unbekannt, keine Rechts-/Steuerbehauptung. Tests zuerst rot (≥16
+  Negativfälle; `documents.test.ts:4692–4700` bewusst präzisieren,
+  `documents.test.ts:298–308` unantastbar). Coding-Subagent: DeepSeek
+  V4.1 Flash (gleiche Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (13 Integrationsfehler fehlender Methode,
+  DB-Vertrag/Migrationserwartung, 7 Component-/E2E-Feeler), danach grün:
+  `test:unit` 274/274, `test:component` 716/716 (9 neu),
+  `test:integration` 379/379 (15 neu: Positions-/Summengleichheit, Art-/
+  Statusvertrag, Dublette ohne Nummernverbrauch, Parallelität/Rollback,
+  eigene `RE-`-Nummer, Unveränderlichkeit, Mandantentrennung, DB-CHECKs
+  23514/23503/23505, Projektion, Routenvertrag; Quell-CHECK-Test bewusst
+  präzisiert – `deposit_invoice` bleibt negativ, `:298–308` unantastbar),
+  `test:coverage` 1369 vollständig (Changed 93,24% Zeilen/85,53% Zweige),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. Ablauf finale Bestätigung →
+  Rechnung mit kopierten Positionen → Dublette → Finalisierung
+  `RE-JJJJ-NNNN` → PDF, Angebots-/Bestätigungs-PDF bytegleich. MiMo-
+  Reviewfix: Editor-Überschrift/Verwerfen-Dialog auch für Rechnungen
+  artabhängig. Notiert: Doppelverrechnung über den Vorlagenpfad bleibt
+  möglich (Unique deckt nur den Quellpfad; bewusst, da der Vorlagenpfad
+  unverändert bleiben soll); die DB erzwingt nicht „Quelle ist eine
+  Bestätigung“ (Anwendung prüft `invalid_kind`); Pflichtangaben RG-04/RG-07,
+  Anzahlung/Schlussrechnung/Korrektur/Zahlungen fehlen ehrlich (UI-Hinweis);
+  „final“ heißt „eingefroren“, nicht „rechtlich vollständig“.
+
 - [x] **BKP019.b — `feat: confirm an accepted offer without retyping positions`** (26.10.2026)
 
   Unter-Slice (b) von BKP019 nach rein lesender DeepSeek-Analyse zu `ef664b3`
