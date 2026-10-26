@@ -10,6 +10,7 @@ import {
   contacts as contactTable,
   events as eventTable,
   eventContacts as eventContactTable,
+  reservations as reservationTable,
 } from '../../packages/core/src/schema.js';
 import { migrate } from '../../packages/core/src/identity.js';
 import {
@@ -20,6 +21,8 @@ import {
   eventRepository,
   registerEventRoutes,
 } from '../../packages/core/src/events.js';
+import { resourceRepository } from '../../packages/core/src/resources.js';
+import { reservationRepository } from '../../packages/core/src/reservations.js';
 import {
   createHealthServer,
   loadRuntimeConfig,
@@ -644,6 +647,617 @@ test('the contact event projection never answers with a foreign tenant record', 
       ).statusCode,
     ).toBe(401);
   } finally {
+    await app.close();
+  }
+});
+
+// BKP014.2: the event list names the physical units an event holds. The
+// projection is additive (one extra field per row), tenant-scoped and derived
+// from stored reservations only — never from an estimated availability. A hold
+// that lapsed and an archived unit stay visible but marked, and an overlap is
+// reported only where two stored reservations really intersect.
+test('the event list projects assigned units and marks stale, archived and overlapping ones', async () => {
+  const own = randomUUID(),
+    foreign = randomUUID();
+  const startTenant = async (tenant: string, slug: string) => {
+    const email = slug + '@example.invalid';
+    await bootstrapAccess(
+      pool,
+      tenant,
+      email,
+      'Fictional ' + slug,
+      'Europe/Berlin',
+    );
+    const access = accessRepository(pool, tenant);
+    await access.issueSession(
+      { subject: slug, email },
+      digest('synthetic-' + slug),
+    );
+    return (await access.list())[0]!.userId!;
+  };
+  const actor = await startTenant(own, 'projection-units'),
+    foreignActor = await startTenant(foreign, 'projection-foreign');
+  const repo = eventRepository(pool, own),
+    reservationsRepo = reservationRepository(pool, own),
+    resources = resourceRepository(pool, own);
+  const resource = async (
+    name: string,
+    code: string,
+    category: string,
+    quantity: number,
+    position: number,
+  ) =>
+    resources.save(actor, {
+      name,
+      code,
+      category,
+      description: 'Fictional fixture',
+      quantity,
+      beforeDays: 0,
+      afterDays: 0,
+      blocked: false,
+      state: 'active',
+      position,
+    });
+  const box = await resource('FB9', 'FB9', 'Fotobox', 2, 0),
+    light = await resource('LAMP9', 'LAMP9', 'Licht', 1, 1),
+    old = await resource('ALT9', 'ALT9', 'Fotobox', 1, 2);
+  const units = {
+    box1: (await reservationsRepo.units(box.id))[0]!.id,
+    box2: (await reservationsRepo.units(box.id))[1]!.id,
+    light1: (await reservationsRepo.units(light.id))[0]!.id,
+    old1: (await reservationsRepo.units(old.id))[0]!.id,
+  };
+  const eventInput = (name: string, eventDate: string) => ({
+    ...input,
+    name,
+    status: 'option' as const,
+    eventDate,
+    startsAt: null,
+    endsAt: null,
+    primaryContactId: null,
+    additionalContactIds: [],
+    eventTypeId: null,
+    packageId: null,
+    locationId: null,
+    notesHtml: '',
+  });
+  const db = drizzle(pool);
+  const assign = async (
+    eventId: string,
+    unitId: string,
+    state: 'hold' | 'booked',
+    window: [string, string],
+    expiresAt: Date | null = null,
+  ) => {
+    const id = randomUUID();
+    await db.insert(reservationTable).values({
+      tenantId: own,
+      id,
+      requestId: id,
+      requestHash: '0'.repeat(64),
+      eventId,
+      unitId,
+      state,
+      periodSource: 'event',
+      baseStart: new Date(window[0]),
+      baseEnd: new Date(window[1]),
+      timeZone: 'Europe/Berlin',
+      beforeDays: 0,
+      afterDays: 0,
+      startsAt: new Date(window[0]),
+      endsAt: new Date(window[1]),
+      expiresAt: state === 'hold' ? expiresAt : null,
+    });
+    return id;
+  };
+  const bookedEvent = async (
+    name: string,
+    window: [string, string],
+    unitId: string,
+  ) =>
+    repo.save(
+      actor,
+      {
+        ...eventInput(name, window[0].slice(0, 10)),
+        status: 'booked',
+        startsAt: window[0],
+        endsAt: window[1],
+      },
+      undefined,
+      undefined,
+      [
+        {
+          unitId,
+          periodSource: 'manual',
+          baseStart: window[0],
+          baseEnd: window[1],
+        },
+      ],
+    );
+
+  await repo.save(
+    actor,
+    eventInput('Fictional event without a unit', '2031-04-01'),
+  );
+  await bookedEvent(
+    'Fictional event with one box',
+    ['2031-05-01T18:00:00Z', '2031-05-01T22:00:00Z'],
+    units.box1,
+  );
+  // Two options, each holding a different unit, keep the order of the plan.
+  const many = await repo.save(
+    actor,
+    eventInput('Fictional event with two units', '2031-05-03'),
+  );
+  await assign(
+    many.id,
+    units.box2,
+    'hold',
+    ['2031-05-03T10:00:00Z', '2031-05-03T14:00:00Z'],
+    new Date(Date.now() + 86400000),
+  );
+  await assign(
+    many.id,
+    units.light1,
+    'hold',
+    ['2031-05-03T10:00:00Z', '2031-05-03T14:00:00Z'],
+    new Date(Date.now() + 86400000),
+  );
+  const archived = await bookedEvent(
+    'Fictional event on an archived unit',
+    ['2031-09-01T10:00:00Z', '2031-09-01T12:00:00Z'],
+    units.old1,
+  );
+  // Time passes: the stored booking of this event moves into the past, which is
+  // what lets the unit be retired. Both rows stay one consistent pair.
+  await pool.query(
+    "UPDATE events SET event_date='2026-05-02', starts_at='2026-05-02T10:00:00Z', ends_at='2026-05-02T12:00:00Z' WHERE tenant_id=$1 AND id=$2",
+    [own, archived.id],
+  );
+  await pool.query(
+    "UPDATE reservations SET base_start='2026-05-02T10:00:00Z', base_end='2026-05-02T12:00:00Z', starts_at='2026-05-02T10:00:00Z', ends_at='2026-05-02T12:00:00Z' WHERE tenant_id=$1 AND event_id=$2",
+    [own, archived.id],
+  );
+  // A retired unit keeps its historical assignment: the past reservation does
+  // not block the archive step, and the unit itself turns inactive.
+  await resources.save(
+    actor,
+    {
+      name: 'ALT9',
+      code: 'ALT9',
+      category: 'Fotobox',
+      description: 'Fictional fixture',
+      quantity: 0,
+      beforeDays: 0,
+      afterDays: 0,
+      blocked: false,
+      state: 'archived',
+      position: 2,
+    },
+    old.id,
+    1,
+  );
+  // Two stored reservations on one unit really intersect: a booked box and an
+  // option's hold. Both rows name the overlap; no row invents availability.
+  await bookedEvent(
+    'Fictional booked box',
+    ['2031-06-01T10:00:00Z', '2031-06-01T14:00:00Z'],
+    units.box1,
+  );
+  const overlapHold = await repo.save(
+    actor,
+    eventInput('Fictional overlapping option', '2031-06-01'),
+  );
+  await assign(
+    overlapHold.id,
+    units.box1,
+    'hold',
+    ['2031-06-01T13:00:00Z', '2031-06-01T17:00:00Z'],
+    new Date(Date.now() + 86400000),
+  );
+  // A closed period on the same unit is not an overlap.
+  await db.insert(reservationTable).values({
+    tenantId: own,
+    id: randomUUID(),
+    requestId: randomUUID(),
+    requestHash: '1'.repeat(64),
+    eventId: null,
+    unitId: units.box1,
+    state: 'blocked',
+    periodSource: 'manual',
+    baseStart: new Date('2031-07-01T00:00:00Z'),
+    baseEnd: new Date('2031-07-02T00:00:00Z'),
+    timeZone: 'Europe/Berlin',
+    beforeDays: 0,
+    afterDays: 0,
+    startsAt: new Date('2031-07-01T00:00:00Z'),
+    endsAt: new Date('2031-07-02T00:00:00Z'),
+    expiresAt: null,
+  });
+  // The lapsed hold is written last: every later event save sweeps expired
+  // holds, and this row has to stay the unswept stored fact it is.
+  const stale = await repo.save(
+    actor,
+    eventInput('Fictional event with a lapsed hold', '2031-05-04'),
+  );
+  await assign(
+    stale.id,
+    units.light1,
+    'hold',
+    ['2031-08-01T10:00:00Z', '2031-08-01T14:00:00Z'],
+    new Date(Date.now() - 3600000),
+  );
+
+  const listing = await repo.listWithCounts();
+  const byName = new Map(listing.events.map((row) => [row.name, row]));
+  const summary = (name: string) => {
+    const found = byName.get(name);
+    expect(found, 'listed event ' + name).toBeDefined();
+    return found!.resources;
+  };
+  // Without an assignment the projection answers an empty list, not a guess.
+  expect(summary('Fictional event without a unit')).toEqual({
+    units: [],
+    assigned: 0,
+    booked: 0,
+    hold: 0,
+    conflict: false,
+  });
+  // One physical box, named with its resource and ordinal.
+  expect(summary('Fictional event with one box')).toMatchObject({
+    assigned: 1,
+    booked: 1,
+    hold: 0,
+    conflict: false,
+  });
+  expect(summary('Fictional event with one box').units).toEqual([
+    {
+      unitId: units.box1,
+      name: 'FB9',
+      code: 'FB9',
+      ordinal: 1,
+      state: 'booked',
+      stale: false,
+      unitEnabled: true,
+      resourceState: 'active',
+      resourceBlocked: false,
+      conflict: false,
+    },
+  ]);
+  // Several units keep the stable resource order of the plan view.
+  expect(
+    summary('Fictional event with two units').units.map((unit) => [
+      unit.code,
+      unit.ordinal,
+      unit.state,
+    ]),
+  ).toEqual([
+    ['FB9', 2, 'hold'],
+    ['LAMP9', 1, 'hold'],
+  ]);
+  expect(summary('Fictional event with two units')).toMatchObject({
+    assigned: 2,
+    booked: 0,
+    hold: 2,
+    conflict: false,
+  });
+  // A lapsed hold stays visible as the stored fact it is, marked stale, and it
+  // counts as no current assignment.
+  expect(summary('Fictional event with a lapsed hold').units).toMatchObject([
+    { code: 'LAMP9', ordinal: 1, state: 'hold', stale: true },
+  ]);
+  expect(summary('Fictional event with a lapsed hold')).toMatchObject({
+    assigned: 0,
+    booked: 0,
+    hold: 0,
+  });
+  // The archived unit keeps the assignment and says so.
+  expect(summary('Fictional event on an archived unit').units).toMatchObject([
+    {
+      code: 'ALT9',
+      ordinal: 1,
+      state: 'booked',
+      stale: false,
+      unitEnabled: false,
+      resourceState: 'archived',
+    },
+  ]);
+  expect(summary('Fictional event on an archived unit').assigned).toBe(1);
+  // Only the real intersection reports a conflict, on both affected events.
+  expect(summary('Fictional booked box').conflict).toBe(true);
+  expect(summary('Fictional booked box').units[0]!.conflict).toBe(true);
+  expect(summary('Fictional overlapping option').conflict).toBe(true);
+  expect(summary('Fictional overlapping option').units[0]!.conflict).toBe(true);
+  // The closed July period on the same unit does not reach the May booking.
+  expect(summary('Fictional event with one box').conflict).toBe(false);
+
+  // The foreign tenant sees its own assignment only, never this tenant's.
+  const foreignResource = await resourceRepository(pool, foreign).save(
+    foreignActor,
+    {
+      name: 'FREMDE9',
+      code: 'FREMDE9',
+      category: 'Fotobox',
+      description: 'Fictional fixture',
+      quantity: 1,
+      beforeDays: 0,
+      afterDays: 0,
+      blocked: false,
+      state: 'active',
+      position: 0,
+    },
+  );
+  const foreignUnit = (
+    await reservationRepository(pool, foreign).units(foreignResource.id)
+  )[0]!.id;
+  const foreignEvent = await eventRepository(pool, foreign).save(foreignActor, {
+    ...eventInput('Fictional foreign event', '2031-05-01'),
+    source: 'Fictional foreign fixture',
+  });
+  const foreignDb = drizzle(pool);
+  await foreignDb.insert(reservationTable).values({
+    tenantId: foreign,
+    id: randomUUID(),
+    requestId: randomUUID(),
+    requestHash: '2'.repeat(64),
+    eventId: foreignEvent.id,
+    unitId: foreignUnit,
+    state: 'booked',
+    periodSource: 'event',
+    baseStart: new Date('2031-05-01T08:00:00Z'),
+    baseEnd: new Date('2031-05-01T09:00:00Z'),
+    timeZone: 'Europe/Berlin',
+    beforeDays: 0,
+    afterDays: 0,
+    startsAt: new Date('2031-05-01T08:00:00Z'),
+    endsAt: new Date('2031-05-01T09:00:00Z'),
+    expiresAt: null,
+  });
+  const ours = await repo.listWithCounts();
+  expect(
+    ours.events.some((row) => row.name === 'Fictional foreign event'),
+  ).toBe(false);
+  const ownUnitIds = new Set(Object.values(units));
+  for (const row of ours.events)
+    for (const unit of row.resources.units) {
+      expect(ownUnitIds.has(unit.unitId)).toBe(true);
+      expect(unit.unitId).not.toBe(foreignUnit);
+      expect(unit.name).not.toBe('FREMDE9');
+    }
+  expect(
+    (await eventRepository(pool, foreign).listWithCounts()).events.map(
+      (row) => [row.name, row.resources.units.map((unit) => unit.code)],
+    ),
+  ).toEqual([['Fictional foreign event', ['FREMDE9']]]);
+
+  // The wire answer carries the same projection and keeps the rest of the row.
+  const config = {
+    origin: 'https://admin.example.invalid',
+    tenantId: own,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerEventRoutes(app, pool, own);
+  try {
+    const answer = await app.inject({
+      url: '/api/v1/events?from=2031-05-01&to=2031-05-31',
+      cookies: { '__Host-ak-session': 'synthetic-projection-units' },
+    });
+    expect(answer.statusCode).toBe(200);
+    const body = answer.json();
+    expect(Object.keys(body).sort()).toEqual([
+      'events',
+      'filterCounts',
+      'timeZone',
+    ]);
+    expect(body.events.map((row: { name: string }) => row.name)).toEqual([
+      'Fictional event with one box',
+      'Fictional event with two units',
+      'Fictional event with a lapsed hold',
+    ]);
+    for (const row of body.events) {
+      expect(row).toMatchObject({
+        name: expect.any(String),
+        status: expect.any(String),
+        resources: { assigned: expect.any(Number) },
+      });
+      expect(row.tenantId).toBeUndefined();
+    }
+    const wire = body.events.find(
+      (row: { name: string }) => row.name === 'Fictional event with one box',
+    );
+    expect(wire.resources).toEqual(summary('Fictional event with one box'));
+    expect(Object.keys(wire.resources.units[0]).sort()).toEqual([
+      'code',
+      'conflict',
+      'name',
+      'ordinal',
+      'resourceBlocked',
+      'resourceState',
+      'stale',
+      'state',
+      'unitEnabled',
+      'unitId',
+    ]);
+  } finally {
+    await app.close();
+  }
+});
+
+// The projection is one statement beside the list. One event and fifty events
+// cost the same single reservation read — never one query per listed event.
+test('the resident list reads the reservations once for one and for fifty events', async () => {
+  const tenant = randomUUID(),
+    email = 'projection-volume@example.invalid';
+  await bootstrapAccess(
+    pool,
+    tenant,
+    email,
+    'Fictional volume',
+    'Europe/Berlin',
+  );
+  const access = accessRepository(pool, tenant);
+  await access.issueSession(
+    { subject: 'projection-volume', email },
+    digest('synthetic-projection-volume'),
+  );
+  const actor = (await access.list())[0]!.userId!;
+  const repo = eventRepository(pool, tenant),
+    resources = resourceRepository(pool, tenant);
+  const box = await resources.save(actor, {
+    name: 'VOL9',
+    code: 'VOL9',
+    category: 'Fotobox',
+    description: 'Fictional fixture',
+    quantity: 1,
+    beforeDays: 0,
+    afterDays: 0,
+    blocked: false,
+    state: 'active',
+    position: 0,
+  });
+  const unitId = (await reservationRepository(pool, tenant).units(box.id))[0]!
+    .id;
+  const db = drizzle(pool);
+  const create = async (index: number) => {
+    const row = await repo.save(actor, {
+      ...input,
+      name: 'Fictional volume event ' + String(index).padStart(3, '0'),
+      status: 'option',
+      eventDate: '2032-01-01',
+      startsAt: null,
+      endsAt: null,
+      primaryContactId: null,
+      additionalContactIds: [],
+      eventTypeId: null,
+      packageId: null,
+      locationId: null,
+      notesHtml: '',
+    });
+    // One shared unit, one distinct minute per event: the bookings never
+    // overlap, so the exclusion constraint stays satisfied.
+    const begins = new Date(Date.UTC(2032, 0, 1, 10, index)),
+      ends = new Date(begins.getTime() + 60000);
+    await db.insert(reservationTable).values({
+      tenantId: tenant,
+      id: randomUUID(),
+      requestId: randomUUID(),
+      requestHash: String(index).padStart(64, '0').slice(0, 64),
+      eventId: row.id,
+      unitId,
+      state: 'booked',
+      periodSource: 'event',
+      baseStart: begins,
+      baseEnd: ends,
+      timeZone: 'Europe/Berlin',
+      beforeDays: 0,
+      afterDays: 0,
+      startsAt: begins,
+      endsAt: ends,
+      expiresAt: null,
+    });
+    return row;
+  };
+  const config = {
+    origin: 'https://admin.example.invalid',
+    tenantId: tenant,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerEventRoutes(app, pool, tenant);
+  const statements: string[] = [],
+    connect = pool.connect.bind(pool),
+    query = pool.query.bind(pool);
+  const record = (statement: unknown) =>
+    statements.push(
+      String(
+        typeof statement === 'string'
+          ? statement
+          : ((statement as { text?: string })?.text ?? ''),
+      ),
+    );
+  const wrapped = new WeakSet<object>();
+  pool.connect = ((...args: unknown[]) => {
+    if (typeof args[0] === 'function')
+      return (connect as (...rest: unknown[]) => unknown)(...args);
+    return (async () => {
+      const client = await (connect as () => Promise<unknown>)();
+      const target = client as { query: (...sent: unknown[]) => unknown };
+      if (wrapped.has(target)) return client;
+      wrapped.add(target);
+      const send = target.query.bind(target);
+      target.query = (...sent: unknown[]) => {
+        record(sent[0]);
+        return send(...sent);
+      };
+      return client;
+    })();
+  }) as typeof pool.connect;
+  pool.query = ((...args: unknown[]) => {
+    record(args[0]);
+    return (query as (...rest: unknown[]) => unknown)(...args);
+  }) as typeof pool.query;
+  const readsFor = async () => {
+    const before = statements.length;
+    const answer = await app.inject({
+      url: '/api/v1/events?from=2032-01-01&to=2032-01-01',
+      cookies: { '__Host-ak-session': 'synthetic-projection-volume' },
+    });
+    expect(answer.statusCode).toBe(200);
+    return {
+      listed: answer.json().events.length,
+      reservations: statements
+        .slice(before)
+        .filter((statement) => /from\s+"reservations"/i.test(statement)).length,
+    };
+  };
+  try {
+    await create(1);
+    expect(await readsFor()).toEqual({ listed: 1, reservations: 1 });
+    for (let index = 2; index <= 50; index += 1) await create(index);
+    expect(await readsFor()).toEqual({ listed: 50, reservations: 1 });
+  } finally {
+    pool.connect = connect;
+    pool.query = query;
     await app.close();
   }
 });

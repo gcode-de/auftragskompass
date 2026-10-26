@@ -8,6 +8,48 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP014.2 — `feat: show assigned resources in event summaries`** (26.10.2026)
+
+  Tatsächlicher offener Teil von BKP014 (BKP014.1 „scannbare Karten mit
+  Datumsspalte“ ist bereits am 23.10.2026 erledigt – Plan:917; veraltete
+  Statuszeilen werden bereinigt). Der Listenabruf `GET /api/v1/events` erhält
+  eine **additive tenantgesicherte Projektion** (keine Migration): für alle
+  gelisteten Event-IDs genau EINE Abfrage auf `reservations`
+  (`hold`/`booked`-Zuordnungen; `blocked` hat immer `event_id null`) plus
+  korreliertes `exists` für echte Konflikte (überschneidende `holds` derselben
+  Einheit; `booked`/`blocked` sind per Exclusion-Constraint überlappungsfrei).
+  Antwort-Schema wird erweitert (Zeilenschema hat `additionalProperties:false`),
+  bestehende Felder bleiben unverändert. Kompakte Kartenzeile im Meta-Bereich
+  (KEINE neue Desktop-Spalte): zugewiesene physische Boxen/Einheiten kompakt,
+  ohne Zuordnung „Noch keine Ressource“, abgelaufene/archivierte Auskunft
+  explizit markiert (kein stiller aktueller Schein), echte Konflikte nur mit
+  textlicher Erklärung; Datum/Name/Ort, textlicher Status, nativer Hauptlink
+  und Edit/Duplicate bleiben unverändert. KEINE Verfügbarkeitsaussage
+  (Referenz unbekannt – EV-04/RE-12 sind Lastenheft-IDs, keine Beobachtung).
+  Tests zuerst rot: 0/1/mehrere Einheiten, abgelaufener Hold, archivierte
+  Einheit, echter Konflikt, Mandantentrennung, **genau eine Ressourcenabfrage
+  je Listenabruf bei 1 und 50 Events** (kein N+1), bestehende Kartenverträge.
+  Coding-Subagent: DeepSeek V4.1 Flash (gleiche Delegationsform), MiMo
+  besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (4 Komponententests + Projektionsintegration +
+  Ein-Statement-Nachweis + E2E-Erwartung gegen den Altstand; ehrlich vermerkt:
+  Fixture-Aufbau brauchte Zwischenkorrekturen am echten App-Pfad, ein
+  vorbestehend flaky `password.test.ts` (scrypt unter Last) fiel einmal aus
+  und war isoliert/im Wiederholungslauf grün), danach grün: `test:component`
+  669/669, `test:integration` 313/313 (Projektionsmatrix gegen echtes
+  PostgreSQL inkl. Mandantentrennung/Drahtschema und GENAU einem
+  `reservations`-Statement bei 1 und 50 Events), `test:unit` 265/265,
+  `test:coverage` vollständig grün (events.ts 96,77% Statements/95,14%
+  Zweige), `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. Kartenzeilen „Noch keine Ressource“
+  und echter Doppelzuweisung. Notiert: kein Index auf
+  `(tenant_id, unit_id, starts_at, ends_at)` für die korrelierte
+  Konfliktprüfung – bei gemessenen Größen unkritisch, bei sehr großen
+  Beständen eigener migrationspflichtiger Slice; vom Worker gesweepte
+  abgelaufene Vormerkungen erscheinen als „Noch keine Ressource“ (nie
+  falsch-aktuell, aber ohne Historiehinweis); `.event-resources` erbt die
+  Meta-Textgestaltung ohne eigene CSS-Regel (bewusst textlich).
+
 - [x] **BKP013.2 — `fix: keep a created draft reachable when the files list cannot reload`** (26.10.2026)
 
   Tatsächlicher Rest von BKP013 (BKP013.1 ist bereits über `605f75b`

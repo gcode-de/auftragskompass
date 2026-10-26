@@ -17,15 +17,19 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   and,
   eq,
+  exists,
   inArray,
   asc,
   or,
   ilike,
   gte,
+  gt,
+  lt,
   lte,
   isNull,
   sql,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { Temporal } from '@js-temporal/polyfill';
 import sanitizeHtml from 'sanitize-html';
 import {
@@ -37,6 +41,9 @@ import {
   locations,
   masterData,
   websiteInquiries,
+  reservations,
+  resourceUnits,
+  resources,
 } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
@@ -306,6 +313,150 @@ async function readFilterCounts(
     inquiries: counted?.inquiries ?? 0,
   };
 }
+// BKP014.2: the event list names the physical units an event holds. One
+// statement beside the list answers every listed event, so the cost does not
+// grow with the number of rows. It reads stored reservations only: an expired
+// hold is reported as the lapsed fact it is, and an overlap is reported only
+// where two stored reservations really intersect — never as an estimate of
+// availability.
+export type EventResourceUnit = {
+  unitId: string;
+  name: string;
+  code: string;
+  ordinal: number;
+  state: 'hold' | 'booked';
+  stale: boolean;
+  unitEnabled: boolean;
+  resourceState: string;
+  resourceBlocked: boolean;
+  conflict: boolean;
+};
+export type EventResources = {
+  units: EventResourceUnit[];
+  assigned: number;
+  booked: number;
+  hold: number;
+  conflict: boolean;
+};
+function emptyResources(): EventResources {
+  return { units: [], assigned: 0, booked: 0, hold: 0, conflict: false };
+}
+async function readResourceSummaries(
+  db: Reads,
+  tenantId: string,
+  eventIds: string[],
+) {
+  if (!eventIds.length) return new Map<string, EventResources>();
+  // A second reference to the same table names the neighbour that a row
+  // conflicts with; the alias keeps the outer row addressable.
+  const neighbour = alias(reservations, 'neighbour_reservation');
+  const conflict = sql<boolean>`${exists(
+    db
+      .select({ id: neighbour.id })
+      .from(neighbour)
+      .where(
+        and(
+          eq(neighbour.tenantId, reservations.tenantId),
+          eq(neighbour.unitId, resourceUnits.id),
+          sql`${neighbour.id} <> ${reservations.id}`,
+          sql`${neighbour.eventId} is distinct from ${reservations.eventId}`,
+          sql`reservation_is_active(${neighbour.state},${neighbour.expiresAt},statement_timestamp())`,
+          lt(neighbour.startsAt, reservations.endsAt),
+          gt(neighbour.endsAt, reservations.startsAt),
+        ),
+      ),
+  )}`.mapWith(Boolean);
+  const rows = await db
+    .select({
+      eventId: reservations.eventId,
+      unitId: resourceUnits.id,
+      name: resources.name,
+      code: resources.code,
+      ordinal: resourceUnits.ordinal,
+      state: reservations.state,
+      active:
+        sql<boolean>`reservation_is_active(${reservations.state},${reservations.expiresAt},statement_timestamp())`.mapWith(
+          Boolean,
+        ),
+      unitEnabled: resourceUnits.enabled,
+      resourceState: resources.state,
+      resourceBlocked: resources.blocked,
+      conflict,
+    })
+    .from(reservations)
+    .innerJoin(
+      resourceUnits,
+      and(
+        eq(resourceUnits.tenantId, reservations.tenantId),
+        eq(resourceUnits.id, reservations.unitId),
+      ),
+    )
+    .innerJoin(
+      resources,
+      and(
+        eq(resources.tenantId, resourceUnits.tenantId),
+        eq(resources.id, resourceUnits.resourceId),
+      ),
+    )
+    .where(
+      and(
+        eq(reservations.tenantId, tenantId),
+        inArray(reservations.eventId, eventIds),
+        inArray(reservations.state, ['hold', 'booked']),
+      ),
+    )
+    .orderBy(
+      asc(resources.position),
+      asc(resources.code),
+      asc(resourceUnits.ordinal),
+      asc(reservations.id),
+    );
+  const summaries = new Map<string, EventResources>();
+  for (const row of rows) {
+    if (!row.eventId) continue;
+    const summary = summaries.get(row.eventId) ?? emptyResources();
+    // A hold whose expiry passed is a stale statement, not a current
+    // assignment; it stays visible and carries the mark.
+    const stale = row.state === 'hold' && !row.active;
+    summary.units.push({
+      unitId: row.unitId,
+      name: row.name,
+      code: row.code,
+      ordinal: row.ordinal,
+      state: row.state as 'hold' | 'booked',
+      stale,
+      unitEnabled: row.unitEnabled,
+      resourceState: row.resourceState,
+      resourceBlocked: row.resourceBlocked,
+      conflict: row.conflict,
+    });
+    if (!stale) {
+      summary.assigned += 1;
+      if (row.state === 'booked') summary.booked += 1;
+      else summary.hold += 1;
+      if (row.conflict) summary.conflict = true;
+    }
+    summaries.set(row.eventId, summary);
+  }
+  return summaries;
+}
+async function withResourceSummaries<T extends { id: string }>(
+  db: Reads,
+  tenantId: string,
+  rows: T[],
+) {
+  if (!rows.length)
+    return rows.map((row) => ({ ...row, resources: emptyResources() }));
+  const summaries = await readResourceSummaries(
+    db,
+    tenantId,
+    rows.map((row) => row.id),
+  );
+  return rows.map((row) => ({
+    ...row,
+    resources: summaries.get(row.id) ?? emptyResources(),
+  }));
+}
 export function eventRepository(pool: Connection, tenantId: string) {
   const db = database(pool);
   return {
@@ -322,10 +473,19 @@ export function eventRepository(pool: Connection, tenantId: string) {
     // two statements can never answer a filter with a mismatched count.
     async listWithCounts(contactId?: string, filters: EventFilters = {}) {
       return db.transaction(
-        async (tx) => ({
-          events: await readRows(tx, tenantId, contactId, undefined, filters),
-          filterCounts: await readFilterCounts(tx, tenantId, filters),
-        }),
+        async (tx) => {
+          const rows = await readRows(
+            tx,
+            tenantId,
+            contactId,
+            undefined,
+            filters,
+          );
+          return {
+            events: await withResourceSummaries(tx, tenantId, rows),
+            filterCounts: await readFilterCounts(tx, tenantId, filters),
+          };
+        },
         {
           isolationLevel: 'repeatable read',
           accessMode: 'read only',
@@ -830,6 +990,58 @@ export function registerEventRoutes(
         version,
         timeZone: { type: 'string' },
       },
+    },
+    // BKP014.2: the list row carries the projected assignment beside the
+    // unchanged event fields. The row has no additional properties, so the
+    // field needs its own shape here or the serializer drops it.
+    listRow = {
+      ...row,
+      required: [...row.required, 'resources'],
+      properties: {
+        ...row.properties,
+        resources: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['units', 'assigned', 'booked', 'hold', 'conflict'],
+          properties: {
+            units: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'unitId',
+                  'name',
+                  'code',
+                  'ordinal',
+                  'state',
+                  'stale',
+                  'unitEnabled',
+                  'resourceState',
+                  'resourceBlocked',
+                  'conflict',
+                ],
+                properties: {
+                  unitId: { type: 'string', format: 'uuid' },
+                  name: { type: 'string' },
+                  code: { type: 'string' },
+                  ordinal: { type: 'integer' },
+                  state: { type: 'string' },
+                  stale: { type: 'boolean' },
+                  unitEnabled: { type: 'boolean' },
+                  resourceState: { type: 'string' },
+                  resourceBlocked: { type: 'boolean' },
+                  conflict: { type: 'boolean' },
+                },
+              },
+            },
+            assigned: { type: 'integer', minimum: 0 },
+            booked: { type: 'integer', minimum: 0 },
+            hold: { type: 'integer', minimum: 0 },
+            conflict: { type: 'boolean' },
+          },
+        },
+      },
     };
   function failure(error: unknown, reply: FastifyReply) {
     if (error instanceof AccessError)
@@ -996,7 +1208,7 @@ export function registerEventRoutes(
             required: ['timeZone', 'events', 'filterCounts'],
             properties: {
               timeZone: { type: 'string' },
-              events: { type: 'array', items: row },
+              events: { type: 'array', items: listRow },
               // BKP007.2: additive counters for the two filter options that the
               // rows alone cannot answer once a date window is applied.
               filterCounts: {

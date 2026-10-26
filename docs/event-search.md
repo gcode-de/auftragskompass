@@ -12,7 +12,7 @@ C019 sortiert Events chronologisch nach Eventdatum, Beginn und Name, bei gleiche
 - `eventTypeId`: UUID der Eventart.
 - `undated=true`: nur Events ohne Datum. Eine Kombination mit Datumsgrenzen wird mit 400 `invalid_filters` abgewiesen. Die Oberfläche setzt beim Anwenden dieser Auswahl die Datumsgrenzen zurück.
 
-Ungültige Daten, umgekehrte Zeiträume und ungültige Parameter werden abgewiesen. Alle Filter und Suchverknüpfungen bleiben mandantengebunden. Ausgabeformat `{timeZone, events}` und Sitzungs-/CSRF-Regeln bleiben bestehen. Lesende Suchabfragen benötigen die Admin-Sitzung. SQL-Wildcards wie `%` und `_` werden als normale Zeichen gesucht.
+Ungültige Daten, umgekehrte Zeiträume und ungültige Parameter werden abgewiesen. Alle Filter und Suchverknüpfungen bleiben mandantengebunden. Ausgabeformat `{timeZone, events}` und Sitzungs-/CSRF-Regeln bleiben bestehen (die Eventzeilen tragen ergänzend `resources`, siehe unten); Lesende Suchabfragen benötigen die Admin-Sitzung. SQL-Wildcards wie `%` und `_` werden als normale Zeichen gesucht.
 
 ### Zählbasis der Filterzähler (BKP007)
 
@@ -26,6 +26,23 @@ Die Antwort enthält zusätzlich `filterCounts: {undated, inquiries}`. Beide Wer
 Beide Zähler werden durch `q`, `status` und `eventTypeId` eingeschränkt, weil diese Filter den Bestand meint, den die jeweilige Option zeigen würde. `from`/`to` und die Sortierwahl zählen bewusst nicht hinein: sonst könnte der Zähler die undatierten Events und die Anfragen außerhalb des gewählten Zeitraums nicht nennen (H041, Beobachtung B01/A03). Der Statusfilter wirkt auch auf den Anfragenzähler; ob die Referenz das ebenso handhabt, ist nicht belegt und bleibt als offene Referenzfrage notiert.
 
 Die Zählung ist eine einzelne SQL-Aggregation (`count(*) filter (…)`) im Repository-Pfad der Liste — keine Abfrage je Event, keine ungefilterte Gesamtliste in der Antwort, kein N+1. Der Integrationstest hält das fest, indem er die Statements eines Listenabrufs mitschreibt: genau zwei Lesezugriffe auf `events` (Liste und Aggregat).
+
+## Ressourcenzusammenfassung je Eventzeile (BKP014.2)
+
+Jede Eventzeile der Liste trägt ergänzend `resources`: die zugewiesenen
+physischen Boxen/Einheiten (Name, Einheitennummer, Reservierungsstatus
+`Gebucht`/`Vormerkung`) in stabiler Reihenfolge, ohne Zuordnung eine leere
+Menge. Die Projektion ist mandantengebunden und läuft als GENAU EINE Abfrage
+auf `reservations` für alle gelisteten Event-IDs in derselben Lesetransaktion
+wie die Liste (Integrationstest hält auch bei 50 Events genau ein
+`reservations`-Statement fest — kein N+1). Ein Konfliktfeld meldet nur echte
+überschneidende aktive Fremdbelegungen derselben Einheit (korreliertes
+`exists`); `booked`/`blocked` sind per Exclusion-Constraint überlappungsfrei
+und erzeugen keinen Konflikt. Die Oberfläche zeigt daraus eine kompakte
+Zeile in der Eventkarte („Noch keine Ressource“ ohne Zuordnung; abgelaufene
+Vormerkungen und archivierte/inaktive Einheiten ausdrücklich markiert,
+„Überschneidung offen“ nur bei gemeldetem Konflikt) – bewusst ohne
+Verfügbarkeitsaussage: die Anzeige nennt Belegung, keine Prognose.
 
 ## Navigation und Zustände
 

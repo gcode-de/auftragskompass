@@ -71,6 +71,28 @@ export type EventRow = {
   timeZone: string;
   description: string;
   notesHtml: string;
+  // BKP014.2: additive projection of the units the event holds. Absent on a
+  // cached answer from before the field existed, which reads as no assignment.
+  resources?: EventResources;
+};
+export type EventResourceUnit = {
+  unitId: string;
+  name: string;
+  code: string;
+  ordinal: number;
+  state: 'hold' | 'booked';
+  stale: boolean;
+  unitEnabled: boolean;
+  resourceState: string;
+  resourceBlocked: boolean;
+  conflict: boolean;
+};
+export type EventResources = {
+  units: EventResourceUnit[];
+  assigned: number;
+  booked: number;
+  hold: number;
+  conflict: boolean;
 };
 type Status = { code: string; label: string };
 
@@ -110,6 +132,32 @@ export function eventCardTime(
   if (event.startsAt) return 'ab ' + localTime(event.startsAt) + ' Uhr';
   // The stored schedule decides; a date-only booking keeps its honest label.
   return eventDateLabel(event) ?? '';
+}
+// BKP014.2: the card names the stored units in the wording of the assignment
+// view. Three rules keep it honest: an unanswered assignment says so, a lapsed
+// hold and a retired unit are marked instead of reading current, and an overlap
+// is only named when the server found two stored reservations intersecting.
+// Nothing here claims availability.
+export function eventResourcesText(resources?: EventResources): string {
+  if (!resources?.units.length) return 'Noch keine Ressource';
+  const units = resources.units.map((unit) => {
+    const marks: string[] = [];
+    if (unit.stale) marks.push('(abgelaufen)');
+    if (unit.resourceState === 'archived') marks.push('(archiviert)');
+    else if (unit.resourceState !== 'active' || !unit.unitEnabled)
+      marks.push('(inaktiv)');
+    if (unit.resourceBlocked) marks.push('(gesperrt)');
+    const stated =
+      unit.name +
+      ' · Einheit ' +
+      unit.ordinal +
+      ' · ' +
+      (unit.state === 'booked' ? 'Gebucht' : 'Vormerkung');
+    // The marks qualify the stated fact; they never replace it.
+    return marks.length ? stated + ' ' + marks.join(' ') : stated;
+  });
+  const text = units.join(', ');
+  return resources.conflict ? text + ' · Überschneidung offen' : text;
 }
 export function EventPanel({
   csrfToken,
@@ -1450,6 +1498,12 @@ export function EventPanel({
                                   {cardContact(row)}
                                 </span>
                               )}
+                              {/* BKP014.2: the assigned units stay a plain
+                              text line on the meta row — no second link, no
+                              new column. */}
+                              <span className="event-resources">
+                                {eventResourcesText(row.resources)}
+                              </span>
                               {/* A quiet origin label, not a status: the automatic
                               website option stays an ordinary event card. */}
                               {row.source.startsWith('Website:') && (

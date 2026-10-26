@@ -232,7 +232,9 @@ test('no technical resource instruction sits in a row', async () => {
   vi.stubGlobal('fetch', fetcher());
   render(<EventPanel csrfToken="csrf" />);
   const card = cardOf(await findRow());
-  expect(card.textContent).not.toMatch(/Ressourcen/i);
+  expect(card.textContent).not.toContain(
+    'Ressourcen in den Event-Details prüfen',
+  );
   expect(document.querySelector('.event-resource-hint')).toBeNull();
   expect(document.body.textContent).not.toContain(
     'Ressourcen in den Event-Details prüfen',
@@ -284,4 +286,186 @@ test('an empty answer still says so instead of rendering a bare frame', async ()
   render(<EventPanel csrfToken="csrf" />);
   await screen.findByText('Keine Events gefunden.');
   expect(document.querySelector('.event-card')).toBeNull();
+});
+// BKP014.2: the card also names the physical units the event holds, as the
+// server projected them. The text only repeats stored facts: a lapsed hold and
+// an archived unit are marked, an overlap is named, nothing claims availability.
+type ProjectedUnit = {
+  unitId: string;
+  name: string;
+  code: string;
+  ordinal: number;
+  state: 'hold' | 'booked';
+  stale: boolean;
+  unitEnabled: boolean;
+  resourceState: string;
+  resourceBlocked: boolean;
+  conflict: boolean;
+};
+function projectedUnit(overrides: Partial<ProjectedUnit> = {}): ProjectedUnit {
+  return {
+    unitId: 'fictional-unit-1',
+    name: 'FB9',
+    code: 'FB9',
+    ordinal: 1,
+    state: 'booked',
+    stale: false,
+    unitEnabled: true,
+    resourceState: 'active',
+    resourceBlocked: false,
+    conflict: false,
+    ...overrides,
+  };
+}
+function projected(units: ProjectedUnit[], conflict = false) {
+  return {
+    units,
+    assigned: units.filter((unit) => !unit.stale).length,
+    booked: units.filter((unit) => !unit.stale && unit.state === 'booked')
+      .length,
+    hold: units.filter((unit) => !unit.stale && unit.state === 'hold').length,
+    conflict,
+  };
+}
+const resourceRow = (id: string, name: string, resources?: unknown) => ({
+  ...base,
+  id,
+  name,
+  status: 'booked',
+  eventTypeId: null,
+  eventDate: '2026-12-01',
+  startsAt: null,
+  endsAt: null,
+  resources,
+});
+async function resourceText(
+  rowsToServe: Record<string, unknown>[],
+  name: RegExp,
+) {
+  cleanup();
+  vi.stubGlobal('fetch', fetcher(rowsToServe));
+  render(<EventPanel csrfToken="csrf" />);
+  const card = cardOf(await screen.findByRole('link', { name }));
+  return card.querySelector('.event-resources')?.textContent ?? '';
+}
+test('a card names its assigned unit and otherwise says there is none', async () => {
+  const rowsToServe = [
+    resourceRow(
+      'fictional-no-unit',
+      'Fiktives Event ohne Einheit',
+      projected([]),
+    ),
+    resourceRow(
+      'fictional-one-box',
+      'Fiktives Event mit Box',
+      projected([projectedUnit()]),
+    ),
+    // A payload from before this projection stays an honest empty answer.
+    resourceRow('fictional-no-projection', 'Fiktives Event ohne Projektion'),
+  ];
+  expect(await resourceText(rowsToServe, /Fiktives Event ohne Einheit/)).toBe(
+    'Noch keine Ressource',
+  );
+  expect(
+    await resourceText(rowsToServe, /Fiktives Event ohne Projektion/),
+  ).toBe('Noch keine Ressource');
+  cleanup();
+  vi.stubGlobal('fetch', fetcher(rowsToServe));
+  render(<EventPanel csrfToken="csrf" />);
+  const card = cardOf(
+    await screen.findByRole('link', { name: /Fiktives Event mit Box/ }),
+  );
+  // The resource line belongs to the meta block, below the place, and stays
+  // plain text: no second link, no new column.
+  const resources = card.querySelector('.event-resources');
+  expect(resources?.textContent).toBe('FB9 · Einheit 1 · Gebucht');
+  expect(resources?.closest('.event-meta')).not.toBeNull();
+  expectOrder(card, ['.event-place', '.event-resources']);
+  expect(resources?.querySelector('a, button')).toBeNull();
+});
+test('a card with two units names both in the plan order', async () => {
+  const text = await resourceText(
+    [
+      resourceRow(
+        'fictional-two-units',
+        'Fiktives Event mit zwei Einheiten',
+        projected([
+          projectedUnit({ unitId: 'unit-a', ordinal: 2 }),
+          projectedUnit({
+            unitId: 'unit-b',
+            name: 'LAMP9',
+            code: 'LAMP9',
+            state: 'hold',
+          }),
+        ]),
+      ),
+    ],
+    /Fiktives Event mit zwei Einheiten/,
+  );
+  expect(text).toBe(
+    'FB9 · Einheit 2 · Gebucht, LAMP9 · Einheit 1 · Vormerkung',
+  );
+});
+test('a lapsed hold and an archived unit are marked instead of reading current', async () => {
+  expect(
+    await resourceText(
+      [
+        resourceRow(
+          'fictional-stale',
+          'Fiktives Event mit abgelaufener Vormerkung',
+          projected([
+            projectedUnit({
+              state: 'hold',
+              stale: true,
+              name: 'LAMP9',
+              code: 'LAMP9',
+            }),
+          ]),
+        ),
+      ],
+      /Fiktives Event mit abgelaufener Vormerkung/,
+    ),
+  ).toBe('LAMP9 · Einheit 1 · Vormerkung (abgelaufen)');
+  cleanup();
+  expect(
+    await resourceText(
+      [
+        resourceRow(
+          'fictional-archived',
+          'Fiktives Event auf archivierter Einheit',
+          projected([
+            projectedUnit({ unitEnabled: false, resourceState: 'archived' }),
+          ]),
+        ),
+      ],
+      /Fiktives Event auf archivierter Einheit/,
+    ),
+  ).toBe('FB9 · Einheit 1 · Gebucht (archiviert)');
+});
+test('an overlap is named only where the answer reports one', async () => {
+  expect(
+    await resourceText(
+      [
+        resourceRow(
+          'fictional-overlap',
+          'Fiktives Event mit Ueberschneidung',
+          projected([projectedUnit({ conflict: true })], true),
+        ),
+      ],
+      /Fiktives Event mit Ueberschneidung/,
+    ),
+  ).toBe('FB9 · Einheit 1 · Gebucht · Überschneidung offen');
+  cleanup();
+  expect(
+    await resourceText(
+      [
+        resourceRow(
+          'fictional-clear',
+          'Fiktives Event ohne Konflikt',
+          projected([projectedUnit()]),
+        ),
+      ],
+      /Fiktives Event ohne Konflikt/,
+    ),
+  ).toBe('FB9 · Einheit 1 · Gebucht');
 });

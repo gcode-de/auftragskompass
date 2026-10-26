@@ -396,13 +396,14 @@ test('the event list counters never depend on the date bounds and stay tenant sc
       'timeZone',
     ]);
     // The list part is byte-identical to the established contract: the same rows
-    // the repository returns, minus the internal tenant id the route strips.
-    const listed = await repo.list(undefined, {
+    // the repository returns — now including the additive per-row resource
+    // projection — minus the internal tenant id the route strips.
+    const listed = await repo.listWithCounts(undefined, {
       from: '2026-10-01',
       to: '2026-10-31',
     });
     expect(body.events).toEqual(
-      listed.map((entry) =>
+      listed.events.map((entry) =>
         Object.fromEntries(
           Object.entries(entry).filter(([key]) => key !== 'tenantId'),
         ),

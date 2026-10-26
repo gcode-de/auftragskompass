@@ -1996,6 +1996,11 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       await expect(card.locator('.event-date-label')).toHaveText('Fr / Okt');
       await expect(type).toHaveText('Hochzeit');
       await expect(place).toContainText('Synthetic Browser Hall');
+      // BKP014.2: this event holds no unit, and the card says so instead of
+      // leaving the reader with an unanswered question.
+      await expect(card.locator('.event-resources')).toHaveText(
+        'Noch keine Ressource',
+      );
       // No technical resource instruction survives in a row.
       await expect(events.locator('.event-resource-hint')).toHaveCount(0);
       await expect(
@@ -2649,6 +2654,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     );
     await expect(resourceRow.locator('.event-time')).toHaveText(
       '18:00–20:00 Uhr',
+    );
+    // BKP014.2: the same card names the stored assignment without leaving the
+    // list, in the wording of the assignment view — both the box and the
+    // package unit that this scenario assigned.
+    await expect(resourceRow.locator('.event-resources')).toHaveText(
+      'FB2 · Einheit 1 · Gebucht, Glamour-Paket · Einheit 1 · Gebucht',
     );
     await record
       .getByRole('button', { name: 'Ressourcen', exact: true })
