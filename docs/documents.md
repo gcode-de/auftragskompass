@@ -368,8 +368,22 @@ Zustände einschließlich archivierter Vorlagen bleiben enthalten. Vorlagenzeile
 richten Zusammenfassung und Aktionen aus; auf schmalen Ansichten stehen die
 Aktionen umbrechend unter der Zusammenfassung. Speichern, Archivierung und
 Dirtyschutz bleiben gleich. Ein Wechsel der Dokumentart erhält die Fokus-Rückkehr
-zur passenden Zeile. Such-/Archivfilter, Aktionsmenü und Vorschau sind mit dieser
-kleinen Darstellungskorrektur nicht umgesetzt.
+zur passenden Zeile. (Das Aktionsmenü und die Vorschau sind zwischenzeitlich mit
+BKP015.7/.8 umgesetzt; die Filter siehe unten.)
+
+### Filter (BKP015.9, ausdrücklicher Nutzerwunsch)
+
+Eine kompakte Werkzeugleiste über den Gruppen bietet Suche über den
+Vorlagennamen, eine Art-Auswahl („Alle Dokumentarten“, die fünf Gruppenlabels
+und „Weitere Dokumentarten“) sowie eine Zustandsauswahl
+(Alle/Aktiv/Inaktiv/Archiviert). Die Gruppierung entsteht aus der gefilterten
+Menge; nur befüllte Gruppen erscheinen, unbekannte Arten bleiben über ihren
+Bucket auffindbar. Ohne Bestand und ohne Filtertreffer werden getrennte
+Hinweise gezeigt („Keine Treffer“ bietet „Filter zurücksetzen“); der Zeilentext
+nennt inaktive Vorlagen additiv. Filter bleiben über Editieren, Vorschau und
+Archivieren erhalten und überleben keinen Reload. Diese Filter sind ein
+ausdrücklicher Nutzerwunsch und keine belegte Bookitup-Funktion: auf der
+konkret untersuchten Bookitup-Desktopansicht (B35) waren keine Filter sichtbar.
 
 ### Speicherung und Bestandsabgleich (BKP015.5b)
 

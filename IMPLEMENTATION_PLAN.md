@@ -8,6 +8,44 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP015.9 — `feat: filter document templates by search, kind and archive`** (26.10.2026)
+
+  Vorlagenrest I gemäß Übergabeprompt (Zusatzanforderung): kompakte
+  Werkzeugleiste über den gruppierten Vorlagen mit Suche über den Vorlagennamen,
+  Art-Auswahl („Alle Dokumentarten“ + fünf Gruppenlabels + „Weitere
+  Dokumentarten“ als Bucket unbekannter Arten) und Zustandsauswahl
+  (Alle/Aktiv/Inaktiv/Archiviert). Ausdrücklich **Nutzerwunsch**, keine belegte
+  Bookitup-Funktion (B35 sah auf der untersuchten Desktopansicht keine Filter).
+  Clientseitig über die geladene Liste, `GET` bleibt querylos; Gruppierung
+  entsteht aus der gefilterten Menge (nur befüllte Gruppen, Bucket bleibt
+  auffindbar); zwei getrennte Leerzustände („Noch keine Vorlagen“ vs.
+  „Keine Treffer“ + „Filter zurücksetzen“); Zeilentext trägt additiv
+  „ – Inaktiv“. Filtererhalt über Editieren/Vorschau/Archivieren ist Pflicht;
+  Fokus-Fallback, wenn die bearbeitete Zeile weggefiltert wird. Unverändert:
+  „Vorlage anlegen“ (inkl. Tier-Klasse), ruhige Aktionen (höchstens eine
+  Offenlegung), Editor nur auf Aufruf, Vorschau mit Verwerfen alter Antworten,
+  sichere Speicher-/Archiv-/Versionsverträge, UUID-Auftragsbeleg,
+  eingefrorene Drafts. Tests zuerst rot (Toolbar/Filter/Leerzustände/
+  Filtererhalt/Fokus-Fallback/„GET ohne Query“), bestehende Zeilentext- und
+  Aktionsverträge bewusst mitgezogen. Kompakte E2E-Abnahme
+  320/390/1280 × light/dark der gefilterten Liste mit axe.
+  Nicht im Slice: Platzhalter-Einfügewerkzeuge (eigener Folgeslice),
+  API-/Coreänderung. Coding-Subagent: DeepSeek V4.1 Flash (gleiche
+  Delegationsform), MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (11 Tests gegen den Altstand, Fehlertexte je
+  fehlender Toolbar; ehrlich vermerkt: ein Vorschau-Test brauchte zusätzlich
+  den vorhandenen `URL.createObjectURL`-Stub der jsdom-Lücke wegen, kein
+  Produktfehler), danach grün: `test:component` 648/648 (Vorlagendatei 85/85),
+  `test:integration` 311/311, `test:unit` 265/265, `test:coverage` vollständig
+  grün (DocumentTemplatesPanel 96,76% Zeilen/89,80% Zweige),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 15/15 inklusive neuem Filtersegment mit
+  320/390/1280 × light/dark (sechs Screenshots, Überlaufprüfungen, axe
+  `#document-templates` 0 Verstöße, keine API-Schreibzugriffe). Bestehende
+  Zeilen-/Aktions-/Fokusverträge blieben ohne Abschwächung grün. Notiert:
+  Suche nur über `name` (kein Textinhalt), kein GET mit Query, keine
+  Reload-Persistenz; `.resource-toolbar` genügte ohne CSS-Ergänzung.
+
 - [x] **BKP012.2 — `feat: choose the main contact through the picker in the event editor`** (26.10.2026)
 
   Zweiter Unter-Slice von BKP012: der Hauptkontakt im Event-Editor (Bearbeiten)

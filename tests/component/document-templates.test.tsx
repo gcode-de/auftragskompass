@@ -267,6 +267,412 @@ test('an empty document-template list explains how to begin', async () => {
   ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Vorlage anlegen' })).toBeTruthy();
 });
+// The toolbar in the template list is an explicit user requirement, not an
+// observed Bookitup function (B35 showed no search or archive filters). It
+// narrows the loaded list client-side, so the list endpoint stays queryless.
+function filterRows() {
+  return [
+    template,
+    {
+      ...template,
+      id: 'fictional-inactive-invoice',
+      kind: 'invoice',
+      name: 'Fictional invoice template',
+      state: 'inactive',
+    },
+    {
+      ...template,
+      id: 'fictional-archived-correction',
+      kind: 'correction',
+      name: 'Fictional correction template',
+      state: 'archived',
+    },
+    {
+      ...template,
+      id: 'fictional-unknown-template',
+      kind: 'custom_confirmation',
+      name: 'Fictional custom template',
+      state: 'active',
+    },
+  ];
+}
+function filterSetup(
+  reply: (body: Record<string, unknown>) => Response | Promise<Response> = (
+    body,
+  ) => Response.json(savedBody(body)),
+) {
+  let rows: Array<Record<string, unknown>> = filterRows();
+  const writes = setup(reply, () => Response.json(rows));
+  return {
+    writes,
+    setRows: (next: Array<Record<string, unknown>>) => (rows = next),
+  };
+}
+async function renderFilteredTemplates() {
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+}
+test('the template toolbar starts unfiltered and keeps every populated group', async () => {
+  filterSetup();
+  await renderFilteredTemplates();
+
+  const search = screen.getByLabelText('Vorlagen suchen') as HTMLInputElement;
+  const kindFilter = screen.getByLabelText('Art filtern') as HTMLSelectElement;
+  const stateFilter = screen.getByLabelText(
+    'Zustand filtern',
+  ) as HTMLSelectElement;
+  expect(search.value).toBe('');
+  expect(kindFilter.value).toBe('');
+  expect(stateFilter.value).toBe('');
+  expect(search.closest('.resource-toolbar')).not.toBeNull();
+  expect(
+    Array.from(kindFilter.options).map((option) => option.textContent),
+  ).toEqual([
+    'Alle Dokumentarten',
+    'Angebote',
+    'Auftragsbestätigungen',
+    'Anzahlungsrechnungen',
+    'Rechnungen',
+    'Rechnungskorrekturen',
+    'Weitere Dokumentarten',
+  ]);
+  expect(
+    Array.from(stateFilter.options).map((option) => option.textContent),
+  ).toEqual(['Alle Zustände', 'Aktiv', 'Inaktiv', 'Archiviert']);
+  for (const name of [
+    'Angebote',
+    'Rechnungen',
+    'Rechnungskorrekturen',
+    'Weitere Dokumentarten',
+  ])
+    expect(screen.getByRole('region', { name })).toBeTruthy();
+  expect(
+    screen.getAllByRole('button', { name: /Vorlage bearbeiten:/ }),
+  ).toHaveLength(4);
+});
+test('template search narrows the list by name and hides empty groups', async () => {
+  filterSetup();
+  await renderFilteredTemplates();
+
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: 'fictional INVOICE' },
+  });
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Angebote' })).toBeNull();
+  expect(
+    screen.getAllByRole('button', { name: /Vorlage bearbeiten:/ }),
+  ).toHaveLength(1);
+
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: 'custom' },
+  });
+  expect(
+    within(
+      screen.getByRole('region', { name: 'Weitere Dokumentarten' }),
+    ).getByText(/custom_confirmation: Fictional custom template/),
+  ).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
+});
+test('the kind filter narrows groups and keeps unknown kinds reachable', async () => {
+  filterSetup();
+  await renderFilteredTemplates();
+
+  fireEvent.change(screen.getByLabelText('Art filtern'), {
+    target: { value: 'invoice' },
+  });
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Angebote' })).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'Weitere Dokumentarten' }),
+  ).toBeNull();
+
+  fireEvent.change(screen.getByLabelText('Art filtern'), {
+    target: { value: 'other' },
+  });
+  expect(
+    within(
+      screen.getByRole('region', { name: 'Weitere Dokumentarten' }),
+    ).getByText(/Fictional custom template/),
+  ).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
+
+  fireEvent.change(screen.getByLabelText('Art filtern'), {
+    target: { value: '' },
+  });
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Angebote' })).toBeTruthy();
+});
+test('the state filter names inactive rows without changing active ones', async () => {
+  filterSetup();
+  await renderFilteredTemplates();
+
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: 'inactive' },
+  });
+  expect(
+    screen.getByText(/Fictional invoice template – 1 Position\(en\) – Inaktiv/),
+  ).toBeTruthy();
+  expect(screen.queryByText(/Fictional offer/)).toBeNull();
+
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: 'archived' },
+  });
+  expect(
+    screen.getByText(
+      /Fictional correction template – 1 Position\(en\) – Archiviert/,
+    ),
+  ).toBeTruthy();
+
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: 'active' },
+  });
+  expect(screen.getByText(/Angebot: Fictional offer/)).toBeTruthy();
+  expect(screen.queryByText(/– Inaktiv|– Archiviert/)).toBeNull();
+});
+test('empty inventory and a filtered-out list read differently and can reset', async () => {
+  setup(
+    () => Response.json(template),
+    () => Response.json([]),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  expect(
+    await screen.findByText('Noch keine Dokumentvorlagen vorhanden.'),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText('Keine Treffer für die aktuellen Filter.'),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Filter zurücksetzen' }),
+  ).toBeNull();
+  cleanup();
+
+  filterSetup();
+  await renderFilteredTemplates();
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: 'no such synthetic template' },
+  });
+  fireEvent.change(screen.getByLabelText('Art filtern'), {
+    target: { value: 'invoice' },
+  });
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: 'archived' },
+  });
+  expect(
+    screen.getByText('Keine Treffer für die aktuellen Filter.'),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText('Noch keine Dokumentvorlagen vorhanden.'),
+  ).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
+  expect(
+    (screen.getByLabelText('Vorlagen suchen') as HTMLInputElement).value,
+  ).toBe('');
+  expect(
+    (screen.getByLabelText('Art filtern') as HTMLSelectElement).value,
+  ).toBe('');
+  expect(
+    (screen.getByLabelText('Zustand filtern') as HTMLSelectElement).value,
+  ).toBe('');
+  expect(
+    screen.queryByText('Keine Treffer für die aktuellen Filter.'),
+  ).toBeNull();
+  expect(screen.getByRole('region', { name: 'Angebote' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
+});
+test('a filter survives opening and closing the template editor', async () => {
+  filterSetup();
+  await renderFilteredTemplates();
+
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: 'Fictional invoice' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Vorlage bearbeiten: Fictional invoice template',
+    }),
+  );
+  expect(
+    (screen.getByLabelText('Vorlagen suchen') as HTMLInputElement).value,
+  ).toBe('Fictional invoice');
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(
+    (screen.getByLabelText('Vorlagen suchen') as HTMLInputElement).value,
+  ).toBe('Fictional invoice');
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Angebote' })).toBeNull();
+});
+test('a filter survives creating a template preview', async () => {
+  setupPreview(() => pdfResponse());
+  vi.stubGlobal('URL', {
+    createObjectURL: () => 'blob:fictional-preview',
+    revokeObjectURL: () => {},
+  });
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: 'Fictional offer' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inhaltsvorschau erstellen' }),
+  );
+  expect(await screen.findByText('PDF-Vorschau erstellt.')).toBeTruthy();
+  expect(
+    screen.getByRole('link', { name: 'Vorschau-PDF herunterladen' }),
+  ).toBeTruthy();
+  expect(
+    (screen.getByLabelText('Vorlagen suchen') as HTMLInputElement).value,
+  ).toBe('Fictional offer');
+  expect(screen.getByRole('region', { name: 'Angebote' })).toBeTruthy();
+});
+test('archiving under the active filter hides the row and keeps the filter', async () => {
+  const other = {
+    ...template,
+    id: 'fictional-other-template',
+    name: 'Fictional other offer',
+  };
+  let rows: Array<Record<string, unknown>> = [template, other];
+  setup(
+    (body) => {
+      rows = rows.map((row) =>
+        row.id === template.id
+          ? { ...row, ...body, version: 2, state: 'archived' }
+          : row,
+      );
+      return archivedResponse(body);
+    },
+    () => Response.json(rows),
+  );
+  await renderFilteredTemplates();
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: 'active' },
+  });
+  expect(screen.getByText(/Fictional offer/)).toBeTruthy();
+
+  fireEvent.click(getArchiveButton('Fictional offer'));
+  await screen.findByText('Vorlage archiviert.');
+  expect(screen.queryByText(/Angebot: Fictional offer/)).toBeNull();
+  expect(screen.getByText(/Fictional other offer/)).toBeTruthy();
+  expect(
+    (screen.getByLabelText('Zustand filtern') as HTMLSelectElement).value,
+  ).toBe('active');
+  expect(document.activeElement).toBe(
+    screen.getByRole('heading', { level: 2 }),
+  );
+
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: '' },
+  });
+  expect(
+    screen.getByText(/Fictional offer – 1 Position\(en\) – Archiviert/),
+  ).toBeTruthy();
+});
+test('focus falls back to create when a saved edit leaves the kind filter', async () => {
+  const writes = setup();
+  await renderFilteredTemplates();
+  fireEvent.change(screen.getByLabelText('Art filtern'), {
+    target: { value: 'offer' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.change(screen.getByLabelText('Dokumentart'), {
+    target: { value: 'invoice' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(writes[0]!.body.kind).toBe('invoice');
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Vorlage anlegen' }),
+  );
+  expect(
+    (screen.getByLabelText('Art filtern') as HTMLSelectElement).value,
+  ).toBe('offer');
+  expect(
+    screen.getByText('Keine Treffer für die aktuellen Filter.'),
+  ).toBeTruthy();
+});
+test('a disclosure cannot stay expanded on a filtered-out template row', async () => {
+  const other = {
+    ...template,
+    id: 'fictional-other-template',
+    name: 'Fictional other offer',
+  };
+  setup(
+    () => Response.json(template),
+    () => Response.json([template, other]),
+  );
+  await renderFilteredTemplates();
+  openRowActions('Fictional offer');
+  expect(
+    screen
+      .getByRole('button', { name: 'Weitere Aktionen für Fictional offer' })
+      .getAttribute('aria-expanded'),
+  ).toBe('true');
+
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: 'Fictional other' },
+  });
+  expect(
+    screen.queryByRole('button', {
+      name: 'Vorlage archivieren: Fictional offer',
+    }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', {
+      name: 'Weitere Aktionen für Fictional offer',
+    }),
+  ).toBeNull();
+
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: '' },
+  });
+  expect(
+    screen
+      .getByRole('button', { name: 'Weitere Aktionen für Fictional offer' })
+      .getAttribute('aria-expanded'),
+  ).toBe('false');
+  expect(
+    screen.queryByRole('button', {
+      name: 'Vorlage archivieren: Fictional offer',
+    }),
+  ).toBeNull();
+});
+test('template filters stay client-side and never query the list endpoint', async () => {
+  filterSetup();
+  await renderFilteredTemplates();
+  const fetcher = vi.mocked(fetch);
+  const reads = () =>
+    fetcher.mock.calls
+      .filter(
+        ([url, options]) =>
+          !options && String(url).includes('document-templates'),
+      )
+      .map(([url]) => String(url));
+
+  expect(reads()).toEqual(['/api/v1/document-templates']);
+  fireEvent.change(screen.getByLabelText('Vorlagen suchen'), {
+    target: { value: 'Fictional' },
+  });
+  fireEvent.change(screen.getByLabelText('Art filtern'), {
+    target: { value: 'offer' },
+  });
+  fireEvent.change(screen.getByLabelText('Zustand filtern'), {
+    target: { value: 'active' },
+  });
+  expect(reads()).toEqual(['/api/v1/document-templates']);
+  expect(
+    fetcher.mock.calls.filter(([url]) => String(url).includes('?')),
+  ).toEqual([]);
+});
 test('secondary template actions open one row at a time and dismiss accessibly', async () => {
   const other = {
     ...template,

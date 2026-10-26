@@ -548,6 +548,147 @@ test('template list groups every populated document kind and preserves unknown a
   expect(api.unexpectedApiWrites).toEqual([]);
 });
 
+test('template filters narrow the list, keep unknown kinds reachable and fit every viewport', async ({
+  page,
+}) => {
+  // The toolbar is an explicit user requirement; B35 showed no search or
+  // archive filters, so this test claims no reference parity.
+  const templates = [
+    structuredClone(originalTemplate),
+    templateForKind(
+      'invoice',
+      'Fiktive Rechnungsfiltervorlage',
+      '77777777-7777-4777-8777-777777777781',
+      '88888888-8888-4888-8888-000000000011',
+      'inactive',
+    ),
+    templateForKind(
+      'correction',
+      'Fiktive Korrekturfiltervorlage',
+      '77777777-7777-4777-8777-777777777782',
+      '88888888-8888-4888-8888-000000000012',
+      'archived',
+    ),
+    templateForKind(
+      'future_document_kind',
+      'Fiktive unbekannte Filtervorlage',
+      '77777777-7777-4777-8777-777777777783',
+      '88888888-8888-4888-8888-000000000013',
+    ),
+  ];
+  const api = await stubTemplateApis(page, sourceProducts, {
+    initialTemplates: templates,
+  });
+  await openTemplateList(page);
+  const templatesRegion = page.getByRole('region', {
+    name: 'Dokumentvorlagen',
+  });
+  const search = templatesRegion.getByLabel('Vorlagen suchen');
+  const kindFilter = templatesRegion.getByLabel('Art filtern');
+  const stateFilter = templatesRegion.getByLabel('Zustand filtern');
+  await expect(search).toHaveValue('');
+  await expect(kindFilter).toHaveValue('');
+  await expect(stateFilter).toHaveValue('');
+  for (const heading of [
+    'Angebote',
+    'Rechnungen',
+    'Rechnungskorrekturen',
+    'Weitere Dokumentarten',
+  ]) {
+    await expect(
+      page.getByRole('heading', { name: heading, exact: true }),
+    ).toBeVisible();
+  }
+
+  await search.fill('fiktive rechnungsfiltervorlage');
+  await expect(
+    page.getByRole('heading', { name: 'Rechnungen', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Angebote', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(/Fiktive Rechnungsfiltervorlage.*– Inaktiv/),
+  ).toBeVisible();
+  await search.fill('');
+
+  await kindFilter.selectOption('other');
+  await expect(
+    page.getByRole('heading', { name: 'Weitere Dokumentarten', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Rechnungen', exact: true }),
+  ).toHaveCount(0);
+  await kindFilter.selectOption('');
+
+  await search.fill('keine solchen fiktiven Treffer');
+  await expect(
+    templatesRegion.getByText('Keine Treffer für die aktuellen Filter.'),
+  ).toBeVisible();
+  await expect(
+    templatesRegion.getByText('Noch keine Dokumentvorlagen vorhanden.'),
+  ).toHaveCount(0);
+  await templatesRegion
+    .getByRole('button', { name: 'Filter zurücksetzen' })
+    .click();
+  await expect(search).toHaveValue('');
+  await expect(
+    page.getByRole('heading', { name: 'Angebote', exact: true }),
+  ).toBeVisible();
+
+  // Leave one narrowing filter active: the audits below judge the filtered
+  // list, not only the unfiltered one.
+  await stateFilter.selectOption('active');
+  await expect(page.getByText(/Fiktive Korrekturfiltervorlage/)).toHaveCount(0);
+
+  for (const theme of ['light', 'dark'] as const) {
+    const toggle = page.getByRole('button', { name: /modus aktivieren/i });
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+      await toggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    for (const width of [320, 390, 1280] as const) {
+      await page.setViewportSize({ width, height: 844 });
+      expect(
+        await templatesRegion.evaluate(
+          (section) => section.scrollWidth <= section.clientWidth + 1,
+        ),
+        `template section fits ${width}px ${theme}`,
+      ).toBe(true);
+      expect(
+        await templatesRegion
+          .locator('.resource-toolbar')
+          .evaluate(
+            (element) => element.scrollWidth <= element.clientWidth + 1,
+          ),
+        `template toolbar fits ${width}px ${theme}`,
+      ).toBe(true);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+        ),
+        `document fits ${width}px ${theme}`,
+      ).toBe(true);
+      const accessibility = await new AxeBuilder({ page })
+        .include('#document-templates')
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      expect(
+        accessibility.violations,
+        `template filters ${width}px ${theme}`,
+      ).toEqual([]);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: `tests/test-results/template-filter-${width}-${theme}.png`,
+        fullPage: true,
+        animations: 'disabled',
+      });
+    }
+  }
+  await expect(stateFilter).toHaveValue('active');
+  expect(api.writes).toEqual([]);
+  expect(api.unexpectedApiWrites).toEqual([]);
+});
+
 test('template row action disclosures stay quiet by default and dismiss with stable focus', async ({
   page,
 }) => {

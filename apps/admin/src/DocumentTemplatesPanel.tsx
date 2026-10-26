@@ -86,6 +86,29 @@ const states: [string, string][] = [
   ['inactive', 'Inaktiv'],
   ['archived', 'Archiviert'],
 ];
+// The search and the two narrowing selects are an explicit user requirement,
+// not an observed Bookitup function: B35 showed no search or archive filters on
+// the examined desktop list. The filters therefore run client-side over the
+// loaded list and keep GET /api/v1/document-templates queryless.
+const otherKindFilterValue = 'other';
+const otherKindGroupName = 'Weitere Dokumentarten';
+const isKnownTemplateKind = (kind: string) =>
+  templateKindGroups.some(([known]) => known === kind);
+function matchesTemplateFilters(
+  row: Template,
+  search: string,
+  kindFilter: string,
+  stateFilter: string,
+) {
+  const needle = search.trim().toLowerCase();
+  if (needle !== '' && !row.name.toLowerCase().includes(needle)) return false;
+  if (kindFilter !== '') {
+    if (kindFilter === otherKindFilterValue) {
+      if (isKnownTemplateKind(row.kind)) return false;
+    } else if (row.kind !== kindFilter) return false;
+  }
+  return stateFilter === '' || row.state === stateFilter;
+}
 const placeholders = [
   'contact',
   'event',
@@ -244,6 +267,9 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewMessage, setPreviewMessage] = useState('');
   const [previewError, setPreviewError] = useState('');
+  const [search, setSearch] = useState('');
+  const [kindFilter, setKindFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
   const archiveInFlight = useRef(false);
   const saveInFlight = useRef(false);
   const previewInFlight = useRef(false);
@@ -272,6 +298,15 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const saveRetryButtonRef = useRef<HTMLButtonElement>(null);
   const saveReconcileButtonRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // A narrowing filter removes rows from the list. An open disclosure whose row
+  // disappeared would keep aria-expanded pointing at nothing, so it closes with
+  // the row instead of staying silently open.
+  useEffect(() => {
+    if (!openActionsId) return;
+    const row = rows.find((entry) => entry.id === openActionsId);
+    if (!row || !matchesTemplateFilters(row, search, kindFilter, stateFilter))
+      setOpenActionsId(null);
+  }, [openActionsId, rows, search, kindFilter, stateFilter]);
   useEffect(
     () => () => {
       archiveFocusIntent.current?.stop();
@@ -1265,20 +1300,31 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setBusy(false);
     }
   }
+  // Filters only narrow what is rendered; they never change the stored rows and
+  // survive editing, previewing and archiving because none of those paths touch
+  // this state.
+  function resetFilters() {
+    setSearch('');
+    setKindFilter('');
+    setStateFilter('');
+  }
+  const visibleRows = rows.filter((row) =>
+    matchesTemplateFilters(row, search, kindFilter, stateFilter),
+  );
   const templateGroups = templateKindGroups
     .map(([kind, name]) => ({
       key: kind,
       name,
-      rows: rows.filter((row) => row.kind === kind),
+      rows: visibleRows.filter((row) => row.kind === kind),
     }))
     .filter((group) => group.rows.length > 0);
-  const otherKindRows = rows.filter(
-    (row) => !templateKindGroups.some(([kind]) => row.kind === kind),
+  const otherKindRows = visibleRows.filter(
+    (row) => !isKnownTemplateKind(row.kind),
   );
   if (otherKindRows.length > 0)
     templateGroups.push({
       key: 'other',
-      name: 'Weitere Dokumentarten',
+      name: otherKindGroupName,
       rows: otherKindRows,
     });
   return (
@@ -1573,154 +1619,225 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           Vorlagen neu laden
         </button>
       )}
+      {/* The toolbar narrows the loaded list in place. "Vorlage anlegen" stays
+          where it was so the section keeps its single primary action. */}
+      <div className="resource-toolbar">
+        <label>
+          Vorlagen suchen
+          <input
+            value={search}
+            maxLength={200}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <label>
+          Art filtern
+          <select
+            value={kindFilter}
+            onChange={(event) => setKindFilter(event.target.value)}
+          >
+            <option value="">Alle Dokumentarten</option>
+            {templateKindGroups.map(([kind, label]) => (
+              <option key={kind} value={kind}>
+                {label}
+              </option>
+            ))}
+            <option value={otherKindFilterValue}>{otherKindGroupName}</option>
+          </select>
+        </label>
+        <label>
+          Zustand filtern
+          <select
+            value={stateFilter}
+            onChange={(event) => setStateFilter(event.target.value)}
+          >
+            <option value="">Alle Zustände</option>
+            {states.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {rows.length === 0 ? (
         <p className="document-template-empty">
           Noch keine Dokumentvorlagen vorhanden.
         </p>
       ) : (
-        <div className="document-template-groups">
-          {templateGroups.map((group) => (
-            <section
-              key={group.key}
-              className="document-template-group"
-              aria-labelledby={`document-template-group-${group.key}`}
-            >
-              <h3 id={`document-template-group-${group.key}`}>{group.name}</h3>
-              <ul className="document-template-list">
-                {group.rows.map((row) => (
-                  <li
-                    ref={(element) => {
-                      if (element) actionRowRefs.current.set(row.id, element);
-                      else actionRowRefs.current.delete(row.id);
-                    }}
-                    className="document-template-row"
-                    key={row.id}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Escape' || openActionsId !== row.id)
-                        return;
-                      event.preventDefault();
-                      setOpenActionsId(null);
-                      const toggle = actionToggleRefs.current.get(row.id);
-                      if (
-                        toggle?.isConnected &&
-                        !toggle.disabled &&
-                        !toggle.closest(
-                          '[hidden], [inert], [aria-hidden="true"]',
-                        )
-                      )
-                        toggle.focus({ preventScroll: true });
-                    }}
-                  >
-                    <span className="document-template-summary">
-                      {kinds.find(([value]) => value === row.kind)?.[1] ??
-                        row.kind}
-                      : {row.name} – {row.positions.length} Position(en)
-                      {row.state === 'archived' ? ' – Archiviert' : ''}
-                    </span>
-                    <div className="document-template-actions">
-                      <button
+        <>
+          {visibleRows.length === 0 && (
+            <>
+              <p>Keine Treffer für die aktuellen Filter.</p>
+              <button
+                type="button"
+                className="tertiary-action"
+                onClick={resetFilters}
+              >
+                Filter zurücksetzen
+              </button>
+            </>
+          )}
+          {templateGroups.length > 0 && (
+            <div className="document-template-groups">
+              {templateGroups.map((group) => (
+                <section
+                  key={group.key}
+                  className="document-template-group"
+                  aria-labelledby={`document-template-group-${group.key}`}
+                >
+                  <h3 id={`document-template-group-${group.key}`}>
+                    {group.name}
+                  </h3>
+                  <ul className="document-template-list">
+                    {group.rows.map((row) => (
+                      <li
                         ref={(element) => {
                           if (element)
-                            editButtonRefs.current.set(row.id, element);
-                          else editButtonRefs.current.delete(row.id);
+                            actionRowRefs.current.set(row.id, element);
+                          else actionRowRefs.current.delete(row.id);
                         }}
-                        className="secondary-action"
-                        disabled={
-                          busy ||
-                          archiveReconciliation !== null ||
-                          saveRecovery !== null ||
-                          uncertainCreate
-                        }
-                        aria-label={`Vorlage bearbeiten: ${row.name}`}
-                        onClick={(event) => {
-                          setOpenActionsId(null);
-                          begin(row, false, event.currentTarget);
-                        }}
-                      >
-                        Bearbeiten
-                      </button>
-                      <button
-                        ref={(element) => {
-                          if (element)
-                            actionToggleRefs.current.set(row.id, element);
-                          else actionToggleRefs.current.delete(row.id);
-                        }}
-                        className="tertiary-action document-template-action-toggle"
-                        type="button"
-                        disabled={
-                          busy ||
-                          archiveReconciliation !== null ||
-                          saveRecovery !== null ||
-                          uncertainCreate
-                        }
-                        aria-label={`Weitere Aktionen für ${row.name}`}
-                        aria-expanded={openActionsId === row.id}
-                        aria-controls={`document-template-secondary-actions-${row.id}`}
-                        onClick={() =>
-                          setOpenActionsId((current) =>
-                            current === row.id ? null : row.id,
+                        className="document-template-row"
+                        key={row.id}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key !== 'Escape' ||
+                            openActionsId !== row.id
                           )
-                        }
+                            return;
+                          event.preventDefault();
+                          setOpenActionsId(null);
+                          const toggle = actionToggleRefs.current.get(row.id);
+                          if (
+                            toggle?.isConnected &&
+                            !toggle.disabled &&
+                            !toggle.closest(
+                              '[hidden], [inert], [aria-hidden="true"]',
+                            )
+                          )
+                            toggle.focus({ preventScroll: true });
+                        }}
                       >
-                        Aktionen
-                      </button>
-                      <div
-                        id={`document-template-secondary-actions-${row.id}`}
-                        className="document-template-secondary-actions"
-                        role="group"
-                        aria-label={`Aktionen für ${row.name}`}
-                        hidden={openActionsId !== row.id}
-                      >
-                        <button
-                          className="secondary-action"
-                          disabled={
-                            busy ||
-                            archiveReconciliation !== null ||
-                            saveRecovery !== null ||
-                            uncertainCreate
-                          }
-                          aria-label={`Vorlage duplizieren: ${row.name}`}
-                          onClick={(event) => {
-                            const origin = actionToggleRefs.current.get(row.id);
-                            if (origin?.isConnected && !origin.disabled)
-                              origin.focus({ preventScroll: true });
-                            setOpenActionsId(null);
-                            begin(row, true, origin ?? event.currentTarget);
-                          }}
-                        >
-                          Duplizieren
-                        </button>
-                        <button
-                          className="tertiary-action"
-                          type="button"
-                          disabled={
-                            busy ||
-                            row.state === 'archived' ||
-                            archiveReconciliation !== null ||
-                            saveRecovery !== null ||
-                            uncertainCreate
-                          }
-                          aria-label={`Vorlage archivieren: ${row.name}`}
-                          onClick={(event) => {
-                            const origin = actionToggleRefs.current.get(row.id);
-                            if (origin?.isConnected && !origin.disabled)
-                              origin.focus({ preventScroll: true });
-                            setOpenActionsId(null);
-                            void archive(row, origin ?? event.currentTarget);
-                          }}
-                        >
-                          {archivePendingId === row.id
-                            ? 'Archivierung läuft …'
-                            : 'Archivieren'}
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+                        <span className="document-template-summary">
+                          {kinds.find(([value]) => value === row.kind)?.[1] ??
+                            row.kind}
+                          : {row.name} – {row.positions.length} Position(en)
+                          {row.state === 'archived' ? ' – Archiviert' : ''}
+                          {row.state === 'inactive' ? ' – Inaktiv' : ''}
+                        </span>
+                        <div className="document-template-actions">
+                          <button
+                            ref={(element) => {
+                              if (element)
+                                editButtonRefs.current.set(row.id, element);
+                              else editButtonRefs.current.delete(row.id);
+                            }}
+                            className="secondary-action"
+                            disabled={
+                              busy ||
+                              archiveReconciliation !== null ||
+                              saveRecovery !== null ||
+                              uncertainCreate
+                            }
+                            aria-label={`Vorlage bearbeiten: ${row.name}`}
+                            onClick={(event) => {
+                              setOpenActionsId(null);
+                              begin(row, false, event.currentTarget);
+                            }}
+                          >
+                            Bearbeiten
+                          </button>
+                          <button
+                            ref={(element) => {
+                              if (element)
+                                actionToggleRefs.current.set(row.id, element);
+                              else actionToggleRefs.current.delete(row.id);
+                            }}
+                            className="tertiary-action document-template-action-toggle"
+                            type="button"
+                            disabled={
+                              busy ||
+                              archiveReconciliation !== null ||
+                              saveRecovery !== null ||
+                              uncertainCreate
+                            }
+                            aria-label={`Weitere Aktionen für ${row.name}`}
+                            aria-expanded={openActionsId === row.id}
+                            aria-controls={`document-template-secondary-actions-${row.id}`}
+                            onClick={() =>
+                              setOpenActionsId((current) =>
+                                current === row.id ? null : row.id,
+                              )
+                            }
+                          >
+                            Aktionen
+                          </button>
+                          <div
+                            id={`document-template-secondary-actions-${row.id}`}
+                            className="document-template-secondary-actions"
+                            role="group"
+                            aria-label={`Aktionen für ${row.name}`}
+                            hidden={openActionsId !== row.id}
+                          >
+                            <button
+                              className="secondary-action"
+                              disabled={
+                                busy ||
+                                archiveReconciliation !== null ||
+                                saveRecovery !== null ||
+                                uncertainCreate
+                              }
+                              aria-label={`Vorlage duplizieren: ${row.name}`}
+                              onClick={(event) => {
+                                const origin = actionToggleRefs.current.get(
+                                  row.id,
+                                );
+                                if (origin?.isConnected && !origin.disabled)
+                                  origin.focus({ preventScroll: true });
+                                setOpenActionsId(null);
+                                begin(row, true, origin ?? event.currentTarget);
+                              }}
+                            >
+                              Duplizieren
+                            </button>
+                            <button
+                              className="tertiary-action"
+                              type="button"
+                              disabled={
+                                busy ||
+                                row.state === 'archived' ||
+                                archiveReconciliation !== null ||
+                                saveRecovery !== null ||
+                                uncertainCreate
+                              }
+                              aria-label={`Vorlage archivieren: ${row.name}`}
+                              onClick={(event) => {
+                                const origin = actionToggleRefs.current.get(
+                                  row.id,
+                                );
+                                if (origin?.isConnected && !origin.disabled)
+                                  origin.focus({ preventScroll: true });
+                                setOpenActionsId(null);
+                                void archive(
+                                  row,
+                                  origin ?? event.currentTarget,
+                                );
+                              }}
+                            >
+                              {archivePendingId === row.id
+                                ? 'Archivierung läuft …'
+                                : 'Archivieren'}
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
