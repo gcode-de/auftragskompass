@@ -2,6 +2,63 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H070: BKP019.c3.2 – Schlussrechnung mit Verrechnung (RG-03), 26.10.2026
+
+- **BKP019.c3.2 `4bcb851`** (inkl. Nachträgen b/c): die **Schlussrechnung**
+  (`invoice_role='final'`, `RE-`-Nummer, genau eine Rechnung je Bestätigung –
+  DB-garantiert über den unangetasteten Unique-Index) verrechnet geleistete
+  Anzahlungen (RG-03): beim Finalisieren wird `deposit_applied_minor`
+  eingefroren, der Verrechnungsblock zeigt „Anzahlungen gesamt / davon
+  geleistet / Zu zahlender Betrag“, gedrucktes Brutto bleibt die volle
+  Auftragssumme. Zahlungen auf die Schlussrechnung sind nur bis zum
+  reduzierten Anspruch möglich. **Zwei Nachträge schärften die Semantik:**
+  (b) Über-Verrechnung wird beim Finalisieren mit 409
+  `deposits_exceed_order` abgelehnt (Entwurf unversehrt, Vorabwarnung in der
+  UI) – ein negativer „Zu zahlender Betrag“ entsteht nie; (c) der
+  Verrechnungsbetrag zählt **korrigierte Ansprüche** der Anzahlungen
+  (`gross + debits − credits` je Beleg) statt bloßer Bruttosummen – der
+  Nachtrag bewies, dass die ursprüngliche Bruttosummen-Regel die
+  dokumentierte Lösung „per Korrektur reduzieren“ tot ließ (dauerhafte
+  Falle) und korrigierte Anzahlungen unterverrechnete. Ohne Korrekturen
+  bleibt die Regel identisch (das 1.690/1.300/390-Beispiel unverändert).
+- **Abnahme:** RED je Schritt sauber beobachtet, dann grün: unit 274,
+  component 742, integration 446 (Kopie/Rolle, Dublette seq.+parallel,
+  exakter Verrechnungsbetrag, Einfrieren, 0-Anzahlungen, Grenzfall exakt/
+  1 Cent, Entzerrung per Gutschrift, beide Kredit-Guard-Richtungen,
+  DB-CHECKs), coverage vollständig (documents.ts 92,91% Statements), E2E
+  16/16 inkl. Ablauf Bestätigung + Anzahlungen 30/10 + 20 gezahlt →
+  Schlussrechnung Block 40/20/60 → Einfrieren 4.000 → Teilzahlung 30 →
+  30,01 abgelehnt → Quell-PDFs bytegleich, Build grün.
+- **Ehrlich notiert:** „davon geleistet“ bleibt live (nur der Abzug ist
+  eingefroren); `deposit_applied_minor` ist `bigint` (bewusste Abweichung
+  vom int4-Vorschlag, passend zu allen Geldspalten); eine Über-Verrechnung
+  aus **voll bezahlten** Anzahlungen lässt sich weiterhin nicht per
+  Gutschrift entzerren (Kredit-Guard begrenzt Gutschriften durch
+  geleistetes Geld – die Rückzahlungslücke bleibt unverändert offen,
+  ausdrücklich Nicht-Scope); keine Steuergruppenaufteilung des Abzugs
+  behauptet.
+
+**Nächste Unter-Slices BKP019:** (e) Fristen-/Statusfilter und Export,
+RG-07 (Zahlungsziel/„überfällig“); dazu Pflichtangaben RG-04,
+Annahme-Korrekturpfad, Rückzahlungslogik (eigene Entscheidung), BKP020-Reste
+und BKP021+ (Mailkern bis BKP030). Betrieb unverändert: verifiziert live
+**c21330c**, alleiniger Auto-Updater; Checkpoint-/OCI-Nachweis weiterhin
+offen (Proxmox-Host 192.168.68.201 nicht erreichbar).
+
+**Betriebsbefund (wachsend, dritte Abbruchart):** Der CI-Lauf zu `4bcb851`
+(40440112521) ließ das Passwort-Auth-E2E in das **240-Sekunden-Testlimit**
+laufen (Fehlerbeleg: „Test timeout of 240000ms exceeded“, Seite im
+Anmeldebildschirm; lokal laufen beide Modi in ~2,1–3,5 min grün). Das
+Szenario ist durch die vielen neuen Abläufe (Kontaktdetails-Matrix,
+Editor-Matrix, Zahlungs-/Anzahlungs-/Schlussrechnungsreisen) spürbar
+gewachsen – Budgetdruck, kein Verhaltensfehler. Kein Timeout wurde
+verlängert; ein gezielter Re-Run verifiziert den Stand (Folgeabschnitt).
+Für drei Abbrucharten sind damit Betriebsentscheidungen offen:
+`timeout-minutes` der CI, Runner-Netzwerkflakes (`ERR_NETWORK_CHANGED`) und
+das E2E-Zeitbudget des Passwort-Szenarios (Szenario teilen oder Budget
+bewusst erhöhen). Der Re-Run ist komplett grün (quality 14m33s + images
+1m53s – auf einem schnellen Runner, was die Budget-Hypothese stützt).
+
 ## H069: BKP019.c3.1 – Anzahlungsrechnung (RG-02/DV-02), 26.10.2026
 
 - **BKP019.c3.1 `f15486e`** – aus einer finalen Auftragsbestätigung entsteht
