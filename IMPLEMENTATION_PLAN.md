@@ -8,7 +8,54 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
-- [x] **RG-07a — `feat: date an invoice by service and due day`** (26.10.2026)
+- [x] **RG-07b — `feat: print the bank account on an invoice`** (26.10.2026)
+
+  Zweiter RG-07-Unter-Slice nach rein lesender DeepSeek-Analyse zu `e9ccbed`
+  (Bankverbindung ist das letzte fehlende RG-07-Feld – Staleness bestätigt:
+  nirgends im Repo existiert ein Bankfeld). Migration `0048` (additiv):
+  `bank_account text` (1…500 nach `btrim`, Steuerzeichen-Regel wie
+  `acceptanceNoteOf` mit erlaubtem `\n`), nur für
+  Rechnung/Anzahlung/Korrektur; **keine Einfrier-Spalte** (der fehlende
+  Update-Pfad nach Finalisierung friert ein – im Code begründet). Semantik:
+  optionaler Freitext, **keine Platzhalter** (wörtlich gedruckt), **keine
+  IBAN-/Bankprüfung** (keine Banklogik erfunden), Speichern wie RG-07a
+  (undefined = unverändert, null/leer = löschen). Druck als Zeile
+  „Bankverbindung: …“ unter der Fälligkeitszeile in der bestehenden
+  Print-Option (mehrzeilig per `<br/>`, **keine neue CSS-Regel** – die
+  Goldhash-Wächter brechen sonst), ohne Bezug bytegleich. Projektion
+  `include=offer` additiv um `bankAccount`; UI/Editor-Feld nur für die
+  Rechnungsfamilie wie RG-07a. Kein Mandanten-/Layout-Default (Vorrangregel
+  offen); keine Rechts-/Steuerabnahme („abbilden können“). Tests zuerst rot
+  (500/501, `\n` vs. Steuerzeichen, Familie/DB-CHECK 23514, Einfrieren,
+  Löschen, Bytegleichheit, Mandantentrennung, FK 23503; Goldhash-Wächter
+  `document-dates.test.ts:673–681` und `documents.test.ts:298–308`
+  unantastbar; fünf Schlüsselsatz-Pins aussagenerhalten um `bankAccount`
+  erweitern). Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt
+  Plan/Docs und reviewt.
+  Abgenommen: rot sauber per `git stash` getrennt beobachtet (14 Fehlerbilder
+  auf Integrations-/Component-Ebene; ehrlich vermerkt: E2E nicht rot
+  beobachtet, der Ablauf braucht den vollen Stack), danach grün:
+  `test:unit` 274/274, `test:component` 746/746 (2 neu),
+  `test:integration` 468/468 (11 neue Bankfälle: 500/501, `\n` erlaubt/
+  Steuerzeichen abgelehnt, Familie + DB-CHECK 23514/23503, Einfrieren nach
+  Finalisierung, Löschen, Bytegleichheit Nicht-Rechnungs-Belege,
+  Mandantentrennung, Projektion/Routenvertrag), `test:coverage` 1488
+  vollständig (Changed ≥85/80), `test:workspace`/`test:docs`/schnelle
+  Gates/Build grün; E2E auth+template-product-price 16/16 (Passwort 2,1 min
+  im Budget) inkl. Ablauf Banktext → finalisieren → gedruckte Zeile mit
+  `<br>` unter dem Zahlungsziel → bytegleiche Nicht-Rechnungs-Belege;
+  **nebenbei echter RG-07a-Defekt gefunden und behoben:** der
+  Editor-Ladepfad verlor Leistungsdatum/Zahlungsziel beim Neuladen (nächste
+  Speicherung hätte sie gelöscht) – im selben erlaubten File korrigiert,
+  der Reload-Test beweist es. Notiert: keine Einfrier-Spalte (fehlender
+  Update-Pfad friert ein); keine neue CSS-Regel (Goldhash-Wächter intakt);
+  Steuerzeichen-Regel in der DB für 0x7F–0x9F möglicherweise laxer als die
+  Domäne (sichere Richtung gewählt); Längenmessung UTF-16 vs. Zeichen bei
+  Emoji (Domäne strenger, belegt); einmaliger nicht reproduzierbarer
+  E2E-Flake an unberührter History-Restore-Stelle (auth.spec.ts:2610–2631,
+  bei Wiederholung eigener Kleinslice).
+
+- [x] **RG-07a** — `feat: date an invoice by service and due day`** (26.10.2026)
 
   Erster der drei RG-07-Unter-Slices nach rein lesender DeepSeek-Analyse zu
   `b906f57` (RG-07 „Rechnungsdatum, Leistungsdatum, Zahlungsziel und

@@ -2095,7 +2095,14 @@ const settlementKeys = [
 // RG-07: the date axis. `serviceDate` and `paymentTermDays` are the inputs of an
 // invoice family row, `dueDate` is the day frozen at finalization; outside the
 // family all three are NULL, exactly like every axis before them.
-const invoiceDateKeys = ['serviceDate', 'paymentTermDays', 'dueDate'];
+// RG-07b: the printed account joins the same axis - it is a field of the invoice
+// family and answers NULL everywhere else.
+const invoiceDateKeys = [
+  'serviceDate',
+  'paymentTermDays',
+  'dueDate',
+  'bankAccount',
+];
 
 test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
   const scope = randomUUID(),

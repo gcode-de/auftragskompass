@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 import { OfferDraftEditor } from './OfferDraftEditor.js';
 import { exactMinorUnits } from './FilesPanel.js';
@@ -52,6 +52,8 @@ type DocumentRow = {
   serviceDate?: string | null;
   paymentTermDays?: number | null;
   dueDate?: string | null;
+  // RG-07b: the account the invoice prints, printed word for word.
+  bankAccount?: string | null;
 };
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
 type CorrectionDirection = 'credit' | 'debit';
@@ -1332,6 +1334,23 @@ export function EventDocuments({
                       )}
                     </span>
                   )}
+                </p>
+              )}
+            {/* RG-07b: the account under the two dates, only where it is set and
+                only for the invoice family. A multi-line text keeps its line
+                breaks on screen, exactly as the paper prints them. */}
+            {(entry.kind === 'invoice' ||
+              entry.kind === 'deposit_invoice' ||
+              entry.kind === 'correction') &&
+              entry.bankAccount && (
+                <p className="document-meta document-invoice-bank">
+                  <span>Bankverbindung </span>
+                  {entry.bankAccount.split('\n').map((line, index) => (
+                    <Fragment key={index}>
+                      {index > 0 && <br />}
+                      {line}
+                    </Fragment>
+                  ))}
                 </p>
               )}
             {/* BKP019.c3.2: the role of this invoice and what it settles. A

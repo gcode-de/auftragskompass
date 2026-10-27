@@ -109,6 +109,12 @@ export type DocumentInvoiceDates = {
   paymentTermDays?: number;
   /** Due day, `dd.mm.yyyy`; absent while no term was agreed. */
   dueDate?: string;
+  /**
+   * RG-07b: the account the invoice prints, word for word and possibly
+   * multi-line. Absent when none was entered, so every document without one
+   * keeps byte-identical HTML.
+   */
+  bankAccount?: string;
 };
 
 /**
@@ -329,6 +335,14 @@ ${
       ? `    <p>Zahlungsziel: ${layout.invoiceDates.paymentTermDays} Tage, fällig ${escapeHtml(
           layout.invoiceDates.dueDate,
         )}</p>\n`
+      : ''
+  }${
+    // RG-07b: the account prints word for word under the due line. `lines()`
+    // escapes the text and turns a real line break into a `<br>` - no new CSS
+    // rule, because the shared `<style>` block must stay identical for every
+    // document that has no account.
+    layout.invoiceDates?.bankAccount
+      ? `    <p>Bankverbindung: ${lines(layout.invoiceDates.bankAccount)}</p>\n`
       : ''
   }    <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
     <p>${lines(renderTemplate(input.introText, input.values))}</p>

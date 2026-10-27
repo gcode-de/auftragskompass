@@ -128,6 +128,12 @@ export type DocumentDraftContent = {
    * itself is never an input - it is frozen at finalization from this number.
    */
   paymentTermDays?: number | null;
+  /**
+   * RG-07b: the account the invoice prints, as free text. `undefined` leaves a
+   * stored value untouched, `null` (or a blank text) clears it. Not validated
+   * as a bank account - this slice prints what an operator wrote.
+   */
+  bankAccount?: string | null;
   lines?: DocumentLineDraft[];
 };
 export type DocumentFilters = {
@@ -167,6 +173,9 @@ export const correctionStates = ['none', 'partial', 'full'] as const;
 export type InvoiceRole = 'final';
 export const invoiceRoles = ['final'] as const;
 export const acceptanceNoteMaxLength = 2000;
+// RG-07b: the printed account is bounded like every other typed text; the same
+// bound is repeated by the CHECK in 0048 and by the route's `maxLength`.
+export const bankAccountMaxLength = 500;
 export type OfferStatusChange = {
   status: OfferStatus;
   version: number;
@@ -286,6 +295,9 @@ export type DocumentOfferRow = DocumentListRow & {
   serviceDate: string | null;
   paymentTermDays: number | null;
   dueDate: string | null;
+  // RG-07b: the free-text account the invoice prints. NULL outside the family
+  // and NULL where an operator entered none.
+  bankAccount: string | null;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -495,6 +507,27 @@ function paymentTermDaysOf(value: unknown): number | null {
     throw new DocumentError('invalid_content');
   return value as number;
 }
+// RG-07b: the account an invoice prints is free text an operator typed - no
+// IBAN check, no BIC, no placeholder: what is stored is printed word for word.
+// Trimmed and bounded, with real line breaks as the only control characters; a
+// blank text clears the field the same way `null` does.
+function bankAccountOf(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new DocumentError('invalid_content');
+  // Every line-ending style becomes the one the printer understands, so a
+  // pasted Windows block is not refused for its dialect.
+  const trimmed = value.replace(/\r\n?/g, '\n').trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.length > bankAccountMaxLength ||
+    [...trimmed].some((character) => {
+      const code = character.codePointAt(0)!;
+      return code !== 0x0a && (code < 0x20 || (code >= 0x7f && code <= 0x9f));
+    })
+  )
+    throw new DocumentError('invalid_content');
+  return trimmed;
+}
 // `dd.mm.yyyy`: a stored plain date is formatted from its parts, exactly like
 // the deadline of an offer, never through a time zone.
 function printedDay(day: string): string {
@@ -562,13 +595,15 @@ export function documentRepository(
     const dates = (await executor.execute(sql`
       SELECT to_char(d.service_date, 'YYYY-MM-DD') AS service_date,
              d.payment_term_days::text AS payment_term_days,
-             to_char(d.due_date, 'YYYY-MM-DD') AS due_date
+             to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
+             d.bank_account
         FROM documents d
        WHERE d.tenant_id = ${tenantId} AND d.id = ${id}`)) as {
       rows: {
         service_date: string | null;
         payment_term_days: string | null;
         due_date: string | null;
+        bank_account: string | null;
       }[];
     };
     const dateRow = dates.rows[0];
@@ -581,6 +616,9 @@ export function documentRepository(
           ? null
           : Number(dateRow.payment_term_days),
       dueDate: dateRow?.due_date ?? null,
+      // RG-07b: the printed account travels with the same reviewed SQL, so the
+      // editor can load and rewrite it without a second route.
+      bankAccount: dateRow?.bank_account ?? null,
       lines,
     };
   }
@@ -1100,6 +1138,10 @@ export function documentRepository(
     // the day it would get.
     const serviceDate = document.serviceDate ?? null,
       paymentTermDays = document.paymentTermDays ?? null,
+      // RG-07b: the account is printed word for word - no placeholder, no
+      // reformatting. It is part of the same print option, so it appears right
+      // under the due line and nowhere else.
+      bankAccount = document.bankAccount ?? null,
       dueDate =
         isInvoiceKind(document.kind) && paymentTermDays !== null
           ? validityDate(issuedAt, paymentTermDays, tenant.timezone)
@@ -1109,7 +1151,7 @@ export function documentRepository(
       // value keeps byte-identical HTML.
       invoiceDates: DocumentInvoiceDates | undefined =
         isInvoiceKind(document.kind) &&
-        (serviceDate !== null || dueDate !== null)
+        (serviceDate !== null || dueDate !== null || bankAccount !== null)
           ? {
               ...(serviceDate ? { serviceDate: printedDay(serviceDate) } : {}),
               ...(dueDate !== null && paymentTermDays !== null
@@ -1118,6 +1160,7 @@ export function documentRepository(
                     dueDate: printedDay(dueDate.toString()),
                   }
                 : {}),
+              ...(bankAccount ? { bankAccount } : {}),
             }
           : undefined;
     // BKP019.c2: a correction prints what it corrects. The reference travels with
@@ -1412,6 +1455,11 @@ export function documentRepository(
             dueDate: sql<
               string | null
             >`to_char(documents.due_date, 'YYYY-MM-DD')`.as('due_date'),
+            // RG-07b: the printed account of an invoice, answered for every row
+            // so no reader has to guess a shape.
+            bankAccount: sql<string | null>`documents.bank_account`.as(
+              'bank_account',
+            ),
           })
           .from(documents)
           .where(narrowed)
@@ -1473,6 +1521,7 @@ export function documentRepository(
             serviceDate,
             paymentTermDays: paymentTermDaysText,
             dueDate,
+            bankAccount,
             ...row
           }) => {
             // BKP019.c2: only a finalized invoice or confirmation owns a
@@ -1568,6 +1617,8 @@ export function documentRepository(
                   ? null
                   : Number(paymentTermDaysText),
               dueDate: dueDate ?? null,
+              // RG-07b: the free-text account, NULL where none was entered.
+              bankAccount: bankAccount ?? null,
             };
           },
         );
@@ -2397,9 +2448,12 @@ export function documentRepository(
         // offer or a confirmation that sends them is refused, never silently
         // reduced to nothing - a refused body keeps the draft untouched, so the
         // version and the audit trail stay honest too.
+        // RG-07b: the printed account is the same kind of field and follows the
+        // same rule.
         if (
           (content.serviceDate !== undefined ||
-            content.paymentTermDays !== undefined) &&
+            content.paymentTermDays !== undefined ||
+            content.bankAccount !== undefined) &&
           !isInvoiceKind(document.kind)
         )
           throw new DocumentError('invalid_content');
@@ -2414,7 +2468,11 @@ export function documentRepository(
           paymentTermDays =
             content.paymentTermDays === undefined
               ? undefined
-              : paymentTermDaysOf(content.paymentTermDays);
+              : paymentTermDaysOf(content.paymentTermDays),
+          bankAccount =
+            content.bankAccount === undefined
+              ? undefined
+              : bankAccountOf(content.bankAccount);
         if (content.lines === undefined && document.templateId === null) {
           const [line] = await tx
             .select({ id: documentLines.id })
@@ -2485,13 +2543,23 @@ export function documentRepository(
         // RG-07: the two inputs live in columns `schema.ts` deliberately does not
         // mirror. Only what the body named is written: an omitted field keeps its
         // saved value, `null` clears it.
-        if (serviceDate !== undefined || paymentTermDays !== undefined) {
+        // RG-07b: the printed account is written the same way. Finalization does
+        // not touch it - there is no later write path, so the stored text is
+        // already the frozen one.
+        if (
+          serviceDate !== undefined ||
+          paymentTermDays !== undefined ||
+          bankAccount !== undefined
+        ) {
           const assignments = [
             ...(serviceDate !== undefined
               ? [sql`service_date = ${serviceDate}::date`]
               : []),
             ...(paymentTermDays !== undefined
               ? [sql`payment_term_days = ${paymentTermDays}::integer`]
+              : []),
+            ...(bankAccount !== undefined
+              ? [sql`bank_account = ${bankAccount}::text`]
               : []),
           ];
           await tx.execute(
@@ -2915,6 +2983,14 @@ export function registerDocumentRoutes(
         { type: 'null' },
       ],
     },
+    // RG-07b: the printed account, additive in the same opt-in projection. Free
+    // text, so the schema only bounds it - it never judges a bank.
+    bankAccount: {
+      anyOf: [
+        { type: 'string', maxLength: bankAccountMaxLength },
+        { type: 'null' },
+      ],
+    },
   };
   const row = {
     type: 'object',
@@ -2943,6 +3019,7 @@ export function registerDocumentRoutes(
       'serviceDate',
       'paymentTermDays',
       'dueDate',
+      'bankAccount',
     ],
     properties: {
       id: { type: 'string', format: 'uuid' },
@@ -2988,6 +3065,14 @@ export function registerDocumentRoutes(
       dueDate: {
         anyOf: [
           { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          { type: 'null' },
+        ],
+      },
+      // RG-07b: the account this document prints. Every other kind answers
+      // NULL, so the editor can load and rewrite it without a second route.
+      bankAccount: {
+        anyOf: [
+          { type: 'string', maxLength: bankAccountMaxLength },
           { type: 'null' },
         ],
       },
@@ -3159,6 +3244,15 @@ export function registerDocumentRoutes(
             },
             paymentTermDays: {
               anyOf: [{ type: 'null' }, { type: 'integer' }],
+            },
+            // RG-07b: the printed account is optional free text. `null` (or a
+            // blank text, which the domain clears) deletes it; the bound is the
+            // only rule JSON Schema owns here - a bank is judged nowhere.
+            bankAccount: {
+              anyOf: [
+                { type: 'null' },
+                { type: 'string', maxLength: bankAccountMaxLength },
+              ],
             },
             lines: { type: 'array', minItems: 1, maxItems: 1000, items: line },
           },

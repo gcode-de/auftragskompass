@@ -404,11 +404,17 @@ unveränderlich; gedruckt werden sie nur, wenn sie gesetzt sind (ohne Werte
 verändert sich am Beleg kein Byte). Leistungsdaten in der Zukunft sind nicht
 erlaubt – ein Leistungsdatum beschreibt eine Tatsache der Vergangenheit.
 
+Zusätzlich tragen die Belege optional eine **Bankverbindung** (Freitext bis
+500 Zeichen, mehrzeilig): sie wird wörtlich gedruckt – ohne Platzhalter und
+ohne IBAN- oder Bankprüfung (keine Banklogik erfunden) –, im Entwurf
+änderbar und nach der Finalisierung unveränderlich. Zeilenumbrüche bleiben
+im Druck sichtbar.
+
 **Ehrliche Grenze:** „Überfällig“ wird noch nicht abgeleitet (RG-08, eigener
-Folgeslice), ein Mandanten-Default für Zahlungsziele fehlt (spätere
-Einstellungen) und die Bankverbindung folgt gesondert. Es wird keine Rechts-
-oder Steuerbehauptung aufgestellt; „unterstützen“ heißt hier: führen,
-drucken, prüfen – nicht die steuerliche Richtigkeit garantieren.
+Folgeslice); ein Mandanten-Default für Zahlungsziele und Bankverbindung
+fehlt (spätere Einstellungen). Es wird keine Rechts- oder Steuerbehauptung
+aufgestellt; „unterstützen“ heißt hier: führen, drucken, prüfen – nicht die
+steuerliche Richtigkeit garantieren.
 
 ### Auftragsbestätigung aus einem Angebot (BKP019.b, AG-05)
 

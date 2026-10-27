@@ -20,6 +20,9 @@ type DraftValues = {
   // form values for every kind, so one dirty comparison covers the whole editor.
   serviceDate: string;
   paymentTermDays: string;
+  // RG-07b: the printed account, free text and possibly multi-line. Field of the
+  // same invoice family, and part of the same dirty comparison.
+  bankAccount: string;
 };
 type DraftLine = {
   id: string;
@@ -55,6 +58,8 @@ type DraftDetail = {
   serviceDate?: string | null;
   paymentTermDays?: number | null;
   dueDate?: string | null;
+  // RG-07b: the free-text account, loaded and rewritten with the same payload.
+  bankAccount?: string | null;
   netMinor: number;
   taxMinor: number;
   grossMinor: number;
@@ -95,18 +100,24 @@ type Props = {
       | 'serviceDate'
       | 'paymentTermDays'
       | 'dueDate'
+      | 'bankAccount'
     >,
   ) => void;
 };
 
-function valuesOf(values: {
+// RG-07/07b: what the editor loads from a document or a template. The invoice
+// fields are optional because a template and an older payload never carry them.
+type DraftContentValues = {
   subject: string;
   introText: string;
   outroText: string;
   validityDays: number;
   serviceDate?: string | null;
   paymentTermDays?: number | null;
-}): DraftValues {
+  bankAccount?: string | null;
+};
+
+function valuesOf(values: DraftContentValues): DraftValues {
   return {
     subject: values.subject,
     introText: values.introText,
@@ -118,6 +129,7 @@ function valuesOf(values: {
       values.paymentTermDays === null || values.paymentTermDays === undefined
         ? ''
         : String(values.paymentTermDays),
+    bankAccount: values.bankAccount ?? '',
   };
 }
 
@@ -340,6 +352,9 @@ export function OfferDraftEditor({
   const showsDates = showsInvoiceDates(kind),
     serviceDay = values?.serviceDate.trim() ?? '',
     paymentTerm = values?.paymentTermDays.trim() ?? '',
+    // RG-07b: the account is printed word for word, so the editor keeps the
+    // typed text (the server trims and bounds it once, on save).
+    bankAccountText = values?.bankAccount ?? '',
     validServiceDay =
       !showsDates || !serviceDay || /^\d{4}-\d{2}-\d{2}$/.test(serviceDay),
     validPaymentTerm =
@@ -374,12 +389,18 @@ export function OfferDraftEditor({
         const loaded: unknown = await reply.json();
         if (!isDetail(loaded) || loaded.id !== documentId)
           throw new Error('detail');
-        let next = hasSavedContent(loaded)
+        // RG-07b: the stored invoice fields travel into the form as well - a
+        // reload shows what is saved instead of an empty field whose next save
+        // would clear a value nobody wanted to touch.
+        let next: DraftContentValues | null = hasSavedContent(loaded)
           ? {
               subject: loaded.subject,
               introText: loaded.introText,
               outroText: loaded.outroText,
               validityDays: loaded.validityDays,
+              serviceDate: loaded.serviceDate ?? null,
+              paymentTermDays: loaded.paymentTermDays ?? null,
+              bankAccount: loaded.bankAccount ?? null,
             }
           : null;
         let fromLegacy = false;
@@ -426,6 +447,7 @@ export function OfferDraftEditor({
           serviceDate: loaded.serviceDate ?? null,
           paymentTermDays: loaded.paymentTermDays ?? null,
           dueDate: loaded.dueDate ?? null,
+          bankAccount: loaded.bankAccount ?? null,
         });
         setMessage(fromLegacy ? '' : 'Entwurf geladen.');
         if (focusEditor) setFocusInitialEditor(true);
@@ -674,6 +696,9 @@ export function OfferDraftEditor({
                 serviceDate: serviceDay || null,
                 paymentTermDays:
                   paymentTerm === '' ? null : Number(paymentTerm),
+                // RG-07b: a blank field clears the account, an omitted one keeps
+                // it - the editor always names the field it shows.
+                bankAccount: bankAccountText.trim() ? bankAccountText : null,
               }
             : {}),
           lines: submittedLines,
@@ -727,6 +752,7 @@ export function OfferDraftEditor({
         serviceDate: saved.serviceDate ?? null,
         paymentTermDays: saved.paymentTermDays ?? null,
         dueDate: saved.dueDate ?? null,
+        bankAccount: saved.bankAccount ?? null,
       });
       setMessage('Änderungen gespeichert.');
     } catch {
@@ -857,6 +883,24 @@ export function OfferDraftEditor({
                     Das Fälligkeitsdatum wird beim Finalisieren aus
                     Rechnungsdatum und Zahlungsziel berechnet und danach nicht
                     mehr geändert. 0 Tage bedeutet „sofort fällig“.
+                  </p>
+                  {/* RG-07b: the account is printed as typed and is not checked
+                      as a bank account - this slice can show one, not judge one. */}
+                  <label>
+                    Bankverbindung (optional)
+                    <textarea
+                      value={values?.bankAccount ?? ''}
+                      maxLength={500}
+                      rows={3}
+                      disabled={!values || loading || busy}
+                      onChange={(event) =>
+                        change('bankAccount', event.target.value)
+                      }
+                    />
+                  </label>
+                  <p className="document-hint">
+                    Die Bankverbindung wird wörtlich gedruckt, Zeilenumbrüche
+                    bleiben erhalten. Sie wird nicht als IBAN geprüft.
                   </p>
                 </>
               )}

@@ -1682,6 +1682,110 @@ test('the shared editor shows the invoice dates only for an invoice and saves th
   expect(screen.queryByLabelText(/Zahlungsziel in Tagen/)).toBeNull();
 });
 
+test('the bank account is shown multiline per kind and only where it is set', async () => {
+  const withBank = {
+      ...invoiceFinal,
+      serviceDate: '2030-10-25',
+      paymentTermDays: 14,
+      dueDate: '2030-11-10',
+      bankAccount: 'Fiktive Bank\nIBAN DE00 0000 0000\nBIC TESTDEFFXXX',
+    },
+    plainInvoice = { ...invoiceFinal, id: 'doc-re-3', number: 'RE-2030-0003' },
+    // Even if a payload named an account on an offer, the row is no invoice and
+    // prints none: the family decides, not the value.
+    offerWithBank = { ...finalized, bankAccount: 'Fiktive Bank' };
+  setup({ documents: [withBank, plainInvoice, offerWithBank] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const rows = within(invoices).getAllByRole('listitem');
+  const bank = rows[0]!.querySelector('.document-invoice-bank')!;
+  // The text is printed word for word, and every typed break is a real break.
+  expect(bank.textContent).toBe(
+    'Bankverbindung Fiktive BankIBAN DE00 0000 0000BIC TESTDEFFXXX',
+  );
+  expect(bank.querySelectorAll('br')).toHaveLength(2);
+  // It stands under the two date lines of the same row.
+  expect(rows[0]!.textContent!.indexOf('Bankverbindung')).toBeGreaterThan(
+    rows[0]!.textContent!.indexOf('Leistungsdatum'),
+  );
+  // An invoice without an account shows no empty placeholder.
+  expect(rows[1]!.querySelector('.document-invoice-bank')).toBeNull();
+  expect(rows[1]!.textContent).not.toContain('Bankverbindung');
+  // An offer owns none of them.
+  const offerRow = screen.getByText('AN-2030-0001').closest('li')!;
+  expect(
+    within(offerRow as HTMLElement).queryByText(/Bankverbindung/),
+  ).toBeNull();
+});
+
+// RG-07b: the shared editor offers the account field only for an invoice family
+// draft, keeps its line breaks and shows the saved value again after a reload.
+test('the shared editor shows the bank account field only for an invoice and saves it', async () => {
+  const { calls } = setup({ documents: [invoiceDraft, draft] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const invoiceRow = within(invoices).getByRole('listitem');
+  fireEvent.click(
+    await within(invoiceRow).findByRole('button', {
+      name: 'Rechnung Entwurf bearbeiten',
+    }),
+  );
+  const bank = await within(invoiceRow).findByLabelText(/Bankverbindung/);
+  fireEvent.change(bank, {
+    target: { value: 'Fiktive Bank\nIBAN DE00 0000 0000' },
+  });
+  fireEvent.click(
+    within(invoiceRow).getByRole('button', { name: 'Änderungen speichern' }),
+  );
+  await waitFor(() =>
+    expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+      bankAccount: 'Fiktive Bank\nIBAN DE00 0000 0000',
+    }),
+  );
+  // The row shows the saved account without another list request.
+  await waitFor(() =>
+    expect(
+      invoiceRow.querySelector('.document-invoice-bank')?.textContent,
+    ).toBe('Bankverbindung Fiktive BankIBAN DE00 0000 0000'),
+  );
+  // Closing and reopening loads the stored value into the field again - a save
+  // that never touched it may not clear it.
+  fireEvent.click(
+    await within(invoiceRow).findByRole('button', {
+      name: 'Bearbeitung schließen',
+    }),
+  );
+  fireEvent.click(
+    within(invoiceRow).getByRole('button', {
+      name: 'Rechnung Entwurf bearbeiten',
+    }),
+  );
+  expect(
+    (
+      (await within(invoiceRow).findByLabelText(
+        /Bankverbindung/,
+      )) as HTMLTextAreaElement
+    ).value,
+  ).toBe('Fiktive Bank\nIBAN DE00 0000 0000');
+  fireEvent.click(
+    within(invoiceRow).getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  // The same editor on the offer shows no account field - the server would
+  // refuse one.
+  const offerRow = screen
+    .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
+    .closest('li')!;
+  fireEvent.click(
+    within(offerRow as HTMLElement).getByRole('button', {
+      name: 'Angebot Entwurf bearbeiten',
+    }),
+  );
+  expect(
+    await screen.findByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText(/Bankverbindung/)).toBeNull();
+});
+
 // BKP019.c3.1: the advance payment is a second explicit step on the same
 // finalized confirmation. It never appears as a side effect of invoicing, and it
 // never borrows the invoice wording.

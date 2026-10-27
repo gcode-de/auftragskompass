@@ -1381,6 +1381,11 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeVisible();
     await invoiceEditor.getByLabel(/Leistungsdatum/).fill('2020-02-29');
     await invoiceEditor.getByLabel(/Zahlungsziel in Tagen/).fill('14');
+    // RG-07b: the account is free text and printed word for word, so this run
+    // types two lines and expects both on the paper and on screen.
+    await invoiceEditor
+      .getByLabel(/Bankverbindung/)
+      .fill('Fiktive Bank\nIBAN DE00 0000 0000 0000 0000 00');
     await invoiceEditor
       .getByRole('button', { name: 'Änderungen speichern' })
       .click();
@@ -1392,6 +1397,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(draftDates).toContainText('Leistungsdatum 29.02.2020');
     await expect(draftDates).toContainText('Zahlungsziel 14 Tage');
     await expect(draftDates).not.toContainText('fällig');
+    // The account is already on the row, with its line break kept.
+    const draftBank = invoices.locator('.document-invoice-bank');
+    await expect(draftBank).toContainText('Fiktive Bank');
+    await expect(draftBank).toContainText('IBAN DE00 0000 0000 0000 0000 00');
     await invoiceEditor
       .getByRole('button', { name: 'Bearbeitung schließen' })
       .click();
@@ -1428,15 +1437,22 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         service_date: string;
         payment_term_days: number;
         due_date: string;
+        bank_account: string;
       }>(
         `SELECT issued_at, to_char(service_date,'YYYY-MM-DD') AS service_date,
-                payment_term_days, to_char(due_date,'YYYY-MM-DD') AS due_date
+                payment_term_days, to_char(due_date,'YYYY-MM-DD') AS due_date,
+                bank_account
            FROM documents WHERE tenant_id=$1 AND id=$2`,
         [config.tenantId, invoice.id],
       )
     ).rows[0]!;
     expect(invoiceDates.service_date).toBe('2020-02-29');
     expect(invoiceDates.payment_term_days).toBe(14);
+    // RG-07b: the account is stored exactly as typed, line break included, and
+    // finalization neither reformats nor clears it.
+    expect(invoiceDates.bank_account).toBe(
+      'Fiktive Bank\nIBAN DE00 0000 0000 0000 0000 00',
+    );
     const dueDay = addDays(tenantDay(invoiceDates.issued_at), 14);
     expect(invoiceDates.due_date).toBe(dueDay);
     // The printed paper of this very run carries both lines, with the term and
@@ -1445,6 +1461,14 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     expect(invoiceHtml).toContain('Leistungsdatum 29.02.2020');
     expect(invoiceHtml).toContain(
       'Zahlungsziel: 14 Tage, fällig ' + germanDay(dueDay),
+    );
+    // RG-07b: the printed account keeps its line break as a real break - and it
+    // stands under the due line it follows.
+    expect(invoiceHtml).toContain(
+      'Bankverbindung: Fiktive Bank<br>IBAN DE00 0000 0000 0000 0000 00',
+    );
+    expect(invoiceHtml.indexOf('Zahlungsziel:')).toBeLessThan(
+      invoiceHtml.indexOf('Bankverbindung:'),
     );
     const finalDates = invoices.locator('.document-invoice-dates');
     await expect(finalDates).toContainText('Leistungsdatum 29.02.2020');
@@ -1475,6 +1499,8 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     for (const html of confirmationHtml) {
       expect(html).not.toContain('Leistungsdatum');
       expect(html).not.toContain('Zahlungsziel');
+      // RG-07b: and no account line either - a confirmation prints none.
+      expect(html).not.toContain('Bankverbindung');
     }
     await audit('event-auftragsbestaetigung');
     // BKP019.c2: the finalized invoice becomes a credit note of its own. The

@@ -17,6 +17,7 @@ import {
   documentRepository,
   registerDocumentRoutes,
   type DocumentDraftContent,
+  type DocumentOfferRow,
 } from '../../packages/core/src/documents.js';
 import {
   StorageError,
@@ -768,4 +769,478 @@ test('the opt-in projection carries the three invoice keys', async () => {
   // The metadata projection stays exactly as narrow as it was.
   const metadata = await s.repo.list({ include: 'metadata' });
   expect(Object.keys(metadata[0]!).sort()).not.toContain('dueDate');
+});
+
+// RG-07b: the account an invoice prints. Free text, frozen at finalization,
+// printed under the due line. No IBAN check, no placeholder, no bank logic.
+async function storedBank(scope: string, id: string) {
+  return (
+    await pool.query<{ bank_account: string | null }>(
+      'SELECT bank_account FROM documents WHERE tenant_id=$1 AND id=$2',
+      [scope, id],
+    )
+  ).rows[0]!;
+}
+
+const fictionalAccount =
+  'Fiktive Bank\nIBAN DE00 0000 0000 0000 0000 00\nBIC TESTDEFFXXX';
+
+test('an invoice draft keeps a multiline bank account and prints it once finalized', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s);
+  // Nothing is invented for a document nobody typed an account on.
+  expect((await storedBank(s.scope, chain.invoice.id)).bank_account).toBeNull();
+
+  const saved = await s.repo.updateDraftContent(
+    s.actor,
+    chain.invoice.id,
+    draftContent(chain.invoice.version, {
+      serviceDate: '2030-10-25',
+      paymentTermDays: 14,
+      bankAccount: fictionalAccount,
+    }),
+  );
+  expect(saved.bankAccount).toBe(fictionalAccount);
+  expect((await storedBank(s.scope, chain.invoice.id)).bank_account).toBe(
+    fictionalAccount,
+  );
+  // The preview prints what the finalization would print: the text word for
+  // word, every line break as a `<br>`, right under the due line.
+  await s.repo.preview(chain.invoice.id);
+  const previewHtml = s.rendered.at(-1)!;
+  expect(previewHtml).toContain(
+    'Bankverbindung: Fiktive Bank<br>IBAN DE00 0000 0000 0000 0000 00<br>BIC TESTDEFFXXX',
+  );
+  expect(previewHtml.indexOf('Zahlungsziel')).toBeLessThan(
+    previewHtml.indexOf('Bankverbindung'),
+  );
+
+  const finalized = await s.repo.finalize(s.actor, chain.invoice.id);
+  expect(finalized.state).toBe('final');
+  // The stored text is the printed text: finalization neither reformats nor
+  // clears it, and there is no freeze column to drift from it.
+  expect((await storedBank(s.scope, chain.invoice.id)).bank_account).toBe(
+    fictionalAccount,
+  );
+  expect((await s.repo.get(chain.invoice.id))!.bankAccount).toBe(
+    fictionalAccount,
+  );
+  const printed = s.rendered.at(-1)!;
+  expect(printed).toContain(
+    'Bankverbindung: Fiktive Bank<br>IBAN DE00 0000 0000 0000 0000 00<br>BIC TESTDEFFXXX',
+  );
+  expect(printed).toContain('Zahlungsziel: 14 Tage');
+});
+
+test('the bank account can be changed and cleared while the document is a draft', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s),
+    saved = await s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(chain.invoice.version, { bankAccount: 'Fiktive Bank' }),
+    );
+  expect(saved.version).toBe(2);
+  const changed = await s.repo.updateDraftContent(
+    s.actor,
+    chain.invoice.id,
+    draftContent(saved.version, { bankAccount: 'Andere Bank\nIBAN DE11 1' }),
+  );
+  expect(changed.bankAccount).toBe('Andere Bank\nIBAN DE11 1');
+  expect(changed.version).toBe(3);
+  // `null` is how an operator clears it, and a blank text means the same.
+  for (const cleared of [null, '', '   ', '\n\n']) {
+    const current = await s.repo.get(chain.invoice.id);
+    const emptied = await s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(current!.version, {
+        bankAccount: cleared as string | null,
+      }),
+    );
+    expect(emptied.bankAccount, String(cleared)).toBeNull();
+    expect(
+      (await storedBank(s.scope, chain.invoice.id)).bank_account,
+      String(cleared),
+    ).toBeNull();
+  }
+  // A document without an account prints no line at all.
+  await s.repo.finalize(s.actor, chain.invoice.id);
+  expect(s.rendered.at(-1)).not.toContain('Bankverbindung');
+});
+
+test('a bank account is refused on an offer and accepted on an advance and a correction', async () => {
+  const s = await scenario(),
+    offer = await s.repo.createDraft(s.actor, {
+      templateId: s.templateId,
+      eventId: s.eventId,
+      contactId: s.contactId,
+    });
+  // An offer has no account to print, so the field is refused, never dropped -
+  // and the refusal leaves the draft exactly as it was.
+  await expect(
+    s.repo.updateDraftContent(
+      s.actor,
+      offer.id,
+      draftContent(offer.version, { bankAccount: 'Fiktive Bank' }),
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_content' });
+  expect((await s.repo.get(offer.id))!.bankAccount).toBeNull();
+  expect((await s.repo.get(offer.id))!.version).toBe(1);
+  // The database repeats the rule, so no other write path can invent it.
+  expect(
+    await sqlState(
+      'UPDATE documents SET bank_account=$3 WHERE tenant_id=$1 AND id=$2',
+      [s.scope, offer.id, 'Fiktive Bank'],
+    ),
+  ).toBe('23514');
+
+  const chain = await invoiceDraft(s),
+    deposit = await s.repo.createDepositInvoice(
+      s.actor,
+      chain.confirmation.id,
+      chain.confirmation.version,
+    ),
+    depositSaved = await s.repo.updateDraftContent(
+      s.actor,
+      deposit.id,
+      draftContent(deposit.version, { bankAccount: fictionalAccount }),
+    );
+  expect(depositSaved).toMatchObject({
+    kind: 'deposit_invoice',
+    bankAccount: fictionalAccount,
+  });
+
+  const invoiceFinal = await s.repo.finalize(s.actor, chain.invoice.id),
+    correction = await s.repo.createCorrection(
+      s.actor,
+      invoiceFinal.id,
+      invoiceFinal.version,
+      'credit',
+    ),
+    correctionSaved = await s.repo.updateDraftContent(
+      s.actor,
+      correction.id,
+      draftContent(correction.version, { bankAccount: fictionalAccount }),
+    );
+  expect(correctionSaved).toMatchObject({
+    kind: 'correction',
+    bankAccount: fictionalAccount,
+  });
+});
+
+test('the bank account is bounded by 500 characters', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s);
+  // The upper bound itself is legal, umlauts and the euro sign included: the
+  // domain and PostgreSQL both count characters, not bytes.
+  const longest = ('ä'.repeat(250) + '€'.repeat(250)).slice(0, 500),
+    saved = await s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(chain.invoice.version, { bankAccount: longest }),
+    );
+  expect(saved.bankAccount).toBe(longest);
+  expect(saved.bankAccount!.length).toBe(500);
+  // One character more is a typing mistake, and the draft keeps what it had.
+  await expect(
+    s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(saved.version, { bankAccount: 'a'.repeat(501) }),
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_content' });
+  expect((await s.repo.get(chain.invoice.id))!.bankAccount).toBe(longest);
+  // The database refuses the same value for every other write path.
+  expect(
+    await sqlState(
+      'UPDATE documents SET bank_account=$3 WHERE tenant_id=$1 AND id=$2',
+      [s.scope, chain.invoice.id, 'a'.repeat(501)],
+    ),
+  ).toBe('23514');
+});
+
+test('a bank account is a trimmed, control-free text with real line breaks', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s);
+  const trimmed = await s.repo.updateDraftContent(
+    s.actor,
+    chain.invoice.id,
+    draftContent(chain.invoice.version, {
+      bankAccount: '  Fiktive Bank \n IBAN DE00  ',
+    }),
+  );
+  expect(trimmed.bankAccount).toBe('Fiktive Bank \n IBAN DE00');
+  // A pasted Windows block keeps its two lines instead of its dialect.
+  const pasted = await s.repo.updateDraftContent(
+    s.actor,
+    chain.invoice.id,
+    draftContent(trimmed.version, { bankAccount: 'Zeile1\r\nZeile2' }),
+  );
+  expect(pasted.bankAccount).toBe('Zeile1\nZeile2');
+  // Every other control character is refused, the line break is not.
+  for (const refused of ['a\tb', 'a\u0001b', 'a\u007fb', 'a\u009fb']) {
+    await expect(
+      s.repo.updateDraftContent(
+        s.actor,
+        chain.invoice.id,
+        draftContent(pasted.version, { bankAccount: refused }),
+      ),
+      JSON.stringify(refused),
+    ).rejects.toMatchObject({ reason: 'invalid_content' });
+  }
+  expect((await s.repo.get(chain.invoice.id))!.bankAccount).toBe(
+    'Zeile1\nZeile2',
+  );
+});
+
+test('only the invoice family may carry a bank account in the database', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s);
+  // Bounded, trimmed and control-free are database rules too, not only domain
+  // rules: a blank or untrimmed text and a smuggled tab are refused.
+  for (const refused of ['', '   ', ' Fiktive Bank ', 'a\tb', 'a\u0001b']) {
+    expect(
+      await sqlState(
+        'UPDATE documents SET bank_account=$3 WHERE tenant_id=$1 AND id=$2',
+        [s.scope, chain.invoice.id, refused],
+      ),
+      JSON.stringify(refused),
+    ).toBe('23514');
+  }
+  // The line break is the one control character a printed block may carry.
+  expect(
+    await sqlState(
+      'UPDATE documents SET bank_account=$3 WHERE tenant_id=$1 AND id=$2',
+      [s.scope, chain.invoice.id, 'Zeile1\nZeile2'],
+    ),
+  ).toBe('accepted');
+  expect((await storedBank(s.scope, chain.invoice.id)).bank_account).toBe(
+    'Zeile1\nZeile2',
+  );
+});
+
+test('a finalized invoice keeps its bank account and refuses every later write', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s),
+    saved = await s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(chain.invoice.version, { bankAccount: fictionalAccount }),
+    ),
+    finalized = await s.repo.finalize(s.actor, chain.invoice.id);
+  expect(finalized.bankAccount).toBe(fictionalAccount);
+  // Frozen means frozen: the draft path is the only write path, and it is
+  // closed after the document is final.
+  await expect(
+    s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(finalized.version, { bankAccount: 'Andere Bank' }),
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  await expect(
+    s.repo.finalize(s.actor, chain.invoice.id),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  expect((await storedBank(s.scope, chain.invoice.id)).bank_account).toBe(
+    fictionalAccount,
+  );
+  expect(saved.version).toBe(2);
+});
+
+test('documents without a bank account keep their exact bytes', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s),
+    finalized = await s.repo.finalize(s.actor, chain.invoice.id);
+  // The three gold hashes of the dates slice: a document without an account
+  // prints no account line, so not one byte of it moves.
+  expect(chain.offer.snapshotHash).toBe(
+    'fb3ab8369022aa5fb048e1b9996688e5b3e9354124b45fc9b742eebdf2fff86f',
+  );
+  expect(chain.confirmation.snapshotHash).toBe(
+    'a543e89f35f9265e4854844e25e37975f332f5f52a249cb665578fa22c0ce336',
+  );
+  expect(finalized.snapshotHash).toBe(
+    '1cd17ed94accdb0a53af00cd148acea98c670576ddcf3656a6c0372ecef72d58',
+  );
+  for (const html of s.rendered) expect(html).not.toContain('Bankverbindung');
+});
+
+test('another tenant neither reads nor changes the bank account', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s),
+    saved = await s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(chain.invoice.version, { bankAccount: fictionalAccount }),
+    ),
+    other = await scenario();
+  // A foreign id is not found, never a leak of another tenant's account.
+  expect(await other.repo.get(chain.invoice.id)).toBeNull();
+  await expect(
+    other.repo.updateDraftContent(
+      other.actor,
+      chain.invoice.id,
+      draftContent(1, { bankAccount: 'Fremde Bank' }),
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  expect((await storedBank(s.scope, chain.invoice.id)).bank_account).toBe(
+    fictionalAccount,
+  );
+  expect(saved.version).toBe(2);
+  // The foreign projection answers its own rows only - none of them carry the
+  // account this tenant typed.
+  const foreign = (await other.repo.list({
+    include: 'offer',
+  })) as DocumentOfferRow[];
+  expect(foreign.map((row) => row.id)).not.toContain(chain.invoice.id);
+  for (const row of foreign) expect(row.bankAccount).not.toBe(fictionalAccount);
+});
+
+test('the opt-in projection carries the bank account for every row', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s),
+    saved = await s.repo.updateDraftContent(
+      s.actor,
+      chain.invoice.id,
+      draftContent(chain.invoice.version, { bankAccount: fictionalAccount }),
+    );
+  expect(saved.bankAccount).toBe(fictionalAccount);
+  const rows = (await s.repo.list({
+      include: 'offer',
+    })) as DocumentOfferRow[],
+    invoiceRow = rows.find((row) => row.id === chain.invoice.id)!,
+    offerRow = rows.find((row) => row.id === chain.offer.id)!,
+    confirmationRow = rows.find((row) => row.id === chain.confirmation.id)!;
+  expect(invoiceRow.bankAccount).toBe(fictionalAccount);
+  // Outside the invoice family the key is present and empty: no reader has to
+  // guess a shape.
+  expect(offerRow.bankAccount).toBeNull();
+  expect(confirmationRow.bankAccount).toBeNull();
+  // The metadata projection stays exactly as narrow as it was.
+  const metadata = await s.repo.list({ include: 'metadata' });
+  expect(Object.keys(metadata[0]!).sort()).not.toContain('bankAccount');
+});
+
+test('the HTTP draft route accepts the bank account and answers it on read', async () => {
+  const s = await scenario(),
+    chain = await invoiceDraft(s),
+    config = {
+      origin: site,
+      tenantId: s.scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, s.scope, {
+    origin: site,
+    store: memoryStore(),
+    now: () => s.at,
+    render: async (html: string) => {
+      s.rendered.push(html);
+      return Buffer.from('%PDF-1.4 synthetic ' + html.length);
+    },
+  });
+  const cookies = { '__Host-ak-session': 'dates-' + s.scope },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:dates-' + s.scope),
+    };
+  try {
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + chain.invoice.id + '/draft',
+      cookies,
+      headers,
+      payload: draftContent(chain.invoice.version, {
+        bankAccount: fictionalAccount,
+      }),
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ bankAccount: fictionalAccount });
+    const read = await app.inject({
+      method: 'GET',
+      url: '/api/v1/documents/' + chain.invoice.id,
+      cookies,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).toMatchObject({ bankAccount: fictionalAccount });
+    // A body without the field leaves it untouched: an older client must not
+    // wipe an account it never knew about.
+    const untouched = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + chain.invoice.id + '/draft',
+      cookies,
+      headers,
+      payload: draftContent(saved.json().version),
+    });
+    expect(untouched.statusCode).toBe(200);
+    expect(untouched.json()).toMatchObject({ bankAccount: fictionalAccount });
+    // The bound is the route's own contract, so an oversized text is a 400
+    // before the domain is asked.
+    const tooLong = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + chain.invoice.id + '/draft',
+      cookies,
+      headers,
+      payload: draftContent(untouched.json().version, {
+        bankAccount: 'a'.repeat(501),
+      }),
+    });
+    expect(tooLong.statusCode).toBe(400);
+    // An explicit null clears it.
+    const nulled = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/documents/' + chain.invoice.id + '/draft',
+      cookies,
+      headers,
+      payload: draftContent(untouched.json().version, { bankAccount: null }),
+    });
+    expect(nulled.statusCode).toBe(200);
+    expect(nulled.json()).toMatchObject({ bankAccount: null });
+    expect(
+      (await storedBank(s.scope, chain.invoice.id)).bank_account,
+    ).toBeNull();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the account column opens no second write path for a document', async () => {
+  const s = await scenario();
+  // A correction that names an account still has to name a real source: the new
+  // column widens no invariant of the row it lives on.
+  expect(
+    await sqlState(
+      `INSERT INTO documents (tenant_id,id,kind,template_id,contact_id,issued_at,
+        source_document_id,correction_direction,bank_account)
+       VALUES ($1,$2,'correction',$3,$4,$5,$6,'credit','Fiktive Bank')`,
+      [
+        s.scope,
+        randomUUID(),
+        s.templateId,
+        s.contactId,
+        issueDay,
+        randomUUID(),
+      ],
+    ),
+  ).toBe('23503');
 });
