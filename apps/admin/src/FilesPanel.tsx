@@ -83,6 +83,7 @@ const dfKeys = [
   'df_due_to',
   'df_overdue',
   'df_payment',
+  'df_q',
   'df_page',
 ];
 const uuidPattern =
@@ -133,6 +134,7 @@ type FileRow = {
   overdue: boolean | null;
 };
 type FileFilters = {
+  q: string;
   kind: string;
   state: string;
   from: string;
@@ -143,6 +145,7 @@ type FileFilters = {
   payment: string;
 };
 const emptyFilters: FileFilters = {
+  q: '',
   kind: '',
   state: '',
   from: '',
@@ -155,6 +158,7 @@ const emptyFilters: FileFilters = {
 // The one field-to-deep-link map: the column and the sheet write the same keys,
 // so no control can invent a name the reader does not know.
 const filterKeys: Record<keyof FileFilters, string> = {
+  q: 'df_q',
   kind: 'df_kind',
   state: 'df_state',
   from: 'df_from',
@@ -170,8 +174,10 @@ const filterKeys: Record<keyof FileFilters, string> = {
 function readFilters(search: string): FileFilters {
   const source = new URLSearchParams(search),
     payment = source.get('df_payment') ?? '',
-    overdue = source.get('df_overdue') ?? '';
+    overdue = source.get('df_overdue') ?? '',
+    q = source.get('df_q') ?? '';
   return {
+    q: q.length <= 100 && q.trim() ? q : '',
     kind: source.get('df_kind') ?? '',
     state: source.get('df_state') ?? '',
     from: validDay(source.get('df_from')),
@@ -198,6 +204,7 @@ function hasDueFilters(filters: FileFilters): boolean {
 // API documents them. An unset filter adds no parameter at all.
 function filterExtras(filters: FileFilters): string {
   const params = new URLSearchParams();
+  if (filters.q.trim()) params.set('q', filters.q.trim());
   if (filters.dueFrom) params.set('due_from', filters.dueFrom);
   if (filters.dueTo) params.set('due_to', filters.dueTo);
   if (filters.overdue) params.set('overdue', filters.overdue);
@@ -392,6 +399,7 @@ export function FilesPanel({
       df_due_to: '',
       df_overdue: '',
       df_payment: '',
+      df_q: '',
       df_page: '',
     });
   }
@@ -425,14 +433,17 @@ export function FilesPanel({
       values = (drafting && draft) || filters;
     function chooseOne(field: keyof FileFilters, value: string) {
       if (drafting) setDraft({ ...values, [field]: value });
-      else apply({ [filterKeys[field]]: value });
+      else {
+        // Keep controlled inputs in step with keystrokes. The URL listener
+        // also updates filters, but that effect runs after React paints.
+        setFilters({ ...filters, [field]: value });
+        apply({ [filterKeys[field]]: value });
+      }
     }
     return (
       <form
         className="files-filter-form"
-        // The column re-initialises from the applied URL after every write; the
-        // sheet must not remount while its draft is being edited.
-        key={mobile ? 'files-filter-draft' : search}
+        key={mobile ? 'files-filter-draft' : 'files-filter-applied'}
         onSubmit={(event) => {
           event.preventDefault();
           // BKP007 pattern: the sheet commits its whole draft in one write, one
@@ -442,6 +453,22 @@ export function FilesPanel({
           closeFilters();
         }}
       >
+        <fieldset className="files-filter-group">
+          <label>
+            Dokumente durchsuchen
+            <input
+              type="search"
+              aria-label="Dokumente durchsuchen"
+              aria-describedby="files-search-hint"
+              maxLength={100}
+              value={values.q}
+              onChange={(event) => chooseOne('q', event.target.value)}
+            />
+          </label>
+          <small id="files-search-hint" className="muted">
+            Nummer, Kunde oder Betreff
+          </small>
+        </fieldset>
         <fieldset className="files-filter-group">
           <legend>Dokumentart</legend>
           <select

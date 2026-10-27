@@ -140,6 +140,8 @@ export type DocumentFilters = {
   eventId?: string;
   kind?: DocumentKind;
   state?: DocumentState;
+  /** Literal, case-insensitive contains search across number, subject and customer. */
+  q?: string;
   /** Inclusive tenant-local issue days, `YYYY-MM-DD`, on `issued_at`. */
   from?: string;
   to?: string;
@@ -675,6 +677,13 @@ export function assertDocumentFilters(filters: DocumentFilters): void {
     (filters.to !== undefined && !to) ||
     (filters.dueFrom !== undefined && !dueFrom) ||
     (filters.dueTo !== undefined && !dueTo)
+  )
+    throw new DocumentError('invalid_filter');
+  if (
+    filters.q !== undefined &&
+    (typeof filters.q !== 'string' ||
+      filters.q.length > 100 ||
+      !filters.q.trim())
   )
     throw new DocumentError('invalid_filter');
   if (from && to && Temporal.PlainDate.compare(from, to) > 0)
@@ -1438,7 +1447,8 @@ export function documentRepository(
     // Filters narrow the whole result in SQL: the UI never filters one page.
     async list(filters: DocumentFilters = {}) {
       assertDocumentFilters(filters);
-      const include = filters.include === 'metadata';
+      const include = filters.include === 'metadata',
+        search = filters.q?.trim();
       const columns = {
         id: documents.id,
         kind: documents.kind,
@@ -1466,6 +1476,7 @@ export function documentRepository(
       // ignore it.
       if (
         filters.include === undefined &&
+        !search &&
         filters.limit === undefined &&
         filters.offset === undefined &&
         !filters.from &&
@@ -1510,6 +1521,21 @@ export function documentRepository(
           : null;
       const narrowed = and(
         where,
+        search
+          ? sql`(
+              strpos(lower(coalesce(documents.number, '')), lower(${search})) > 0
+              OR strpos(lower(coalesce(documents.subject, '')), lower(${search})) > 0
+              OR EXISTS (
+                SELECT 1 FROM contacts
+                 WHERE contacts.tenant_id = documents.tenant_id
+                   AND contacts.id = documents.contact_id
+                   AND (
+                     strpos(lower(contacts.name), lower(${search})) > 0
+                     OR strpos(lower(contacts.contact_person), lower(${search})) > 0
+                   )
+              )
+            )`
+          : undefined,
         lower
           ? gte(documents.issuedAt, new Date(lower.epochMilliseconds))
           : undefined,
@@ -3655,6 +3681,7 @@ export function registerDocumentRoutes(
             eventId: { type: 'string', format: 'uuid' },
             kind: { type: 'string', enum: [...documentKinds] },
             state: { type: 'string', enum: ['draft', 'final', 'withdrawn'] },
+            q: { type: 'string', minLength: 1, maxLength: 100 },
             // H035: all new parameters are optional, so an old request keeps the
             // complete, unpaged array with exactly the old fields.
             from: { type: 'string', format: 'date' },

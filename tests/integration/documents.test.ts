@@ -1957,6 +1957,8 @@ async function listRows(
     finalized?: boolean;
     grossMinor?: number;
     eventId?: string | null;
+    contactId?: string | null;
+    subject?: string | null;
     templateId: string;
     // BKP019.c2: a correction row is only legal with a source and a direction.
     sourceId?: string;
@@ -1966,19 +1968,25 @@ async function listRows(
   for (const row of rows)
     await connection.query(
       `INSERT INTO documents (tenant_id,id,kind,template_id,event_id,contact_id,number,state,
-        issued_at,finalized_at,snapshot_hash,pdf_hash,net_minor,tax_minor,gross_minor,version,
+        issued_at,finalized_at,subject,intro_text,outro_text,validity_days,snapshot_hash,pdf_hash,
+        net_minor,tax_minor,gross_minor,version,
         source_document_id,correction_direction)
-       VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,$11,$12,0,$12,1,$13,$14)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,0,$17,1,$18,$19)`,
       [
         scope,
         row.id,
         row.kind ?? 'offer',
         row.templateId,
         row.eventId ?? null,
+        row.contactId ?? null,
         row.number ?? null,
         row.state ?? 'draft',
         new Date(row.issuedAt),
         row.finalized ? new Date(row.issuedAt) : null,
+        row.subject ?? null,
+        row.subject === undefined || row.subject === null ? null : '',
+        row.subject === undefined || row.subject === null ? null : '',
+        row.subject === undefined || row.subject === null ? null : 14,
         row.finalized ? 'b'.repeat(64) : null,
         // Without an explicit artefact a final row is only a skeleton; the test
         // that needs exactly that state drops the hash afterwards.
@@ -2191,6 +2199,94 @@ test('explicit limit and offset page the whole result without a plus one', async
   expect(last.map((row) => row.id)).toEqual([ids[0]]);
   expect(beyond).toEqual([]);
   expect((await repo.list({ limit: 100 })).length).toBe(7);
+});
+
+test('document search matches number, subject and tenant customer fields literally before paging', async () => {
+  const scope = randomUUID(),
+    contact = randomUUID(),
+    ids = [randomUUID(), randomUUID(), randomUUID()];
+  await bootstrapAccess(
+    pool,
+    scope,
+    'files-search@example.invalid',
+    'Synthetic files search',
+    'Europe/Berlin',
+  );
+  const template = (await seedIssuingContext(scope)).templateId;
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'company','Example Holdings','Casey Guest','Example Street 2','12345',
+      'Fictional Town','DE','search@example.invalid','','','','','active',1)`,
+    [scope, contact],
+  );
+  const foreignScope = randomUUID();
+  await bootstrapAccess(
+    pool,
+    foreignScope,
+    'files-search-foreign@example.invalid',
+    'Synthetic foreign search',
+    'Europe/Berlin',
+  );
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'company','Foreign Secret Customer','Foreign Secret Person','Other Street 4','54321',
+      'Other Town','DE','foreign-search@example.invalid','','','','','active',1)`,
+    [foreignScope, contact],
+  );
+  await listRows(pool, scope, [
+    {
+      id: ids[0]!,
+      templateId: template,
+      issuedAt: '2031-04-01T09:00:00Z',
+      contactId: contact,
+      number: 'RE-2031-ABC',
+      state: 'final',
+      finalized: true,
+      subject: 'Invoice contains 50%_ special',
+    },
+    {
+      id: ids[1]!,
+      templateId: template,
+      issuedAt: '2031-04-02T09:00:00Z',
+      contactId: contact,
+      subject: 'A later customer document',
+    },
+    {
+      id: ids[2]!,
+      templateId: template,
+      issuedAt: '2031-04-03T09:00:00Z',
+      subject: 'Newest unrelated document',
+    },
+  ]);
+  const repo = documentRepository(pool, scope, dependencies().deps),
+    rowsFor = (q: string, limit?: number, offset?: number) =>
+      repo.list({
+        q,
+        ...(limit !== undefined ? { limit } : {}),
+        ...(offset !== undefined ? { offset } : {}),
+      });
+  expect((await rowsFor('re-2031-abc')).map((row) => row.id)).toEqual([ids[0]]);
+  expect((await rowsFor('50%_')).map((row) => row.id)).toEqual([ids[0]]);
+  expect((await rowsFor('EXAMPLE HOLDINGS')).map((row) => row.id)).toEqual([
+    ids[1],
+    ids[0],
+  ]);
+  expect((await rowsFor('casey guest')).map((row) => row.id)).toEqual([
+    ids[1],
+    ids[0],
+  ]);
+  expect((await rowsFor('foreign secret')).map((row) => row.id)).toEqual([]);
+  expect(
+    (await rowsFor('example holdings', 1, 1)).map((row) => row.id),
+  ).toEqual([ids[0]]);
+  await expect(rowsFor('   ')).rejects.toMatchObject({
+    reason: 'invalid_filter',
+  });
+  await expect(rowsFor('x'.repeat(101))).rejects.toMatchObject({
+    reason: 'invalid_filter',
+  });
 });
 
 test('the metadata projection adds event name, local date and PDF eligibility only when asked', async () => {
@@ -2407,6 +2503,7 @@ test('the list API validates every new filter and keeps auth, tenant and PDF rou
       templateId: template,
       issuedAt: '2031-06-10T10:00:00Z',
       grossMinor: 0,
+      subject: 'Needle document',
     },
   ]);
   const config = {
@@ -2477,6 +2574,8 @@ test('the list API validates every new filter and keeps auth, tenant and PDF rou
       'kind=unknown',
       'state=sent',
       'eventId=not-a-uuid',
+      'q=%20%20',
+      'q=' + 'x'.repeat(101),
     ]) {
       const rejected = await app.inject({
         url: '/api/v1/documents?' + query,
@@ -2490,6 +2589,12 @@ test('the list API validates every new filter and keeps auth, tenant and PDF rou
     });
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json().map((row: { id: string }) => row.id)).toEqual([own]);
+    const searched = await app.inject({
+      url: '/api/v1/documents?include=metadata&q=NEEDLE',
+      cookies,
+    });
+    expect(searched.statusCode).toBe(200);
+    expect(searched.json().map((row: { id: string }) => row.id)).toEqual([own]);
     // A foreign PDF id stays a 404 for this tenant, unchanged by the new list.
     expect(
       (

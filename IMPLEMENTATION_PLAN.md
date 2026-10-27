@@ -11,10 +11,26 @@
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
 Aufgaben/Workflows, Auswertungen und Exporte sind ausdrücklich ausgeschlossen.
+Direkte Feldbearbeitung speichert gemäß Betreiberentscheidung beim Verlassen des
+Feldes; Escape verwirft ausschließlich noch ungesendete Änderungen des aktiven
+Feldes, niemals eine bereits bestätigte oder laufende Servermutation.
 Lieferfolge: UI-01.1 (CI der Dokumentansicht), DOC-SEARCH-01 (Dokumentsuche),
 BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
+
+- [x] **DOC-SEARCH-01 — `feat: search documents by number, customer and subject`**:
+  mandantengesicherte wortwörtliche Suche nach Belegnummer, Betreff und
+  Kontaktname/Ansprechpartner vor Pagination; begrenztes `q`, eigenes `df_q`
+  für Desktop/Filterdialog mit History und Seitenreset. Fremde Daten bleiben
+  unsichtbar, Prozent-/Unterstrich sind keine Wildcards. Kein Export.
+  Abnahme: API-/DB-Negativfälle, Komponenten- und Chromium-Filterablauf.
+  RED vor Umsetzung beobachtet; danach Node 24: Format/Lint/Typprüfung/Build,
+  274 Unit-, 761 Komponenten-, 153 Dokument-Integrationstests sowie 20 Workspace-
+  und 3 Docs-Tests grün. Chromium prüft echte Mehrworteingabe samt erhaltenem
+  Fokus, eigenem URL-Zustand, Seitenreset und Browser-Zurück. Unabhängiger
+  SQL-/UI-Review; dabei gefundener Formular-Remount behoben. Screenshot geprüft.
+  CI/Images und tatsächlicher Rollout werden getrennt verifiziert.
 
 - [x] **UI-01.1 — `test: isolate document layout audits from login journeys`**:
   die hinzugefügten Dokumentfilter-Browserprüfungen als eigenständig budgetierten

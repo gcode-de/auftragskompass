@@ -1,6 +1,32 @@
 # Projektübergabe AuftragsKompass
 
-Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+Stand der Fortsetzung: **27.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+
+## H074: Bedienauftrag und Dokumentsuche, 27.10.2026
+
+Der Betreiber schließt Aufgaben/Workflows, Auswertungen und Exporte aus diesem
+Auftrag aus. Andere Quick wins, kontextuelle Event-/Kontaktbearbeitung und die
+Anlage von Angeboten/Rechnungen mit freien oder Produktpositionen, mit/ohne
+Vorlage, sind beauftragt. Feldbearbeitung soll **beim Verlassen speichern**;
+Escape verwirft die noch ungesendete Eingabe des aktiven Felds und unterdrückt
+deren Blur-Speicherung. Bereits laufende Servermutationen werden nicht als
+abgebrochen dargestellt. Schwächere Subagents (6.1 Terra / 6 Luna) sind erlaubt.
+Die nummerierte, sequenzielle Lieferfolge steht oben im Implementierungsplan.
+
+DOC-SEARCH-01 ergänzt `q` (maximal 100 Zeichen, nicht leer nach Trimmen) für
+Belegnummer, Betreff, Kundenname/Ansprechpartner. Gebundene SQL-Parameter,
+wortwörtliche Prozent-/Unterstrichsuche, Kontakt- und Dokumentmandant identisch;
+Filterung vor Pagination. Die UI nutzt ausschließlich `df_q`, erhält den
+Tastaturfokus und setzt die Seite zurück. Mobile Filter bleiben bis Übernahme
+ein Entwurf. API-Vertrag: [Geschäftsdokumente](documents.md).
+
+Abnahme: 274 Unit-, 761 Komponenten-, 153 Dokument-Integrationstests; gezielter
+Chromium-Lauf mit tatsächlicher Mehrworteingabe, Fokus und Back-Synchronisierung;
+Format/Lint/Typprüfung/Build sowie Workspace/Docs grün (Node 24). Unabhängiger
+Review fand einen Formular-Remount pro Zeichen, der vor Commit behoben wurde.
+Keine neue Migration. CI/Images stehen bei diesem Eintrag noch aus. Der zuletzt
+lesend verifizierte Betrieb nutzt API/Worker/Admin `9ba428e`, Gateway `2527d01`,
+alle vier healthy. Keine Fertigmeldung für eine unbestätigte Auslieferung.
 
 ## H073: RG-08 – „Überfällig“ abgeleitet, 26.10.2026
 

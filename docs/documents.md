@@ -17,6 +17,13 @@ vorab als PDF ansehen; finale PDFs können heruntergeladen werden.
 
 Die Übersicht `GET /api/v1/documents` liefert die Kopfdaten ohne Positionen und
 Hashes, neueste zuerst, und lässt sich nach Event, Art und Zustand filtern.
+Der optionale Filter `q` durchsucht Belegnummer, Betreff und den zugeordneten
+Kunden (Name oder Ansprechpartner) ohne Unterscheidung von Groß-/Kleinschreibung.
+Er akzeptiert bis zu 100 Zeichen und muss nach dem Trimmen Inhalt enthalten.
+Prozentzeichen und Unterstriche werden wörtlich gesucht. Die Suche bleibt auf
+den angemeldeten Mandanten beschränkt und wird vor `limit`/`offset` angewandt.
+Die Dateienansicht speichert diese Suche in `df_q`, getrennt von der globalen
+Suche, und setzt bei einer Änderung die Dokumentseite zurück.
 Ein `POST /api/v1/documents` kopiert ohne eigene `lines` die Positionen der
 Vorlage. Die Dokumentart stammt immer aus der Vorlage, damit Art und Vorlage
 nicht auseinanderlaufen. Summen werden aus den Bruttopreisen in Cent berechnet
@@ -196,7 +203,7 @@ Containerbenutzer gehörend an, damit ein frisches Volume nicht root gehört.
 | `PUT /api/v1/documents/:id/draft` | `200` aktualisierter Angebotsentwurf | `400` Inhalt/Version, `404`, `409` Konflikt oder falscher Zustand |
 | `GET /api/v1/documents/:id/preview` | `200` Vorschau-PDF, `no-store` | `400` fehlender Inhalt, `404`, `409` falscher Zustand, `500` Renderfehler |
 | `POST /api/v1/documents/:id/finalize` | `200` finales Dokument | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler |
-| `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`, optional `from`/`to`, `limit`, `offset`, `include=metadata`) | `400` ungültiger Filter |
+| `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`, optional `q`, `from`/`to`, `limit`, `offset`, `include=metadata`) | `400` ungültiger Filter |
 | `GET /api/v1/documents/:id` | `200` Dokument | `404` |
 | `GET /api/v1/documents/:id/pdf` | `200` PDF (`application/pdf`) | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler |
 | `GET /api/v1/document-layout` | `200` gespeichertes Layout | `404` noch nicht eingerichtet |

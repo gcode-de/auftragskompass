@@ -214,6 +214,73 @@ test('filter changes reset pagination atomically and the extra row only means ha
   );
 });
 
+test('document search is persisted under df_q, resets the page and leaves global q alone', async () => {
+  window.history.replaceState(
+    null,
+    '',
+    '/?q=global&df_q=invoice&df_page=2&other=keep',
+  );
+  const fetcher = pageFetcher({ '*': [finalRow] });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  const input = await screen.findByRole('searchbox', {
+    name: 'Dokumente durchsuchen',
+  });
+  expect((input as HTMLInputElement).value).toBe('invoice');
+  await waitFor(() =>
+    expect(urlsOf(fetcher)[0]).toBe(
+      listUrl('&q=invoice').replace('offset=0', 'offset=50'),
+    ),
+  );
+  fireEvent.change(input, { target: { value: '  RE-2031  ' } });
+  expect((input as HTMLInputElement).value).toBe('  RE-2031  ');
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&q=RE-2031')),
+  );
+  expect(new URLSearchParams(window.location.search).get('df_q')).toBe(
+    '  RE-2031  ',
+  );
+  expect(new URLSearchParams(window.location.search).get('df_page')).toBeNull();
+  expect(new URLSearchParams(window.location.search).get('q')).toBe('global');
+  expect(new URLSearchParams(window.location.search).get('other')).toBe('keep');
+  fireEvent.change(input, { target: { value: 'Max ' } });
+  expect((input as HTMLInputElement).value).toBe('Max ');
+  await waitFor(() => expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&q=Max')));
+  fireEvent.change(input, { target: { value: 'Max Muster' } });
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&q=Max+Muster')),
+  );
+  expect(new URLSearchParams(window.location.search).get('df_q')).toBe(
+    'Max Muster',
+  );
+});
+
+test('mobile document search stays a draft until the filter sheet is applied', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?df_q=old&df_page=1');
+  const fetcher = pageFetcher({ '*': [finalRow] });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  await screen.findByText('Rechnung RE-2031-0001');
+  fireEvent.click(screen.getByRole('button', { name: /Filter,/ }));
+  const input = within(sheet()).getByRole('searchbox', {
+    name: 'Dokumente durchsuchen',
+  });
+  fireEvent.change(input, { target: { value: 'customer' } });
+  expect(new URLSearchParams(window.location.search).get('df_q')).toBe('old');
+  fireEvent.click(
+    within(sheet()).getByRole('button', { name: 'Ergebnisse anzeigen' }),
+  );
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&q=customer')),
+  );
+  expect(new URLSearchParams(window.location.search).get('df_q')).toBe(
+    'customer',
+  );
+  expect(new URLSearchParams(window.location.search).get('df_page')).toBeNull();
+});
+
 test('rows show honest metadata, a real PDF link only when eligible and a native event link', async () => {
   const fetcher = pageFetcher({
     '*': [draft, finalRow, orphan, malformedEvent],
@@ -742,7 +809,7 @@ test('the desktop frame keeps the filter groups in a quiet context column left o
   // four payment axes live inside the folded subgroup.
   expect(
     context.querySelectorAll('fieldset select, fieldset input'),
-  ).toHaveLength(4);
+  ).toHaveLength(5);
   const quiet = context.querySelector<HTMLDetailsElement>(
     'details.files-filter-quiet',
   )!;
