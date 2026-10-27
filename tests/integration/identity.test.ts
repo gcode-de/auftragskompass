@@ -44,7 +44,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // joins the same column. The blank-deposit path did not widen anything.
   // BKP019.c3.2: the final invoice adds two additive columns and no backfill, so
   // this stays the last migration and the invoice index is untouched below.
-  expect(applied.at(-1)!.name).toBe('0046_final_invoice.sql');
+  // RG-07: the invoice dates add three additive columns and no backfill either.
+  expect(applied.at(-1)!.name).toBe('0047_invoice_dates.sql');
   // The source is a document of the same tenant, never another tenant's row.
   const sourceForeignKey = (
     await pool.query<{ def: string }>(

@@ -8,7 +8,58 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
-- [x] **BKP019.c3.2 — `feat: settle a final invoice against its deposits`** (26.10.2026)
+- [x] **RG-07a — `feat: date an invoice by service and due day`** (26.10.2026)
+
+  Erster der drei RG-07-Unter-Slices nach rein lesender DeepSeek-Analyse zu
+  `b906f57` (RG-07 „Rechnungsdatum, Leistungsdatum, Zahlungsziel und
+  Bankverbindung müssen unterstützt werden“; RG-08 „überfällig“ folgt
+  gesondert). Staleness: RG-07 nicht umgesetzt (keine der vier Felder
+  existiert; gedruckt wird heute nur Nummer/Datum/„Gültig bis“). Migration
+  `0047` (additiv, kein Backfill): `service_date`, `payment_term_days`
+  (0…365, 0 = sofort fällig), `due_date`; Felder nur für
+  Rechnung/Anzahlung/Korrektur, optional (RG-07 sagt „unterstützt“),
+  im Entwurf editierbar, bei Finalisierung eingefroren (Muster `valid_until`).
+  **Tage-Modell:** `due_date` = Rechnungsdatum (= `issued_at`,
+  mandantenlokal) + Tage, beim Finalisieren eingefroren – „Ziel vor
+  Rechnungsdatum“ wird strukturell unmöglich; **Rechnungsdatum bleibt das
+  Ausstellungsdatum** (keine Rückdatierung – fiskalisch heikel, nicht
+  erfunden; „unterstützt“ = geführt und gedruckt). `service_date` nie in
+  der Zukunft (wie Zahlungen). Gedruckt nur wo gesetzt (Print-Option ohne
+  Bezug bytegleich): „Leistungsdatum“ und „Zahlungsziel: … Tage, fällig …“.
+  Projektion `include=offer` additiv um die drei Felder; **„überfällig“
+  wird NICHT abgeleitet** (eigener nächster Slice, ehrlich offen). Kein
+  Mandanten-Default (spätere Einstellungen), keine Bankverbindung (0048),
+  keine Rechts-/Steuerabnahme („abbilden können“, nicht „richtig“).
+  Tests zuerst rot (neue Datei `tests/integration/document-dates.test.ts`
+  inkl. DST-Grenze wie documents.test.ts:2272–2310; `:298–308`
+  unantastbar; `offer-draft-editor.test.tsx`-Pins :662/:1067/:1170 beachten).
+  Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot sauber per `git stash` getrennt beobachtet (12 Fehlerbilder:
+  fehlende Spalte/Projektion/Felder, Migrationserwartung; ehrlich vermerkt:
+  der Byte-Wächter „Nicht-Rechnungs-Belege bytegleich“ war schon vor der
+  Implementierung grün – er pinnt Unverändertheit, die drei Goldwerte
+  stammen vom Vor-Slice-Code; ein echter E2E-Rotfall wurde behoben, indem
+  der Editor gespeicherte Daten an die Zeile gibt), danach grün:
+  `test:unit` 274/274, `test:component` 744/744 (2 neu),
+  `test:integration` 456/456 (10 neue Fälle in neuer
+  `document-dates.test.ts`: Entwurf ändern, Einfrieren 409 ohne
+  Update-Pfad, DST-Grenze 2029-10-27, Term 0/365/366/−1/1,5/NaN,
+  Service-Tag-Grenzen inkl. Schalttag, Familie-Anwendung + DB-CHECKs
+  23514/23503, Bytegleichheit, Mandantentrennung, Projektion;
+  `:298–308` unantastbar), `test:coverage` 1474 vollständig (Changed
+  ≥85/80), `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 (Passwort-Szenario 2,2 min im
+  240-s-Budget) inkl. Ablauf Entwurf → Leistungsdatum 29.02.2020 + 14 Tage
+  → finalisieren → gedruckte Zeilen/`due_date` = Mandantentag+14 →
+  AB/Angebot-HTML ohne beide Labels. Notiert: Service-Tag-Grenze ist
+  „nicht nach dem Mandanten-Heute“ (bewusst strenger, später lockerbar);
+  `due_date` ausschließlich abgeleitet (nie Eingabe); „überfällig“ bleibt
+  offen (RG-08 eigener Slice); kein `due_date`-Index (kommt mit (e));
+  eine bewusste Zusatzanpassung der vier exakten Schlüsselsatz-Pins in
+  `documents.test.ts` (Aussage erhalten); AJV-Coercion-Falle (null vor
+  String im `anyOf`) dokumentiert.
+
+- [x] **BKP019.c3.2** — `feat: settle a final invoice against its deposits`** (26.10.2026)
 
   Zweiter c3-Unter-Slice nach rein lesender DeepSeek-Analyse zu `0640a30`
   (RG-03 „Eine Schlussrechnung muss geleistete Anzahlungen korrekt ausweisen

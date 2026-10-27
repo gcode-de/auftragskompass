@@ -16,6 +16,10 @@ type DraftValues = {
   introText: string;
   outroText: string;
   validityDays: string;
+  // RG-07: only an invoice family draft shows these two fields. They stay in the
+  // form values for every kind, so one dirty comparison covers the whole editor.
+  serviceDate: string;
+  paymentTermDays: string;
 };
 type DraftLine = {
   id: string;
@@ -47,6 +51,10 @@ type DraftDetail = {
   introText: string | null;
   outroText: string | null;
   validityDays: number | null;
+  // RG-07: the invoice dates. Absent for every other kind and in older payloads.
+  serviceDate?: string | null;
+  paymentTermDays?: number | null;
+  dueDate?: string | null;
   netMinor: number;
   taxMinor: number;
   grossMinor: number;
@@ -80,7 +88,13 @@ type Props = {
   onSavedMetadata: (
     metadata: Pick<
       DraftDetail,
-      'version' | 'netMinor' | 'taxMinor' | 'grossMinor'
+      | 'version'
+      | 'netMinor'
+      | 'taxMinor'
+      | 'grossMinor'
+      | 'serviceDate'
+      | 'paymentTermDays'
+      | 'dueDate'
     >,
   ) => void;
 };
@@ -90,12 +104,20 @@ function valuesOf(values: {
   introText: string;
   outroText: string;
   validityDays: number;
+  serviceDate?: string | null;
+  paymentTermDays?: number | null;
 }): DraftValues {
   return {
     subject: values.subject,
     introText: values.introText,
     outroText: values.outroText,
     validityDays: String(values.validityDays),
+    // An empty field is "not entered", never the string "null".
+    serviceDate: values.serviceDate ?? '',
+    paymentTermDays:
+      values.paymentTermDays === null || values.paymentTermDays === undefined
+        ? ''
+        : String(values.paymentTermDays),
   };
 }
 
@@ -241,6 +263,15 @@ function editorHeading(kind: string | undefined) {
   return kind === 'invoice' ? 'Rechnung bearbeiten' : 'Angebot bearbeiten';
 }
 
+// RG-07: the service day and the payment term are invoice fields. Only an
+// invoice family draft shows them - an offer has no invoice day, and the server
+// refuses the fields on every other kind instead of dropping them silently.
+function showsInvoiceDates(kind: string | undefined) {
+  return (
+    kind === 'invoice' || kind === 'deposit_invoice' || kind === 'correction'
+  );
+}
+
 function editorDiscardMessage(kind: string | undefined) {
   if (kind === 'order_confirmation')
     return 'Ungespeicherte Änderungen an der Auftragsbestätigung verwerfen?';
@@ -302,6 +333,19 @@ export function OfferDraftEditor({
   );
   dirtyRef.current = dirty;
   const needsSave = dirty || legacy;
+  // RG-07: both fields are optional; an empty input means "not entered". The
+  // calendar day and the range are judged again on the server, which owns the
+  // tenant clock - this guard only keeps an obviously wrong value from being
+  // sent.
+  const showsDates = showsInvoiceDates(kind),
+    serviceDay = values?.serviceDate.trim() ?? '',
+    paymentTerm = values?.paymentTermDays.trim() ?? '',
+    validServiceDay =
+      !showsDates || !serviceDay || /^\d{4}-\d{2}-\d{2}$/.test(serviceDay),
+    validPaymentTerm =
+      !showsDates ||
+      !paymentTerm ||
+      (/^\d{1,3}$/.test(paymentTerm) && Number(paymentTerm) <= 365);
   const days = Number(values?.validityDays),
     validDays = Number.isInteger(days) && days >= 1 && days <= 365,
     validLines =
@@ -378,6 +422,10 @@ export function OfferDraftEditor({
           netMinor: loaded.netMinor,
           taxMinor: loaded.taxMinor,
           grossMinor: loaded.grossMinor,
+          // RG-07: the row shows the saved invoice dates without a reload.
+          serviceDate: loaded.serviceDate ?? null,
+          paymentTermDays: loaded.paymentTermDays ?? null,
+          dueDate: loaded.dueDate ?? null,
         });
         setMessage(fromLegacy ? '' : 'Entwurf geladen.');
         if (focusEditor) setFocusInitialEditor(true);
@@ -594,6 +642,8 @@ export function OfferDraftEditor({
       !detail ||
       !needsSave ||
       !validDays ||
+      !validServiceDay ||
+      !validPaymentTerm ||
       !validLines ||
       isBlocked
     )
@@ -617,6 +667,15 @@ export function OfferDraftEditor({
           introText: values.introText,
           outroText: values.outroText,
           validityDays: days,
+          // RG-07: only an invoice family body carries the two dates, so the
+          // offer and the confirmation keep exactly the body they always sent.
+          ...(showsDates
+            ? {
+                serviceDate: serviceDay || null,
+                paymentTermDays:
+                  paymentTerm === '' ? null : Number(paymentTerm),
+              }
+            : {}),
           lines: submittedLines,
         }),
       });
@@ -664,6 +723,10 @@ export function OfferDraftEditor({
         netMinor: saved.netMinor,
         taxMinor: saved.taxMinor,
         grossMinor: saved.grossMinor,
+        // RG-07: the row shows the saved invoice dates without a reload.
+        serviceDate: saved.serviceDate ?? null,
+        paymentTermDays: saved.paymentTermDays ?? null,
+        dueDate: saved.dueDate ?? null,
       });
       setMessage('Änderungen gespeichert.');
     } catch {
@@ -759,6 +822,44 @@ export function OfferDraftEditor({
                   }
                 />
               </label>
+              {/* RG-07: the two invoice dates. A draft keeps the input; the due
+                  day is computed by the server when the document is finalized. */}
+              {showsDates && (
+                <>
+                  <label>
+                    Leistungsdatum (optional)
+                    <input
+                      type="date"
+                      value={values?.serviceDate ?? ''}
+                      disabled={!values || loading || busy}
+                      aria-invalid={!validServiceDay}
+                      onChange={(event) =>
+                        change('serviceDate', event.target.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    Zahlungsziel in Tagen (optional)
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      step={1}
+                      value={values?.paymentTermDays ?? ''}
+                      disabled={!values || loading || busy}
+                      aria-invalid={!validPaymentTerm}
+                      onChange={(event) =>
+                        change('paymentTermDays', event.target.value)
+                      }
+                    />
+                  </label>
+                  <p className="document-hint">
+                    Das Fälligkeitsdatum wird beim Finalisieren aus
+                    Rechnungsdatum und Zahlungsziel berechnet und danach nicht
+                    mehr geändert. 0 Tage bedeutet „sofort fällig“.
+                  </p>
+                </>
+              )}
             </div>
             <section
               className="offer-draft-positions"
@@ -1006,6 +1107,8 @@ export function OfferDraftEditor({
                   !values ||
                   !needsSave ||
                   !validDays ||
+                  !validServiceDay ||
+                  !validPaymentTerm ||
                   !validLines ||
                   busy ||
                   loading ||

@@ -41,6 +41,28 @@ import { registerDocumentTemplateRoutes } from '../../packages/core/src/document
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 import { StorageError } from '../../packages/core/src/storage.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
+// RG-07: the due day of an invoice is its invoice day in the tenant calendar
+// plus the agreed term. The browser test recomputes it with the same tenant zone
+// the server uses, so the printed line and the stored row must agree.
+function tenantDay(date: Date, timeZone = 'Europe/Berlin') {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((entry) => entry.type === type)!.value;
+  return part('year') + '-' + part('month') + '-' + part('day');
+}
+function addDays(day: string, days: number) {
+  return new Date(Date.parse(day + 'T00:00:00Z') + days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+function germanDay(day: string) {
+  return day.split('-').reverse().join('.');
+}
 async function signInScenario(browser: Browser, mode: 'google' | 'password') {
   // Password mode runs 75 full axe scans; expand only its total journey budget.
   test.setTimeout(mode === 'password' ? 240000 : 180000);
@@ -1347,6 +1369,32 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toHaveCount(0);
     await expect(orders.getByText(/trägt bereits eine Rechnung/)).toBeVisible();
     expect(await invoiceCount()).toBe(1);
+    // RG-07: the service day and the payment term are entered in the draft and
+    // frozen at finalization. The service day is a fixed past day, so the
+    // assertion does not depend on the calendar of the run.
+    await invoices
+      .getByRole('button', { name: 'Rechnung Entwurf bearbeiten' })
+      .click();
+    const invoiceEditor = invoices.locator('.offer-draft-editor');
+    await expect(
+      invoiceEditor.getByRole('heading', { name: 'Rechnung bearbeiten' }),
+    ).toBeVisible();
+    await invoiceEditor.getByLabel(/Leistungsdatum/).fill('2020-02-29');
+    await invoiceEditor.getByLabel(/Zahlungsziel in Tagen/).fill('14');
+    await invoiceEditor
+      .getByRole('button', { name: 'Änderungen speichern' })
+      .click();
+    await expect(
+      invoiceEditor.getByText('Änderungen gespeichert.'),
+    ).toBeVisible();
+    // The draft knows the agreed term but no due day: it is not printed yet.
+    const draftDates = invoices.locator('.document-invoice-dates');
+    await expect(draftDates).toContainText('Leistungsdatum 29.02.2020');
+    await expect(draftDates).toContainText('Zahlungsziel 14 Tage');
+    await expect(draftDates).not.toContainText('fällig');
+    await invoiceEditor
+      .getByRole('button', { name: 'Bearbeitung schließen' })
+      .click();
     // Finalizing uses the invoice's own number range.
     await invoices
       .getByRole('button', { name: 'Rechnung Entwurf finalisieren' })
@@ -1372,6 +1420,37 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     );
     expect(invoicePdf.status()).toBe(200);
     expect((await invoicePdf.body()).subarray(0, 5).toString()).toBe('%PDF-');
+    // RG-07: the two dates survive the finalization, and the due day is the
+    // invoice day in the tenant calendar plus the agreed term - once, frozen.
+    const invoiceDates = (
+      await pool.query<{
+        issued_at: Date;
+        service_date: string;
+        payment_term_days: number;
+        due_date: string;
+      }>(
+        `SELECT issued_at, to_char(service_date,'YYYY-MM-DD') AS service_date,
+                payment_term_days, to_char(due_date,'YYYY-MM-DD') AS due_date
+           FROM documents WHERE tenant_id=$1 AND id=$2`,
+        [config.tenantId, invoice.id],
+      )
+    ).rows[0]!;
+    expect(invoiceDates.service_date).toBe('2020-02-29');
+    expect(invoiceDates.payment_term_days).toBe(14);
+    const dueDay = addDays(tenantDay(invoiceDates.issued_at), 14);
+    expect(invoiceDates.due_date).toBe(dueDay);
+    // The printed paper of this very run carries both lines, with the term and
+    // the frozen day - and the row names the same day.
+    const invoiceHtml = renderedHtml.at(-1)!;
+    expect(invoiceHtml).toContain('Leistungsdatum 29.02.2020');
+    expect(invoiceHtml).toContain(
+      'Zahlungsziel: 14 Tage, fällig ' + germanDay(dueDay),
+    );
+    const finalDates = invoices.locator('.document-invoice-dates');
+    await expect(finalDates).toContainText('Leistungsdatum 29.02.2020');
+    await expect(finalDates).toContainText(
+      'Zahlungsziel 14 Tage, fällig ' + germanDay(dueDay),
+    );
     // The confirmation it was copied from keeps its number and its bytes.
     expect(
       (
@@ -1387,6 +1466,16 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     expect((await offerPdfAfterConfirmation.body()).equals(firstBytes)).toBe(
       true,
     );
+    // RG-07: neither the confirmation nor the offer prints a date line, so the
+    // two invoice lines cannot have changed their bytes or their hashes.
+    const confirmationHtml = renderedHtml.filter((html) =>
+      html.includes(confirmedNumber),
+    );
+    expect(confirmationHtml.length).toBeGreaterThan(0);
+    for (const html of confirmationHtml) {
+      expect(html).not.toContain('Leistungsdatum');
+      expect(html).not.toContain('Zahlungsziel');
+    }
     await audit('event-auftragsbestaetigung');
     // BKP019.c2: the finalized invoice becomes a credit note of its own. The
     // correction owns the correction number range and the direction; the invoice

@@ -2092,6 +2092,10 @@ const settlementKeys = [
   'depositAppliedMinor',
   'depositPaidMinor',
 ];
+// RG-07: the date axis. `serviceDate` and `paymentTermDays` are the inputs of an
+// invoice family row, `dueDate` is the day frozen at finalization; outside the
+// family all three are NULL, exactly like every axis before them.
+const invoiceDateKeys = ['serviceDate', 'paymentTermDays', 'dueDate'];
 
 test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
   const scope = randomUUID(),
@@ -3266,6 +3270,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         ...correctionKeys,
         ...paymentKeys,
         ...settlementKeys,
+        ...invoiceDateKeys,
       ].sort(),
     );
     expect(projectedRow).toMatchObject({
@@ -4034,6 +4039,7 @@ test('the offer status route accepts the acceptance details and refuses bad ones
         ...correctionKeys,
         ...paymentKeys,
         ...settlementKeys,
+        ...invoiceDateKeys,
       ].sort(),
     );
     // Repeating the identical details is a no-op, a changed one is refused.
@@ -4881,6 +4887,7 @@ test('the offer projection names the source of a confirmation', async () => {
       ...correctionKeys,
       ...paymentKeys,
       ...settlementKeys,
+      ...invoiceDateKeys,
     ].sort(),
   );
 });
@@ -5572,6 +5579,7 @@ test('the offer projection names the source of an invoice', async () => {
       ...correctionKeys,
       ...paymentKeys,
       ...settlementKeys,
+      ...invoiceDateKeys,
     ].sort(),
   );
 });

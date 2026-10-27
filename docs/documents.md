@@ -390,6 +390,26 @@ finalen Inhalt, die Nummer oder die PDF-Bytes des Angebots. Auch hier gilt:
 keine Automatik aus E-Mail, keine Rechts- oder Beweiskraftbehauptung für ein
 angehängtes unterschriebenes PDF.
 
+### Rechnungsdatum, Leistungsdatum und Zahlungsziel (RG-07)
+
+Rechnungs-, Anzahlungs- und Korrekturbelege tragen optional ein
+**Leistungsdatum** und ein **Zahlungsziel** in Tagen (0 = sofort fällig).
+Das **Rechnungsdatum ist das Ausstellungsdatum** – es wird geführt und
+gedruckt, aber nicht rückdatiert (eine zweite Datumsspalte wäre eine zweite
+Wahrheit). Das **Fälligkeitsdatum wird beim Finalisieren eingefroren**:
+Rechnungsdatum (Mandantentag) plus Zahlungsziel in Tagen, gerechnet in der
+Mandantenzeitzone. Damit ist ein Zahlungsziel vor dem Rechnungsdatum
+strukturell unmöglich. Beide Felder sind im Entwurf änderbar und danach
+unveränderlich; gedruckt werden sie nur, wenn sie gesetzt sind (ohne Werte
+verändert sich am Beleg kein Byte). Leistungsdaten in der Zukunft sind nicht
+erlaubt – ein Leistungsdatum beschreibt eine Tatsache der Vergangenheit.
+
+**Ehrliche Grenze:** „Überfällig“ wird noch nicht abgeleitet (RG-08, eigener
+Folgeslice), ein Mandanten-Default für Zahlungsziele fehlt (spätere
+Einstellungen) und die Bankverbindung folgt gesondert. Es wird keine Rechts-
+oder Steuerbehauptung aufgestellt; „unterstützen“ heißt hier: führen,
+drucken, prüfen – nicht die steuerliche Richtigkeit garantieren.
+
 ### Auftragsbestätigung aus einem Angebot (BKP019.b, AG-05)
 
 Aus einem **finalen, angenommenen** Angebot entsteht ohne erneute

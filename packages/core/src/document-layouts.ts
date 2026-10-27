@@ -89,6 +89,26 @@ export type DocumentLayoutInput = {
    * carries it, so every other document keeps byte-identical HTML.
    */
   depositReference?: DocumentDepositReference;
+  /**
+   * RG-07: the two date lines of an invoice. A print option like the two above:
+   * it is only set where a value exists, and `save` strips it, so no route can
+   * store it and no document without a value changes a byte.
+   */
+  invoiceDates?: DocumentInvoiceDates;
+};
+
+/**
+ * RG-07: what an invoice prints about its service day and its payment term. The
+ * days are an input, the due day is the frozen consequence; both arrive already
+ * formatted the way the PDF prints dates, so this block formats nothing.
+ */
+export type DocumentInvoiceDates = {
+  /** Service day, `dd.mm.yyyy`; absent when none was entered. */
+  serviceDate?: string;
+  /** Agreed term in days, printed together with the due day. */
+  paymentTermDays?: number;
+  /** Due day, `dd.mm.yyyy`; absent while no term was agreed. */
+  dueDate?: string;
 };
 
 /**
@@ -296,6 +316,19 @@ ${
 }${
     input.validUntil
       ? `    <p>Gültig bis ${escapeHtml(input.validUntil)}</p>\n`
+      : ''
+  }${
+    layout.invoiceDates?.serviceDate
+      ? `    <p>Leistungsdatum ${escapeHtml(
+          layout.invoiceDates.serviceDate,
+        )}</p>\n`
+      : ''
+  }${
+    layout.invoiceDates?.dueDate !== undefined &&
+    layout.invoiceDates.paymentTermDays !== undefined
+      ? `    <p>Zahlungsziel: ${layout.invoiceDates.paymentTermDays} Tage, fällig ${escapeHtml(
+          layout.invoiceDates.dueDate,
+        )}</p>\n`
       : ''
   }    <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
     <p>${lines(renderTemplate(input.introText, input.values))}</p>

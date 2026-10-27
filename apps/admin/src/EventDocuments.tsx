@@ -47,6 +47,11 @@ type DocumentRow = {
   invoiceRole?: 'final' | null;
   depositAppliedMinor?: number | null;
   depositPaidMinor?: number | null;
+  // RG-07: the invoice dates. `dueDate` only exists once the document is final;
+  // outside the invoice family all three are null.
+  serviceDate?: string | null;
+  paymentTermDays?: number | null;
+  dueDate?: string | null;
 };
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
 type CorrectionDirection = 'credit' | 'debit';
@@ -1297,6 +1302,38 @@ export function EventDocuments({
                   )}
                 </p>
               )}
+            {/* RG-07: the two dates of an invoice family document. The due day
+                only exists once it is final - a draft names the agreed term and
+                leaves the day to the finalization. Both are shown only when
+                they are set, never as an empty placeholder. */}
+            {(entry.kind === 'invoice' ||
+              entry.kind === 'deposit_invoice' ||
+              entry.kind === 'correction') &&
+              (entry.serviceDate ||
+                typeof entry.paymentTermDays === 'number') && (
+                <p className="document-meta document-invoice-dates">
+                  {entry.serviceDate && (
+                    <span>
+                      {'Leistungsdatum '}
+                      <time dateTime={entry.serviceDate}>
+                        {plainDate(entry.serviceDate)}
+                      </time>
+                    </span>
+                  )}
+                  {typeof entry.paymentTermDays === 'number' && (
+                    <span>
+                      {entry.serviceDate ? ' · ' : ''}
+                      {'Zahlungsziel ' + entry.paymentTermDays + ' Tage'}
+                      {entry.dueDate ? ', fällig ' : ''}
+                      {entry.dueDate && (
+                        <time dateTime={entry.dueDate}>
+                          {plainDate(entry.dueDate)}
+                        </time>
+                      )}
+                    </span>
+                  )}
+                </p>
+              )}
             {/* BKP019.c3.2: the role of this invoice and what it settles. A
                 draft is not frozen yet, so it names the rule instead of an
                 amount; a finalized one shows the frozen deduction and the money
@@ -2321,8 +2358,9 @@ export function EventDocuments({
                   genau eine. Die Schlussrechnung verrechnet die bereits
                   gestellten Anzahlungen; eine finalisierte Rechnung wird nie
                   ersetzt, sondern nur durch eine Rechnungskorrektur ergänzt.
-                  Zahlungseingänge werden manuell erfasst; ein Zahlungsziel und
-                  eine Überfälligkeit gibt es noch nicht.
+                  Zahlungseingänge werden manuell erfasst; Leistungsdatum und
+                  Zahlungsziel lassen sich je Rechnung im Entwurf angeben, eine
+                  Überfälligkeit gibt es noch nicht.
                 </p>
               )}
               {/* BKP019.c3.2: a deposit stays its own claim with its own number.

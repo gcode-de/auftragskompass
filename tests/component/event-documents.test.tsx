@@ -1585,6 +1585,103 @@ test('an invoice row names its source confirmation, its own kind and the open st
   ).toBeTruthy();
 });
 
+// RG-07: the service day and the payment term are invoice fields. They are shown
+// only where a value exists, and the due day only on a finalized document - a
+// draft names the agreed term and leaves the day to the finalization.
+test('the invoice dates are shown per kind and only where they are set', async () => {
+  const finalizedInvoice = {
+      ...invoiceFinal,
+      serviceDate: '2030-10-25',
+      paymentTermDays: 14,
+      dueDate: '2030-11-10',
+    },
+    draftInvoice = {
+      ...invoiceDraft,
+      id: 'doc-re-2',
+      serviceDate: null,
+      paymentTermDays: 0,
+      dueDate: null,
+    },
+    plainInvoice = { ...invoiceFinal, id: 'doc-re-3', number: 'RE-2030-0003' };
+  setup({
+    documents: [finalizedInvoice, draftInvoice, plainInvoice, finalized],
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const rows = within(invoices).getAllByRole('listitem');
+  // The finalized invoice prints both values and the frozen due day.
+  expect(within(rows[0]!).getByText(/Leistungsdatum/)).toBeTruthy();
+  expect(within(rows[0]!).getByText('25.10.2030')).toBeTruthy();
+  expect(
+    within(rows[0]!).getByText(/Zahlungsziel 14 Tage, fällig/),
+  ).toBeTruthy();
+  expect(within(rows[0]!).getByText('10.11.2030')).toBeTruthy();
+  // 0 days is "due immediately" and stays a real term, not an empty value.
+  expect(within(rows[1]!).getByText(/Zahlungsziel 0 Tage/)).toBeTruthy();
+  expect(within(rows[1]!).queryByText(/fällig/)).toBeNull();
+  expect(within(rows[1]!).queryByText(/Leistungsdatum/)).toBeNull();
+  // An invoice without dates shows no empty placeholder.
+  expect(within(rows[2]!).queryByText(/Leistungsdatum/)).toBeNull();
+  expect(within(rows[2]!).queryByText(/Zahlungsziel/)).toBeNull();
+  // An offer owns none of them, and an invoice still prints no "Gültig bis".
+  const offerRow = screen.getByText('AN-2030-0001').closest('li')!;
+  expect(
+    within(offerRow as HTMLElement).queryByText(/Leistungsdatum/),
+  ).toBeNull();
+  expect(
+    within(offerRow as HTMLElement).queryByText(/Zahlungsziel/),
+  ).toBeNull();
+  expect(within(rows[0]!).queryByText(/Gültig bis/)).toBeNull();
+});
+
+// RG-07: the shared editor offers the two dates only for an invoice family draft,
+// and a save carries exactly them; an offer keeps the body it always sent.
+test('the shared editor shows the invoice dates only for an invoice and saves them', async () => {
+  const { calls } = setup({ documents: [invoiceDraft, draft] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const invoiceRow = within(invoices).getByRole('listitem');
+  fireEvent.click(
+    await within(invoiceRow).findByRole('button', {
+      name: 'Rechnung Entwurf bearbeiten',
+    }),
+  );
+  const serviceDay = await within(invoiceRow).findByLabelText(/Leistungsdatum/);
+  fireEvent.change(serviceDay, { target: { value: '2030-10-25' } });
+  fireEvent.change(within(invoiceRow).getByLabelText(/Zahlungsziel in Tagen/), {
+    target: { value: '14' },
+  });
+  fireEvent.click(
+    within(invoiceRow).getByRole('button', { name: 'Änderungen speichern' }),
+  );
+  await waitFor(() =>
+    expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+      serviceDate: '2030-10-25',
+      paymentTermDays: 14,
+    }),
+  );
+  // The same editor on the offer shows neither field - an offer has no invoice
+  // day, and the server would refuse one.
+  fireEvent.click(
+    await within(invoiceRow).findByRole('button', {
+      name: 'Bearbeitung schließen',
+    }),
+  );
+  const offerRow = screen
+    .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
+    .closest('li')!;
+  fireEvent.click(
+    within(offerRow as HTMLElement).getByRole('button', {
+      name: 'Angebot Entwurf bearbeiten',
+    }),
+  );
+  expect(
+    await screen.findByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText(/Leistungsdatum/)).toBeNull();
+  expect(screen.queryByLabelText(/Zahlungsziel in Tagen/)).toBeNull();
+});
+
 // BKP019.c3.1: the advance payment is a second explicit step on the same
 // finalized confirmation. It never appears as a side effect of invoicing, and it
 // never borrows the invoice wording.

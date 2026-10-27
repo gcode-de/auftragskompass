@@ -51,7 +51,10 @@ import {
 } from './document-pdf.js';
 import { storeDocumentPdf, readDocumentPdf } from './document-artifacts.js';
 import { StorageError, type StorageAdapter } from './storage.js';
-import type { DocumentDepositReference } from './document-layouts.js';
+import type {
+  DocumentDepositReference,
+  DocumentInvoiceDates,
+} from './document-layouts.js';
 import {
   openMinorOf,
   orderPaidMinorOf,
@@ -115,6 +118,16 @@ export type DocumentDraftContent = {
   introText: string;
   outroText: string;
   validityDays: number;
+  /**
+   * RG-07: the day the service happened, as a tenant-local `YYYY-MM-DD`.
+   * `undefined` leaves a stored value untouched, `null` clears it.
+   */
+  serviceDate?: string | null;
+  /**
+   * RG-07: the agreed payment term in days (0 = due immediately). The due day
+   * itself is never an input - it is frozen at finalization from this number.
+   */
+  paymentTermDays?: number | null;
   lines?: DocumentLineDraft[];
 };
 export type DocumentFilters = {
@@ -268,6 +281,11 @@ export type DocumentOfferRow = DocumentListRow & {
   invoiceRole: InvoiceRole | null;
   depositAppliedMinor: number | null;
   depositPaidMinor: number | null;
+  // RG-07: the service day and the agreed term are inputs, the due day is the
+  // value frozen at finalization. All three are NULL outside the invoice family.
+  serviceDate: string | null;
+  paymentTermDays: number | null;
+  dueDate: string | null;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -437,6 +455,51 @@ function plainDate(day: string): Temporal.PlainDate | null {
     return null;
   }
 }
+// RG-07: the service day, the payment term and the due day belong to the
+// invoice family. An offer, a confirmation and a blank offer claim nothing of
+// them - named once here, repeated by the database.
+const invoiceFamily = ['invoice', 'deposit_invoice', 'correction'] as const;
+function isInvoiceKind(kind: string): boolean {
+  return (invoiceFamily as readonly string[]).includes(kind);
+}
+// A service day is a tenant-local calendar day that has already happened, the
+// same rule a recorded payment follows: a rolled-over date such as 2031-02-30
+// and any day after today are typing mistakes, never a guess.
+function serviceDateOf(value: unknown, zone: string, at: Date): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string' || !isoDatePattern.test(value))
+    throw new DocumentError('invalid_content');
+  let day: Temporal.PlainDate;
+  try {
+    day = Temporal.PlainDate.from(value);
+  } catch {
+    throw new DocumentError('invalid_content');
+  }
+  const today = Temporal.Instant.fromEpochMilliseconds(
+    at.getTime(),
+  ).toZonedDateTimeISO(zone);
+  if (Temporal.PlainDate.compare(day, today.toPlainDate()) > 0)
+    throw new DocumentError('invalid_content');
+  return day.toString();
+}
+// The term is the input and the due day is the consequence, so only a whole
+// number of days is accepted. 0 is "due immediately", 365 is the bound the
+// deadline of an offer already uses.
+function paymentTermDaysOf(value: unknown): number | null {
+  if (value === null) return null;
+  if (
+    !Number.isInteger(value) ||
+    (value as number) < 0 ||
+    (value as number) > 365
+  )
+    throw new DocumentError('invalid_content');
+  return value as number;
+}
+// `dd.mm.yyyy`: a stored plain date is formatted from its parts, exactly like
+// the deadline of an offer, never through a time zone.
+function printedDay(day: string): string {
+  return day.split('-').reverse().join('.');
+}
 // The route schema already rejects malformed values; this keeps the repository
 // honest for direct callers and names the one rule JSON Schema cannot express.
 export function assertDocumentFilters(filters: DocumentFilters): void {
@@ -490,7 +553,36 @@ export function documentRepository(
         ),
       )
       .orderBy(asc(documentLines.position));
-    return { ...document, lines };
+    // RG-07: the three date columns are read as reviewed SQL - `schema.ts` stays
+    // unchanged for every other row contract, and `date` travels as text so no
+    // driver can turn a tenant-local day into a guessing instant.
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const dates = (await executor.execute(sql`
+      SELECT to_char(d.service_date, 'YYYY-MM-DD') AS service_date,
+             d.payment_term_days::text AS payment_term_days,
+             to_char(d.due_date, 'YYYY-MM-DD') AS due_date
+        FROM documents d
+       WHERE d.tenant_id = ${tenantId} AND d.id = ${id}`)) as {
+      rows: {
+        service_date: string | null;
+        payment_term_days: string | null;
+        due_date: string | null;
+      }[];
+    };
+    const dateRow = dates.rows[0];
+    return {
+      ...document,
+      serviceDate: dateRow?.service_date ?? null,
+      paymentTermDays:
+        dateRow?.payment_term_days === null ||
+        dateRow?.payment_term_days === undefined
+          ? null
+          : Number(dateRow.payment_term_days),
+      dueDate: dateRow?.due_date ?? null,
+      lines,
+    };
   }
 
   async function tenantTimeZone(connection: Connection) {
@@ -1000,6 +1092,34 @@ export function documentRepository(
         ? validityDate(issuedAt, validityDays, tenant.timezone)
         : undefined;
     const formattedValidUntil = validUntil?.toString().split('-').reverse();
+    // RG-07: the due day is the invoice day in the tenant calendar plus the
+    // agreed term - the same arithmetic as an offer's deadline, so a 23- or
+    // 25-hour DST day can never shift it. It is computed here and nowhere else:
+    // finalization freezes exactly this value, so the paper and `due_date`
+    // cannot drift apart. A draft has no due day stored, but its preview prints
+    // the day it would get.
+    const serviceDate = document.serviceDate ?? null,
+      paymentTermDays = document.paymentTermDays ?? null,
+      dueDate =
+        isInvoiceKind(document.kind) && paymentTermDays !== null
+          ? validityDate(issuedAt, paymentTermDays, tenant.timezone)
+          : null,
+      // The print option of the two lines, exactly like the correction and the
+      // settlement block: it travels with the layout, so a document without a
+      // value keeps byte-identical HTML.
+      invoiceDates: DocumentInvoiceDates | undefined =
+        isInvoiceKind(document.kind) &&
+        (serviceDate !== null || dueDate !== null)
+          ? {
+              ...(serviceDate ? { serviceDate: printedDay(serviceDate) } : {}),
+              ...(dueDate !== null && paymentTermDays !== null
+                ? {
+                    paymentTermDays,
+                    dueDate: printedDay(dueDate.toString()),
+                  }
+                : {}),
+            }
+          : undefined;
     // BKP019.c2: a correction prints what it corrects. The reference travels with
     // the layout, which the snapshot forwards unchanged, so every other document
     // keeps byte-identical HTML.
@@ -1034,6 +1154,7 @@ export function documentRepository(
         showPositionNumbers: layout.showPositionNumbers,
         ...(correctionReference ? { correctionReference } : {}),
         ...(depositReference ? { depositReference } : {}),
+        ...(invoiceDates ? { invoiceDates } : {}),
       },
       template: content,
       documentNumber,
@@ -1050,7 +1171,13 @@ export function documentRepository(
     });
     // The deadline the PDF prints is the one frozen at finalization: one
     // computation feeds both the bytes and `valid_until`, so they cannot drift.
-    return { ...snapshot, validUntil: validUntil?.toString() ?? null };
+    return {
+      ...snapshot,
+      validUntil: validUntil?.toString() ?? null,
+      // RG-07: the same for the due day - the printed line and the frozen
+      // `due_date` are one computation.
+      dueDate: dueDate?.toString() ?? null,
+    };
   }
 
   async function assertReference(
@@ -1273,6 +1400,18 @@ export function documentRepository(
                  AND pd.kind = 'deposit_invoice'
                  AND pd.state = 'final'
             )`.as('deposit_paid_minor'),
+            // RG-07: the invoice dates travel with the same projection. A `date`
+            // is read as text, so no driver can turn a tenant-local day into a
+            // guessing instant; every non-invoice row answers NULL.
+            serviceDate: sql<
+              string | null
+            >`to_char(documents.service_date, 'YYYY-MM-DD')`.as('service_date'),
+            paymentTermDays: sql<
+              string | null
+            >`documents.payment_term_days::text`.as('payment_term_days'),
+            dueDate: sql<
+              string | null
+            >`to_char(documents.due_date, 'YYYY-MM-DD')`.as('due_date'),
           })
           .from(documents)
           .where(narrowed)
@@ -1331,6 +1470,9 @@ export function documentRepository(
             invoiceRole,
             depositAppliedMinor,
             depositPaidMinor,
+            serviceDate,
+            paymentTermDays: paymentTermDaysText,
+            dueDate,
             ...row
           }) => {
             // BKP019.c2: only a finalized invoice or confirmation owns a
@@ -1416,6 +1558,16 @@ export function documentRepository(
                 at,
                 zone,
               ),
+              // RG-07: the invoice dates, answered for every row so no reader has
+              // to guess a shape. `due` is the value frozen at finalization; the
+              // "überfällig" comparison is deliberately not derived here.
+              serviceDate: serviceDate ?? null,
+              paymentTermDays:
+                paymentTermDaysText === null ||
+                paymentTermDaysText === undefined
+                  ? null
+                  : Number(paymentTermDaysText),
+              dueDate: dueDate ?? null,
             };
           },
         );
@@ -2241,6 +2393,28 @@ export function documentRepository(
           throw new DocumentError('invalid_state');
         if (document.version !== content.version)
           throw new DocumentError('conflict');
+        // RG-07: the service day and the payment term are invoice fields. An
+        // offer or a confirmation that sends them is refused, never silently
+        // reduced to nothing - a refused body keeps the draft untouched, so the
+        // version and the audit trail stay honest too.
+        if (
+          (content.serviceDate !== undefined ||
+            content.paymentTermDays !== undefined) &&
+          !isInvoiceKind(document.kind)
+        )
+          throw new DocumentError('invalid_content');
+        // One tenant clock reading for the whole write, and the tenant calendar
+        // decides where "today" ends - the same rule the payments follow.
+        const zone = await tenantTimeZone(tx),
+          at = now(),
+          serviceDate =
+            content.serviceDate === undefined
+              ? undefined
+              : serviceDateOf(content.serviceDate, zone, at),
+          paymentTermDays =
+            content.paymentTermDays === undefined
+              ? undefined
+              : paymentTermDaysOf(content.paymentTermDays);
         if (content.lines === undefined && document.templateId === null) {
           const [line] = await tx
             .select({ id: documentLines.id })
@@ -2308,6 +2482,23 @@ export function documentRepository(
             version: document.version + 1,
           })
           .where(and(scope, eq(documents.id, id)));
+        // RG-07: the two inputs live in columns `schema.ts` deliberately does not
+        // mirror. Only what the body named is written: an omitted field keeps its
+        // saved value, `null` clears it.
+        if (serviceDate !== undefined || paymentTermDays !== undefined) {
+          const assignments = [
+            ...(serviceDate !== undefined
+              ? [sql`service_date = ${serviceDate}::date`]
+              : []),
+            ...(paymentTermDays !== undefined
+              ? [sql`payment_term_days = ${paymentTermDays}::integer`]
+              : []),
+          ];
+          await tx.execute(
+            sql`UPDATE documents SET ${sql.join(assignments, sql`, `)}
+                 WHERE tenant_id = ${tenantId} AND id = ${id}`,
+          );
+        }
         await appendAudit(tx, tenantId, 'document.updated', actorId, id);
         return (await readOne(tx, id))!;
       });
@@ -2441,6 +2632,15 @@ export function documentRepository(
           if (snapshot.validUntil)
             await tx.execute(
               sql`UPDATE documents SET valid_until = ${snapshot.validUntil}::date
+                  WHERE tenant_id = ${tenantId} AND id = ${id}`,
+            );
+          // RG-07: the due day the PDF already prints is frozen in the same
+          // transaction as the number and the bytes. A final document has no
+          // update path, so "Ziel vor Rechnungsdatum" cannot be written later
+          // either - and a draft can never carry a due day at all (0047).
+          if (snapshot.dueDate)
+            await tx.execute(
+              sql`UPDATE documents SET due_date = ${snapshot.dueDate}::date
                   WHERE tenant_id = ${tenantId} AND id = ${id}`,
             );
         } catch (error) {
@@ -2696,6 +2896,26 @@ export function registerDocumentRoutes(
       anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
     },
   };
+  // RG-07: the date axis of an invoice, additive in the same opt-in projection.
+  // "Überfällig" is deliberately not part of this slice - it is a comparison
+  // against the tenant's today, not a stored field.
+  const invoiceFields = {
+    serviceDate: {
+      anyOf: [
+        { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+        { type: 'null' },
+      ],
+    },
+    paymentTermDays: {
+      anyOf: [{ type: 'integer', minimum: 0, maximum: 365 }, { type: 'null' }],
+    },
+    dueDate: {
+      anyOf: [
+        { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+        { type: 'null' },
+      ],
+    },
+  };
   const row = {
     type: 'object',
     additionalProperties: false,
@@ -2720,6 +2940,9 @@ export function registerDocumentRoutes(
       'grossMinor',
       'version',
       'lines',
+      'serviceDate',
+      'paymentTermDays',
+      'dueDate',
     ],
     properties: {
       id: { type: 'string', format: 'uuid' },
@@ -2748,6 +2971,26 @@ export function registerDocumentRoutes(
       taxMinor: { type: 'integer' },
       grossMinor: { type: 'integer' },
       version: { type: 'integer' },
+      // RG-07: the invoice dates of a single document. Every other kind answers
+      // NULL, so the editor can load and rewrite them without a second route.
+      serviceDate: {
+        anyOf: [
+          { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          { type: 'null' },
+        ],
+      },
+      paymentTermDays: {
+        anyOf: [
+          { type: 'integer', minimum: 0, maximum: 365 },
+          { type: 'null' },
+        ],
+      },
+      dueDate: {
+        anyOf: [
+          { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          { type: 'null' },
+        ],
+      },
       lines: {
         type: 'array',
         items: {
@@ -2904,6 +3147,19 @@ export function registerDocumentRoutes(
             introText: { type: 'string', maxLength: 4000 },
             outroText: { type: 'string', maxLength: 4000 },
             validityDays: { type: 'integer', minimum: 1, maximum: 365 },
+            // RG-07: both invoice fields are optional. Omitting one keeps the
+            // stored value, `null` clears it; the domain judges the calendar day
+            // and the range, so every refusal answers with one stable error
+            // instead of two different 400 shapes. `null` is named first on
+            // purpose: AJV coerces, and a `null` tested against the string branch
+            // would arrive as an empty string - "clear it" must not become "a
+            // malformed day".
+            serviceDate: {
+              anyOf: [{ type: 'null' }, { type: 'string', maxLength: 40 }],
+            },
+            paymentTermDays: {
+              anyOf: [{ type: 'null' }, { type: 'integer' }],
+            },
             lines: { type: 'array', minItems: 1, maxItems: 1000, items: line },
           },
         },
@@ -3059,6 +3315,7 @@ export function registerDocumentRoutes(
       ...Object.keys(correctionFields),
       ...Object.keys(paymentFields),
       ...Object.keys(settlementFields),
+      ...Object.keys(invoiceFields),
     ],
     properties: {
       ...listRow.properties,
@@ -3066,6 +3323,7 @@ export function registerDocumentRoutes(
       ...correctionFields,
       ...paymentFields,
       ...settlementFields,
+      ...invoiceFields,
     },
   };
   app.get<{ Querystring: DocumentFilters }>(
