@@ -355,6 +355,11 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         eventName: 'Synthetic browser wedding',
         issuedDate: '2031-05-01',
         pdfAvailable: false,
+        // An offer is no claim: the derived payment facts are honestly empty.
+        dueDate: null,
+        paymentState: null,
+        openMinor: null,
+        overdue: null,
       },
       {
         id: '88888888-8888-4888-8888-888888888888',
@@ -373,6 +378,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         eventName: null,
         issuedDate: '2031-05-02',
         pdfAvailable: true,
+        // A claim with money missing and its due day passed: the index shows the
+        // payment state, the due day and the late badge from these four values.
+        dueDate: '2031-05-16',
+        paymentState: 'partial',
+        openMinor: 100000,
+        overdue: true,
       },
     ];
     const filesRequested: string[] = [];
@@ -833,6 +844,48 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     );
     await resetButton.click();
     await expect.poll(() => filesRequested.at(-1) ?? '').not.toContain('kind=');
+    // BKP019.e: the payment and due filters are real deep-link state. A control
+    // writes the `df_*` key, the request carries the API name, and the row shows
+    // the derived facts the server filtered on.
+    await files.getByLabel('Zahlungsstand').selectOption('partial');
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .toContain('payment=partial');
+    await files.getByLabel('Überfällig').selectOption('true');
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .toContain('overdue=true');
+    await files.getByLabel('Fällig bis').fill('2031-05-31');
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .toContain('due_to=2031-05-31');
+    const claimRow = files
+      .getByRole('row')
+      .filter({ hasText: 'Rechnung RE-2031-0001' });
+    await expect(claimRow.getByText('Teilweise bezahlt')).toBeVisible();
+    await expect(
+      claimRow.getByText('Überfällig', { exact: true }),
+    ).toBeVisible();
+    await expect(claimRow.getByText('16.05.2031')).toBeVisible();
+    // The same filter set restored from the URL: a copied link is the view.
+    const deepLink = new URL(page.url());
+    await page.goto(deepLink.toString());
+    await expect(files.getByLabel('Zahlungsstand')).toHaveValue('partial');
+    await expect(files.getByLabel('Überfällig')).toHaveValue('true');
+    await expect(files.getByLabel('Fällig bis')).toHaveValue('2031-05-31');
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .toContain('payment=partial');
+    await expect(
+      files
+        .getByRole('row')
+        .filter({ hasText: 'Rechnung RE-2031-0001' })
+        .getByText('Überfällig', { exact: true }),
+    ).toBeVisible();
+    await files.getByLabel('Zahlungsstand').selectOption('');
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .not.toContain('payment=');
     const pdfLink = files.getByRole('link', {
       name: 'Rechnung RE-2031-0001 als PDF öffnen',
     });

@@ -25,6 +25,22 @@ export const fileStates = [
   ['final', 'Finalisiert'],
   ['withdrawn', 'Zurückgezogen'],
 ] as const;
+// BKP019.e: the derived payment state of a claim, labelled like the event file.
+// "Überfällig" is deliberately its own axis (a date comparison), never merged
+// into the payment state.
+export const filePayments = [
+  ['', 'Alle Zahlungsstände'],
+  ['none', 'Offen'],
+  ['partial', 'Teilweise bezahlt'],
+  ['paid', 'Bezahlt'],
+] as const;
+// The tri-state of the late filter. Absent means "every document", so the third
+// value is a real filter and not a synonym for leaving the field empty.
+export const fileOverdueOptions = [
+  ['', 'Alle Fälligkeiten'],
+  ['true', 'Nur überfällig'],
+  ['false', 'Nicht überfällig'],
+] as const;
 // The label maps are only for display. Validation uses the explicit enum lists
 // below, so a row claiming `constructor` or `toString` is rejected instead of
 // matching an inherited object key.
@@ -39,7 +55,15 @@ const kindList: readonly string[] = fileKinds
     .filter(Boolean),
   stateList: readonly string[] = fileStates
     .map(([value]) => value)
+    .filter(Boolean),
+  paymentList: readonly string[] = filePayments
+    .map(([value]) => value)
     .filter(Boolean);
+// The same labels the event file uses, so one document never appears under two
+// different names in two places.
+const paymentStateLabels: Record<string, string> = Object.fromEntries(
+  filePayments.filter(([value]) => value),
+);
 function knownKind(value: unknown): value is string {
   return typeof value === 'string' && kindList.includes(value);
 }
@@ -47,9 +71,39 @@ function knownState(value: unknown): value is string {
   return typeof value === 'string' && stateList.includes(value);
 }
 export const pageSize = 25;
-const dfKeys = ['df_kind', 'df_state', 'df_from', 'df_to', 'df_page'];
+// The URL namespace stays the deep-link contract. The four additive keys are
+// validated here rather than in `url-state.ts`, because that module owns the
+// established `df_*` set and an invalid value must never reach the server.
+const dfKeys = [
+  'df_kind',
+  'df_state',
+  'df_from',
+  'df_to',
+  'df_due_from',
+  'df_due_to',
+  'df_overdue',
+  'df_payment',
+  'df_page',
+];
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+// A visible control must show exactly what the request uses, so a day the API
+// would refuse (31 February, month 13) is dropped instead of displayed.
+function validDay(value: string | null): string {
+  if (!value || !dayPattern.test(value)) return '';
+  const [year, month, day] = value.split('-').map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() === month - 1 &&
+    probe.getUTCDate() === day
+    ? value
+    : '';
+}
 // The list carries exact minor units. Dividing by 100 first would round the
 // largest safe value by one cent, so the euro and cent parts are split as
 // integers and only the thousands separator is added.
@@ -71,7 +125,65 @@ type FileRow = {
   eventName: string | null;
   grossMinor: number;
   pdfAvailable: boolean;
+  // BKP019.e: the derived payment facts of the index. `null` is the honest value
+  // for a row that is no claim - never a derived zero and never "offen".
+  dueDate: string | null;
+  paymentState: string | null;
+  openMinor: number | null;
+  overdue: boolean | null;
 };
+type FileFilters = {
+  kind: string;
+  state: string;
+  from: string;
+  to: string;
+  dueFrom: string;
+  dueTo: string;
+  overdue: string;
+  payment: string;
+};
+const emptyFilters: FileFilters = {
+  kind: '',
+  state: '',
+  from: '',
+  to: '',
+  dueFrom: '',
+  dueTo: '',
+  overdue: '',
+  payment: '',
+};
+// One reader for the whole page: the form controls and the request are built from
+// the same validated values, so the panel can never send a filter it does not
+// show.
+function readFilters(search: string): FileFilters {
+  const source = new URLSearchParams(search),
+    payment = source.get('df_payment') ?? '',
+    overdue = source.get('df_overdue') ?? '';
+  return {
+    kind: source.get('df_kind') ?? '',
+    state: source.get('df_state') ?? '',
+    from: validDay(source.get('df_from')),
+    to: validDay(source.get('df_to')),
+    dueFrom: validDay(source.get('df_due_from')),
+    dueTo: validDay(source.get('df_due_to')),
+    overdue: overdue === 'true' || overdue === 'false' ? overdue : '',
+    payment: paymentList.includes(payment) ? payment : '',
+  };
+}
+// The additive filters are appended to the established request, in the order the
+// API documents them. An unset filter adds no parameter at all.
+function filterExtras(filters: FileFilters): string {
+  const params = new URLSearchParams();
+  if (filters.dueFrom) params.set('due_from', filters.dueFrom);
+  if (filters.dueTo) params.set('due_to', filters.dueTo);
+  if (filters.overdue) params.set('overdue', filters.overdue);
+  if (filters.payment) params.set('payment', filters.payment);
+  const query = params.toString();
+  return query ? '&' + query : '';
+}
+function listRequest(search: string, size: number): string {
+  return filesRequest(search, size) + filterExtras(readFilters(search));
+}
 const loadFailure = 'Dateien konnten nicht geladen werden.';
 const emptyText = 'Keine Dokumente für diese Filter.';
 
@@ -91,7 +203,17 @@ function validRows(reply: unknown): FileRow[] | null {
       typeof entry.grossMinor !== 'number' ||
       !Number.isSafeInteger(entry.grossMinor) ||
       entry.grossMinor < 0 ||
-      typeof entry.pdfAvailable !== 'boolean'
+      typeof entry.pdfAvailable !== 'boolean' ||
+      // A missing payment fact is not "nothing is open": the answer is refused
+      // instead of being displayed as an invented state.
+      (entry.dueDate !== null && !dayPattern.test(String(entry.dueDate))) ||
+      (entry.paymentState !== null &&
+        !paymentList.includes(String(entry.paymentState))) ||
+      (entry.openMinor !== null &&
+        (typeof entry.openMinor !== 'number' ||
+          !Number.isSafeInteger(entry.openMinor) ||
+          entry.openMinor < 0)) ||
+      (entry.overdue !== null && typeof entry.overdue !== 'boolean')
     )
       return null;
     rows.push(entry as FileRow);
@@ -116,12 +238,9 @@ export function FilesPanel({
     [loading, setLoading] = useState(true),
     [failed, setFailed] = useState(false),
     [hasNext, setHasNext] = useState(false),
-    [filters, setFilters] = useState(() => ({
-      kind: new URLSearchParams(window.location.search).get('df_kind') ?? '',
-      state: new URLSearchParams(window.location.search).get('df_state') ?? '',
-      from: new URLSearchParams(window.location.search).get('df_from') ?? '',
-      to: new URLSearchParams(window.location.search).get('df_to') ?? '',
-    }));
+    [filters, setFilters] = useState<FileFilters>(() =>
+      readFilters(window.location.search),
+    );
   // The whole page follows the URL, so every filter, page and browser-back
   // step re-reads exactly one source of truth.
   const search = useUrlSearch(),
@@ -132,7 +251,7 @@ export function FilesPanel({
     try {
       // One extra row only decides whether a next page exists; it is never
       // counted as a total and never displayed.
-      const reply = await fetch(filesRequest(window.location.search, pageSize));
+      const reply = await fetch(listRequest(window.location.search, pageSize));
       if (!reply.ok) throw Error('load');
       const parsed = validRows(await reply.json());
       if (!parsed) throw Error('shape');
@@ -151,13 +270,7 @@ export function FilesPanel({
   // the filters and rows survive a trip into an event and back.
   useEffect(() => {
     if (!active) return;
-    const source = new URLSearchParams(search);
-    setFilters({
-      kind: source.get('df_kind') ?? '',
-      state: source.get('df_state') ?? '',
-      from: source.get('df_from') ?? '',
-      to: source.get('df_to') ?? '',
-    });
+    setFilters(readFilters(search));
     void load();
     // A hidden page is never re-fetched; coming back re-reads the current URL,
     // and the sequence guard discards a late answer from an older combination.
@@ -182,15 +295,18 @@ export function FilesPanel({
     updateUrlSearch({ df_page: next > 0 ? String(next) : '' });
   }
   function reset() {
-    const cleared = {
+    setFilters(emptyFilters);
+    updateUrlSearch({
       df_kind: '',
       df_state: '',
       df_from: '',
       df_to: '',
+      df_due_from: '',
+      df_due_to: '',
+      df_overdue: '',
+      df_payment: '',
       df_page: '',
-    };
-    setFilters({ kind: '', state: '', from: '', to: '' });
-    updateUrlSearch(cleared);
+    });
   }
   function eventHref(id: string | null) {
     return id && uuidPattern.test(id) ? eventTargetHref(search, id) : null;
@@ -251,6 +367,48 @@ export function FilesPanel({
             onChange={(event) => apply({ df_to: event.target.value })}
           />
         </label>
+        <label>
+          Fällig von
+          <input
+            type="date"
+            value={filters.dueFrom}
+            onChange={(event) => apply({ df_due_from: event.target.value })}
+          />
+        </label>
+        <label>
+          Fällig bis
+          <input
+            type="date"
+            value={filters.dueTo}
+            onChange={(event) => apply({ df_due_to: event.target.value })}
+          />
+        </label>
+        <label>
+          Überfällig
+          <select
+            value={filters.overdue}
+            onChange={(event) => apply({ df_overdue: event.target.value })}
+          >
+            {fileOverdueOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Zahlungsstand
+          <select
+            value={filters.payment}
+            onChange={(event) => apply({ df_payment: event.target.value })}
+          >
+            {filePayments.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
           className="icon-action tier-quiet-icon"
@@ -291,7 +449,8 @@ export function FilesPanel({
         <div className="files-table-shell">
           <table className="files-table">
             <caption className="sr-only">
-              Geschäftsdokumente mit Art, Datum, Status und Betrag
+              Geschäftsdokumente mit Art, Datum, Fälligkeit, Status,
+              Zahlungsstand und Betrag
             </caption>
             <thead>
               <tr>
@@ -300,6 +459,8 @@ export function FilesPanel({
                 <th scope="col">Event</th>
                 <th scope="col">Betrag</th>
                 <th scope="col">Status</th>
+                <th scope="col">Fällig</th>
+                <th scope="col">Zahlung</th>
                 <th scope="col">PDF</th>
               </tr>
             </thead>
@@ -325,6 +486,36 @@ export function FilesPanel({
                       {exactMinorUnits(row.grossMinor)} €
                     </td>
                     <td>{stateLabels[row.state]}</td>
+                    {/* BKP019.e: the frozen due day, never a guessed one. */}
+                    <td>
+                      {row.dueDate ? (
+                        <time dateTime={row.dueDate}>
+                          {dateText(row.dueDate)}
+                        </time>
+                      ) : (
+                        <span className="muted">Keine Frist</span>
+                      )}
+                    </td>
+                    {/* The derived payment state and its own late badge, exactly
+                        like the event file: "offen" and "überfällig" are two
+                        axes, so neither replaces the other. */}
+                    <td>
+                      {row.paymentState ? (
+                        <>
+                          <span>{paymentStateLabels[row.paymentState]}</span>
+                          {row.overdue === true && (
+                            <>
+                              {' · '}
+                              <strong className="document-overdue">
+                                Überfällig
+                              </strong>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
                     <td>
                       {row.pdfAvailable ? (
                         <a

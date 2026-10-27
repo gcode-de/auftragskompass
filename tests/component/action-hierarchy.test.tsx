@@ -271,6 +271,11 @@ const filesRow = {
   eventName: null,
   issuedDate: '2031-05-01',
   pdfAvailable: false,
+  // BKP019.e: the index answers the four payment facts; an offer is no claim.
+  dueDate: null,
+  paymentState: null,
+  openMinor: null,
+  overdue: null,
 };
 const inquiryItem = {
   id: 'fictional-inquiry',

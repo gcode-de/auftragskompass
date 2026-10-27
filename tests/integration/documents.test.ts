@@ -18,6 +18,7 @@ import {
   documentRepository,
   registerDocumentRoutes,
   type DocumentDependencies,
+  type DocumentMetadataRow,
   type DocumentOfferRow,
 } from '../../packages/core/src/documents.js';
 import { documentPaymentRepository } from '../../packages/core/src/document-payments.js';
@@ -2058,6 +2059,20 @@ const oldListKeys = [
   'templateId',
   'version',
 ].sort();
+// BKP019.e: the metadata projection (the file index) grows by exactly the four
+// derived values it filters and displays. Pinned once here, so every place that
+// asserts the index shape names the same set: the old list keys plus the index
+// fields plus the payment facts. The unpaged list above stays untouched.
+const metadataKeys = [
+  ...oldListKeys,
+  'eventName',
+  'issuedDate',
+  'pdfAvailable',
+  'dueDate',
+  'paymentState',
+  'openMinor',
+  'overdue',
+].sort();
 // BKP019.a: how an offer was accepted travels with the offer projection.
 const acceptanceKeys = [
   'acceptedAt',
@@ -2301,9 +2316,7 @@ test('the metadata projection adds event name, local date and PDF eligibility on
       rows.find((row) => row.id === id)!;
   // Without include the shape is byte-identical to the old contract.
   expect(Object.keys(byId(plain, draft)!).sort()).toEqual(oldListKeys);
-  expect(Object.keys(byId(meta, draft)!).sort()).toEqual(
-    [...oldListKeys, 'eventName', 'issuedDate', 'pdfAvailable'].sort(),
-  );
+  expect(Object.keys(byId(meta, draft)!).sort()).toEqual(metadataKeys);
   expect(byId(meta, draft)).toMatchObject({
     eventName: 'Fictional Files Wedding',
     issuedDate: '2031-05-02',
@@ -2445,6 +2458,15 @@ test('the list API validates every new filter and keeps auth, tenant and PDF rou
       'from=2031-02-30',
       'to=not-a-date',
       'from=2031-06-11&to=2031-06-10',
+      // BKP019.e: the payment and due filters refuse everything outside their
+      // closed value set before a query runs.
+      'payment=unknown',
+      'payment=partial_paid',
+      'overdue=abc',
+      'overdue=1',
+      'due_from=2031-02-30',
+      'due_to=not-a-date',
+      'due_from=2031-06-11&due_to=2031-06-10',
       'limit=0',
       'limit=101',
       'limit=2.5',
@@ -2635,9 +2657,7 @@ test('the HTTP list keeps the legacy volume and shape and pages exactly as asked
     });
     expect(meta.statusCode).toBe(200);
     const first = meta.json()[0] as Record<string, unknown>;
-    expect(Object.keys(first).sort()).toEqual(
-      [...oldListKeys, 'eventName', 'issuedDate', 'pdfAvailable'].sort(),
-    );
+    expect(Object.keys(first).sort()).toEqual(metadataKeys);
     expect(meta.body).not.toContain('pdfHash');
     expect(meta.body).not.toContain('snapshotHash');
     // Combined filters together with the local-day window.
@@ -3302,9 +3322,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
       url: '/api/v1/documents?include=metadata',
       cookies,
     });
-    expect(Object.keys(meta.json()[0]).sort()).toEqual(
-      [...oldListKeys, 'eventName', 'issuedDate', 'pdfAvailable'].sort(),
-    );
+    expect(Object.keys(meta.json()[0]).sort()).toEqual(metadataKeys);
     // `state` stays the content axis: `sent` is still not a state value.
     expect(
       (await app.inject({ url: '/api/v1/documents?state=sent', cookies }))
@@ -8597,4 +8615,564 @@ test('the final invoice route validates auth, body and the duplicate', async () 
   } finally {
     await order.app.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+// BKP019.e: the document index is filterable by payment state and due day.
+// The filter must narrow the same claim the projection shows, so every case
+// below compares a filter result with the `include=offer` projection of the
+// same rows: "filtered" and "displayed" are one derivation, never two.
+// Reference is honest: Bookitup's filter UI is UNBEKANNT (B35 saw none); the
+// requirement comes from RG-08/RG-10/RG-12/NF-10. Nothing here states a legal,
+// tax or accounting claim.
+// ---------------------------------------------------------------------------
+
+type FilterScenario = {
+  scope: string;
+  actor: string;
+  repo: ReturnType<typeof documentRepository>;
+  offerId: string;
+  offerVersion: number;
+  confirmationId: string;
+  confirmationVersion: number;
+  payments: ReturnType<typeof documentPaymentRepository>;
+  /** One clock for writes and reads: a day boundary is moved, not waited for. */
+  setClock(instant: string): void;
+};
+
+// Every scenario builds its own tenant, so no filter result depends on another
+// test's rows. The invoice family uses one exact line (1.690,00 EUR order), so a
+// credit can close a claim to the cent instead of approximately.
+async function filterScenario(
+  at = '2031-03-10T10:00:00Z',
+): Promise<FilterScenario> {
+  const scope = randomUUID(),
+    email = 'filters-' + scope + '@example.invalid',
+    clock = { at: new Date(at) };
+  await bootstrapAccess(
+    pool,
+    scope,
+    email,
+    'Synthetic document filters',
+    'Europe/Berlin',
+  );
+  const seed = await seedIssuingContext(scope),
+    contact = randomUUID(),
+    event = randomUUID();
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional Filter Customer','Robin Example','Example Street 2',
+      '12345','Fictional Town','DE','filters@example.invalid','','','','','active',1)`,
+    [scope, contact],
+  );
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,event_type_id,package_id,location_id,source,
+      event_date,starts_at,ends_at,time_zone,description,notes_html,version)
+     VALUES ($1,$2,'Fictional Filter Wedding','option',NULL,NULL,NULL,'synthetic','2031-04-14',
+      NULL,NULL,'Europe/Berlin','','',1)`,
+    [scope, event],
+  );
+  for (const [kind, pattern] of [
+    ['order_confirmation', 'AB-{YYYY}-{SEQ}'],
+    ['deposit_invoice', 'AZ-{YYYY}-{SEQ}'],
+    ['invoice', 'RE-{YYYY}-{SEQ}'],
+    ['correction', 'KO-{YYYY}-{SEQ}'],
+  ] as const)
+    await documentNumberRepository(pool, scope).save(seed.actor, kind, {
+      pattern,
+      minLength: 4,
+      nextValue: 1,
+    });
+  const run = dependencies(),
+    repo = documentRepository(pool, scope, {
+      ...run.deps,
+      store: seed.store,
+      now: () => clock.at,
+    }),
+    draft = await repo.createDraft(seed.actor, {
+      templateId: seed.templateId,
+      eventId: event,
+      contactId: contact,
+    }),
+    edited = await repo.updateDraftContent(seed.actor, draft.id, {
+      version: draft.version,
+      ...confirmationTexts,
+      lines: settlementLines,
+    }),
+    offer = await repo.finalize(seed.actor, edited.id, edited.version),
+    sent = await repo.changeOfferStatus(seed.actor, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+    accepted = await repo.changeOfferStatus(seed.actor, offer.id, {
+      status: 'accepted',
+      version: sent.version,
+      channel: 'email',
+    }),
+    confirmationDraft = await repo.createOrderConfirmation(
+      seed.actor,
+      accepted.id,
+      accepted.version,
+    ),
+    confirmation = await repo.finalize(
+      seed.actor,
+      confirmationDraft.id,
+      confirmationDraft.version,
+    );
+  return {
+    scope,
+    actor: seed.actor,
+    repo,
+    offerId: accepted.id,
+    offerVersion: accepted.version,
+    confirmationId: confirmation.id,
+    confirmationVersion: confirmation.version,
+    payments: documentPaymentRepository(pool, scope, () => clock.at),
+    setClock: (instant: string) => {
+      clock.at = new Date(instant);
+    },
+  };
+}
+
+// A claim of the order: the standard invoice with an explicit payment term. The
+// term is the only input; the due day is frozen at finalization.
+async function filterInvoice(s: FilterScenario, term: number) {
+  const draft = await s.repo.createInvoice(
+      s.actor,
+      s.confirmationId,
+      s.confirmationVersion,
+    ),
+    saved = await s.repo.updateDraftContent(s.actor, draft.id, {
+      version: draft.version,
+      ...confirmationTexts,
+      paymentTermDays: term,
+    });
+  return s.repo.finalize(s.actor, saved.id, saved.version);
+}
+
+// Advances are the second payable kind, and several per order are legitimate -
+// the only way to reach a page with more matching rows than one page holds.
+async function filterDeposit(s: FilterScenario, term: number) {
+  const draft = await s.repo.createDepositInvoice(
+      s.actor,
+      s.confirmationId,
+      s.confirmationVersion,
+    ),
+    saved = await s.repo.updateDraftContent(s.actor, draft.id, {
+      version: draft.version,
+      ...confirmationTexts,
+      lines: settlementDepositLine(50000),
+      paymentTermDays: term,
+    });
+  return s.repo.finalize(s.actor, saved.id, saved.version);
+}
+
+async function filterIds(
+  s: FilterScenario,
+  filters: Parameters<typeof s.repo.list>[0],
+) {
+  return (await s.repo.list(filters)).map((row) => row.id);
+}
+
+async function projectedById(s: FilterScenario, id: string) {
+  const rows = (await s.repo.list({ include: 'offer' })) as DocumentOfferRow[];
+  return rows.find((row) => row.id === id)!;
+}
+
+test('the payment filter lists exactly the payable documents with that state', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14);
+  // A finalized invoice is the only claim of this tenant; the accepted offer and
+  // the confirmation are documents, not claims, so no payment filter lists them.
+  expect(await filterIds(s, { payment: 'none' })).toEqual([invoice.id]);
+  expect(await filterIds(s, { payment: 'partial' })).toEqual([]);
+  expect(await filterIds(s, { payment: 'paid' })).toEqual([]);
+  // Unfiltered, all three rows still exist: the filter narrows, it never hides a
+  // separate truth.
+  expect((await filterIds(s, {})).sort()).toEqual(
+    [s.offerId, s.confirmationId, invoice.id].sort(),
+  );
+  // The derived value the filter used is the one the projection shows.
+  expect(await projectedById(s, invoice.id)).toMatchObject({
+    paymentState: 'none',
+    dueDate: '2031-03-24',
+  });
+  // A draft of the invoice family carries no claim at all, so it is in no
+  // payment bucket - the filter is not a status rewrite.
+  const draft = await s.repo.createCorrection(
+    s.actor,
+    invoice.id,
+    invoice.version,
+    'debit',
+    correctionLine(1000),
+  );
+  expect(draft.state).toBe('draft');
+  expect(await filterIds(s, { payment: 'none' })).toEqual([invoice.id]);
+});
+
+test('a partial payment is its own filter state and keeps the open amount', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14),
+    half = Math.floor(invoice.grossMinor / 2);
+  await s.payments.record(s.actor, invoice.id, {
+    receivedOn: '2031-03-10',
+    amountMinor: half,
+    method: 'cash',
+  });
+  expect(await filterIds(s, { payment: 'partial' })).toEqual([invoice.id]);
+  expect(await filterIds(s, { payment: 'none' })).toEqual([]);
+  expect(await filterIds(s, { payment: 'paid' })).toEqual([]);
+  expect(await projectedById(s, invoice.id)).toMatchObject({
+    paymentState: 'partial',
+    openMinor: invoice.grossMinor - half,
+  });
+});
+
+test('a fully paid invoice answers paid and leaves the late filter', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14);
+  await s.payments.record(s.actor, invoice.id, {
+    receivedOn: '2031-03-10',
+    amountMinor: invoice.grossMinor,
+    method: 'bank_transfer',
+  });
+  s.setClock('2031-04-01T10:00:00Z');
+  expect(await filterIds(s, { payment: 'paid' })).toEqual([invoice.id]);
+  expect(await filterIds(s, { payment: 'partial' })).toEqual([]);
+  expect(await filterIds(s, { payment: 'none' })).toEqual([]);
+  // Money closes the claim, so the passed due day never makes it late.
+  expect(await filterIds(s, { overdue: true })).toEqual([]);
+  expect(await filterIds(s, { overdue: false })).toContain(invoice.id);
+  expect(await projectedById(s, invoice.id)).toMatchObject({
+    paymentState: 'paid',
+    openMinor: 0,
+    overdue: false,
+  });
+});
+
+test('a fully credited invoice answers none with no open amount and is not late', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14),
+    // The order's own line, so the credit closes the claim exactly.
+    credit = await s.repo.createCorrection(
+      s.actor,
+      invoice.id,
+      invoice.version,
+      'credit',
+      correctionLine(169000),
+    );
+  await s.repo.finalize(s.actor, credit.id, credit.version);
+  s.setClock('2031-04-01T10:00:00Z');
+  // Claim 0 and no payment: the established `paymentState` formula says `none`.
+  // No special case is invented for a cancelled invoice.
+  expect(await filterIds(s, { payment: 'none' })).toEqual([invoice.id]);
+  expect(await filterIds(s, { payment: 'paid' })).toEqual([]);
+  expect(await filterIds(s, { overdue: true })).toEqual([]);
+  expect(await projectedById(s, invoice.id)).toMatchObject({
+    paymentState: 'none',
+    openMinor: 0,
+    overdue: false,
+    correctionState: 'full',
+  });
+});
+
+test('the due-day window is inclusive on both ends and drops documents without a due day', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14),
+    deposit = await filterDeposit(s, 0);
+  // Two frozen due days: the advance is due on 10 March, the invoice on 24 March.
+  expect(await projectedById(s, invoice.id)).toMatchObject({
+    dueDate: '2031-03-24',
+  });
+  expect(await projectedById(s, deposit.id)).toMatchObject({
+    dueDate: '2031-03-10',
+  });
+  // Inclusive on the exact day, on both ends of a one-day window.
+  expect(
+    await filterIds(s, { dueFrom: '2031-03-24', dueTo: '2031-03-24' }),
+  ).toEqual([invoice.id]);
+  expect(
+    await filterIds(s, { dueFrom: '2031-03-10', dueTo: '2031-03-10' }),
+  ).toEqual([deposit.id]);
+  // One day outside either bound excludes the row.
+  expect(await filterIds(s, { dueTo: '2031-03-23' })).toEqual([deposit.id]);
+  expect(await filterIds(s, { dueFrom: '2031-03-11' })).toEqual([invoice.id]);
+  // The whole range keeps both, and an offer or confirmation without a due day
+  // never appears: it has no deadline to be inside a deadline window.
+  expect(
+    (await filterIds(s, { dueFrom: '2031-03-01', dueTo: '2031-03-31' })).sort(),
+  ).toEqual([deposit.id, invoice.id].sort());
+  expect(
+    (
+      await filterIds(s, { dueFrom: '2031-03-01', dueTo: '2031-03-31' })
+    ).includes(s.offerId),
+  ).toBe(false);
+  expect(await filterIds(s, { dueTo: '2031-03-31' })).not.toContain(
+    s.confirmationId,
+  );
+});
+
+test('overdue is tri-state and its boundary is the tenant day, not the due day itself', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 0);
+  // Due today, 23:59:59 local: still not late (strict `<`).
+  s.setClock('2031-03-10T22:59:59Z');
+  expect(await filterIds(s, { overdue: true })).toEqual([]);
+  expect(await filterIds(s, { overdue: false })).toContain(invoice.id);
+  expect(await projectedById(s, invoice.id)).toMatchObject({
+    dueDate: '2031-03-10',
+    overdue: false,
+  });
+  // One second later the tenant day has moved on; the stored due day did not.
+  s.setClock('2031-03-10T23:00:00Z');
+  expect(await filterIds(s, { overdue: true })).toEqual([invoice.id]);
+  expect(await filterIds(s, { overdue: false })).not.toContain(invoice.id);
+  expect(await projectedById(s, invoice.id)).toMatchObject({
+    dueDate: '2031-03-10',
+    overdue: true,
+  });
+  // `false` is the honest complement: it also names the rows that have no claim
+  // and therefore can never be late.
+  expect((await filterIds(s, { overdue: false })).sort()).toEqual(
+    [s.offerId, s.confirmationId].sort(),
+  );
+  // Omitted stays "no filter": the whole tenant is listed again.
+  expect((await filterIds(s, {})).sort()).toEqual(
+    [s.offerId, s.confirmationId, invoice.id].sort(),
+  );
+});
+
+test('both DST boundaries keep the tenant day exact', async () => {
+  // 23-hour day: a claim due on the spring-forward day is late only after its own
+  // last local second, not 60 minutes early.
+  const spring = await filterScenario('2029-03-11T10:00:00Z'),
+    springInvoice = await filterInvoice(spring, 14);
+  expect(await projectedById(spring, springInvoice.id)).toMatchObject({
+    dueDate: '2029-03-25',
+  });
+  spring.setClock('2029-03-25T21:59:59Z');
+  expect(await filterIds(spring, { overdue: true })).toEqual([]);
+  spring.setClock('2029-03-25T22:00:00Z');
+  expect(await filterIds(spring, { overdue: true })).toEqual([
+    springInvoice.id,
+  ]);
+  // 25-hour day: the same rule holds with the repeated hour inside the day.
+  const autumn = await filterScenario('2029-10-14T10:00:00Z'),
+    autumnInvoice = await filterInvoice(autumn, 14);
+  expect(await projectedById(autumn, autumnInvoice.id)).toMatchObject({
+    dueDate: '2029-10-28',
+  });
+  autumn.setClock('2029-10-28T22:59:59Z');
+  expect(await filterIds(autumn, { overdue: true })).toEqual([]);
+  autumn.setClock('2029-10-28T23:00:00Z');
+  expect(await filterIds(autumn, { overdue: true })).toEqual([
+    autumnInvoice.id,
+  ]);
+});
+
+test('combined filters narrow every axis in one query', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14),
+    deposit = await filterDeposit(s, 0);
+  await s.payments.record(s.actor, invoice.id, {
+    receivedOn: '2031-03-10',
+    amountMinor: 10000,
+    method: 'cash',
+  });
+  s.setClock('2031-04-01T10:00:00Z');
+  const combined = {
+    kind: 'invoice' as const,
+    payment: 'partial' as const,
+    overdue: true,
+    dueTo: '2031-03-24',
+  };
+  expect(await filterIds(s, combined)).toEqual([invoice.id]);
+  // Each axis alone must remove the row, otherwise the combination proves
+  // nothing about the axes.
+  for (const [narrowed, expectation] of [
+    [{ ...combined, kind: 'deposit_invoice' as const }, []],
+    [{ ...combined, payment: 'paid' as const }, []],
+    [{ ...combined, overdue: false }, []],
+    [{ ...combined, dueTo: '2031-03-23' }, []],
+  ] as const)
+    expect(await filterIds(s, narrowed), JSON.stringify(narrowed)).toEqual(
+      expectation,
+    );
+  // The advance is payable but due on 10 March without money: late, not partial.
+  expect(await filterIds(s, { payment: 'none', overdue: true })).toEqual([
+    deposit.id,
+  ]);
+});
+
+test('the filter and the offer projection agree row by row', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14),
+    deposit = await filterDeposit(s, 0);
+  await s.payments.record(s.actor, invoice.id, {
+    receivedOn: '2031-03-10',
+    amountMinor: 5000,
+    method: 'card',
+  });
+  s.setClock('2031-04-01T10:00:00Z');
+  const projected = (await s.repo.list({
+      include: 'offer',
+    })) as DocumentOfferRow[],
+    // The metadata projection is narrowed through its documented row type: the
+    // repository's inferred return type only names the bare list.
+    metadata = (await s.repo.list({
+      include: 'metadata',
+    })) as unknown as DocumentMetadataRow[];
+  for (const bucket of ['none', 'partial', 'paid'] as const) {
+    const listed = await filterIds(s, { payment: bucket });
+    for (const id of listed)
+      expect(projected.find((row) => row.id === id)!.paymentState, id).toBe(
+        bucket,
+      );
+    // The same holds for every projected row: the filter never invents a row the
+    // projection would not also call by that name.
+    expect(
+      projected
+        .filter((row) => row.paymentState === bucket)
+        .map((row) => row.id)
+        .sort(),
+    ).toEqual([...listed].sort());
+  }
+  for (const id of await filterIds(s, { overdue: true }))
+    expect(projected.find((row) => row.id === id)!.overdue, id).toBe(true);
+  // The metadata page shows the same four facts, so the index can never display
+  // a different payment state than the filter it was fetched with.
+  for (const row of metadata) {
+    const full = projected.find((entry) => entry.id === row.id)!;
+    expect(row).toMatchObject({
+      dueDate: full.dueDate,
+      paymentState: full.paymentState,
+      openMinor: full.openMinor,
+      overdue: full.overdue,
+    });
+  }
+  expect(metadata.map((row) => row.id)).toContain(deposit.id);
+});
+
+test('a filtered page is sliced after the filter and never claims a total', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14),
+    first = await filterDeposit(s, 14),
+    second = await filterDeposit(s, 14),
+    third = await filterDeposit(s, 14);
+  // Four claims and one offer that no payment filter may hand out a slot to.
+  const all = await filterIds(s, { payment: 'none' });
+  expect(all).toHaveLength(4);
+  expect(all).not.toContain(s.offerId);
+  const pageOne = await filterIds(s, { payment: 'none', limit: 2, offset: 0 }),
+    pageTwo = await filterIds(s, { payment: 'none', limit: 2, offset: 2 }),
+    beyond = await filterIds(s, { payment: 'none', limit: 2, offset: 4 });
+  // The pages are contiguous slices of the filtered result, in the same order.
+  expect(pageOne).toEqual(all.slice(0, 2));
+  expect(pageTwo).toEqual(all.slice(2, 4));
+  expect(beyond).toEqual([]);
+  // The extra row the panel asks for is a real fifth match only when one exists.
+  expect(await filterIds(s, { payment: 'none', limit: 3, offset: 0 })).toEqual(
+    all.slice(0, 3),
+  );
+  // A filter that matches fewer rows than a page never pads with non-matches.
+  expect(
+    await filterIds(s, { payment: 'none', kind: 'invoice', limit: 26 }),
+  ).toEqual([invoice.id]);
+  expect([first.id, second.id, third.id].every((id) => all.includes(id))).toBe(
+    true,
+  );
+});
+
+test('the payment and due filters keep tenants apart', async () => {
+  const mine = await filterScenario(),
+    theirs = await filterScenario(),
+    mineInvoice = await filterInvoice(mine, 14),
+    theirInvoice = await filterInvoice(theirs, 14);
+  await theirs.payments.record(theirs.actor, theirInvoice.id, {
+    receivedOn: '2031-03-10',
+    amountMinor: 1000,
+    method: 'cash',
+  });
+  theirs.setClock('2031-04-01T10:00:00Z');
+  mine.setClock('2031-04-01T10:00:00Z');
+  // The same due window and the same lateness, but never the other tenant's row.
+  const window = { dueFrom: '2031-03-01', dueTo: '2031-03-31', overdue: true };
+  expect(await filterIds(mine, window)).toEqual([mineInvoice.id]);
+  expect(await filterIds(theirs, window)).toEqual([theirInvoice.id]);
+  expect(await filterIds(theirs, window)).not.toContain(mineInvoice.id);
+  expect(await filterIds(mine, window)).not.toContain(theirInvoice.id);
+  expect(await filterIds(theirs, { payment: 'partial' })).toEqual([
+    theirInvoice.id,
+  ]);
+  expect(await filterIds(mine, { payment: 'partial' })).toEqual([]);
+});
+
+test('one statement per filtered page, never one per row', async () => {
+  const s = await filterScenario(),
+    invoice = await filterInvoice(s, 14);
+  await filterDeposit(s, 14);
+  await filterDeposit(s, 14);
+  // Every statement that reads the document table is recorded, so the answer can
+  // prove the filter costs one list query instead of a lookup per listed
+  // document. Only `pool.query` is wrapped: the list reads go through the pool,
+  // and wrapping pooled clients as well would count one statement twice as soon
+  // as a write transaction handed one of them out.
+  const statements: string[] = [],
+    query = pool.query.bind(pool);
+  const record = (statement: unknown) =>
+    statements.push(
+      String(
+        typeof statement === 'string'
+          ? statement
+          : ((statement as { text?: string })?.text ?? ''),
+      ),
+    );
+  pool.query = ((...args: unknown[]) => {
+    record(args[0]);
+    return (query as (...rest: unknown[]) => unknown)(...args);
+  }) as typeof pool.query;
+  try {
+    const countOne = async () => {
+      const before = statements.length;
+      await s.repo.list({ include: 'metadata', payment: 'none', limit: 25 });
+      return statements
+        .slice(before)
+        .filter((statement) => /from\s+"documents"/i.test(statement)).length;
+    };
+    expect(await countOne()).toBe(1);
+    // Two more claims do not add a statement: the page is one query, however
+    // many rows it carries.
+    await filterDeposit(s, 14);
+    await filterDeposit(s, 14);
+    expect(await countOne()).toBe(1);
+    // And the late filter over the same rows costs exactly the same one query.
+    const before = statements.length;
+    await s.repo.list({ include: 'metadata', overdue: true, limit: 25 });
+    expect(
+      statements
+        .slice(before)
+        .filter((statement) => /from\s+"documents"/i.test(statement)),
+    ).toHaveLength(1);
+  } finally {
+    pool.query = query;
+  }
+  expect(invoice.state).toBe('final');
+});
+
+test('invalid filter values are refused for direct repository callers too', async () => {
+  const s = await filterScenario();
+  for (const filters of [
+    { payment: 'unknown' },
+    { payment: 'constructor' },
+    { overdue: 'yes' },
+    { overdue: 1 },
+    { dueFrom: '2031-02-30' },
+    { dueTo: 'not-a-date' },
+    { dueFrom: '2031-03-11', dueTo: '2031-03-10' },
+  ])
+    await expect(
+      s.repo.list(filters as never),
+      JSON.stringify(filters),
+    ).rejects.toMatchObject({ reason: 'invalid_filter' });
 });

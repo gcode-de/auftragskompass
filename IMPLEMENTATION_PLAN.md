@@ -8,7 +8,60 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
-- [x] **RG-08 — `feat: derive an overdue invoice from its due day`** (26.10.2026)
+- [x] **BKP019.e12 — `feat: filter documents by payment state and due day`** (26.10.2026)
+
+  Erster der (e)-Slices nach rein lesender DeepSeek-Analyse zu `e0c0095`
+  (BKP019 (e) „verständliche Fristen-/Statusfilter und Export“; e1+e2 werden
+  bewusst EIN Slice – kein Backend-Fragment ohne UI –, der Export (e3)
+  folgt gesondert). Staleness: (e) offen; der Geschäftsdokumentindex
+  filtert nur Art/`state`/Ausstellungsdatum. **Serverfilter VOR
+  `limit`/`offset`** (sonst lügt „es gibt mehr“): `due_from`/`due_to`
+  (Fälligkeitsgrenzen; ohne `due_date` fallende Belege scheiden bei
+  gesetzten Grenzen aus), `overdue` dreiwertig (abwesend/`true`/`false`),
+  `payment` ∈ `none|partial|paid` (bestehende Formel, keine
+  Sondersemantik bei Anspruch 0). **Gemeinsamer SQL-`claim`/`paid`-
+  Baustein** (Anzeige und Filter rechnen identisch, kein Drift). Die
+  Metadaten-Projektion wird **bewusst additiv** um
+  `dueDate`/`paymentState`/`openMinor`/`overdue` erweitert (Bruch des
+  „metadata wächst nicht“-Entwurfs: alte Clients ignorieren Zusatzfelder;
+  Freeze-Kommentar/Pins gezielt aktualisiert, `oldListKeys` und
+  `:298–308` unantastbar) – keine vierte Projektion. Migration `0049`:
+  Index `(tenant_id, kind, due_date)`. UI im `df_*`-Deep-Link-Vertrag
+  (`df_due_from`/`df_due_to`/`df_overdue`/`df_payment`): Zeile zeigt
+  Zahlungsstand + „Überfällig“-Badge + Fälligkeitsdatum, Filter verständlich
+  beschriftet, serverseitig, kein N+1 (Statement-Zähler-Tests).
+  Referenz ehrlich: Bookitup-Filter-UI unbekannt (B35 sah keine Filter),
+  Soll aus RG-08/10/12/NF-10, keine Rechts-/Buchhaltungsaussage.
+  Tests zuerst rot (Filtermatrix inkl. DST-Grenzen/fällig-heute/voll
+  storniert/Mandantentrennung/Pagination). Coding-Subagent: DeepSeek
+  V4.1 Flash, MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot sauber beobachtet (Filter wirkungslos/Schlüsselmengen-
+  Fehler, 6 Component-Fehler; ehrlich benannt: zwei eigene Testfehler
+  korrigiert, ein Pin in document-dates.test.ts nicht separat rot), danach
+  grün: `test:unit` 274/274, `test:component` 754/754 (Dateien-Datei 22
+  Fälle), `test:integration` 495/495 (documents 152, davon 13 neu:
+  Filtermatrix, beide DST-Grenzen, fällig-heute, Dreiwertigkeit,
+  Kombination über vier Achsen, Pagination nach Filter,
+  Mandantentrennung, Statement-Zähler, 400-Liste + 7 ungültige Werte),
+  `test:coverage` 1523 vollständig (Changed ≥85/80; FilesPanel 99,21%
+  Zeilen), `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 (Passwort 2,4 min im Budget) inkl.
+  Dateiindex-Ablauf (Filter setzen → Badge/Fälligkeit → Deep-Link stellt
+  wieder her). Notiert: Geldformel `claimMinorSql`/`paidMinorSql` genau
+  einmal in SQL definiert (JS-Zweitpfad entfällt, Gleichheit per
+  Zeile-für-Zeile-Test gepinnt); drei testseitige Zusatzpfade außerhalb
+  der Freigabeliste (veraltete Pins/Fixture, ehrlich dokumentiert, von
+  MiMo reviewt); `overdue=false` ist die echte Gegenmenge (auch Belege
+  ohne Frist); `df_*`-Namespace derzeit zweigeteilt (url-state.ts nicht
+  im Satz – Aufräumslice folgt); `validRows` lehnt Antworten ohne die
+  vier Felder ab (Client/Server gemeinsam ausgeliefert); Index = Plan-
+  zusage, kein EXPLAIN gemessen. **UI-Hinweis für den Folgeslice:** die
+  acht permanent sichtbaren Filter über der Tabelle sind ein bekannter
+  Gestaltungsdefekt und werden im UI-Slice Dokumentübersicht durch die
+  Bookitup-Kontextspalte (Desktop) bzw. den kompakten Filterdialog
+  (mobil) ersetzt. Export (e3) bewusst zurückgestellt.
+
+- [x] **RG-08** — `feat: derive an overdue invoice from its due day`** (26.10.2026)
 
   RG-08 („Dokumentstatus … überfällig“) nach rein lesender DeepSeek-Analyse
   zu `06f7919`. Staleness: „überfällig“ fehlt als einziger der sieben

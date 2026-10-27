@@ -766,9 +766,12 @@ test('the opt-in projection carries the three invoice keys', async () => {
       paymentTermDays: null,
       dueDate: null,
     });
-  // The metadata projection stays exactly as narrow as it was.
+  // The metadata projection grows by the four payment facts of BKP019.e, because
+  // the file index filters and shows them; every other invoice field stays out.
   const metadata = await s.repo.list({ include: 'metadata' });
-  expect(Object.keys(metadata[0]!).sort()).not.toContain('dueDate');
+  expect(Object.keys(metadata[0]!).sort()).not.toContain('bankAccount');
+  expect(Object.keys(metadata[0]!).sort()).not.toContain('paymentTermDays');
+  expect(Object.keys(metadata[0]!).sort()).toContain('dueDate');
 });
 
 // RG-07b: the account an invoice prints. Free text, frozen at finalization,

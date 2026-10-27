@@ -143,12 +143,51 @@ export type DocumentFilters = {
   /** Inclusive tenant-local issue days, `YYYY-MM-DD`, on `issued_at`. */
   from?: string;
   to?: string;
+  /**
+   * BKP019.e: inclusive tenant-local due days on the frozen `due_date`. A
+   * document without a due day (an offer, a confirmation, a draft) is outside
+   * every due window - it has no deadline to be inside one.
+   */
+  dueFrom?: string;
+  dueTo?: string;
+  /**
+   * BKP019.e: tri-state lateness. Omitted is no filter; `true` lists only claims
+   * whose due day lies before the tenant's today with money still open; `false`
+   * is the honest complement, so it also names the rows that can never be late.
+   */
+  overdue?: boolean;
+  /**
+   * BKP019.e: the derived payment state of a payable document. A row that is no
+   * claim (draft, offer, confirmation, correction) is in no bucket at all.
+   */
+  payment?: PaymentState;
   /** Explicit page size; omitted keeps the full, unbounded list. */
   limit?: number;
   offset?: number;
   /** Opt-in projection; omitted keeps the old, unchanged list shape. */
   include?: 'metadata' | 'offer';
 };
+// BKP019.e: the wire spells the due window and the tri-state in snake_case, the
+// repository speaks its own field names. One mapping, so no filter can be sent
+// and silently ignored. `overdue` stays a closed string set at the edge, so `1`
+// or `yes` is refused instead of being coerced into a `true`.
+type DocumentListQuery = Omit<
+  DocumentFilters,
+  'dueFrom' | 'dueTo' | 'overdue'
+> & {
+  due_from?: string;
+  due_to?: string;
+  overdue?: 'true' | 'false';
+};
+function listFiltersOf(query: DocumentListQuery): DocumentFilters {
+  const { due_from, due_to, overdue, ...rest } = query;
+  return {
+    ...rest,
+    ...(due_from === undefined ? {} : { dueFrom: due_from }),
+    ...(due_to === undefined ? {} : { dueTo: due_to }),
+    ...(overdue === undefined ? {} : { overdue: overdue === 'true' }),
+  };
+}
 // The business status of an offer is a second axis next to `state`: the content
 // stays final and byte-identical while the offer is sent, accepted or withdrawn.
 export type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
@@ -251,6 +290,61 @@ export function invoiceOverdue(
     ) < 0
   );
 }
+// BKP019.e: display and filter must never disagree about what a row owes, so the
+// money side of a claim is written exactly once here and read three times: by the
+// offer projection, by the metadata projection of the file index, and by the
+// payment/lateness filters. Anything that changes the claim (credits, debits,
+// settled advances, payments) changes this region and nothing else.
+// `claim` = gross + debits - credits - settled advances, `paid` = recorded money.
+const claimMinorSql = sql`(
+  documents.gross_minor
+  + (
+    SELECT coalesce(sum(c.gross_minor), 0) FROM documents c
+     WHERE c.tenant_id = documents.tenant_id
+       AND c.source_document_id = documents.id
+       AND c.kind = 'correction'
+       AND c.state = 'final'
+       AND c.correction_direction = 'debit'
+  )
+  - (
+    SELECT coalesce(sum(c.gross_minor), 0) FROM documents c
+     WHERE c.tenant_id = documents.tenant_id
+       AND c.source_document_id = documents.id
+       AND c.kind = 'correction'
+       AND c.state = 'final'
+       AND c.correction_direction = 'credit'
+  )
+  - coalesce(documents.deposit_applied_minor, 0)
+)`;
+const paidMinorSql = sql`(
+  SELECT coalesce(sum(p.amount_minor), 0) FROM document_payments p
+   WHERE p.tenant_id = documents.tenant_id
+     AND p.document_id = documents.id
+)`;
+// Only a finalized invoice or advance is a claim; every other row answers NULL
+// to both derived axes instead of a made-up `false` or `0`.
+const payableSql = sql`(documents.kind IN ('invoice', 'deposit_invoice') AND documents.state = 'final')`;
+// The lateness is the date comparison of `invoiceOverdue` in SQL: a stored due
+// day strictly before the tenant's today with money still open. The tenant's
+// today is passed in as a plain day, so no server time zone can decide it.
+const overdueSql = (today: string) => sql`(
+  ${payableSql}
+  AND documents.due_date IS NOT NULL
+  AND ${paidMinorSql} < ${claimMinorSql}
+  AND documents.due_date < ${today}::date
+)`;
+// The derived payment state, the same comparison as `paymentState()`: no money is
+// `none`, money below the claim is `partial`, money covering it is `paid`.
+const paymentStateSql = (state: PaymentState) => sql`(
+  ${payableSql}
+  AND ${
+    state === 'none'
+      ? sql`${paidMinorSql} <= 0`
+      : state === 'partial'
+        ? sql`${paidMinorSql} > 0 AND ${paidMinorSql} < ${claimMinorSql}`
+        : sql`${paidMinorSql} > 0 AND ${paidMinorSql} >= ${claimMinorSql}`
+  }
+)`;
 export type DocumentListRow = {
   id: string;
   kind: DocumentKind;
@@ -273,6 +367,14 @@ export type DocumentMetadataRow = DocumentListRow & {
   issuedDate: string;
   /** Exactly the eligibility of `GET /api/v1/documents/:id/pdf`. */
   pdfAvailable: boolean;
+  // BKP019.e: the file index filters by due day and payment state, so it also
+  // shows them. The four values are the same derivation the offer projection
+  // answers - `null` wherever the row is no claim.
+  /** The frozen due day of an invoice family row, else `null`. */
+  dueDate: string | null;
+  paymentState: PaymentState | null;
+  openMinor: number | null;
+  overdue: boolean | null;
 };
 export type DocumentOfferRow = DocumentListRow & {
   /** NULL is the honest value for a row without any status claim. */
@@ -565,13 +667,32 @@ function printedDay(day: string): string {
 // honest for direct callers and names the one rule JSON Schema cannot express.
 export function assertDocumentFilters(filters: DocumentFilters): void {
   const from = filters.from === undefined ? null : plainDate(filters.from),
-    to = filters.to === undefined ? null : plainDate(filters.to);
+    to = filters.to === undefined ? null : plainDate(filters.to),
+    dueFrom = filters.dueFrom === undefined ? null : plainDate(filters.dueFrom),
+    dueTo = filters.dueTo === undefined ? null : plainDate(filters.dueTo);
   if (
     (filters.from !== undefined && !from) ||
-    (filters.to !== undefined && !to)
+    (filters.to !== undefined && !to) ||
+    (filters.dueFrom !== undefined && !dueFrom) ||
+    (filters.dueTo !== undefined && !dueTo)
   )
     throw new DocumentError('invalid_filter');
   if (from && to && Temporal.PlainDate.compare(from, to) > 0)
+    throw new DocumentError('invalid_filter');
+  // A due window that ends before it starts is a typing mistake, never an empty
+  // result: it is refused like a reversed issue window.
+  if (dueFrom && dueTo && Temporal.PlainDate.compare(dueFrom, dueTo) > 0)
+    throw new DocumentError('invalid_filter');
+  // `overdue` is tri-state, so only a real boolean is a filter value - not a
+  // string, not a number, and not "yes".
+  if (filters.overdue !== undefined && typeof filters.overdue !== 'boolean')
+    throw new DocumentError('invalid_filter');
+  // The payment axis has a closed value set; an inherited object key such as
+  // `constructor` is not in it.
+  if (
+    filters.payment !== undefined &&
+    !(paymentStates as readonly string[]).includes(filters.payment)
+  )
     throw new DocumentError('invalid_filter');
   if (
     filters.limit !== undefined &&
@@ -1339,14 +1460,20 @@ export function documentRepository(
         filters.kind ? eq(documents.kind, filters.kind) : undefined,
         filters.state ? eq(documents.state, filters.state) : undefined,
       );
-      // Without pagination and projection the query stays the plain select the
-      // established clients already rely on.
+      // Without pagination, projection and the additive filters the query stays
+      // the plain select the established clients already rely on. Every new
+      // filter must be named here, otherwise this short cut would silently
+      // ignore it.
       if (
         filters.include === undefined &&
         filters.limit === undefined &&
         filters.offset === undefined &&
         !filters.from &&
-        !filters.to
+        !filters.to &&
+        filters.dueFrom === undefined &&
+        filters.dueTo === undefined &&
+        filters.overdue === undefined &&
+        filters.payment === undefined
       )
         return db
           .select(columns)
@@ -1361,7 +1488,13 @@ export function documentRepository(
       if (!tenant) throw new DocumentError('missing_reference');
       const zone = tenant.timezone,
         // One clock reading for the whole page: expiry is a day comparison.
-        at = now();
+        at = now(),
+        // BKP019.e: the tenant's today, once, as a plain day. Both the lateness
+        // of the projection and its filter compare against exactly this day.
+        today = Temporal.Instant.fromEpochMilliseconds(at.getTime())
+          .toZonedDateTimeISO(zone)
+          .toPlainDate()
+          .toString();
       // Inclusive local days become a half-open instant window. The upper bound
       // is the next local midnight, so a 23- or 25-hour DST day stays exact.
       // One offset per boundary comes from `Intl`, not from a fixed +01/+02.
@@ -1383,6 +1516,24 @@ export function documentRepository(
         upper
           ? lt(documents.issuedAt, new Date(upper.epochMilliseconds))
           : undefined,
+        // BKP019.e: the due window is a plain-day comparison on the frozen
+        // `due_date`, so no time zone can move a deadline into another day.
+        filters.dueFrom
+          ? sql`documents.due_date >= ${filters.dueFrom}::date`
+          : undefined,
+        filters.dueTo
+          ? sql`documents.due_date <= ${filters.dueTo}::date`
+          : undefined,
+        // Both derived axes reuse the single claim/paid expression above: what
+        // is filtered here is exactly what the projection displays.
+        filters.payment
+          ? paymentStateSql(filters.payment as PaymentState)
+          : undefined,
+        filters.overdue === true
+          ? overdueSql(today)
+          : filters.overdue === false
+            ? sql`NOT ${overdueSql(today)}`
+            : undefined,
       );
       // The offer projection adds the business status, the frozen deadline and
       // the derived expiry, and nothing else - no hashes, no artefact keys.
@@ -1434,21 +1585,11 @@ export function documentRepository(
                  AND c.correction_direction = 'credit'
             )`.as('credited_gross_minor'),
             // BKP019.d: the other half of the balance. Debits raise the claim and
-            // payments reduce it; both are read in this one query, so the open
-            // amount of a row can never be assembled from two different reads.
-            debitedGrossMinor: sql<string>`(
-              SELECT coalesce(sum(c.gross_minor), 0)::text FROM documents c
-               WHERE c.tenant_id = documents.tenant_id
-                 AND c.source_document_id = documents.id
-                 AND c.kind = 'correction'
-                 AND c.state = 'final'
-                 AND c.correction_direction = 'debit'
-            )`.as('debited_gross_minor'),
-            paidMinor: sql<string>`(
-              SELECT coalesce(sum(p.amount_minor), 0)::text FROM document_payments p
-               WHERE p.tenant_id = documents.tenant_id
-                 AND p.document_id = documents.id
-            )`.as('paid_minor'),
+            // payments reduce it; both are read through the shared claim/paid
+            // expressions, so the open amount of a row can never be assembled
+            // from two different reads.
+            claimMinor: sql<string>`${claimMinorSql}::text`.as('claim_minor'),
+            paidMinor: sql<string>`${paidMinorSql}::text`.as('paid_minor'),
             // BKP019.c3.2: the settlement axis of the same query. The role and
             // the frozen deduction are this row's own columns; what arrived on the
             // settled advances is derived from the advances of the same order and
@@ -1541,7 +1682,7 @@ export function documentRepository(
             sourceNumber,
             correctionDirection,
             creditedGrossMinor,
-            debitedGrossMinor,
+            claimMinor: claimGrossMinor,
             paidMinor: paidGrossMinor,
             invoiceRole,
             depositAppliedMinor,
@@ -1565,18 +1706,13 @@ export function documentRepository(
             // payments. Both stay magnitudes and are never stored.
             // BKP019.c3.1: a finalized deposit invoice is a claim of its own, so
             // the same two derived values describe it. Nothing else widened.
+            // BKP019.e: both values come straight from the shared SQL expression
+            // (`claimMinorSql`/`paidMinorSql`), so the same numbers that decide
+            // the filters decide the display.
             const payable =
                 (row.kind === 'invoice' || row.kind === 'deposit_invoice') &&
                 row.state === 'final',
-              // BKP019.c3.2: a final invoice has already settled the advances
-              // billed on its order, so its claim is the reduced amount. The
-              // deduction is part of the claim and never a second status.
-              settled = Number(depositAppliedMinor ?? 0),
-              claim =
-                row.grossMinor +
-                Number(debitedGrossMinor ?? 0) -
-                Number(creditedGrossMinor ?? 0) -
-                settled,
+              claim = Number(claimGrossMinor ?? 0),
               paid = Number(paidGrossMinor ?? 0);
             return {
               ...row,
@@ -1673,6 +1809,18 @@ export function documentRepository(
           ...columns,
           pdfHash: documents.pdfHash,
           eventName: sql<string | null>`${events.name}`.as('event_name'),
+          // BKP019.e: the file index filters by due day and payment state, so it
+          // must also show them - from the same three expressions the filters
+          // use, never from a second derivation.
+          dueDate: sql<
+            string | null
+          >`to_char(documents.due_date, 'YYYY-MM-DD')`.as('due_date'),
+          claimMinor: sql<string>`${claimMinorSql}::text`.as('claim_minor'),
+          paidMinor: sql<string>`${paidMinorSql}::text`.as('paid_minor'),
+          // The late flag is read from the filter's own expression, not from a
+          // second JavaScript comparison: what the index shows for a row is
+          // literally what `overdue=true|false` selected it by.
+          overdueNow: sql<boolean>`${overdueSql(today)}`.as('overdue_now'),
         })
         .from(documents)
         .leftJoin(
@@ -1684,20 +1832,47 @@ export function documentRepository(
         .limit(filters.limit ?? Number.MAX_SAFE_INTEGER)
         .offset(filters.offset ?? 0);
 
-      return rows.map(({ pdfHash, ...row }) => ({
-        ...row,
-        issuedDate: Temporal.Instant.fromEpochMilliseconds(
-          row.issuedAt.getTime(),
-        )
-          .toZonedDateTimeISO(zone)
-          .toPlainDate()
-          .toString(),
-        // The PDF route also needs a number and the artefact hash; a final row
-        // whose metadata was lost must not offer a download that 404s.
-        // Only the boolean leaves the server; the artefact key never does.
-        pdfAvailable:
-          row.state === 'final' && pdfHash !== null && row.number !== null,
-      }));
+      return rows.map(
+        ({
+          pdfHash,
+          dueDate,
+          claimMinor: claimGross,
+          paidMinor,
+          overdueNow,
+          ...row
+        }) => {
+          // The payment axis exists only where a claim exists. Every other row
+          // answers `null` instead of an invented "offen" or "nicht überfällig".
+          const payable =
+              (row.kind === 'invoice' || row.kind === 'deposit_invoice') &&
+              row.state === 'final',
+            claim = Number(claimGross ?? 0),
+            paid = Number(paidMinor ?? 0);
+          return {
+            ...row,
+            // RG-07: the frozen due day, answered for every row so no reader has
+            // to guess a shape.
+            dueDate: dueDate ?? null,
+            issuedDate: Temporal.Instant.fromEpochMilliseconds(
+              row.issuedAt.getTime(),
+            )
+              .toZonedDateTimeISO(zone)
+              .toPlainDate()
+              .toString(),
+            // The PDF route also needs a number and the artefact hash; a final row
+            // whose metadata was lost must not offer a download that 404s.
+            // Only the boolean leaves the server; the artefact key never does.
+            pdfAvailable:
+              row.state === 'final' && pdfHash !== null && row.number !== null,
+            // BKP019.d/RG-08: the same two derived values and the same lateness
+            // the offer projection answers, so the index and the event file can
+            // never show a different payment state for one document.
+            paymentState: payable ? paymentState(claim, paid) : null,
+            openMinor: payable ? openMinorOf(claim, paid) : null,
+            overdue: payable ? overdueNow : null,
+          };
+        },
+      );
     },
     // Only a final document has an artefact; the hash names it, so the bytes
     // always belong to the recorded snapshot.
@@ -2975,8 +3150,13 @@ export function registerDocumentRoutes(
     },
   };
   // BKP019.d: the payment axis, like the correction axis, belongs to the opt-in
-  // projection only. `offerRow` (the status routes) and `listRow` (the metadata
-  // projection) do not grow, so no older route changes its shape.
+  // projection. `offerRow` (the status routes) and `listRow` (the bare list) do
+  // not grow, so no older route changes its shape.
+  // BKP019.e: the metadata projection is the one deliberate exception. The file
+  // index filters and shows payment state and due day, so it reads the same four
+  // values (`dueDate`, `paymentState`, `openMinor`, `overdue`) instead of asking
+  // for a fourth projection. Additive only: an older client ignores the extra
+  // keys, and the bare list stays exactly as it was.
   const paymentFields = {
     paymentState: {
       anyOf: [{ type: 'string', enum: [...paymentStates] }, { type: 'null' }],
@@ -3464,7 +3644,7 @@ export function registerDocumentRoutes(
       ...overdueFields,
     },
   };
-  app.get<{ Querystring: DocumentFilters }>(
+  app.get<{ Querystring: DocumentListQuery }>(
     '/api/v1/documents',
     {
       schema: {
@@ -3482,6 +3662,13 @@ export function registerDocumentRoutes(
             limit: { type: 'integer', minimum: 1, maximum: 100 },
             offset: { type: 'integer', minimum: 0, maximum: 1_000_000 },
             include: { type: 'string', enum: ['metadata', 'offer'] },
+            // BKP019.e: the additive filter axes. Each is optional, so an old
+            // request keeps its answer; a value outside the set is a 400 before
+            // any query runs.
+            due_from: { type: 'string', format: 'date' },
+            due_to: { type: 'string', format: 'date' },
+            overdue: { type: 'string', enum: ['true', 'false'] },
+            payment: { type: 'string', enum: [...paymentStates] },
           },
         },
         response: {
@@ -3498,6 +3685,11 @@ export function registerDocumentRoutes(
                     'eventName',
                     'issuedDate',
                     'pdfAvailable',
+                    // BKP019.e: the index fields the file page filters and shows.
+                    'dueDate',
+                    'paymentState',
+                    'openMinor',
+                    'overdue',
                   ],
                   properties: {
                     ...listRow.properties,
@@ -3507,6 +3699,12 @@ export function registerDocumentRoutes(
                       pattern: '^\\d{4}-\\d{2}-\\d{2}$',
                     },
                     pdfAvailable: { type: 'boolean' },
+                    // The four facts are answers, not options: a row that is no
+                    // claim names `null` instead of omitting the key.
+                    dueDate: invoiceFields.dueDate,
+                    paymentState: paymentFields.paymentState,
+                    openMinor: paymentFields.openMinor,
+                    overdue: overdueFields.overdue,
                   },
                 },
                 offerListRow,
@@ -3518,7 +3716,7 @@ export function registerDocumentRoutes(
     },
     async (request, reply) => {
       try {
-        return await repo.list(request.query);
+        return await repo.list(listFiltersOf(request.query));
       } catch (error) {
         return failure(error, reply);
       }

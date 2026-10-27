@@ -46,7 +46,17 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // this stays the last migration and the invoice index is untouched below.
   // RG-07: the invoice dates add three additive columns and no backfill either.
   // RG-07b: the printed account is one additive column, also without a backfill.
-  expect(applied.at(-1)!.name).toBe('0048_invoice_bank.sql');
+  // BKP019.e: the due-day index is additive as well - one index, no column and
+  // no data change, so this stays the last migration.
+  expect(applied.at(-1)!.name).toBe('0049_due_date_index.sql');
+  // The index answers exactly the filter the file index sends: this tenant, this
+  // kind, this due window. No predicate, no expression, no backfill.
+  const dueIndex = (
+    await pool.query<{ indexdef: string }>(
+      "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='documents_due_date'",
+    )
+  ).rows[0]!.indexdef;
+  expect(dueIndex).toContain('(tenant_id, kind, due_date)');
   // The source is a document of the same tenant, never another tenant's row.
   const sourceForeignKey = (
     await pool.query<{ def: string }>(

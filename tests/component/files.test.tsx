@@ -39,6 +39,12 @@ const draft = {
   eventName: 'Fictional Wedding',
   issuedDate: '2031-05-01',
   pdfAvailable: false,
+  // BKP019.e: the index carries the derived payment facts. An offer is no claim,
+  // so all four are honestly `null` instead of a derived zero or "offen".
+  dueDate: null,
+  paymentState: null,
+  openMinor: null,
+  overdue: null,
 };
 const finalRow = {
   ...draft,
@@ -53,6 +59,11 @@ const finalRow = {
   taxMinor: 0,
   grossMinor: 123456,
   pdfAvailable: true,
+  // A finalized invoice is a claim: open, due on 16 May, not late yet.
+  dueDate: '2031-05-16',
+  paymentState: 'none',
+  openMinor: 123456,
+  overdue: false,
 };
 const orphan = {
   ...draft,
@@ -483,4 +494,186 @@ test('an event link clears only the Event filter namespace and keeps file state'
   // link and nothing here intercepts it.
   expect(clickLink(link)).toBe(false);
   expect(window.location.hash).toBe('#files');
+});
+
+// BKP019.e: the file index filters by payment state and due day. The server does
+// the filtering - the panel only writes the four `df_*` deep-link keys and reads
+// one page of the already narrowed result.
+const partialInvoice = {
+  ...finalRow,
+  id: '99999999-9999-4999-8999-999999999999',
+  number: 'RE-2031-0002',
+  paymentState: 'partial',
+  openMinor: 100000,
+  overdue: true,
+};
+const paidInvoice = {
+  ...finalRow,
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  number: 'RE-2031-0003',
+  paymentState: 'paid',
+  openMinor: 0,
+};
+
+test('the payment and due filters travel to the server and never filter in the panel', async () => {
+  const fetcher = pageFetcher({
+    '*': [draft, finalRow, partialInvoice, paidInvoice],
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  await screen.findByText('Angebot · Entwurf');
+  fireEvent.change(screen.getByLabelText('Zahlungsstand'), {
+    target: { value: 'partial' },
+  });
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&payment=partial')),
+  );
+  fireEvent.change(screen.getByLabelText('Überfällig'), {
+    target: { value: 'true' },
+  });
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(
+      listUrl('&overdue=true&payment=partial'),
+    ),
+  );
+  fireEvent.change(screen.getByLabelText('Fällig von'), {
+    target: { value: '2031-05-01' },
+  });
+  fireEvent.change(screen.getByLabelText('Fällig bis'), {
+    target: { value: '2031-05-31' },
+  });
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(
+      listUrl(
+        '&due_from=2031-05-01&due_to=2031-05-31&overdue=true&payment=partial',
+      ),
+    ),
+  );
+  // Every page is still exactly one metadata request with the 26th row.
+  expect(
+    new URL(
+      fetcher.mock.calls.at(-1)![0] as string,
+      'http://localhost',
+    ).searchParams.get('limit'),
+  ).toBe('26');
+  // The issued-day window stays its own axis: `Von`/`Bis` never write a due day.
+  fireEvent.change(screen.getByLabelText('Von'), {
+    target: { value: '2031-05-01' },
+  });
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(
+      listUrl(
+        '&from=2031-05-01&due_from=2031-05-01&due_to=2031-05-31&overdue=true&payment=partial',
+      ),
+    ),
+  );
+  expect(urlsOf(fetcher).at(-1)).not.toContain('valid_until');
+});
+
+test('a payment filter change returns to the first page and keeps unrelated state', async () => {
+  window.history.replaceState(null, '', '/?q=keep&df_payment=paid&df_page=2');
+  const fetcher = pageFetcher({ '*': [finalRow] });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  await screen.findByText('Rechnung RE-2031-0001');
+  expect(urlsOf(fetcher)[0]).toBe(
+    '/api/v1/documents?include=metadata&limit=26&offset=50&payment=paid',
+  );
+  fireEvent.change(screen.getByLabelText('Zahlungsstand'), {
+    target: { value: 'none' },
+  });
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(
+      '/api/v1/documents?include=metadata&limit=26&offset=0&payment=none',
+    ),
+  );
+  expect(new URLSearchParams(window.location.search).get('q')).toBe('keep');
+  expect(new URLSearchParams(window.location.search).get('df_page')).toBeNull();
+});
+
+test('an invalid or unknown deep-link value is dropped instead of sent', async () => {
+  window.history.replaceState(
+    null,
+    '',
+    '/?df_payment=bogus&df_overdue=1&df_due_from=2031-13-01&df_due_to=2031-05-31',
+  );
+  const fetcher = pageFetcher({ '*': [] });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  expect(await screen.findByText(/Keine Dokumente/)).toBeTruthy();
+  expect(urlsOf(fetcher)[0]).toBe(listUrl('&due_to=2031-05-31'));
+  // The form shows the honest, empty value for the refused keys.
+  expect(
+    (screen.getByLabelText('Zahlungsstand') as HTMLSelectElement).value,
+  ).toBe('');
+  expect((screen.getByLabelText('Fällig von') as HTMLInputElement).value).toBe(
+    '',
+  );
+});
+
+test('the reset clears the payment filters and leaves global search alone', async () => {
+  window.history.replaceState(
+    null,
+    '',
+    '/?q=keep&df_payment=partial&df_overdue=true&df_due_from=2031-05-01&df_due_to=2031-05-31&df_page=1',
+  );
+  const fetcher = pageFetcher({ '*': [partialInvoice] });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  await screen.findByText('Rechnung RE-2031-0002');
+  fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(
+      '/api/v1/documents?include=metadata&limit=26&offset=0',
+    ),
+  );
+  expect(window.location.search).toBe('?q=keep');
+});
+
+test('a row shows its due day, the payment state and a late badge only when late', async () => {
+  const fetcher = pageFetcher({
+    '*': [draft, finalRow, partialInvoice, paidInvoice],
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  const rows = await screen.findAllByRole('row');
+  // Header plus four records.
+  expect(rows).toHaveLength(5);
+  const rowOf = (number: string) => screen.getByText(number).closest('tr')!;
+  const open = rowOf('Rechnung RE-2031-0001');
+  expect(within(open).getByText('16.05.2031')).toBeTruthy();
+  expect(within(open).getByText('Offen')).toBeTruthy();
+  // Not late: the due day has its own badge, and a false value prints none.
+  expect(within(open).queryByText('Überfällig')).toBeNull();
+  const partial = rowOf('Rechnung RE-2031-0002');
+  expect(within(partial).getByText('Teilweise bezahlt')).toBeTruthy();
+  expect(within(partial).getByText('Überfällig')).toBeTruthy();
+  expect(within(partial).getByText('Überfällig').tagName).toBe('STRONG');
+  const paid = rowOf('Rechnung RE-2031-0003');
+  expect(within(paid).getByText('Bezahlt')).toBeTruthy();
+  expect(within(paid).queryByText('Überfällig')).toBeNull();
+  // An offer is no claim: no payment state, no due day and never an invented one.
+  const offer = screen.getByText('Angebot · Entwurf').closest('tr')!;
+  expect(within(offer).queryByText(/Offen|Bezahlt|Überfällig/)).toBeNull();
+  expect(within(offer).getByText('Keine Frist')).toBeTruthy();
+  // Exactly one late badge in the whole table.
+  expect(
+    screen.getAllByText('Überfällig', { selector: 'strong' }),
+  ).toHaveLength(1);
+});
+
+test('a metadata row without the payment facts is refused instead of guessed', async () => {
+  for (const broken of [
+    [{ ...finalRow, dueDate: undefined }],
+    [{ ...finalRow, paymentState: 'unknown' }],
+    [{ ...finalRow, overdue: 'yes' }],
+    [{ ...finalRow, openMinor: -1 }],
+  ]) {
+    const fetcher = vi.fn(async () => Response.json(broken));
+    vi.stubGlobal('fetch', fetcher);
+    render(<FilesPanel />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    cleanup();
+  }
 });

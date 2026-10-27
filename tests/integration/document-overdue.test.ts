@@ -688,11 +688,10 @@ test('only the offer projection answers the overdue key', async () => {
       .json()
       .find((row: { id: string }) => row.id === invoice.id);
     expect(projectedRow).toMatchObject({ overdue: true });
-    // The plain list, the metadata projection and the single document keep their
-    // exact old shape: no key, no invented field.
+    // The plain list and the single document keep their exact old shape: no key,
+    // no invented field.
     for (const url of [
       '/api/v1/documents',
-      '/api/v1/documents?include=metadata',
       '/api/v1/documents/' + invoice.id,
     ]) {
       const answer = await app.inject({ url, cookies });
@@ -703,6 +702,20 @@ test('only the offer projection answers the overdue key', async () => {
           : body;
       expect(Object.keys(row)).not.toContain('overdue');
     }
+    // BKP019.e widens exactly one projection - the metadata one the file index
+    // reads - so the index can filter and show the same lateness.
+    const indexed = await app.inject({
+      url: '/api/v1/documents?include=metadata',
+      cookies,
+    });
+    expect(indexed.statusCode).toBe(200);
+    expect(
+      indexed.json().find((row: { id: string }) => row.id === invoice.id),
+    ).toMatchObject({
+      dueDate: '2031-03-10',
+      paymentState: 'none',
+      overdue: true,
+    });
   } finally {
     await app.close();
   }

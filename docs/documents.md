@@ -418,12 +418,21 @@ Das Badge „Überfällig“ erscheint neben dem Zahlungsstand; Korrekturen wirk
 darüber: eine Gutschrift kann die Überfälligkeit heilen, eine Lastschrift
 kann sie begründen.
 
+Der Geschäftsdokumentindex filtert seit BKP019.e zusätzlich nach
+**Zahlungsstand** (offen/teilweise bezahlt/bezahlt), **Fälligkeitsgrenzen**
+(„fällig von/bis“) und **„Nur überfällig“** (Dreiwert: an/aus/egal) –
+serverseitig, gemeinsam mit den bestehenden Filtern über eine einzige
+Zustandsquelle in der URL (`df_*`-Namensraum). Die Filter rechnen mit
+derselben Forderungsformel wie die Anzeige; die Liste zeigt Fälligkeitsdatum,
+Zahlungsstand und das Badge „Überfällig“. Ohne Frist fällt ein Beleg bei
+gesetzten Fristgrenzen heraus; „nicht überfällig“ ist die echte
+Gegenmenge (enthält auch Belege ohne Frist).
+
 **Ehrliche Grenze:** ein Mandanten-Default für Zahlungsziele und
-Bankverbindung fehlt (spätere Einstellungen); „überfällig“ ist noch nicht
-filter-/exportierbar (folgt mit den Fristenfiltern). Es wird keine Rechts-
-oder Steuerbehauptung aufgestellt – kein Mahnwesen, keine Zinsen;
-„unterstützen“ heißt hier: führen, drucken, prüfen – nicht die steuerliche
-Richtigkeit garantieren.
+Bankverbindung fehlt (spätere Einstellungen); ein Export der gefilterten
+Dokumentliste folgt gesondert. Es wird keine Rechts- oder Steuerbehauptung
+aufgestellt – kein Mahnwesen, keine Zinsen; „unterstützen“ heißt hier:
+führen, drucken, prüfen – nicht die steuerliche Richtigkeit garantieren.
 
 ### Auftragsbestätigung aus einem Angebot (BKP019.b, AG-05)
 
