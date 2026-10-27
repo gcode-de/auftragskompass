@@ -2,6 +2,45 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H072: RG-07b – Bankverbindung auf Rechnungen, 26.10.2026
+
+- **RG-07b `baf7532`** – das letzte fehlende RG-07-Feld: Rechnungs-,
+  Anzahlungs- und Korrekturbelege tragen optional eine **Bankverbindung**
+  (Freitext ≤500, mehrzeilig), wörtlich gedruckt (keine Platzhalter, keine
+  IBAN-/Bankprüfung – keine Banklogik erfunden), im Entwurf änderbar, nach
+  Finalisierung unveränderlich (kein Update-Pfad friert ein – bewusst keine
+  Einfrier-Spalte). Gedruckt unter der Fälligkeitszeile mit `<br/>`-Umbrüchen
+  (keine neue CSS-Regel – die Byte-Goldwächter blieben intakt).
+  Migration `0048` additiv (Steuerzeichen-Regel mit erlaubtem `\n`),
+  Projektion `include=offer` additiv um `bankAccount`.
+- **Nebenbefund (echter RG-07a-Defekt, behoben):** der Editor-Ladepfad verlor
+  Leistungsdatum/Zahlungsziel beim Neuladen – die nächste Speicherung hätte
+  sie gelöscht. Im selben erlaubten File korrigiert, der Reload-Test beweist
+  es.
+- **Abnahme:** RED sauber per `git stash` getrennt (14 Fehlerbilder;
+  ehrlich: E2E nicht rot beobachtet), danach grün: unit 274, component 746,
+  integration 468 (11 Bankfälle inkl. 500/501, `\n` vs. Steuerzeichen,
+  DB-CHECKs, Einfrieren, Bytegleichheit, Mandantentrennung), coverage 1488
+  vollständig (Changed ≥85/80), E2E 16/16 (Passwort 2,1 min im Budget)
+  inkl. gedruckter Bankzeile mit Umbruch, Build grün.
+- **Ehrlich notiert:** DB-Steuerzeichen-Regel für 0x7F–0x9F möglicherweise
+  laxer als die Domäne (sichere Richtung gewählt); Längenmessung UTF-16 vs.
+  Zeichen bei Emoji (Domäne strenger); kein Zeilenlimit/Umbruchschutz im
+  Druck (offene Gestaltungsfrage); einmaliger nicht reproduzierbarer
+  E2E-Flake an unberührter History-Restore-Stelle (auth.spec.ts:2610–2631);
+  kein Mandanten-/Layout-Default (Vorrangregel offen).
+
+Damit ist **RG-07 vollständig** (Rechnungsdatum, Leistungsdatum,
+Zahlungsziel, Bankverbindung – alle „unterstützt“ im Sinne von führen,
+drucken, prüfen; keine Rechts-/Steuerabnahme).
+
+**Nächste Unter-Slices:** RG-08 („überfällig“ abgeleitet – jetzt möglich,
+`due_date` steht), (e) Fristen-/Statusfilter und Export; dazu RG-04
+(Pflichtangaben-Ausstattung), Annahme-Korrekturpfad, Rückzahlungslogik,
+BKP020-Reste und BKP021+ (Mailkern bis BKP030). Betrieb unverändert:
+verifiziert live **c21330c**, alleiniger Auto-Updater; Checkpoint-/OCI-
+Nachweis weiterhin offen (Proxmox-Host 192.168.68.201 nicht erreichbar).
+
 ## H071: RG-07a – Leistungsdatum und Zahlungsziel (RG-07), 26.10.2026
 
 - **RG-07a `2658751`** – Rechnungs-, Anzahlungs- und Korrekturbelege tragen
