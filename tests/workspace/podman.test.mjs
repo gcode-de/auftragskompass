@@ -88,3 +88,26 @@ test('database readiness waits for the final TCP server rather than the initiali
     readFileSync('compose.yaml', 'utf8').includes('pg_isready -h 127.0.0.1'),
   );
 });
+
+test('boot starts both stack entry points and pulls in their healthy dependencies', () => {
+  for (const service of ['admin', 'gateway']) {
+    assert.match(
+      read(`ak-test-${service}.container`),
+      /\[Install\]\s+WantedBy=multi-user\.target/,
+    );
+  }
+  assert.match(
+    read('ak-test-admin.container'),
+    /^Requires=ak-test-api\.service$/m,
+  );
+  assert.match(
+    read('ak-test-api.container'),
+    /^Requires=ak-test-database\.service ak-test-worker\.service$/m,
+  );
+  for (const service of ['worker', 'gateway']) {
+    assert.match(
+      read(`ak-test-${service}.container`),
+      /^Requires=ak-test-database\.service$/m,
+    );
+  }
+});
