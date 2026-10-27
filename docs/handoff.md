@@ -2,6 +2,43 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H073: RG-08 – „Überfällig“ abgeleitet, 26.10.2026
+
+- **RG-08 `8a306dd`** – der letzte fehlende RG-08-Status: „Überfällig“
+  wird **abgeleitet, nie gespeichert** (keine Migration): zahlbare
+  Rechnung/Anzahlung ∧ offener Saldo > 0 ∧ `due_date` < Mandantenheute
+  (strikt – „fällig heute“ ist nicht überfällig; DST-sicher wie
+  `offerExpired`). Gilt bei Teilzahlung, Anzahlungen und Schlussrechnungen
+  (reduzierter Anspruch), nicht bei Korrekturen/AB/Angeboten, nicht ohne
+  Zahlungsziel, nicht bei bezahlt/voll storniert. Badge „Überfällig“ als
+  eigenes `<strong>` neben „Offen/Teilweise bezahlt/Bezahlt“ (keine neue
+  CSS-Regel); Gutschriften können Überfälligkeit heilen, Lastschriften
+  begründen; keine Historie „war überfällig“. Damit sind **alle sieben
+  RG-08-Status** abgedeckt (Entwurf/final, versendet = Angebots-Achse,
+  teilweise bezahlt/bezahlt, überfällig, storniert = abgeleitet).
+- **Abnahme:** RED sauber beobachtet (14 Integrationsfehler „Schlüssel
+  `overdue` fehlt“ + 1 Component- + 1 E2E-Fehler), dann grün: unit 274,
+  component 748, integration 482 (14 neue Fälle inkl. fällig-heute-Grenze,
+  zwei DST-Grenzen 2029-10-28/2029-03-25, Mandantentrennung Berlin vs.
+  Auckland bei gleichem `due_date`, „Ableiten schreibt nichts“), coverage
+  vollständig (0 ungedeckte neue Zeilen), E2E 16/16 inkl. frischer Rechnung
+  ohne Badge und – nach dokumentiertem Test-Backdating (SQL-Fixture, kein
+  Produktweg) – Badge neben „Teilweise bezahlt“, Build grün.
+- **Ehrlich notiert:** im E2E-Backdating musste `payment_term_days=1`
+  mitgesetzt werden (CHECK 0047) – die Fixture ist sichtbar künstlich;
+  „überfällig“ ist noch nicht filter-/exportierbar (folgt mit (e)); kein
+  `due_date`-Index; zwei Testerwartungen waren in der GREEN-Phase falsch
+  (im Test korrigiert, nicht im Produkt); MiMo-Reviewfix tilgte zwei
+  veraltete „Überfällig fehlt“-Stellen (Code-Kommentar + Doku);
+  Bookitup-„überfällig“-UI bleibt unbekannt, keine Rechtsaussage.
+
+**Nächste Unter-Slices:** (e) Fristen-/Statusfilter und Export (jetzt mit
+`due_date`/`overdue` möglich); dazu RG-04 (Pflichtangaben-Ausstattung),
+Annahme-Korrekturpfad, Rückzahlungslogik, BKP020-Reste und BKP021+
+(Mailkern bis BKP030). Betrieb unverändert: verifiziert live **c21330c**,
+alleiniger Auto-Updater; Checkpoint-/OCI-Nachweis weiterhin offen
+(Proxmox-Host 192.168.68.201 nicht erreichbar).
+
 ## H072: RG-07b – Bankverbindung auf Rechnungen, 26.10.2026
 
 - **RG-07b `baf7532`** – das letzte fehlende RG-07-Feld: Rechnungs-,
