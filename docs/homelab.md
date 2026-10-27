@@ -127,7 +127,10 @@ Vor einer späteren Installation:
    `systemctl start ak-test-admin.service` startet die Abhängigkeiten in der
    Reihenfolge Datenbank → Worker → API → Admin. `Notify=healthy` wartet jeweils
    auf erfolgreiche Healthchecks. Fehlender Login oder fehlende Secrets verhindern
-   den Start. Der Teststand wird bewusst nicht automatisch beim Booten gestartet.
+   den Start. Admin und Gateway sind über `[Install]` /
+   `WantedBy=multi-user.target` an den Systemstart gebunden. Der Gateway startet
+   separat mit seiner Datenbankabhängigkeit; `Restart=always` allein aktiviert
+   keinen Autostart. Nach Änderungen `systemctl daemon-reload` ausführen.
 
 Nur die Oberfläche wird auf `127.0.0.1:4177` veröffentlicht. API, Worker und Datenbank
 haben keine Hostports. Ein separater Caddy-Host benötigt die unten beschriebene
@@ -221,8 +224,9 @@ tragen den Zusatz „Testbetrieb“. Eine erste Datenbanksicherung liegt mit Mod
 auf dem Host und mit verifiziertem Hash auf dem Betreiberrechner, außerhalb von Git.
 Kontodaten und Passwörter liegen ausschließlich privat; echte Kunden- und
 Auftragsdaten wurden nicht importiert. Verschlüsselte automatische Sicherungen und die vollständige Betriebsabnahme E005
-bleiben vor Produktivbetrieb offen. Der Teststand startet noch nicht automatisch
-nach einem Host-Neustart; dafür `systemctl start ak-test-admin.service` ausführen.
+bleiben vor Produktivbetrieb offen. Seit H022 startet der eingerichtete Teststand
+nach einem Host-Neustart automatisch. Für einen manuellen Start beide Einstiegspunkte
+verwenden: `systemctl start ak-test-admin.service ak-test-gateway.service`.
 
 ## Grundgestaltung für Nutzer-Tests (H007)
 

@@ -19,3 +19,6 @@ NoNewPrivileges=true
 Restart=always
 RestartSec=5
 TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

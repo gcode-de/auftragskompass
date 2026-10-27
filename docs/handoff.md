@@ -35,6 +35,16 @@ Für den früheren Bookitup-Ausstieg gilt die [verkürzte Lieferfolge](bookitup-
 
 C001–C026 sowie C076 sind implementiert; C027–C075 und C077–C085 nicht pauschal als fertig werten. E-/H-Slices ziehen gezielte Teile vor, ohne ganze Milestones als abgeschlossen zu erklären.
 
+## Betriebsnachtrag 27.10.2026 (H022: Autostart)
+
+Nach Stromausfall lief CT 114, aber die fünf AuftragsKompass-Dienste waren inaktiv.
+In Admin-/Gateway-Quadlets fehlte die Install-Sektion. Beide Einstiegspunkte sind
+jetzt über `WantedBy=multi-user.target` an den Boot gebunden; die bestehenden
+Abhängigkeiten starten Datenbank, Worker und API mit Healthchecks. Native
+Generator-Symlinks und fünf gesunde Dienste wurden geprüft. Die vorhandenen
+Image-Pins und Datenvolumes blieben erhalten; ein kompletter Host-Neustart wurde
+nicht durchgeführt. Siehe [Betriebsanleitung](homelab.md).
+
 ## Letzter geprüfter Laufzeitstand
 
 ### Laufzeitnachtrag 20.10.2026 (C051.3: Angebote in der Eventakte)

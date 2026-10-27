@@ -6,6 +6,8 @@
 
 **Neue Session:** Zuerst die [Projektübergabe mit Funktionsstand und Skill-Vorgaben](docs/handoff.md) lesen und den tatsächlichen Repository-/Betriebsstand verifizieren.
 
+- [x] H022: AuftragsKompass nach Host-Neustart automatisch starten. Admin und Gateway an `multi-user.target` binden; Datenbank, Worker und API über vorhandene Health-Abhängigkeiten starten. Abnahme: Boot-Vertrag zunächst rot, nativer Quadlet-Generator mit beiden Boot-Symlinks, alle fünf Dienste gesund und öffentliche Adresse erreichbar; kein vollständiger Host-Neustart.
+
 ## 1. Lieferstrategie
 
 **Neue Priorität vom 16.10.2026:** Für einen früheren Bookitup-Ausstieg gilt die
