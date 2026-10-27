@@ -8,6 +8,24 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
+
+Aufgaben/Workflows, Auswertungen und Exporte sind ausdrücklich ausgeschlossen.
+Lieferfolge: UI-01.1 (CI der Dokumentansicht), DOC-SEARCH-01 (Dokumentsuche),
+BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
+DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
+Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
+
+- [x] **UI-01.1 — `test: isolate document layout audits from login journeys`**:
+  die hinzugefügten Dokumentfilter-Browserprüfungen als eigenständig budgetierten
+  Ablauf prüfen, bestehende Auth-/Sicherheitsassertionen erhalten, keine bloße
+  Timeout-Erhöhung. Abnahme: beide Loginmodi und separater Dokumentablauf grün,
+  lokal 4/4 E2E grün (Hauptläufe 1,3/2,2 min, Dateien-Matrizen 10,8/12,3 s),
+  Typprüfung sowie Format/Lint/274 Unit-/20 Workspace-/3 Docs-Tests grün.
+  Die ursprünglichen Timeouts waren lokal nicht reproduzierbar; CI und Images
+  werden nach Push geprüft, bevor eine Auslieferung behauptet wird.
+
+
 - [x] **UI-01 — `feat: filter documents from a quiet context column and a mobile drawer`** (27.10.2026)
 
   EIN Frontend-Slice der Nachsteuerung: Dokumentübersicht/Dateien an Bookitup
