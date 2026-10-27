@@ -152,6 +152,18 @@ const emptyFilters: FileFilters = {
   overdue: '',
   payment: '',
 };
+// The one field-to-deep-link map: the column and the sheet write the same keys,
+// so no control can invent a name the reader does not know.
+const filterKeys: Record<keyof FileFilters, string> = {
+  kind: 'df_kind',
+  state: 'df_state',
+  from: 'df_from',
+  to: 'df_to',
+  dueFrom: 'df_due_from',
+  dueTo: 'df_due_to',
+  overdue: 'df_overdue',
+  payment: 'df_payment',
+};
 // One reader for the whole page: the form controls and the request are built from
 // the same validated values, so the panel can never send a filter it does not
 // show.
@@ -170,6 +182,18 @@ function readFilters(search: string): FileFilters {
     payment: paymentList.includes(payment) ? payment : '',
   };
 }
+// UI-01: the compact access names how many criteria are applied. The applied URL
+// is counted, never the sheet's draft, so the number always matches the request.
+export function activeFileCriteria(filters: FileFilters): number {
+  return Object.values(filters).filter(Boolean).length;
+}
+// The quiet group carries the payment and due axes. It starts folded unless one
+// of them is applied, so the first viewport stays a list with four choices.
+function hasDueFilters(filters: FileFilters): boolean {
+  return Boolean(
+    filters.dueFrom || filters.dueTo || filters.overdue || filters.payment,
+  );
+}
 // The additive filters are appended to the established request, in the order the
 // API documents them. An unset filter adds no parameter at all.
 function filterExtras(filters: FileFilters): string {
@@ -183,6 +207,35 @@ function filterExtras(filters: FileFilters): string {
 }
 function listRequest(search: string, size: number): string {
   return filesRequest(search, size) + filterExtras(readFilters(search));
+}
+// UI-01: the sheet commits its whole draft in one write. Building the nine keys
+// here keeps the one completion a single history entry.
+function draftValues(filters: FileFilters): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const field of Object.keys(filterKeys) as (keyof FileFilters)[])
+    values[filterKeys[field]] = filters[field];
+  return values;
+}
+// UI-01: the measured breakpoint. The shell keeps 18rem of sidebar and the page
+// 2.5/1.75rem of padding, so 1024 px leave 638 px for the section content; a
+// 192 px context column plus the table's 40rem would need 848 px there. Only at
+// 1280 px do the column (192 px), the gap (16 px) and the compacted table
+// (measured 684 px) share one row without the body or the table scrolling.
+export const wideFileFilters = '(min-width: 1280px)';
+function useWideFileFilters() {
+  const [wide, setWide] = useState(
+    () =>
+      typeof window.matchMedia !== 'function' ||
+      window.matchMedia(wideFileFilters).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const viewport = window.matchMedia(wideFileFilters);
+    const changed = () => setWide(viewport.matches);
+    viewport.addEventListener('change', changed);
+    return () => viewport.removeEventListener('change', changed);
+  }, []);
+  return wide;
 }
 const loadFailure = 'Dateien konnten nicht geladen werden.';
 const emptyText = 'Keine Dokumente für diese Filter.';
@@ -241,10 +294,26 @@ export function FilesPanel({
     [filters, setFilters] = useState<FileFilters>(() =>
       readFilters(window.location.search),
     );
+  // UI-01: the filters live in a context column on wide screens and in one modal
+  // sheet behind a compact access below that. `null` means no sheet is open; the
+  // sheet's copy is taken from the applied URL on open.
+  const wide = useWideFileFilters(),
+    drawer = useRef<HTMLDialogElement>(null),
+    trigger = useRef<HTMLButtonElement>(null),
+    firstField = useRef<HTMLSelectElement>(null),
+    [open, setOpen] = useState(false),
+    [draft, setDraft] = useState<FileFilters | null>(null),
+    // The quiet group stays folded unless it is in use; it is opened by a
+    // payment filter and never force-closed by an unrelated change.
+    [dueOpen, setDueOpen] = useState(() =>
+      hasDueFilters(readFilters(window.location.search)),
+    ),
+    dueApplied = hasDueFilters(filters);
   // The whole page follows the URL, so every filter, page and browser-back
   // step re-reads exactly one source of truth.
   const search = useUrlSearch(),
-    { page } = filesPage(search, pageSize);
+    { page } = filesPage(search, pageSize),
+    criteria = activeFileCriteria(filters);
   async function load() {
     const current = ++sequence.current;
     setLoading(true);
@@ -275,6 +344,24 @@ export function FilesPanel({
     // A hidden page is never re-fetched; coming back re-reads the current URL,
     // and the sequence guard discards a late answer from an older combination.
   }, [active, search, page, revision]);
+  // A deep link or an applied payment filter is a reason to unfold the quiet
+  // group; closing it by hand stays closed until the next applied change.
+  useEffect(() => {
+    if (dueApplied) setDueOpen(true);
+  }, [dueApplied]);
+  useEffect(() => {
+    if (!open || wide) return;
+    const sheet = drawer.current;
+    if (!sheet) return;
+    if (!sheet.open) sheet.showModal();
+    firstField.current?.focus({ preventScroll: true });
+  }, [open, wide]);
+  useEffect(() => {
+    if (wide) {
+      setOpen(false);
+      setDraft(null);
+    }
+  }, [wide]);
   useAutoRefresh(
     () => {
       if (active) void load();
@@ -308,6 +395,18 @@ export function FilesPanel({
       df_page: '',
     });
   }
+  function openFilters() {
+    // The sheet starts from what is applied, never from an abandoned draft.
+    setDraft(readFilters(window.location.search));
+    setOpen(true);
+  }
+  function closeFilters() {
+    drawer.current?.close();
+    setOpen(false);
+    // Cancel is a real cancel: the sheet's copy dies with the sheet.
+    setDraft(null);
+    trigger.current?.focus({ preventScroll: true });
+  }
   function eventHref(id: string | null) {
     return id && uuidPattern.test(id) ? eventTargetHref(search, id) : null;
   }
@@ -318,18 +417,38 @@ export function FilesPanel({
     // not a draft just because the number is missing.
     return kind + ' · ' + stateLabels[row.state];
   }
-  return (
-    <section id="files" className="files-panel" aria-label="Dateien">
-      <p className="files-subtitle">
-        Geschäftsdokumente aus Angeboten und Rechnungen. Hochgeladene Dateien
-        stehen in der Dateibibliothek darunter.
-      </p>
-      <div className="files-filters" role="group" aria-label="Dateifilter">
-        <label>
-          Dokumentart
+  // The same form in both frames, with opposite writing rules: the column
+  // applies every choice immediately (the URL is its state), the sheet keeps one
+  // draft until „Ergebnisse anzeigen“.
+  function filterPanel(mobile: boolean) {
+    const drafting = mobile && draft !== null,
+      values = (drafting && draft) || filters;
+    function chooseOne(field: keyof FileFilters, value: string) {
+      if (drafting) setDraft({ ...values, [field]: value });
+      else apply({ [filterKeys[field]]: value });
+    }
+    return (
+      <form
+        className="files-filter-form"
+        // The column re-initialises from the applied URL after every write; the
+        // sheet must not remount while its draft is being edited.
+        key={mobile ? 'files-filter-draft' : search}
+        onSubmit={(event) => {
+          event.preventDefault();
+          // BKP007 pattern: the sheet commits its whole draft in one write, one
+          // history entry and one reload; then the same close path as cancel.
+          if (!drafting) return;
+          apply(draftValues(values));
+          closeFilters();
+        }}
+      >
+        <fieldset className="files-filter-group">
+          <legend>Dokumentart</legend>
           <select
-            value={filters.kind}
-            onChange={(event) => apply({ df_kind: event.target.value })}
+            ref={mobile ? firstField : undefined}
+            aria-label="Dokumentart"
+            value={values.kind}
+            onChange={(event) => chooseOne('kind', event.target.value)}
           >
             {fileKinds.map(([value, label]) => (
               <option key={value} value={value}>
@@ -337,12 +456,32 @@ export function FilesPanel({
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          Status
+        </fieldset>
+        <fieldset className="files-filter-group">
+          <legend>Datumsbereich</legend>
+          <label>
+            Von
+            <input
+              type="date"
+              value={values.from}
+              onChange={(event) => chooseOne('from', event.target.value)}
+            />
+          </label>
+          <label>
+            Bis
+            <input
+              type="date"
+              value={values.to}
+              onChange={(event) => chooseOne('to', event.target.value)}
+            />
+          </label>
+        </fieldset>
+        <fieldset className="files-filter-group">
+          <legend>Status</legend>
           <select
-            value={filters.state}
-            onChange={(event) => apply({ df_state: event.target.value })}
+            aria-label="Status"
+            value={values.state}
+            onChange={(event) => chooseOne('state', event.target.value)}
           >
             {fileStates.map(([value, label]) => (
               <option key={value} value={value}>
@@ -350,237 +489,363 @@ export function FilesPanel({
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          Von
-          <input
-            type="date"
-            value={filters.from}
-            onChange={(event) => apply({ df_from: event.target.value })}
-          />
-        </label>
-        <label>
-          Bis
-          <input
-            type="date"
-            value={filters.to}
-            onChange={(event) => apply({ df_to: event.target.value })}
-          />
-        </label>
-        <label>
-          Fällig von
-          <input
-            type="date"
-            value={filters.dueFrom}
-            onChange={(event) => apply({ df_due_from: event.target.value })}
-          />
-        </label>
-        <label>
-          Fällig bis
-          <input
-            type="date"
-            value={filters.dueTo}
-            onChange={(event) => apply({ df_due_to: event.target.value })}
-          />
-        </label>
-        <label>
-          Überfällig
-          <select
-            value={filters.overdue}
-            onChange={(event) => apply({ df_overdue: event.target.value })}
-          >
-            {fileOverdueOptions.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Zahlungsstand
-          <select
-            value={filters.payment}
-            onChange={(event) => apply({ df_payment: event.target.value })}
-          >
-            {filePayments.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className="icon-action tier-quiet-icon"
-          aria-label="Filter zurücksetzen"
-          title="Filter zurücksetzen"
-          onClick={reset}
+        </fieldset>
+        {/* The quiet subgroup: same four axes, folded away until one is used. */}
+        <details
+          className="files-filter-group files-filter-quiet"
+          open={mobile || dueOpen}
+          onToggle={
+            mobile ? undefined : (event) => setDueOpen(event.currentTarget.open)
+          }
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M6 6l12 12M18 6 6 18" />
-          </svg>
-        </button>
-      </div>
-      {failed && (
-        <div className="reload-warning">
-          <p role="alert">
-            {loadFailure} Angezeigt ist der letzte Stand; die Filter oben zeigen
-            den angeforderten Stand.
-          </p>
+          <summary>Zahlung und Frist</summary>
+          <label>
+            Fällig von
+            <input
+              type="date"
+              value={values.dueFrom}
+              onChange={(event) => chooseOne('dueFrom', event.target.value)}
+            />
+          </label>
+          <label>
+            Fällig bis
+            <input
+              type="date"
+              value={values.dueTo}
+              onChange={(event) => chooseOne('dueTo', event.target.value)}
+            />
+          </label>
+          <label>
+            Überfällig
+            <select
+              value={values.overdue}
+              onChange={(event) => chooseOne('overdue', event.target.value)}
+            >
+              {fileOverdueOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Zahlungsstand
+            <select
+              value={values.payment}
+              onChange={(event) => chooseOne('payment', event.target.value)}
+            >
+              {filePayments.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </details>
+        <div className="files-filter-actions">
+          {mobile ? (
+            <>
+              <button className="secondary-action">Ergebnisse anzeigen</button>
+              <button
+                type="button"
+                className="tertiary-action"
+                onClick={closeFilters}
+              >
+                Abbrechen
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
-            className="tertiary-action"
-            onClick={() => void load()}
+            className="icon-action tier-quiet-icon"
+            aria-label="Filter zurücksetzen"
+            title="Filter zurücksetzen"
+            // In the sheet the reset clears the draft only; the applied filter
+            // changes when the operator completes the draft.
+            onClick={() => {
+              if (drafting) setDraft(emptyFilters);
+              else reset();
+            }}
           >
-            Dateien erneut laden
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
           </button>
         </div>
-      )}
-      {loading && !rows.length ? (
-        <p role="status">Dateien werden geladen …</p>
-      ) : rows.length ? (
-        <div className="files-table-shell">
-          <table className="files-table">
-            <caption className="sr-only">
-              Geschäftsdokumente mit Art, Datum, Fälligkeit, Status,
-              Zahlungsstand und Betrag
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Dokument</th>
-                <th scope="col">Datum</th>
-                <th scope="col">Event</th>
-                <th scope="col">Betrag</th>
-                <th scope="col">Status</th>
-                <th scope="col">Fällig</th>
-                <th scope="col">Zahlung</th>
-                <th scope="col">PDF</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const href = eventHref(row.eventId);
-                return (
-                  <tr key={row.id} id={'file-' + row.id}>
-                    <th scope="row">{rowName(row)}</th>
-                    <td>
-                      <time dateTime={row.issuedDate}>
-                        {dateText(row.issuedDate)}
-                      </time>
-                    </td>
-                    <td>
-                      {href ? (
-                        <a href={href}>{row.eventName ?? 'Event öffnen'}</a>
-                      ) : (
-                        <span className="muted">Kein Event</span>
-                      )}
-                    </td>
-                    <td className="numeric">
-                      {exactMinorUnits(row.grossMinor)} €
-                    </td>
-                    <td>{stateLabels[row.state]}</td>
-                    {/* BKP019.e: the frozen due day, never a guessed one. */}
-                    <td>
-                      {row.dueDate ? (
-                        <time dateTime={row.dueDate}>
-                          {dateText(row.dueDate)}
-                        </time>
-                      ) : (
-                        <span className="muted">Keine Frist</span>
-                      )}
-                    </td>
-                    {/* The derived payment state and its own late badge, exactly
-                        like the event file: "offen" and "überfällig" are two
-                        axes, so neither replaces the other. */}
-                    <td>
-                      {row.paymentState ? (
-                        <>
-                          <span>{paymentStateLabels[row.paymentState]}</span>
-                          {row.overdue === true && (
-                            <>
-                              {' · '}
-                              <strong className="document-overdue">
-                                Überfällig
-                              </strong>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                    <td>
-                      {row.pdfAvailable ? (
-                        <a
-                          href={'/api/v1/documents/' + row.id + '/pdf'}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={rowName(row) + ' als PDF öffnen'}
-                        >
-                          PDF öffnen
-                        </a>
-                      ) : row.state === 'draft' ? (
-                        <span className="muted">Als Entwurf im Event</span>
-                      ) : (
-                        <span className="muted">Keine PDF</span>
-                      )}
-                    </td>
+      </form>
+    );
+  }
+  return (
+    <section id="files" className="files-panel" aria-label="Dateien">
+      <p className="files-subtitle">
+        Geschäftsdokumente aus Angeboten und Rechnungen. Hochgeladene Dateien
+        stehen in der Dateibibliothek darunter.
+      </p>
+      <div className="files-layout">
+        {wide ? (
+          <aside
+            className="files-context files-filters"
+            aria-label="Dateifilter"
+          >
+            {filterPanel(false)}
+          </aside>
+        ) : (
+          <>
+            {/* The narrow frame shows the list first; the whole filter set lives
+                behind this one access, with its applied criteria count. */}
+            <div className="files-filter-access">
+              <button
+                ref={trigger}
+                type="button"
+                className="secondary-action files-filter-trigger"
+                aria-haspopup="dialog"
+                aria-expanded={open}
+                aria-controls="file-filter-panel"
+                aria-label={`Filter, ${criteria} aktive Kriterien`}
+                onClick={() => openFilters()}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4 5h16l-6 7v6l-4 2v-8Z" />
+                </svg>
+                Filter{' '}
+                <span className="event-count" data-testid="file-filter-count">
+                  {criteria}
+                </span>
+              </button>
+              {criteria > 0 && (
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  onClick={reset}
+                >
+                  Zurücksetzen
+                </button>
+              )}
+            </div>
+            <dialog
+              id="file-filter-panel"
+              className="event-filter-drawer files-filter-drawer"
+              aria-label="Dateifilter"
+              ref={drawer}
+              onCancel={(event) => {
+                event.preventDefault();
+                closeFilters();
+              }}
+              onClose={() => {
+                setOpen(false);
+                setDraft(null);
+                trigger.current?.focus({ preventScroll: true });
+              }}
+            >
+              {open && (
+                <>
+                  <div className="event-filter-drawer-head">
+                    <h2>Filter</h2>
+                    <button
+                      type="button"
+                      className="icon-action tier-quiet-icon"
+                      aria-label="Filter schließen"
+                      title="Filter schließen"
+                      onClick={closeFilters}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 6l12 12M18 6 6 18" />
+                      </svg>
+                    </button>
+                  </div>
+                  {filterPanel(true)}
+                </>
+              )}
+            </dialog>
+          </>
+        )}
+        <div className="files-results">
+          {failed && (
+            <div className="reload-warning">
+              <p role="alert">
+                {loadFailure} Angezeigt ist der letzte Stand; die Filter zeigen
+                den angeforderten Stand.
+              </p>
+              <button
+                type="button"
+                className="tertiary-action"
+                onClick={() => void load()}
+              >
+                Dateien erneut laden
+              </button>
+            </div>
+          )}
+          {loading && !rows.length ? (
+            <p role="status">Dateien werden geladen …</p>
+          ) : rows.length ? (
+            <div className="files-table-shell">
+              <table className="files-table">
+                <caption className="sr-only">
+                  Geschäftsdokumente mit Status, Art, Datum, Betrag, Fälligkeit,
+                  Event und Zahlungsstand
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Status</th>
+                    <th scope="col">Dokument</th>
+                    <th scope="col">Datum</th>
+                    <th scope="col">Betrag</th>
+                    <th scope="col">Fällig</th>
+                    <th scope="col">Event</th>
+                    <th scope="col">Zahlung</th>
+                    <th scope="col">Aktionen</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const href = eventHref(row.eventId);
+                    return (
+                      <tr key={row.id} id={'file-' + row.id}>
+                        <td>
+                          <span className="files-state">
+                            {stateLabels[row.state]}
+                          </span>
+                        </td>
+                        <th scope="row">{rowName(row)}</th>
+                        <td>
+                          <time dateTime={row.issuedDate}>
+                            {dateText(row.issuedDate)}
+                          </time>
+                        </td>
+                        <td className="numeric">
+                          {exactMinorUnits(row.grossMinor)} €
+                        </td>
+                        {/* BKP019.e: the frozen due day, never a guessed one. */}
+                        <td>
+                          {row.dueDate ? (
+                            <span className="files-due">
+                              <time dateTime={row.dueDate}>
+                                {dateText(row.dueDate)}
+                              </time>
+                            </span>
+                          ) : (
+                            <span className="muted">Keine Frist</span>
+                          )}
+                        </td>
+                        <td className="files-event-cell">
+                          {href ? (
+                            <a href={href}>{row.eventName ?? 'Event öffnen'}</a>
+                          ) : (
+                            <span className="muted">Kein Event</span>
+                          )}
+                        </td>
+                        {/* The derived payment state and its own late badge,
+                            exactly like the event file: "offen" and
+                            "überfällig" are two axes, so neither replaces the
+                            other. */}
+                        <td className="files-payment-cell">
+                          {row.paymentState ? (
+                            <>
+                              <span>
+                                {paymentStateLabels[row.paymentState]}
+                              </span>
+                              {row.overdue === true && (
+                                <>
+                                  {' · '}
+                                  <strong className="document-overdue">
+                                    Überfällig
+                                  </strong>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                        <td>
+                          {row.pdfAvailable ? (
+                            <a
+                              href={'/api/v1/documents/' + row.id + '/pdf'}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={rowName(row) + ' als PDF öffnen'}
+                            >
+                              PDF öffnen
+                            </a>
+                          ) : row.state === 'draft' ? (
+                            <span className="muted">Als Entwurf im Event</span>
+                          ) : (
+                            <span className="muted">Keine PDF</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p>{emptyText}</p>
+          )}
+          <div className="files-pager">
+            <button
+              type="button"
+              className="icon-action tier-quiet-icon"
+              aria-label="Vorherige Seite"
+              title="Vorherige Seite"
+              disabled={page === 0 || loading}
+              onClick={() => goToPage(page - 1)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M14 6l-6 6 6 6" />
+              </svg>
+            </button>
+            <span aria-live="polite">Seite {page + 1}</span>
+            <button
+              type="button"
+              className="icon-action tier-quiet-icon"
+              aria-label="Nächste Seite"
+              title="Nächste Seite"
+              disabled={!hasNext || loading}
+              onClick={() => goToPage(page + 1)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M10 6l6 6-6 6" />
+              </svg>
+            </button>
+          </div>
         </div>
-      ) : (
-        <p>{emptyText}</p>
-      )}
-      <div className="files-pager">
-        <button
-          type="button"
-          className="icon-action tier-quiet-icon"
-          aria-label="Vorherige Seite"
-          title="Vorherige Seite"
-          disabled={page === 0 || loading}
-          onClick={() => goToPage(page - 1)}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M14 6l-6 6 6 6" />
-          </svg>
-        </button>
-        <span aria-live="polite">Seite {page + 1}</span>
-        <button
-          type="button"
-          className="icon-action tier-quiet-icon"
-          aria-label="Nächste Seite"
-          title="Nächste Seite"
-          disabled={!hasNext || loading}
-          onClick={() => goToPage(page + 1)}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M10 6l6 6-6 6" />
-          </svg>
-        </button>
       </div>
     </section>
   );

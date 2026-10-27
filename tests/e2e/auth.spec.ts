@@ -844,6 +844,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     );
     await resetButton.click();
     await expect.poll(() => filesRequested.at(-1) ?? '').not.toContain('kind=');
+    // UI-01: the payment and due axes are one folded subgroup of the context
+    // column, so they are opened by a real click instead of covering the list.
+    await files.getByText('Zahlung und Frist', { exact: true }).click();
+    await expect(files.getByLabel('Zahlungsstand')).toBeVisible();
     // BKP019.e: the payment and due filters are real deep-link state. A control
     // writes the `df_*` key, the request carries the API name, and the row shows
     // the derived facts the server filtered on.
@@ -893,16 +897,128 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     expect(
       await pdfLink.evaluate((element) => element === document.activeElement),
     ).toBe(true);
+    // UI-01: the observed frame has a measured breakpoint. At 1280 px the
+    // context column and the 40rem table share one row; below it the compact
+    // access and its sheet take over. Every size keeps the body free of
+    // sideways scroll, in both themes.
+    const filesThemeToggle = page.getByRole('button', {
+      name: /modus aktivieren/,
+    });
+    const setTheme = async (theme: 'light' | 'dark') => {
+      if (
+        (await filesThemeToggle.getAttribute('aria-pressed')) !==
+        String(theme === 'dark')
+      )
+        await filesThemeToggle.click();
+    };
+    const compactAccess = page.getByRole('button', {
+      name: /^Filter, \d+ aktive Kriterien$/,
+    });
     for (const [width, height] of [
-      [1280, 720],
-      [390, 844],
       [320, 740],
-    ] as const) {
-      await page.setViewportSize({ width, height });
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth),
-      ).toBeLessThanOrEqual(width + 1);
-    }
+      [390, 844],
+      [768, 900],
+      [1280, 720],
+    ] as const)
+      for (const theme of ['light', 'dark'] as const) {
+        await page.setViewportSize({ width, height });
+        await setTheme(theme);
+        await expect(files.locator('.files-table')).toBeVisible();
+        await expect(files.getByText('Angebot · Entwurf')).toBeVisible();
+        await expect(
+          files.getByRole('button', { name: 'Nächste Seite' }),
+        ).toBeVisible();
+        if (width < 1280) {
+          // Nothing but one access stands between the reader and the list.
+          await expect(files.locator('.files-context')).toHaveCount(0);
+          await expect(compactAccess).toBeVisible();
+          expect(
+            (await compactAccess.boundingBox())!.height,
+          ).toBeGreaterThanOrEqual(44);
+          await expect(files.getByTestId('file-filter-count')).toHaveText('2');
+        } else {
+          await expect(files.locator('.files-context')).toBeVisible();
+          await expect(compactAccess).toHaveCount(0);
+          // Measured, not guessed: the column leaves the table its full width.
+          const geometry = await page.evaluate(() => {
+            const shell =
+              document.querySelector<HTMLElement>('.files-table-shell')!;
+            const context =
+              document.querySelector<HTMLElement>('.files-context')!;
+            return {
+              viewport: window.innerWidth,
+              context: Math.round(context.getBoundingClientRect().width),
+              shellClient: shell.clientWidth,
+              shellScroll: shell.scrollWidth,
+            };
+          });
+          console.log('UI-01 files geometry@1280', geometry);
+          // Measured 684/684: the eight columns fit the track. The 8 px
+          // tolerance only absorbs font-metric differences of another OS.
+          expect(geometry.shellScroll).toBeLessThanOrEqual(
+            geometry.shellClient + 8,
+          );
+        }
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width + 1);
+        await audit(`dateien-${width}-${theme}`);
+        // Evidence for the hand-off lives in the ignored test-results folder.
+        await page.screenshot({
+          path: test.info().outputPath(`dateien-${width}-${theme}.png`),
+        });
+      }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await setTheme('light');
+    await page.setViewportSize({ width: 1024, height: 768 });
+    // The measured 1024 px case: 18rem sidebar + 2.5rem shell + 1.75rem page
+    // padding leave 640 px, and a 216 px column plus the 40rem table would need
+    // 872 px. The compact access is the honest frame there.
+    const narrowGeometry = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      section: Math.round(
+        document.querySelector<HTMLElement>('#files')!.clientWidth,
+      ),
+    }));
+    console.log('UI-01 files geometry@1024', narrowGeometry);
+    await expect(files.locator('.files-context')).toHaveCount(0);
+    await expect(compactAccess).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(1025);
+    await audit('dateien-1024-light');
+    await page.screenshot({
+      path: test.info().outputPath('dateien-1024-light.png'),
+    });
+    // The sheet is opened by a real click, keeps one draft and writes the URL
+    // only on „Ergebnisse anzeigen“.
+    const urlBeforeSheet = page.url();
+    await compactAccess.click();
+    await expect(
+      page.getByRole('dialog', { name: 'Dateifilter' }),
+    ).toBeVisible();
+    expect(page.url()).toBe(urlBeforeSheet);
+    await files.getByLabel('Dokumentart').selectOption('invoice');
+    await files.getByLabel('Status').selectOption('draft');
+    expect(page.url()).toBe(urlBeforeSheet);
+    await files.getByRole('button', { name: 'Ergebnisse anzeigen' }).click();
+    await expect(page.getByRole('dialog', { name: 'Dateifilter' })).toHaveCount(
+      0,
+    );
+    expect(
+      await compactAccess.evaluate(
+        (element) => element === document.activeElement,
+      ),
+    ).toBe(true);
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .toContain('state=draft');
+    await expect(files.getByTestId('file-filter-count')).toHaveText('4');
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goBack();
+    await expect
+      .poll(() => filesRequested.at(-1) ?? '')
+      .not.toContain('state=draft');
     await page.setViewportSize({ width: 1280, height: 720 });
     await audit('dateien');
     // A real Event filter that would hide the linked event, plus a file filter.

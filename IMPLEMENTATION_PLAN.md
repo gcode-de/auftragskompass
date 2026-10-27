@@ -8,6 +8,67 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **UI-01 — `feat: filter documents from a quiet context column and a mobile drawer`** (27.10.2026)
+
+  EIN Frontend-Slice der Nachsteuerung: Dokumentübersicht/Dateien an Bookitup
+  angleichen. Referenzbeleg B36 (27.10.2026, manuelle Browserbeobachtung
+  Desktop + 390 px, KEIN REA-MCP-Beleg, keine Kundenwerte ins Git):
+  links eigene Dokument-Kontextspalte mit Dokument-Art, Datumsbereich, Status;
+  rechts ruhige kompakte Tabelle (Status/Nummer/Name/Datum/Betrag/Frist/Event,
+  seltene Zeilenaktionen am Zeilenende); mobil kompakter „Filter“-Zugang mit
+  aktiven Kriterien statt Filterwand (Bookitup führt ihn in der unteren
+  Leiste – sein geöffneter Dialog blieb unbeobachtet, daher greift unser
+  eigenes erprobtes Drawer-Muster aus BKP007). Konkreter Defekt des
+  e12-Stands: `FilesPanel.tsx` rendert acht gleichrangige, dauerhaft
+  sichtbare Filter über der Tabelle (Filterwand). Ziel: Desktop
+  Kontextspalte mit Gruppierung Dokumentart/Datum/Status wie beobachtet und
+  zurückhaltender Untergruppe „Zahlung und Frist“ (Fällig von/bis,
+  Überfällig, Zahlungsstand); mobil kompakter Filterzugang mit Kriterienzahl
+  + bedienbarer Drawer statt acht Eingaben, Ergebnisliste früh sichtbar;
+  Tabelle ruhig/kompakt, Spaltenordnung an die beobachtete angleichen
+  (Status · Dokument/Nummer · Name · Datum · Betrag · Frist · Event ·
+  Zahlung · PDF/Aktionen). Eine Zustandsquelle bleibt die URL (`df_*`:
+  readFilters/apply wie heute); History/Back, Paging („es gibt mehr“),
+  Sicherheits- und Geschäftsregeln unverändert. Keine Attrappen für
+  Verträge/Fragebogen/Portal/Mail; Dateibibliothek bleibt getrennt
+  erreichbar; nur vorhandene Möglichkeiten umordnen – KEINE neue Such-API
+  (Beobachtungssuche „Kunde/Nummer durchsuchen“ bleibt offener späterer
+  Slice), KEIN CSV-Export, KEINE neue Finanzlogik, KEINE Schemaänderungen.
+  1024-px-Geometrie messen statt raten (Analyse: Kontextspalte + Tabelle
+  min-width 40rem kollidieren – Breakpoint aus Messung entscheiden,
+  Kontextspalte ≥1280, darunter kompakter Filterzugang). Akzeptanz:
+  synthetischer Bestand, 320/390/768/1280 hell+dunkel, keine
+  Body-Überbreite, vollständige Inhalte, Tastatur/Fokus/Escape/Abbruch,
+  Filter-URL/Zurück, Laden/Leer/Keine Treffer/Fehler; UI-Review vor finalen
+  Gates; Vorher/Nachher/Warum mit privaten Screenshots. Referenz ehrlich:
+  B36 ist Browserbeobachtung, kein REA-Beleg; Mobil-Dialogverhalten der
+  Referenz unbekannt; Taste v2 gilt nicht für Admin.
+  Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: RED beobachtet (5 neue Verträge gegen den Altstand, 22
+  bestehende blieben grün), danach grün: `test:unit` 274/274,
+  `test:component` 759/759 (5 neue Verträge: Kontextspalte ohne Filterwand,
+  Untergruppe bei Deep-Link aufgeklappt, kompakter Zugang „Filter, N aktive
+  Kriterien“ + Entwurfs-Drawer mit genau einem History-Eintrag,
+  Abbrechen/Escape/Reset + Fokusrückkehr, beobachtete Spaltenordnung),
+  `test:integration` 495/495 unverändert, `test:coverage` vollständig
+  (FilesPanel 97,71% Zeilen/95,70% Zweige), `test:workspace`/`test:docs`/
+  schnelle Gates/Build grün; E2E 16/16 (Passwort-Szenario 2,4 min im Budget)
+  mit 4 Breiten × 2 Themes, Overflow-/Inhalts-/axe-Prüfung (9 axe-Scans
+  0 Verstöße), 1024-/1280-Geometriemessung, Sheet-Flow (ein History-Eintrag,
+  Back), Screenshots in tests/test-results. Gemessene Geometrie: 1024 px →
+  kompakter Zugang (Kontextspalte bräuchte 892 px in 638 px Fläche),
+  1280 px → Kontextspalte 192 px + 684 px Tabelle ohne Body-Überlauf.
+  Impeccable-Detektor über FilesPanel/styles.css: keine neuen Verstöße
+  (eine Warnung `side-tab` styles.css:1623 ist vorbestehender Datei-Drift
+  bei HEAD; 72 Advisory-Werte ebenfalls Altbestand – neue Werte 0.8rem/
+  0.75rem Radius sind on-Ramp; MiMo-„Angleichung“ auf Datei-übliche Werte
+  war off-ramp und wurde revidiert). Bewusst nicht gebaut (laut Auftrag):
+  Suchfelder (keine Such-API), „…“-Menü ohne Inhalt, „+“-Anlegen
+  (keine Route). Mobil-Drawer ist unser BKP007-Muster, kein erfundenes
+  Bookitup-Verhalten; 320/390/768 behalten alle acht Spalten mit
+  Shell-Scroll (H035) statt Spaltenreduktion – „vollständige Inhalte“
+  gewinnt, Body bleibt schmal.
+
 - [x] **BKP019.e12 — `feat: filter documents by payment state and due day`** (26.10.2026)
 
   Erster der (e)-Slices nach rein lesender DeepSeek-Analyse zu `e0c0095`

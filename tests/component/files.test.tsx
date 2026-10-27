@@ -87,6 +87,38 @@ function pageFetcher(pages: Record<string, unknown[]>) {
 const listUrl = (query = '') =>
   '/api/v1/documents?include=metadata&limit=26&offset=0' + query;
 
+// UI-01: below the measured 1280 px breakpoint the panel offers one compact
+// access and a modal sheet. jsdom has neither a viewport preference nor a
+// dialog implementation, so the frame is stubbed here exactly like the event
+// filter tests do.
+function mobileLayout() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+function shimDialog() {
+  HTMLDialogElement.prototype.showModal = vi.fn(function (
+    this: HTMLDialogElement,
+  ) {
+    this.open = true;
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.open = false;
+  });
+}
+function sheet() {
+  return document.querySelector<HTMLDialogElement>(
+    'dialog.files-filter-drawer',
+  )!;
+}
+
 function urlsOf(fetcher: ReturnType<typeof pageFetcher>) {
   return fetcher.mock.calls.map((call) => String(call[0]));
 }
@@ -676,4 +708,189 @@ test('a metadata row without the payment facts is refused instead of guessed', a
     expect(screen.queryByRole('table')).toBeNull();
     cleanup();
   }
+});
+
+// UI-01: the observed document overview is a quiet context column beside the
+// list. The eight controls survive, but the payment and due axes are one folded
+// subgroup instead of a second wall above the table.
+test('the desktop frame keeps the filter groups in a quiet context column left of the table', async () => {
+  const fetcher = pageFetcher({ '*': [draft, finalRow] });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  await screen.findByText('Angebot · Entwurf');
+  const context = document.querySelector<HTMLElement>('.files-context')!;
+  expect(context.getAttribute('aria-label')).toBe('Dateifilter');
+  const results =
+    context.parentElement!.querySelector<HTMLElement>('.files-results')!;
+  // One form in the column, nothing between the reader and the table.
+  expect(context.querySelectorAll('form')).toHaveLength(1);
+  expect(results.querySelector('form')).toBeNull();
+  expect(results.querySelector('select, input')).toBeNull();
+  expect(
+    context.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  // Desktop never renders the sheet: the column is the only filter surface.
+  expect(document.querySelector('dialog.files-filter-drawer')).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Filter' })).toBeNull();
+  // Dokumentart, Datumsbereich and Status stay the three leading groups.
+  const legends = Array.from(
+    context.querySelectorAll('fieldset > legend'),
+    (node) => node.textContent,
+  );
+  expect(legends).toEqual(['Dokumentart', 'Datumsbereich', 'Status']);
+  // The wall is gone: four controls are offered before the quiet group, and the
+  // four payment axes live inside the folded subgroup.
+  expect(
+    context.querySelectorAll('fieldset select, fieldset input'),
+  ).toHaveLength(4);
+  const quiet = context.querySelector<HTMLDetailsElement>(
+    'details.files-filter-quiet',
+  )!;
+  expect(quiet.open).toBe(false);
+  expect(quiet.querySelector('summary')!.textContent).toBe('Zahlung und Frist');
+  expect(
+    Array.from(quiet.querySelectorAll('label'), (label) =>
+      label.firstChild!.textContent!.trim(),
+    ),
+  ).toEqual(['Fällig von', 'Fällig bis', 'Überfällig', 'Zahlungsstand']);
+});
+
+test('an applied payment filter unfolds the quiet group instead of hiding it', async () => {
+  window.history.replaceState(null, '', '/?df_payment=partial');
+  vi.stubGlobal('fetch', pageFetcher({ '*': [partialInvoice] }));
+  render(<FilesPanel />);
+  await screen.findByText('Rechnung RE-2031-0002');
+  const quiet = document.querySelector<HTMLDetailsElement>(
+    'details.files-filter-quiet',
+  )!;
+  // A deep link is in use, so the group shows the applied axis.
+  expect(quiet.open).toBe(true);
+  expect(
+    (screen.getByLabelText('Zahlungsstand') as HTMLSelectElement).value,
+  ).toBe('partial');
+});
+
+test('the narrow frame offers one compact access and one draft sheet', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?df_kind=invoice&df_state=final');
+  const fetcher = pageFetcher({ '*': [draft, finalRow] });
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  const trigger = await screen.findByRole('button', { name: /^Filter/ });
+  // The number is part of the written name and of the request, not a draft.
+  expect(trigger.getAttribute('aria-label')).toBe('Filter, 2 aktive Kriterien');
+  expect(screen.getByTestId('file-filter-count').textContent).toBe('2');
+  expect(document.querySelector('.files-context')).toBeNull();
+  expect(sheet().open).toBe(false);
+  expect(screen.queryByLabelText('Dokumentart')).toBeNull();
+  // The list is readable before any filter interaction.
+  expect(await screen.findByText('Angebot · Entwurf')).toBeTruthy();
+  expect(urlsOf(fetcher)[0]).toBe(listUrl('&kind=invoice&state=final'));
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.click(trigger);
+  expect(pushes).not.toHaveBeenCalled();
+  expect(sheet().open).toBe(true);
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  // The draft starts from the applied URL, never from an invented default.
+  expect(
+    (screen.getByLabelText('Dokumentart') as HTMLSelectElement).value,
+  ).toBe('invoice');
+  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(
+    'final',
+  );
+  fireEvent.change(screen.getByLabelText('Status'), {
+    target: { value: 'draft' },
+  });
+  fireEvent.change(screen.getByLabelText('Zahlungsstand'), {
+    target: { value: 'paid' },
+  });
+  fireEvent.change(screen.getByLabelText('Fällig bis'), {
+    target: { value: '2031-05-31' },
+  });
+  // Editing the sheet writes nothing: the URL is still the applied filter.
+  expect(pushes).not.toHaveBeenCalled();
+  expect(window.location.search).toBe('?df_kind=invoice&df_state=final');
+  fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
+  // One completion, one history entry, then the sheet closes.
+  expect(pushes).toHaveBeenCalledTimes(1);
+  const applied = new URLSearchParams(window.location.search);
+  expect(applied.get('df_kind')).toBe('invoice');
+  expect(applied.get('df_state')).toBe('draft');
+  expect(applied.get('df_payment')).toBe('paid');
+  expect(applied.get('df_due_to')).toBe('2031-05-31');
+  expect(applied.get('df_page')).toBeNull();
+  expect(sheet().open).toBe(false);
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.getByTestId('file-filter-count').textContent).toBe('4');
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(
+      listUrl('&kind=invoice&state=draft&due_to=2031-05-31&payment=paid'),
+    ),
+  );
+});
+
+test('cancel, escape and the in-sheet reset discard the draft and return focus', async () => {
+  mobileLayout();
+  shimDialog();
+  window.history.replaceState(null, '', '/?df_state=final');
+  vi.stubGlobal('fetch', pageFetcher({ '*': [finalRow] }));
+  render(<FilesPanel />);
+  const trigger = await screen.findByRole('button', { name: /^Filter/ });
+  trigger.focus();
+  const pushes = vi.spyOn(window.history, 'pushState');
+  fireEvent.click(trigger);
+  fireEvent.change(screen.getByLabelText('Status'), {
+    target: { value: 'draft' },
+  });
+  // Escape is the browser's cancel event; the panel turns it into one close.
+  fireEvent(sheet(), new Event('cancel'));
+  expect(pushes).not.toHaveBeenCalled();
+  expect(sheet().open).toBe(false);
+  expect(sheet().querySelector('form')).toBeNull();
+  expect(window.location.search).toBe('?df_state=final');
+  expect(document.activeElement).toBe(trigger);
+  // The explicit cancel button follows the same path and keeps the focus.
+  fireEvent.click(trigger);
+  fireEvent.change(screen.getByLabelText('Status'), {
+    target: { value: 'draft' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(pushes).not.toHaveBeenCalled();
+  expect(window.location.search).toBe('?df_state=final');
+  expect(document.activeElement).toBe(trigger);
+  // Reopening proves the draft died with the sheet.
+  fireEvent.click(trigger);
+  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(
+    'final',
+  );
+  // The sheet's reset clears its own draft only; nothing is written yet.
+  fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
+  expect(pushes).not.toHaveBeenCalled();
+  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('');
+  fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
+  expect(pushes).toHaveBeenCalledTimes(1);
+  expect(window.location.search).toBe('');
+});
+
+test('the table reads in the observed column order', async () => {
+  vi.stubGlobal('fetch', pageFetcher({ '*': [draft, finalRow] }));
+  render(<FilesPanel />);
+  await screen.findAllByRole('row');
+  expect(
+    screen.getAllByRole('columnheader').map((cell) => cell.textContent),
+  ).toEqual([
+    'Status',
+    'Dokument',
+    'Datum',
+    'Betrag',
+    'Fällig',
+    'Event',
+    'Zahlung',
+    'Aktionen',
+  ]);
+  // The state leads the row, the document name follows it.
+  const row = screen.getByText('Rechnung RE-2031-0001').closest('tr')!;
+  const cells = within(row).getAllByRole('cell');
+  expect(cells[0]!.textContent).toBe('Finalisiert');
 });

@@ -2831,21 +2831,71 @@ summary {
   max-width: 70ch;
   margin: 0 0 1rem;
 }
-.files-filters {
+/* UI-01: the Dateien filters follow the BKP007 frame — a quiet context column
+   left of the list on wide screens, one compact access with a modal sheet below
+   the measured breakpoint. 18rem sidebar + 2.5rem shell + 1.75rem page padding
+   leave 638 px of section content at 1024 px, so the column and the table only
+   share one row from 1280 px on (measured: 192 + 16 + 684 px). */
+.files-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+.files-results {
+  min-width: 0;
+}
+.files-filter-access {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  align-items: end;
-  margin-bottom: 1rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
-.files-filters label {
+.files-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding-inline: 0.9rem;
+  font-weight: 600;
+}
+.files-filter-trigger svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.files-filter-form {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.files-filter-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.files-filter-group legend {
+  padding: 0;
+  margin-bottom: 0.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+.files-filter-group label {
   display: grid;
   gap: 0.25rem;
+  min-width: 0;
   font-size: 0.875rem;
   color: var(--muted);
 }
-.files-filters select,
-.files-filters input {
+.files-filter-form select,
+.files-filter-form input {
+  width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 0 0.5rem;
   color: var(--ink);
@@ -2853,7 +2903,23 @@ summary {
   border: 1px solid var(--field-border);
   border-radius: 0.375rem;
 }
-.files-filters .icon-action {
+/* The quiet subgroup is a folded row, not a second wall: it only shows its four
+   axes once the operator opens it or applies one of them. */
+.files-filter-quiet > summary {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.files-filter-quiet[open] > summary {
+  margin-bottom: 0.35rem;
+}
+.files-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.files-filter-actions .icon-action {
   min-width: 44px;
   min-height: 44px;
 }
@@ -2892,6 +2958,77 @@ summary {
 }
 .files-table .muted {
   color: var(--muted);
+}
+/* The leading state and the due day read as compact marks, so the row is
+   scanned from left to right instead of read as eight equal text columns. */
+.files-state {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.files-due {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.files-table td:last-child {
+  white-space: nowrap;
+}
+@media (min-width: 1280px) {
+  .files-layout {
+    grid-template-columns: minmax(11rem, 12rem) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .files-layout > .files-context {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--field-surface);
+  }
+  .files-layout > .files-results {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  /* Measured at 1280 px: the column leaves 684 px for eight observed columns.
+     Only from here does the table shrink its type and padding instead of
+     scrolling inside the shell; the German compounds hyphenate, so nothing is
+     cut off and the page itself never scrolls sideways. */
+  .files-table {
+    font-size: 0.85rem;
+  }
+  .files-table th,
+  .files-table td {
+    padding: 0.45rem 0.5rem;
+    /* German compound nouns such as "Rechnungskorrektur" hyphenate instead of
+       forcing the whole table wider than its track. */
+    hyphens: auto;
+    -webkit-hyphens: auto;
+  }
+  .files-table thead th {
+    white-space: normal;
+  }
+  .files-table .numeric {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .files-table td:last-child {
+    white-space: normal;
+  }
+  .files-table tbody th,
+  .files-table .files-event-cell,
+  .files-table .files-payment-cell {
+    overflow-wrap: normal;
+  }
 }
 .files-pager {
   display: flex;

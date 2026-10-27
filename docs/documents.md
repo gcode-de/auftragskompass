@@ -318,7 +318,24 @@ Pagination, neueste zuerst (`issued_at` absteigend, dann `id` absteigend).
   Ausgabezeitpunkt). Ein `created_at` existiert nicht, deshalb filtern und
   sortieren Liste und Oberfläche ausschließlich über dieses Feld.
 
-Die Oberfläche unter „Dateien“ (`#files`) nutzt die Projektion, zeigt Art und
+Die Oberfläche unter „Dateien“ (`#files`) ist seit UI-01 an die beobachtete
+Bookitup-Dokumentübersicht angeglichen (Beleg B36, Browserbeobachtung –
+kein REA-Beleg): ab 1280 px führt links eine **Dokument-Kontextspalte** die
+Filter in der Gruppierung Dokumentart / Datumsbereich / Status, die
+Zahlungs-/Fälligkeitsfilter stehen zurückhaltend in der eingeklappten
+Untergruppe „Zahlung und Frist“. Darunter greift ein kompakter Zugang
+„Filter, N aktive Kriterien“ über der Liste, der einen Entwurfs-Drawer
+öffnet („Ergebnisse anzeigen“ schreibt genau einen URL-Eintrag,
+„Abbrechen“/Escape verwirft den Entwurf). Die Liste bleibt eine ruhige
+kompakte Tabelle in der Reihenfolge Status · Dokument · Datum · Betrag ·
+Fällig · Event · Zahlung · Aktionen; die Zeilenaktionen sind die vorhandenen
+PDF- und Eventlinks. Die URL (`df_*`) bleibt die einzige Zustandsquelle für
+Filter, History/Back, Paging und Geschäftsregeln sind unverändert; die
+Dateibibliothek bleibt als eigene Region darunter getrennt erreichbar. Die
+in der Referenz sichtbaren Suchfelder (Kunde/Nummer) sind ohne Such-API
+bewusst nicht gebaut (eigener späterer Slice).
+
+Die Projektion zeigt Art und
 Nummer, Datum, Eventname, Status und den exakten Bruttobetrag. Eine PDF wird
 nur für `pdfAvailable` verlinkt und erst beim Klick geladen; Entwürfe verweisen
 auf ihr Event. Es gibt keinen Portalstatus und keine Gesamtsumme. Der
