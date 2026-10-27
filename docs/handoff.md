@@ -2,6 +2,42 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H071: RG-07a – Leistungsdatum und Zahlungsziel (RG-07), 26.10.2026
+
+- **RG-07a `2658751`** – Rechnungs-, Anzahlungs- und Korrekturbelege tragen
+  optional ein Leistungsdatum und ein Zahlungsziel in Tagen (0 = sofort
+  fällig). Das **Rechnungsdatum bleibt das Ausstellungsdatum** (geführt und
+  gedruckt, keine Rückdatierung – keine zweite Datumswahrheit); das
+  **Fälligkeitsdatum wird beim Finalisieren eingefroren** (Mandantentag +
+  Tage, DST-sicher) – „Ziel vor Rechnungsdatum“ ist strukturell unmöglich.
+  Gedruckt nur wo gesetzt (ohne Werte bytegleich), Projektion additiv.
+  Migration `0047` additiv ohne Backfill; Felder nur für die
+  Rechnungsfamilie; Entwurf änderbar, danach eingefroren.
+- **Abnahme:** RED sauber per `git stash` getrennt beobachtet (12
+  Fehlerbilder; ehrlich: der Byte-Wächter war vorher grün – er pinnt
+  Unverändertheit, Goldwerte vom Vor-Slice-Code; ein echter E2E-Rotfall
+  wurde behoben), danach grün: unit 274, component 744, integration 456
+  (10 neue Fälle inkl. DST-Grenze 2029-10-27, Term-Grenzen,
+  Service-Tag-Grenzen inkl. Schalttag, DB-CHECKs, Bytegleichheit,
+  Mandantentrennung), coverage 1474 vollständig (Changed ≥85/80), E2E
+  16/16 (Passwort-Szenario 2,2 min im Budget) inkl. Ablauf
+  Entwurf → Leistungsdatum 29.02.2020 + 14 Tage → finalisieren →
+  gedruckte Zeilen/`due_date` = Mandantentag+14, Build grün.
+- **Ehrlich notiert:** Service-Tag-Grenze „nicht nach dem Mandanten-Heute“
+  (bewusst strenger als „Rechnungsdatum + 365“, später lockerbar);
+  „überfällig“ bleibt offen (RG-08 = eigener nächster Slice); kein
+  `due_date`-Index (kommt mit (e)-Filtern); ein Mandanten-Default für
+  Zahlungsziele fehlt (spätere Einstellungen); AJV-Coercion-Falle
+  (null vor String im `anyOf`) dokumentiert.
+
+**Nächste Unter-Slices:** RG-07b (Bankverbindung drucken, 0048),
+RG-08 („überfällig“ ableiten), (e) Fristen-/Statusfilter und Export;
+dazu Pflichtangaben-Ausstattung RG-04, Annahme-Korrekturpfad,
+Rückzahlungslogik, BKP020-Reste und BKP021+ (Mailkern bis BKP030).
+Betrieb unverändert: verifiziert live **c21330c**, alleiniger Auto-Updater;
+Checkpoint-/OCI-Nachweis weiterhin offen (Proxmox-Host 192.168.68.201 nicht
+erreichbar).
+
 ## H070: BKP019.c3.2 – Schlussrechnung mit Verrechnung (RG-03), 26.10.2026
 
 - **BKP019.c3.2 `4bcb851`** (inkl. Nachträgen b/c): die **Schlussrechnung**
