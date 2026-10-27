@@ -2,6 +2,47 @@
 
 Stand der Fortsetzung: **26.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H069: BKP019.c3.1 – Anzahlungsrechnung (RG-02/DV-02), 26.10.2026
+
+- **BKP019.c3.1 `f15486e`** – aus einer finalen Auftragsbestätigung entsteht
+  „Anzahlung erstellen“ eine Anzahlungsrechnung (`AZ-`-Nummernkreis, DV-02):
+  Positionen 1:1 als Betragsmagnituden, Summen exakt wie die Quelle, Betreff
+  „Anzahlungsrechnung für {{contact}}“, Entwurf bearbeitbar (Anzahlungshöhe
+  entsteht durch Kürzen der Positionen – bewusst ohne Prozent-/Festbetrag-
+  Parameter). **Mehrere Anzahlungen je Auftrag sind erlaubt** (Raten; kein
+  Unique-Index, Doppelklick erzeugt per Guard genau eine). Vier bisherige
+  Sperren wurden geöffnet: Anzahlungen sind **zahlbar** (Zahlungseingänge wie
+  bei Rechnungen, Zahlungsstand/„Offener Betrag“), **korrigierbar**
+  (c2-Korrekturbelege), quellenbezogen („Aus Auftragsbestätigung AB-…“) und
+  entwurfsbearbeitbar (geteilte Editor-Komponente mit eigener Überschrift).
+  Migration `0045` erweitert Quell-CHECK/Blanko-Regel additiv (Blanko-
+  Anzahlung bleibt 23514). UI nennt ehrlich, dass die **Verrechnung in der
+  Schlussrechnung (RG-03) mit c3.2** folgt.
+- **Abnahme:** RED sauber beobachtet (37 Fehlschläge gegen zurückgenommene
+  Kernstellen), dann grün: unit 274, component 735, integration 425
+  (12 neue c3.1-Fälle + Zahlungsfälle auf Anzahlungen), coverage vollständig,
+  E2E 16/16 inkl. Ablauf finale Bestätigung → Anzahlung `AZ-JJJJ-NNNN` →
+  Teilzahlung 30,00 € → offen 70,00 € → Korrektur der Anzahlung →
+  bytegleiche Quell-PDFs, axe-Audit 0 Verstöße, Build grün.
+- **Für c3.2 verbindlich festgehalten:** Verrechnungsblock weist geleistete
+  Anzahlungen aus; **Saldoabzug = abgerechnete Anzahlungs-Bruttosumme**
+  (nur „geleistet“ abziehen wäre eine Doppelforderung – die Analyse rechnete
+  1.690 € vs. 1.300 € durch); „davon geleistet“ nur Ausweis; dazu
+  `invoice_role`, `deposit_applied_minor` (beim Finalisieren eingefroren),
+  `order_invoiced`-Guard und die Zählung von Anzahlungszahlungen im
+  Bestätigungs-Kredit-Guard.
+- **Ehrlich notiert:** Storno-Stand/Restbetrag fehlen Anzahlungen noch
+  (Projektion bewusst nur `payable`/`paymentState` erweitert); zwei parallele
+  API-Aufrufe erzeugen zwei Anzahlungen (Raten gewollt); eine
+  Vorlagen-Anzahlung ohne Quelle bleibt möglich, aber nicht verrechenbar.
+
+**Nächste Unter-Slices BKP019:** c3.2 (Schlussrechnung mit Verrechnung),
+(e) Fristen-/Statusfilter und Export, RG-07 (Zahlungsziel/„überfällig“);
+dazu Pflichtangaben RG-04, Annahme-Korrekturpfad, BKP020-Reste und
+BKP021+ (Mailkern bis BKP030). Betrieb unverändert: verifiziert live
+**c21330c**, alleiniger Auto-Updater; Checkpoint-/OCI-Nachweis weiterhin
+offen (Proxmox-Host 192.168.68.201 nicht erreichbar).
+
 ## H068: BKP019.d – Zahlungseingänge und offener Saldo (RG-09), 26.10.2026
 
 - **BKP019.d `e5f9ac3`** – manuelle Erfassung von Zahlungseingängen gegen
