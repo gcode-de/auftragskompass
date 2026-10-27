@@ -40,15 +40,20 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP019.c3.1: an advance payment is a claim of its own, so its source link
-  // joins the same column. The blank-deposit path did not widen anything.
-  // BKP019.c3.2: the final invoice adds two additive columns and no backfill, so
-  // this stays the last migration and the invoice index is untouched below.
-  // RG-07: the invoice dates add three additive columns and no backfill either.
-  // RG-07b: the printed account is one additive column, also without a backfill.
-  // BKP019.e: the due-day index is additive as well - one index, no column and
-  // no data change, so this stays the last migration.
-  expect(applied.at(-1)!.name).toBe('0049_due_date_index.sql');
+  // Event file links are additive; existing document constraints and indexes
+  // below must survive the new relationship and audit column unchanged.
+  expect(applied.at(-1)!.name).toBe('0050_event_library_files.sql');
+  const fileLinkForeignKeys = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='event_library_files'::regclass AND contype='f'",
+    )
+  ).rows.map((row) => row.def);
+  expect(fileLinkForeignKeys).toContain(
+    'FOREIGN KEY (tenant_id, event_id) REFERENCES events(tenant_id, id)',
+  );
+  expect(fileLinkForeignKeys).toContain(
+    'FOREIGN KEY (tenant_id, file_id) REFERENCES library_files(tenant_id, id)',
+  );
   // The index answers exactly the filter the file index sends: this tenant, this
   // kind, this due window. No predicate, no expression, no backfill.
   const dueIndex = (

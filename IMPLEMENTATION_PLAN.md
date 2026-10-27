@@ -19,6 +19,25 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **BKP020.2 — `feat: link library files to events without copying uploads`**:
+  eigener Bereich in Event → Dateien für verfügbare/archivierte Verknüpfungen,
+  Bibliotheksauswahl und Entfernen allein der Zuordnung. Keine Kopie von Bytes;
+  Upload bleibt über die bestehende Bibliothek erreichbar. Additive Migration
+  mit zusammengesetzten Mandanten-FKs; idempotente GET/PUT/DELETE-Endpunkte
+  `/api/v1/events/:eventId/library-files[/:fileId]`, Änderungen atomar mit Audit.
+  Ungeprüft-Status und fehlender Virenscan bleiben ausdrücklich sichtbar;
+  archivierte Dateien behalten ihre Zuordnung, sind nicht herunterladbar.
+  Abnahme: RED zuerst; DB/FK/Auth/CSRF/Tenant/Retry/Archivierungsrennen und
+  Komponenten-/Chromium-Ablauf (mobil, Tastatur, Fehler und bestätigte Mutation
+  bei fehlgeschlagenem Refresh). Keine Mailanhänge, Löschung oder Exporte.
+  Abnahme: RED belegt, danach Node 24 Format/Lint/Typen/Build, 274 Unit-,
+  766 Komponenten-, 20 Workspace-/3 Docs-Tests und fokussierter Chromium-Lauf
+  grün; 320/1280-Screenshots geprüft. Vollständige Integration zuerst 498 grün
+  und eine veraltete Erwartung des letzten Migrationsnamens; korrigiert und
+  beide betroffenen DB-Dateien einschließlich weiterer Fremdmandantenfälle
+  mit 17/17 grün. Unabhängiger Review; Migration 0050 ausschließlich additiv.
+  Auslieferung bleibt bis erfolgreicher CI/Images separat offen.
+
 - [x] **DOC-SEARCH-01 — `feat: search documents by number, customer and subject`**:
   mandantengesicherte wortwörtliche Suche nach Belegnummer, Betreff und
   Kontaktname/Ansprechpartner vor Pagination; begrenztes `q`, eigenes `df_q`

@@ -1,4 +1,4 @@
-# Dateibibliothek (BKP020.1)
+# Dateibibliothek und Eventdateien (BKP020.1/.2)
 
 Die Dateibibliothek ist seit BKP020.1 der eigene, ausdrücklich beschriftete
 Teil „Dateibibliothek“ der Dateienansicht (`#files`) neben dem
@@ -63,9 +63,37 @@ Alle Routen benötigen die Admin-Sitzung; Schreibrouten zusätzlich Origin und
 CSRF-Token. Audit-Einträge (`file.uploaded`, `file.archived`) entstehen in
 derselben Transaktion wie die Zeile.
 
-## Offene Bausteine (nicht Teil von BKP020.1)
+## Eventzuordnung (BKP020.2)
 
-Eventverknüpfung und Kategorien (Upload/Standard/Mailanhang), Ersetzen/
+Event → Dateien zeigt zugeordnete Bibliotheksdateien neben den vorhandenen
+Geschäftsdokumenten. Eine verfügbare Datei kann aus der Bibliothek ausgewählt
+werden; der vorhandene Upload bleibt in der globalen Dateienansicht erreichbar.
+Die Zuordnung kopiert weder Bytes noch Dateimetadaten und verändert keine
+Event-Stammdatenversion. Dieselbe Datei kann mehreren eigenen Events zugeordnet
+sein. „Zuordnung entfernen“ entfernt ausschließlich die Verbindung zu diesem
+Event, ohne die Datei zu archivieren oder zu löschen.
+
+- `GET /api/v1/events/:eventId/library-files`: zugeordnete Dateien im gleichen
+  Zeilenformat wie die Bibliothek, einschließlich archivierter Dateien.
+- `PUT /api/v1/events/:eventId/library-files/:fileId`: Zuordnung; `200` mit
+  Dateizeile. Wiederholung erzeugt keine zweite Verbindung. Eine bereits
+  bestehende Verbindung bleibt auch nach Archivierung idempotent lesbar;
+  eine neue Verbindung zu einer archivierten Datei liefert `409`.
+- `DELETE /api/v1/events/:eventId/library-files/:fileId`: Zuordnung entfernen;
+  `204`, auch bei wiederholtem Entfernen. Fehlende oder fremde Events/Dateien
+  liefern `404`, ohne fremde Verbindungen offenzulegen.
+
+Zusammengesetzte Fremdschlüssel sichern beide Mandantenbezüge. Schreibvorgänge
+werden mit der Archivierung serialisiert, benötigen Administratorberechtigung
+und CSRF-Schutz und erzeugen nur bei tatsächlicher Änderung einen Audit-Eintrag
+mit Event- und Datei-ID. Nach einem bestätigten Schreibvorgang übernimmt die UI
+das Ergebnis vor einem erneuten Lesen; ein Lesefehler macht den bestätigten
+Vorgang nicht rückgängig. Der Prüfstatus bleibt unverändert sichtbar. Archivierte
+Dateien behalten historische Zuordnungen, bieten jedoch keinen Download.
+
+## Offene Bausteine
+
+Direkter Upload aus dem Event, Kategorien (Upload/Standard/Mailanhang), Ersetzen/
 Versionierung, Mailanhangpicker, die acht Standarddateien (DA-07, braucht
 echte Bestandsdateien außerhalb Git), Suche/Filter/Paginierung der Liste bei
 großen Beständen sowie Retention/Löschung sind gesonderte Folgeslices.

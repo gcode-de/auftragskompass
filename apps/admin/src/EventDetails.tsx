@@ -1,6 +1,7 @@
 import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
 import { EventDocuments } from './EventDocuments.js';
+import { EventLibraryFiles } from './EventLibraryFiles.js';
 import { useAutoRefresh } from './auto-refresh.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { plainDateText } from './calendar-range.js';
@@ -629,6 +630,12 @@ export function EventDetails({
               Dokumente dieses Events, nach ihrer Art getrennt. Was hier fehlt,
               ist noch nicht angelegt.
             </p>
+            <EventLibraryFiles
+              key={data.event.id}
+              eventId={data.event.id}
+              csrfToken={csrfToken}
+              active={area === 'files'}
+            />
             <EventDocuments
               key={data.event.id}
               eventId={data.event.id}

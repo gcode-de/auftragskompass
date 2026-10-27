@@ -2,6 +2,34 @@
 
 Stand der Fortsetzung: **27.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H075: Bibliotheksdateien am Event, 27.10.2026
+
+BKP020.2 verknüpft bestehende Bibliotheksdateien in Event → Dateien, ohne Bytes
+zu kopieren. Migration `0050_event_library_files.sql` ergänzt die Verbindung mit
+beiden Mandanten-FKs sowie eine nullable zweite Audit-ID und zwei Aktionen,
+unter Erhalt aller bisherigen Auditaktionen. Eventversion und Geschäftsbelege
+bleiben unverändert. GET/PUT/DELETE sind unter
+`/api/v1/events/:eventId/library-files[/:fileId]` verfügbar; Schreibvorgänge sind
+autorisiert, CSRF-geschützt und mit Archivierung serialisiert. Wiederholungen
+erzeugen keine doppelten Verbindungen/Audits. Archivierte Verbindungen bleiben
+lesbar und entfernbar, ohne Download. Neue Verbindungen zu archivierten Dateien
+werden verweigert. Vertrag und offene Grenzen: [Dateien](files.md).
+
+Kein direkter Eventupload: Der vorhandene Bibliotheksupload ist verlinkt und
+berücksichtigt ungespeicherte Eingaben. Es gibt weiterhin keinen Virenscan;
+„Ungeprüft“ bleibt sichtbar. Bestätigte Zuordnung/Entfernung wird vor einem
+Refresh übernommen, Lesefehler erhalten den bestätigten Stand. Eventwechsel
+trennt Komponenteninstanzen, verspätete Leseantworten werden verworfen.
+
+Abnahme: Node 24 Format/Lint/Typen/Build, 274 Unit-, 766 Komponenten-,
+20 Workspace-/3 Docs-Tests; Chromium mit 320/1280-Screenshots grün und visuell
+geprüft. Vollständiger DB-Lauf zunächst 498 grün und eine veraltete Erwartung
+„letzte Migration 0049“; nach Korrektur und weiteren Sicherheitsfällen die beiden
+betroffenen DB-Dateien 17/17 grün. Parallele Verknüpfungs-/Entfernungsversuche,
+Archivierungsrennen, zusammengesetzte FKs, Fremdmandanten, Auth/CSRF und Auditpaar
+sind geprüft. Root- und unabhängiger Subagent-Review abgeschlossen.
+CI/Images/Rollout stehen bei diesem Eintrag noch aus.
+
 ## H074: Bedienauftrag und Dokumentsuche, 27.10.2026
 
 Der Betreiber schließt Aufgaben/Workflows, Auswertungen und Exporte aus diesem

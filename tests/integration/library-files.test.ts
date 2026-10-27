@@ -174,6 +174,10 @@ beforeEach(async () => {
   files.clear();
   putKeys.length = 0;
   await pool.query(
+    'DELETE FROM event_library_files WHERE tenant_id IN ($1,$2)',
+    [tenantId, otherTenantId],
+  );
+  await pool.query(
     'DELETE FROM library_file_upload_operations WHERE tenant_id IN ($1,$2)',
     [tenantId, otherTenantId],
   );
@@ -181,6 +185,220 @@ beforeEach(async () => {
     tenantId,
     otherTenantId,
   ]);
+});
+
+test('event links enforce tenancy, archive state and concurrent idempotency', async () => {
+  const eventId = randomUUID(),
+    foreignEvent = randomUUID();
+  for (const [tenant, id] of [
+    [tenantId, eventId],
+    [otherTenantId, foreignEvent],
+  ])
+    await pool.query(
+      `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html) VALUES ($1,$2,'Synthetic event','inquiry','','Europe/Berlin','','')`,
+      [tenant, id],
+    );
+  const file = (await upload()).json();
+  const url = `/api/v1/events/${eventId}/library-files/${file.id}`;
+  const replies = await Promise.all(
+    Array.from({ length: 3 }, () =>
+      app.inject({ method: 'PUT', url, cookies, headers }),
+    ),
+  );
+  expect(replies.map((r) => r.statusCode)).toEqual([200, 200, 200]);
+  expect(await auditCount('file.event_linked', eventId)).toBe(1);
+  const audit = await pool.query(
+    'SELECT related_record_id FROM audit_events WHERE tenant_id=$1 AND action=$2 AND record_id=$3',
+    [tenantId, 'file.event_linked', eventId],
+  );
+  expect(audit.rows[0].related_record_id).toBe(file.id);
+  expect(
+    (
+      await app.inject({
+        url: `/api/v1/events/${foreignEvent}/library-files`,
+        cookies,
+      })
+    ).statusCode,
+  ).toBe(404);
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: `/api/v1/events/${eventId}/library-files/not-a-uuid`,
+        cookies,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: `/api/v1/events/${foreignEvent}/library-files/${file.id}`,
+        cookies,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(404);
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: `/api/v1/events/${eventId}/library-files/${randomUUID()}`,
+        cookies,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(404);
+  expect(
+    (await app.inject({ method: 'PUT', url, cookies, headers: {} })).statusCode,
+  ).toBe(403);
+  expect((await app.inject({ method: 'PUT', url })).statusCode).toBe(401);
+  await expect(
+    pool.query(
+      'INSERT INTO event_library_files (tenant_id,event_id,file_id) VALUES ($1,$2,$3)',
+      [otherTenantId, foreignEvent, file.id],
+    ),
+  ).rejects.toMatchObject({ code: '23503' });
+  await app.inject({
+    method: 'POST',
+    url: `/api/v1/library-files/${file.id}/archive`,
+    cookies,
+    headers,
+  });
+  expect(
+    (await app.inject({ method: 'PUT', url, cookies, headers })).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await app.inject({
+        url: `/api/v1/events/${eventId}/library-files`,
+        cookies,
+      })
+    ).json()[0].state,
+  ).toBe('archived');
+  const removed = await Promise.all(
+    Array.from({ length: 3 }, () =>
+      app.inject({ method: 'DELETE', url, cookies, headers }),
+    ),
+  );
+  expect(removed.map((r) => r.statusCode)).toEqual([204, 204, 204]);
+  expect(await auditCount('file.event_unlinked', eventId)).toBe(1);
+  expect(
+    (await app.inject({ method: 'PUT', url, cookies, headers })).statusCode,
+  ).toBe(409);
+  expect(putKeys).toHaveLength(1);
+});
+
+test('foreign files and events stay inaccessible through both link mutations', async () => {
+  const eventId = randomUUID(),
+    foreignEventId = randomUUID();
+  for (const [scope, id] of [
+    [tenantId, eventId],
+    [otherTenantId, foreignEventId],
+  ])
+    await pool.query(
+      `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html)
+       VALUES ($1,$2,'Synthetic isolated event','inquiry','','Europe/Berlin','','')`,
+      [scope, id],
+    );
+  const foreignFile = await libraryFileRepository(
+    pool,
+    otherTenantId,
+    store,
+  ).upload(otherActorId, {
+    displayName: 'Synthetic foreign.pdf',
+    mediaType: 'application/pdf',
+    contentBase64: pdfBytes.toString('base64'),
+  });
+  for (const method of ['PUT', 'DELETE'] as const)
+    for (const id of [eventId, foreignEventId])
+      expect(
+        (
+          await app.inject({
+            method,
+            url: `/api/v1/events/${id}/library-files/${foreignFile.id}`,
+            cookies,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(404);
+  const url = `/api/v1/events/${eventId}/library-files/${foreignFile.id}`;
+  expect((await app.inject({ method: 'DELETE', url })).statusCode).toBe(401);
+  expect(
+    (await app.inject({ method: 'DELETE', url, cookies })).statusCode,
+  ).toBe(403);
+  expect(
+    (
+      await app.inject({
+        url: `/api/v1/events/${randomUUID()}/library-files`,
+        cookies,
+      })
+    ).statusCode,
+  ).toBe(404);
+});
+
+test('archive and link serialize, and an unauthorized actor cannot mutate a link', async () => {
+  const eventId = randomUUID();
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html) VALUES ($1,$2,'Synthetic event','inquiry','','Europe/Berlin','','')`,
+    [tenantId, eventId],
+  );
+  const file = (await upload()).json();
+  const repo = libraryFileRepository(pool, tenantId, store);
+  await expect(
+    repo.changeEventLink(otherActorId, eventId, file.id, true),
+  ).rejects.toThrow();
+  const linkUrl = `/api/v1/events/${eventId}/library-files/${file.id}`;
+  const [link, archive] = await Promise.all([
+    app.inject({ method: 'PUT', url: linkUrl, cookies, headers }),
+    app.inject({
+      method: 'POST',
+      url: `/api/v1/library-files/${file.id}/archive`,
+      cookies,
+      headers,
+    }),
+  ]);
+  expect([200, 409]).toContain(link.statusCode);
+  expect(archive.statusCode).toBe(200);
+  const listed = (
+    await app.inject({
+      url: `/api/v1/events/${eventId}/library-files`,
+      cookies,
+    })
+  ).json();
+  expect(listed.length).toBe(link.statusCode === 200 ? 1 : 0);
+  if (listed.length) expect(listed[0].state).toBe('archived');
+  expect(putKeys).toHaveLength(1);
+});
+
+test('links a library file to an event idempotently without copying bytes', async () => {
+  const eventId = randomUUID();
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html)
+     VALUES ($1,$2,'Synthetic event','inquiry','','Europe/Berlin','','')`,
+    [tenantId, eventId],
+  );
+  const file = (await upload()).json();
+  const url = `/api/v1/events/${eventId}/library-files/${file.id}`;
+  expect(
+    (await app.inject({ method: 'PUT', url, cookies, headers })).statusCode,
+  ).toBe(200);
+  expect(
+    (await app.inject({ method: 'PUT', url, cookies, headers })).statusCode,
+  ).toBe(200);
+  const listed = await app.inject({
+    url: `/api/v1/events/${eventId}/library-files`,
+    cookies,
+  });
+  expect(listed.json()).toMatchObject([{ id: file.id }]);
+  expect(putKeys).toHaveLength(1);
+  expect(
+    (await app.inject({ method: 'DELETE', url, cookies, headers })).statusCode,
+  ).toBe(204);
+  expect(
+    (await app.inject({ method: 'DELETE', url, cookies, headers })).statusCode,
+  ).toBe(204);
 });
 
 test('uploads each allowed type with a generated key and an honest scan state', async () => {

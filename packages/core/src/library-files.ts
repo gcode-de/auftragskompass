@@ -232,6 +232,49 @@ export function libraryFileRepository(
     return mapRow(row);
   }
   return {
+    async listForEvent(eventId: string): Promise<LibraryFileRow[]> {
+      const event = await db.execute(
+        sql`SELECT id FROM events WHERE tenant_id = ${tenantId} AND id = ${eventId}`,
+      );
+      if (!event.rows.length) throw new LibraryFileError('not_found');
+      const result = (await db.execute(
+        sql`${rowSelect} JOIN event_library_files l ON l.tenant_id = f.tenant_id AND l.file_id = f.id WHERE l.tenant_id = ${tenantId} AND l.event_id = ${eventId} AND f.state <> 'rejected' ORDER BY f.uploaded_at DESC, f.id DESC`,
+      )) as unknown as { rows: DbRow[] };
+      return result.rows.map(mapRow);
+    },
+    async changeEventLink(
+      actorId: string,
+      eventId: string,
+      fileId: string,
+      link: boolean,
+    ): Promise<LibraryFileRow | null> {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const event = await tx.execute(
+          sql`SELECT id FROM events WHERE tenant_id = ${tenantId} AND id = ${eventId}`,
+        );
+        if (!event.rows.length) throw new LibraryFileError('not_found');
+        const file = await readRow(tx, fileId);
+        const existing = await tx.execute(
+          sql`SELECT 1 FROM event_library_files WHERE tenant_id = ${tenantId} AND event_id = ${eventId} AND file_id = ${fileId}`,
+        );
+        if (link && !existing.rows.length && file.state !== 'available')
+          throw new LibraryFileError('conflict');
+        const changed = link
+          ? await tx.execute(
+              sql`INSERT INTO event_library_files (tenant_id,event_id,file_id) VALUES (${tenantId},${eventId},${fileId}) ON CONFLICT DO NOTHING RETURNING file_id`,
+            )
+          : await tx.execute(
+              sql`DELETE FROM event_library_files WHERE tenant_id = ${tenantId} AND event_id = ${eventId} AND file_id = ${fileId} RETURNING file_id`,
+            );
+        if (changed.rows.length)
+          await tx.execute(
+            sql`INSERT INTO audit_events (tenant_id,actor_id,action,record_id,related_record_id) VALUES (${tenantId},${actorId},${link ? 'file.event_linked' : 'file.event_unlinked'},${eventId},${fileId})`,
+          );
+        return link ? file : null;
+      });
+    },
     async list(): Promise<LibraryFileRow[]> {
       const result = (await db.execute(
         sql`${rowSelect} WHERE f.tenant_id = ${tenantId} AND f.state <> 'rejected' ORDER BY f.uploaded_at DESC, f.id DESC`,
@@ -424,6 +467,71 @@ export function registerLibraryFileRoutes(
       },
     },
     async () => repo.list(),
+  );
+  const eventFileParams = {
+    type: 'object',
+    required: ['eventId', 'fileId'],
+    properties: {
+      eventId: { type: 'string', format: 'uuid' },
+      fileId: { type: 'string', format: 'uuid' },
+    },
+  };
+  app.get<{ Params: { eventId: string } }>(
+    '/api/v1/events/:eventId/library-files',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['eventId'],
+          properties: { eventId: { type: 'string', format: 'uuid' } },
+        },
+        response: { 200: { type: 'array', items: row } },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.listForEvent(request.params.eventId);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.put<{ Params: { eventId: string; fileId: string } }>(
+    '/api/v1/events/:eventId/library-files/:fileId',
+    {
+      schema: { params: eventFileParams, response: { 200: row } },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.changeEventLink(
+          request.authSession!.userId,
+          request.params.eventId,
+          request.params.fileId,
+          true,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.delete<{ Params: { eventId: string; fileId: string } }>(
+    '/api/v1/events/:eventId/library-files/:fileId',
+    {
+      schema: { params: eventFileParams },
+    },
+    async (request, reply) => {
+      try {
+        await repo.changeEventLink(
+          request.authSession!.userId,
+          request.params.eventId,
+          request.params.fileId,
+          false,
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
   );
   app.post<{
     Body: {
