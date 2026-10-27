@@ -2101,6 +2101,19 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     await expect(
       secondInvoiceRow.getByText(/Offener Betrag: 100,00 €/),
     ).toBeVisible();
+    // RG-08: a document created today can never be late - it carries no due day
+    // at all, so the derived badge is absent.
+    await expect(secondInvoiceRow.getByText('Überfällig')).toHaveCount(0);
+    // RG-08: the lateness is a comparison against the tenant day, so this test
+    // needs a due day that lies before today. The one `due_date` written here is
+    // a pure test fixture - no product path writes a due day after finalization,
+    // and none is added for this test. The CHECK of 0047 stays satisfied: the row
+    // is final and names a term.
+    await pool.query(
+      `UPDATE documents SET due_date = CURRENT_DATE - 1, payment_term_days = 1
+        WHERE tenant_id=$1 AND id=$2`,
+      [config.tenantId, secondInvoice.id],
+    );
     // A payment is recorded by hand: day, amount, method and an optional note.
     await secondInvoiceRow
       .getByRole('button', {
@@ -2137,6 +2150,12 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     ).toBeVisible();
     await expect(
       secondInvoiceRow.getByText(/Offener Betrag: 60,00 €/),
+    ).toBeVisible();
+    // RG-08: the due day of the fixture lies before today and 60,00 EUR are still
+    // open, so the row is late - as its own badge next to the payment state, not
+    // instead of it.
+    await expect(
+      secondInvoiceRow.getByText('Überfällig', { exact: true }),
     ).toBeVisible();
     const paymentList = paymentForm.getByRole('list', {
       name: 'Erfasste Zahlungen',

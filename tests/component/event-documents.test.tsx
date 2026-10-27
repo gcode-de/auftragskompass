@@ -3216,6 +3216,33 @@ test('a finalized invoice shows its payment state and the open amount', async ()
   expect(within(rows[0]!).getByText('Nicht storniert')).toBeTruthy();
 });
 
+// RG-08: the lateness is a third, independent fact. It gets its own element next
+// to the payment state, so "teilweise bezahlt" stays readable and is never
+// replaced by the badge.
+test('an overdue invoice shows the badge beside its payment state', async () => {
+  setup({ documents: [{ ...invoicePartiallyPaid, overdue: true }] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getAllByRole('listitem')[0]!;
+  expect(within(row).getByText('Teilweise bezahlt')).toBeTruthy();
+  expect(within(row).getByText(/Offener Betrag: 149,00 €/)).toBeTruthy();
+  const badge = within(row).getByText('Überfällig');
+  // Its own <strong>, exactly like "Abgelaufen" - no new stylesheet rule.
+  expect(badge.tagName).toBe('STRONG');
+});
+
+// A settled or unknown claim shows no badge: only the derived `true` does.
+test('a settled invoice shows no overdue badge', async () => {
+  setup({ documents: [{ ...invoicePaid, overdue: false }, invoiceFinal] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const rows = within(invoices).getAllByRole('listitem');
+  expect(within(rows[0]!).getByText('Bezahlt')).toBeTruthy();
+  expect(within(rows[0]!).queryByText('Überfällig')).toBeNull();
+  // A row without the key at all (older answer) stays silent too.
+  expect(within(rows[1]!).queryByText('Überfällig')).toBeNull();
+});
+
 test('only a finalized invoice offers the payment action', async () => {
   setup({
     documents: [invoiceDraft, finalizedConfirmation, invoiceFinal],

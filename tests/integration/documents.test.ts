@@ -2103,6 +2103,9 @@ const invoiceDateKeys = [
   'dueDate',
   'bankAccount',
 ];
+// RG-08: the lateness is one derived key of the same projection - a date
+// comparison on top of the open claim, not a stored status.
+const overdueKeys = ['overdue'];
 
 test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
   const scope = randomUUID(),
@@ -3278,6 +3281,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         ...paymentKeys,
         ...settlementKeys,
         ...invoiceDateKeys,
+        ...overdueKeys,
       ].sort(),
     );
     expect(projectedRow).toMatchObject({
@@ -4047,6 +4051,7 @@ test('the offer status route accepts the acceptance details and refuses bad ones
         ...paymentKeys,
         ...settlementKeys,
         ...invoiceDateKeys,
+        ...overdueKeys,
       ].sort(),
     );
     // Repeating the identical details is a no-op, a changed one is refused.
@@ -4895,6 +4900,7 @@ test('the offer projection names the source of a confirmation', async () => {
       ...paymentKeys,
       ...settlementKeys,
       ...invoiceDateKeys,
+      ...overdueKeys,
     ].sort(),
   );
 });
@@ -5587,6 +5593,7 @@ test('the offer projection names the source of an invoice', async () => {
       ...paymentKeys,
       ...settlementKeys,
       ...invoiceDateKeys,
+      ...overdueKeys,
     ].sort(),
   );
 });

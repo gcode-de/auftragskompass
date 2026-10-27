@@ -52,6 +52,9 @@ type DocumentRow = {
   serviceDate?: string | null;
   paymentTermDays?: number | null;
   dueDate?: string | null;
+  // RG-08: derived on the server from the due day and the open claim. `null`
+  // means "no claim at all", so only `true` ever shows the badge.
+  overdue?: boolean | null;
   // RG-07b: the account the invoice prints, printed word for word.
   bankAccount?: string | null;
 };
@@ -109,8 +112,9 @@ const acceptanceChannels = Object.keys(
   acceptanceChannelLabels,
 ) as AcceptanceChannel[];
 // BKP019.d: money that arrived is a record, not a status. "Offen" is the absence
-// of a payment; "bezahlt" only exists because payments were entered. "Überfällig"
-// is deliberately absent - without a payment term there is no honest due date.
+// of a payment; "bezahlt" only exists because payments were entered.
+// RG-08: "Überfällig" is the third, independent fact of a claim (due day passed
+// while money is still open) and is shown as its own element, never merged here.
 const paymentStateLabels: Record<'none' | 'partial' | 'paid', string> = {
   none: 'Offen',
   partial: 'Teilweise bezahlt',
@@ -1405,7 +1409,10 @@ export function EventDocuments({
                 Both are derived from the recorded payments - the invoice keeps
                 its number, its state and its bytes.
                 BKP019.c3.1: a finalized deposit is a claim of its own and shows
-                the same two derived values. */}
+                the same two derived values.
+                RG-08: the lateness is its own derived fact and therefore its own
+                element next to the payment state - "offen" and "überfällig" are
+                two axes, so neither replaces the other. */}
             {(entry.kind === 'invoice' || entry.kind === 'deposit_invoice') &&
               entry.state === 'final' &&
               entry.paymentState && (
@@ -1416,6 +1423,12 @@ export function EventDocuments({
                       (exactMinorUnits(entry.openMinor ?? 0) ?? '—') +
                       ' €'}
                   </span>
+                  {entry.overdue === true && (
+                    <>
+                      {' · '}
+                      <strong className="document-overdue">Überfällig</strong>
+                    </>
+                  )}
                 </p>
               )}
             {entry.kind === 'offer' && entry.state === 'final' && (
@@ -2369,7 +2382,9 @@ export function EventDocuments({
                   their own documents, never as an edit of the invoice.
                   BKP019.c3.2: the final invoice exists too, so the card names the
                   two roles of one invoice and the one-invoice rule. Still open
-                  are the payment term and the refund, not the settlement. */}
+                  is the refund, not the settlement.
+                  RG-08: the lateness of a claim is derived and named in the row,
+                  so the card no longer denies it. */}
               {group.kind === 'invoice' && (
                 <p className="document-card-hint">
                   Eine Rechnung entsteht aus einer Auftragsbestätigung – als
@@ -2378,8 +2393,9 @@ export function EventDocuments({
                   gestellten Anzahlungen; eine finalisierte Rechnung wird nie
                   ersetzt, sondern nur durch eine Rechnungskorrektur ergänzt.
                   Zahlungseingänge werden manuell erfasst; Leistungsdatum und
-                  Zahlungsziel lassen sich je Rechnung im Entwurf angeben, eine
-                  Überfälligkeit gibt es noch nicht.
+                  Zahlungsziel lassen sich je Rechnung im Entwurf angeben, und
+                  nach Ablauf des Zahlungsziels gilt ein offener Beleg als
+                  überfällig.
                 </p>
               )}
               {/* BKP019.c3.2: a deposit stays its own claim with its own number.

@@ -23,8 +23,8 @@ export const paymentNoteMaxLength = 2000;
 // The same magnitude bound as every other stored amount.
 export const maxPaymentMinor = 9007199254740991;
 // Derived, never stored: "offen" is the absence of a payment, not a status an
-// operator or a print can write. "Überfällig" is deliberately absent - without a
-// payment term (RG-07, its own slice) a due date would be invented.
+// operator or a print can write. "Überfällig" is derived separately in
+// documents.ts (RG-08): payable + open balance + a due date that has passed.
 export type PaymentState = 'none' | 'partial' | 'paid';
 export const paymentStates = ['none', 'partial', 'paid'] as const;
 

@@ -229,6 +229,28 @@ export function offerExpired(
     ) < 0
   );
 }
+// RG-08: "überfällig" is a date comparison on an open claim, never a stored
+// status - like `offerExpired`, the tenant calendar decides where "today" ends.
+// The due day itself is not yet late (strict `<`), and a claim without a due day
+// invents no deadline: only an open amount on a payable document can be late.
+export function invoiceOverdue(
+  dueDate: string | null,
+  claimMinor: number,
+  paidMinor: number,
+  at: Date,
+  timeZone: string,
+): boolean {
+  if (!dueDate || paidMinor >= claimMinor) return false;
+  const today = Temporal.Instant.fromEpochMilliseconds(
+    at.getTime(),
+  ).toZonedDateTimeISO(timeZone);
+  return (
+    Temporal.PlainDate.compare(
+      Temporal.PlainDate.from(dueDate),
+      today.toPlainDate(),
+    ) < 0
+  );
+}
 export type DocumentListRow = {
   id: string;
   kind: DocumentKind;
@@ -295,6 +317,12 @@ export type DocumentOfferRow = DocumentListRow & {
   serviceDate: string | null;
   paymentTermDays: number | null;
   dueDate: string | null;
+  // RG-08: derived from `dueDate`, the open claim and the tenant day - never
+  // stored. `null` is the honest value for a document that is no claim at all
+  // (offer, confirmation, correction, withdrawn row), `false` for a claim that
+  // is not late (yet). "Were late once" is deliberately not answered: no status
+  // history exists, so a settled invoice reads `false`.
+  overdue: boolean | null;
   // RG-07b: the free-text account the invoice prints. NULL outside the family
   // and NULL where an operator entered none.
   bankAccount: string | null;
@@ -1608,8 +1636,7 @@ export function documentRepository(
                 zone,
               ),
               // RG-07: the invoice dates, answered for every row so no reader has
-              // to guess a shape. `due` is the value frozen at finalization; the
-              // "überfällig" comparison is deliberately not derived here.
+              // to guess a shape. `due` is the value frozen at finalization.
               serviceDate: serviceDate ?? null,
               paymentTermDays:
                 paymentTermDaysText === null ||
@@ -1617,6 +1644,14 @@ export function documentRepository(
                   ? null
                   : Number(paymentTermDaysText),
               dueDate: dueDate ?? null,
+              // RG-08: the same frozen day plus the open claim and the tenant
+              // day decide. A row that is no claim answers NULL instead of a
+              // derived `false`, exactly like `paymentState`. Nothing is written
+              // back: a credit note can heal the lateness without touching the
+              // invoice.
+              overdue: payable
+                ? invoiceOverdue(dueDate ?? null, claim, paid, at, zone)
+                : null,
               // RG-07b: the free-text account, NULL where none was entered.
               bankAccount: bankAccount ?? null,
             };
@@ -2965,8 +3000,8 @@ export function registerDocumentRoutes(
     },
   };
   // RG-07: the date axis of an invoice, additive in the same opt-in projection.
-  // "Überfällig" is deliberately not part of this slice - it is a comparison
-  // against the tenant's today, not a stored field.
+  // "Überfällig" lives in its own group: it is a comparison against the tenant's
+  // today on top of the open claim, not a stored date field.
   const invoiceFields = {
     serviceDate: {
       anyOf: [
@@ -2990,6 +3025,13 @@ export function registerDocumentRoutes(
         { type: 'string', maxLength: bankAccountMaxLength },
         { type: 'null' },
       ],
+    },
+  };
+  // RG-08: the lateness of a claim, additive in the same opt-in projection and
+  // nowhere else - the metadata list and the single document keep their shape.
+  const overdueFields = {
+    overdue: {
+      anyOf: [{ type: 'boolean' }, { type: 'null' }],
     },
   };
   const row = {
@@ -3410,6 +3452,7 @@ export function registerDocumentRoutes(
       ...Object.keys(paymentFields),
       ...Object.keys(settlementFields),
       ...Object.keys(invoiceFields),
+      ...Object.keys(overdueFields),
     ],
     properties: {
       ...listRow.properties,
@@ -3418,6 +3461,7 @@ export function registerDocumentRoutes(
       ...paymentFields,
       ...settlementFields,
       ...invoiceFields,
+      ...overdueFields,
     },
   };
   app.get<{ Querystring: DocumentFilters }>(

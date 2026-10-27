@@ -410,11 +410,20 @@ ohne IBAN- oder Bankprüfung (keine Banklogik erfunden) –, im Entwurf
 änderbar und nach der Finalisierung unveränderlich. Zeilenumbrüche bleiben
 im Druck sichtbar.
 
-**Ehrliche Grenze:** „Überfällig“ wird noch nicht abgeleitet (RG-08, eigener
-Folgeslice); ein Mandanten-Default für Zahlungsziele und Bankverbindung
-fehlt (spätere Einstellungen). Es wird keine Rechts- oder Steuerbehauptung
-aufgestellt; „unterstützen“ heißt hier: führen, drucken, prüfen – nicht die
-steuerliche Richtigkeit garantieren.
+Eine Rechnung gilt als **„Überfällig“**, sobald ihr Fälligkeitsdatum in der
+Mandantenzeitzone überschritten ist und noch ein offener Betrag besteht –
+abgeleitet, nie gespeichert; „fällig heute“ ist noch nicht überfällig, eine
+spätere Zahlung hebt den Zustand auf (keine Historie „war überfällig“).
+Das Badge „Überfällig“ erscheint neben dem Zahlungsstand; Korrekturen wirken
+darüber: eine Gutschrift kann die Überfälligkeit heilen, eine Lastschrift
+kann sie begründen.
+
+**Ehrliche Grenze:** ein Mandanten-Default für Zahlungsziele und
+Bankverbindung fehlt (spätere Einstellungen); „überfällig“ ist noch nicht
+filter-/exportierbar (folgt mit den Fristenfiltern). Es wird keine Rechts-
+oder Steuerbehauptung aufgestellt – kein Mahnwesen, keine Zinsen;
+„unterstützen“ heißt hier: führen, drucken, prüfen – nicht die steuerliche
+Richtigkeit garantieren.
 
 ### Auftragsbestätigung aus einem Angebot (BKP019.b, AG-05)
 

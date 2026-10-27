@@ -8,7 +8,57 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
-- [x] **RG-07b — `feat: print the bank account on an invoice`** (26.10.2026)
+- [x] **RG-08 — `feat: derive an overdue invoice from its due day`** (26.10.2026)
+
+  RG-08 („Dokumentstatus … überfällig“) nach rein lesender DeepSeek-Analyse
+  zu `06f7919`. Staleness: „überfällig“ fehlt als einziger der sieben
+  RG-08-Status (sechs existieren bereits als `state`/`offerStatus`/
+  `paymentState`/`correctionState`). **Rein abgeleitet, nie gespeichert,
+  keine Migration:** `overdue = zahlbar (invoice|deposit_invoice ∧ final)
+  ∧ offener Saldo > 0 ∧ due_date < Mandantenheute` (strikt – „fällig heute“
+  ist nicht überfällig; Muster `offerExpired` mit `at`-Parameter,
+  DST-sicher). Gilt bei Teilzahlung, Anzahlungen und Schlussrechnungen
+  (reduzierter Anspruch), nicht bei Korrekturen/AB/Angeboten, nicht ohne
+  Zahlungsziel, nicht bei bezahlt/voll storniert. Typ
+  `overdue: boolean | null` (null für nicht zahlbare Belege, konsistent zu
+  `paymentState`). Eigene Schlüsselgruppe `overdueKeys` in der
+  `include=offer`-Projektion (Metadaten-/Einzelprojektionen unverändert);
+  UI-Badge „Überfällig“ als eigenes `<strong>` **neben** „Offen/Teilweise
+  bezahlt/Bezahlt“ (Muster „Abgelaufen“, keine neue CSS-Regel); die
+  bisherigen „fehlt noch“-Hinweise entfallen. Keine Historie („war
+  überfällig“ entsteht nicht); Gutschriften können Überfälligkeit heilen,
+  Lastschriften schaffen (natürlicher Anspruchsweg). E2E nutzt
+  dokumentiertes Test-Backdating per SQL (reine Testfixture – ein Beleg ist
+  am Erstellungstag nie überfällig). Referenz ehrlich: RG-08 Soll,
+  Bookitup-UI unbekannt, keine Rechtsaussage (kein Mahnwesen/Zinsen).
+  Tests zuerst rot (13 Fälle inkl. zwei DST-Grenzen 2029-10-28/2029-03-25,
+  Mandantentrennung über Zeitzone, „Ableiten schreibt nichts“;
+  Schlüsselsatz-Pins aussagenerhalten erweitern, `:298–308` unantastbar).
+  Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt Plan/Docs und reviewt.
+  Abgenommen: rot sauber gegen unveränderte Quellen beobachtet (14
+  Integrationsfehler „Schlüssel `overdue` fehlt“, 1 Component- und 1
+  E2E-Fehler; die Negativfälle waren erwartungsgemäß schon grün), danach
+  grün: `test:unit` 274/274, `test:component` 748/748 (2 neu),
+  `test:integration` 482/482 (14 neue Fälle: fällig-heute-Grenze,
+  ohne Zahlungsziel, bezahlt vor/nach Fälligkeit, Teilzahlung, Anzahlung,
+  Korrektur/AB/Angebot nie `true`, Schlussrechnung mit reduziertem
+  Anspruch, voll storniert, zwei DST-Grenzen 2029-10-28/2029-03-25,
+  Projektionsschlüssel nur `include=offer`, Mandantentrennung Berlin vs.
+  Auckland bei gleichem `due_date`, „Ableiten schreibt nichts“,
+  Funktionsgrenzen), `test:coverage` vollständig grün (0 ungedeckte
+  Zeilen in den neuen Bereichen), `test:workspace`/`test:docs`/schnelle
+  Gates/Build grün; E2E auth+template-product-price 16/16 (Passwort 2,1 min
+  im Budget) inkl. frischer Rechnung OHNE Badge und nach dokumentiertem
+  Test-Backdating (SQL-Fixture, kein Produktweg) Badge neben „Teilweise
+  bezahlt“. Notiert: Badge als eigenes `<strong>` ohne neue CSS-Regel;
+  keine Historie „war überfällig“; im E2E-Backdating musste
+  `payment_term_days=1` mitgesetzt werden (CHECK 0047), die Fixture ist
+  sichtbar künstlich; zwei Testerwartungen waren in der GREEN-Phase falsch
+  (im Test korrigiert, nicht im Produkt); MiMo-Reviewfix tilgte zwei
+  veraltete „Überfällig fehlt“-Stellen (Code-Kommentar
+  `document-payments.ts` + Doku).
+
+- [x] **RG-07b** — `feat: print the bank account on an invoice`** (26.10.2026)
 
   Zweiter RG-07-Unter-Slice nach rein lesender DeepSeek-Analyse zu `e9ccbed`
   (Bankverbindung ist das letzte fehlende RG-07-Feld – Staleness bestätigt:
