@@ -633,8 +633,9 @@ test('only a finalized invoice or deposit takes a payment', async () => {
 });
 
 // BKP019.c3.1: an advance payment is a claim with its own open amount. Its
-// payments never move the invoice and vice versa - the two are separate claims
-// until the settlement block of BKP019.c3.2 nets them against each other.
+// payments never move the invoice and vice versa - the two are separate claims.
+// BKP019.c3.2: a final invoice settles the *billed* advances by one frozen
+// deduction; it never rewrites the advance itself, so this contract stands.
 test('a finalized deposit takes a payment up to its own claim', async () => {
   const context = await tenantContext(randomUUID());
   expect(await projectedDeposit(context)).toMatchObject({
@@ -671,7 +672,8 @@ test('a finalized deposit takes a payment up to its own claim', async () => {
     paymentState: 'partial',
     openMinor: 14900,
   });
-  // Money on the deposit never settles the invoice: that needs c3.2.
+  // Money on the deposit never settles the invoice: only a final invoice with
+  // its frozen deduction does, and this invoice is a standard one.
   expect(await projectedInvoice(context)).toMatchObject({
     paymentState: 'none',
     openMinor: 24900,
@@ -1243,4 +1245,154 @@ test('the database itself refuses a zero, a negative or an unknown method', asyn
       ],
     ),
   ).rejects.toThrow(/document_payments/);
+});
+
+// BKP019.c3.2: a final invoice settles the advances billed on its order. The
+// deduction is frozen on the document, so the claim a payment may reach is
+// `gross - applied` - exactly what the printed block shows as "Zu zahlender
+// Betrag". The `PaymentBalance` shape stays the six fields it always had; the
+// deduction is part of `claimMinor`, not a seventh key.
+async function settlementContext(scope: string) {
+  const context = await tenantContext(scope),
+    draft = await context.repo.createDraft(context.actor, {
+      templateId: context.templateId,
+      eventId: context.event,
+      contactId: context.contact,
+    }),
+    offer = await context.repo.finalize(context.actor, draft.id, draft.version),
+    sent = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+    accepted = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'accepted',
+      version: sent.version,
+      channel: 'email',
+    }),
+    confirmationDraft = await context.repo.createOrderConfirmation(
+      context.actor,
+      accepted.id,
+      accepted.version,
+    ),
+    confirmation = await context.repo.finalize(
+      context.actor,
+      confirmationDraft.id,
+      confirmationDraft.version,
+    ),
+    depositDraft = await context.repo.createDepositInvoice(
+      context.actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+    depositEdited = await context.repo.updateDraftContent(
+      context.actor,
+      depositDraft.id,
+      {
+        version: depositDraft.version,
+        subject: 'Anzahlungsrechnung für {{contact}}',
+        introText: 'Anzahlung',
+        outroText: 'Rest mit der Schlussrechnung',
+        validityDays: 14,
+        lines: [
+          {
+            productId: null,
+            description: 'Fiktive Anzahlung',
+            quantity: 1,
+            unit: 'Pauschale',
+            unitPriceMinor: 10000,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+        ],
+      },
+    ),
+    deposit = await context.repo.finalize(
+      context.actor,
+      depositDraft.id,
+      depositEdited.version,
+    ),
+    finalDraft = await context.repo.createFinalInvoice(
+      context.actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+    finalInvoice = await context.repo.finalize(
+      context.actor,
+      finalDraft.id,
+      finalDraft.version,
+    );
+  return {
+    ...context,
+    confirmation,
+    deposit,
+    finalInvoice,
+  };
+}
+
+type SettlementContext = Awaited<ReturnType<typeof settlementContext>>;
+
+async function projectedFinalInvoice(context: SettlementContext) {
+  const rows = (await context.repo.list({
+    include: 'offer',
+  })) as DocumentOfferRow[];
+  return rows.find((row) => row.id === context.finalInvoice.id)!;
+}
+
+test('a final invoice takes a payment only up to its settled claim', async () => {
+  const context = await settlementContext(randomUUID());
+  // 249,00 EUR order, 100,00 EUR advance billed: the claim is 149,00 EUR.
+  expect(
+    await paymentBalance(pool, context.scope, context.finalInvoice.id),
+  ).toEqual({
+    grossMinor: 24900,
+    creditedMinor: 0,
+    debitedMinor: 0,
+    paidMinor: 0,
+    claimMinor: 14900,
+    openMinor: 14900,
+  });
+  expect(await projectedFinalInvoice(context)).toMatchObject({
+    invoiceRole: 'final',
+    depositAppliedMinor: 10000,
+    depositPaidMinor: 0,
+    paymentState: 'none',
+    openMinor: 14900,
+  });
+  // One cent more than the printed "Zu zahlender Betrag" is an overpayment.
+  await expect(
+    context.payments.record(context.actor, context.finalInvoice.id, {
+      receivedOn: tenantDay(),
+      amountMinor: 14901,
+      method: 'cash',
+    }),
+  ).rejects.toMatchObject({ reason: 'overpaid' });
+  expect(await paymentCount(context.scope, context.finalInvoice.id)).toBe(0);
+  // The rest is allowed and settles the final invoice, not the advance.
+  const payment = await context.payments.record(
+    context.actor,
+    context.finalInvoice.id,
+    { receivedOn: tenantDay(), amountMinor: 14900, method: 'bank_transfer' },
+  );
+  expect(payment.documentId).toBe(context.finalInvoice.id);
+  expect(
+    await paymentBalance(pool, context.scope, context.finalInvoice.id),
+  ).toEqual({
+    grossMinor: 24900,
+    creditedMinor: 0,
+    debitedMinor: 0,
+    paidMinor: 14900,
+    claimMinor: 14900,
+    openMinor: 0,
+  });
+  expect(await projectedFinalInvoice(context)).toMatchObject({
+    paymentState: 'paid',
+    openMinor: 0,
+  });
+  // The frozen deduction and the advances above stay untouched.
+  const stored = await invoiceRow(context.scope, context.finalInvoice.id);
+  expect(stored.gross_minor).toBe('24900');
+  expect(
+    await paymentBalance(pool, context.scope, context.deposit.id),
+  ).toMatchObject({ paidMinor: 0, claimMinor: 10000, openMinor: 10000 });
+  expect(await context.payments.list(context.deposit.id)).toEqual([]);
 });

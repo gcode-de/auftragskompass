@@ -498,6 +498,36 @@ bis dahin weist keine Schlussrechnung Anzahlungen aus; die Karten sagen das
 ausdrücklich. Eine Anzahlung aus einer reinen Vorlage (ohne Bestätigung)
 bleibt möglich, ist aber weder verrechenbar noch quellenbezogen.
 
+### Schlussrechnung mit Verrechnung (BKP019.c3.2, RG-03)
+
+Die **Schlussrechnung** ist eine Rechnung mit der Rolle „Schlussrechnung“
+(`invoice_role='final'`; gewöhnliche Rechnungen tragen keine Rolle). Sie
+entsteht wie die Rechnung aus der finalen Auftragsbestätigung und finalisiert
+mit einer `RE-`-Nummer im selben Nummernkreis; pro Auftrag gibt es genau
+eine Rechnung (gewöhnlich ODER Schluss). Beim Finalisieren wird der
+**Verrechnungsbetrag eingefroren**: die Summe der korrigierten Ansprüche
+aller finalisierten Anzahlungen des Auftrags (Bruttobetrag je Anzahlung,
+einschließlich ihrer eigenen Lastschrift-/Gutschriftkorrekturen). Eine
+Gutschrift auf eine Anzahlung senkt also den Verrechnungsbetrag – so lässt
+sich eine versehentlich zu hohe Anzahlungssumme per Korrektur entzerrn. Der Verrechnungsblock des Belegs zeigt
+drei Zeilen – „Anzahlungen gesamt“ (der eingefrorene Abzug), „davon
+geleistet“ (die darauf erfassten Zahlungen, reine Anzeige) und „Zu zahlender
+Betrag“ (gedrucktes Brutto − Abzug). Das gedruckte Brutto bleibt die volle
+Auftragssumme; es wird **keine** steuerliche Aufteilung des Abzugs
+behauptet.
+
+Rechnerisch gilt für die Schlussrechnung:
+`offener Saldo = Brutto − Σ korrigierte Anzahlungsansprüche + Σ
+Lastschriften − Σ Gutschriften − Σ Zahlungen`. Zahlungen auf die
+Schlussrechnung sind nur bis zu diesem reduzierten Anspruch möglich;
+übersteigen die Anzahlungen den Auftragswert, wird die Finalisierung
+abgelehnt – ein negativer „Zu zahlender Betrag“ entsteht nie, und der
+Hinweis „Anzahlungen per Korrektur reduzieren“ ist tatsächlich wirksam. Der eingefrorene Betrag ändert sich durch spätere
+Zahlungen, Gutschriften oder Anzahlungskorrekturen **nie**; dafür sind
+eigene Korrekturbelege vorgesehen. „Geleistete“ Anzahlungen werden
+ausgewiesen, aber nicht zusätzlich abgezogen – sonst entstünde eine
+Doppelforderung.
+
 ## Dokumentvorlagen verwalten (BKP015.4)
 
 Unter Einstellungen → Dokumentvorlagen erscheinen zuerst die Liste und

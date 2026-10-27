@@ -171,6 +171,7 @@ export async function paymentBalance(
 ): Promise<PaymentBalance> {
   const result = (await reviewed(connection).execute(sql`
     SELECT d.gross_minor::text AS gross,
+           coalesce(d.deposit_applied_minor, 0)::text AS applied,
            (SELECT coalesce(sum(c.gross_minor), 0)::text FROM documents c
              WHERE c.tenant_id = d.tenant_id
                AND c.source_document_id = d.id
@@ -190,6 +191,7 @@ export async function paymentBalance(
      WHERE d.tenant_id = ${tenantId} AND d.id = ${documentId}::uuid`)) as {
     rows: {
       gross: string;
+      applied: string;
       credited: string;
       debited: string;
       paid: string;
@@ -201,7 +203,12 @@ export async function paymentBalance(
     creditedMinor = Number(row.credited),
     debitedMinor = Number(row.debited),
     paidMinor = Number(row.paid),
-    claimMinor = grossMinor + debitedMinor - creditedMinor;
+    // BKP019.c3.2: a final invoice already settled the advances billed on its
+    // order, so its own claim is the printed "Zu zahlender Betrag". The
+    // deduction is part of `claimMinor` - deliberately not a seventh field, so
+    // the balance shape of BKP019.d stays exactly what it was.
+    claimMinor =
+      grossMinor + debitedMinor - creditedMinor - Number(row.applied || 0);
   return {
     grossMinor,
     creditedMinor,
@@ -220,6 +227,29 @@ export async function paidMinorOf(
   documentId: string,
 ): Promise<number> {
   return (await paymentBalance(connection, tenantId, documentId)).paidMinor;
+}
+
+// BKP019.c3.2: money that arrived on the *order* - the payments of every
+// finalized invoice and advance that names this confirmation. A confirmation
+// itself never takes a payment, so its own balance is always zero; without this
+// sum a credit note on the order could be issued although the customer already
+// paid advances for it. Only this tenant's rows are read, and a draft advance is
+// no claim and therefore not counted.
+export async function orderPaidMinorOf(
+  connection: Connection,
+  tenantId: string,
+  confirmationId: string,
+): Promise<number> {
+  const result = (await reviewed(connection).execute(sql`
+    SELECT coalesce(sum(p.amount_minor), 0)::text AS paid
+      FROM document_payments p
+      JOIN documents d
+        ON d.tenant_id = p.tenant_id AND d.id = p.document_id
+     WHERE p.tenant_id = ${tenantId}
+       AND d.source_document_id = ${confirmationId}::uuid
+       AND d.kind IN ('deposit_invoice', 'invoice')
+       AND d.state = 'final'`)) as { rows: { paid: string }[] };
+  return Number(result.rows[0]?.paid ?? 0);
 }
 
 type PaymentQueryRow = {

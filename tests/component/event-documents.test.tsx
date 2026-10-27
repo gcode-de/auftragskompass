@@ -175,6 +175,41 @@ const draft = {
     outroText: 'Der Rest wird mit der Schlussrechnung abgerechnet.',
     validityDays: 14,
   },
+  // BKP019.c3.2: the final invoice copied from the same confirmation. It settles
+  // the 100,00 EUR advance, so its claim is 149,00 EUR - the row shows the role,
+  // the source and the two settlement amounts, never only the gross.
+  finalInvoiceDraft = {
+    id: 'doc-re-2',
+    kind: 'invoice',
+    templateId: null,
+    eventId: 'event-1',
+    contactId: 'contact-1',
+    number: null,
+    state: 'draft' as const,
+    issuedAt: '2030-10-26T10:26:00Z',
+    finalizedAt: null,
+    netMinor: 20925,
+    taxMinor: 3975,
+    grossMinor: 24900,
+    version: 1,
+    sourceDocumentId: 'doc-ab-1',
+    sourceNumber: 'AB-2030-0001',
+    invoiceRole: 'final' as const,
+    depositAppliedMinor: 10000,
+    depositPaidMinor: 4000,
+  },
+  finalInvoiceFinal = {
+    ...finalInvoiceDraft,
+    number: 'RE-2030-0002',
+    state: 'final' as const,
+    finalizedAt: '2030-10-26T10:27:00Z',
+    version: 2,
+    correctionDirection: null,
+    correctionState: 'none' as const,
+    remainingCredit: 14900,
+    paymentState: 'none' as const,
+    openMinor: 14900,
+  },
   // BKP019.d: the same invoice after money arrived, and the payments an operator
   // recorded. The status is derived on the server; the row only displays it.
   invoicePartiallyPaid = {
@@ -275,6 +310,8 @@ function setup(
     library?: () => Response;
     orderConfirmation?: () => Response;
     invoice?: () => Response;
+    // BKP019.c3.2: the answer to a final invoice created from a confirmation.
+    finalInvoice?: () => Response;
     // BKP019.c3.1: the answer to a deposit created from a confirmation.
     deposit?: () => Response | Promise<Response>;
     correction?: () => Response;
@@ -379,6 +416,20 @@ function setup(
         if (options.deposit) return await options.deposit();
         state.documents = [finalizedConfirmation, depositDraft];
         return Response.json(depositDraft, { status: 201 });
+      }
+      // BKP019.c3.2: the final invoice is its own endpoint on the same
+      // confirmation; its answer carries the role, because the role is part of
+      // the document and not of the route.
+      if (url.endsWith('/final-invoice')) {
+        calls.push({
+          url,
+          method,
+          body: JSON.parse(String(init!.body)),
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.finalInvoice) return options.finalInvoice();
+        state.documents = [finalizedConfirmation, finalInvoiceDraft];
+        return Response.json(finalInvoiceDraft, { status: 201 });
       }
       if (url.endsWith('/invoice')) {
         calls.push({
@@ -1513,11 +1564,17 @@ test('an invoice row names its source confirmation, its own kind and the open st
   expect(within(row).queryByText(/Gültig bis/)).toBeNull();
   // The remaining gap is named instead of implying complete invoicing, and a
   // correction is described as its own document (BKP019.c2).
-  // BKP019.c3.1: advances exist as their own card, so the invoice card no longer
-  // claims they are missing - only the final invoice is still open.
+  // BKP019.c3.2: a final invoice exists now, so the card names the two roles of
+  // one invoice and the one-invoice rule instead of a missing feature.
   expect(
-    within(invoices).getByText(/Eine Schlussrechnung ist noch nicht verfügbar/),
+    within(invoices).getByText(/als Standardrechnung oder als Schlussrechnung/),
   ).toBeTruthy();
+  expect(within(invoices).getByText(/je Bestätigung genau eine/)).toBeTruthy();
+  expect(
+    within(invoices).queryByText(
+      /Eine Schlussrechnung ist noch nicht verfügbar/,
+    ),
+  ).toBeNull();
   expect(
     within(invoices).queryByText(
       /Anzahlungs- und Schlussrechnungen sind noch nicht/,
@@ -1727,11 +1784,10 @@ test('a finalized deposit shows its source, its payment state and the open gap',
       name: 'Anzahlungsrechnung AZ-2030-0001 als PDF öffnen',
     }),
   ).toBeTruthy();
-  // The remaining gap is named: netting against the final invoice comes later.
+  // BKP019.c3.2: the netting exists now. A deposit stays its own claim, and the
+  // final invoice takes the billed amount over - named, not implied away.
   expect(
-    within(deposits).getByText(
-      /Verrechnung mit der Schlussrechnung fehlt noch/,
-    ),
+    within(deposits).getByText(/Verrechnung übernimmt die Schlussrechnung/),
   ).toBeTruthy();
   expect(calls.some((call) => call.url.endsWith('/deposit-invoice'))).toBe(
     false,
@@ -1768,6 +1824,431 @@ test('a deposit draft opens the shared editor under its own heading', async () =
     ((await within(row).findByLabelText('Einleitung')) as HTMLTextAreaElement)
       .value,
   ).toBe('Anzahlung auf den Auftrag.');
+});
+
+// BKP019.c3.2: the final invoice is a third explicit step on the same finalized
+// confirmation. It writes nothing before the operator confirms it, and it never
+// reuses the standard invoice answer.
+test('only a finalized confirmation offers the final invoice action', async () => {
+  const { calls } = setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+    }),
+  ).toBeTruthy();
+  // The standard invoice step is still there: the two are alternatives, not
+  // replacements - the database allows exactly one of them per confirmation.
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  ).toBeTruthy();
+  expect(row.querySelector('form')).toBeNull();
+  expect(calls.some((call) => call.url.endsWith('/final-invoice'))).toBe(false);
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+    }),
+  );
+  // The step asks once; the confirming button is the only write.
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
+    }),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/final-invoice'))).toBe(false);
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText('Schlussrechnung als Entwurf angelegt.'),
+  ).toBeTruthy();
+  const write = calls.find((call) => call.url.endsWith('/final-invoice'))!;
+  expect(write.method).toBe('POST');
+  expect(write.body).toEqual({ version: finalizedConfirmation.version });
+  expect(write.headers!['x-csrf-token']).toBe('fictional-csrf');
+  // The new row is listed as a final invoice, not as a standard one.
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const created = within(invoices).getByRole('listitem');
+  expect(within(created).getByText('Schlussrechnung')).toBeTruthy();
+  cleanup();
+  for (const entry of [
+    confirmationDraft,
+    acceptedOffer,
+    finalized,
+    depositDraft,
+  ]) {
+    setup({ documents: [entry] });
+    const other = render(<EventDocuments {...props} />);
+    await screen.findByText(/Angelegt am|Finalisiert am/);
+    expect(
+      screen.queryByRole('button', { name: /Schlussrechnung erstellen$/ }),
+    ).toBeNull();
+    other.unmount();
+    cleanup();
+  }
+});
+
+// The one-invoice rule is a database fact, so the screen explains it instead of
+// offering a step that can only end in a 409.
+test('a confirmation that already carries an invoice offers no second one', async () => {
+  setup({ documents: [finalizedConfirmation, invoiceDraft] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  expect(
+    within(row).queryByRole('button', { name: /Rechnung erstellen$/ }),
+  ).toBeNull();
+  expect(
+    within(row).queryByRole('button', { name: /Schlussrechnung erstellen$/ }),
+  ).toBeNull();
+  expect(within(row).getByText(/trägt bereits eine Rechnung/)).toBeTruthy();
+  // A deposit is independent of that rule and stays offered.
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  ).toBeTruthy();
+});
+
+test('the final invoice step warns when the advances exceed the order', async () => {
+  // 260,00 EUR billed in advance against a 249,00 EUR order. Finalizing would be
+  // refused, so the step says it before the operator clicks - creating the draft
+  // stays possible, because only the finalization is guarded.
+  const overBilled = {
+      ...depositFinal,
+      id: 'doc-az-2',
+      number: 'AZ-2030-0002',
+      grossMinor: 26000,
+      openMinor: 26000,
+    },
+    atLimit = {
+      ...depositFinal,
+      id: 'doc-az-3',
+      number: 'AZ-2030-0003',
+      grossMinor: 24900,
+    };
+  setup({ documents: [finalizedConfirmation, overBilled] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  expect(within(row).getByText(/übersteigen den Auftrag/)).toBeTruthy();
+  expect(
+    within(row).getByText(
+      /Bitte die Anzahlungen vor dem Finalisieren per Korrektur reduzieren/,
+    ),
+  ).toBeTruthy();
+  // The step stays offered: the guard bites at the finalization, not here.
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+    }),
+  );
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
+    }),
+  ).toBeTruthy();
+  expect(within(row).getByText(/übersteigen den Auftrag/)).toBeTruthy();
+  cleanup();
+
+  // Exactly at the claim there is nothing to warn about.
+  setup({ documents: [finalizedConfirmation, atLimit] });
+  render(<EventDocuments {...props} />);
+  const fitting = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  expect(
+    within(within(fitting).getByRole('listitem')).queryByText(
+      /übersteigen den Auftrag/,
+    ),
+  ).toBeNull();
+  cleanup();
+
+  // A second advance tips the same order over that claim again.
+  setup({ documents: [finalizedConfirmation, atLimit, overBilled] });
+  render(<EventDocuments {...props} />);
+  const again = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  expect(
+    within(within(again).getByRole('listitem')).getByText(
+      /übersteigen den Auftrag/,
+    ),
+  ).toBeTruthy();
+  cleanup();
+
+  // A debit note on the confirmation raises the claim, so the warning goes away
+  // without touching a single advance.
+  setup({
+    documents: [
+      finalizedConfirmation,
+      overBilled,
+      {
+        ...correctionDraft,
+        id: 'doc-ko-2',
+        number: 'KO-2030-0002',
+        state: 'final' as const,
+        finalizedAt: '2030-10-26T10:28:00Z',
+        grossMinor: 1100,
+        sourceDocumentId: 'doc-ab-1',
+        sourceNumber: 'AB-2030-0001',
+        correctionDirection: 'debit' as const,
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const raised = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  expect(
+    within(within(raised).getByRole('listitem')).queryByText(
+      /übersteigen den Auftrag/,
+    ),
+  ).toBeNull();
+});
+
+// BKP019.c3.2c: the pre-warning must read the same corrected claims the server
+// reads - `gross + debits - credits` per advance. Otherwise the hint would name
+// a remedy ("per Korrektur reduzieren") that does not move the amount it shows.
+test('the advance warning follows the corrected claims of the advances', async () => {
+  const overBilled = {
+      ...depositFinal,
+      id: 'doc-az-2',
+      number: 'AZ-2030-0002',
+      grossMinor: 26000,
+      openMinor: 26000,
+    },
+    creditOnAdvance = {
+      ...correctionDraft,
+      id: 'doc-ko-3',
+      number: 'KO-2030-0003',
+      state: 'final' as const,
+      finalizedAt: '2030-10-26T10:29:00Z',
+      grossMinor: 1100,
+      sourceDocumentId: 'doc-az-2',
+      sourceNumber: 'AZ-2030-0002',
+      correctionDirection: 'credit' as const,
+    };
+  const warning = async () => {
+    const orders = await screen.findByRole('region', {
+      name: 'Auftragsbestätigungen',
+    });
+    return within(within(orders).getByRole('listitem')).queryByText(
+      /übersteigen den Auftrag/,
+    );
+  };
+  // 260,00 EUR advance, 11,00 EUR credited on that advance: 249,00 EUR left, so
+  // the order is covered again and the warning disappears.
+  setup({ documents: [finalizedConfirmation, overBilled, creditOnAdvance] });
+  render(<EventDocuments {...props} />);
+  expect(await warning()).toBeNull();
+  cleanup();
+
+  // One cent less credited leaves 250,00 EUR and tips the same order over the
+  // claim again - the warning reacts to the amount, not to the existence of a
+  // correction.
+  setup({
+    documents: [
+      finalizedConfirmation,
+      overBilled,
+      { ...creditOnAdvance, grossMinor: 1099 },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  expect(await warning()).toBeTruthy();
+  cleanup();
+
+  // A draft correction is no claim yet: it moves nothing, exactly like on the
+  // server.
+  setup({
+    documents: [
+      finalizedConfirmation,
+      overBilled,
+      { ...creditOnAdvance, state: 'draft' as const, finalizedAt: null },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  expect(await warning()).toBeTruthy();
+});
+
+test('the final invoice row names its role, its source and the settled advances', async () => {
+  setup({ documents: [finalizedConfirmation, finalInvoiceFinal] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  // The role is visible next to the number, and the source stays linked.
+  expect(within(row).getByText('Schlussrechnung')).toBeTruthy();
+  expect(within(row).getByText('RE-2030-0002')).toBeTruthy();
+  expect(within(row).getByText(/Aus Auftragsbestätigung/)).toBeTruthy();
+  expect(
+    within(row)
+      .getByRole('link', {
+        name: 'Auftragsbestätigung AB-2030-0001 als PDF öffnen',
+      })
+      .getAttribute('href'),
+  ).toBe('/api/v1/documents/doc-ab-1/pdf');
+  // The three settlement values are named: what was netted, what arrived on it
+  // and what is still open. The gross stays the order's own.
+  expect(
+    within(row).getByText(/Anzahlungen verrechnet: 100,00 €/),
+  ).toBeTruthy();
+  expect(within(row).getByText(/davon geleistet: 40,00 €/)).toBeTruthy();
+  expect(within(row).getByText('Offen')).toBeTruthy();
+  expect(within(row).getByText(/Offener Betrag: 149,00 €/)).toBeTruthy();
+  // A final invoice is paid, corrected and printed like any other claim - only
+  // its wording names the role.
+  expect(
+    within(row).getByRole('button', {
+      name: 'Schlussrechnung RE-2030-0002 Zahlung erfassen',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Schlussrechnung RE-2030-0002 korrigieren',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(row).getByRole('link', {
+      name: 'Schlussrechnung RE-2030-0002 als PDF öffnen',
+    }),
+  ).toBeTruthy();
+});
+
+// BKP019.c3.2: every rejection of the new step has its own wording, an unclear
+// answer is never listed, and the confirmation step can be cancelled without a
+// write.
+test('a rejected, unclear or cancelled final invoice never writes twice', async () => {
+  for (const [error, message] of [
+    [
+      'order_withdrawn',
+      'Der Auftrag wurde zurückgezogen. Eine Schlussrechnung ist nicht möglich.',
+    ],
+    [
+      'invalid_kind',
+      'Nur eine finalisierte Auftragsbestätigung lässt sich als Schlussrechnung abrechnen.',
+    ],
+    [
+      'conflict',
+      'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.',
+    ],
+  ] as const) {
+    setup({
+      documents: [finalizedConfirmation],
+      finalInvoice: () => Response.json({ error }, { status: 409 }),
+    });
+    render(<EventDocuments {...props} />);
+    const orders = await screen.findByRole('region', {
+      name: 'Auftragsbestätigungen',
+    });
+    const row = within(orders).getByRole('listitem');
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+      }),
+    );
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
+      }),
+    );
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
+    cleanup();
+  }
+  // An answer that does not describe a draft of this event is unclear.
+  setup({
+    documents: [finalizedConfirmation],
+    finalInvoice: () =>
+      Response.json(
+        { ...finalInvoiceDraft, eventId: 'event-2' },
+        { status: 201 },
+      ),
+  });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText(
+      'Schlussrechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
+  cleanup();
+  // Cancelling returns to the plain row and writes nothing.
+  const { calls } = setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const ordersAgain = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const rowAgain = within(ordersAgain).getByRole('listitem');
+  fireEvent.click(
+    within(rowAgain).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(rowAgain).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung abbrechen',
+    }),
+  );
+  expect(
+    within(rowAgain).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+    }),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/final-invoice'))).toBe(false);
+});
+
+test('a duplicate final invoice is explained and never listed twice', async () => {
+  setup({
+    documents: [finalizedConfirmation],
+    finalInvoice: () => Response.json({ error: 'duplicate' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
+    }),
+  );
+  expect(
+    await screen.findByText(
+      'Für diese Auftragsbestätigung gibt es bereits eine Rechnung.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
 });
 
 // BKP019.c2: a finalized invoice is corrected by its own follow-up document. The

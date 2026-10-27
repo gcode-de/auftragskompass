@@ -42,6 +42,11 @@ type DocumentRow = {
   // invoice. Both are derived on the server and never stored on the row.
   paymentState?: 'none' | 'partial' | 'paid' | null;
   openMinor?: number | null;
+  // BKP019.c3.2: the role of an invoice (`final` = Schlussrechnung), the frozen
+  // deduction of that finale and what arrived on the settled advances.
+  invoiceRole?: 'final' | null;
+  depositAppliedMinor?: number | null;
+  depositPaidMinor?: number | null;
 };
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
 type CorrectionDirection = 'credit' | 'debit';
@@ -196,7 +201,11 @@ const kindSingular: Record<string, string> = {
   invoice: 'Rechnung',
   correction: 'Rechnungskorrektur',
 };
-function kindName(entry: { kind: string }) {
+function kindName(entry: { kind: string; invoiceRole?: 'final' | null }) {
+  // BKP019.c3.2: a final invoice names its role in every label it owns, so no
+  // action of it is read out as a standard invoice.
+  if (entry.kind === 'invoice' && entry.invoiceRole === 'final')
+    return 'Schlussrechnung';
   return kindSingular[entry.kind] ?? 'Dokument';
 }
 // BKP019.b2: a confirmation draft owns its texts and positions exactly like an
@@ -262,6 +271,9 @@ export function EventDocuments({
     // BKP019.c3.1: the finalized confirmation whose deposit is being confirmed.
     // Its own state, so the two confirmation steps can never mix.
     [confirmDepositId, setConfirmDepositId] = useState(''),
+    // BKP019.c3.2: the finalized confirmation whose final invoice is being
+    // confirmed. A third own state - one step never confirms another.
+    [confirmFinalInvoiceId, setConfirmFinalInvoiceId] = useState(''),
     // BKP019.c2: the finalized invoice whose correction is being prepared, and
     // the direction that correction will carry.
     [correctionId, setCorrectionId] = useState(''),
@@ -425,7 +437,9 @@ export function EventDocuments({
                 ? 'PDF konnte nicht erzeugt werden. Bitte Betreiber informieren.'
                 : result.error === 'credit_exceeds_invoice'
                   ? 'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.'
-                  : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
+                  : result.error === 'deposits_exceed_order'
+                    ? 'Die Anzahlungen übersteigen den Auftrag. Bitte zuerst die Anzahlungen per Korrektur reduzieren.'
+                    : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
         );
         if (result.error === 'conflict') setEditorId('');
         // Refresh a possibly stale row, but keep the explanatory message.
@@ -710,6 +724,80 @@ export function EventDocuments({
       } else
         setMessage(
           'Anzahlungsrechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+        );
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
+  // BKP019.c3.2: the same finalized confirmation can be billed as the final
+  // invoice. One explicit step, no retyped amount: the deduction is derived from
+  // the advances that are already billed, so the operator decides nothing here
+  // except "yes". Because one confirmation carries exactly one invoice, the
+  // screen offers this step only while no invoice of that confirmation exists.
+  async function createFinalInvoice(id: string, version: number) {
+    if (mutating.current || editorBusy || editorDirty) return;
+    mutating.current = true;
+    setBusy(id);
+    setMessage('');
+    setConfirmFinalInvoiceId('');
+    try {
+      const reply = await fetch('/api/v1/documents/' + id + '/final-invoice', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ version }),
+      });
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(
+          result.error === 'duplicate'
+            ? 'Für diese Auftragsbestätigung gibt es bereits eine Rechnung.'
+            : result.error === 'order_withdrawn'
+              ? 'Der Auftrag wurde zurückgezogen. Eine Schlussrechnung ist nicht möglich.'
+              : result.error === 'invalid_kind'
+                ? 'Nur eine finalisierte Auftragsbestätigung lässt sich als Schlussrechnung abrechnen.'
+                : result.error === 'invalid_state' ||
+                    result.error === 'conflict'
+                  ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
+                  : 'Schlussrechnung konnte nicht erstellt werden. Bitte Angaben prüfen.',
+        );
+        try {
+          await load();
+        } catch {
+          // The message above already says what to do.
+        }
+        return;
+      }
+      const created = (await reply.json()) as DocumentRow;
+      const confirmed =
+        typeof created?.id === 'string' &&
+        created.id.length > 0 &&
+        created.kind === 'invoice' &&
+        created.state === 'draft' &&
+        created.eventId === eventId;
+      if (confirmed) {
+        // The route answers the plain document row, so the role is attached
+        // here - the next list read brings the real row anyway.
+        const row: DocumentRow = { ...created, invoiceRole: 'final' };
+        setDocuments((current) => [
+          row,
+          ...current.filter((entry) => entry.id !== row.id),
+        ]);
+        setMessage('Schlussrechnung als Entwurf angelegt.');
+      } else
+        setMessage(
+          'Schlussrechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
         );
       try {
         await load();
@@ -1066,6 +1154,82 @@ export function EventDocuments({
       timeZone,
     }).format(new Date(value));
   }
+  // BKP019.c3.2: one confirmation carries exactly one invoice - the standard one
+  // or the final one. That is a database rule (`documents_one_invoice`), so the
+  // screen stops offering a second creation instead of letting it end in a 409.
+  const invoicedConfirmations = new Set(
+    documents
+      .filter((entry) => entry.kind === 'invoice' && entry.sourceDocumentId)
+      .map((entry) => entry.sourceDocumentId!),
+  );
+  // BKP019.c3.2b: the guard of the finalization, shown before the click. The
+  // bound is the claim of the confirmation - `gross + debits - credits`, exactly
+  // what the server reads - against the corrected claims of its finalized
+  // advances. Both sums come from the list this screen already has, so the hint
+  // costs no extra request and can never show an amount the server did not
+  // derive.
+  // BKP019.c3.2c: an advance is netted by its own corrections, so the hint and
+  // the remedy it names ("per Korrektur reduzieren") finally move together: a
+  // credit note on an advance lowers the figure the hint shows.
+  function finalizedCorrectionsOf(sourceId: string) {
+    return documents.filter(
+      (entry) =>
+        entry.kind === 'correction' &&
+        entry.state === 'final' &&
+        entry.sourceDocumentId === sourceId,
+    );
+  }
+  function signedCorrectionMinor(entry: DocumentRow) {
+    return entry.correctionDirection === 'credit'
+      ? -entry.grossMinor
+      : entry.correctionDirection === 'debit'
+        ? entry.grossMinor
+        : 0;
+  }
+  function settledDepositsMinor(confirmationId: string) {
+    return documents
+      .filter(
+        (entry) =>
+          entry.kind === 'deposit_invoice' &&
+          entry.state === 'final' &&
+          entry.sourceDocumentId === confirmationId,
+      )
+      .reduce(
+        (sum, entry) =>
+          sum +
+          finalizedCorrectionsOf(entry.id).reduce(
+            (claim, correction) => claim + signedCorrectionMinor(correction),
+            entry.grossMinor,
+          ),
+        0,
+      );
+  }
+  function claimOfConfirmation(confirmation: DocumentRow) {
+    return finalizedCorrectionsOf(confirmation.id).reduce(
+      (sum, entry) => sum + signedCorrectionMinor(entry),
+      confirmation.grossMinor,
+    );
+  }
+  // The overshoot itself, or 0 while the advances still fit: the hint is a
+  // warning, never a second state the operator has to maintain.
+  function depositOvershootMinor(confirmation: DocumentRow) {
+    const settled = settledDepositsMinor(confirmation.id);
+    return settled > claimOfConfirmation(confirmation) ? settled : 0;
+  }
+  // The warning itself, in the wording of the refusal the server gives later: it
+  // names both amounts, tells the operator what to do first, and says honestly
+  // that the draft may still be created - only the finalization is guarded.
+  function depositExceededHint(confirmation: DocumentRow) {
+    return (
+      <p className="document-hint">
+        <strong>Anzahlungen übersteigen den Auftrag.</strong>{' '}
+        {(exactMinorUnits(settledDepositsMinor(confirmation.id)) ?? '—') +
+          ' € gestellte Anzahlungen stehen ' +
+          (exactMinorUnits(claimOfConfirmation(confirmation)) ?? '—') +
+          ' € Auftragssumme gegenüber. Bitte die Anzahlungen vor dem Finalisieren per Korrektur reduzieren – der Entwurf lässt sich trotzdem anlegen.'}
+      </p>
+    );
+  }
   function rows(entries: DocumentRow[]) {
     return (
       <ul className="document-list">
@@ -1133,6 +1297,37 @@ export function EventDocuments({
                   )}
                 </p>
               )}
+            {/* BKP019.c3.2: the role of this invoice and what it settles. A
+                draft is not frozen yet, so it names the rule instead of an
+                amount; a finalized one shows the frozen deduction and the money
+                that arrived on the settled advances (a display value). The claim
+                itself is the "Offener Betrag" below. */}
+            {entry.kind === 'invoice' && entry.invoiceRole === 'final' && (
+              <p className="document-meta document-invoice-role">
+                <strong>Schlussrechnung</strong>
+                {entry.state === 'final' ? (
+                  <>
+                    <span>
+                      {' · Anzahlungen verrechnet: ' +
+                        (exactMinorUnits(entry.depositAppliedMinor ?? 0) ??
+                          '—') +
+                        ' €'}
+                    </span>
+                    <span>
+                      {' · davon geleistet: ' +
+                        (exactMinorUnits(entry.depositPaidMinor ?? 0) ?? '—') +
+                        ' €'}
+                    </span>
+                  </>
+                ) : (
+                  <span>
+                    {
+                      ' · Die bereits gestellten Anzahlungen werden beim Finalisieren brutto verrechnet.'
+                    }
+                  </span>
+                )}
+              </p>
+            )}
             {/* BKP019.c2: the cancellation state is derived, not stored - the
                 invoice keeps its number, its state and its bytes. */}
             {entry.kind === 'invoice' &&
@@ -1489,9 +1684,12 @@ export function EventDocuments({
                 ))}
               {/* BKP019.c1: only a finalized confirmation can be invoiced, and
                   only as an explicit step - the invoice starts as a draft with
-                  its own number range. */}
+                  its own number range.
+                  BKP019.c3.2: exactly one invoice per confirmation is possible,
+                  so the step disappears once one exists (standard or final). */}
               {entry.state === 'final' &&
                 entry.kind === 'order_confirmation' &&
+                !invoicedConfirmations.has(entry.id) &&
                 (confirmInvoiceId === entry.id ? (
                   <>
                     <button
@@ -1595,7 +1793,84 @@ export function EventDocuments({
                     Anzahlung erstellen
                   </button>
                 ))}
+              {/* BKP019.c3.2: the same finalized confirmation can be billed as
+                  the final invoice, which settles the advances already billed on
+                  it. A third explicit step, offered only while the confirmation
+                  carries no invoice at all - the two invoice roles are
+                  alternatives, not a sequence. */}
+              {entry.state === 'final' &&
+                entry.kind === 'order_confirmation' &&
+                !invoicedConfirmations.has(entry.id) &&
+                (confirmFinalInvoiceId === entry.id ? (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Schlussrechnung anlegen'
+                      }
+                      onClick={() =>
+                        void createFinalInvoice(entry.id, entry.version)
+                      }
+                    >
+                      Ja, Schlussrechnung anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Schlussrechnung abbrechen'
+                      }
+                      onClick={() => setConfirmFinalInvoiceId('')}
+                    >
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== ''}
+                    aria-label={
+                      kindName(entry) +
+                      ' ' +
+                      (entry.number ?? '') +
+                      ' Schlussrechnung erstellen'
+                    }
+                    onClick={() => setConfirmFinalInvoiceId(entry.id)}
+                  >
+                    Schlussrechnung erstellen
+                  </button>
+                ))}
             </div>
+            {/* BKP019.c3.2: the rule itself is explained where it bites, instead
+                of an action that can only end in a conflict. */}
+            {entry.state === 'final' &&
+              entry.kind === 'order_confirmation' &&
+              invoicedConfirmations.has(entry.id) && (
+                <p className="document-hint">
+                  Diese Auftragsbestätigung trägt bereits eine Rechnung. Je
+                  Bestätigung ist genau eine Rechnung möglich – als
+                  Standardrechnung oder als Schlussrechnung.
+                </p>
+              )}
+            {/* BKP019.c3.2b: the same honesty one step earlier. The advances can
+                already exceed the order before the final invoice exists; the
+                finalization would be refused, so the row says it before the
+                operator clicks - and never hides the step itself. */}
+            {entry.state === 'final' &&
+              entry.kind === 'order_confirmation' &&
+              !invoicedConfirmations.has(entry.id) &&
+              depositOvershootMinor(entry) > 0 &&
+              depositExceededHint(entry)}
             {(entry.kind === 'invoice' || entry.kind === 'deposit_invoice') &&
               entry.state === 'final' &&
               correctionId === entry.id && (
@@ -2036,29 +2311,31 @@ export function EventDocuments({
                   the card imply deposit, final and correction invoices exist.
                   BKP019.c2: corrections and cancellations do exist now - as
                   their own documents, never as an edit of the invoice.
-                  BKP019.c3.1: deposits exist now and live in their own card, so
-                  only the final invoice is still missing here. */}
+                  BKP019.c3.2: the final invoice exists too, so the card names the
+                  two roles of one invoice and the one-invoice rule. Still open
+                  are the payment term and the refund, not the settlement. */}
               {group.kind === 'invoice' && (
                 <p className="document-card-hint">
-                  Eine Schlussrechnung ist noch nicht verfügbar. Eine
-                  finalisierte Rechnung wird nie ersetzt, sondern nur durch eine
-                  Rechnungskorrektur ergänzt; Entwürfe bleiben bis zur
-                  Finalisierung bearbeitbar. Zahlungseingänge werden manuell
-                  gegen die finalisierte Rechnung erfasst; ein Zahlungsziel und
+                  Eine Rechnung entsteht aus einer Auftragsbestätigung – als
+                  Standardrechnung oder als Schlussrechnung, je Bestätigung
+                  genau eine. Die Schlussrechnung verrechnet die bereits
+                  gestellten Anzahlungen; eine finalisierte Rechnung wird nie
+                  ersetzt, sondern nur durch eine Rechnungskorrektur ergänzt.
+                  Zahlungseingänge werden manuell erfasst; ein Zahlungsziel und
                   eine Überfälligkeit gibt es noch nicht.
                 </p>
               )}
-              {/* BKP019.c3.1: the honest gap of this slice. A deposit is a real
-                  claim with its own number, but it is not yet netted against the
-                  final invoice - that is BKP019.c3.2, not a hidden feature. */}
+              {/* BKP019.c3.2: a deposit stays its own claim with its own number.
+                  The settlement takes the *billed* amount over, never the paid
+                  one, and it is frozen on the final invoice. */}
               {group.kind === 'deposit_invoice' && (
                 <p className="document-card-hint">
                   Eine Anzahlungsrechnung ist ein eigener Beleg mit eigener
                   Nummer. Der Entwurf übernimmt den Auftrag und wird dort auf
                   die vereinbarte Anzahlung gekürzt; Zahlungseingänge werden
-                  manuell erfasst. Die Verrechnung mit der Schlussrechnung fehlt
-                  noch – bis dahin bleibt jede Anzahlung ein eigener offener
-                  Beleg.
+                  manuell erfasst. Die Verrechnung übernimmt die
+                  Schlussrechnung: sie zieht die gestellten Anzahlungen brutto
+                  ab. Bis dahin bleibt jede Anzahlung ein eigener offener Beleg.
                 </p>
               )}
               {group.kind === 'correction' && (

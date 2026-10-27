@@ -8,6 +8,62 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.c3.2 — `feat: settle a final invoice against its deposits`** (26.10.2026)
+
+  Zweiter c3-Unter-Slice nach rein lesender DeepSeek-Analyse zu `0640a30`
+  (RG-03 „Eine Schlussrechnung muss geleistete Anzahlungen korrekt ausweisen
+  und verrechnen“). Staleness: c3.2 nicht begonnen; **zentrale Analysebefunde
+  werden eingehalten:** (1) `documents_one_invoice` garantiert bereits
+  `order_invoiced` (genau eine Rechnung je Bestätigung, rollenunabhängig –
+  Index bleibt unangetastet); (2) der Abzug wirkt in genau zwei Stellen
+  (Forderungsberechnung + Projektion), sonst „Offener Betrag“ ≠
+  Erfassungsgrenze. Modell: Migration `0046` additiv ohne Backfill
+  (`invoice_role='final'`/NULL=Standard; `deposit_applied_minor` wird beim
+  Finalisieren eingefroren); `POST …/final-invoice` aus finaler Bestätigung
+  erzeugt einen bearbeitbaren Rechnungsentwurf mit Rolle „Schlussrechnung“;
+  **Verrechnungsblock** (Print-Option nach c2-Muster, nur bei Bezug) zeigt
+  „Anzahlungen gesamt / davon geleistet / Zu zahlender Betrag“ – gedrucktes
+  Brutto bleibt die volle Auftragssumme; eingefroren wird der Abzug =
+  **Summe der finalisierten Anzahlungs-Bruttosummen** (nur „geleistet“ wäre
+  eine Doppelforderung: 1.690 − 1.300 = 390), „davon geleistet“ ist reine
+  Anzeige. Guards: Zahlungen auf Schlussrechnungen nur bis zum reduzierten
+  Anspruch; der Bestätigungs-Kredit-Guard zählt künftig auch
+  Anzahlungszahlungen. Schlussrechnung ohne Anzahlungen erlaubt (0/0/voll);
+  spätere Anzahlungs-/Gutschriftänderungen ändern die eingefrorener
+  Schlussrechnung nie (Korrektur nur über eigene Folgedokumente). Die drei
+  gepinnten Lücken-Texte („… noch nicht verfügbar“) werden auf den
+  tatsächlichen Stand gebracht. KEINE Steuergruppenaufteilung des Abzugs
+  behauptet; keine Rechts-/Steuerabnahme. Tests zuerst rot (16 Negativfälle,
+  `documents.test.ts:298–308` unantastbar, `PaymentBalance` ohne neues
+  Feld). Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt Plan/Docs
+  und reviewt.
+  Abgenommen (inkl. Nachträgen c3.2b „Über-Verrechnung verhindern“ und
+  c3.2c „Verrechnungsbetrag auf korrigierte Ansprüche“): rot beobachtet
+  (RED je Nachtrag sauber getrennt, u. a. der Beweis, dass die dokumentierte
+  Lösung „per Korrektur reduzieren“ unter Bruttosummen-Regel tot war),
+  danach grün: `test:unit` 274/274, `test:component` 742/742,
+  `test:integration` 446/446 (Kopie/Rolle, Dublette seq.+parallel, exakter
+  1.690/1.300/390-Verrechnungsbetrag, Einfrieren gegen spätere Änderungen,
+  0-Anzahlungen, beide Kredit-Guard-Richtungen, DB-CHECKs; Nachtrag b:
+  Über-Verrechnung 409 `deposits_exceed_order` mit unversehrtem Entwurf,
+  Grenzfall exakt/1 Cent; Nachtrag c: Gutschrift senkt, Lastschrift erhöht
+  den Verrechnungsbetrag, Entzerrung einer Über-Verrechnung finalisiert
+  danach), `test:coverage` vollständig grün (documents.ts 92,91%
+  Statements), `test:workspace`/`test:docs`/schnelle Gates/Build grün;
+  E2E auth+template-product-price 16/16 inkl. Ablauf Bestätigung + zwei
+  Anzahlungen (30/10) + 20 gezahlt → Schlussrechnung mit Block 40/20/60 →
+  Finalisierung friert 4.000 ein → Teilzahlung 30 → 30,01 abgelehnt →
+  Quell-PDFs bytegleich. Notiert: `deposit_applied_minor` ist `bigint`
+  (Wertebereich wie alle Geldspalten; bewusste Abweichung vom int4-Vorschlag);
+  „davon geleistet“ bleibt live (nur der Abzug ist eingefroren); die
+  Verrechnung zählt korrigierte Ansprüche (ohne Korrekturen = Bruttosumme,
+  c3.1-Beispiel unverändert); Grenze ehrlich: eine Über-Verrechnung aus VOLL
+  BEZAHLTEN Anzahlungen lässt sich weiterhin nicht per Gutschrift entzerren
+  (der Kredit-Guard begrenzt Gutschriften durch geleistetes Geld –
+  Rückzahlungslücke, unverändert Nicht-Scope); genau eine Rechnung je
+  Bestätigung (Standard ODER Schluss) bleibt DB-garantiert; keine
+  Steuergruppenaufteilung behauptet.
+
 - [x] **BKP019.c3.1 — `feat: invoice a deposit of a confirmed order`** (26.10.2026)
 
   Erster der beiden c3-Unter-Slices nach rein lesender DeepSeek-Analyse zu

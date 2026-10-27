@@ -2083,6 +2083,15 @@ const correctionKeys = [
 // `openMinor` are derived for a finalized invoice and NULL for every other row -
 // three keys were not enough for the payment slice, two more are all it needs.
 const paymentKeys = ['paymentState', 'openMinor'];
+// BKP019.c3.2: the settlement axis. `invoiceRole` names the document's own role
+// (NULL is a standard invoice), `depositAppliedMinor` is the frozen deduction and
+// `depositPaidMinor` is what arrived on the settled deposits - a display value,
+// never a second deduction.
+const settlementKeys = [
+  'invoiceRole',
+  'depositAppliedMinor',
+  'depositPaidMinor',
+];
 
 test('the omitted-pagination list keeps every row, the exact old shape and its order', async () => {
   const scope = randomUUID(),
@@ -3256,6 +3265,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         ...confirmationKeys,
         ...correctionKeys,
         ...paymentKeys,
+        ...settlementKeys,
       ].sort(),
     );
     expect(projectedRow).toMatchObject({
@@ -4023,6 +4033,7 @@ test('the offer status route accepts the acceptance details and refuses bad ones
         'sourceNumber',
         ...correctionKeys,
         ...paymentKeys,
+        ...settlementKeys,
       ].sort(),
     );
     // Repeating the identical details is a no-op, a changed one is refused.
@@ -4869,6 +4880,7 @@ test('the offer projection names the source of a confirmation', async () => {
       'sourceNumber',
       ...correctionKeys,
       ...paymentKeys,
+      ...settlementKeys,
     ].sort(),
   );
 });
@@ -5559,6 +5571,7 @@ test('the offer projection names the source of an invoice', async () => {
       ...confirmationKeys,
       ...correctionKeys,
       ...paymentKeys,
+      ...settlementKeys,
     ].sort(),
   );
 });
@@ -7311,4 +7324,1255 @@ test('a correction template no longer creates a draft', async () => {
       (row) => row.id === template.id,
     ),
   ).toBe(true);
+});
+
+// BKP019.c3.2: a finalized confirmation can also be billed as the *final*
+// invoice, which settles the advances already billed on the same order. The
+// order below is 1.690,00 EUR, the two advances are 1.000,00 EUR and 300,00 EUR,
+// the money received 800,00 EUR and 200,00 EUR. The deduction is therefore the
+// billed 1.300,00 EUR - never the paid 1.000,00 EUR - and the claim of the final
+// invoice is 390,00 EUR. Deducting only the payments would leave a second claim
+// of 300,00 EUR for money the customer never owed twice.
+const settlementLines = [
+  {
+    productId: null,
+    description: 'Fiktives Fotobox-Paket',
+    quantity: 1,
+    unit: 'Pauschale',
+    unitPriceMinor: 169000,
+    taxBasisPoints: 1900,
+    discountBasisPoints: 0,
+  },
+];
+
+async function settlementOrder(scope: string) {
+  const context = await confirmationContext(scope),
+    draft = await context.repo.createDraft(context.actor, {
+      templateId: context.templateId,
+      eventId: context.event,
+      contactId: context.contact,
+    }),
+    edited = await context.repo.updateDraftContent(context.actor, draft.id, {
+      version: draft.version,
+      ...confirmationTexts,
+      lines: settlementLines,
+    }),
+    offer = await context.repo.finalize(
+      context.actor,
+      edited.id,
+      edited.version,
+    ),
+    sent = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+    accepted = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'accepted',
+      version: sent.version,
+      channel: 'email',
+    }),
+    confirmationDraft = await context.repo.createOrderConfirmation(
+      context.actor,
+      accepted.id,
+      accepted.version,
+    );
+  await documentNumberRepository(pool, scope).save(
+    context.actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const confirmation = await context.repo.finalize(
+    context.actor,
+    confirmationDraft.id,
+    confirmationDraft.version,
+  );
+  return { ...context, offer: accepted, confirmation };
+}
+
+// The two ranges a settlement needs: the advance keeps the AZ circle, the final
+// invoice borrows the invoice circle - there is no invented third number.
+async function settlementRanges(
+  order: Awaited<ReturnType<typeof settlementOrder>>,
+) {
+  for (const [kind, pattern] of [
+    ['deposit_invoice', 'AZ-{YYYY}-{SEQ}'],
+    ['invoice', 'RE-{YYYY}-{SEQ}'],
+    ['correction', 'KO-{YYYY}-{SEQ}'],
+  ] as const)
+    await documentNumberRepository(pool, order.scope).save(order.actor, kind, {
+      pattern,
+      minLength: 4,
+      nextValue: 1,
+    });
+}
+
+function settlementDepositLine(unitPriceMinor: number) {
+  return [
+    {
+      productId: null,
+      description: 'Fiktive Anzahlung',
+      quantity: 1,
+      unit: 'Pauschale',
+      unitPriceMinor,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    },
+  ];
+}
+
+// One finalized advance with an exact gross amount: the operator reduces the
+// copied order in the draft, then the advance is frozen with its own number.
+async function finalizedDeposit(
+  order: Awaited<ReturnType<typeof settlementOrder>>,
+  unitPriceMinor: number,
+) {
+  const draft = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    edited = await order.repo.updateDraftContent(order.actor, draft.id, {
+      version: draft.version,
+      subject: 'Anzahlungsrechnung für {{contact}}',
+      introText: confirmationTexts.introText,
+      outroText: confirmationTexts.outroText,
+      validityDays: 14,
+      lines: settlementDepositLine(unitPriceMinor),
+    });
+  return order.repo.finalize(order.actor, draft.id, edited.version);
+}
+
+async function storedSettlement(scope: string, id: string) {
+  return (
+    await pool.query<Record<string, unknown>>(
+      `SELECT kind, state, number, subject, source_document_id, gross_minor,
+              invoice_role, deposit_applied_minor, snapshot_hash, pdf_hash,
+              version, template_id, event_id, contact_id, intro_text, outro_text,
+              validity_days, offer_status,
+              to_char(valid_until,'YYYY-MM-DD') AS valid_until
+         FROM documents WHERE tenant_id=$1 AND id=$2`,
+      [scope, id],
+    )
+  ).rows[0]!;
+}
+
+async function settlementRole(scope: string, id: string) {
+  return (
+    await pool.query<{
+      invoice_role: string | null;
+      deposit_applied_minor: string | null;
+    }>(
+      `SELECT invoice_role, deposit_applied_minor
+         FROM documents WHERE tenant_id=$1 AND id=$2`,
+      [scope, id],
+    )
+  ).rows[0]!;
+}
+
+async function finalInvoiceCount(scope: string) {
+  return (
+    await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM documents
+        WHERE tenant_id=$1 AND kind='invoice' AND invoice_role='final'`,
+      [scope],
+    )
+  ).rows[0]!.count;
+}
+
+function settlementPayments(scope: string) {
+  return documentPaymentRepository(pool, scope);
+}
+
+// The whole settlement of the documented example: 1.690,00 EUR order, two
+// finalized advances over 1.300,00 EUR, 1.000,00 EUR of them already paid.
+async function settledSettlement(scope: string) {
+  const order = await settlementOrder(scope);
+  await settlementRanges(order);
+  const first = await finalizedDeposit(order, 100000),
+    second = await finalizedDeposit(order, 30000),
+    payments = settlementPayments(scope);
+  await payments.record(order.actor, first.id, {
+    receivedOn: tenantToday(),
+    amountMinor: 80000,
+    method: 'bank_transfer',
+  });
+  await payments.record(order.actor, second.id, {
+    receivedOn: tenantToday(),
+    amountMinor: 20000,
+    method: 'cash',
+  });
+  return { ...order, first, second, payments };
+}
+
+test('the final invoice copies the order and settles its billed deposits', async () => {
+  const order = await settledSettlement(randomUUID()),
+    confirmationPdf = await order.repo.pdf(order.confirmation.id),
+    depositPdfs = [
+      await order.repo.pdf(order.first.id),
+      await order.repo.pdf(order.second.id),
+    ],
+    draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    stored = await storedSettlement(order.scope, draft.id);
+  // 1:1 from the confirmation: the same positions, no conversion, no second
+  // rounding - and the sums are the order's own 1.690,00 EUR.
+  expect(await storedLines(order.scope, draft.id)).toEqual(
+    await storedLines(order.scope, order.confirmation.id),
+  );
+  expect(stored).toMatchObject({
+    kind: 'invoice',
+    template_id: null,
+    event_id: order.event,
+    contact_id: order.contact,
+    number: null,
+    state: 'draft',
+    // The role is what names the document; the wording stays the invoice's own.
+    subject: 'Rechnung für {{contact}}',
+    intro_text: confirmationTexts.introText,
+    outro_text: confirmationTexts.outroText,
+    validity_days: 14,
+    snapshot_hash: null,
+    pdf_hash: null,
+    version: 1,
+    source_document_id: order.confirmation.id,
+    invoice_role: 'final',
+    // Frozen only at finalization: a draft is still allowed to change.
+    deposit_applied_minor: null,
+    offer_status: null,
+    valid_until: null,
+  });
+  expect(draft).toMatchObject({
+    kind: 'invoice',
+    state: 'draft',
+    number: null,
+    grossMinor: 169000,
+  });
+  expect(draft.grossMinor).toBe(draft.netMinor + draft.taxMinor);
+  // Nothing of the chain above moved: same numbers, same bytes.
+  expect(
+    (await order.repo.pdf(order.confirmation.id)).bytes.equals(
+      confirmationPdf.bytes,
+    ),
+  ).toBe(true);
+  expect(
+    (await order.repo.pdf(order.first.id)).bytes.equals(depositPdfs[0]!.bytes),
+  ).toBe(true);
+  expect(
+    (await order.repo.pdf(order.second.id)).bytes.equals(depositPdfs[1]!.bytes),
+  ).toBe(true);
+
+  // Finalizing freezes the *billed* deduction, not the paid one, and the invoice
+  // keeps its own RE number.
+  const finalized = await order.repo.finalize(
+      order.actor,
+      draft.id,
+      draft.version,
+    ),
+    frozen = await settlementRole(order.scope, draft.id);
+  expect(finalized.number).toBe('RE-2030-0001');
+  expect(frozen).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '130000',
+  });
+  // The printed block shows the three documented rows: 1.300,00 EUR applied,
+  // 1.000,00 EUR of it paid, 390,00 EUR to pay. The gross stays the order's own.
+  const printed = order.run.rendered.at(-1)!;
+  expect(printed).toContain('Anzahlungen gesamt');
+  expect(printed).toContain('1.300,00 €');
+  expect(printed).toContain('davon geleistet');
+  expect(printed).toContain('1.000,00 €');
+  expect(printed).toContain('Zu zahlender Betrag');
+  expect(printed).toContain('390,00 €');
+  expect(printed).toContain('Schlussrechnung zu AB-2030-0001');
+  expect(printed).toContain('Brutto');
+  expect(printed).toContain('1.690,00 €');
+  // The projection and the payment balance agree with the printed deduction: the
+  // open amount is the claim (Brutto - Abzug), never the full order again.
+  const projected = (
+    (await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]
+  ).find((row) => row.id === draft.id)!;
+  expect(projected).toMatchObject({
+    kind: 'invoice',
+    state: 'final',
+    invoiceRole: 'final',
+    depositAppliedMinor: 130000,
+    depositPaidMinor: 100000,
+    paymentState: 'none',
+    openMinor: 39000,
+  });
+  expect(Object.keys(projected)).toEqual(
+    Object.keys(
+      ((await order.repo.list({ include: 'offer' })) as DocumentOfferRow[])[0]!,
+    ),
+  );
+  // A standard invoice of the same tenant keeps its empty role: nothing was
+  // backfilled, so c1 documents stay exactly what they were.
+  expect(
+    ((await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]).every(
+      (row) => row.id === draft.id || row.invoiceRole === null,
+    ),
+  ).toBe(true);
+});
+
+test('the final invoice needs a finalized confirmation as its source', async () => {
+  const order = await settlementOrder(randomUUID());
+  // A draft confirmation can still move. It is built from a second accepted
+  // offer of the same tenant, because one offer yields exactly one confirmation.
+  const spareDraft = await order.repo.createDraft(order.actor, {
+      templateId: order.templateId,
+      eventId: order.event,
+      contactId: order.contact,
+    }),
+    spareOffer = await order.repo.finalize(
+      order.actor,
+      spareDraft.id,
+      spareDraft.version,
+    ),
+    spareSent = await order.repo.changeOfferStatus(order.actor, spareOffer.id, {
+      status: 'sent',
+      version: spareOffer.version,
+    }),
+    spareAccepted = await order.repo.changeOfferStatus(
+      order.actor,
+      spareOffer.id,
+      { status: 'accepted', version: spareSent.version, channel: 'email' },
+    ),
+    draftConfirmation = await order.repo.createOrderConfirmation(
+      order.actor,
+      spareAccepted.id,
+      spareAccepted.version,
+    );
+  await expect(
+    order.repo.createFinalInvoice(
+      order.actor,
+      draftConfirmation.id,
+      draftConfirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // An offer is settled through its confirmation, never directly.
+  await expect(
+    order.repo.createFinalInvoice(
+      order.actor,
+      order.offer.id,
+      order.offer.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  // Neither an invoice nor an advance nor a correction settles another order.
+  const order2 = await settlementOrder(randomUUID());
+  await settlementRanges(order2);
+  const deposit = await finalizedDeposit(order2, 10000),
+    invoiceDraft = await order2.repo.createInvoice(
+      order2.actor,
+      order2.confirmation.id,
+      order2.confirmation.version,
+    ),
+    correction = await order2.repo.createCorrection(
+      order2.actor,
+      order2.confirmation.id,
+      order2.confirmation.version,
+      'credit',
+    );
+  for (const source of [deposit, invoiceDraft, correction])
+    await expect(
+      order2.repo.createFinalInvoice(order2.actor, source.id, source.version),
+    ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  // An unknown row and a stale version write nothing at all.
+  await expect(
+    order2.repo.createFinalInvoice(order2.actor, randomUUID(), 1),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    order2.repo.createFinalInvoice(
+      order2.actor,
+      order2.confirmation.id,
+      order2.confirmation.version - 1,
+    ),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(await finalInvoiceCount(order2.scope)).toBe(0);
+  // A foreign tenant's confirmation is missing, never forbidden: no leak.
+  await expect(
+    documentRepository(
+      pool,
+      otherTenantId,
+      dependencies().deps,
+    ).createFinalInvoice(
+      otherActorId,
+      order2.confirmation.id,
+      order2.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    order2.repo.createFinalInvoice(
+      randomUUID(),
+      order2.confirmation.id,
+      order2.confirmation.version,
+    ),
+  ).rejects.toThrow('forbidden');
+  expect(await finalInvoiceCount(order2.scope)).toBe(0);
+});
+
+test('a withdrawn order is never settled by a final invoice', async () => {
+  const order = await settlementOrder(randomUUID()),
+    withdrawn = await order.repo.changeOfferStatus(
+      order.actor,
+      order.offer.id,
+      { status: 'withdrawn', version: order.offer.version },
+    );
+  expect(withdrawn.offerStatus).toBe('withdrawn');
+  await expect(
+    order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'order_withdrawn' });
+  expect(await finalInvoiceCount(order.scope)).toBe(0);
+  // A confirmation whose own content state is withdrawn is refused the same way.
+  await pool.query(
+    `UPDATE documents SET state='withdrawn' WHERE tenant_id=$1 AND id=$2`,
+    [order.scope, order.confirmation.id],
+  );
+  await expect(
+    order.repo.createFinalInvoice(order.actor, order.confirmation.id, 1),
+  ).rejects.toMatchObject({ reason: 'order_withdrawn' });
+  expect(await finalInvoiceCount(order.scope)).toBe(0);
+});
+
+test('one confirmation carries exactly one invoice, standard or final', async () => {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const standard = await order.repo.createInvoice(
+    order.actor,
+    order.confirmation.id,
+    order.confirmation.version,
+  );
+  // The partial unique index decides, not an application-side pre-check: the
+  // duplicate answer is the same one c1 gave.
+  await expect(
+    order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'duplicate' });
+  expect(await finalInvoiceCount(order.scope)).toBe(0);
+  expect(standard.kind).toBe('invoice');
+  expect(await invoiceCount(order.scope)).toBe(1);
+  // Creating never touches the invoice range: the configured next value is still
+  // the first one, ready for the finalization that actually prints a number.
+  expect(await invoiceSequence(order.scope)).toBe(1);
+});
+
+// The wrong way round: a final invoice first, then a standard one.
+test('a standard invoice after a final one is refused by the same index', async () => {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const final = await order.repo.createFinalInvoice(
+    order.actor,
+    order.confirmation.id,
+    order.confirmation.version,
+  );
+  await expect(
+    order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'duplicate' });
+  expect(await finalInvoiceCount(order.scope)).toBe(1);
+  expect(await invoiceCount(order.scope)).toBe(1);
+  expect(await settlementRole(order.scope, final.id)).toMatchObject({
+    invoice_role: 'final',
+  });
+});
+
+test('two simultaneous final invoices produce exactly one document', async () => {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const results = await Promise.allSettled([
+      order.repo.createFinalInvoice(
+        order.actor,
+        order.confirmation.id,
+        order.confirmation.version,
+      ),
+      order.repo.createFinalInvoice(
+        order.actor,
+        order.confirmation.id,
+        order.confirmation.version,
+      ),
+    ]),
+    fulfilled = results.filter((result) => result.status === 'fulfilled'),
+    rejected = results.filter((result) => result.status === 'rejected');
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+    reason: 'duplicate',
+  });
+  expect(await invoiceCount(order.scope)).toBe(1);
+  const only = (fulfilled[0] as PromiseFulfilledResult<{ id: string }>).value;
+  expect(await offerAudit(order.scope, only.id)).toEqual(['document.created']);
+});
+
+test('only finalized advances of this order are settled', async () => {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const billed = await finalizedDeposit(order, 100000),
+    // A draft is no claim: it is not netted, because nothing was billed.
+    draftDeposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    // Another order of the same tenant is a different settlement.
+    foreignOrder = await settlementOrder(randomUUID());
+  await settlementRanges(foreignOrder);
+  await finalizedDeposit(foreignOrder, 50000);
+  expect(billed.state).toBe('final');
+  const draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    finalized = await order.repo.finalize(order.actor, draft.id, draft.version);
+  expect(await settlementRole(order.scope, finalized.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '100000',
+  });
+  expect(draftDeposit.state).toBe('draft');
+  const projected = (
+    (await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]
+  ).find((row) => row.id === finalized.id)!;
+  // 24900? No: the order is 1.690,00 EUR and only the billed advance counts.
+  expect(projected).toMatchObject({
+    depositAppliedMinor: 100000,
+    depositPaidMinor: 0,
+    openMinor: 69000,
+  });
+});
+
+test('later advance changes never rewrite a finalized final invoice', async () => {
+  const order = await settledSettlement(randomUUID()),
+    draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    finalized = await order.repo.finalize(order.actor, draft.id, draft.version),
+    pdfBefore = await order.repo.pdf(finalized.id);
+  // A third advance, more money on an existing one and a credit on an advance:
+  // all three are legitimate, and none of them moves the frozen deduction.
+  const third = await finalizedDeposit(order, 20000);
+  await order.payments.record(order.actor, order.first.id, {
+    receivedOn: tenantToday(),
+    amountMinor: 20000,
+    method: 'cash',
+  });
+  const credit = await order.repo.createCorrection(
+    order.actor,
+    third.id,
+    third.version,
+    'credit',
+  );
+  await order.repo.finalize(order.actor, credit.id, credit.version);
+  expect(await settlementRole(order.scope, finalized.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '130000',
+  });
+  // The bytes never change either: the document is not re-rendered.
+  expect(
+    (await order.repo.pdf(finalized.id)).bytes.equals(pdfBefore.bytes),
+  ).toBe(true);
+  // What arrived on the settled advances is read live; the deduction is not.
+  const projected = (
+    (await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]
+  ).find((row) => row.id === finalized.id)!;
+  expect(projected).toMatchObject({
+    depositAppliedMinor: 130000,
+    depositPaidMinor: 120000,
+    openMinor: 39000,
+  });
+});
+
+test('a final invoice without advances settles nothing and stays payable', async () => {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    finalized = await order.repo.finalize(order.actor, draft.id, draft.version);
+  // Zero is a legitimate frozen value: no advance was billed, nothing is netted.
+  expect(await settlementRole(order.scope, finalized.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '0',
+  });
+  const printed = order.run.rendered.at(-1)!;
+  expect(printed).toContain('Anzahlungen gesamt');
+  expect(printed).toContain('0,00 €');
+  expect(printed).toContain('Zu zahlender Betrag');
+  expect(printed).toContain('1.690,00 €');
+  const projected = (
+    (await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]
+  ).find((row) => row.id === finalized.id)!;
+  expect(projected).toMatchObject({
+    depositAppliedMinor: 0,
+    depositPaidMinor: 0,
+    paymentState: 'none',
+    openMinor: 169000,
+  });
+});
+
+// BKP019.c3.2b: a settlement may never take over more than the order is worth.
+// The guard runs under the tenant lock on the claim of the confirmation -
+// `gross + debits - credits`, the same rule the projection, the print and the
+// payment balance use - and only a finalization is refused. The draft survives.
+async function overDepositedOrder(scope: string, unitPrices: number[]) {
+  const order = await settlementOrder(scope);
+  await settlementRanges(order);
+  for (const unitPriceMinor of unitPrices)
+    await finalizedDeposit(order, unitPriceMinor);
+  return order;
+}
+
+test('a settlement above the order is refused and leaves the draft untouched', async () => {
+  // 1.690,00 EUR order, 1.800,00 EUR billed in advance. A negative "Zu zahlender
+  // Betrag" is no document, and this slice has no refund path that could settle
+  // one - so the finalization is refused instead of printed.
+  const order = await overDepositedOrder(randomUUID(), [100000, 80000]),
+    draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    renderedBefore = order.run.rendered.length,
+    filesBefore = order.run.files.size;
+  await expect(
+    order.repo.finalize(order.actor, draft.id, draft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  // State, number, version and the frozen deduction are exactly the draft's.
+  expect(await storedSettlement(order.scope, draft.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+    source_document_id: order.confirmation.id,
+    invoice_role: 'final',
+    deposit_applied_minor: null,
+    snapshot_hash: null,
+    pdf_hash: null,
+  });
+  // No artefact was rendered or stored, and no number was consumed: the guard
+  // sits before the print, not after it.
+  expect(order.run.rendered).toHaveLength(renderedBefore);
+  expect(order.run.files.size).toBe(filesBefore);
+  expect(await invoiceSequence(order.scope)).toBe(1);
+  await expect(
+    documentNumberRepository(pool, order.scope).preview(
+      'invoice',
+      new Date('2030-10-26T10:00:00Z'),
+    ),
+  ).resolves.toBe('RE-2030-0001');
+  // Nothing claims a finalization that never happened.
+  expect(await offerAudit(order.scope, draft.id)).toEqual(['document.created']);
+  // The refusal is a rule, not a race: repeating it changes nothing either.
+  await expect(
+    order.repo.finalize(order.actor, draft.id, draft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  expect(await finalInvoiceCount(order.scope)).toBe(1);
+});
+
+test('a settlement exactly at the claim is allowed, one cent above is not', async () => {
+  // The boundary is the claim of the confirmation, not its gross alone.
+  const exact = await overDepositedOrder(randomUUID(), [100000, 69000]),
+    exactDraft = await exact.repo.createFinalInvoice(
+      exact.actor,
+      exact.confirmation.id,
+      exact.confirmation.version,
+    ),
+    exactInvoice = await exact.repo.finalize(
+      exact.actor,
+      exactDraft.id,
+      exactDraft.version,
+    );
+  expect(await settlementRole(exact.scope, exactInvoice.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169000',
+  });
+  // Exactly at the limit the printed block ends at 0,00 EUR - never below zero.
+  const printed = exact.run.rendered.at(-1)!;
+  expect(printed).toContain('Anzahlungen gesamt');
+  expect(printed).toContain('Zu zahlender Betrag');
+  expect(printed).toContain('0,00 €');
+  const exactProjected = (
+    (await exact.repo.list({ include: 'offer' })) as DocumentOfferRow[]
+  ).find((row) => row.id === exactInvoice.id)!;
+  expect(exactProjected).toMatchObject({
+    depositAppliedMinor: 169000,
+    openMinor: 0,
+  });
+
+  // One cent more is refused, and the same draft stays intact for the remedy the
+  // hint names: a debit note on the confirmation raises its claim by exactly
+  // that cent, and the untouched draft then finalizes.
+  const over = await overDepositedOrder(randomUUID(), [100000, 69001]),
+    overDraft = await over.repo.createFinalInvoice(
+      over.actor,
+      over.confirmation.id,
+      over.confirmation.version,
+    );
+  await expect(
+    over.repo.finalize(over.actor, overDraft.id, overDraft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  const debit = await over.repo.createCorrection(
+    over.actor,
+    over.confirmation.id,
+    over.confirmation.version,
+    'debit',
+    settlementDepositLine(1),
+  );
+  await over.repo.finalize(over.actor, debit.id, debit.version);
+  const recovered = await over.repo.finalize(
+    over.actor,
+    overDraft.id,
+    overDraft.version,
+  );
+  expect(recovered.number).toBe('RE-2030-0001');
+  expect(await settlementRole(over.scope, recovered.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169001',
+  });
+  expect(over.run.rendered.at(-1)).toContain('0,00 €');
+});
+
+// BKP019.c3.2c: the settled amount is the sum of the *corrected* claims of the
+// finalized advances - `gross + debits - credits` per advance, the same rule the
+// projection and the payment balance use. Without a correction the value is the
+// gross, exactly as before; with one, a credit on an advance lowers the
+// deduction (so the documented remedy "per Korrektur reduzieren" works) and a
+// debit raises it.
+async function finalizedCorrection(
+  order: Awaited<ReturnType<typeof settlementOrder>>,
+  source: { id: string; version: number },
+  direction: 'credit' | 'debit',
+  unitPriceMinor: number,
+) {
+  const draft = await order.repo.createCorrection(
+    order.actor,
+    source.id,
+    source.version,
+    direction,
+    settlementDepositLine(unitPriceMinor),
+  );
+  return order.repo.finalize(order.actor, draft.id, draft.version);
+}
+
+test('a credit note on an advance lowers the settled amount', async () => {
+  // The documented order again: 1.690,00 EUR, advances over 1.000,00 EUR and
+  // 300,00 EUR. The 300,00 EUR advance is credited in full before the final
+  // invoice exists, so only 1.000,00 EUR is still claimed in advance.
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const first = await finalizedDeposit(order, 100000),
+    second = await finalizedDeposit(order, 30000),
+    credit = await finalizedCorrection(order, second, 'credit', 30000);
+  expect(credit.grossMinor).toBe(30000);
+  const draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    finalized = await order.repo.finalize(order.actor, draft.id, draft.version);
+  expect(finalized.number).toBe('RE-2030-0001');
+  expect(await settlementRole(order.scope, draft.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '100000',
+  });
+  // The printed block names the reduced deduction and the raised balance.
+  const printed = order.run.rendered.at(-1)!;
+  expect(printed).toContain('Anzahlungen gesamt');
+  expect(printed).toContain('1.000,00 €');
+  expect(printed).toContain('Zu zahlender Betrag');
+  expect(printed).toContain('690,00 €');
+  // The projection agrees: the claim is Brutto - corrected advances.
+  const projected = (
+    (await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]
+  ).find((row) => row.id === draft.id)!;
+  expect(projected).toMatchObject({
+    depositAppliedMinor: 100000,
+    openMinor: 69000,
+  });
+  // Nothing of the advance itself moved into the final invoice's own columns:
+  // the advance keeps its claim of zero, the order keeps its gross.
+  expect(await settlementRole(order.scope, first.id)).toMatchObject({
+    deposit_applied_minor: null,
+  });
+  expect(projected.grossMinor).toBe(169000);
+});
+
+test('a credit note on an advance dissolves an over-settlement', async () => {
+  // BKP019.c3.2b refused 1.800,00 EUR of advances against a 1.690,00 EUR order.
+  // The documented remedy is now the one the hint names: a credit note on the
+  // advance lowers the deduction, and the untouched draft then finalizes.
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const second = await finalizedDeposit(order, 80000);
+  await finalizedDeposit(order, 100000);
+  const draft = await order.repo.createFinalInvoice(
+    order.actor,
+    order.confirmation.id,
+    order.confirmation.version,
+  );
+  await expect(
+    order.repo.finalize(order.actor, draft.id, draft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  // 110,00 EUR credited on the second advance: 1.690,00 EUR remain.
+  await finalizedCorrection(order, second, 'credit', 11000);
+  const recovered = await order.repo.finalize(
+    order.actor,
+    draft.id,
+    draft.version,
+  );
+  expect(recovered.number).toBe('RE-2030-0001');
+  expect(await settlementRole(order.scope, draft.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169000',
+  });
+  // Nothing is left to pay, and no negative amount was printed on the way.
+  const printed = order.run.rendered.at(-1)!;
+  expect(printed).toContain('Anzahlungen gesamt');
+  expect(printed).toContain('1.690,00 €');
+  expect(printed).toContain('Zu zahlender Betrag');
+  expect(printed).toContain('0,00 €');
+});
+
+test('a debit note on an advance raises the settled amount', async () => {
+  // A follow-up charge on an advance increases what it claims, so the final
+  // invoice settles more - never less.
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  await finalizedDeposit(order, 100000);
+  const second = await finalizedDeposit(order, 30000),
+    debit = await finalizedCorrection(order, second, 'debit', 5000);
+  expect(debit.grossMinor).toBe(5000);
+  const draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    finalized = await order.repo.finalize(order.actor, draft.id, draft.version);
+  expect(finalized.number).toBe('RE-2030-0001');
+  expect(await settlementRole(order.scope, draft.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '135000',
+  });
+  const printed = order.run.rendered.at(-1)!;
+  expect(printed).toContain('1.350,00 €');
+  expect(printed).toContain('340,00 €');
+  expect(
+    ((await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]).find(
+      (row) => row.id === draft.id,
+    ),
+  ).toMatchObject({ depositAppliedMinor: 135000, openMinor: 34000 });
+});
+
+test('the corrected claims keep the exact boundary of the order claim', async () => {
+  // 1.790,00 EUR billed in advance against 1.690,00 EUR: a credit note of
+  // 100,00 EUR on the second advance lands exactly on the claim and is allowed.
+  const exact = await settlementOrder(randomUUID());
+  await settlementRanges(exact);
+  await finalizedDeposit(exact, 100000);
+  const exactSecond = await finalizedDeposit(exact, 79000);
+  await finalizedCorrection(exact, exactSecond, 'credit', 10000);
+  const exactDraft = await exact.repo.createFinalInvoice(
+      exact.actor,
+      exact.confirmation.id,
+      exact.confirmation.version,
+    ),
+    exactInvoice = await exact.repo.finalize(
+      exact.actor,
+      exactDraft.id,
+      exactDraft.version,
+    );
+  expect(await settlementRole(exact.scope, exactInvoice.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169000',
+  });
+  expect(exact.run.rendered.at(-1)).toContain('0,00 €');
+
+  // One cent short of that credit leaves 1.690,01 EUR and is refused; the same
+  // draft then finalizes once the missing cent is credited too.
+  const over = await settlementOrder(randomUUID());
+  await settlementRanges(over);
+  await finalizedDeposit(over, 100000);
+  const overSecond = await finalizedDeposit(over, 79000);
+  await finalizedCorrection(over, overSecond, 'credit', 9999);
+  const overDraft = await over.repo.createFinalInvoice(
+    over.actor,
+    over.confirmation.id,
+    over.confirmation.version,
+  );
+  await expect(
+    over.repo.finalize(over.actor, overDraft.id, overDraft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  expect(await storedSettlement(over.scope, overDraft.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+    deposit_applied_minor: null,
+  });
+  await finalizedCorrection(over, overSecond, 'credit', 1);
+  const corrected = await over.repo.finalize(
+    over.actor,
+    overDraft.id,
+    overDraft.version,
+  );
+  expect(await settlementRole(over.scope, corrected.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169000',
+  });
+  expect(over.run.rendered.at(-1)).toContain('0,00 €');
+});
+
+test('a failing renderer rolls the final invoice back to a draft', async () => {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  await finalizedDeposit(order, 100000);
+  const draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    failing = documentRepository(pool, order.scope, {
+      ...order.run.deps,
+      render: async () => {
+        throw new Error('synthetic final invoice renderer failure');
+      },
+    });
+  await expect(
+    failing.finalize(order.actor, draft.id, draft.version),
+  ).rejects.toMatchObject({ reason: 'artifact_failed' });
+  expect(await storedSettlement(order.scope, draft.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+    deposit_applied_minor: null,
+  });
+  expect(await invoiceSequence(order.scope)).toBeDefined();
+  // The number was returned: the next finalization still starts at 1.
+  await expect(
+    documentNumberRepository(pool, order.scope).preview(
+      'invoice',
+      new Date('2030-10-26T10:00:00Z'),
+    ),
+  ).resolves.toBe('RE-2030-0001');
+});
+
+test('the credit note of a final invoice is bounded by the settled claim', async () => {
+  // Three orders, because one source carries at most one open correction draft:
+  // every verdict is judged on its own chain.
+  const settledInvoice = async () => {
+    const order = await settledSettlement(randomUUID()),
+      draft = await order.repo.createFinalInvoice(
+        order.actor,
+        order.confirmation.id,
+        order.confirmation.version,
+      ),
+      invoice = await order.repo.finalize(order.actor, draft.id, draft.version);
+    return { order, invoice };
+  };
+  // The whole order may not be credited: 1.300,00 EUR of it was already billed
+  // as advances, so only the 390,00 EUR claim is creditable.
+  const whole = await settledInvoice(),
+    wholeCredit = await whole.order.repo.createCorrection(
+      whole.order.actor,
+      whole.invoice.id,
+      whole.invoice.version,
+      'credit',
+    );
+  await expect(
+    whole.order.repo.finalize(
+      whole.order.actor,
+      wholeCredit.id,
+      wholeCredit.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'credit_exceeds_invoice' });
+  // One cent more than the claim is refused as well.
+  const over = await settledInvoice(),
+    overCredit = await over.order.repo.createCorrection(
+      over.order.actor,
+      over.invoice.id,
+      over.invoice.version,
+      'credit',
+      settlementDepositLine(39001),
+    );
+  await expect(
+    over.order.repo.finalize(
+      over.order.actor,
+      overCredit.id,
+      overCredit.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'credit_exceeds_invoice' });
+  // The exact claim is allowed and the final invoice keeps its deduction.
+  const exact = await settledInvoice(),
+    exactCredit = await exact.order.repo.createCorrection(
+      exact.order.actor,
+      exact.invoice.id,
+      exact.invoice.version,
+      'credit',
+      settlementDepositLine(39000),
+    ),
+    credited = await exact.order.repo.finalize(
+      exact.order.actor,
+      exactCredit.id,
+      exactCredit.version,
+    );
+  expect(credited.grossMinor).toBe(39000);
+  expect(await settlementRole(exact.order.scope, exact.invoice.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '130000',
+  });
+});
+
+test('a credit note on the confirmation counts the advance payments', async () => {
+  // Two orders again: one open correction per source, so the refusal and the
+  // acceptance never share a chain.
+  const refused = await settledSettlement(randomUUID()),
+    accepted = await settledSettlement(randomUUID());
+  // 1.000,00 EUR already arrived on the advances, so only 690,00 EUR of the
+  // order may still be credited - otherwise the customer is billed twice.
+  const tooLarge = await refused.repo.createCorrection(
+    refused.actor,
+    refused.confirmation.id,
+    refused.confirmation.version,
+    'credit',
+    settlementDepositLine(69001),
+  );
+  await expect(
+    refused.repo.finalize(refused.actor, tooLarge.id, tooLarge.version),
+  ).rejects.toMatchObject({ reason: 'credit_exceeds_invoice' });
+  const fine = await accepted.repo.createCorrection(
+    accepted.actor,
+    accepted.confirmation.id,
+    accepted.confirmation.version,
+    'credit',
+    settlementDepositLine(69000),
+  );
+  expect(
+    (await accepted.repo.finalize(accepted.actor, fine.id, fine.version))
+      .grossMinor,
+  ).toBe(69000);
+});
+
+test('the settlement constraints refuse a role outside invoices and an unfrozen amount', async () => {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  // Every row below names this order's own confirmation as its source: a
+  // foreign tenant's row would be refused by the composite foreign key before
+  // any CHECK could speak, and that is not what this test is about.
+  const code = (query: Promise<unknown>) =>
+      query
+        .then(() => 'accepted')
+        .catch((error: { code?: string }) => error.code),
+    insert = (
+      id: string,
+      kind: string,
+      source: string | null,
+      role: string | null,
+      applied: number | null,
+      state: string,
+    ) =>
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,number,issued_at,
+           finalized_at,subject,intro_text,outro_text,validity_days,
+           snapshot_hash,pdf_hash,source_document_id,invoice_role,
+           deposit_applied_minor,state)
+         VALUES ($1,$2,$3,NULL,$4,$5,$11::text,$6,$11::timestamptz,'Rechnung',
+                 'Einleitung','Schluss',14,$12::text,$12::text,$7,$8,$9,$10)`,
+        [
+          order.scope,
+          id,
+          kind,
+          order.event,
+          order.contact,
+          now,
+          source,
+          role,
+          applied,
+          state,
+          // A final row must carry a number, an instant and both hashes - the
+          // completeness CHECK of 0030 is not part of this slice and stays.
+          state === 'final' ? now : null,
+          state === 'final' ? 'a'.repeat(64) : null,
+        ],
+      );
+  // The role only exists on an invoice.
+  expect(
+    await code(
+      insert(
+        randomUUID(),
+        'deposit_invoice',
+        order.confirmation.id,
+        'final',
+        null,
+        'draft',
+      ),
+    ),
+  ).toBe('23514');
+  // A deduction without the role that justifies it is refused.
+  expect(
+    await code(
+      insert(
+        randomUUID(),
+        'invoice',
+        order.confirmation.id,
+        null,
+        100,
+        'final',
+      ),
+    ),
+  ).toBe('23514');
+  // Frozen means frozen: a draft may not carry the amount.
+  expect(
+    await code(
+      insert(
+        randomUUID(),
+        'invoice',
+        order.confirmation.id,
+        'final',
+        100,
+        'draft',
+      ),
+    ),
+  ).toBe('23514');
+  // A finalized final invoice with its source is a legal row.
+  expect(
+    await code(
+      insert(
+        randomUUID(),
+        'invoice',
+        order.confirmation.id,
+        'final',
+        100,
+        'final',
+      ),
+    ),
+  ).toBe('accepted');
+});
+
+// The whole HTTP chain for the one new route: same auth, CSRF, tenant and
+// version contract as every other document write.
+async function solidSettlementRouteContext() {
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const granted = (await accessRepository(pool, order.scope).list())[0]!;
+  await accessRepository(pool, order.scope).issueSession(
+    { subject: 'seed-' + order.scope, email: granted.email },
+    digest('synthetic-final-invoice'),
+  );
+  const config = {
+      origin: site,
+      tenantId: order.scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, order.scope, order.run.deps);
+  return { ...order, app, config };
+}
+
+test('the final invoice route validates auth, body and the duplicate', async () => {
+  const order = await solidSettlementRouteContext(),
+    url = '/api/v1/documents/' + order.confirmation.id + '/final-invoice',
+    cookies = { '__Host-ak-session': 'synthetic-final-invoice' },
+    headers = {
+      origin: order.config.origin,
+      'x-csrf-token': digest('csrf:synthetic-final-invoice'),
+    },
+    post = (payload: Record<string, unknown>, secured = true) =>
+      order.app.inject({
+        method: 'POST',
+        url,
+        cookies,
+        ...(secured ? { headers } : {}),
+        payload,
+      });
+  try {
+    expect(
+      (
+        await order.app.inject({
+          method: 'POST',
+          url,
+          payload: { version: order.confirmation.version },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (await post({ version: order.confirmation.version }, false)).statusCode,
+    ).toBe(403);
+    for (const payload of [{}, { version: 0 }, { version: 1.5 }])
+      expect((await post(payload)).statusCode, JSON.stringify(payload)).toBe(
+        400,
+      );
+    expect(
+      (
+        await order.app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + randomUUID() + '/final-invoice',
+          cookies,
+          headers,
+          payload: { version: 1 },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await post({ version: 1 })).statusCode).toBe(409);
+    expect((await post({ version: 1 })).json()).toEqual({ error: 'conflict' });
+    const created = await post({ version: order.confirmation.version });
+    expect(created.statusCode).toBe(201);
+    const single = await order.app.inject({
+      url: '/api/v1/documents/' + (created.json() as { id: string }).id,
+      cookies,
+    });
+    expect(Object.keys(created.json() as object).sort()).toEqual(
+      Object.keys(single.json() as object).sort(),
+    );
+    expect(created.json()).toMatchObject({
+      kind: 'invoice',
+      state: 'draft',
+      number: null,
+      templateId: null,
+      subject: 'Rechnung für {{contact}}',
+      grossMinor: 169000,
+    });
+    // The create answer keeps the old document shape: the role lives on the
+    // projection, not on this route.
+    expect(created.body).not.toContain('invoiceRole');
+    expect(created.body).not.toContain('depositAppliedMinor');
+    const again = await post({ version: order.confirmation.version });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: 'duplicate' });
+    expect(await invoiceCount(order.scope)).toBe(1);
+  } finally {
+    await order.app.close();
+  }
 });

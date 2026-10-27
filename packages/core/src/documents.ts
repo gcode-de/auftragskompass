@@ -51,8 +51,10 @@ import {
 } from './document-pdf.js';
 import { storeDocumentPdf, readDocumentPdf } from './document-artifacts.js';
 import { StorageError, type StorageAdapter } from './storage.js';
+import type { DocumentDepositReference } from './document-layouts.js';
 import {
   openMinorOf,
+  orderPaidMinorOf,
   paidMinorOf,
   paymentState,
   paymentStates,
@@ -83,6 +85,10 @@ export class DocumentError extends Error {
       | 'order_withdrawn'
       // BKP019.c2: a credit note may never exceed the corrected document's gross.
       | 'credit_exceeds_invoice'
+      // BKP019.c3.2b: the finalized advances of an order add up to more than the
+      // order claims - there is no refund path that could settle a negative
+      // "Zu zahlender Betrag".
+      | 'deposits_exceed_order'
       | 'duplicate',
   ) {
     super('Document rejected');
@@ -143,6 +149,10 @@ export const correctionDirections = ['credit', 'debit'] as const;
 // credit notes and never stored - the same pattern as an expired offer.
 export type CorrectionState = 'none' | 'partial' | 'full';
 export const correctionStates = ['none', 'partial', 'full'] as const;
+// BKP019.c3.2: the role of an invoice. `NULL` is the ordinary invoice of
+// BKP019.c1; `final` is the same kind that settles the advances of its order.
+export type InvoiceRole = 'final';
+export const invoiceRoles = ['final'] as const;
 export const acceptanceNoteMaxLength = 2000;
 export type OfferStatusChange = {
   status: OfferStatus;
@@ -250,8 +260,14 @@ export type DocumentOfferRow = DocumentListRow & {
   // invoice. Both are derived from `document_payments` and the final
   // corrections - nothing here is ever written back to the document.
   paymentState: PaymentState | null;
-  /** `gross + debits - credits - payments`; NULL for every other row. */
+  /** `gross + debits - credits - deposit_applied - payments`; NULL otherwise. */
   openMinor: number | null;
+  // BKP019.c3.2: the role of this invoice (NULL for a standard invoice), the
+  // frozen deduction of a final invoice and what arrived on the settled
+  // advances. The last value is a display figure and never reduces a claim.
+  invoiceRole: InvoiceRole | null;
+  depositAppliedMinor: number | null;
+  depositPaidMinor: number | null;
 };
 export type DocumentDependencies = {
   /** Marks the PDF; injected so tests never start Chromium. */
@@ -597,6 +613,123 @@ export function documentRepository(
     };
   }
 
+  // BKP019.c3.2: the role and the frozen deduction of one document. Both columns
+  // are read as reviewed SQL for the same reason as every other additive column:
+  // `schema.ts` stays unchanged.
+  async function settlementOf(connection: Connection, documentId: string) {
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const result = (await executor.execute(sql`
+      SELECT d.invoice_role, d.deposit_applied_minor::text AS applied,
+             d.source_document_id
+        FROM documents d
+       WHERE d.tenant_id = ${tenantId} AND d.id = ${documentId}::uuid`)) as {
+      rows: {
+        invoice_role: InvoiceRole | null;
+        applied: string | null;
+        source_document_id: string | null;
+      }[];
+    };
+    const row = result.rows[0];
+    return {
+      role: row?.invoice_role ?? null,
+      // `null` means "not frozen yet" - a draft final invoice previews the
+      // advances that would be settled if it were finalized now.
+      applied:
+        row?.applied === null || row?.applied === undefined
+          ? null
+          : Number(row.applied),
+      // The source link is read here too, because `schema.ts` deliberately does
+      // not mirror the additive column of 0042.
+      sourceDocumentId: row?.source_document_id ?? null,
+    };
+  }
+
+  // What the advances of one order are worth: the *corrected* claim of every
+  // *finalized* deposit invoice of this tenant - `gross + debits - credits` per
+  // advance, the same rule `correctionSums` gives every other claim - and the
+  // money recorded against exactly them. A draft is no claim and is therefore
+  // not netted at all.
+  // BKP019.c3.2c: summing the bare gross made the documented remedy untrue. A
+  // credit note on an advance lowers that advance's claim, not the deduction, so
+  // an over-settled order could never be untangled and there is no refund path
+  // that could settle the difference; a corrected advance plus a final invoice
+  // undercharged instead. With the corrected sum the deduction equals what the
+  // advances still claim - a credit lowers it, a debit raises it - and an
+  // advance without corrections is unchanged, because its claim is its gross.
+  async function depositSums(connection: Connection, sourceId: string) {
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const result = (await executor.execute(sql`
+      SELECT coalesce(sum(d.gross_minor
+               + coalesce((SELECT sum(c.gross_minor) FROM documents c
+                            WHERE c.tenant_id = d.tenant_id
+                              AND c.source_document_id = d.id
+                              AND c.kind = 'correction'
+                              AND c.state = 'final'
+                              AND c.correction_direction = 'debit'), 0)
+               - coalesce((SELECT sum(c.gross_minor) FROM documents c
+                            WHERE c.tenant_id = d.tenant_id
+                              AND c.source_document_id = d.id
+                              AND c.kind = 'correction'
+                              AND c.state = 'final'
+                              AND c.correction_direction = 'credit'), 0)
+             ), 0)::text AS applied,
+             (SELECT coalesce(sum(p.amount_minor), 0)::text
+                FROM document_payments p
+                JOIN documents pd
+                  ON pd.tenant_id = p.tenant_id AND pd.id = p.document_id
+               WHERE p.tenant_id = ${tenantId}
+                 AND pd.source_document_id = ${sourceId}::uuid
+                 AND pd.kind = 'deposit_invoice'
+                 AND pd.state = 'final') AS paid
+        FROM documents d
+       WHERE d.tenant_id = ${tenantId}
+         AND d.source_document_id = ${sourceId}::uuid
+         AND d.kind = 'deposit_invoice'
+         AND d.state = 'final'`)) as {
+      rows: { applied: string; paid: string }[];
+    };
+    const row = result.rows[0];
+    return {
+      applied: Number(row?.applied ?? 0),
+      paid: Number(row?.paid ?? 0),
+    };
+  }
+
+  // Everything a final invoice prints about the advances it settles. The frozen
+  // deduction wins as soon as it exists, so a later advance can never change what
+  // was printed; only "davon geleistet" is read live and stays a display value.
+  async function depositPrints(
+    connection: Connection,
+    document: NonNullable<Awaited<ReturnType<typeof readOne>>>,
+    printedGrossMinor: number,
+    timeZone: string,
+  ): Promise<DocumentDepositReference | undefined> {
+    if (document.kind !== 'invoice') return undefined;
+    const { role, applied, sourceDocumentId } = await settlementOf(
+      connection,
+      document.id,
+    );
+    if (role !== 'final' || !sourceDocumentId) return undefined;
+    const [source] = await database(connection)
+      .select({ number: documents.number, issuedAt: documents.issuedAt })
+      .from(documents)
+      .where(and(scope, eq(documents.id, sourceDocumentId)));
+    if (!source?.number) throw new DocumentError('missing_reference');
+    const sums = await depositSums(connection, sourceDocumentId),
+      deduction = applied ?? sums.applied;
+    return {
+      number: source.number,
+      date: formatDocumentDate(source.issuedAt, timeZone),
+      appliedMinor: deduction,
+      paidMinor: sums.paid,
+      payableMinor: printedGrossMinor - deduction,
+    };
+  }
+
   // Everything a correction prints about its source. All amounts stay magnitudes;
   // the direction decides the sign in the layout, not in the row.
   async function correctionPrints(
@@ -643,6 +776,10 @@ export function documentRepository(
   // as no refund exists, crediting a paid invoice would create a balance the
   // system cannot settle, so the guard now reads
   // `sum(credits) + sum(payments) <= gross + sum(debits)`.
+  // BKP019.c3.2 closes two holes in that rule: the claim of a *final* invoice is
+  // already reduced by its frozen deduction, and a confirmation owns no payments
+  // itself - the money arrived on its advances and its invoice, so those are
+  // counted instead. Otherwise a fully paid order could be credited again.
   async function assertCorrectionCredit(
     connection: Connection,
     correction: { id: string; grossMinor: number },
@@ -654,7 +791,7 @@ export function documentRepository(
     if (direction !== 'credit') return;
     if (!sourceDocumentId) throw new DocumentError('missing_reference');
     const [source] = await database(connection)
-      .select({ grossMinor: documents.grossMinor })
+      .select({ grossMinor: documents.grossMinor, kind: documents.kind })
       .from(documents)
       .where(and(scope, eq(documents.id, sourceDocumentId)));
     if (!source) throw new DocumentError('missing_reference');
@@ -663,9 +800,54 @@ export function documentRepository(
         sourceDocumentId,
         correction.id,
       ),
-      paid = await paidMinorOf(connection, tenantId, sourceDocumentId);
-    if (credited + paid + correction.grossMinor > source.grossMinor + debited)
+      paid =
+        source.kind === 'order_confirmation'
+          ? await orderPaidMinorOf(connection, tenantId, sourceDocumentId)
+          : await paidMinorOf(connection, tenantId, sourceDocumentId),
+      settled =
+        source.kind === 'invoice'
+          ? ((await settlementOf(connection, sourceDocumentId)).applied ?? 0)
+          : 0;
+    if (
+      credited + paid + correction.grossMinor >
+      source.grossMinor - settled + debited
+    )
       throw new DocumentError('credit_exceeds_invoice');
+  }
+
+  // BKP019.c3.2b: the advances of an order may never be netted beyond what the
+  // order itself claims. The claim is the one every other reader uses -
+  // `gross + debits - credits` of the confirmation - so the print, the projection
+  // and the payment balance can never disagree about a "Zu zahlender Betrag" that
+  // went negative. BKP019.c3.2c reads the advances themselves the same way: the
+  // deduction is the sum of their corrected claims, so a credit note on an
+  // advance is exactly the remedy this refusal names. Rejected instead of
+  // clamped: without a refund path an overshoot needs a human decision, never an
+  // amount swallowed by the system.
+  async function assertSettlementWithinOrder(
+    connection: Connection,
+    invoice: { id: string },
+  ) {
+    const { role, sourceDocumentId } = await settlementOf(
+      connection,
+      invoice.id,
+    );
+    // A standard invoice settles nothing, so it owns no such bound.
+    if (role !== 'final' || !sourceDocumentId) return;
+    const [source] = await database(connection)
+      .select({ grossMinor: documents.grossMinor })
+      .from(documents)
+      .where(and(scope, eq(documents.id, sourceDocumentId)));
+    // The same answer the snapshot gives one step later: without its source a
+    // final invoice cannot be printed at all.
+    if (!source) throw new DocumentError('missing_reference');
+    const { applied } = await depositSums(connection, sourceDocumentId),
+      { credited, debited } = await correctionSums(
+        connection,
+        sourceDocumentId,
+      );
+    if (applied > source.grossMinor + debited - credited)
+      throw new DocumentError('deposits_exceed_order');
   }
 
   // One document with its two axes: the unchanged content row plus the offer
@@ -830,6 +1012,15 @@ export function documentRepository(
             tenant.timezone,
           )
         : undefined;
+    // BKP019.c3.2: a final invoice prints the advances it settles. The same print
+    // option pattern as the correction: it travels with the layout, and a
+    // document without a role keeps byte-identical HTML.
+    const depositReference = await depositPrints(
+      connection,
+      document,
+      totals.grossMinor,
+      tenant.timezone,
+    );
     const snapshot = buildDocumentSnapshot({
       layout: {
         senderName: layout.senderName,
@@ -842,6 +1033,7 @@ export function documentRepository(
         showPageNumbers: layout.showPageNumbers,
         showPositionNumbers: layout.showPositionNumbers,
         ...(correctionReference ? { correctionReference } : {}),
+        ...(depositReference ? { depositReference } : {}),
       },
       template: content,
       documentNumber,
@@ -1059,6 +1251,28 @@ export function documentRepository(
                WHERE p.tenant_id = documents.tenant_id
                  AND p.document_id = documents.id
             )`.as('paid_minor'),
+            // BKP019.c3.2: the settlement axis of the same query. The role and
+            // the frozen deduction are this row's own columns; what arrived on the
+            // settled advances is derived from the advances of the same order and
+            // stays a display value.
+            invoiceRole: sql<string | null>`documents.invoice_role`.as(
+              'invoice_role',
+            ),
+            depositAppliedMinor: sql<
+              string | null
+            >`documents.deposit_applied_minor::text`.as(
+              'deposit_applied_minor',
+            ),
+            depositPaidMinor: sql<string>`(
+              SELECT coalesce(sum(p.amount_minor), 0)::text
+                FROM document_payments p
+                JOIN documents pd
+                  ON pd.tenant_id = p.tenant_id AND pd.id = p.document_id
+               WHERE p.tenant_id = documents.tenant_id
+                 AND pd.source_document_id = documents.source_document_id
+                 AND pd.kind = 'deposit_invoice'
+                 AND pd.state = 'final'
+            )`.as('deposit_paid_minor'),
           })
           .from(documents)
           .where(narrowed)
@@ -1114,6 +1328,9 @@ export function documentRepository(
             creditedGrossMinor,
             debitedGrossMinor,
             paidMinor: paidGrossMinor,
+            invoiceRole,
+            depositAppliedMinor,
+            depositPaidMinor,
             ...row
           }) => {
             // BKP019.c2: only a finalized invoice or confirmation owns a
@@ -1132,10 +1349,15 @@ export function documentRepository(
             const payable =
                 (row.kind === 'invoice' || row.kind === 'deposit_invoice') &&
                 row.state === 'final',
+              // BKP019.c3.2: a final invoice has already settled the advances
+              // billed on its order, so its claim is the reduced amount. The
+              // deduction is part of the claim and never a second status.
+              settled = Number(depositAppliedMinor ?? 0),
               claim =
                 row.grossMinor +
                 Number(debitedGrossMinor ?? 0) -
-                Number(creditedGrossMinor ?? 0),
+                Number(creditedGrossMinor ?? 0) -
+                settled,
               paid = Number(paidGrossMinor ?? 0);
             return {
               ...row,
@@ -1173,6 +1395,20 @@ export function documentRepository(
               // NULL is the honest value for every document that is no claim.
               paymentState: payable ? paymentState(claim, paid) : null,
               openMinor: payable ? openMinorOf(claim, paid) : null,
+              // BKP019.c3.2: the settlement axis, answered for every row - NULL
+              // where it does not apply, so no reader has to guess a shape.
+              invoiceRole: (invoiceRole as InvoiceRole | null) ?? null,
+              depositAppliedMinor:
+                depositAppliedMinor === null ||
+                depositAppliedMinor === undefined
+                  ? null
+                  : Number(depositAppliedMinor),
+              // Only a final invoice shows what arrived on its advances; every
+              // other row answers NULL instead of a derived zero of its own.
+              depositPaidMinor:
+                (invoiceRole as InvoiceRole | null) === 'final'
+                  ? Number(depositPaidMinor ?? 0)
+                  : null,
               // Derived, never stored: the deadline and the tenant day decide.
               offerExpired: offerExpired(
                 validUntil,
@@ -1707,6 +1943,125 @@ export function documentRepository(
       });
       return (await readOne(db, id))!;
     },
+    // BKP019.c3.2: the same finalized confirmation can be billed as the *final*
+    // invoice, which settles the advances already billed on it. The role is the
+    // one difference to c1: it stays the same kind of document, owns the same RE
+    // number circle and prints the full order amount plus a settlement block, so
+    // no second document kind and no second numbering were invented.
+    // The order of the checks is the contract, exactly like `createInvoice`:
+    //   1. missing row      -> not_found
+    //   2. wrong kind       -> invalid_kind (only a confirmation is billable)
+    //   3. withdrawn order  -> order_withdrawn (also a withdrawn source state)
+    //   4. not final yet    -> invalid_state (a draft can still move)
+    //   5. stale version    -> conflict (nothing copied, nothing written)
+    //   6. unusable source  -> missing_reference / empty_lines
+    //   7. duplicate        -> duplicate, decided by the partial unique index:
+    //      `documents_one_invoice` stays untouched, so a confirmation carries
+    //      exactly one invoice - the standard one or the final one.
+    async createFinalInvoice(
+      actorId: string,
+      confirmationId: string,
+      expectedVersion: number,
+    ) {
+      const id = randomUUID();
+      try {
+        await db.transaction(async (tx) => {
+          await lockTenant(tx, tenantId);
+          await requireAdministrator(tx, tenantId, actorId);
+          // The confirmation row is locked, so a simultaneous withdrawal can
+          // never slip between the order check and the copy.
+          const [confirmation] = await tx
+            .select()
+            .from(documents)
+            .where(and(scope, eq(documents.id, confirmationId)))
+            .for('update');
+          if (!confirmation) throw new DocumentError('not_found');
+          if (confirmation.kind !== 'order_confirmation')
+            throw new DocumentError('invalid_kind');
+          if (confirmation.state === 'withdrawn')
+            throw new DocumentError('order_withdrawn');
+          if (confirmation.state !== 'final')
+            throw new DocumentError('invalid_state');
+          if (confirmation.version !== expectedVersion)
+            throw new DocumentError('conflict');
+          const source = await offerStateOf(tx, confirmationId);
+          if (source.sourceDocumentId) {
+            const executor = database(tx) as unknown as {
+              execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+            };
+            const withdrawnSource = (await executor.execute(sql`
+              SELECT 1 FROM documents c
+                JOIN documents o
+                  ON o.tenant_id = c.tenant_id
+                 AND o.id = c.source_document_id
+               WHERE c.tenant_id = ${tenantId} AND c.id = ${confirmationId}
+                 AND o.offer_status = 'withdrawn'`)) as { rows: unknown[] };
+            if (withdrawnSource.rows.length)
+              throw new DocumentError('order_withdrawn');
+          }
+          if (!confirmation.eventId || !confirmation.contactId)
+            throw new DocumentError('missing_reference');
+          if (
+            confirmation.introText === null ||
+            confirmation.outroText === null ||
+            confirmation.validityDays === null
+          )
+            throw new DocumentError('missing_reference');
+          const lines = await tx
+            .select(lineColumns)
+            .from(documentLines)
+            .where(
+              and(
+                eq(documentLines.tenantId, tenantId),
+                eq(documentLines.documentId, confirmationId),
+              ),
+            )
+            .orderBy(asc(documentLines.position));
+          if (!lines.length) throw new DocumentError('empty_lines');
+          // Sums are recomputed from the copied gross prices, so the printed gross
+          // is the order's own amount - the deduction is printed separately and
+          // never bends a position.
+          const totals = documentTotals(lines),
+            at = now();
+          await tx.execute(sql`INSERT INTO documents
+              (tenant_id, id, kind, template_id, event_id, contact_id, number,
+               state, issued_at, finalized_at, subject, intro_text, outro_text,
+               validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
+               gross_minor, version, source_document_id, invoice_role)
+            VALUES (
+              ${tenantId}, ${id}::uuid, 'invoice', NULL,
+              ${confirmation.eventId}::uuid, ${confirmation.contactId}::uuid,
+              NULL, 'draft', ${at}, NULL,
+              ${'Rechnung für {{contact}}'}, ${confirmation.introText},
+              ${confirmation.outroText}, ${confirmation.validityDays},
+              NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
+              ${totals.grossMinor}, 1, ${confirmationId}::uuid, 'final')`);
+          await tx.insert(documentLines).values(
+            lines.map((line, position) => ({
+              tenantId,
+              documentId: id,
+              id: randomUUID(),
+              position,
+              productId: line.productId,
+              description: line.description,
+              quantity: line.quantity,
+              unit: line.unit,
+              unitPriceMinor: line.unitPriceMinor,
+              taxBasisPoints: line.taxBasisPoints,
+              discountBasisPoints: line.discountBasisPoints,
+            })),
+          );
+          await appendAudit(tx, tenantId, 'document.created', actorId, id);
+        });
+      } catch (error) {
+        // The untouched one-invoice index is the duplicate guard: a confirmation
+        // that already carries an invoice - standard or final - is refused, and
+        // the first one keeps its number and its bytes.
+        if (uniqueViolation(error)) throw new DocumentError('duplicate');
+        throw error;
+      }
+      return (await readOne(db, id))!;
+    },
     // BKP019.c2: a finalized invoice (or order confirmation) is corrected by its
     // own follow-up document. The direction lives on the document and every
     // stored amount stays a magnitude, so the original keeps its number, its
@@ -1999,6 +2354,13 @@ export function documentRepository(
         // stays editable and two partial credits can coexist.
         if (document.kind === 'correction')
           await assertCorrectionCredit(tx, document);
+        // BKP019.c3.2b: a settlement is bounded by the claim of its order. The
+        // order of the checks is the contract - not found, version, state,
+        // content, money - and this one runs after the `conflict` above and
+        // before the number, the PDF and the frozen deduction exist. A refusal
+        // therefore leaves the draft, its version and the number range untouched.
+        if (document.kind === 'invoice')
+          await assertSettlementWithinOrder(tx, document);
         const at = now();
         try {
           const completeDocument = await readOne(tx, id);
@@ -2057,6 +2419,22 @@ export function documentRepository(
               version: document.version + 1,
             })
             .where(and(scope, eq(documents.id, id)));
+          // BKP019.c3.2: the settlement of a final invoice is frozen here, in the
+          // same transaction as the number and the bytes. The sum is the gross of
+          // the advances that are *billed* at this instant - never the payments
+          // received - so the printed "Zu zahlender Betrag" and the claim of the
+          // payment balance can never drift apart. The paper is already printed
+          // with the same value, because the render read it under this lock.
+          if (document.kind === 'invoice') {
+            const settlement = await settlementOf(tx, id);
+            if (settlement.role === 'final' && settlement.sourceDocumentId) {
+              const sums = await depositSums(tx, settlement.sourceDocumentId);
+              await tx.execute(
+                sql`UPDATE documents SET deposit_applied_minor = ${sums.applied}
+                     WHERE tenant_id = ${tenantId} AND id = ${id}`,
+              );
+            }
+          }
           // BKP019.0: the deadline the PDF already prints is frozen at this
           // instant and never recalculated. Every later status change keeps the
           // same bytes, and the same number still means the same day.
@@ -2304,6 +2682,20 @@ export function registerDocumentRoutes(
       anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
     },
   };
+  // BKP019.c3.2: the settlement axis, like every axis before it in the opt-in
+  // projection only. `invoiceRole` names the role, `depositAppliedMinor` the
+  // frozen deduction and `depositPaidMinor` what arrived on the settled advances.
+  const settlementFields = {
+    invoiceRole: {
+      anyOf: [{ type: 'string', enum: [...invoiceRoles] }, { type: 'null' }],
+    },
+    depositAppliedMinor: {
+      anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+    },
+    depositPaidMinor: {
+      anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+    },
+  };
   const row = {
     type: 'object',
     additionalProperties: false,
@@ -2419,6 +2811,9 @@ export function registerDocumentRoutes(
       // BKP019.c2: the credit note would exceed what is still open.
       if (error.reason === 'credit_exceeds_invoice')
         return reply.code(409).send({ error: 'credit_exceeds_invoice' });
+      // BKP019.c3.2b: the settlement would exceed the order it settles.
+      if (error.reason === 'deposits_exceed_order')
+        return reply.code(409).send({ error: 'deposits_exceed_order' });
       if (error.reason === 'duplicate')
         return reply.code(409).send({ error: 'duplicate' });
       if (error.reason === 'artifact_failed')
@@ -2663,12 +3058,14 @@ export function registerDocumentRoutes(
       ...Object.keys(offerFields),
       ...Object.keys(correctionFields),
       ...Object.keys(paymentFields),
+      ...Object.keys(settlementFields),
     ],
     properties: {
       ...listRow.properties,
       ...offerFields,
       ...correctionFields,
       ...paymentFields,
+      ...settlementFields,
     },
   };
   app.get<{ Querystring: DocumentFilters }>(
@@ -2821,6 +3218,40 @@ export function registerDocumentRoutes(
           .code(201)
           .send(
             await repo.createDepositInvoice(
+              request.authSession!.userId,
+              request.params.id,
+              request.body.version,
+            ),
+          );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // BKP019.c3.2: the final invoice is derived from a finalized confirmation too.
+  // Same auth, CSRF, tenant lock, version guard and audit path as every other
+  // document write; the body carries only the version, because the deduction is
+  // calculated from the billed advances and never typed.
+  app.post<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/documents/:id/final-invoice',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version: { type: 'integer', minimum: 1 } },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createFinalInvoice(
               request.authSession!.userId,
               request.params.id,
               request.body.version,

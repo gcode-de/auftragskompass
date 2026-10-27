@@ -83,6 +83,31 @@ export type DocumentLayoutInput = {
    * keeps byte-identical HTML. `save` strips it, and no route accepts it.
    */
   correctionReference?: DocumentCorrectionReference;
+  /**
+   * BKP019.c3.2: the settlement block of a final invoice - the same kind of print
+   * option as the correction reference. Only a final invoice with a source
+   * carries it, so every other document keeps byte-identical HTML.
+   */
+  depositReference?: DocumentDepositReference;
+};
+
+/**
+ * BKP019.c3.2: what a final invoice prints about the advances it settles. All
+ * three amounts are gross magnitudes in minor units; the deduction is the frozen
+ * sum of the finalized advances, and "davon geleistet" is a display value that is
+ * read at render time and never deducted a second time.
+ */
+export type DocumentDepositReference = {
+  /** Number of the confirmation the settled advances belong to. */
+  number: string;
+  /** Its issue date, already formatted the way the PDF prints dates. */
+  date: string;
+  /** Frozen deduction: the gross of the finalized advances of that order. */
+  appliedMinor: number;
+  /** Payments recorded on exactly those advances - display only. */
+  paidMinor: number;
+  /** This invoice's printed gross minus the deduction. */
+  payableMinor: number;
 };
 
 /**
@@ -177,6 +202,9 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
     // stores - the negation happens here, never in `document-totals` and never
     // in the row. Positive amounts stay positive for a debit.
     reference = layout.correctionReference,
+    // BKP019.c3.2: the settlement block of a final invoice. Every amount is a
+    // gross magnitude; nothing here is signed and nothing is deducted twice.
+    settlement = layout.depositReference,
     sign = reference?.direction === 'credit' ? -1 : 1,
     printed = (minor: number) => sign * minor,
     rows = input.lines.map((line, index) => {
@@ -283,8 +311,25 @@ ${taxRows}
       <tr><td>Brutto</td><td>${formatMinorUnits(printed(totals.grossMinor))} €</td></tr>
     </table>
 ${
-  reference
-    ? `    <table class="totals">
+  settlement
+    ? `    <p>Schlussrechnung zu ${escapeHtml(settlement.number)} vom ${escapeHtml(
+        settlement.date,
+      )}</p>
+    <table class="totals">
+      <tr><td>Anzahlungen gesamt</td><td>${formatMinorUnits(
+        settlement.appliedMinor,
+      )} €</td></tr>
+      <tr><td>davon geleistet</td><td>${formatMinorUnits(
+        settlement.paidMinor,
+      )} €</td></tr>
+      <tr><td>Zu zahlender Betrag</td><td>${formatMinorUnits(
+        settlement.payableMinor,
+      )} €</td></tr>
+    </table>\n`
+    : ''
+}${
+    reference
+      ? `    <table class="totals">
       <tr><td>Rechnungsbetrag</td><td>${formatMinorUnits(reference.sourceGrossMinor)} €</td></tr>
       <tr><td>${
         reference.direction === 'credit'
@@ -297,8 +342,8 @@ ${
         reference.correctedGrossMinor,
       )} €</td></tr>
     </table>\n`
-    : ''
-}    <p>${lines(renderTemplate(input.outroText, input.values))}</p>
+      : ''
+  }    <p>${lines(renderTemplate(input.outroText, input.values))}</p>
   </body>
 </html>
 `;

@@ -196,6 +196,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
     // BKP019.0: the offer status flow needs real artefact bytes, so the store
     // keeps the synthetic PDF in memory instead of pretending a write.
     const documentArtifacts = new Map<string, Buffer>();
+    // BKP019.c3.2: the settlement block is a printed fact, and the synthetic
+    // renderer would only keep its length. The HTML is captured here so the end
+    // of the flow can assert the block that the PDF of this run was made from.
+    const renderedHtml: string[] = [];
     registerDocumentRoutes(app, pool, config.tenantId, {
       origin,
       store: {
@@ -211,8 +215,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
           documentArtifacts.delete(key);
         },
       },
-      render: async (html: string) =>
-        Buffer.from('%PDF-1.4 synthetic ' + html.length),
+      render: async (html: string) => {
+        renderedHtml.push(html);
+        return Buffer.from('%PDF-1.4 synthetic ' + html.length);
+      },
     });
     // BKP019.d: incoming payments are their own route pair next to the document
     // routes, guarded by the same auth and CSRF hook.
@@ -1322,22 +1328,24 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         name: 'Auftragsbestätigung ' + confirmedNumber + ' als PDF öffnen',
       }),
     ).toHaveAttribute('href', '/api/v1/documents/' + confirmation.id + '/pdf');
-    // A second invoice is explained, never silently written twice.
-    await orders
-      .getByRole('button', {
-        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung erstellen',
-      })
-      .click();
-    await orders
-      .getByRole('button', {
-        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung anlegen',
-      })
-      .click();
+    // A second invoice is impossible, and the screen says so instead of offering
+    // a step that can only end in a conflict: BKP019.c3.2 makes the one-invoice
+    // rule visible, because a confirmation now carries either the standard or the
+    // final invoice.
     await expect(
-      page.getByText(
-        'Für diese Auftragsbestätigung gibt es bereits eine Rechnung.',
-      ),
-    ).toBeVisible();
+      orders.getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung erstellen',
+      }),
+    ).toHaveCount(0);
+    await expect(
+      orders.getByRole('button', {
+        name:
+          'Auftragsbestätigung ' +
+          confirmedNumber +
+          ' Schlussrechnung erstellen',
+      }),
+    ).toHaveCount(0);
+    await expect(orders.getByText(/trägt bereits eine Rechnung/)).toBeVisible();
     expect(await invoiceCount()).toBe(1);
     // Finalizing uses the invoice's own number range.
     await invoices
@@ -1639,9 +1647,10 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       name: 'Anzahlungsrechnungen',
     });
     await expect(deposits.getByRole('listitem')).toHaveCount(1);
-    // The gap is named, not implied away: no netting against a final invoice yet.
+    // The rule is named, not implied away: the final invoice takes the billed
+    // advances over, and until then every advance stays its own open claim.
     await expect(
-      deposits.getByText(/Verrechnung mit der Schlussrechnung fehlt noch/),
+      deposits.getByText(/Verrechnung übernimmt die Schlussrechnung/),
     ).toBeVisible();
     const deposit = (
       await pool.query<{
@@ -2137,6 +2146,334 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
       );
       expect(refused.status(), method).toBe(404);
     }
+    // BKP019.c3.2: the same order is also billed as the *final* invoice, which
+    // settles the advances already billed on it. A third chain is used because a
+    // confirmation carries exactly one invoice, standard or final.
+    await eventOffers
+      .getByLabel('Vorlage')
+      .selectOption({ label: 'Fictional browser offer' });
+    await eventOffers.getByRole('button', { name: 'Entwurf anlegen' }).click();
+    await expect(page.getByText('Entwurf angelegt.')).toBeVisible();
+    await eventOffers
+      .getByRole('button', { name: 'Angebot Entwurf finalisieren' })
+      .click();
+    await expect(page.getByText(/Finalisiert als AN-/)).toBeVisible();
+    const settlementOfferNumber = (
+      await pool.query<{ number: string }>(
+        `SELECT number FROM documents
+          WHERE tenant_id=$1 AND event_id=$2 AND kind='offer' AND number IS NOT NULL
+          ORDER BY number DESC LIMIT 1`,
+        [config.tenantId, offerEventId],
+      )
+    ).rows[0]!.number;
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + settlementOfferNumber + ' versendet markieren',
+      })
+      .click();
+    await expect(
+      page.getByText('Angebotsstatus aktualisiert: Versendet.'),
+    ).toBeVisible();
+    await eventOffers
+      .getByRole('button', {
+        name: 'Angebot ' + settlementOfferNumber + ' annehmen',
+      })
+      .click();
+    const settlementAcceptance = eventOffers.getByRole('form', {
+      name: 'Annahme erfassen',
+    });
+    await settlementAcceptance.getByLabel('Kanal').selectOption('email');
+    await settlementAcceptance
+      .getByRole('button', { name: 'Annahme speichern' })
+      .click();
+    await expect(
+      page.getByText('Angebotsstatus aktualisiert: Angenommen.'),
+    ).toBeVisible();
+    await eventOffers
+      .getByRole('button', {
+        name:
+          'Angebot ' + settlementOfferNumber + ' Auftragsbestätigung erstellen',
+      })
+      .click();
+    await eventOffers
+      .getByRole('button', {
+        name:
+          'Angebot ' + settlementOfferNumber + ' Auftragsbestätigung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText('Auftragsbestätigung als Entwurf angelegt.'),
+    ).toBeVisible();
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung Entwurf finalisieren',
+      })
+      .click();
+    await expect(page.getByText(/Finalisiert als AB-/)).toBeVisible();
+    const settlementConfirmation = (
+      await pool.query<{ id: string; number: string }>(
+        `SELECT id, number FROM documents
+          WHERE tenant_id=$1 AND event_id=$2 AND kind='order_confirmation'
+            AND state='final'
+          ORDER BY number DESC LIMIT 1`,
+        [config.tenantId, offerEventId],
+      )
+    ).rows[0]!;
+    expect(settlementConfirmation.number).toMatch(/^AB-\d{4}-\d{4}$/);
+    const payloadOf = async (id: string) =>
+        await (
+          await page.request.get(origin + '/api/v1/documents/' + id + '/pdf')
+        ).body(),
+      settlementConfirmationPdf = await payloadOf(settlementConfirmation.id);
+    // One advance is created through the UI, reduced to the agreed amount in the
+    // shared draft editor - the amount is the operator's decision, not a
+    // percentage - and then frozen with its own number.
+    const settlementDeposit = async (price: string) => {
+      await orders
+        .getByRole('button', {
+          name:
+            'Auftragsbestätigung ' +
+            settlementConfirmation.number +
+            ' Anzahlung erstellen',
+        })
+        .click();
+      await orders
+        .getByRole('button', {
+          name:
+            'Auftragsbestätigung ' +
+            settlementConfirmation.number +
+            ' Anzahlung anlegen',
+        })
+        .click();
+      await expect(
+        page.getByText('Anzahlungsrechnung als Entwurf angelegt.'),
+      ).toBeVisible();
+      const draftId = (
+        await pool.query<{ id: string }>(
+          `SELECT id FROM documents
+            WHERE tenant_id=$1 AND kind='deposit_invoice' AND state='draft'
+              AND source_document_id=$2
+            ORDER BY issued_at DESC LIMIT 1`,
+          [config.tenantId, settlementConfirmation.id],
+        )
+      ).rows[0]!.id;
+      await deposits
+        .getByRole('button', {
+          name: 'Anzahlungsrechnung Entwurf bearbeiten',
+        })
+        .click();
+      const depositEditor = deposits.locator('.offer-draft-editor');
+      await expect(
+        depositEditor.getByRole('heading', {
+          name: 'Anzahlungsrechnung bearbeiten',
+        }),
+      ).toBeVisible();
+      await depositEditor
+        .getByLabel('Einzelpreis (Brutto) in Euro')
+        .fill(price);
+      await depositEditor
+        .getByRole('button', { name: 'Änderungen speichern' })
+        .click();
+      await expect(
+        depositEditor.getByText('Änderungen gespeichert.'),
+      ).toBeVisible();
+      await deposits
+        .getByRole('button', {
+          name: 'Anzahlungsrechnung Entwurf finalisieren',
+        })
+        .click();
+      await expect(page.getByText(/Finalisiert als AZ-/)).toBeVisible();
+      const number = (
+        await pool.query<{ number: string }>(
+          'SELECT number FROM documents WHERE tenant_id=$1 AND id=$2',
+          [config.tenantId, draftId],
+        )
+      ).rows[0]!.number;
+      return { id: draftId, number, pdf: await payloadOf(draftId) };
+    };
+    const firstAdvance = await settlementDeposit('30,00'),
+      secondAdvance = await settlementDeposit('10,00');
+    // 20,00 EUR of the first 30,00 EUR advance arrived: the printed block will
+    // show 40,00 EUR billed and 20,00 EUR paid.
+    await deposits
+      .getByRole('listitem')
+      .filter({ hasText: firstAdvance.number })
+      .getByRole('button', {
+        name: 'Anzahlungsrechnung ' + firstAdvance.number + ' Zahlung erfassen',
+      })
+      .click();
+    const advancePayment = deposits.getByRole('form', {
+      name: 'Zahlung erfassen',
+    });
+    await advancePayment.getByLabel('Betrag in €').fill('20,00');
+    await advancePayment.getByLabel('Zahlweg').selectOption('bank_transfer');
+    await advancePayment
+      .getByRole('button', { name: 'Zahlung speichern' })
+      .click();
+    await expect(page.getByText('Zahlung erfasst.')).toBeVisible();
+    // The final invoice is one explicit step, and it writes nothing before the
+    // operator confirms it.
+    const finalInvoiceCount = async () =>
+      (
+        await pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM documents
+            WHERE tenant_id=$1 AND kind='invoice' AND invoice_role='final'`,
+          [config.tenantId],
+        )
+      ).rows[0]!.count;
+    await orders
+      .getByRole('button', {
+        name:
+          'Auftragsbestätigung ' +
+          settlementConfirmation.number +
+          ' Schlussrechnung erstellen',
+      })
+      .click();
+    await expect(
+      orders.getByRole('button', {
+        name:
+          'Auftragsbestätigung ' +
+          settlementConfirmation.number +
+          ' Schlussrechnung anlegen',
+      }),
+    ).toBeVisible();
+    expect(await finalInvoiceCount()).toBe(0);
+    await orders
+      .getByRole('button', {
+        name:
+          'Auftragsbestätigung ' +
+          settlementConfirmation.number +
+          ' Schlussrechnung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText('Schlussrechnung als Entwurf angelegt.'),
+    ).toBeVisible();
+    // The invoice card already lists more than one invoice, so the new row is
+    // found by its role instead of by position - the same way an operator reads
+    // it, and never by "the last one".
+    const settlementRow = invoices
+      .getByRole('listitem')
+      .filter({ hasText: 'Schlussrechnung' });
+    // The role, the source and the rule are visible before the print; the
+    // amounts appear only when the deduction is frozen.
+    await expect(settlementRow.getByText('Schlussrechnung')).toBeVisible();
+    await expect(
+      settlementRow.getByText(/Aus Auftragsbestätigung/),
+    ).toBeVisible();
+    await expect(
+      settlementRow.getByText(/werden beim Finalisieren brutto verrechnet/),
+    ).toBeVisible();
+    await expect(
+      settlementRow.getByRole('button', {
+        name: 'Schlussrechnung Entwurf finalisieren',
+      }),
+    ).toBeVisible();
+    expect(
+      await (
+        await page.request.get(
+          origin + '/api/v1/documents/' + settlementConfirmation.id + '/pdf',
+        )
+      ).status(),
+    ).toBe(200);
+    await settlementRow
+      .getByRole('button', { name: 'Schlussrechnung Entwurf finalisieren' })
+      .click();
+    await expect(page.getByText(/Finalisiert als RE-/)).toBeVisible();
+    const settlementInvoice = (
+      await pool.query<{
+        id: string;
+        number: string;
+        invoice_role: string;
+        deposit_applied_minor: string;
+        gross_minor: string;
+      }>(
+        `SELECT id, number, invoice_role, deposit_applied_minor::text AS deposit_applied_minor,
+                gross_minor::text AS gross_minor
+           FROM documents
+          WHERE tenant_id=$1 AND kind='invoice' AND invoice_role='final'`,
+        [config.tenantId],
+      )
+    ).rows[0]!;
+    // The deduction is frozen at finalization, the gross stays the order's own.
+    expect(settlementInvoice.invoice_role).toBe('final');
+    expect(settlementInvoice.deposit_applied_minor).toBe('4000');
+    expect(settlementInvoice.gross_minor).toBe(
+      (
+        await pool.query<{ gross_minor: string }>(
+          'SELECT gross_minor::text AS gross_minor FROM documents WHERE tenant_id=$1 AND id=$2',
+          [config.tenantId, settlementConfirmation.id],
+        )
+      ).rows[0]!.gross_minor,
+    );
+    // The row now names the frozen deduction and what arrived on the advances.
+    await expect(
+      settlementRow.getByText(/Anzahlungen verrechnet: 40,00 €/),
+    ).toBeVisible();
+    await expect(
+      settlementRow.getByText(/davon geleistet: 20,00 €/),
+    ).toBeVisible();
+    // The printed block is the one this run rendered: 40,00 EUR billed advances,
+    // 20,00 EUR of them paid, 60,00 EUR to pay.
+    const settlementBlock = (
+      renderedHtml.at(-1)!.split('Anzahlungen gesamt')[1] ?? ''
+    ).split('</table>')[0]!;
+    expect(settlementBlock).toContain('40,00 €');
+    expect(settlementBlock).toContain('davon geleistet');
+    expect(settlementBlock).toContain('20,00 €');
+    expect(settlementBlock).toContain('Zu zahlender Betrag');
+    expect(settlementBlock).toContain('60,00 €');
+    // A partial payment up to the printed remainder, then one cent too much.
+    const printedRow = invoices
+      .getByRole('listitem')
+      .filter({ hasText: settlementInvoice.number });
+    await expect(printedRow.getByText('Offen', { exact: true })).toBeVisible();
+    await expect(printedRow.getByText(/Offener Betrag: 60,00 €/)).toBeVisible();
+    await printedRow
+      .getByRole('button', {
+        name:
+          'Schlussrechnung ' + settlementInvoice.number + ' Zahlung erfassen',
+      })
+      .click();
+    const settlementPayment = invoices.getByRole('form', {
+      name: 'Zahlung erfassen',
+    });
+    await settlementPayment.getByLabel('Betrag in €').fill('30,00');
+    await settlementPayment.getByLabel('Zahlweg').selectOption('cash');
+    await settlementPayment
+      .getByRole('button', { name: 'Zahlung speichern' })
+      .click();
+    await expect(page.getByText('Zahlung erfasst.')).toBeVisible();
+    await expect(
+      printedRow.getByText('Teilweise bezahlt', { exact: true }),
+    ).toBeVisible();
+    await expect(printedRow.getByText(/Offener Betrag: 30,00 €/)).toBeVisible();
+    await settlementPayment.getByLabel('Betrag in €').fill('30,01');
+    await settlementPayment
+      .getByRole('button', { name: 'Zahlung speichern' })
+      .click();
+    await expect(
+      page.getByText(
+        'Der Betrag übersteigt den offenen Restbetrag. Bitte Betrag prüfen.',
+      ),
+    ).toBeVisible();
+    await expect(printedRow.getByText(/Offener Betrag: 30,00 €/)).toBeVisible();
+    // Nothing above moved: the confirmation and both advances keep their bytes,
+    // and the final invoice itself is frozen too.
+    expect(
+      (await payloadOf(settlementConfirmation.id)).equals(
+        settlementConfirmationPdf,
+      ),
+    ).toBe(true);
+    expect((await payloadOf(firstAdvance.id)).equals(firstAdvance.pdf)).toBe(
+      true,
+    );
+    expect((await payloadOf(secondAdvance.id)).equals(secondAdvance.pdf)).toBe(
+      true,
+    );
+    const settlementInvoicePdf = await payloadOf(settlementInvoice.id);
+    expect(settlementInvoicePdf.subarray(0, 5).toString()).toBe('%PDF-');
+    await audit('event-schlussrechnung');
     // The fixture is removed by hand and in dependency order: the application
     // deliberately has no delete path for money, and the foreign key does not
     // cascade.

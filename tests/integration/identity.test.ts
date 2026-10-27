@@ -42,7 +42,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   expect(applied).toEqual(expected);
   // BKP019.c3.1: an advance payment is a claim of its own, so its source link
   // joins the same column. The blank-deposit path did not widen anything.
-  expect(applied.at(-1)!.name).toBe('0045_deposit_source.sql');
+  // BKP019.c3.2: the final invoice adds two additive columns and no backfill, so
+  // this stays the last migration and the invoice index is untouched below.
+  expect(applied.at(-1)!.name).toBe('0046_final_invoice.sql');
   // The source is a document of the same tenant, never another tenant's row.
   const sourceForeignKey = (
     await pool.query<{ def: string }>(
@@ -71,6 +73,68 @@ test('migrations serialize, restart safely and detect changed history', async ()
   ).rows[0]!.indexdef;
   expect(invoiceIndex).toContain('(tenant_id, source_document_id)');
   expect(invoiceIndex).toContain("WHERE (kind = 'invoice'::text)");
+  // BKP019.c3.2: the final invoice is the same kind with a role, so the
+  // one-invoice rule is deliberately NOT split: one confirmation carries exactly
+  // one invoice, standard or final. Only two columns and three CHECKs are new.
+  const roleCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_invoice_role_check'",
+    )
+  ).rows[0]!.def;
+  expect(roleCheck).toContain('(invoice_role IS NULL)');
+  expect(roleCheck).toContain(
+    "((invoice_role = 'final'::text) AND (kind = 'invoice'::text))",
+  );
+  const appliedCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_deposit_applied_check'",
+    )
+  ).rows[0]!.def;
+  expect(appliedCheck).toContain('deposit_applied_minor >= 0');
+  expect(appliedCheck).toContain(
+    "deposit_applied_minor <= '9007199254740991'::bigint",
+  );
+  // The CASE keeps the rule NULL-safe: without a role no amount may exist, with
+  // the role the amount is a bounded magnitude or still unfrozen.
+  expect(appliedCheck).toContain(
+    'WHEN (invoice_role IS NULL) THEN (deposit_applied_minor IS NULL)',
+  );
+  const appliedFinalCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_deposit_applied_final_check'",
+    )
+  ).rows[0]!.def;
+  expect(appliedFinalCheck).toContain(
+    "deposit_applied_minor IS NULL) OR (state = 'final'::text)",
+  );
+  const settlementColumns = (
+    await pool.query<{
+      column_name: string;
+      data_type: string;
+      is_nullable: string;
+      column_default: string | null;
+    }>(
+      `SELECT column_name, data_type, is_nullable, column_default
+         FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='documents'
+          AND column_name IN ('invoice_role','deposit_applied_minor')
+        ORDER BY column_name`,
+    )
+  ).rows;
+  expect(settlementColumns).toEqual([
+    {
+      column_name: 'deposit_applied_minor',
+      data_type: 'bigint',
+      is_nullable: 'YES',
+      column_default: null,
+    },
+    {
+      column_name: 'invoice_role',
+      data_type: 'text',
+      is_nullable: 'YES',
+      column_default: null,
+    },
+  ]);
   const sourceKindCheck = (
     await pool.query<{ def: string }>(
       "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_source_kind_check'",
