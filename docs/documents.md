@@ -478,9 +478,25 @@ künftige Zahlungsverrechnung gilt rechnerisch:
 `offener Saldo = Bruttobetrag + Σ Lastschriften − Σ Gutschriften − Σ Zahlungen`.
 
 **Ehrliche Grenzen:** Korrekturen von Korrekturen (Ketten) sind noch nicht
-möglich; Anzahlungs-, Schlussrechnung und Zahlungsbuchung fehlen weiter;
+möglich; die Schlussrechnung mit Verrechnung fehlt weiter (c3.2);
 Korrektur-Vorlagen erzeugen bewusst keine Entwürfe (nur der Quellpfad);
 es wird keine Rechts- oder Steuerbehauptung aufgestellt.
+
+### Anzahlungsrechnung (BKP019.c3.1, RG-02)
+
+Aus einer finalen Auftragsbestätigung entsteht mit „Anzahlung erstellen“ eine
+**Anzahlungsrechnung** (`AZ-`-Nummernkreis): Positionen 1:1 als
+Betragsmagnituden, Summen exakt wie die Quelle, Betreff „Anzahlungsrechnung
+für {{contact}}“ – der Entwurf bleibt bearbeitbar, die Anzahlungshöhe entsteht
+durch Kürzen der Positionen. **Mehrere Anzahlungen je Auftrag sind erlaubt**
+(Raten); ein Doppelklick erzeugt genau eine. Anzahlungen sind zahlbar
+(Zahlungseingänge wie bei Rechnungen, Zahlungsstand/„Offener Betrag“),
+korrigierbar (Korrektur-/Stornobelege wie bei Rechnungen) und tragen ihre
+Quelle („Aus Auftragsbestätigung AB-…“). **Ehrliche Grenze:** die Verrechnung
+geleisteter Anzahlungen in einer Schlussrechnung (RG-03) kommt mit c3.2 –
+bis dahin weist keine Schlussrechnung Anzahlungen aus; die Karten sagen das
+ausdrücklich. Eine Anzahlung aus einer reinen Vorlage (ohne Bestätigung)
+bleibt möglich, ist aber weder verrechenbar noch quellenbezogen.
 
 ## Dokumentvorlagen verwalten (BKP015.4)
 

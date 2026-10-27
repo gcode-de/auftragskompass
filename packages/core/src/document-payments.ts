@@ -33,7 +33,8 @@ export class DocumentPaymentError extends Error {
     readonly reason:
       // Not this tenant's document, or no document at all.
       | 'not_found'
-      // Only an invoice is a claim; a confirmation or a correction is not.
+      // Only an invoice or a deposit invoice is a claim; a confirmation or a
+      // correction is not.
       | 'invalid_kind'
       // A draft can still move, so it carries no claim to pay.
       | 'invalid_state'
@@ -278,9 +279,9 @@ export function documentPaymentRepository(
   }
 
   return {
-    // Only a finalized invoice of this tenant takes a payment. The amount is
-    // checked against the open balance under the tenant lock, so two simultaneous
-    // payments can never both fit into the same claim.
+    // Only a finalized invoice or deposit invoice of this tenant takes a payment.
+    // The amount is checked against the open balance under the tenant lock, so two
+    // simultaneous payments can never both fit into the same claim.
     async record(actorId: string, documentId: string, input: PaymentInput) {
       const at = now();
       return db.transaction(async (tx) => {
@@ -297,7 +298,9 @@ export function documentPaymentRepository(
         if (!document) throw new DocumentPaymentError('not_found');
         // The order of the checks is the contract, exactly like the document
         // writes: kind, then maturity, then the four typed fields, then money.
-        if (document.kind !== 'invoice')
+        // BKP019.c3.1: a finalized deposit invoice is a claim of its own, so the
+        // customer's advance is paid on it - and only on it, never on the order.
+        if (document.kind !== 'invoice' && document.kind !== 'deposit_invoice')
           throw new DocumentPaymentError('invalid_kind');
         if (document.state !== 'final')
           throw new DocumentPaymentError('invalid_state');

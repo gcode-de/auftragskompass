@@ -232,9 +232,12 @@ function percentInvalid(value: string) {
 // else keeps the offer wording that existed before.
 // BKP019.c2b: a correction draft is a draft like any other, so it is corrected
 // here too - a wrong position must not be fixable only through the API.
+// BKP019.c3.1: a deposit draft is corrected here as well; the heading names the
+// advance so no invoice or offer wording can leak onto it.
 function editorHeading(kind: string | undefined) {
   if (kind === 'order_confirmation') return 'Auftragsbestätigung bearbeiten';
   if (kind === 'correction') return 'Rechnungskorrektur bearbeiten';
+  if (kind === 'deposit_invoice') return 'Anzahlungsrechnung bearbeiten';
   return kind === 'invoice' ? 'Rechnung bearbeiten' : 'Angebot bearbeiten';
 }
 
@@ -243,6 +246,8 @@ function editorDiscardMessage(kind: string | undefined) {
     return 'Ungespeicherte Änderungen an der Auftragsbestätigung verwerfen?';
   if (kind === 'correction')
     return 'Ungespeicherte Änderungen an der Rechnungskorrektur verwerfen?';
+  if (kind === 'deposit_invoice')
+    return 'Ungespeicherte Änderungen an der Anzahlungsrechnung verwerfen?';
   return kind === 'invoice'
     ? 'Ungespeicherte Rechnungsänderungen verwerfen?'
     : 'Ungespeicherte Angebotsänderungen verwerfen?';

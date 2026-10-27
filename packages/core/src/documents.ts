@@ -1127,7 +1127,11 @@ export function documentRepository(
             // BKP019.d: only a finalized invoice is a claim and can be paid. The
             // claim is `gross + debits - credits`; what is open subtracts the
             // payments. Both stay magnitudes and are never stored.
-            const payable = row.kind === 'invoice' && row.state === 'final',
+            // BKP019.c3.1: a finalized deposit invoice is a claim of its own, so
+            // the same two derived values describe it. Nothing else widened.
+            const payable =
+                (row.kind === 'invoice' || row.kind === 'deposit_invoice') &&
+                row.state === 'final',
               claim =
                 row.grossMinor +
                 Number(debitedGrossMinor ?? 0) -
@@ -1583,6 +1587,126 @@ export function documentRepository(
       }
       return (await readOne(db, id))!;
     },
+    // BKP019.c3.1: a finalized confirmation can also be invoiced in advance. The
+    // advance is its own document with the AZ number range and a link to the
+    // confirmation; it starts as an editable draft, in which the operator reduces
+    // the copied order to the agreed deposit - the amount is the operator's
+    // decision, not a derived percentage of this slice.
+    // The order of the checks is the contract, exactly like `createInvoice`:
+    //   1. missing row      -> not_found
+    //   2. wrong kind       -> invalid_kind (only a confirmation is billable)
+    //   3. withdrawn order  -> order_withdrawn (also a withdrawn source state)
+    //   4. not final yet    -> invalid_state (a draft can still move)
+    //   5. stale version    -> conflict (nothing copied, nothing written)
+    //   6. unusable source  -> missing_reference / empty_lines
+    // There is deliberately no duplicate step: several advances per order are
+    // legitimate, so the database has no unique index here and the operator's
+    // saving guard is what keeps a double click from writing two drafts.
+    async createDepositInvoice(
+      actorId: string,
+      confirmationId: string,
+      expectedVersion: number,
+    ) {
+      const id = randomUUID();
+      await db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        // The confirmation row is locked, so a simultaneous withdrawal can never
+        // slip between the order check and the copy.
+        const [confirmation] = await tx
+          .select()
+          .from(documents)
+          .where(and(scope, eq(documents.id, confirmationId)))
+          .for('update');
+        if (!confirmation) throw new DocumentError('not_found');
+        if (confirmation.kind !== 'order_confirmation')
+          throw new DocumentError('invalid_kind');
+        // A withdrawn order is not billable - in advance or otherwise.
+        if (confirmation.state === 'withdrawn')
+          throw new DocumentError('order_withdrawn');
+        if (confirmation.state !== 'final')
+          throw new DocumentError('invalid_state');
+        if (confirmation.version !== expectedVersion)
+          throw new DocumentError('conflict');
+        // The order itself may be withdrawn even though the confirmation is
+        // still final; the status is read exactly like `createInvoice` reads it.
+        const source = await offerStateOf(tx, confirmationId);
+        if (source.sourceDocumentId) {
+          const executor = database(tx) as unknown as {
+            execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+          };
+          const withdrawnSource = (await executor.execute(sql`
+            SELECT 1 FROM documents c
+              JOIN documents o
+                ON o.tenant_id = c.tenant_id
+               AND o.id = c.source_document_id
+             WHERE c.tenant_id = ${tenantId} AND c.id = ${confirmationId}
+               AND o.offer_status = 'withdrawn'`)) as { rows: unknown[] };
+          if (withdrawnSource.rows.length)
+            throw new DocumentError('order_withdrawn');
+        }
+        // A deposit lives in the event file, and a template-less document needs
+        // both references and the three texts the confirmation owns.
+        if (!confirmation.eventId || !confirmation.contactId)
+          throw new DocumentError('missing_reference');
+        if (
+          confirmation.introText === null ||
+          confirmation.outroText === null ||
+          confirmation.validityDays === null
+        )
+          throw new DocumentError('missing_reference');
+        const lines = await tx
+          .select(lineColumns)
+          .from(documentLines)
+          .where(
+            and(
+              eq(documentLines.tenantId, tenantId),
+              eq(documentLines.documentId, confirmationId),
+            ),
+          )
+          .orderBy(asc(documentLines.position));
+        if (!lines.length) throw new DocumentError('empty_lines');
+        // Sums are recomputed from the copied gross prices, so they cannot drift
+        // from the positions that are actually printed.
+        const totals = documentTotals(lines),
+          at = now();
+        // The blank-document rule demands the source at insert time, so the row
+        // is written as one reviewed-SQL insert instead of an insert plus a later
+        // link. `schema.ts` stays unchanged for the same reason as in BKP019.b/.c1.
+        await tx.execute(sql`INSERT INTO documents
+            (tenant_id, id, kind, template_id, event_id, contact_id, number,
+             state, issued_at, finalized_at, subject, intro_text, outro_text,
+             validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
+             gross_minor, version, source_document_id)
+          VALUES (
+            ${tenantId}, ${id}::uuid, 'deposit_invoice', NULL,
+            ${confirmation.eventId}::uuid, ${confirmation.contactId}::uuid,
+            NULL, 'draft', ${at}, NULL,
+            ${'Anzahlungsrechnung für {{contact}}'}, ${confirmation.introText},
+            ${confirmation.outroText}, ${confirmation.validityDays},
+            NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
+            ${totals.grossMinor}, 1, ${confirmationId}::uuid)`);
+        await tx.insert(documentLines).values(
+          lines.map((line, position) => ({
+            tenantId,
+            documentId: id,
+            id: randomUUID(),
+            position,
+            productId: line.productId,
+            description: line.description,
+            quantity: line.quantity,
+            unit: line.unit,
+            // Verbatim: the gross price and both basis-point rates, never a
+            // conversion and never a second rounding.
+            unitPriceMinor: line.unitPriceMinor,
+            taxBasisPoints: line.taxBasisPoints,
+            discountBasisPoints: line.discountBasisPoints,
+          })),
+        );
+        await appendAudit(tx, tenantId, 'document.created', actorId, id);
+      });
+      return (await readOne(db, id))!;
+    },
     // BKP019.c2: a finalized invoice (or order confirmation) is corrected by its
     // own follow-up document. The direction lives on the document and every
     // stored amount stays a magnitude, so the original keeps its number, its
@@ -1615,10 +1739,16 @@ export function documentRepository(
             .where(and(scope, eq(documents.id, sourceId)))
             .for('update');
           if (!source) throw new DocumentError('not_found');
-          // Only an invoice or an order confirmation is correctable, and only a
-          // finalized one. A correction of a correction is not part of this
+          // Only an invoice, an order confirmation or a deposit invoice is
+          // correctable, and only a finalized one. BKP019.c3.1: an advance payment
+          // is money the customer already owes, so a wrong one must be correctable
+          // like any other claim. A correction of a correction is not part of this
           // slice: the chain rule has to be decided on its own.
-          if (source.kind !== 'invoice' && source.kind !== 'order_confirmation')
+          if (
+            source.kind !== 'invoice' &&
+            source.kind !== 'order_confirmation' &&
+            source.kind !== 'deposit_invoice'
+          )
             throw new DocumentError('invalid_kind');
           if (source.state !== 'final')
             throw new DocumentError('invalid_state');
@@ -1742,11 +1872,14 @@ export function documentRepository(
         // finalized document is never edited, its draft is.
         // BKP019.c2: the same right for a correction draft. Its direction and its
         // source are fixed by the create step and are not part of this content.
+        // BKP019.c3.1: and for a deposit draft - reducing the copied order to the
+        // agreed advance happens here, so this is the one decision it carries.
         // Every other kind stays refused - this is not a global opening.
         if (
           document.state !== 'draft' ||
           (document.kind !== 'offer' &&
             document.kind !== 'order_confirmation' &&
+            document.kind !== 'deposit_invoice' &&
             document.kind !== 'invoice' &&
             document.kind !== 'correction')
         )
@@ -2654,6 +2787,40 @@ export function registerDocumentRoutes(
           .code(201)
           .send(
             await repo.createInvoice(
+              request.authSession!.userId,
+              request.params.id,
+              request.body.version,
+            ),
+          );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // BKP019.c3.1: an advance payment is derived from a finalized confirmation.
+  // Same auth, CSRF, tenant lock, version guard and audit path as every other
+  // document write; the body carries only the version, so no amount is invented
+  // here - the draft is reduced by the operator.
+  app.post<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/documents/:id/deposit-invoice',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version: { type: 'integer', minimum: 1 } },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createDepositInvoice(
               request.authSession!.userId,
               request.params.id,
               request.body.version,

@@ -4730,8 +4730,9 @@ test('the database keeps the source link inside confirmations of this tenant', a
       ),
     ),
   ).toBe('accepted');
-  // ... and every kind that owns no source path yet still refuses one. A
-  // deposit invoice is refused until its own slice decides the amount model.
+  // ... and a deposit invoice may name the confirmation it was copied from.
+  // BKP019.c3.1: the one link column also carries an advance payment, so the
+  // kind list grew by a fourth kind - nothing else about the rule changed.
   const depositId = randomUUID();
   await listRows(pool, offer.scope, [
     {
@@ -4748,7 +4749,9 @@ test('the database keeps the source link inside confirmations of this tenant', a
         [offer.scope, depositId, offer.offerId],
       ),
     ),
-  ).toBe('23514');
+  ).toBe('accepted');
+  // The link alone still does not make a blank deposit: without its texts the
+  // row stays refused with the same constraint as a blank invoice.
   expect(
     await code(
       pool.query(
@@ -5667,6 +5670,704 @@ test('the invoice route validates auth, body and duplicates', async () => {
   } finally {
     await app.close();
   }
+});
+
+// BKP019.c3.1: a finalized confirmation can be invoiced in advance. The deposit
+// invoice is its own document with its own AZ number range and a link to the
+// confirmation; it starts as an editable draft, so the operator decides the
+// deposit amount by reducing the copied positions before it is frozen.
+// Several deposits per order are legitimate (30 % now, 20 % later), so there is
+// deliberately no unique index - unlike the one-invoice rule of BKP019.c1.
+async function depositCount(scope: string) {
+  return (
+    await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM documents
+        WHERE tenant_id=$1 AND kind='deposit_invoice'`,
+      [scope],
+    )
+  ).rows[0]!.count;
+}
+
+async function depositSequence(scope: string) {
+  return (
+    await pool.query<{ next_value: number }>(
+      'SELECT next_value FROM document_number_sequences WHERE tenant_id=$1 AND kind=$2',
+      [scope, 'deposit_invoice'],
+    )
+  ).rows[0]?.next_value;
+}
+
+// `invoicedOrder` finalizes the confirmation and creates no invoice: exactly the
+// state a deposit invoice needs.
+test('the deposit invoice copies every position of the confirmation into its own draft', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    deposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    stored = await storedDocument(order.scope, deposit.id);
+  // 1:1 from the confirmation: magnitudes only, no conversion and no second
+  // rounding, so the draft can be reduced to the agreed deposit in the editor.
+  expect(await storedLines(order.scope, deposit.id)).toEqual(
+    await storedLines(order.scope, order.confirmation.id),
+  );
+  expect(stored).toMatchObject({
+    kind: 'deposit_invoice',
+    template_id: null,
+    event_id: order.event,
+    contact_id: order.contact,
+    number: null,
+    state: 'draft',
+    subject: 'Anzahlungsrechnung für {{contact}}',
+    intro_text: confirmationTexts.introText,
+    outro_text: confirmationTexts.outroText,
+    validity_days: 14,
+    snapshot_hash: null,
+    pdf_hash: null,
+    version: 1,
+    source_document_id: order.confirmation.id,
+    // No offer axis, no deadline: a deposit is no offer.
+    offer_status: null,
+    valid_until: null,
+  });
+  const source = await order.repo.get(order.confirmation.id);
+  expect(deposit).toMatchObject({
+    netMinor: source!.netMinor,
+    taxMinor: source!.taxMinor,
+    grossMinor: source!.grossMinor,
+  });
+  expect(deposit.grossMinor).toBe(52310);
+  expect(deposit.grossMinor).toBe(deposit.netMinor + deposit.taxMinor);
+});
+
+test('the deposit invoice needs a finalized confirmation as its source', async () => {
+  const context = await confirmationContext(randomUUID()),
+    offer = await confirmedOffer(randomUUID());
+  // A draft confirmation can still move.
+  const draftConfirmation = await offer.repo.createOrderConfirmation(
+    offer.actor,
+    offer.offerId,
+    offer.version,
+  );
+  await expect(
+    offer.repo.createDepositInvoice(
+      offer.actor,
+      draftConfirmation.id,
+      draftConfirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // An offer is deposited through a confirmation, never directly.
+  await expect(
+    offer.repo.createDepositInvoice(offer.actor, offer.offerId, offer.version),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  const order = await invoicedOrder(randomUUID()),
+    invoice = await order.repo.createInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    deposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  // Neither an invoice nor a deposit is a source of another deposit.
+  await expect(
+    order.repo.createDepositInvoice(order.actor, invoice.id, invoice.version),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  await expect(
+    order.repo.createDepositInvoice(order.actor, deposit.id, deposit.version),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  await expect(
+    context.repo.createDepositInvoice(context.actor, randomUUID(), 1),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  expect(await depositCount(context.scope)).toBe(0);
+});
+
+test('a withdrawn order is never deposited', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    withdrawn = await order.repo.changeOfferStatus(order.actor, order.offerId, {
+      status: 'withdrawn',
+      version: order.version,
+    });
+  expect(withdrawn.offerStatus).toBe('withdrawn');
+  // The confirmation stays final and readable; only the order behind it is gone.
+  await expect(
+    order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'order_withdrawn' });
+  expect(await depositCount(order.scope)).toBe(0);
+  // A source whose own content state is withdrawn is refused just the same.
+  await pool.query(
+    `UPDATE documents SET state='withdrawn' WHERE tenant_id=$1 AND id=$2`,
+    [order.scope, order.confirmation.id],
+  );
+  await expect(
+    order.repo.createDepositInvoice(order.actor, order.confirmation.id, 1),
+  ).rejects.toMatchObject({ reason: 'order_withdrawn' });
+  expect(await depositCount(order.scope)).toBe(0);
+  expect(await depositSequence(order.scope)).toBeUndefined();
+});
+
+test('a stale confirmation version is a conflict and writes no deposit', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    auditBefore = await offerAudit(order.scope, order.confirmation.id);
+  await expect(
+    order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version - 1,
+    ),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(await depositCount(order.scope)).toBe(0);
+  expect(await offerAudit(order.scope, order.confirmation.id)).toEqual(
+    auditBefore,
+  );
+});
+
+test('several deposits on one order are allowed and each names the confirmation', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    first = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    second = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  expect(second.id).not.toBe(first.id);
+  const rows = (
+    await pool.query<{ id: string; source_document_id: string }>(
+      `SELECT id, source_document_id FROM documents
+        WHERE tenant_id=$1 AND kind='deposit_invoice' ORDER BY id`,
+      [order.scope],
+    )
+  ).rows;
+  expect(rows).toHaveLength(2);
+  expect(rows.map((row) => row.source_document_id)).toEqual([
+    order.confirmation.id,
+    order.confirmation.id,
+  ]);
+  // The deliberate absence of a unique index is part of the contract: two
+  // legitimate instalments must both be storable.
+  const unique = (
+    await pool.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes
+        WHERE schemaname='public' AND tablename='documents'
+          AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%deposit_invoice%'`,
+    )
+  ).rows;
+  expect(unique).toEqual([]);
+  expect(await offerAudit(order.scope, first.id)).toEqual(['document.created']);
+  expect(await offerAudit(order.scope, second.id)).toEqual([
+    'document.created',
+  ]);
+});
+
+test('two simultaneous deposits produce two drafts, never an error', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    results = await Promise.allSettled([
+      order.repo.createDepositInvoice(
+        order.actor,
+        order.confirmation.id,
+        order.confirmation.version,
+      ),
+      order.repo.createDepositInvoice(
+        order.actor,
+        order.confirmation.id,
+        order.confirmation.version,
+      ),
+    ]);
+  expect(results.map((result) => result.status)).toEqual([
+    'fulfilled',
+    'fulfilled',
+  ]);
+  expect(await depositCount(order.scope)).toBe(2);
+});
+
+test('a deposit of another tenant, actor or unknown confirmation is invisible', async () => {
+  const order = await invoicedOrder(randomUUID());
+  await expect(
+    documentRepository(
+      pool,
+      otherTenantId,
+      dependencies().deps,
+    ).createDepositInvoice(
+      otherActorId,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    order.repo.createDepositInvoice(
+      randomUUID(),
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+  ).rejects.toThrow('forbidden');
+  expect(await depositCount(order.scope)).toBe(0);
+});
+
+test('the deposit finalizes with its own AZ number and its source', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    deposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    confirmationPdf = await order.repo.pdf(order.confirmation.id);
+  // The invoice range is configured and must stay unused: a deposit is no
+  // invoice and never borrows the RE circle.
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'invoice',
+    { pattern: 'RE-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  await expect(
+    order.repo.finalize(order.actor, deposit.id, deposit.version),
+  ).rejects.toMatchObject({ reason: 'number_not_configured' });
+  expect(await depositSequence(order.scope)).toBeUndefined();
+  expect(await storedDocument(order.scope, deposit.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+    snapshot_hash: null,
+    pdf_hash: null,
+  });
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'deposit_invoice',
+    { pattern: 'AZ-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await order.repo.finalize(
+      order.actor,
+      deposit.id,
+      deposit.version,
+    ),
+    stored = await storedDocument(order.scope, deposit.id);
+  expect(finalized.number).toBe('AZ-2030-0001');
+  expect(stored).toMatchObject({
+    kind: 'deposit_invoice',
+    state: 'final',
+    number: 'AZ-2030-0001',
+    source_document_id: order.confirmation.id,
+    gross_minor: '52310',
+    valid_until: null,
+  });
+  // The confirmation keeps its number and its bytes.
+  expect(
+    (await storedDocument(order.scope, order.confirmation.id)).number,
+  ).toBe('AB-2030-0001');
+  expect(
+    (await order.repo.pdf(order.confirmation.id)).bytes.equals(
+      confirmationPdf.bytes,
+    ),
+  ).toBe(true);
+  const depositPdf = await order.repo.pdf(deposit.id);
+  expect(depositPdf.number).toBe('AZ-2030-0001');
+  expect(depositPdf.bytes.equals(confirmationPdf.bytes)).toBe(false);
+  // A finalized deposit is a claim: the projection carries the payment axis.
+  const rows = (await order.repo.list({
+      include: 'offer',
+    })) as DocumentOfferRow[],
+    projected = rows.find((row) => row.id === deposit.id)!;
+  expect(projected).toMatchObject({
+    kind: 'deposit_invoice',
+    sourceDocumentId: order.confirmation.id,
+    sourceNumber: 'AB-2030-0001',
+    paymentState: 'none',
+    openMinor: 52310,
+  });
+  expect(Object.keys(projected)).toEqual(Object.keys(rows[0]!));
+});
+
+test('a failing renderer rolls the deposit number back', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    deposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'deposit_invoice',
+    { pattern: 'AZ-{YYYY}-{SEQ}', minLength: 4, nextValue: 7 },
+  );
+  const failing = documentRepository(pool, order.scope, {
+    ...dependencies().deps,
+    render: async () => {
+      throw new Error('synthetic deposit renderer failure');
+    },
+  });
+  await expect(
+    failing.finalize(order.actor, deposit.id, deposit.version),
+  ).rejects.toMatchObject({ reason: 'artifact_failed' });
+  expect(await storedDocument(order.scope, deposit.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+  });
+  expect(
+    await documentNumberRepository(pool, order.scope).preview(
+      'deposit_invoice',
+      new Date('2030-10-26T10:00:00Z'),
+    ),
+  ).toBe('AZ-2030-0007');
+});
+
+test('a deposit draft is editable, a finalized one never is', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    deposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    beforeConfirmation = await storedDocument(
+      order.scope,
+      order.confirmation.id,
+    ),
+    beforeLines = await storedLines(order.scope, order.confirmation.id),
+    edited = await order.repo.updateDraftContent(order.actor, deposit.id, {
+      version: deposit.version,
+      subject: 'Anzahlungsrechnung 30 %',
+      introText: 'Anzahlung auf den Auftrag.',
+      outroText: 'Der Rest wird mit der Schlussrechnung abgerechnet.',
+      validityDays: 14,
+      // The deposit amount is the operator's decision: it is expressed by the
+      // positions, and the sums follow them without a second rounding.
+      lines: [
+        {
+          productId: null,
+          description: 'Anzahlung 30 %',
+          quantity: 1,
+          unit: 'Pauschale',
+          unitPriceMinor: 15693,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 0,
+        },
+      ],
+    });
+  expect(edited).toMatchObject({
+    kind: 'deposit_invoice',
+    subject: 'Anzahlungsrechnung 30 %',
+    version: deposit.version + 1,
+    grossMinor: 15693,
+    netMinor: 13187,
+    taxMinor: 2506,
+  });
+  // The confirmation it was copied from keeps everything.
+  expect(await storedDocument(order.scope, order.confirmation.id)).toEqual(
+    beforeConfirmation,
+  );
+  expect(await storedLines(order.scope, order.confirmation.id)).toEqual(
+    beforeLines,
+  );
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'deposit_invoice',
+    { pattern: 'AZ-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await order.repo.finalize(
+    order.actor,
+    deposit.id,
+    edited.version,
+  );
+  await expect(
+    order.repo.updateDraftContent(order.actor, deposit.id, {
+      version: finalized.version,
+      subject: 'Zu spät',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // A deposit is no offer: it never gains a business status.
+  await expect(
+    order.repo.changeOfferStatus(order.actor, deposit.id, {
+      status: 'sent',
+      version: finalized.version,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+});
+
+test('a finalized deposit is correctable like any other claim', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    deposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  // A draft is not correctable: only a frozen claim is.
+  await expect(
+    order.repo.createCorrection(
+      order.actor,
+      deposit.id,
+      deposit.version,
+      'credit',
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'deposit_invoice',
+    { pattern: 'AZ-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await order.repo.finalize(
+      order.actor,
+      deposit.id,
+      deposit.version,
+    ),
+    correction = await order.repo.createCorrection(
+      order.actor,
+      deposit.id,
+      finalized.version,
+      'credit',
+    );
+  expect(correction).toMatchObject({
+    kind: 'correction',
+    state: 'draft',
+    grossMinor: finalized.grossMinor,
+  });
+  expect(
+    (
+      await pool.query<{ source_document_id: string }>(
+        'SELECT source_document_id FROM documents WHERE tenant_id=$1 AND id=$2',
+        [order.scope, correction.id],
+      )
+    ).rows[0]!.source_document_id,
+  ).toBe(deposit.id);
+});
+
+test('a deposit stays byte-identical while money is recorded against it', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    deposit = await order.repo.createDepositInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    );
+  await documentNumberRepository(pool, order.scope).save(
+    order.actor,
+    'deposit_invoice',
+    { pattern: 'AZ-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const finalized = await order.repo.finalize(
+      order.actor,
+      deposit.id,
+      deposit.version,
+    ),
+    pdfBefore = await order.repo.pdf(deposit.id),
+    payments = documentPaymentRepository(pool, order.scope);
+  await payments.record(order.actor, deposit.id, {
+    receivedOn: tenantToday(),
+    amountMinor: 10000,
+    method: 'bank_transfer',
+  });
+  expect((await order.repo.pdf(deposit.id)).bytes.equals(pdfBefore.bytes)).toBe(
+    true,
+  );
+  expect(await storedDocument(order.scope, deposit.id)).toMatchObject({
+    number: 'AZ-2030-0001',
+    gross_minor: '52310',
+  });
+  const rows = (await order.repo.list({
+      include: 'offer',
+    })) as DocumentOfferRow[],
+    projected = rows.find((row) => row.id === deposit.id)!;
+  expect(projected).toMatchObject({
+    paymentState: 'partial',
+    openMinor: 42310,
+  });
+  expect(finalized.number).toBe('AZ-2030-0001');
+});
+
+test('the deposit route validates auth, body and allows a second deposit', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    granted = (await accessRepository(pool, order.scope).list())[0]!;
+  await accessRepository(pool, order.scope).issueSession(
+    { subject: 'seed-' + order.scope, email: granted.email },
+    digest('synthetic-deposit'),
+  );
+  const config = {
+      origin: site,
+      tenantId: order.scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, order.scope, order.run.deps);
+  const url = '/api/v1/documents/' + order.confirmation.id + '/deposit-invoice',
+    cookies = { '__Host-ak-session': 'synthetic-deposit' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-deposit'),
+    },
+    post = (payload: Record<string, unknown>, secured = true) =>
+      app.inject({
+        method: 'POST',
+        url,
+        cookies,
+        ...(secured ? { headers } : {}),
+        payload,
+      });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          payload: { version: order.confirmation.version },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (await post({ version: order.confirmation.version }, false)).statusCode,
+    ).toBe(403);
+    for (const payload of [{}, { version: 0 }, { version: 1.5 }])
+      expect((await post(payload)).statusCode, JSON.stringify(payload)).toBe(
+        400,
+      );
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + randomUUID() + '/deposit-invoice',
+          cookies,
+          headers,
+          payload: { version: 1 },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await post({ version: 1 })).statusCode).toBe(409);
+    expect((await post({ version: 1 })).json()).toEqual({ error: 'conflict' });
+    const created = await post({ version: order.confirmation.version });
+    expect(created.statusCode).toBe(201);
+    const single = await app.inject({
+      url: '/api/v1/documents/' + (created.json() as { id: string }).id,
+      cookies,
+    });
+    expect(Object.keys(created.json() as object).sort()).toEqual(
+      Object.keys(single.json() as object).sort(),
+    );
+    expect(created.json()).toMatchObject({
+      kind: 'deposit_invoice',
+      state: 'draft',
+      number: null,
+      templateId: null,
+      subject: 'Anzahlungsrechnung für {{contact}}',
+      grossMinor: 52310,
+    });
+    // The create answer keeps the old document shape.
+    expect(created.body).not.toContain('sourceDocumentId');
+    // A second instalment is written, not refused: there is no duplicate rule.
+    const again = await post({ version: order.confirmation.version });
+    expect(again.statusCode).toBe(201);
+    expect(await depositCount(order.scope)).toBe(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a blank deposit is refused and a copied one is accepted by the database', async () => {
+  const order = await invoicedOrder(randomUUID()),
+    code = (query: Promise<unknown>) =>
+      query
+        .then(() => 'accepted')
+        .catch((error: { code?: string }) => error.code),
+    foreignId = randomUUID();
+  await listRows(pool, otherTenantId, [
+    {
+      id: foreignId,
+      templateId: otherTemplateId,
+      issuedAt: '2030-10-26T10:00:00Z',
+    },
+  ]);
+  // Without a source a template-less deposit stays refused: the blank-document
+  // rule of 0042/0043 was not widened, only given its deposit path.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days)
+         VALUES ($1,$2,'deposit_invoice',NULL,$3,$4,$5,'Anzahlungsrechnung','','',14)`,
+        [order.scope, randomUUID(), order.event, order.contact, now],
+      ),
+    ),
+  ).toBe('23514');
+  // The source alone is not enough either: completeness is not widened.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,source_document_id)
+         VALUES ($1,$2,'deposit_invoice',NULL,$3,$4,$5,$6)`,
+        [
+          order.scope,
+          randomUUID(),
+          order.event,
+          order.contact,
+          now,
+          order.confirmation.id,
+        ],
+      ),
+    ),
+  ).toBe('23514');
+  // With its source and its texts it is a legal row ...
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days,source_document_id)
+         VALUES ($1,$2,'deposit_invoice',NULL,$3,$4,$5,'Anzahlungsrechnung',
+                 'Einleitung','Schluss',14,$6)`,
+        [
+          order.scope,
+          randomUUID(),
+          order.event,
+          order.contact,
+          now,
+          order.confirmation.id,
+        ],
+      ),
+    ),
+  ).toBe('accepted');
+  // ... and a document of another tenant can never become the source.
+  expect(
+    await code(
+      pool.query(
+        `INSERT INTO documents
+          (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+           outro_text,validity_days,source_document_id)
+         VALUES ($1,$2,'deposit_invoice',NULL,$3,$4,$5,'Anzahlungsrechnung',
+                 'Einleitung','Schluss',14,$6)`,
+        [order.scope, randomUUID(), order.event, order.contact, now, foreignId],
+      ),
+    ),
+  ).toBe('23503');
 });
 
 // BKP019.c2: a finalized invoice (or order confirmation) is corrected by its own

@@ -133,6 +133,48 @@ const draft = {
     correctionState: null,
     remainingCredit: null,
   },
+  // BKP019.c3.1: the advance payment copied from the final confirmation, and the
+  // same document after it was finalized with its own AZ number.
+  depositDraft = {
+    id: 'doc-az-1',
+    kind: 'deposit_invoice',
+    templateId: null,
+    eventId: 'event-1',
+    contactId: 'contact-1',
+    number: null,
+    state: 'draft' as const,
+    issuedAt: '2030-10-26T10:18:00Z',
+    finalizedAt: null,
+    netMinor: 20925,
+    taxMinor: 3975,
+    grossMinor: 24900,
+    version: 1,
+    sourceDocumentId: 'doc-ab-1',
+    sourceNumber: 'AB-2030-0001',
+  },
+  depositFinal = {
+    ...depositDraft,
+    number: 'AZ-2030-0001',
+    state: 'final' as const,
+    finalizedAt: '2030-10-26T10:19:00Z',
+    version: 2,
+    correctionDirection: null,
+    correctionState: null,
+    remainingCredit: null,
+    paymentState: 'none' as const,
+    openMinor: 24900,
+  },
+  depositPartiallyPaid = {
+    ...depositFinal,
+    paymentState: 'partial' as const,
+    openMinor: 14900,
+  },
+  depositWording = {
+    subject: 'Anzahlungsrechnung für {{contact}}',
+    introText: 'Anzahlung auf den Auftrag.',
+    outroText: 'Der Rest wird mit der Schlussrechnung abgerechnet.',
+    validityDays: 14,
+  },
   // BKP019.d: the same invoice after money arrived, and the payments an operator
   // recorded. The status is derived on the server; the row only displays it.
   invoicePartiallyPaid = {
@@ -233,6 +275,8 @@ function setup(
     library?: () => Response;
     orderConfirmation?: () => Response;
     invoice?: () => Response;
+    // BKP019.c3.1: the answer to a deposit created from a confirmation.
+    deposit?: () => Response | Promise<Response>;
     correction?: () => Response;
     // BKP019.d: the payments of a document, and the answer to a recorded one.
     payments?: () => Response | Promise<Response>;
@@ -264,6 +308,12 @@ function setup(
         ...correctionDraft,
         ...invoiceWording,
         subject: 'Rechnungskorrektur für {{contact}}',
+        lines: [storedLine],
+      },
+      // BKP019.c3.1: the deposit draft reads and rewrites its own texts.
+      'doc-az-1': {
+        ...depositDraft,
+        ...depositWording,
         lines: [storedLine],
       },
     },
@@ -316,6 +366,19 @@ function setup(
         // The confirmed row replaces the old list on the following reload.
         state.documents = [acceptedOffer, confirmationDraft];
         return Response.json(confirmationDraft, { status: 201 });
+      }
+      // BKP019.c3.1: the advance payment is created from a finalized
+      // confirmation. It is its own endpoint, so no invoice answer is reused.
+      if (url.endsWith('/deposit-invoice')) {
+        calls.push({
+          url,
+          method,
+          body: JSON.parse(String(init!.body)),
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.deposit) return await options.deposit();
+        state.documents = [finalizedConfirmation, depositDraft];
+        return Response.json(depositDraft, { status: 201 });
       }
       if (url.endsWith('/invoice')) {
         calls.push({
@@ -1450,14 +1513,261 @@ test('an invoice row names its source confirmation, its own kind and the open st
   expect(within(row).queryByText(/Gültig bis/)).toBeNull();
   // The remaining gap is named instead of implying complete invoicing, and a
   // correction is described as its own document (BKP019.c2).
+  // BKP019.c3.1: advances exist as their own card, so the invoice card no longer
+  // claims they are missing - only the final invoice is still open.
   expect(
-    within(invoices).getByText(
-      /Anzahlungs- und Schlussrechnungen sind noch nicht verfügbar/,
-    ),
+    within(invoices).getByText(/Eine Schlussrechnung ist noch nicht verfügbar/),
   ).toBeTruthy();
+  expect(
+    within(invoices).queryByText(
+      /Anzahlungs- und Schlussrechnungen sind noch nicht/,
+    ),
+  ).toBeNull();
   expect(
     within(invoices).getByText(/sondern nur durch eine Rechnungskorrektur/),
   ).toBeTruthy();
+});
+
+// BKP019.c3.1: the advance payment is a second explicit step on the same
+// finalized confirmation. It never appears as a side effect of invoicing, and it
+// never borrows the invoice wording.
+test('only a finalized confirmation offers the deposit action', async () => {
+  setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  ).toBeTruthy();
+  // The invoice step is still there: the two are independent, not exclusive.
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  ).toBeTruthy();
+  // Nothing writes before the operator confirms the step.
+  expect(row.querySelector('form')).toBeNull();
+  cleanup();
+  for (const entry of [
+    confirmationDraft,
+    acceptedOffer,
+    finalized,
+    depositDraft,
+    invoiceFinal,
+  ]) {
+    setup({ documents: [entry] });
+    const other = render(<EventDocuments {...props} />);
+    await screen.findByText(/Angelegt am|Finalisiert am/);
+    expect(
+      screen.queryByRole('button', { name: /Anzahlung erstellen/ }),
+    ).toBeNull();
+    other.unmount();
+    cleanup();
+  }
+});
+
+test('a double click on the deposit confirms exactly one draft', async () => {
+  const { calls } = setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  );
+  const confirm = within(row).getByRole('button', {
+    name: 'Auftragsbestätigung AB-2030-0001 Anzahlung anlegen',
+  });
+  expect(confirm).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/deposit-invoice'))).toBe(
+    false,
+  );
+  // Several advances per order are legitimate, so the server has no duplicate
+  // rule: the saving guard is what keeps a double click from writing two.
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  expect(
+    await screen.findByText('Anzahlungsrechnung als Entwurf angelegt.'),
+  ).toBeTruthy();
+  expect(
+    calls.filter((call) => call.url.endsWith('/deposit-invoice')),
+  ).toHaveLength(1);
+  expect(
+    calls.find((call) => call.url.endsWith('/deposit-invoice')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-ab-1/deposit-invoice',
+    method: 'POST',
+    body: { version: 2 },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  // The new draft lands in its own card and names the confirmation it came from.
+  const deposits = await screen.findByRole('region', {
+    name: 'Anzahlungsrechnungen',
+  });
+  const source = within(deposits).getByRole('link', {
+    name: 'Auftragsbestätigung AB-2030-0001 als PDF öffnen',
+  });
+  expect(source.getAttribute('href')).toBe('/api/v1/documents/doc-ab-1/pdf');
+  expect(within(deposits).getByText(/Aus Auftragsbestätigung/)).toBeTruthy();
+});
+
+test('cancelling the deposit sends nothing', async () => {
+  const { calls } = setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  );
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung abbrechen',
+    }),
+  );
+  expect(
+    within(row).queryByRole('button', { name: /Anzahlung anlegen/ }),
+  ).toBeNull();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/deposit-invoice'))).toBe(
+    false,
+  );
+});
+
+test('a refused deposit is explained instead of retried', async () => {
+  for (const [error, message] of [
+    [
+      'order_withdrawn',
+      'Der Auftrag wurde zurückgezogen. Eine Anzahlungsrechnung ist nicht möglich.',
+    ],
+    [
+      'number_not_configured',
+      'Für Anzahlungsrechnungen ist kein Nummernkreis hinterlegt. Bitte in den Einstellungen anlegen.',
+    ],
+  ] as const) {
+    const { calls } = setup({
+      documents: [finalizedConfirmation],
+      deposit: () => Response.json({ error }, { status: 409 }),
+    });
+    render(<EventDocuments {...props} />);
+    const orders = await screen.findByRole('region', {
+      name: 'Auftragsbestätigungen',
+    });
+    const row = within(orders).getByRole('listitem');
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+      }),
+    );
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Anzahlung anlegen',
+      }),
+    );
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(
+      calls.filter((call) => call.url.endsWith('/deposit-invoice')),
+    ).toHaveLength(1);
+    cleanup();
+  }
+});
+
+test('a finalized deposit shows its source, its payment state and the open gap', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation, depositPartiallyPaid],
+  });
+  render(<EventDocuments {...props} />);
+  const deposits = await screen.findByRole('region', {
+    name: 'Anzahlungsrechnungen',
+  });
+  const row = within(deposits).getByRole('listitem');
+  expect(within(row).getByText('AZ-2030-0001')).toBeTruthy();
+  // The source is the confirmation, linked to its PDF.
+  expect(within(row).getByText(/Aus Auftragsbestätigung/)).toBeTruthy();
+  expect(
+    within(row)
+      .getByRole('link', {
+        name: 'Auftragsbestätigung AB-2030-0001 als PDF öffnen',
+      })
+      .getAttribute('href'),
+  ).toBe('/api/v1/documents/doc-ab-1/pdf');
+  // Money that arrived is derived, never written: the row only displays it.
+  expect(within(row).getByText('Teilweise bezahlt')).toBeTruthy();
+  expect(within(row).getByText(/Offener Betrag: 149,00 €/)).toBeTruthy();
+  // A finalized deposit is corrected and paid, not edited.
+  expect(
+    within(row).getByRole('button', {
+      name: 'Anzahlungsrechnung AZ-2030-0001 korrigieren',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(row).getByRole('button', {
+      name: 'Anzahlungsrechnung AZ-2030-0001 Zahlung erfassen',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(row).queryByRole('button', { name: /Entwurf bearbeiten/ }),
+  ).toBeNull();
+  expect(
+    within(row).getByRole('link', {
+      name: 'Anzahlungsrechnung AZ-2030-0001 als PDF öffnen',
+    }),
+  ).toBeTruthy();
+  // The remaining gap is named: netting against the final invoice comes later.
+  expect(
+    within(deposits).getByText(
+      /Verrechnung mit der Schlussrechnung fehlt noch/,
+    ),
+  ).toBeTruthy();
+  expect(calls.some((call) => call.url.endsWith('/deposit-invoice'))).toBe(
+    false,
+  );
+});
+
+test('a deposit draft opens the shared editor under its own heading', async () => {
+  setup({ documents: [finalizedConfirmation, depositDraft] });
+  render(<EventDocuments {...props} />);
+  const deposits = await screen.findByRole('region', {
+    name: 'Anzahlungsrechnungen',
+  });
+  const row = within(deposits).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Anzahlungsrechnung Entwurf bearbeiten',
+    }),
+  );
+  // The heading names the advance; neither the invoice nor the offer wording
+  // may label it.
+  expect(
+    await within(row).findByRole('heading', {
+      name: 'Anzahlungsrechnung bearbeiten',
+    }),
+  ).toBeTruthy();
+  expect(
+    within(row).queryByRole('heading', { name: 'Rechnung bearbeiten' }),
+  ).toBeNull();
+  expect(
+    within(row).queryByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  // The copied order is there, so the operator can cut it down to the advance.
+  expect(
+    ((await within(row).findByLabelText('Einleitung')) as HTMLTextAreaElement)
+      .value,
+  ).toBe('Anzahlung auf den Auftrag.');
 });
 
 // BKP019.c2: a finalized invoice is corrected by its own follow-up document. The

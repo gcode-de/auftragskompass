@@ -137,6 +137,8 @@ async function tenantContext(scope: string) {
   for (const [kind, pattern] of [
     ['offer', 'AN-{YYYY}-{SEQ}'],
     ['order_confirmation', 'AB-{YYYY}-{SEQ}'],
+    // BKP019.c3.1: a deposit is its own claim with its own number circle.
+    ['deposit_invoice', 'AZ-{YYYY}-{SEQ}'],
     ['invoice', 'RE-{YYYY}-{SEQ}'],
     ['correction', 'KO-{YYYY}-{SEQ}'],
   ] as const)
@@ -191,6 +193,14 @@ async function tenantContext(scope: string) {
       confirmationDraft.id,
       confirmationDraft.version,
     ),
+    // BKP019.c3.1: an advance payment is a claim of its own. It is finalized
+    // before the invoice so the two claims never share a document id.
+    depositDraft = await repo.createDepositInvoice(
+      actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+    deposit = await repo.finalize(actor, depositDraft.id, depositDraft.version),
     invoiceDraft = await repo.createInvoice(
       actor,
       confirmation.id,
@@ -207,6 +217,7 @@ async function tenantContext(scope: string) {
     templateId,
     offer: accepted,
     confirmation,
+    deposit,
     invoice,
   };
 }
@@ -301,6 +312,15 @@ async function projectedInvoice(context: Context) {
     include: 'offer',
   })) as DocumentOfferRow[];
   return rows.find((row) => row.id === context.invoice.id)!;
+}
+
+// BKP019.c3.1: a deposit is a claim too, so the same axis must describe it -
+// and only its own payments may move it.
+async function projectedDeposit(context: Context) {
+  const rows = (await context.repo.list({
+    include: 'offer',
+  })) as DocumentOfferRow[];
+  return rows.find((row) => row.id === context.deposit.id)!;
 }
 
 beforeAll(async () => {
@@ -556,7 +576,7 @@ test('the method is a closed set and the note is trimmed, bounded and plain', as
   expect(await paymentCount(context.scope)).toBe(3);
 });
 
-test('only a finalized invoice takes a payment', async () => {
+test('only a finalized invoice or deposit takes a payment', async () => {
   const context = await tenantContext(randomUUID());
   // An offer, a confirmation and a correction are no claim of their own.
   for (const documentId of [
@@ -586,6 +606,21 @@ test('only a finalized invoice takes a payment', async () => {
       method: 'cash',
     }),
   ).rejects.toMatchObject({ reason: 'invalid_state' });
+  // The same holds for an unfinalized deposit: its amount is still the
+  // operator's decision, so nothing can be paid against it yet.
+  await expect(
+    context.payments.record(
+      context.actor,
+      (
+        await context.repo.createDepositInvoice(
+          context.actor,
+          context.confirmation.id,
+          context.confirmation.version,
+        )
+      ).id,
+      { receivedOn: tenantDay(), amountMinor: 100, method: 'cash' },
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_state' });
   // A foreign or unknown invoice is missing, never forbidden: no leak.
   await expect(
     context.payments.record(context.actor, randomUUID(), {
@@ -595,6 +630,64 @@ test('only a finalized invoice takes a payment', async () => {
     }),
   ).rejects.toMatchObject({ reason: 'not_found' });
   expect(await paymentCount(context.scope)).toBe(0);
+});
+
+// BKP019.c3.1: an advance payment is a claim with its own open amount. Its
+// payments never move the invoice and vice versa - the two are separate claims
+// until the settlement block of BKP019.c3.2 nets them against each other.
+test('a finalized deposit takes a payment up to its own claim', async () => {
+  const context = await tenantContext(randomUUID());
+  expect(await projectedDeposit(context)).toMatchObject({
+    paymentState: 'none',
+    openMinor: 24900,
+  });
+  const payment = await context.payments.record(
+    context.actor,
+    context.deposit.id,
+    {
+      receivedOn: tenantDay(),
+      amountMinor: 10000,
+      method: 'bank_transfer',
+      note: 'Anzahlung per Überweisung',
+    },
+  );
+  expect(payment).toMatchObject({
+    documentId: context.deposit.id,
+    amountMinor: 10000,
+    note: 'Anzahlung per Überweisung',
+  });
+  // The claim of a deposit is its own gross, exactly like an invoice's.
+  expect(await paymentBalance(pool, context.scope, context.deposit.id)).toEqual(
+    {
+      grossMinor: 24900,
+      creditedMinor: 0,
+      debitedMinor: 0,
+      paidMinor: 10000,
+      claimMinor: 24900,
+      openMinor: 14900,
+    },
+  );
+  expect(await projectedDeposit(context)).toMatchObject({
+    paymentState: 'partial',
+    openMinor: 14900,
+  });
+  // Money on the deposit never settles the invoice: that needs c3.2.
+  expect(await projectedInvoice(context)).toMatchObject({
+    paymentState: 'none',
+    openMinor: 24900,
+  });
+  // Overpaying the deposit is refused exactly like overpaying an invoice.
+  await expect(
+    context.payments.record(context.actor, context.deposit.id, {
+      receivedOn: tenantDay(),
+      amountMinor: 14901,
+      method: 'cash',
+    }),
+  ).rejects.toMatchObject({ reason: 'overpaid' });
+  expect(await paymentCount(context.scope, context.deposit.id)).toBe(1);
+  // The recorded row is readable through the deposit's own endpoint pair.
+  expect(await context.payments.list(context.deposit.id)).toHaveLength(1);
+  expect(await context.payments.list(context.invoice.id)).toEqual([]);
 });
 
 test('the balance of an unknown or foreign document is missing', async () => {
@@ -971,7 +1064,7 @@ test('the claim follows final corrections and the credit guard counts payments',
   });
 });
 
-test('the projection carries the payment axis on invoices only', async () => {
+test('the projection carries the payment axis on invoices and deposits', async () => {
   const context = await tenantContext(randomUUID());
   await context.payments.record(context.actor, context.invoice.id, {
     receivedOn: tenantDay(),
@@ -990,6 +1083,28 @@ test('the projection carries the payment axis on invoices only', async () => {
   });
   expect(Object.keys(invoiceRowProjected)).toContain('paymentState');
   expect(Object.keys(invoiceRowProjected)).toContain('openMinor');
+  // BKP019.c3.1: a finalized deposit is a claim just like an invoice, so the
+  // same two keys carry its own payments - and its own open amount.
+  const depositRow = byId(context.deposit.id);
+  expect(depositRow).toMatchObject({
+    kind: 'deposit_invoice',
+    sourceDocumentId: context.confirmation.id,
+    paymentState: 'none',
+    openMinor: 24900,
+  });
+  expect(Object.keys(depositRow)).toEqual(Object.keys(invoiceRowProjected));
+  await context.payments.record(context.actor, context.deposit.id, {
+    receivedOn: tenantDay(),
+    amountMinor: 4900,
+    method: 'cash',
+  });
+  const refreshedDeposit = (
+    (await context.repo.list({ include: 'offer' })) as DocumentOfferRow[]
+  ).find((row) => row.id === context.deposit.id)!;
+  expect(refreshedDeposit).toMatchObject({
+    paymentState: 'partial',
+    openMinor: 20000,
+  });
   // An offer, a confirmation, an invoice draft and a correction are no payable
   // claim: the two keys are present and honestly NULL.
   for (const id of [context.offer.id, context.confirmation.id, draft.id])

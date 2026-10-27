@@ -135,7 +135,7 @@ function paymentFailureMessage(error: string): string {
       return 'Die Notiz ist zu lang oder enthält unzulässige Zeichen.';
     case 'invalid_state':
     case 'invalid_kind':
-      return 'Nur eine finalisierte Rechnung nimmt Zahlungen an. Bitte Liste aktualisieren.';
+      return 'Nur eine finalisierte Rechnung oder Anzahlungsrechnung nimmt Zahlungen an. Bitte Liste aktualisieren.';
     case 'not_found':
       return 'Die Rechnung wurde nicht gefunden. Bitte Liste aktualisieren.';
     default:
@@ -205,9 +205,12 @@ function kindName(entry: { kind: string }) {
 // way - a finalized document is never edited, its draft is.
 // BKP019.c2b: a correction draft is the same right: its copied position text is
 // correctable until finalization fixes it.
+// BKP019.c3.1: a deposit draft is editable too - reducing the copied positions
+// to the agreed advance is exactly the operator decision this draft is for.
 const editableDraftKinds = new Set<string>([
   'offer',
   'order_confirmation',
+  'deposit_invoice',
   'invoice',
   'correction',
 ]);
@@ -256,6 +259,9 @@ export function EventDocuments({
     [confirmConfirmationId, setConfirmConfirmationId] = useState(''),
     // BKP019.c1: the finalized confirmation whose invoice is being confirmed.
     [confirmInvoiceId, setConfirmInvoiceId] = useState(''),
+    // BKP019.c3.1: the finalized confirmation whose deposit is being confirmed.
+    // Its own state, so the two confirmation steps can never mix.
+    [confirmDepositId, setConfirmDepositId] = useState(''),
     // BKP019.c2: the finalized invoice whose correction is being prepared, and
     // the direction that correction will carry.
     [correctionId, setCorrectionId] = useState(''),
@@ -643,6 +649,81 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  // BKP019.c3.1: an advance payment is started from the finalized confirmation
+  // as one explicit step. Nothing is retyped: the positions come from the
+  // confirmation, and the operator reduces them to the agreed deposit in the
+  // draft editor before it is finalized with its own AZ number.
+  // Several deposits per order are allowed, so there is no "already exists"
+  // answer here - the saving guard is what keeps a double click from writing two.
+  async function createDepositInvoice(id: string, version: number) {
+    if (mutating.current || editorBusy || editorDirty) return;
+    mutating.current = true;
+    setBusy(id);
+    setMessage('');
+    setConfirmDepositId('');
+    try {
+      const reply = await fetch(
+        '/api/v1/documents/' + id + '/deposit-invoice',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify({ version }),
+        },
+      );
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(
+          result.error === 'order_withdrawn'
+            ? 'Der Auftrag wurde zurückgezogen. Eine Anzahlungsrechnung ist nicht möglich.'
+            : result.error === 'invalid_kind'
+              ? 'Nur eine finalisierte Auftragsbestätigung lässt sich anzahlen.'
+              : result.error === 'number_not_configured'
+                ? 'Für Anzahlungsrechnungen ist kein Nummernkreis hinterlegt. Bitte in den Einstellungen anlegen.'
+                : result.error === 'invalid_state' ||
+                    result.error === 'conflict'
+                  ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
+                  : 'Anzahlungsrechnung konnte nicht erstellt werden. Bitte Angaben prüfen.',
+        );
+        try {
+          await load();
+        } catch {
+          // The message above already says what to do.
+        }
+        return;
+      }
+      const created = (await reply.json()) as DocumentRow;
+      const confirmed =
+        typeof created?.id === 'string' &&
+        created.id.length > 0 &&
+        created.kind === 'deposit_invoice' &&
+        created.state === 'draft' &&
+        created.eventId === eventId;
+      if (confirmed) {
+        setDocuments((current) => [
+          created,
+          ...current.filter((row) => row.id !== created.id),
+        ]);
+        setMessage('Anzahlungsrechnung als Entwurf angelegt.');
+      } else
+        setMessage(
+          'Anzahlungsrechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+        );
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   // BKP019.c2: a finalized invoice is corrected by its own follow-up document.
   // The direction is the one operator decision; the positions are copied and the
   // invoice itself keeps its number, its state and its bytes.
@@ -1008,16 +1089,20 @@ export function EventDocuments({
             </p>
             {/* BKP019.b: a confirmation names the offer it was copied from.
                 BKP019.c1: an invoice names the confirmation in the same way.
+                BKP019.c3.1: a deposit names the same confirmation, because that
+                is what the advance was agreed on.
                 BKP019.c2: a correction names the document it corrects, whose kind
                 the projection deliberately does not carry - the wording stays
                 neutral ("Korrektur zu"). The link opens that source PDF. */}
             {(entry.kind === 'order_confirmation' ||
+              entry.kind === 'deposit_invoice' ||
               entry.kind === 'invoice' ||
               entry.kind === 'correction') &&
               entry.sourceNumber && (
                 <p className="document-meta">
                   <span>
-                    {entry.kind === 'invoice'
+                    {entry.kind === 'invoice' ||
+                    entry.kind === 'deposit_invoice'
                       ? 'Aus Auftragsbestätigung '
                       : entry.kind === 'correction'
                         ? 'Korrektur zu '
@@ -1031,7 +1116,8 @@ export function EventDocuments({
                       target="_blank"
                       rel="noreferrer"
                       aria-label={
-                        (entry.kind === 'invoice'
+                        (entry.kind === 'invoice' ||
+                        entry.kind === 'deposit_invoice'
                           ? 'Auftragsbestätigung '
                           : entry.kind === 'correction'
                             ? 'Beleg '
@@ -1066,8 +1152,10 @@ export function EventDocuments({
               )}
             {/* BKP019.d: what arrived and what is still open on this invoice.
                 Both are derived from the recorded payments - the invoice keeps
-                its number, its state and its bytes. */}
-            {entry.kind === 'invoice' &&
+                its number, its state and its bytes.
+                BKP019.c3.1: a finalized deposit is a claim of its own and shows
+                the same two derived values. */}
+            {(entry.kind === 'invoice' || entry.kind === 'deposit_invoice') &&
               entry.state === 'final' &&
               entry.paymentState && (
                 <p className="document-meta document-payment-state">
@@ -1205,43 +1293,50 @@ export function EventDocuments({
               )}
               {/* BKP019.c2: only a finalized invoice is corrected, and only as an
                   explicit step - the correction starts as a draft with its own
-                  number. The direction is the one decision the operator makes. */}
-              {entry.state === 'final' && entry.kind === 'invoice' && (
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={busy !== ''}
-                  aria-label={
-                    kindName(entry) +
-                    ' ' +
-                    (entry.number ?? '') +
-                    ' korrigieren'
-                  }
-                  aria-expanded={correctionId === entry.id}
-                  onClick={() => openCorrection(entry)}
-                >
-                  Korrigieren
-                </button>
-              )}
+                  number. The direction is the one decision the operator makes.
+                  BKP019.c3.1: a finalized deposit is corrected the same way,
+                  because a wrong advance must not be unfixable. */}
+              {entry.state === 'final' &&
+                (entry.kind === 'invoice' ||
+                  entry.kind === 'deposit_invoice') && (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== ''}
+                    aria-label={
+                      kindName(entry) +
+                      ' ' +
+                      (entry.number ?? '') +
+                      ' korrigieren'
+                    }
+                    aria-expanded={correctionId === entry.id}
+                    onClick={() => openCorrection(entry)}
+                  >
+                    Korrigieren
+                  </button>
+                )}
               {/* BKP019.d: a finalized invoice accepts incoming money as an
-                  explicit record. Manual only - no bank, card or PSP connection. */}
-              {entry.state === 'final' && entry.kind === 'invoice' && (
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={busy !== ''}
-                  aria-label={
-                    kindName(entry) +
-                    ' ' +
-                    (entry.number ?? '') +
-                    ' Zahlung erfassen'
-                  }
-                  aria-expanded={paymentId === entry.id}
-                  onClick={() => openPayments(entry)}
-                >
-                  Zahlung erfassen
-                </button>
-              )}
+                  explicit record. Manual only - no bank, card or PSP connection.
+                  BKP019.c3.1: an advance payment is paid the same way. */}
+              {entry.state === 'final' &&
+                (entry.kind === 'invoice' ||
+                  entry.kind === 'deposit_invoice') && (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== ''}
+                    aria-label={
+                      kindName(entry) +
+                      ' ' +
+                      (entry.number ?? '') +
+                      ' Zahlung erfassen'
+                    }
+                    aria-expanded={paymentId === entry.id}
+                    onClick={() => openPayments(entry)}
+                  >
+                    Zahlung erfassen
+                  </button>
+                )}
               {/* Only a legal next step is offered: no button invents a jump
                   such as final → accepted or a reopened withdrawn offer. */}
               {entry.state === 'final' &&
@@ -1446,8 +1541,62 @@ export function EventDocuments({
                     Rechnung erstellen
                   </button>
                 ))}
+              {/* BKP019.c3.1: the same finalized confirmation can be invoiced in
+                  advance. Its own explicit step, so a deposit never appears as a
+                  side effect of invoicing; several advances per order are legal. */}
+              {entry.state === 'final' &&
+                entry.kind === 'order_confirmation' &&
+                (confirmDepositId === entry.id ? (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Anzahlung anlegen'
+                      }
+                      onClick={() =>
+                        void createDepositInvoice(entry.id, entry.version)
+                      }
+                    >
+                      Ja, Anzahlung anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy !== ''}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' Anzahlung abbrechen'
+                      }
+                      onClick={() => setConfirmDepositId('')}
+                    >
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== ''}
+                    aria-label={
+                      kindName(entry) +
+                      ' ' +
+                      (entry.number ?? '') +
+                      ' Anzahlung erstellen'
+                    }
+                    onClick={() => setConfirmDepositId(entry.id)}
+                  >
+                    Anzahlung erstellen
+                  </button>
+                ))}
             </div>
-            {entry.kind === 'invoice' &&
+            {(entry.kind === 'invoice' || entry.kind === 'deposit_invoice') &&
               entry.state === 'final' &&
               correctionId === entry.id && (
                 <form
@@ -1509,7 +1658,7 @@ export function EventDocuments({
                   </fieldset>
                 </form>
               )}
-            {entry.kind === 'invoice' &&
+            {(entry.kind === 'invoice' || entry.kind === 'deposit_invoice') &&
               entry.state === 'final' &&
               paymentId === entry.id && (
                 <form
@@ -1886,15 +2035,30 @@ export function EventDocuments({
                   complete yet. The open paths are named here instead of letting
                   the card imply deposit, final and correction invoices exist.
                   BKP019.c2: corrections and cancellations do exist now - as
-                  their own documents, never as an edit of the invoice. */}
+                  their own documents, never as an edit of the invoice.
+                  BKP019.c3.1: deposits exist now and live in their own card, so
+                  only the final invoice is still missing here. */}
               {group.kind === 'invoice' && (
                 <p className="document-card-hint">
-                  Anzahlungs- und Schlussrechnungen sind noch nicht verfügbar.
-                  Eine finalisierte Rechnung wird nie ersetzt, sondern nur durch
-                  eine Rechnungskorrektur ergänzt; Entwürfe bleiben bis zur
+                  Eine Schlussrechnung ist noch nicht verfügbar. Eine
+                  finalisierte Rechnung wird nie ersetzt, sondern nur durch eine
+                  Rechnungskorrektur ergänzt; Entwürfe bleiben bis zur
                   Finalisierung bearbeitbar. Zahlungseingänge werden manuell
                   gegen die finalisierte Rechnung erfasst; ein Zahlungsziel und
                   eine Überfälligkeit gibt es noch nicht.
+                </p>
+              )}
+              {/* BKP019.c3.1: the honest gap of this slice. A deposit is a real
+                  claim with its own number, but it is not yet netted against the
+                  final invoice - that is BKP019.c3.2, not a hidden feature. */}
+              {group.kind === 'deposit_invoice' && (
+                <p className="document-card-hint">
+                  Eine Anzahlungsrechnung ist ein eigener Beleg mit eigener
+                  Nummer. Der Entwurf übernimmt den Auftrag und wird dort auf
+                  die vereinbarte Anzahlung gekürzt; Zahlungseingänge werden
+                  manuell erfasst. Die Verrechnung mit der Schlussrechnung fehlt
+                  noch – bis dahin bleibt jede Anzahlung ein eigener offener
+                  Beleg.
                 </p>
               )}
               {group.kind === 'correction' && (

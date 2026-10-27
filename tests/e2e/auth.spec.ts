@@ -1597,6 +1597,201 @@ async function signInScenario(browser: Browser, mode: 'google' | 'password') {
         )
       ).rows[0]!.count,
     ).toBe(1);
+    // BKP019.c3.1: the same finalized confirmation is also billed in advance. The
+    // advance owns the AZ number range, names its confirmation and stays its own
+    // claim - it is paid and corrected on its own, and the invoice above keeps
+    // its state, its number and its bytes.
+    await pool.query(
+      `INSERT INTO document_number_sequences
+        (tenant_id,kind,pattern,min_length,next_value,version)
+       VALUES ($1,'deposit_invoice','AZ-{YYYY}-{SEQ}',4,1,1)`,
+      [config.tenantId],
+    );
+    const depositCount = async () =>
+      (
+        await pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM documents
+            WHERE tenant_id=$1 AND kind='deposit_invoice'`,
+          [config.tenantId],
+        )
+      ).rows[0]!.count;
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Anzahlung erstellen',
+      })
+      .click();
+    // The step asks once and writes nothing before the confirmation.
+    await expect(
+      orders.getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Anzahlung anlegen',
+      }),
+    ).toBeVisible();
+    expect(await depositCount()).toBe(0);
+    await orders
+      .getByRole('button', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' Anzahlung anlegen',
+      })
+      .click();
+    await expect(
+      page.getByText('Anzahlungsrechnung als Entwurf angelegt.'),
+    ).toBeVisible();
+    const deposits = page.getByRole('region', {
+      name: 'Anzahlungsrechnungen',
+    });
+    await expect(deposits.getByRole('listitem')).toHaveCount(1);
+    // The gap is named, not implied away: no netting against a final invoice yet.
+    await expect(
+      deposits.getByText(/Verrechnung mit der Schlussrechnung fehlt noch/),
+    ).toBeVisible();
+    const deposit = (
+      await pool.query<{
+        id: string;
+        number: string | null;
+        source_document_id: string;
+        gross_minor: string;
+      }>(
+        `SELECT id, number, source_document_id, gross_minor::text AS gross_minor
+           FROM documents WHERE tenant_id=$1 AND kind='deposit_invoice'`,
+        [config.tenantId],
+      )
+    ).rows[0]!;
+    expect(deposit.source_document_id).toBe(confirmation.id);
+    expect(deposit.number).toBeNull();
+    // The advance copies the order 1:1 - the operator cuts it down in the draft.
+    expect(deposit.gross_minor).toBe(confirmation.gross_minor);
+    const depositDetail = (await (
+      await page.request.get(origin + '/api/v1/documents/' + deposit.id)
+    ).json()) as Detail;
+    expect(copied(depositDetail.lines)).toEqual(
+      copied(confirmationDetail.lines),
+    );
+    expect(depositDetail.subject).toBe('Anzahlungsrechnung für {{contact}}');
+    await expect(
+      deposits.locator('.document-meta', {
+        hasText: 'Aus Auftragsbestätigung',
+      }),
+    ).toBeVisible();
+    await expect(
+      deposits.getByRole('link', {
+        name: 'Auftragsbestätigung ' + confirmedNumber + ' als PDF öffnen',
+      }),
+    ).toHaveAttribute('href', '/api/v1/documents/' + confirmation.id + '/pdf');
+    // Its own number circle: the invoice's RE number is never borrowed.
+    await deposits
+      .getByRole('button', { name: 'Anzahlungsrechnung Entwurf finalisieren' })
+      .click();
+    await expect(page.getByText(/Finalisiert als AZ-/)).toBeVisible();
+    const depositNumber = (
+      await pool.query<{ number: string }>(
+        'SELECT number FROM documents WHERE tenant_id=$1 AND id=$2',
+        [config.tenantId, deposit.id],
+      )
+    ).rows[0]!.number;
+    expect(depositNumber).toMatch(/^AZ-\d{4}-\d{4}$/);
+    await expect(
+      deposits.getByRole('link', {
+        name: 'Anzahlungsrechnung ' + depositNumber + ' als PDF öffnen',
+      }),
+    ).toBeVisible();
+    const depositPdfBytes = await (
+      await page.request.get(
+        origin + '/api/v1/documents/' + deposit.id + '/pdf',
+      )
+    ).body();
+    expect(depositPdfBytes.subarray(0, 5).toString()).toBe('%PDF-');
+    // The advance is a claim of its own: it is open until money arrives, and a
+    // partial payment changes the derived state and the open amount.
+    const depositRow = deposits
+      .getByRole('listitem')
+      .filter({ hasText: depositNumber });
+    await expect(depositRow.getByText('Offen', { exact: true })).toBeVisible();
+    await expect(
+      depositRow.getByText(/Offener Betrag: 100,00 €/),
+    ).toBeVisible();
+    await depositRow
+      .getByRole('button', {
+        name: 'Anzahlungsrechnung ' + depositNumber + ' Zahlung erfassen',
+      })
+      .click();
+    const depositPayment = deposits.getByRole('form', {
+      name: 'Zahlung erfassen',
+    });
+    await expect(depositPayment).toBeVisible();
+    await depositPayment.getByLabel('Betrag in €').fill('30,00');
+    await depositPayment.getByLabel('Zahlweg').selectOption('bank_transfer');
+    await depositPayment
+      .getByRole('button', { name: 'Zahlung speichern' })
+      .click();
+    await expect(page.getByText('Zahlung erfasst.')).toBeVisible();
+    await expect(
+      depositRow.getByText('Teilweise bezahlt', { exact: true }),
+    ).toBeVisible();
+    await expect(depositRow.getByText(/Offener Betrag: 70,00 €/)).toBeVisible();
+    // Money never rewrites the advance, and it never settles the invoice either.
+    expect(
+      (
+        await (
+          await page.request.get(
+            origin + '/api/v1/documents/' + deposit.id + '/pdf',
+          )
+        ).body()
+      ).equals(depositPdfBytes),
+    ).toBe(true);
+    await expect(
+      invoices
+        .getByRole('listitem')
+        .filter({ hasText: invoiceNumber })
+        .getByText('Storniert', { exact: true }),
+    ).toBeVisible();
+    // A wrong advance is correctable: its own correction names the AZ number.
+    await deposits
+      .getByRole('button', {
+        name: 'Anzahlungsrechnung ' + depositNumber + ' korrigieren',
+      })
+      .click();
+    const depositCorrectionForm = deposits.getByRole('form', {
+      name: 'Rechnungskorrektur anlegen',
+    });
+    await expect(depositCorrectionForm).toBeVisible();
+    await depositCorrectionForm
+      .getByRole('button', { name: 'Korrektur anlegen' })
+      .click();
+    await expect(
+      page.getByText('Rechnungskorrektur als Entwurf angelegt.'),
+    ).toBeVisible();
+    await expect(
+      corrections.getByRole('link', {
+        name: 'Beleg ' + depositNumber + ' als PDF öffnen',
+      }),
+    ).toHaveAttribute('href', '/api/v1/documents/' + deposit.id + '/pdf');
+    const depositCorrection = (
+      await pool.query<{ id: string; source_document_id: string }>(
+        `SELECT id, source_document_id FROM documents
+          WHERE tenant_id=$1 AND kind='correction' AND source_document_id=$2`,
+        [config.tenantId, deposit.id],
+      )
+    ).rows[0]!;
+    expect(depositCorrection.source_document_id).toBe(deposit.id);
+    // The documents above the advance are untouched: same numbers, same bytes.
+    expect(
+      (
+        await (
+          await page.request.get(
+            origin + '/api/v1/documents/' + confirmation.id + '/pdf',
+          )
+        ).body()
+      ).equals(confirmationPdfBytes),
+    ).toBe(true);
+    expect(
+      (
+        await (
+          await page.request.get(
+            origin + '/api/v1/documents/' + invoice.id + '/pdf',
+          )
+        ).body()
+      ).equals(invoicePdfBytes),
+    ).toBe(true);
+    await audit('event-anzahlungsrechnung');
     // Withdrawing asks once, and only then writes.
     await eventOffers
       .getByRole('button', {

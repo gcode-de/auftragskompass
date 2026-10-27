@@ -8,6 +8,60 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP019.c3.1 — `feat: invoice a deposit of a confirmed order`** (26.10.2026)
+
+  Erster der beiden c3-Unter-Slices nach rein lesender DeepSeek-Analyse zu
+  `1a2307e` (RG-02 „Anzahlungsrechnung“, DV-02; RG-03 „Schlussrechnung“ folgt
+  in c3.2). Staleness: c3 fehlt vollständig – `deposit_invoice` ist nur
+  Enum-/Vorlagen-/Nummernkreis-/Beschriftungswert; vier Sperren blockieren
+  heute (Zahlungs-Guard, Quell-CHECK, Korrektur-Quelle, Entwurfsbearbeitung);
+  kein Test finalisiert je eine Anzahlung. c3.1: `POST …/deposit-invoice`
+  aus finaler Auftragsbestätigung erzeugt einen bearbeitbaren
+  Anzahlungsentwurf (Positionen 1:1 als Magnituden, Summen exakt, Betreff
+  „Anzahlungsrechnung für {{contact}}“, `source_document_id` = Bestätigung);
+  **mehrere Anzahlungen je Bestätigung sind erlaubt** (Raten, kein Unique –
+  Doppelklick erzeugt per Guard/Test GENAU eine); Nummernkreis `AZ-` (0027).
+  Migration `0045` erweitert Quell-CHECK/Blanko-Regel additiv
+  (`deposit_invoice` mit Quelle erlaubt, Blanko-Anzahlung bleibt 23514);
+  **Anzahlungen sind korrigierbar** (c2-Quellregel auf
+  `invoice|order_confirmation|deposit_invoice`); Zahlungen gelten auch für
+  Anzahlungen (Zahlungsstand/„Offener Betrag“); Entwurfsbearbeitung wie
+  andere Belegarten (Editor-Überschrift „Anzahlungsrechnung bearbeiten“);
+  UI: „Anzahlung erstellen“ neben „Rechnung erstellen“, Anzahlungszeile mit
+  Quelle/Zahlungsstand, ehrlicher Hinweis dass die Verrechnung in der
+  Schlussrechnung mit c3.2 kommt. **Für c3.2 verbindlich festgehalten:**
+  Saldoabzug = abgerechnete Anzahlungs-Bruttosumme (nur „geleistet“ wäre eine
+  Doppelforderung), „davon geleistet“ nur Ausweis, `invoice_role` +
+  `deposit_applied_minor` (Finalisierung friert ein). Referenz ehrlich:
+  NK-01 nennt Anzahlung nicht (AZ- aus DV-02/0027, kein erfundener Kreis;
+  Schlussrechnung bleibt RE-), Bookitup-UI unbekannt, keine Rechts-/Steuer-
+  abnahme. Tests zuerst rot (18 Fälle, `documents.test.ts:298–308`
+  unantastbar). Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt
+  Plan/Docs und reviewt.
+  Abgenommen: rot beobachtet (37 Fehlschläge gegen per `git stash`
+  zurückgenommene UI-Kernstellen: fehlende Methode/Route/UI/Spalte –
+  sauber getrennt), danach grün: `test:unit` 274/274, `test:component`
+  735/735 (6 neu), `test:integration` 425/425 (12 neue c3.1-Fälle +
+  Zahlungsfälle auf Anzahlungen: Zweitanlage/Raten, Rückzug, Version,
+  Parallelität, AZ-Nummer, Renderer-Rollback, Entwurfsbearbeitung,
+  Korrektur der Anzahlung, PDF-Unveränderlichkeit, Mandantentrennung,
+  Blanko-DB 23514; `:298–308` unantastbar), `test:coverage` vollständig
+  grün (documents.ts 92,90% Statements, document-payments.ts 96,39%),
+  `test:workspace`/`test:docs`/schnelle Gates/Build grün; E2E
+  auth+template-product-price 16/16 inkl. Ablauf finale Bestätigung →
+  Anzahlung (`AZ-JJJJ-NNNN`, Quelle) → Teilzahlung 30,00 € auf 100,00 € →
+  „Teilweise bezahlt“/offen 70,00 € → Korrektur der Anzahlung mit
+  AZ-PDF-Link → Bestätigungs-/Rechnungs-PDF bytegleich, axe-Audit
+  `event-anzahlungsrechnung` 0 Verstöße. Notiert: Anzahlungshöhe entsteht
+  durch Kürzen der Positionen im Entwurf (kein Prozent-/Festbetrag-
+  Parameter, keine zweite Rundung); zwei parallele API-Aufrufe erzeugen
+  zwei Anzahlungen (Raten gewollt, Doppelklick per UI-Guard verhindert);
+  Projektionserweiterung bewusst nur `payable`/`paymentState` (Storno-Stand/
+  Restbetrag fehlen Anzahlungen – Lücke für c3.2); kein
+  `order_invoiced`-Guard und der Bestätigungs-Kredit-Guard zählt noch keine
+  Anzahlungszahlungen (beides c3.2); ein alter Hinweistext
+  „Anzahlungs- … noch nicht verfügbar“ wurde entpinnt und aktualisiert.
+
 - [x] **BKP019.d — `feat: record incoming payments against a finalized invoice`** (26.10.2026)
 
   Unter-Slice (d) von BKP019 nach rein lesender DeepSeek-Analyse zu `9d8e8a2`

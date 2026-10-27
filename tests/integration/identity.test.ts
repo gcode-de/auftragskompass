@@ -40,8 +40,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows;
   expect(applied).toEqual(expected);
-  // BKP019.d: an incoming payment is its own append-only row per document.
-  expect(applied.at(-1)!.name).toBe('0044_document_payments.sql');
+  // BKP019.c3.1: an advance payment is a claim of its own, so its source link
+  // joins the same column. The blank-deposit path did not widen anything.
+  expect(applied.at(-1)!.name).toBe('0045_deposit_source.sql');
   // The source is a document of the same tenant, never another tenant's row.
   const sourceForeignKey = (
     await pool.query<{ def: string }>(
@@ -75,11 +76,21 @@ test('migrations serialize, restart safely and detect changed history', async ()
       "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='documents'::regclass AND conname='documents_source_kind_check'",
     )
   ).rows[0]!.def;
-  // BKP019.c2: the same link now also carries a correction, and only these three
+  // BKP019.c2: the same link now also carries a correction, and only these four
   // kinds ever own a source.
   expect(sourceKindCheck).toContain(
-    "kind = ANY (ARRAY['order_confirmation'::text, 'invoice'::text, 'correction'::text])",
+    "kind = ANY (ARRAY['order_confirmation'::text, 'invoice'::text, 'correction'::text, 'deposit_invoice'::text])",
   );
+  // BKP019.c3.1: several deposits per order are legitimate, so the one-document
+  // rule of invoices and confirmations is deliberately not repeated for them.
+  const depositUnique = (
+    await pool.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes
+        WHERE schemaname='public' AND tablename='documents'
+          AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%deposit_invoice%'`,
+    )
+  ).rows;
+  expect(depositUnique).toEqual([]);
   // A correction carries its direction on the document, never as a sign.
   const correctionDirectionCheck = (
     await pool.query<{ def: string }>(
