@@ -2,6 +2,45 @@
 
 Stand der Fortsetzung: **27.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
 
+## H076: Kontakte mit Blur-Autosave und Escape, 27.10.2026
+
+EDIT-01 ergänzt direkte Felder in der Kontaktakte. Der gemeinsame kleine Hook
+`useRecordAutosave` trennt bestätigte Daten, aktive Entwürfe und beim Blur
+freigegebene Änderungen. Vollständige PUTs laufen einzeln mit der zuletzt
+bestätigten Version. Escape verwirft nur die aktuelle Eingabe, erhält frühere
+Blur-Aufträge und laufende Schreibvorgänge. Editrevisionen schützen neuere
+Eingaben auch dann, wenn sie auf den ursprünglichen Wert zurückgehen.
+
+Fehler/409 pausieren die Warteschlange. Der neue mandantengesicherte Einzel-GET
+ermöglicht einen expliziten Abgleich ohne automatische Wiederholung; sichtbarer
+Vergleich mit Serverstand, danach ausdrückliche Übernahme oder erneutes Anwenden
+bereits abgeschlossener Eingaben. Dialoganlage bleibt unverändert. Beide
+Bearbeitungswege übernehmen bestätigte Zeilen sofort; ein Listenfehler verliert
+keine bestätigte Änderung. Aktive Suchakten bleiben mit Hinweis bis zum Verlassen
+geöffnet und werden anschließend anhand des angewandten Filters geprüft.
+Vertrag: [Kontakte](contacts.md).
+
+Der Navigationsschutz ist auf aktive Autosave-Akten begrenzt: interne Links
+atomar vor ihren Filter-Handlern, Hash-/Browser-Zurück vor Route-Unmount,
+Browser-Reload/-Schließen mit nativem Hinweis. Andere dauerhaft montierte
+Verwaltungsformulare behalten ihre bisherigen Entwürfe und Navigationsregeln.
+Bestätigtes Verlassen kann laufende Servermutationen nicht zurücknehmen.
+Parent-Dirty wird beim tatsächlichen Unmount bereinigt, ohne Callback-Wechsel
+als Unmount zu behandeln.
+
+RED und unabhängige Reviews belegt. Gesamter Coverage-Lauf: 1567 Tests grün,
+96,62 % Zeilen, 91,61 % Branches; geändert 300/320 Zeilen und 202/250 Branches.
+Node 24 Format/Lint/Typen/Build und 6/6 betroffene Chromium-Läufe grün, darunter
+beide HTTPS-Loginmodi, beide Dateien-Matrizen, Eventdateien und Kontakt-Escape,
+Normalisierung, abgebrochener Linkwechsel und Browser-Zurück. Screenshots
+320/1280 geprüft. CI von `38c51ae` zeigte einen mehrdeutigen alten Dateien-
+Selektor nach BKP020.2; drei Stellen im Auth-E2E adressieren die Region jetzt
+exakt. Keine Assertion entfällt, kein Timeout wächst. CI/Images und Rollout
+dieses Stands werden nach Push separat geprüft. Eventbearbeitung und freie
+Rechnungsanlage bleiben die nächsten beauftragten Slices. Auch neu angelegte
+Kontakte werden vor dem Folge-GET sichtbar übernommen und bleiben bei dessen
+Fehlschlag auffindbar (eigene RED/Green-Regression).
+
 ## H075: Bibliotheksdateien am Event, 27.10.2026
 
 BKP020.2 verknüpft bestehende Bibliotheksdateien in Event → Dateien, ohne Bytes

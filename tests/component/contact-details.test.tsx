@@ -132,24 +132,35 @@ test('the record names the contact type and an archived state in plain text', as
   mount('#contacts', [company, person]);
   await screen.findByText('Synthetic Company');
   const active = await openRecord('Synthetic Company');
-  expect(within(active).getByText('Firma')).toBeTruthy();
-  expect(within(active).getByText('Aktiv')).toBeTruthy();
+  expect(active.querySelector('.contact-record-kind')?.textContent).toContain(
+    'Firma',
+  );
+  expect(active.querySelector('.contact-record-state')?.textContent).toBe(
+    'Aktiv',
+  );
   await closeRecord();
   const archived = await openRecord('Fictional Person');
-  expect(within(archived).getByText('Privatperson')).toBeTruthy();
-  expect(within(archived).getByText('Archiviert')).toBeTruthy();
-  expect(within(archived).queryByText('Aktiv')).toBeNull();
+  expect(archived.querySelector('.contact-record-kind')?.textContent).toContain(
+    'Privatperson',
+  );
+  expect(archived.querySelector('.contact-record-state')?.textContent).toBe(
+    'Archiviert',
+  );
 });
 
 test('a company names its contact person while a private contact keeps that row out', async () => {
   mount('#contacts', [company, person]);
   await screen.findByText('Synthetic Company');
   const companyRecord = await openRecord('Synthetic Company');
-  expect(within(companyRecord).getByText('Ansprechpartner')).toBeTruthy();
+  expect(companyRecord.querySelector('dl dt')?.textContent).toBe(
+    'Ansprechpartner',
+  );
   expect(within(companyRecord).getByText('Fictional Contact')).toBeTruthy();
   await closeRecord();
   const personRecord = await openRecord('Fictional Person');
-  expect(within(personRecord).queryByText('Ansprechpartner')).toBeNull();
+  expect(personRecord.querySelector('dl dt')?.textContent).not.toBe(
+    'Ansprechpartner',
+  );
 });
 
 test('the address shows only stored parts and says so honestly when nothing is stored', async () => {
@@ -492,4 +503,142 @@ test('long fictional values stay complete and wrap instead of clipping', async (
   } finally {
     style.remove();
   }
+});
+
+test('keeps an inline draft when closing or searching the contact list', async () => {
+  const fetcher = mount('#contacts', [company]);
+  const details = await openRecord();
+  const name = within(details).getByLabelText('Name / Firma');
+  fireEvent.change(name, { target: { value: 'Unfinished' } });
+  fireEvent.click(
+    within(details).getByRole('button', { name: 'Kontakt-Details schließen' }),
+  );
+  expect((name as HTMLInputElement).value).toBe('Unfinished');
+  expect(screen.getByRole('region', { name: 'Kontakt-Details' })).toBeTruthy();
+  const before = fetcher.mock.calls.length;
+  fireEvent.submit(screen.getByLabelText('Kontakte suchen').closest('form')!);
+  expect(fetcher.mock.calls.length).toBe(before);
+  expect(
+    screen.getByText(/Kontaktänderungen zuerst speichern oder abgleichen/),
+  ).toBeTruthy();
+});
+
+test('keeps an edited search result open and refreshes membership after closing', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic#contacts');
+  let saved = false;
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      saved = true;
+      return Response.json({ ...company, name: 'Changed', version: 3 });
+    }
+    if (url.endsWith('/events')) return Response.json([]);
+    return Response.json(saved ? [] : [company]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<ContactPanel csrfToken="csrf" />);
+  const details = await openRecord();
+  const name = within(details).getByLabelText('Name / Firma');
+  fireEvent.change(name, { target: { value: 'Changed' } });
+  fireEvent.blur(name);
+  await within(details).findByRole('heading', { name: 'Changed' });
+  expect(
+    await screen.findByText(
+      /Trefferliste wird nach dem Schließen aktualisiert/,
+    ),
+  ).toBeTruthy();
+  expect(
+    fetcher.mock.calls.filter(([url]) => url.includes('/api/v1/contacts?q='))
+      .length,
+  ).toBe(1);
+  fireEvent.click(
+    within(details).getByRole('button', { name: 'Kontakt-Details schließen' }),
+  );
+  expect(await screen.findByText('Keine Kontakte gefunden.')).toBeTruthy();
+  expect(
+    fetcher.mock.calls.filter(([url]) => url.includes('/api/v1/contacts?q='))
+      .length,
+  ).toBe(2);
+});
+
+test('keeps the confirmed contact visible when refreshing search membership fails', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic#contacts');
+  let saved = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        saved = true;
+        return Response.json({ ...company, name: 'Changed', version: 3 });
+      }
+      if (url.endsWith('/events')) return Response.json([]);
+      if (saved) return new Response(null, { status: 500 });
+      return Response.json([company]);
+    }),
+  );
+  render(<ContactPanel csrfToken="csrf" />);
+  const details = await openRecord();
+  const name = within(details).getByLabelText('Name / Firma');
+  fireEvent.change(name, { target: { value: 'Changed' } });
+  fireEvent.blur(name);
+  await within(details).findByText('Alle Änderungen gespeichert.');
+  fireEvent.click(
+    within(details).getByRole('button', { name: 'Kontakt-Details schließen' }),
+  );
+  expect(
+    await screen.findByText(
+      'Kontakt gespeichert, die Liste konnte nicht neu geladen werden.',
+    ),
+  ).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Changed' })).toBeTruthy();
+});
+
+test('refreshes search membership when leaving the edited record via hash navigation', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic#contacts');
+  let saved = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        saved = true;
+        return Response.json({ ...company, name: 'Changed', version: 3 });
+      }
+      if (url.endsWith('/events')) return Response.json([]);
+      return Response.json(saved ? [] : [company]);
+    }),
+  );
+  render(<ContactPanel csrfToken="csrf" />);
+  const details = await openRecord();
+  const name = within(details).getByLabelText('Name / Firma');
+  fireEvent.change(name, { target: { value: 'Changed' } });
+  fireEvent.blur(name);
+  await within(details).findByText('Alle Änderungen gespeichert.');
+  window.location.hash = 'contacts';
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  expect(await screen.findByText('Keine Kontakte gefunden.')).toBeTruthy();
+});
+
+test('leaving a dirty record clears its local guard when the editor unmounts', async () => {
+  const fetcher = mount('#contacts', [company]);
+  const details = await openRecord();
+  fireEvent.change(within(details).getByLabelText('Name / Firma'), {
+    target: { value: 'Unfinished' },
+  });
+  window.location.hash = 'events';
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'Kontakt-Details' }),
+    ).toBeNull(),
+  );
+  window.location.hash = 'contacts';
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  const before = fetcher.mock.calls.length;
+  fireEvent.submit(screen.getByLabelText('Kontakte suchen').closest('form')!);
+  await waitFor(() =>
+    expect(fetcher.mock.calls.length).toBeGreaterThan(before),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Kontakt anlegen' }));
+  expect(
+    await screen.findByRole('dialog', { name: 'Kontakt anlegen' }),
+  ).toBeTruthy();
 });

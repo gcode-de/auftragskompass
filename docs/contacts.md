@@ -13,12 +13,54 @@ Die Formularwerte sind kontrolliert und werden beim Wechsel des Ziels neu gesetz
 Alle Routen benötigen die lokale Admin-Sitzung. Schreibende Routen verlangen zusätzlich Origin und CSRF-Token. Der Mandant kommt ausschließlich aus der Serverkonfiguration.
 
 - `GET /api/v1/contacts?q=Suchtext`: Suche über Name, Ansprechpartner, E-Mail, Telefonnummern und Anschrift; archivierte Kontakte bleiben sichtbar. SQL-Suchzeichen werden wörtlich gesucht.
+- `GET /api/v1/contacts/:id`: vollständiger gespeicherter Einzelkontakt mit Version; fehlende oder fremde UUID liefert 404, ungültige UUID 400.
 - `POST /api/v1/contacts`: Kontakt anlegen.
 - `PUT /api/v1/contacts/:id`: vollständige Änderung mit aktueller `version`; veraltete Version ergibt 409, fremde oder fehlende ID 404.
 - `POST /api/v1/contacts/duplicates`: `email`, `phone`, `mobile`, `country`, optional `excludeId`; schlägt Kontakte desselben Mandanten mit gleicher E-Mail oder Telefonnummer vor, einschließlich Archiv.
 - `GET /api/v1/contacts/export.csv`: vollständiger Export als UTF-8-CSV mit BOM, zitierten Feldern und Schutz vor Tabellenformeln. Enthält personenbezogene Daten und ist entsprechend aufzubewahren.
 
 Der vollständige Schreibdatensatz enthält `kind` (`private`/`company`), `name`, `contactPerson`, `street`, `postalCode`, `city`, `country` (zweistelliger Großbuchstabencode), `email`, `phone`, `mobile`, `state` (`active`/`archived`). Leere optionale Felder werden als leere Zeichenketten übertragen. Antworten enthalten zusätzlich `id` und `version`, keine Mandanten- oder Vergleichsschlüssel.
+
+## Direkte Feldbearbeitung (EDIT-01)
+
+Bestehende Kontakte sind zusätzlich direkt in ihrer Akte bearbeitbar. Gültige
+Änderungen werden beim Verlassen des Felds gespeichert; unveränderte Felder
+erzeugen keinen PUT. Escape verwirft ausschließlich die aktuelle noch nicht
+abgeschlossene Eingabe und unterdrückt die folgende Blur-Speicherung. Frühere
+bereits beim Verlassen freigegebene Änderungen bleiben in der Warteschlange;
+laufende Speicherungen werden nicht als abgebrochen dargestellt. Andere
+Feldentwürfe bleiben erhalten. IME-Komposition wird dabei nicht unterbrochen.
+
+Die UI sendet vollständige, wie im Dialog getrimmte Kontaktdaten mit der zuletzt
+bestätigten Version, jeweils nur einen PUT gleichzeitig. Aktive Entwürfe anderer
+Felder gehen nicht in diese Anfrage ein. Gespeicherte Normalisierung und Version
+werden direkt aus der geprüften Antwort übernommen; spätere Eingaben können
+diese Antwort überleben, auch eine bewusste Rückänderung zum ursprünglichen Wert.
+„Wird gespeichert“, offene Eingaben und bestätigter Stand sind unterscheidbar.
+
+Nach Konflikt oder unklarem Ausgang pausiert die Warteschlange. „Aktuellen Stand
+laden“ liest den Einzelkontakt, ohne Entwürfe zu ersetzen oder einen PUT zu
+wiederholen. Erst nach sichtbarem Vergleich entscheidet der Benutzer ausdrücklich
+zwischen Serverstand übernehmen (mit Verwerfbestätigung) und den bereits
+abgeschlossenen lokalen Änderungen auf dieser Version anwenden. Aktive, noch
+nicht abgeschlossene Feldentwürfe bleiben bei letzterem erhalten.
+
+Lokale Schließ-/Such-/Zeilenwechsel schützen schmutzige Kontakte. Der gemeinsame
+Navigationsschutz fängt bei aktiven Feldentwürfen oder ausstehenden Speicherungen
+auch andere Bereichslinks und Browser-Zurück vor dem Unmount ab. Ein Neuladen
+oder Schließen des Browserfensters verwendet den nativen Browserhinweis. Bei
+bestätigtem Verlassen kann eine bereits versandte Speicherung noch abschließen.
+Andere, weiterhin montierte Verwaltungsformulare behalten ihr bisheriges
+Verhalten und ihre Entwürfe. Ein expliziter Listenabruf überschreibt keinen
+aktiven Kontaktentwurf; verspätete Antworten werden verworfen.
+
+Bei aktiver Suche bleibt eine gerade bearbeitete Akte bis zum Verlassen bewusst
+geöffnet und weist darauf hin, dass anschließend die Trefferliste erneut
+geprüft wird. Der tatsächliche angewandte Filter wird verwendet. Ein Lesefehler
+erhält die bestätigte Zeile mit Warnung. Auch der bestehende Dialog übernimmt
+die bestätigte Zeile unmittelbar und ist für den Speichererfolg nicht von einem
+anschließenden Listen-GET abhängig. Die Kontaktanlage bleibt ein bewusster
+Dialogabschluss.
 
 ## Normalisierung und Speicherung
 

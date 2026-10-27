@@ -806,7 +806,7 @@ async function signInScenario(
       [config.tenantId],
     );
     await navigate('Dateien');
-    const files = page.getByRole('region', { name: 'Dateien' });
+    const files = page.getByRole('region', { name: 'Dateien', exact: true });
     await expect(files).toBeVisible();
 
     // Exactly one page heading in the whole document, owned by the shell; the
@@ -4146,7 +4146,7 @@ async function signInScenario(
         .getByRole('button', { name: 'Dateien', exact: true })
         .click();
       await expect(
-        openRecord.getByRole('region', { name: 'Dateien' }),
+        openRecord.getByRole('region', { name: 'Dateien', exact: true }),
       ).toBeVisible();
       await expect(
         openRecord.getByRole('region', { name: 'Angebote' }),
@@ -4172,7 +4172,7 @@ async function signInScenario(
         .getByRole('button', { name: 'Dateien', exact: true })
         .click();
       await expect(
-        openRecord.getByRole('region', { name: 'Dateien' }),
+        openRecord.getByRole('region', { name: 'Dateien', exact: true }),
       ).toBeFocused();
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),

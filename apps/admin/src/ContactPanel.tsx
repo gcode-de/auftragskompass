@@ -14,9 +14,13 @@ export function ContactPanel({
   showHeading?: boolean;
 }) {
   const sequence = useRef(0);
+  const inlineDirty = useRef(false);
+  const editedSearchId = useRef<string | null>(null);
+  const scrolledDetail = useRef<string | null>(null);
   const createTrigger = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const query = new URLSearchParams(window.location.search).get('q') ?? '';
+  const appliedSearch = useRef(query);
   const [rows, setRows] = useState<Contact[]>([]),
     [editing, setEditing] = useState<Contact | null>(null),
     [open, setOpen] = useState(false),
@@ -26,7 +30,9 @@ export function ContactPanel({
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [reloadFailed, setReloadFailed] = useState(false),
-    [detailId, setDetailId] = useState<string | null>(null);
+    [editorEpoch, setEditorEpoch] = useState(0),
+    [detailId, setDetailId] = useState<string | null>(null),
+    [editedSearchRecord, setEditedSearchRecord] = useState(false);
   async function refresh(query = '') {
     const current = ++sequence.current;
     setLoading(true);
@@ -38,7 +44,12 @@ export function ContactPanel({
       if (!response.ok) throw Error('load');
       const rows = (await response.json()) as Contact[];
       if (current === sequence.current) {
+        if (inlineDirty.current) return;
         setRows(rows);
+        appliedSearch.current = query;
+        editedSearchId.current = null;
+        setEditedSearchRecord(false);
+        setEditorEpoch((value) => value + 1);
         setReloadFailed(false);
         setMessage((text) => (text === loadFailureMessage ? '' : text));
       }
@@ -77,13 +88,24 @@ export function ContactPanel({
     // panel. A hash without a loaded row stays silent – no stale editor.
     const changed = () => {
       const id = window.location.hash.slice(1);
+      if (
+        editedSearchId.current &&
+        id !== 'contact-' + editedSearchId.current &&
+        !inlineDirty.current
+      ) {
+        void refreshEditedSearch();
+      }
       if (!id.startsWith('contact-')) {
+        scrolledDetail.current = null;
         setDetailId(null);
         return;
       }
       if (rows.some((row) => 'contact-' + row.id === id)) {
         setDetailId(id.slice('contact-'.length));
-        document.getElementById(id)?.scrollIntoView?.();
+        if (scrolledDetail.current !== id) {
+          scrolledDetail.current = id;
+          document.getElementById(id)?.scrollIntoView?.();
+        }
       } else setDetailId(null);
     };
     changed();
@@ -98,6 +120,12 @@ export function ContactPanel({
   }
   function openNew() {
     if (open || busy) return;
+    if (inlineDirty.current) {
+      setMessage(
+        'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+      );
+      return;
+    }
     returnFocus.current =
       document.activeElement instanceof HTMLElement &&
       document.activeElement !== document.body
@@ -109,6 +137,12 @@ export function ContactPanel({
   }
   function openEdit(row: Contact) {
     if (open || busy) return;
+    if (inlineDirty.current) {
+      setMessage(
+        'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+      );
+      return;
+    }
     returnFocus.current =
       document.activeElement instanceof HTMLElement &&
       document.activeElement !== document.body
@@ -123,22 +157,51 @@ export function ContactPanel({
     setEditing(null);
     restoreFocus();
   }
-  function savedContact() {
+  function adoptContact(row: Contact) {
+    ++sequence.current;
+    setLoading(false);
+    setRows((current) =>
+      current.some((entry) => entry.id === row.id)
+        ? current.map((entry) => (entry.id === row.id ? row : entry))
+        : [row, ...current],
+    );
+  }
+  function refreshEditedSearch() {
+    if (!editedSearchId.current) return Promise.resolve();
+    editedSearchId.current = null;
+    setEditedSearchRecord(false);
+    return refresh(appliedSearch.current).catch(() => {
+      setReloadFailed(true);
+    });
+  }
+  function savedContact(row: Contact) {
+    adoptContact(row);
+    setEditorEpoch((value) => value + 1);
     setOpen(false);
     setEditing(null);
     setMessage('Kontakt gespeichert.');
-    void (async () => {
-      try {
-        await refresh(search);
-      } catch {
-        setReloadFailed(true);
-      }
-      // The list actions are disabled while busy; restore focus after React
-      // has re-enabled them instead of dropping it onto the document body.
-      setTimeout(restoreFocus, 0);
-    })();
+    setTimeout(
+      () =>
+        void (async () => {
+          try {
+            await refresh(search);
+          } catch {
+            setReloadFailed(true);
+          }
+          // The list actions are disabled while busy; restore focus after React
+          // has re-enabled them instead of dropping it onto the document body.
+          setTimeout(restoreFocus, 0);
+        })(),
+      0,
+    );
   }
   async function retryList() {
+    if (inlineDirty.current) {
+      setMessage(
+        'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+      );
+      return;
+    }
     try {
       await refresh(search);
     } catch {
@@ -148,15 +211,26 @@ export function ContactPanel({
   // Closing the record returns to the list without touching the local search,
   // the loaded rows or the scroll position: only the hash changes.
   function closeDetail(id: string) {
+    if (inlineDirty.current) {
+      setMessage(
+        'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+      );
+      return;
+    }
     window.location.hash = 'contacts';
     setDetailId(null);
-    requestAnimationFrame(() => {
-      const link = document
-        .getElementById('contact-' + id)
-        ?.querySelector<HTMLAnchorElement>('.contact-name-link');
-      if (link) link.focus({ preventScroll: true });
-      else createTrigger.current?.focus({ preventScroll: true });
-    });
+    function focusList() {
+      requestAnimationFrame(() => {
+        const link = document
+          .getElementById('contact-' + id)
+          ?.querySelector<HTMLAnchorElement>('.contact-name-link');
+        if (link) link.focus({ preventScroll: true });
+        else createTrigger.current?.focus({ preventScroll: true });
+      });
+    }
+    if (editedSearchRecord) {
+      void refreshEditedSearch().finally(focusList);
+    } else focusList();
   }
   return (
     <section id="contacts" aria-label="Kontakte" aria-busy={loading}>
@@ -165,6 +239,12 @@ export function ContactPanel({
         <form
           onSubmit={(event) => {
             event.preventDefault();
+            if (inlineDirty.current) {
+              setMessage(
+                'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+              );
+              return;
+            }
             void refresh(search).catch(() => setMessage(loadFailureMessage));
           }}
         >
@@ -238,7 +318,22 @@ export function ContactPanel({
               {/* The summary steps aside while the record is open; the row
               itself stays mounted so search, scroll and focus survive. */}
               <div className="contact-row" hidden={shown}>
-                <a className="contact-name-link" href={'#contact-' + row.id}>
+                <a
+                  className="contact-name-link"
+                  href={'#contact-' + row.id}
+                  onClick={(event) => {
+                    if (
+                      detailId &&
+                      detailId !== row.id &&
+                      inlineDirty.current
+                    ) {
+                      event.preventDefault();
+                      setMessage(
+                        'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+                      );
+                    }
+                  }}
+                >
                   {row.name}
                 </a>{' '}
                 {row.state === 'archived' && (
@@ -283,11 +378,32 @@ export function ContactPanel({
                 </button>
               </div>
               {shown && (
-                <ContactDetails
-                  contact={row}
-                  onEdit={() => openEdit(row)}
-                  onClose={() => closeDetail(row.id)}
-                />
+                <>
+                  {editedSearchRecord && (
+                    <p role="status">
+                      Der geänderte Kontakt bleibt bis zum Schließen geöffnet.
+                      Die Trefferliste wird nach dem Schließen aktualisiert.
+                    </p>
+                  )}
+                  <ContactDetails
+                    contact={row}
+                    csrfToken={csrfToken}
+                    onConfirmed={(confirmed) => {
+                      adoptContact(confirmed);
+                      if (appliedSearch.current) {
+                        editedSearchId.current = confirmed.id;
+                        setEditedSearchRecord(true);
+                      }
+                    }}
+                    editorEpoch={editorEpoch}
+                    inlineVisible={!open}
+                    onDirtyChange={(dirty) => {
+                      inlineDirty.current = dirty;
+                    }}
+                    onEdit={() => openEdit(row)}
+                    onClose={() => closeDetail(row.id)}
+                  />
+                </>
               )}
             </li>
           );

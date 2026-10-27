@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   discardForFilesMessage,
-  hasUnsavedChanges,
+  confirmNavigation,
 } from './unsaved-changes.js';
 
 type Row = {
@@ -137,8 +137,7 @@ export function EventLibraryFiles({
               !event.shiftKey &&
               !event.altKey &&
               event.button === 0 &&
-              hasUnsavedChanges() &&
-              !window.confirm(discardForFilesMessage)
+              !confirmNavigation(discardForFilesMessage, '#files')
             )
               event.preventDefault();
           }}

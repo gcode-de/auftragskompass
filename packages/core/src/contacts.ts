@@ -60,6 +60,14 @@ export function contactRepository(pool: Connection, tenantId: string) {
   const db = database(pool),
     scope = eq(contacts.tenantId, tenantId);
   return {
+    async get(id: string) {
+      const [row] = await db
+        .select()
+        .from(contacts)
+        .where(and(scope, eq(contacts.id, id)));
+      if (!row) throw new ContactError('not_found');
+      return row;
+    },
     async list(search = '') {
       const pattern = '%' + search.replace(/[\\%_]/g, '\\$&') + '%';
       return db
@@ -245,6 +253,26 @@ export function registerContactRoutes(
         ]),
       );
   });
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/contacts/:id',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        response: { 200: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.get(request.params.id);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   app.post<{
     Body: Pick<ContactInput, 'email' | 'phone' | 'mobile' | 'country'> & {
       excludeId?: string;

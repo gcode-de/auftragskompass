@@ -17,7 +17,8 @@ import {
   discardForFilesMessage,
   discardForHomeMessage,
   discardForSearchMessage,
-  hasUnsavedChanges,
+  confirmNavigation,
+  installUnsavedNavigationGuard,
 } from './unsaved-changes.js';
 
 function sidebarPreference(): boolean {
@@ -202,6 +203,7 @@ export function SettingsNavigation() {
   );
 }
 export function Navigation({ account }: { account?: ReactNode }) {
+  useEffect(installUnsavedNavigationGuard, []);
   const search = useUrlSearch(),
     q = new URLSearchParams(search).get('q') ?? '';
   const route = useWorkspaceRoute();
@@ -300,8 +302,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
     event.preventDefault();
     if (
       route !== 'search' &&
-      hasUnsavedChanges() &&
-      !window.confirm(discardForSearchMessage)
+      !confirmNavigation(discardForSearchMessage, '#search')
     )
       return;
     updateUrlSearch(
@@ -315,7 +316,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
       event.preventDefault();
       return;
     }
-    if (hasUnsavedChanges() && !window.confirm(discardForHomeMessage))
+    if (!confirmNavigation(discardForHomeMessage, '#events'))
       event.preventDefault();
   }
   function brand() {
@@ -364,8 +365,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
                   !event.shiftKey &&
                   !event.altKey &&
                   event.button === 0 &&
-                  hasUnsavedChanges() &&
-                  !window.confirm(discardForFilesMessage)
+                  !confirmNavigation(discardForFilesMessage, '#files')
                 ) {
                   event.preventDefault();
                   return;

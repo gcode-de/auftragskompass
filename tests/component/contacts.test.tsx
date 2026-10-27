@@ -434,7 +434,7 @@ test('reports a saved contact honestly when the following list load fails and re
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     if (options) {
       saved = true;
-      return Response.json({ ...row, name: 'Synthetic saved' });
+      return Response.json({ ...row, name: 'Synthetic saved', version: 2 });
     }
     listCalls += 1;
     if (failList && listCalls > 1) throw Error('offline');
@@ -453,6 +453,7 @@ test('reports a saved contact honestly when the following list load fails and re
     'Kontakt gespeichert, die Liste konnte nicht neu geladen werden.',
   );
   expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('link', { name: 'Synthetic saved' })).toBeTruthy();
   const posts = () => fetcher.mock.calls.filter(([, options]) => options);
   expect(posts().length).toBe(1);
   failList = false;
@@ -470,6 +471,37 @@ test('reports a saved contact honestly when the following list load fails and re
     screen.queryByRole('button', { name: 'Kontakte erneut laden' }),
   ).toBeNull();
 });
+test('a confirmed new contact stays visible when the following list load fails', async () => {
+  let created = false;
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options?.method === 'POST') {
+      created = true;
+      return Response.json({
+        ...row,
+        id: 'synthetic-new',
+        name: 'Synthetic new',
+      });
+    }
+    if (created) throw Error('offline');
+    return Response.json([row]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<ContactPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic Company');
+  const dialog = await openCreate();
+  fireEvent.change(within(dialog).getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic new' },
+  });
+  submitSave(dialog);
+  await screen.findByText(
+    'Kontakt gespeichert, die Liste konnte nicht neu geladen werden.',
+  );
+  expect(screen.getByRole('link', { name: 'Synthetic new' })).toBeTruthy();
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'POST'),
+  ).toHaveLength(1);
+});
+
 test('a successful filter reload clears a saved-but-not-reloaded warning', async () => {
   let saved = false;
   let failNextList = false;
@@ -621,7 +653,7 @@ test('returns focus to the plus action when the edited row disappears after savi
   });
   submitSave(dialog);
   await screen.findByText('Kontakt gespeichert.');
-  expect(screen.getByText('Keine Kontakte gefunden.')).toBeTruthy();
+  expect(await screen.findByText('Keine Kontakte gefunden.')).toBeTruthy();
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Kontakt anlegen' })).toBe(
       document.activeElement,

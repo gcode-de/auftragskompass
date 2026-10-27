@@ -178,6 +178,49 @@ test('contact API authorizes reads, export and writes, validates and rolls back 
     expect(created.statusCode).toBe(201);
     expect(created.json()).not.toHaveProperty('tenantId');
     expect(created.json()).not.toHaveProperty('phoneKey');
+    const contactUrl = '/api/v1/contacts/' + created.json().id;
+    expect(
+      (await app.inject({ url: contactUrl, cookies })).json(),
+    ).toMatchObject({
+      id: created.json().id,
+      version: 1,
+      email: 'synthetic@example.invalid',
+    });
+    expect(
+      (await app.inject({ url: '/api/v1/contacts/' + randomUUID(), cookies }))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ url: '/api/v1/contacts/invalid', cookies }))
+        .statusCode,
+    ).toBe(400);
+    expect((await app.inject(contactUrl)).statusCode).toBe(401);
+    const otherTenant = randomUUID();
+    await bootstrapAccess(
+      pool,
+      otherTenant,
+      'other@example.invalid',
+      'Synthetic other',
+      'Europe/Berlin',
+    );
+    await accessRepository(pool, otherTenant).issueSession(
+      { subject: 'other', email: 'other@example.invalid' },
+      digest('synthetic-other'),
+    );
+    const otherActor = (await accessRepository(pool, otherTenant).list())[0]!
+      .userId!;
+    const otherContact = await contactRepository(pool, otherTenant).save(
+      otherActor,
+      input,
+    );
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/contacts/' + otherContact.id,
+          cookies,
+        })
+      ).statusCode,
+    ).toBe(404);
     expect(
       (
         await app.inject({ url: '/api/v1/contacts?q=%3DSynthetic', cookies })

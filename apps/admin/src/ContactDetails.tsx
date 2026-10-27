@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { addressLines, mailtoHref, telHref } from './contact-links.js';
 import { emptyEventFilters, updateUrlSearch } from './url-state.js';
+import { ContactInlineEditor } from './ContactInlineEditor.js';
+import type { Contact } from './ContactDialog.js';
 
 /** The stored contact as the list delivers it (`GET /api/v1/contacts`). */
 export type ContactRecord = {
@@ -50,10 +52,20 @@ export function ContactDetails({
   contact,
   onEdit,
   onClose,
+  csrfToken,
+  onConfirmed,
+  editorEpoch,
+  inlineVisible,
+  onDirtyChange,
 }: {
-  contact: ContactRecord;
+  contact: Contact;
   onEdit: () => void;
   onClose: () => void;
+  csrfToken: string;
+  onConfirmed: (row: Contact) => void;
+  editorEpoch: number;
+  inlineVisible: boolean;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const [events, setEvents] = useState<LinkedEvent[]>([]);
@@ -160,6 +172,15 @@ export function ContactDetails({
           <p>Keine Anschrift hinterlegt.</p>
         )}
       </section>
+      {inlineVisible && (
+        <ContactInlineEditor
+          key={contact.id + ':' + editorEpoch}
+          contact={contact}
+          csrfToken={csrfToken}
+          onConfirmed={onConfirmed}
+          onDirtyChange={onDirtyChange}
+        />
+      )}
       <section className="contact-record-events">
         <h3>Zugeordnete Events</h3>
         {loading && <p>Zugeordnete Events werden geladen …</p>}

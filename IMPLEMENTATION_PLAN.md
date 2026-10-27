@@ -19,6 +19,28 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **EDIT-01 — `feat: autosave contact fields in their record with escape to cancel`**:
+  Kontaktakte direkt bearbeiten, Feldänderungen beim Verlassen speichern und
+  Escape nur für ungesendete Änderungen des aktiven Felds. Bestehende Anlage
+  unverändert; vollständige versionierte PUTs einzeln serialisieren, spätere
+  Entwürfe erhalten. Bestätigte Zeile sofort übernehmen statt von Listen-GET
+  abhängig machen. Mandantengesicherter Einzelkontakt-GET für expliziten Abgleich
+  nach 409/unklarem Fehler; keine automatische Wiederholung/Überschreibung.
+  Gemeinsamer kleiner Autosave-Hook für folgenden Event-Slice, Schutz für
+  Entwürfe/Warteschlange/laufende Mutationen, sichtbarer Speicherstatus.
+  Abnahme RED → Unit/Component/API/Chromium, Fokus/Escape/Blur/Reihenfolge,
+  Normalisierung, Versionskonflikt, Antwortverlust, Tenant, Navigation/Reload.
+  Abnahme: 1567 Tests im vollständigen Coverage-Lauf grün, 96,62 % Zeilen/
+  91,61 % Branches; geänderte Zeilen 300/320, Branches 202/250. Node 24:
+  Format/Lint/Typen/Build und 6/6 betroffene Chromium-Läufe einschließlich
+  beider HTTPS-Loginmodi, Dateimatrizen, Eventdatei und Kontakt-Back/Escape grün.
+  Unabhängige Reviews: spätere Rückänderung zum Original auch beim Abgleich
+  erhalten, Link/Filter-Navigation atomar geschützt, Filter nach Aktschließen
+  erneut geprüft, Dirty-Meldung bei Unmount bereinigt. CI-Regression aus
+  BKP020.2: Dateien-Region in bestehendem Auth-Test exakt adressiert, ohne
+  Abschwächung der Assertions oder Timeouts. Screenshots 320/1280 geprüft.
+  Auch eine bestätigte Neuanlage bleibt bei Listenfehler sichtbar. Kein Schemawechsel.
+
 - [x] **BKP020.2 — `feat: link library files to events without copying uploads`**:
   eigener Bereich in Event → Dateien für verfügbare/archivierte Verknüpfungen,
   Bibliotheksauswahl und Entfernen allein der Zuordnung. Keine Kopie von Bytes;

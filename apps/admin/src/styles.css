@@ -1146,6 +1146,14 @@ time {
 .contact-record-address address > span {
   display: block;
 }
+.contact-inline-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 0.75rem 1rem;
+}
+.contact-inline-conflicts dl {
+  display: block;
+}
 .contact-event-list {
   display: flex;
   flex-direction: column;
