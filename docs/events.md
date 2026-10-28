@@ -27,8 +27,20 @@ geöffnet; anschließend wird die Trefferliste anhand der angewandten Filter
 erneut geladen. Interne Navigation und Browser-Zurück schützen ungespeicherte
 Eingaben, Reload und Schließen verwenden den nativen Browserhinweis.
 
-Termin, Kontaktrollen, interne Notizen und Status sind in diesem ersten
-Unter-Slice weiterhin über die vorhandenen vollständigen Formulare bearbeitbar.
+Der Hauptkontakt lässt sich ebenfalls direkt suchen, auswählen oder entfernen.
+Die Auswahl wird beim Verlassen des Kontaktbereichs gespeichert; Escape
+verwirft nur die aktuelle, noch nicht abgeschlossene Auswahl. Eine Auswahl aus
+den weiteren Kontakten wird dort entfernt, alle übrigen Zuordnungen bleiben
+erhalten. Bereits zugeordnete archivierte Kontakte bleiben lesbar; neu lassen
+sich nur aktive Kontakte auswählen. Auch hier gelten Versionsprüfung,
+Konfliktabgleich und die gemeinsame Schreibwarteschlange.
+Nach bestätigter Auswahl zeigt die Kontaktübersicht sofort die richtige Rolle;
+solange ergänzende Kontaktdaten noch nicht geladen wurden, weist sie darauf
+hin. Beim Serverabgleich werden mit derselben Eventversion geladene Details
+übernommen.
+
+Termin, weitere Kontaktrollen, interne Notizen und Status sind weiterhin über
+die vorhandenen vollständigen Formulare bearbeitbar.
 Die atomaren Ressourcen- und Buchungsprüfungen bleiben maßgeblich; ein
 Stammdaten-Blur führt keine Ressourcenbuchung aus.
 

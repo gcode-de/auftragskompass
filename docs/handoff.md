@@ -1,5 +1,22 @@
 # Projektübergabe AuftragsKompass
 
+## Aktuell: EDIT-02.2, 28.10.2026
+
+EDIT-02.1 ist als `225e6f1` auf `codex/ux-event-simplification` gepusht;
+CI/Images und automatische Auslieferung müssen auf dem tatsächlichen Stand
+geprüft werden. EDIT-02.2 ergänzt die direkte Hauptkontaktbearbeitung mit
+Blur-Autosave und Escape nur für den aktuellen ungesendeten Entwurf.
+Synthetische Komponenten-, API- und Chromiumtests decken Auswahl, Entfernen,
+rasche Wechsel, Mandant, Archiv, Version und Rollen ab. Unabhängiges Review,
+Format, Lint, Typen, Build und Dokumentationsprüfung sind grün; der vollständige
+Coverage-Wiederholungslauf bestand 1.614 Tests, geänderter Code 56/60 Zeilen
+und 61/73 Branches. Im vorherigen Gesamtlauf lief der Start eines PostgreSQL-
+Testcontainers einmal in ein Timeout; der isolierte Test und der vollständige
+Wiederholungslauf waren grün. CI und Auslieferung des aktuellen HEAD überprüfen.
+Danach die nächsten autorisierten Event-/Kontakt-Slices, anschließend Angebote
+und Rechnungen bearbeiten. Aufgaben/Workflows, Auswertungen und Exporte gemäß
+Nutzeranweisung auslassen. Keine echten Geschäftsmutationen zur Prüfung auslösen.
+
 ## Betriebsnachtrag: automatischer Test-Updater, 28.10.2026
 
 Nach einem Clusterumzug des App-Containers wurde der alleinige Test-Updater

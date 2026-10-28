@@ -7,6 +7,11 @@ import {
 } from 'react';
 import { useRecordAutosave } from './useRecordAutosave.js';
 import {
+  ContactPicker,
+  useContactSearch,
+  type ContactHit,
+} from './ContactPicker.js';
+import {
   initialVenueText,
   venueMaxLength,
   venuePayload,
@@ -58,6 +63,8 @@ const editableLabels = {
   venueOverride: 'Ortauswahl',
   source: 'Anfragequelle',
   description: 'Beschreibung',
+  primaryContactId: 'Hauptkontakt',
+  additionalContactIds: 'Weitere Kontakte',
 } as const;
 export function eventInput(row: EventRow): Input {
   return Object.fromEntries(inputKeys.map((key) => [key, row[key]])) as Input;
@@ -108,6 +115,15 @@ export function validEventRow(
     typeof row.timeZone === 'string'
   );
 }
+export type ConfirmedContact = {
+  id: string;
+  name: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  role: string;
+};
 export type EventInlineHandle = { adoptExternal: (row: EventRow) => boolean };
 export const EventInlineEditor = forwardRef<
   EventInlineHandle,
@@ -117,10 +133,15 @@ export const EventInlineEditor = forwardRef<
     types: VenueChoice[];
     packages: VenueChoice[];
     locations: VenueChoice[];
+    contacts?: { id: string; name: string }[];
     locked: boolean;
     canEdit: () => boolean;
     onDirtyChange: (dirty: boolean) => void;
-    onConfirmed: (row: EventRow) => void;
+    onConfirmed: (
+      row: EventRow,
+      contact?: ContactHit,
+      details?: ConfirmedContact[],
+    ) => void;
   }
 >(function EventInlineEditor(
   {
@@ -129,6 +150,7 @@ export const EventInlineEditor = forwardRef<
     types,
     packages,
     locations,
+    contacts = [],
     locked,
     canEdit,
     onDirtyChange,
@@ -140,13 +162,44 @@ export const EventInlineEditor = forwardRef<
     dirtyCallback = useRef(onDirtyChange);
   dirtyCallback.current = onDirtyChange;
   const [invalid, setInvalid] = useState<string>('');
+  const contactSearch = useContactSearch();
+  const [knownContacts, setKnownContacts] = useState<ContactHit[]>([]);
+  const latestRow = useRef(event);
+  const remoteDetails = useRef<{
+    version: number;
+    contacts: ConfirmedContact[];
+  } | null>(null);
+  const removedContact = useRef<{ id: string; index: number } | null>(null);
   async function read(): Promise<EventRow> {
     const response = await fetch('/api/v1/events/' + event.id);
     if (!response.ok) throw Error('Event konnte nicht geladen werden.');
-    const detail = (await response.json()) as { event?: unknown };
+    const detail = (await response.json()) as {
+      event?: unknown;
+      contacts?: unknown;
+    };
     if (!validEventRow(detail.event, event.id))
       throw Error('Event konnte nicht gelesen werden.');
-    return canonicalEventRow(detail.event);
+    const contacts = detail.contacts;
+    if (
+      Array.isArray(contacts) &&
+      contacts.every(
+        (item) =>
+          item &&
+          [
+            item.id,
+            item.name,
+            item.contactPerson,
+            item.email,
+            item.phone,
+            item.mobile,
+            item.role,
+          ].every((value) => typeof value === 'string'),
+      )
+    )
+      remoteDetails.current = { version: detail.event.version, contacts };
+    else remoteDetails.current = null;
+    latestRow.current = canonicalEventRow(detail.event);
+    return latestRow.current;
   }
   async function write(input: Input, version: number): Promise<EventRow> {
     let response: Response;
@@ -157,7 +210,13 @@ export const EventInlineEditor = forwardRef<
           'content-type': 'application/json',
           'x-csrf-token': csrfToken,
         },
-        body: JSON.stringify({ ...input, version }),
+        body: JSON.stringify({
+          ...input,
+          additionalContactIds: latestRow.current.additionalContactIds.filter(
+            (id) => id !== input.primaryContactId,
+          ),
+          version,
+        }),
       });
     } catch {
       throw Error(
@@ -175,14 +234,27 @@ export const EventInlineEditor = forwardRef<
       throw Error(
         'Speichern nicht bestätigt. Bitte Serverstand prüfen, bevor du erneut speicherst.',
       );
-    return canonicalEventRow(row);
+    latestRow.current = canonicalEventRow(row);
+    return latestRow.current;
   }
   const save = useRecordAutosave<Input, EventRow>({
     initial: event,
     toInput: eventInput,
     write,
     read,
-    onConfirmed,
+    onConfirmed: (row) => {
+      latestRow.current = row;
+      const contact = knownContacts.find(
+        (item) => item.id === row.primaryContactId,
+      );
+      const details =
+        remoteDetails.current?.version === row.version
+          ? remoteDetails.current.contacts
+          : undefined;
+      if (details) onConfirmed(row, contact, details);
+      else if (contact) onConfirmed(row, contact);
+      else onConfirmed(row);
+    },
   });
   useImperativeHandle(ref, () => ({ adoptExternal: save.adoptExternal }));
   useEffect(() => {
@@ -259,6 +331,39 @@ export const EventInlineEditor = forwardRef<
           {row.name}
         </option>
       ));
+  function chooseContact(hit: ContactHit | null) {
+    if (!canEdit()) return;
+    onDirtyChange(true);
+    const additional = [...save.values.additionalContactIds];
+    if (removedContact.current) {
+      additional.splice(
+        removedContact.current.index,
+        0,
+        removedContact.current.id,
+      );
+      removedContact.current = null;
+    }
+    const index = hit ? additional.indexOf(hit.id) : -1;
+    if (hit && index >= 0) {
+      additional.splice(index, 1);
+      removedContact.current = { id: hit.id, index };
+    }
+    save.setField('primaryContactId', hit?.id ?? null);
+    save.setField('additionalContactIds', additional);
+    if (hit)
+      setKnownContacts((current) => [
+        ...current.filter((item) => item.id !== hit.id),
+        hit,
+      ]);
+  }
+  const selectedContact =
+    knownContacts.find((item) => item.id === save.values.primaryContactId) ??
+    (contacts.find((item) => item.id === save.values.primaryContactId)
+      ? {
+          ...contacts.find((item) => item.id === save.values.primaryContactId)!,
+          state: 'unknown',
+        }
+      : null);
   const place = locations.find((row) => row.id === save.values.locationId);
   const venue = initialVenueText(save.values, place);
   function displayValue(
@@ -298,6 +403,38 @@ export const EventInlineEditor = forwardRef<
             {...field(['name'], 'name')}
           />
         </label>
+        <fieldset
+          aria-label="Hauptkontakt"
+          onBlur={(event) => {
+            if (
+              event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              return;
+            if (!canEdit()) return;
+            removedContact.current = null;
+            save.commitFields(['primaryContactId', 'additionalContactIds']);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            removedContact.current = null;
+            save.cancelFields(['primaryContactId', 'additionalContactIds']);
+            contactSearch.reset();
+          }}
+        >
+          <legend>Hauptkontakt</legend>
+          <ContactPicker
+            search={contactSearch}
+            idPrefix="event-inline"
+            label="Hauptkontakt suchen"
+            value={save.values.primaryContactId ?? ''}
+            selected={selectedContact}
+            hiddenName="primaryContactId"
+            onSelect={chooseContact}
+            onClear={() => chooseContact(null)}
+          />
+        </fieldset>
         <label>
           Eventart
           <select

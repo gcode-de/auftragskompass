@@ -115,7 +115,7 @@ export function ContactPicker({
   hiddenName: string;
   onSelect: (row: ContactHit) => void;
   onClear: () => void;
-  onCreate: () => void;
+  onCreate?: () => void;
   disabled?: boolean;
   // A counter, not a ref: the caller focuses the search after a view change.
   focusRequest?: number;
@@ -154,14 +154,23 @@ export function ContactPicker({
         <span>
           {value
             ? `Kunde: ${selected?.name ?? 'Zugeordneter Kontakt'}${
-                selected && selected.state !== 'active'
+                selected &&
+                selected.state !== 'active' &&
+                selected.state !== 'unknown'
                   ? ' (Archiviert/Inaktiv)'
                   : ''
               }`
             : 'Kein Kunde ausgewählt – das Event bleibt ohne Kundenbezug.'}
         </span>
         {value && (
-          <button type="button" className="tertiary-action" onClick={onClear}>
+          <button
+            type="button"
+            className="tertiary-action"
+            onClick={() => {
+              input.current?.focus();
+              onClear();
+            }}
+          >
             Kunde entfernen
           </button>
         )}
@@ -207,14 +216,16 @@ export function ContactPicker({
           {`Suche eingrenzen: nur die ersten ${contactHitLimit} Treffer werden angezeigt.`}
         </p>
       )}
-      <button
-        type="button"
-        className="secondary-action"
-        disabled={disabled}
-        onClick={onCreate}
-      >
-        Neuen Kunden anlegen
-      </button>
+      {onCreate && (
+        <button
+          type="button"
+          className="secondary-action"
+          disabled={disabled}
+          onClick={onCreate}
+        >
+          Neuen Kunden anlegen
+        </button>
+      )}
     </div>
   );
 }

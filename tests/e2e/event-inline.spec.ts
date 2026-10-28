@@ -49,6 +49,16 @@ test('event details save fields on blur and Escape discards the current edit', a
       return route.fulfill({
         json: { events: [event], timeZone: 'Europe/Berlin' },
       });
+    if (path === '/api/v1/contacts')
+      return route.fulfill({
+        json: [
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            name: 'Fictional contact',
+            state: 'active',
+          },
+        ],
+      });
     if (path === '/api/v1/statuses')
       return route.fulfill({
         json: [
@@ -89,6 +99,26 @@ test('event details save fields on blur and Escape discards the current edit', a
     status: 'inquiry',
   });
   expect(writes[0]).not.toHaveProperty('id');
+  const contactSearch = editor.getByLabel('Hauptkontakt suchen');
+  await contactSearch.fill('Fictional');
+  await editor.getByRole('button', { name: /Fictional contact/ }).click();
+  await contactSearch.press('Escape');
+  await expect(editor.getByText(/Kein Kunde ausgewählt/)).toBeVisible();
+  await contactSearch.fill('Fictional');
+  await editor.getByRole('button', { name: /Fictional contact/ }).click();
+  await editor.getByLabel('Eventart').focus();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[1]).toMatchObject({
+    primaryContactId: '22222222-2222-4222-8222-222222222222',
+    version: 2,
+  });
+  await editor.getByRole('button', { name: 'Kunde entfernen' }).focus();
+  await editor.getByRole('button', { name: 'Kunde entfernen' }).press('Enter');
+  await expect(contactSearch).toBeFocused();
+  expect(writes).toHaveLength(2);
+  await editor.getByLabel('Eventart').focus();
+  await expect.poll(() => writes.length).toBe(3);
+  expect(writes[2]).toMatchObject({ primaryContactId: null, version: 3 });
   for (const width of [320, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(

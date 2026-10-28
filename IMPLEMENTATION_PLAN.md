@@ -19,6 +19,23 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **EDIT-02.2 — `feat: autosave the event primary contact`**:
+  Hauptkontakt in der Eventakte über vorhandene Kontaktsuche auswählen oder
+  entfernen. Die Auswahl bildet einen Feldentwurf und wird beim Verlassen
+  gespeichert; Escape verwirft nur die aktuelle ungesendete Auswahl. Bereits
+  angestoßene Änderungen bleiben erhalten. Dieselbe versionierte Event-PUT-
+  Warteschlange wie EDIT-02.1 verwenden; einen neu gewählten Hauptkontakt aus
+  den weiteren Kontakten entfernen, übrige Zuordnungen erhalten. Bestehende
+  archivierte Kontakte erhalten, keine neuen archivierten Kontakte anbieten.
+  Bei 409/unklarem Ausgang nur nach ausdrücklichem Serverabgleich fortfahren;
+  alle bestehenden Status-/Ressourcen- und Dirty-Sperren erhalten. Keine neue
+  API, Migration, Kontakt-Neuanlage oder Änderungen an Aufgaben und Exporten.
+  RED und Komponenten-/Chromiumtests für Auswahl, Blur/Escape, Versionierung,
+  Konflikt, Duplikat und Bedienung bei mobiler Breite; zugehörige API-Regeln
+  mit Integrationstests belegen. Bestehende Nutzeroberfläche bewahren.
+  Abschluss: 1.614 Tests, Chromium, Format, Lint, Typen und Build grün;
+  geänderter Code 56/60 Zeilen und 61/73 Branches. Unabhängiges Review erfolgt.
+
 - [x] **EDIT-02.1 — `feat: autosave event master fields inside the event record`**:
   erster Event-Unter-Slice: Name, Art, Paket, Herkunft, Ort/individuelle Anschrift
   und Beschreibung direkt in der Akte mit Blur/Escape und bestehendem Autosave-

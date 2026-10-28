@@ -8,8 +8,10 @@ import {
   eventInput,
   validEventRow,
   type EventInlineHandle,
+  type ConfirmedContact,
 } from './EventInlineEditor.js';
 import type { VenueChoice } from './venue.js';
+import type { ContactHit } from './ContactPicker.js';
 import { useAutoRefresh } from './auto-refresh.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { plainDateText } from './calendar-range.js';
@@ -26,6 +28,7 @@ type Detail = {
     phone: string;
     mobile: string;
     role: string;
+    detailsUnavailable?: boolean;
   }[];
   location: {
     id: string;
@@ -205,7 +208,11 @@ export function EventDetails({
         resourceUncertainRef.current,
     );
   }
-  function applyConfirmed(row: EventRow) {
+  function applyConfirmed(
+    row: EventRow,
+    contact?: ContactHit,
+    details?: ConfirmedContact[],
+  ) {
     const chosenLocation = locations.find((item) => item.id === row.locationId);
     ++loadSequence.current;
     loadedVersion.current = row.version;
@@ -218,6 +225,32 @@ export function EventDetails({
         ? {
             ...current,
             event: row,
+            contacts: [row.primaryContactId, ...row.additionalContactIds]
+              .filter((id): id is string => id !== null)
+              .map((id) => {
+                const existing = (details ?? current.contacts).find(
+                  (person) => person.id === id,
+                );
+                return {
+                  id,
+                  name:
+                    existing?.name ??
+                    (contact?.id === id
+                      ? contact.name
+                      : 'Zugeordneter Kontakt'),
+                  contactPerson:
+                    existing?.contactPerson ??
+                    (contact?.id === id ? (contact.contactPerson ?? '') : ''),
+                  email: existing?.email ?? '',
+                  phone: existing?.phone ?? '',
+                  mobile: existing?.mobile ?? '',
+                  role: id === row.primaryContactId ? 'primary' : 'additional',
+                  detailsUnavailable:
+                    !existing ||
+                    ('detailsUnavailable' in existing &&
+                      existing.detailsUnavailable === true),
+                };
+              }),
             eventType: row.eventTypeId
               ? (types.find((item) => item.id === row.eventTypeId) ??
                 (current.eventType?.id === row.eventTypeId
@@ -707,6 +740,7 @@ export function EventDetails({
                   types={types}
                   packages={packages}
                   locations={locations}
+                  contacts={data.contacts}
                   locked={metaBlocked || loading}
                   canEdit={() =>
                     !dirty.current &&
@@ -830,7 +864,9 @@ export function EventDetails({
                         {person.role === 'primary'
                           ? 'Hauptkontakt'
                           : 'Weiterer Kontakt'}
-                        : {person.name} {person.contactPerson}{' '}
+                        : {person.name} {person.contactPerson}
+                        {person.detailsUnavailable &&
+                          ' (Kontaktdaten noch nicht geladen)'}{' '}
                         {person.email && (
                           <a
                             href={'mailto:' + encodeURIComponent(person.email)}

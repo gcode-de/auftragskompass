@@ -353,3 +353,336 @@ test('network failure retains the draft until applying it to an explicitly read 
     source: 'Remote source',
   });
 });
+
+test('primary contact selection is a draft until blur and removes only its duplicate', async () => {
+  const base = {
+    ...event,
+    primaryContactId: 'old',
+    additionalContactIds: ['new', 'other'],
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) =>
+    url.startsWith('/api/v1/contacts?')
+      ? Response.json([
+          { id: 'new', name: 'Fictional customer', state: 'active' },
+        ])
+      : Response.json({
+          ...base,
+          ...JSON.parse(String(options?.body)),
+          version: 2,
+        }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={base}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const search = screen.getByLabelText('Hauptkontakt suchen');
+  fireEvent.change(search, { target: { value: 'Fictional' } });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Fictional customer/ }),
+  );
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+  ).toHaveLength(0);
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+    ).toHaveLength(1),
+  );
+  const body = JSON.parse(
+    String(
+      fetcher.mock.calls.find(([, options]) => options?.method === 'PUT')![1]!
+        .body,
+    ),
+  );
+  expect(body).toMatchObject({
+    version: 1,
+    primaryContactId: 'new',
+    additionalContactIds: ['other'],
+  });
+});
+
+test('Escape discards a new contact choice and restores additional contacts before a later save', async () => {
+  const base = {
+    ...event,
+    primaryContactId: 'old',
+    additionalContactIds: ['new', 'other'],
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) =>
+    url.startsWith('/api/v1/contacts?')
+      ? Response.json([
+          { id: 'new', name: 'Fictional customer', state: 'active' },
+        ])
+      : Response.json({
+          ...base,
+          ...JSON.parse(String(options?.body)),
+          version: 2,
+        }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={base}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      contacts={[{ id: 'old', name: 'Fictional old' }]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const search = screen.getByLabelText('Hauptkontakt suchen');
+  fireEvent.change(search, { target: { value: 'Fictional' } });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Fictional customer/ }),
+  );
+  fireEvent.keyDown(search, { key: 'Escape' });
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  expect(screen.getByText(/Kunde: Fictional old/)).toBeTruthy();
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+  ).toHaveLength(0);
+  fireEvent.change(screen.getByLabelText('Eventname'), {
+    target: { value: 'Changed' },
+  });
+  fireEvent.blur(screen.getByLabelText('Eventname'));
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+    ).toHaveLength(1),
+  );
+  expect(
+    JSON.parse(
+      String(
+        fetcher.mock.calls.find(([, options]) => options?.method === 'PUT')![1]!
+          .body,
+      ),
+    ),
+  ).toMatchObject({
+    primaryContactId: 'old',
+    additionalContactIds: ['new', 'other'],
+  });
+});
+
+test('primary contact conflict pauses writes until explicit reconciliation', async () => {
+  const base = {
+    ...event,
+    primaryContactId: 'old',
+    additionalContactIds: ['new', 'other'],
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) =>
+    url.startsWith('/api/v1/contacts?')
+      ? Response.json([
+          { id: 'new', name: 'Fictional customer', state: 'active' },
+        ])
+      : options?.method === 'PUT'
+        ? Response.json({ error: 'conflict' }, { status: 409 })
+        : Response.json({ event: { ...base, version: 2 } }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={base}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Hauptkontakt suchen'), {
+    target: { value: 'Fictional' },
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Fictional customer/ }),
+  );
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  await screen.findByText(/Event wurde inzwischen geändert/);
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+  ).toHaveLength(1);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Aktuellen Stand laden' }),
+  );
+  await screen.findByRole('button', {
+    name: 'Meine abgeschlossenen Änderungen anwenden',
+  });
+  expect(screen.getByText('Weitere Kontakte')).toBeTruthy();
+});
+
+test('contact reconciliation preserves additional contacts added on the server', async () => {
+  const base = {
+    ...event,
+    primaryContactId: 'old',
+    additionalContactIds: ['new', 'other'],
+  };
+  const bodies: Record<string, unknown>[] = [];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.startsWith('/api/v1/contacts?'))
+      return Response.json([
+        { id: 'new', name: 'Fictional customer', state: 'active' },
+      ]);
+    if (options?.method === 'PUT') {
+      const body = JSON.parse(String(options.body));
+      bodies.push(body);
+      return bodies.length === 1
+        ? Response.json({ error: 'conflict' }, { status: 409 })
+        : Response.json({ ...base, ...body, version: 3 });
+    }
+    return Response.json({
+      event: {
+        ...base,
+        additionalContactIds: ['new', 'other', 'remote'],
+        version: 2,
+      },
+    });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={base}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Hauptkontakt suchen'), {
+    target: { value: 'Fictional' },
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Fictional customer/ }),
+  );
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  await screen.findByText(/Event wurde inzwischen geändert/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Aktuellen Stand laden' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Meine abgeschlossenen Änderungen anwenden',
+    }),
+  );
+  await waitFor(() => expect(bodies).toHaveLength(2));
+  expect(bodies[1]).toMatchObject({
+    version: 2,
+    primaryContactId: 'new',
+    additionalContactIds: ['other', 'remote'],
+  });
+  await screen.findByText(/Alle Änderungen gespeichert/);
+  expect(screen.getByText(/Kunde: Fictional customer/)).toBeTruthy();
+});
+
+test('existing contact with unknown state is shown neutrally and archived hits cannot be chosen', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json([
+        { id: 'archived', name: 'Fictional archived', state: 'archived' },
+      ]),
+    ),
+  );
+  render(
+    <EventInlineEditor
+      event={{ ...event, primaryContactId: 'old' }}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      contacts={[{ id: 'old', name: 'Fictional existing' }]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  expect(screen.getByText('Kunde: Fictional existing')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Hauptkontakt suchen'), {
+    target: { value: 'Fictional' },
+  });
+  const archived = await screen.findByRole('button', {
+    name: /Fictional archived/,
+  });
+  expect((archived as HTMLButtonElement).disabled).toBe(true);
+  expect(
+    screen.queryByRole('button', { name: 'Neuen Kunden anlegen' }),
+  ).toBeNull();
+});
+
+test('queued contact choices use the confirmed version and preserve the other contacts', async () => {
+  const base = {
+    ...event,
+    primaryContactId: 'old',
+    additionalContactIds: ['first', 'second', 'other'],
+  };
+  const bodies: Record<string, unknown>[] = [];
+  let release!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.startsWith('/api/v1/contacts?'))
+        return Response.json([
+          { id: 'first', name: 'Fictional first', state: 'active' },
+          { id: 'second', name: 'Fictional second', state: 'active' },
+        ]);
+      const body = JSON.parse(String(options?.body));
+      bodies.push(body);
+      return bodies.length === 1
+        ? pending
+        : Response.json({ ...base, ...body, version: 3 });
+    }),
+  );
+  render(
+    <EventInlineEditor
+      event={base}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Hauptkontakt suchen'), {
+    target: { value: 'Fictional' },
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Fictional first/ }),
+  );
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  fireEvent.click(screen.getByRole('button', { name: /Fictional second/ }));
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  expect(bodies).toHaveLength(1);
+  release(Response.json({ ...base, ...bodies[0], version: 2 }));
+  await waitFor(() => expect(bodies).toHaveLength(2));
+  expect(bodies[1]).toMatchObject({
+    version: 2,
+    primaryContactId: 'second',
+    additionalContactIds: ['other'],
+  });
+});

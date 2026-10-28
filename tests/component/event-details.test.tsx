@@ -1518,3 +1518,120 @@ test('generic reload with a newer version preserves access to resource reconcili
     ).toBe(false),
   );
 });
+
+test('a confirmed primary contact change updates the contact overview without a detail reload', async () => {
+  const initial = {
+    ...event,
+    primaryContactId: 'synthetic-contact',
+    additionalContactIds: [],
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.startsWith('/api/v1/contacts?'))
+      return Response.json([
+        { id: 'fictional-new', name: 'Fictional new contact', state: 'active' },
+      ]);
+    if (options?.method === 'PUT')
+      return Response.json({
+        ...initial,
+        ...JSON.parse(String(options.body)),
+        version: 2,
+      });
+    return Response.json({ ...detail, event: initial });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  const search = await screen.findByLabelText('Hauptkontakt suchen');
+  fireEvent.change(search, { target: { value: 'Fictional new' } });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Fictional new contact/ }),
+  );
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  await waitFor(() =>
+    expect(
+      screen.getByText(/Hauptkontakt: Fictional new contact/),
+    ).toBeTruthy(),
+  );
+  expect(screen.getByText(/Kontaktdaten noch nicht geladen/)).toBeTruthy();
+  expect(screen.queryByText(/Hauptkontakt: Fictional contact/)).toBeNull();
+});
+
+test('contact reconciliation displays the actual details from the adopted server version', async () => {
+  const initial = {
+    ...event,
+    primaryContactId: 'synthetic-contact',
+    additionalContactIds: [],
+  };
+  const remote = {
+    ...initial,
+    version: 2,
+    primaryContactId: 'fictional-remote',
+  };
+  let getCount = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.startsWith('/api/v1/contacts?'))
+        return Response.json([
+          { id: 'fictional-new', name: 'Fictional new', state: 'active' },
+        ]);
+      if (options?.method === 'PUT')
+        return Response.json({ error: 'conflict' }, { status: 409 });
+      getCount++;
+      return Response.json(
+        getCount === 1
+          ? { ...detail, event: initial }
+          : {
+              ...detail,
+              event: remote,
+              contacts: [
+                {
+                  id: 'fictional-remote',
+                  name: 'Fictional remote',
+                  contactPerson: '',
+                  email: 'fictional@example.invalid',
+                  phone: '',
+                  mobile: '',
+                  role: 'primary',
+                },
+              ],
+            },
+      );
+    }),
+  );
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  fireEvent.change(await screen.findByLabelText('Hauptkontakt suchen'), {
+    target: { value: 'Fictional' },
+  });
+  fireEvent.click(await screen.findByRole('button', { name: /Fictional new/ }));
+  fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
+  await screen.findByText(/Event wurde inzwischen geändert/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Aktuellen Stand laden' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Serverstand übernehmen' }),
+  );
+  await screen.findByText(/Hauptkontakt: Fictional remote/);
+  expect(
+    screen.getByRole('link', { name: 'fictional@example.invalid' }),
+  ).toBeTruthy();
+});

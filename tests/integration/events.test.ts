@@ -403,6 +403,170 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     expect((await update(created.json().id, 1)).statusCode).toBe(200);
     expect((await update(created.json().id, 1)).statusCode).toBe(409);
     expect((await update(randomUUID(), 1)).statusCode).toBe(404);
+
+    const fictionalContact = (name: string) => ({
+      kind: 'private' as const,
+      name,
+      contactPerson: '',
+      street: '',
+      postalCode: '',
+      city: '',
+      country: 'DE',
+      email: '',
+      phone: '',
+      mobile: '',
+      state: 'active' as const,
+    });
+    const contacts = contactRepository(pool, tenantId);
+    const [firstPrimary, nextPrimary, additional, historical, archivedNew] =
+      await Promise.all([
+        contacts.save(actorId, fictionalContact('Fictional first primary')),
+        contacts.save(actorId, fictionalContact('Fictional next primary')),
+        contacts.save(actorId, fictionalContact('Fictional additional')),
+        contacts.save(
+          actorId,
+          fictionalContact('Fictional historical primary'),
+        ),
+        contacts.save(
+          actorId,
+          fictionalContact('Fictional archived new contact'),
+        ),
+      ]);
+    const foreignContact = await contactRepository(pool, foreignTenant).save(
+      foreignActor,
+      fictionalContact('Fictional foreign contact'),
+    );
+    const putContacts = (
+      version: number,
+      primaryContactId: string | null,
+      additionalContactIds: string[],
+    ) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/v1/events/' + created.json().id,
+        cookies,
+        headers,
+        payload: {
+          ...simple,
+          status: 'unavailable',
+          primaryContactId,
+          additionalContactIds,
+          version,
+        },
+      });
+    const readContacts = async () =>
+      app.inject({
+        url: '/api/v1/events/' + created.json().id,
+        cookies,
+      });
+
+    const first = await putContacts(2, firstPrimary.id, [additional.id]);
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({
+      primaryContactId: firstPrimary.id,
+      additionalContactIds: [additional.id],
+      version: 3,
+    });
+    const changed = await putContacts(3, nextPrimary.id, [additional.id]);
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json()).toMatchObject({
+      primaryContactId: nextPrimary.id,
+      additionalContactIds: [additional.id],
+      version: 4,
+    });
+    expect(
+      (await (await readContacts()).json()).contacts.map(
+        (person: { id: string; role: string }) => [person.id, person.role],
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        [nextPrimary.id, 'primary'],
+        [additional.id, 'additional'],
+      ]),
+    );
+
+    const duplicate = await putContacts(4, nextPrimary.id, [
+      nextPrimary.id,
+      additional.id,
+    ]);
+    expect(duplicate.statusCode).toBe(400);
+    expect(duplicate.json().error).toBe('invalid_reference');
+    expect((await (await readContacts()).json()).event).toMatchObject({
+      primaryContactId: nextPrimary.id,
+      additionalContactIds: [additional.id],
+      version: 4,
+    });
+
+    const foreign = await putContacts(4, foreignContact.id, [additional.id]);
+    expect(foreign.statusCode).toBe(400);
+    expect(foreign.json().error).toBe('invalid_reference');
+    expect((await (await readContacts()).json()).event).toMatchObject({
+      primaryContactId: nextPrimary.id,
+      additionalContactIds: [additional.id],
+      version: 4,
+    });
+
+    const historicalAssignment = await putContacts(4, historical.id, [
+      additional.id,
+    ]);
+    expect(historicalAssignment.statusCode).toBe(200);
+    await contacts.save(
+      actorId,
+      {
+        ...fictionalContact('Fictional historical primary'),
+        state: 'archived',
+      },
+      historical.id,
+      1,
+    );
+    const preservedArchive = await putContacts(5, historical.id, [
+      additional.id,
+    ]);
+    expect(preservedArchive.statusCode).toBe(200);
+    expect(preservedArchive.json()).toMatchObject({
+      primaryContactId: historical.id,
+      additionalContactIds: [additional.id],
+      version: 6,
+    });
+
+    await contacts.save(
+      actorId,
+      {
+        ...fictionalContact('Fictional archived new contact'),
+        state: 'archived',
+      },
+      archivedNew.id,
+      1,
+    );
+    const newArchive = await putContacts(6, archivedNew.id, [additional.id]);
+    expect(newArchive.statusCode).toBe(400);
+    expect(newArchive.json().error).toBe('invalid_reference');
+    expect((await (await readContacts()).json()).event).toMatchObject({
+      primaryContactId: historical.id,
+      additionalContactIds: [additional.id],
+      version: 6,
+    });
+
+    const stale = await putContacts(5, nextPrimary.id, [additional.id]);
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toBe('conflict');
+    expect((await (await readContacts()).json()).event).toMatchObject({
+      primaryContactId: historical.id,
+      additionalContactIds: [additional.id],
+      version: 6,
+    });
+
+    const cleared = await putContacts(6, null, [additional.id]);
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toMatchObject({
+      primaryContactId: null,
+      additionalContactIds: [additional.id],
+      version: 7,
+    });
+    expect((await (await readContacts()).json()).contacts).toMatchObject([
+      { id: additional.id, role: 'additional' },
+    ]);
+
     await pool.query(
       'ALTER TABLE audit_events RENAME TO temporarily_missing_audit',
     );
