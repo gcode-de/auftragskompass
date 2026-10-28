@@ -19,6 +19,27 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **EDIT-02.1 — `feat: autosave event master fields inside the event record`**:
+  erster Event-Unter-Slice: Name, Art, Paket, Herkunft, Ort/individuelle Anschrift
+  und Beschreibung direkt in der Akte mit Blur/Escape und bestehendem Autosave-
+  Vertrag. Vollständiger PUT aus expliziter Whitelist, aktuelle bestätigte
+  Eventversion sofort übernehmen; sichere saubere Übernahme fremder bestätigter
+  Status-/Ressourcenänderungen ohne Remount pro Version. Gegenseitige synchrone
+  Sperre mit bestehenden Status-/Ressourcenentwürfen und laufenden Mutationen.
+  Keine Änderung der atomaren Buchungsregeln. Listenrefresh darf aktive Akte
+  nicht entfernen; Suchmitgliedschaft erst nach sicherem Verlassen prüfen.
+  RED, Sequenz-/409-/Antwortverlust-/Refresh-/Fokus-/Escape-Tests und Chromium.
+  Termin-/DST-Gruppe, Kontaktrollen/-daten und Notiz-/Status-Autosave folgen als
+  getrennte beauftragte Unter-Slices; bestehende vollständige Bearbeitung bleibt
+  bis dahin erreichbar. Keine Aufgaben, Auswertungen, Exporte oder neue API.
+  Abnahme: 1606 Tests mit Coverage grün (96,50 % Zeilen, 91,24 % Zweige;
+  geänderte Zeilen 339/360, Zweige 378/450), Format/Lint/Typen/Build und
+  Workspace-/Docs-Tests grün. Chromium: Event-Autosave, Google- und Passwort-
+  Anmeldung jeweils grün; Dateien-Prüfungen zuvor 2/2 grün. Unabhängiger
+  Review und Regressionen für Konflikte, unklare Antworten, Abgleich, Filter-
+  und Ressourcenprojektion. Ein sporadischer URL-/Dokumentfilter-Widerspruch
+  trat einmal auf und ließ sich bisher nicht gezielt reproduzieren.
+
 - [x] **EDIT-01 — `feat: autosave contact fields in their record with escape to cancel`**:
   Kontaktakte direkt bearbeiten, Feldänderungen beim Verlassen speichern und
   Escape nur für ungesendete Änderungen des aktiven Felds. Bestehende Anlage

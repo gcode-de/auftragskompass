@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { canonicalEventRow, validEventRow } from './EventInlineEditor.js';
 import type { EventRow } from './EventPanel.js';
 import { EventTimeField } from './EventTimeField.js';
 import {
@@ -85,13 +86,25 @@ export function ResourceAssignments({
   event,
   csrfToken,
   onChanged,
+  onReconcile,
   onDirtyChange,
+  onConfirmed,
+  canMutate,
+  onMutationChange,
+  onUnconfirmedChange,
+  locked = false,
   importReview = false,
 }: {
   event: EventRow;
   csrfToken: string;
   onChanged: () => Promise<void>;
+  onReconcile?: () => Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+  onConfirmed?: (row: EventRow) => void;
+  canMutate?: () => boolean;
+  onMutationChange?: (busy: boolean) => void;
+  onUnconfirmedChange?: (value: boolean) => void;
+  locked?: boolean;
   importReview?: boolean;
 }) {
   const path =
@@ -100,7 +113,8 @@ export function ResourceAssignments({
   const form = useRef<HTMLFormElement>(null),
     request = useRef(0),
     saving = useRef(false),
-    dirty = useRef(false);
+    dirty = useRef(false),
+    uncertain = useRef(false);
   const [units, setUnits] = useState<Unit[]>([]),
     [sources, setSources] = useState<Record<string, string>>({}),
     [verified, setVerified] = useState(new Set<string>()),
@@ -110,6 +124,7 @@ export function ResourceAssignments({
     [loading, setLoading] = useState(true),
     [loaded, setLoaded] = useState(false),
     [reloadWarning, setReloadWarning] = useState(false),
+    [unconfirmed, setUnconfirmed] = useState(false),
     [eventDate, setEventDate] = useState(
       event.eventDate ??
         (event.startsAt
@@ -247,7 +262,13 @@ export function ResourceAssignments({
     }
   }
   async function save() {
-    if (saving.current || !form.current) return;
+    if (
+      saving.current ||
+      uncertain.current ||
+      !form.current ||
+      (canMutate && !canMutate())
+    )
+      return;
     const data = new FormData(form.current),
       nextErrors: Record<string, string> = {};
     let focus = '';
@@ -330,6 +351,7 @@ export function ResourceAssignments({
     }
     setErrorsByField({});
     saving.current = true;
+    onMutationChange?.(true);
     setBusy(true);
     setMessage('');
     try {
@@ -360,11 +382,24 @@ export function ResourceAssignments({
       });
       if (!response.ok) {
         const error = (await response.json()) as { error: string };
+        if (response.status === 409 && onConfirmed) {
+          uncertain.current = true;
+          onUnconfirmedChange?.(true);
+          setUnconfirmed(true);
+          dirty.current = true;
+          onDirtyChange?.(true);
+        }
         setMessage(
           errors[error.error] ??
             'Speichern fehlgeschlagen. Eingaben und Anmeldung prüfen.',
         );
         return;
+      }
+      if (!importReview && onConfirmed) {
+        const row: unknown = await response.json().catch(() => null);
+        if (!validEventRow(row, event.id, event.version + 1))
+          throw Error('unconfirmed');
+        onConfirmed(canonicalEventRow(row));
       }
       // The PUT is confirmed. Report it first; a failing reload is a refresh
       // problem, not a reason to submit the booking again.
@@ -378,12 +413,44 @@ export function ResourceAssignments({
         setReloadWarning(true);
       }
     } catch {
+      if (onConfirmed) {
+        uncertain.current = true;
+        onUnconfirmedChange?.(true);
+        setUnconfirmed(true);
+        dirty.current = true;
+        onDirtyChange?.(true);
+      }
       setMessage(
         'Verbindung fehlgeschlagen. Aktuellen Stand vor einem erneuten Versuch laden.',
       );
     } finally {
       saving.current = false;
+      onMutationChange?.(false);
       setBusy(false);
+    }
+  }
+  async function reconcile() {
+    if (
+      saving.current ||
+      !window.confirm('Ungespeicherte Eingaben verwerfen und neu laden?')
+    )
+      return;
+    saving.current = true;
+    onMutationChange?.(true);
+    dirty.current = false;
+    onDirtyChange?.(false);
+    try {
+      await (onReconcile ?? onChanged)();
+      uncertain.current = false;
+      onUnconfirmedChange?.(false);
+      setUnconfirmed(false);
+      setMessage('');
+    } catch {
+      dirty.current = true;
+      onDirtyChange?.(true);
+    } finally {
+      saving.current = false;
+      onMutationChange?.(false);
     }
   }
   function retryLoad() {
@@ -413,6 +480,11 @@ export function ResourceAssignments({
     <section aria-label="Ressourcenzuweisung" aria-busy={loading || busy}>
       <h3>Ressourcen zuweisen</h3>
       <p role="status">{message}</p>
+      {unconfirmed && (
+        <button type="button" onClick={() => void reconcile()}>
+          Serverstand prüfen und Eingaben verwerfen
+        </button>
+      )}
       {reloadWarning && (
         <div className="reload-warning">
           <p role="alert">
@@ -451,7 +523,9 @@ export function ResourceAssignments({
           void save();
         }}
       >
-        <fieldset disabled={busy || loading || !loaded}>
+        <fieldset
+          disabled={busy || loading || !loaded || locked || unconfirmed}
+        >
           <legend>Buchungsstatus</legend>
           <label>
             Buchungsstatus
@@ -464,7 +538,9 @@ export function ResourceAssignments({
             </select>
           </label>
         </fieldset>
-        <fieldset disabled={busy || loading || !loaded}>
+        <fieldset
+          disabled={busy || loading || !loaded || locked || unconfirmed}
+        >
           <legend>Termin</legend>
           <label>
             Eventdatum
@@ -516,7 +592,10 @@ export function ResourceAssignments({
           const label = unit.name + ' · Einheit ' + unit.ordinal,
             ownPeriod = manual(unit);
           return (
-            <fieldset key={unit.unitId} disabled={busy || loading || !loaded}>
+            <fieldset
+              key={unit.unitId}
+              disabled={busy || loading || !loaded || locked || unconfirmed}
+            >
               <legend>
                 {label} ({unit.code}, {unit.category})
               </legend>
@@ -618,7 +697,7 @@ export function ResourceAssignments({
         })}
         <button
           className="primary-action"
-          disabled={busy || loading || !loaded}
+          disabled={busy || loading || !loaded || locked || unconfirmed}
         >
           {importReview
             ? 'Geprüfte Bestandszusage übernehmen'

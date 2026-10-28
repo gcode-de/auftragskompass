@@ -2,6 +2,14 @@ import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
 import { EventDocuments } from './EventDocuments.js';
 import { EventLibraryFiles } from './EventLibraryFiles.js';
+import {
+  EventInlineEditor,
+  canonicalEventRow,
+  eventInput,
+  validEventRow,
+  type EventInlineHandle,
+} from './EventInlineEditor.js';
+import type { VenueChoice } from './venue.js';
 import { useAutoRefresh } from './auto-refresh.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { plainDateText } from './calendar-range.js';
@@ -109,6 +117,12 @@ export function EventDetails({
   onChanged,
   onEdit,
   onClose,
+  types = [],
+  packages = [],
+  locations = [],
+  onRecordConfirmed,
+  onResourceConfirmed,
+  onRecordDirtyChange,
 }: {
   id: string;
   revision?: number;
@@ -117,6 +131,12 @@ export function EventDetails({
   onChanged: (message?: string) => Promise<void>;
   onEdit: (event: EventRow) => void;
   onClose: () => void;
+  types?: VenueChoice[];
+  packages?: VenueChoice[];
+  locations?: VenueChoice[];
+  onRecordConfirmed?: (row: EventRow) => void;
+  onResourceConfirmed?: (row: EventRow) => void;
+  onRecordDirtyChange?: (dirty: boolean) => void;
 }) {
   const [area, setArea] = useState<Area>('details');
   const wideRecord = useWideRecord();
@@ -129,6 +149,9 @@ export function EventDetails({
     focusedArea = useRef<Area>('details'),
     loadSequence = useRef(0),
     saving = useRef(false),
+    resourceMutation = useRef(false),
+    metadataDirty = useRef(false),
+    inline = useRef<EventInlineHandle>(null),
     // A reload replaces the form values. Both refs mark unsaved input so a
     // retry can never discard it silently.
     dirty = useRef(false),
@@ -144,16 +167,103 @@ export function EventDetails({
     [loadFailed, setLoadFailed] = useState(false),
     [refreshDeferred, setRefreshDeferred] = useState(false),
     [reloadWarning, setReloadWarning] = useState(false);
+  const [metaBlocked, setMetaBlocked] = useState(false),
+    [legacyBlocked, setLegacyBlocked] = useState(false),
+    [resourceVersion, setResourceVersion] = useState<number | null>(null),
+    [statusUncertain, setStatusUncertain] = useState(false);
+  const statusUncertainRef = useRef(false),
+    resourceUncertainRef = useRef(false);
+  function metadataChanged(value: boolean) {
+    metadataDirty.current = value;
+    setLegacyBlocked(value);
+    onRecordDirtyChange?.(
+      value ||
+        dirty.current ||
+        resourcesDirty.current ||
+        saving.current ||
+        resourceMutation.current ||
+        statusUncertainRef.current ||
+        resourceUncertainRef.current,
+    );
+  }
+  function legacyChanged() {
+    onRecordDirtyChange?.(
+      metadataDirty.current ||
+        dirty.current ||
+        resourcesDirty.current ||
+        saving.current ||
+        resourceMutation.current ||
+        statusUncertainRef.current ||
+        resourceUncertainRef.current,
+    );
+    setMetaBlocked(
+      dirty.current ||
+        resourcesDirty.current ||
+        saving.current ||
+        resourceMutation.current ||
+        statusUncertainRef.current ||
+        resourceUncertainRef.current,
+    );
+  }
+  function applyConfirmed(row: EventRow) {
+    const chosenLocation = locations.find((item) => item.id === row.locationId);
+    ++loadSequence.current;
+    loadedVersion.current = row.version;
+    loadedId.current = row.id;
+    if (!resourceMutation.current && !resourceUncertainRef.current)
+      setResourceVersion(row.version);
+    setLoading(false);
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            event: row,
+            eventType: row.eventTypeId
+              ? (types.find((item) => item.id === row.eventTypeId) ??
+                (current.eventType?.id === row.eventTypeId
+                  ? current.eventType
+                  : null))
+              : null,
+            package: row.packageId
+              ? (packages.find((item) => item.id === row.packageId) ??
+                (current.package?.id === row.packageId
+                  ? current.package
+                  : null))
+              : null,
+            location:
+              row.locationId === current.location?.id
+                ? current.location
+                : chosenLocation
+                  ? {
+                      id: chosenLocation.id,
+                      name: chosenLocation.name,
+                      street: chosenLocation.street ?? '',
+                      postalCode: chosenLocation.postalCode ?? '',
+                      city: chosenLocation.city ?? '',
+                      country: chosenLocation.country ?? '',
+                    }
+                  : null,
+          }
+        : current,
+    );
+    onRecordConfirmed?.(row);
+  }
+  function adoptExternal(row: EventRow) {
+    if (!inline.current?.adoptExternal(row)) throw Error('unconfirmed');
+  }
   function mayReplaceDraft() {
+    if (metadataDirty.current) return false;
     if (!dirty.current && !resourcesDirty.current) return true;
     if (!window.confirm('Ungespeicherte Eingaben verwerfen und neu laden?'))
       return false;
     dirty.current = false;
     resourcesDirty.current = false;
-    setEpoch((current) => current + 1);
+    legacyChanged();
+    if (!statusUncertainRef.current && !resourceUncertainRef.current)
+      setEpoch((current) => current + 1);
     return true;
   }
-  async function load() {
+  async function load(ownMutation = false) {
     const current = ++loadSequence.current;
     attemptedRevision.current = revision;
     setLoading(true);
@@ -161,31 +271,58 @@ export function EventDetails({
       const response = await fetch('/api/v1/events/' + id);
       if (!response.ok) throw Error('load');
       const next = (await response.json()) as Detail;
+      if (!validEventRow(next.event, id)) throw Error('invalid event');
+      next.event = canonicalEventRow(next.event);
       // A slower, older request must never overwrite a newer event state.
-      if (current !== loadSequence.current) return;
+      if (current !== loadSequence.current) return false;
       // The user started editing while this request was in flight. Keep the
       // form untouched and offer the newer data explicitly instead.
-      if (dirty.current || resourcesDirty.current) {
+      if (
+        dirty.current ||
+        resourcesDirty.current ||
+        metadataDirty.current ||
+        (!ownMutation && (saving.current || resourceMutation.current))
+      ) {
         setRefreshDeferred(true);
-        return;
+        return false;
+      }
+      if (
+        loadedVersion.current !== null &&
+        loadedId.current === id &&
+        next.event.version < loadedVersion.current
+      ) {
+        setRefreshDeferred(true);
+        return false;
+      }
+      if (
+        loadedId.current === id &&
+        inline.current &&
+        !inline.current.adoptExternal(next.event)
+      ) {
+        setRefreshDeferred(true);
+        return false;
       }
       loadedVersion.current = next.event.version;
       loadedId.current = next.event.id;
+      if (!resourceMutation.current && !resourceUncertainRef.current)
+        setResourceVersion(next.event.version);
       setData(next);
       setLoadFailed(false);
       setRefreshDeferred(false);
       setReloadWarning(false);
+      return true;
     } catch (error) {
       if (current === loadSequence.current) {
         setLoadFailed(true);
         throw error;
       }
+      return false;
     } finally {
       if (current === loadSequence.current) setLoading(false);
     }
   }
   function backgroundLoad() {
-    if (dirty.current || resourcesDirty.current) {
+    if (dirty.current || resourcesDirty.current || metadataDirty.current) {
       setRefreshDeferred(true);
       return;
     }
@@ -195,13 +332,41 @@ export function EventDetails({
   useEffect(
     () => () => {
       ++loadSequence.current;
+      onRecordDirtyChange?.(false);
     },
     [],
   );
   useEffect(
-    () => registerUnsavedChanges(() => dirty.current || resourcesDirty.current),
+    () =>
+      registerUnsavedChanges(
+        () =>
+          dirty.current ||
+          resourcesDirty.current ||
+          saving.current ||
+          resourceMutation.current ||
+          statusUncertainRef.current ||
+          resourceUncertainRef.current,
+        true,
+      ),
     [],
   );
+  useEffect(() => {
+    const unload = (event: BeforeUnloadEvent) => {
+      if (
+        !dirty.current &&
+        !resourcesDirty.current &&
+        !saving.current &&
+        !resourceMutation.current &&
+        !statusUncertainRef.current &&
+        !resourceUncertainRef.current
+      )
+        return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', unload);
+    return () => window.removeEventListener('beforeunload', unload);
+  }, []);
   useEffect(() => {
     void load().catch(() => {});
   }, [id]);
@@ -211,7 +376,7 @@ export function EventDetails({
     // A successful response that still carries an older version must not turn
     // the revision check into a request loop.
     if (attemptedRevision.current === revision) return;
-    if (dirty.current || resourcesDirty.current) {
+    if (dirty.current || resourcesDirty.current || metadataDirty.current) {
       setRefreshDeferred(true);
       return;
     }
@@ -238,8 +403,18 @@ export function EventDetails({
     panel.current?.focus({ preventScroll: true });
   }, [area]);
   async function saveStatus(form: HTMLFormElement) {
-    if (saving.current) return;
+    if (
+      saving.current ||
+      statusUncertainRef.current ||
+      resourceUncertainRef.current ||
+      resourceMutation.current ||
+      resourcesDirty.current ||
+      metadataDirty.current
+    )
+      return;
     saving.current = true;
+    ++loadSequence.current;
+    legacyChanged();
     setBusy(true);
     setMessage('');
     try {
@@ -250,10 +425,19 @@ export function EventDetails({
           'content-type': 'application/json',
           'x-csrf-token': csrfToken,
         },
-        body: JSON.stringify({ ...data!.event, status }),
+        body: JSON.stringify({
+          ...eventInput(data!.event),
+          version: data!.event.version,
+          status,
+        }),
       });
       if (!response.ok) {
         const error = (await response.json()) as { error: string };
+        if (response.status === 409) {
+          statusUncertainRef.current = true;
+          setStatusUncertain(true);
+          dirty.current = true;
+        }
         setMessage(
           error.error === 'conflict'
             ? 'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.'
@@ -263,24 +447,55 @@ export function EventDetails({
         );
         return;
       }
+      const row: unknown = await response.json().catch(() => null);
+      if (!validEventRow(row, id, data!.event.version + 1))
+        throw Error('unconfirmed');
+      adoptExternal(canonicalEventRow(row));
       // The PUT is confirmed; report it before reloading so a failing GET is
       // never mistaken for a failed save.
       setMessage('Status gespeichert.');
       dirty.current = false;
       setRefreshDeferred(false);
       try {
-        await load();
+        await load(true);
         await onChanged();
       } catch {
         setReloadWarning(true);
       }
     } catch {
+      statusUncertainRef.current = true;
+      setStatusUncertain(true);
+      dirty.current = true;
       setMessage(
         'Verbindung fehlgeschlagen. Aktuellen Stand vor einem erneuten Versuch laden.',
       );
     } finally {
       saving.current = false;
+      legacyChanged();
       setBusy(false);
+    }
+  }
+  async function reconcileStatus() {
+    if (
+      saving.current ||
+      !window.confirm('Ungespeicherte Eingaben verwerfen und neu laden?')
+    )
+      return;
+    saving.current = true;
+    dirty.current = false;
+    legacyChanged();
+    try {
+      if (!(await load(true))) throw Error('reload not adopted');
+      statusUncertainRef.current = false;
+      setStatusUncertain(false);
+      setEpoch((current) => current + 1);
+      setMessage('');
+      legacyChanged();
+    } catch {
+      dirty.current = true;
+    } finally {
+      saving.current = false;
+      legacyChanged();
     }
   }
   function retryLoad() {
@@ -324,10 +539,34 @@ export function EventDetails({
       aria-label="Event-Details"
       aria-busy={loading}
     >
-      <button className="tertiary-action" type="button" onClick={onClose}>
+      <button
+        className="tertiary-action"
+        type="button"
+        onClick={() => {
+          if (
+            (metadataDirty.current ||
+              dirty.current ||
+              resourcesDirty.current ||
+              saving.current ||
+              resourceMutation.current ||
+              statusUncertainRef.current ||
+              resourceUncertainRef.current) &&
+            !window.confirm(
+              'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
+            )
+          )
+            return;
+          onClose();
+        }}
+      >
         Event-Details schließen
       </button>
       <p role="status">{message}</p>
+      {statusUncertain && (
+        <button type="button" onClick={() => void reconcileStatus()}>
+          Serverstand prüfen und Eingaben verwerfen
+        </button>
+      )}
       {refreshDeferred && (
         <div className="reload-warning">
           <p role="status">
@@ -460,6 +699,26 @@ export function EventDetails({
                       : 'Ohne Uhrzeit'}
                   </dd>
                 </dl>
+                <EventInlineEditor
+                  ref={inline}
+                  key={'inline:' + data.event.id}
+                  event={data.event}
+                  csrfToken={csrfToken}
+                  types={types}
+                  packages={packages}
+                  locations={locations}
+                  locked={metaBlocked || loading}
+                  canEdit={() =>
+                    !dirty.current &&
+                    !resourcesDirty.current &&
+                    !saving.current &&
+                    !resourceMutation.current &&
+                    !statusUncertainRef.current &&
+                    !resourceUncertainRef.current
+                  }
+                  onDirtyChange={metadataChanged}
+                  onConfirmed={applyConfirmed}
+                />
                 <h4>Allgemein</h4>
                 <dl>
                   <dt>Eventart</dt>
@@ -485,7 +744,16 @@ export function EventDetails({
                     void saveStatus(event.currentTarget);
                   }}
                 >
-                  <fieldset disabled={busy || loading}>
+                  <fieldset
+                    disabled={
+                      busy ||
+                      loading ||
+                      statusUncertain ||
+                      resourceUncertainRef.current ||
+                      legacyBlocked ||
+                      resourcesDirty.current
+                    }
+                  >
                     <legend>Status ändern</legend>
                     <label>
                       Status des Events
@@ -494,6 +762,7 @@ export function EventDetails({
                         defaultValue={data.event.status}
                         onChange={() => {
                           dirty.current = true;
+                          legacyChanged();
                         }}
                       >
                         {statuses.map((status) => (
@@ -516,7 +785,22 @@ export function EventDetails({
                   aria-label={`Stammdaten bearbeiten: ${data.event.name}`}
                   title="Event bearbeiten"
                   disabled={busy || loading}
-                  onClick={() => onEdit(data.event)}
+                  onClick={() => {
+                    if (
+                      (metadataDirty.current ||
+                        dirty.current ||
+                        resourcesDirty.current ||
+                        saving.current ||
+                        resourceMutation.current ||
+                        statusUncertainRef.current ||
+                        resourceUncertainRef.current) &&
+                      !window.confirm(
+                        'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
+                      )
+                    )
+                      return;
+                    onEdit(data.event);
+                  }}
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -605,15 +889,61 @@ export function EventDetails({
           >
             <h3 id="event-panel-resources">Ressourcen</h3>
             <ResourceAssignments
-              key={data.event.id + ':' + data.event.version + ':' + epoch}
+              key={
+                data.event.id +
+                ':' +
+                (resourceVersion ?? data.event.version) +
+                ':' +
+                epoch
+              }
               event={data.event}
               csrfToken={csrfToken}
               onDirtyChange={(value) => {
                 resourcesDirty.current = value;
+                legacyChanged();
+              }}
+              locked={
+                legacyBlocked ||
+                dirty.current ||
+                saving.current ||
+                statusUncertain
+              }
+              canMutate={() =>
+                !metadataDirty.current &&
+                !dirty.current &&
+                !saving.current &&
+                !resourceMutation.current &&
+                !statusUncertainRef.current &&
+                !resourceUncertainRef.current
+              }
+              onUnconfirmedChange={(value) => {
+                resourceUncertainRef.current = value;
+                legacyChanged();
+              }}
+              onMutationChange={(value) => {
+                resourceMutation.current = value;
+                if (!value && loadedVersion.current !== null)
+                  setResourceVersion(loadedVersion.current);
+                legacyChanged();
+              }}
+              onConfirmed={(row) => {
+                adoptExternal(row);
+                onResourceConfirmed?.(row);
+                setMessage('Ressourcen und Termin gespeichert.');
+              }}
+              onReconcile={async () => {
+                if (!(await load(true))) throw Error('reload not adopted');
+                await onChanged('Serverstand aktualisiert.');
+                setEpoch((current) => current + 1);
               }}
               onChanged={async () => {
-                await load();
-                await onChanged('Ressourcen und Termin gespeichert.');
+                try {
+                  if (!(await load(true))) throw Error('reload not adopted');
+                  await onChanged('Ressourcen und Termin gespeichert.');
+                } catch (error) {
+                  setReloadWarning(true);
+                  throw error;
+                }
               }}
             />
           </div>
@@ -631,13 +961,13 @@ export function EventDetails({
               ist noch nicht angelegt.
             </p>
             <EventLibraryFiles
-              key={data.event.id}
+              key={'library:' + data.event.id}
               eventId={data.event.id}
               csrfToken={csrfToken}
               active={area === 'files'}
             />
             <EventDocuments
-              key={data.event.id}
+              key={'documents:' + data.event.id}
               eventId={data.event.id}
               contactId={data.event.primaryContactId}
               timeZone={data.event.timeZone}

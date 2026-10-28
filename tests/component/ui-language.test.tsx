@@ -28,6 +28,8 @@ const row = {
   eventTypeId: null,
   packageId: null,
   locationId: null,
+  venue: null,
+  venueOverride: false,
   primaryContactId: null,
   additionalContactIds: [],
   source: '',

@@ -219,6 +219,15 @@ export function useRecordAutosave<
     publish();
     void drain();
   }
+  function adoptExternal(row: Row): boolean {
+    const current = state.current;
+    if (dirty() || row.version < current.confirmed.version) return false;
+    if (row.version === current.confirmed.version)
+      return equal(row, current.confirmed);
+    adopt(row);
+    publish();
+    return true;
+  }
   return {
     values: state.current.values,
     confirmed: state.current.confirmed,
@@ -232,5 +241,6 @@ export function useRecordAutosave<
     reconcile,
     useRemote,
     reapply,
+    adoptExternal,
   };
 }

@@ -885,3 +885,51 @@ test('a booking write keeps the effective place untouched', async () => {
     locationId: 'fictional-location',
   });
 });
+
+test.each(['malformed', 'conflict'])(
+  'resource %s blocks another write until explicit server reload',
+  async (failure) => {
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+      options
+        ? failure === 'conflict'
+          ? Response.json({ error: 'conflict' }, { status: 409 })
+          : Response.json({})
+        : Response.json([resource]),
+    );
+    const changed = vi.fn().mockResolvedValue(undefined);
+    const dirty = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <ResourceAssignments
+        event={event}
+        csrfToken="csrf"
+        onChanged={changed}
+        onDirtyChange={dirty}
+        onConfirmed={() => {}}
+      />,
+    );
+    await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+    submit();
+    await screen.findByText(
+      failure === 'conflict'
+        ? /Inzwischen geändert/
+        : /Verbindung fehlgeschlagen/,
+    );
+    const button = screen.getByRole('button', {
+      name: 'Zuweisung und Termin speichern',
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(dirty).toHaveBeenLastCalledWith(true);
+    submit();
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+    ).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Serverstand prüfen und Eingaben verwerfen',
+      }),
+    );
+    await waitFor(() => expect(changed).toHaveBeenCalledOnce());
+  },
+);

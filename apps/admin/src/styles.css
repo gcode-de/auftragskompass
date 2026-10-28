@@ -1151,6 +1151,14 @@ time {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   gap: 0.75rem 1rem;
 }
+.event-inline-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.75rem 1rem;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
 .contact-inline-conflicts dl {
   display: block;
 }

@@ -2,6 +2,36 @@
 
 C018 verbindet Stammdaten mit Eventname, Status, Anfragequelle, Beschreibung, internen Notizen und einem primären Termin. Unbekannte Zuordnungen und ein noch unbekanntes Datum dürfen bei einer Anfrage offen bleiben. Ein Hauptkontakt und bis zu 50 weitere Kontakte können zugeordnet werden. Die Kontaktliste zeigt zugeordnete Events über „Events anzeigen“. „Duplizieren“ bereitet eine neue Anfrage vor und übernimmt nur aktive Zuordnungen. Das Original bleibt erhalten; erst Speichern legt die Kopie an.
 
+## Direkte Stammdatenbearbeitung (EDIT-02.1)
+
+Name, Eventart, Paket, Anfragequelle, gespeicherter Ort, individuelle Anschrift
+und Beschreibung sind direkt in der Eventakte bearbeitbar. Ein gültiges Feld
+wird beim Verlassen gespeichert. Escape verwirft nur seine aktuelle, noch
+nicht abgeschlossene Eingabe; frühere Blur-Aufträge und laufende Schreibzugriffe
+bleiben erhalten. Serverseitige Normalisierung wird sichtbar übernommen.
+
+Der gemeinsame Autosave-Hook serialisiert vollständige PUTs aus einer expliziten
+Feldliste mit der zuletzt bestätigten Eventversion. Aktive Eingaben anderer
+Felder werden nicht versehentlich mitgesendet. Ein Versionskonflikt oder eine
+unklare Schreibantwort pausiert weitere Schreibaufträge. Erst ein ausdrücklich
+angeforderter Serverabgleich erlaubt die Übernahme des Serverstands oder das
+erneute Anwenden bereits abgeschlossener Änderungen. Die Eingaben bleiben bei
+Ladefehlern erhalten.
+
+Status und Ressourcen besitzen dieselbe Eventversion. Ihre bisherigen Formulare
+und die direkte Bearbeitung sperren einander, sobald ein Entwurf oder ein
+Schreibzugriff aktiv ist. Bestätigte Schreibantworten werden vor nachfolgenden
+Lesezugriffen übernommen. Listen- und Hintergrundaktualisierung dürfen offene
+Entwürfe nicht ersetzen. Eine geänderte Akte bleibt bis zum sicheren Verlassen
+geöffnet; anschließend wird die Trefferliste anhand der angewandten Filter
+erneut geladen. Interne Navigation und Browser-Zurück schützen ungespeicherte
+Eingaben, Reload und Schließen verwenden den nativen Browserhinweis.
+
+Termin, Kontaktrollen, interne Notizen und Status sind in diesem ersten
+Unter-Slice weiterhin über die vorhandenen vollständigen Formulare bearbeitbar.
+Die atomaren Ressourcen- und Buchungsprüfungen bleiben maßgeblich; ein
+Stammdaten-Blur führt keine Ressourcenbuchung aus.
+
 ## Kompaktes Anlegen (H029)
 
 „Event anlegen“ öffnet einen modalen Dialog mit nativem Datumsfeld, einem

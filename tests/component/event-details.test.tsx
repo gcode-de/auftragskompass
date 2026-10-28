@@ -86,16 +86,17 @@ const detail = {
   ],
 };
 test('event details collect contacts, venue, notes and activities and save status with current version', async () => {
+  const freshDetail = structuredClone(detail);
   const changed = vi.fn().mockResolvedValue(undefined),
     edit = vi.fn(),
     close = vi.fn();
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
     if (options) {
-      Object.assign(detail.event, JSON.parse(String(options.body)));
-      detail.event.version = 2;
-      return Response.json(detail.event);
+      Object.assign(freshDetail.event, JSON.parse(String(options.body)));
+      freshDetail.event.version = 2;
+      return Response.json(freshDetail.event);
     }
-    return Response.json(detail);
+    return Response.json(freshDetail);
   });
   vi.stubGlobal('fetch', fetcher);
   render(
@@ -156,7 +157,7 @@ test('event detail errors preserve loaded data and allow retries', async () => {
   let error = 'conflict';
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
     options
-      ? Response.json({ error }, { status: 409 })
+      ? Response.json({ error }, { status: error === 'conflict' ? 409 : 400 })
       : Response.json({
           ...detail,
           contacts: [],
@@ -185,7 +186,6 @@ test('event detail errors preserve loaded data and allow retries', async () => {
   ) as HTMLSelectElement;
   fireEvent.change(statusSelect, { target: { value: 'option' } });
   for (const [code, text] of [
-    ['conflict', /Inzwischen geändert/],
     ['invalid', /Status konnte nicht gespeichert/],
     ['import_review_required', /Ungeprüfte Bestandszusagen zuerst/],
   ] as const) {
@@ -977,5 +977,544 @@ test('a contactless website option shows an open contact and its original reques
       status: 'option',
       primaryContactId: null,
     }),
+  );
+});
+
+test('metadata and status edits lock each other and adopt the confirmed version without a reload', async () => {
+  let complete!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    complete = resolve;
+  });
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    options?.method === 'PUT' ? pending : Response.json(detail),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  const name = (await screen.findByLabelText('Eventname')) as HTMLInputElement;
+  const status = screen.getByLabelText(
+    'Status des Events',
+  ) as HTMLSelectElement;
+  name.focus();
+  fireEvent.change(name, { target: { value: 'Unfinished' } });
+  expect(status.closest('fieldset')?.disabled).toBe(true);
+  fireEvent.keyDown(name, { key: 'Escape' });
+  await waitFor(() => expect(status.closest('fieldset')?.disabled).toBe(false));
+  fireEvent.change(status, { target: { value: 'option' } });
+  expect(name.closest('fieldset')?.disabled).toBe(true);
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  expect(name.closest('fieldset')?.disabled).toBe(true);
+  complete(Response.json({ ...event, status: 'option', version: 2 }));
+  await screen.findByText('Status gespeichert.');
+  await waitFor(() => expect(name.closest('fieldset')?.disabled).toBe(false));
+  fireEvent.change(name, { target: { value: 'Next name' } });
+  expect(status.closest('fieldset')?.disabled).toBe(true);
+});
+
+test('resource draft locks metadata, and a confirmed resource version survives failed reload', async () => {
+  const unit = {
+    unitId: 'synthetic-unit',
+    resourceId: 'synthetic-resource',
+    name: 'Fictional box',
+    code: 'SYNTH',
+    category: 'Fotobox',
+    ordinal: 1,
+    selected: false,
+    periodSource: 'event',
+    baseStart: event.startsAt,
+    baseEnd: event.endsAt,
+    beforeDays: 0,
+    afterDays: 0,
+    startsAt: null,
+    endsAt: null,
+    available: true,
+    reason: null,
+    conflicts: [],
+  };
+  let saved = false;
+  let releaseMetadata!: (response: Response) => void;
+  const metadataSave = new Promise<Response>((resolve) => {
+    releaseMetadata = resolve;
+  });
+  const bodies: Record<string, unknown>[] = [];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      const body = JSON.parse(String(options.body));
+      bodies.push(body);
+      if (bodies.length === 1) return metadataSave;
+      saved = true;
+      return Response.json({ ...event, ...body, version: bodies.length + 1 });
+    }
+    if (url.endsWith('/availability')) return Response.json([unit]);
+    if (url === '/api/v1/events/synthetic-event')
+      return saved
+        ? new Response(null, { status: 503 })
+        : Response.json(detail);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  const name = (await screen.findByLabelText('Eventname')) as HTMLInputElement;
+  name.focus();
+  fireEvent.change(name, { target: { value: 'Pending' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  let assignment = await screen.findByRole('region', {
+    name: 'Ressourcenzuweisung',
+  });
+  let box = await within(assignment).findByLabelText(
+    'Fictional box · Einheit 1 zuweisen',
+  );
+  expect(box.closest('fieldset')?.disabled).toBe(true);
+  releaseMetadata(Response.json({ ...event, name: 'Pending', version: 2 }));
+  await waitFor(() => expect(assignment.isConnected).toBe(false));
+  assignment = await screen.findByRole('region', {
+    name: 'Ressourcenzuweisung',
+  });
+  box = await within(assignment).findByLabelText(
+    'Fictional box · Einheit 1 zuweisen',
+  );
+  await waitFor(() => expect(box.closest('fieldset')?.disabled).toBe(false));
+  fireEvent.click(box);
+  expect(name.closest('fieldset')?.disabled).toBe(true);
+  fireEvent.submit(
+    within(assignment)
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText(/Gespeichert, aber/);
+  await waitFor(() => expect(name.closest('fieldset')?.disabled).toBe(false));
+  fireEvent.change(name, { target: { value: 'After resource' } });
+  fireEvent.blur(name);
+  await waitFor(() => expect(bodies.length).toBe(3));
+  expect(bodies[2]).toMatchObject({ version: 3, name: 'After resource' });
+});
+
+test.each(['malformed', 'conflict'])(
+  'status %s blocks writes until the server is explicitly reloaded',
+  async (failure) => {
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+      options
+        ? failure === 'conflict'
+          ? Response.json({ error: 'conflict' }, { status: 409 })
+          : Response.json({})
+        : Response.json(detail),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <EventDetails
+        statuses={statuses}
+        id="synthetic-event"
+        csrfToken="csrf"
+        onChanged={async () => {}}
+        onEdit={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByLabelText('Status des Events');
+    const button = screen.getByRole('button', {
+      name: 'Status speichern',
+    }) as HTMLButtonElement;
+    fireEvent.submit(button.closest('form')!);
+    await screen.findByText(
+      failure === 'conflict'
+        ? /Inzwischen geändert/
+        : /Verbindung fehlgeschlagen/,
+    );
+    expect(button.matches(':disabled')).toBe(true);
+    expect(screen.getByLabelText('Eventname').matches(':disabled')).toBe(true);
+    fireEvent.submit(button.closest('form')!);
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+    ).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Serverstand prüfen und Eingaben verwerfen',
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'Status speichern' })
+          .matches(':disabled'),
+      ).toBe(false),
+    );
+  },
+);
+
+test('status reconciliation keeps the lock when the returned server version is stale', async () => {
+  let version = 2;
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    options
+      ? Response.json({ error: 'conflict' }, { status: 409 })
+      : Response.json({ ...detail, event: { ...event, version } }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByLabelText('Status des Events');
+  const button = screen.getByRole('button', { name: 'Status speichern' });
+  fireEvent.submit(button.closest('form')!);
+  await screen.findByText(/Inzwischen geändert/);
+  version = 1;
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Serverstand prüfen und Eingaben verwerfen',
+    }),
+  );
+  await screen.findByText(/Aktualisierung steht aus/);
+  expect(button.matches(':disabled')).toBe(true);
+  version = 3;
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Serverstand prüfen und Eingaben verwerfen',
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Status speichern' })
+        .matches(':disabled'),
+    ).toBe(false),
+  );
+});
+
+test('resource conflict reconciliation adopts the new version before another booking', async () => {
+  let version = 2;
+  const changed = vi.fn().mockResolvedValue(undefined);
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT')
+      return Response.json({ error: 'conflict' }, { status: 409 });
+    if (url.endsWith('/availability')) return Response.json([]);
+    return Response.json({ ...detail, event: { ...event, version } });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={changed}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByLabelText('Status des Events');
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  await screen.findByText(/Keine physischen Einheiten/);
+  const save = () =>
+    fireEvent.submit(
+      screen
+        .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+        .closest('form')!,
+    );
+  save();
+  await screen.findByText(/Inzwischen geändert/);
+  version = 3;
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Serverstand prüfen und Eingaben verwerfen',
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+        .matches(':disabled'),
+    ).toBe(false),
+  );
+  expect(changed).toHaveBeenCalledWith('Serverstand aktualisiert.');
+  expect(screen.queryByText('Ressourcen und Termin gespeichert.')).toBeNull();
+  save();
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+    ).toHaveLength(2),
+  );
+  const puts = fetcher.mock.calls.filter(
+    ([, options]) => options?.method === 'PUT',
+  );
+  expect(JSON.parse(String(puts[1]![1]!.body)).version).toBe(3);
+});
+
+test('status reconciliation resets a draft even when the server version is unchanged', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) =>
+      options
+        ? Response.json({ error: 'conflict' }, { status: 409 })
+        : Response.json(detail),
+    ),
+  );
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  const select = await screen.findByLabelText('Status des Events');
+  fireEvent.change(select, { target: { value: 'option' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Inzwischen geändert/);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Serverstand prüfen und Eingaben verwerfen',
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText('Status des Events') as HTMLSelectElement).value,
+    ).toBe('inquiry'),
+  );
+});
+
+test('resource reconciliation resets the selection when the server version is unchanged', async () => {
+  const unit = {
+    unitId: 'synthetic-box',
+    resourceId: 'synthetic-resource',
+    name: 'Fictional box',
+    code: 'SYNTH',
+    category: 'Fotobox',
+    ordinal: 1,
+    selected: false,
+    periodSource: 'event',
+    baseStart: event.startsAt,
+    baseEnd: event.endsAt,
+    beforeDays: 0,
+    afterDays: 0,
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
+    reason: null,
+    conflicts: [],
+    available: true,
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) =>
+      options
+        ? Response.json({ error: 'conflict' }, { status: 409 })
+        : url.endsWith('/availability')
+          ? Response.json([unit])
+          : Response.json(detail),
+    ),
+  );
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByLabelText('Status des Events');
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  const input = await screen.findByLabelText(
+    'Fictional box · Einheit 1 zuweisen',
+  );
+  fireEvent.click(input);
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText(/Inzwischen geändert/);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Serverstand prüfen und Eingaben verwerfen',
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByLabelText(
+          'Fictional box · Einheit 1 zuweisen',
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(false),
+  );
+});
+
+test('a failed generic reload cannot release an unresolved status conflict', async () => {
+  let fail = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options) return Response.json({ error: 'conflict' }, { status: 409 });
+      if (fail) throw Error('offline');
+      return Response.json(detail);
+    }),
+  );
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByLabelText('Status des Events');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Inzwischen geändert/);
+  fail = true;
+  returnToApp();
+  await screen.findByText(/Aktualisierung steht aus/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Neu laden und Eingaben verwerfen' }),
+  );
+  await screen.findByText(/Event-Details konnte nicht geladen/);
+  expect(screen.getByLabelText('Eventname').matches(':disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  expect(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .matches(':disabled'),
+  ).toBe(true);
+});
+
+test('a failed generic reload cannot release an unresolved resource conflict', async () => {
+  let fail = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (options) return Response.json({ error: 'conflict' }, { status: 409 });
+      if (url.endsWith('/availability')) return Response.json([]);
+      if (fail) throw Error('offline');
+      return Response.json(detail);
+    }),
+  );
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByLabelText('Status des Events');
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  await screen.findByText(/Keine physischen Einheiten/);
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText(/Inzwischen geändert/);
+  fail = true;
+  returnToApp();
+  await screen.findByText(/Aktualisierung steht aus/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Neu laden und Eingaben verwerfen' }),
+  );
+  await screen.findByText(/Event-Details konnte nicht geladen/);
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+  expect(screen.getByLabelText('Eventname').matches(':disabled')).toBe(true);
+  expect(
+    screen
+      .getByRole('button', { name: 'Status speichern' })
+      .matches(':disabled'),
+  ).toBe(true);
+});
+
+test('generic reload with a newer version preserves access to resource reconciliation', async () => {
+  let version = 1;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (options) return Response.json({ error: 'conflict' }, { status: 409 });
+      if (url.endsWith('/availability')) return Response.json([]);
+      return Response.json({ ...detail, event: { ...event, version } });
+    }),
+  );
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByLabelText('Status des Events');
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  await screen.findByText(/Keine physischen Einheiten/);
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText(/Inzwischen geändert/);
+  version = 2;
+  returnToApp();
+  await screen.findByText(/Aktualisierung steht aus/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Neu laden und Eingaben verwerfen' }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText(/Aktualisierung steht aus/)).toBeNull(),
+  );
+  const reconcile = screen.getByRole('button', {
+    name: 'Serverstand prüfen und Eingaben verwerfen',
+  });
+  expect(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .matches(':disabled'),
+  ).toBe(true);
+  fireEvent.click(reconcile);
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+        .matches(':disabled'),
+    ).toBe(false),
   );
 });

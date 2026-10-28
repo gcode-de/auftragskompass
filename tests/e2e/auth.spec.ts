@@ -4178,7 +4178,13 @@ async function signInScenario(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(width + 1);
       await audit(`event-record-${width}-${theme}`);
-      await page.goBack();
+      const discardDraft = page.waitForEvent('dialog');
+      const navigation = page.goBack();
+      const dialog = await discardDraft;
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toMatch(/ungespeicherter Eingaben/i);
+      await dialog.accept();
+      await navigation;
       await expect(
         events.getByRole('region', { name: 'Event-Details' }),
       ).toHaveCount(0);
@@ -4689,7 +4695,7 @@ async function signInScenario(
       .getByRole('button', { name: 'Zuweisung und Termin speichern' })
       .click();
     await expect(
-      events.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
+      record.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
     ).toBeVisible();
     await expect(
       assignment.getByLabel('FB2 · Einheit 1 zuweisen', { exact: true }),
@@ -4728,7 +4734,7 @@ async function signInScenario(
       .getByRole('button', { name: 'Zuweisung und Termin speichern' })
       .click();
     await expect(
-      events.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
+      record.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
     ).toBeVisible();
     await record.getByRole('button', { name: 'Logbuch', exact: true }).click();
     await expect(
@@ -5536,7 +5542,15 @@ async function signInScenario(
       }
       await page.setViewportSize({ width: 1280, height: 720 });
     }
-    await navigate('Einstellungen', 'Datenexport');
+    if (mode === 'password') {
+      const discardDraft = page.waitForEvent('dialog');
+      const navigation = navigate('Einstellungen', 'Datenexport');
+      const dialog = await discardDraft;
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toMatch(/ungespeicherter Eingaben/i);
+      await dialog.accept();
+      await navigation;
+    } else await navigate('Einstellungen', 'Datenexport');
     const exports = page.getByRole('region', {
       name: 'Datenexport',
       exact: true,

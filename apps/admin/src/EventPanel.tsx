@@ -138,6 +138,33 @@ export function eventCardTime(
 // hold and a retired unit are marked instead of reading current, and an overlap
 // is only named when the server found two stored reservations intersecting.
 // Nothing here claims availability.
+function validResources(value: unknown): value is EventResources {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as EventResources;
+  return (
+    Array.isArray(data.units) &&
+    ['assigned', 'booked', 'hold'].every(
+      (key) =>
+        Number.isSafeInteger(data[key as 'assigned' | 'booked' | 'hold']) &&
+        data[key as 'assigned' | 'booked' | 'hold'] >= 0,
+    ) &&
+    typeof data.conflict === 'boolean' &&
+    data.units.every(
+      (unit) =>
+        unit &&
+        typeof unit.unitId === 'string' &&
+        typeof unit.name === 'string' &&
+        typeof unit.code === 'string' &&
+        Number.isSafeInteger(unit.ordinal) &&
+        (unit.state === 'hold' || unit.state === 'booked') &&
+        typeof unit.stale === 'boolean' &&
+        typeof unit.unitEnabled === 'boolean' &&
+        typeof unit.resourceState === 'string' &&
+        typeof unit.resourceBlocked === 'boolean' &&
+        typeof unit.conflict === 'boolean',
+    )
+  );
+}
 export function eventResourcesText(resources?: EventResources): string {
   if (!resources?.units.length) return 'Noch keine Ressource';
   const units = resources.units.map((unit) => {
@@ -172,6 +199,7 @@ export function EventPanel({
   const wide = useWideFilterLayout();
   const urlSearch = useUrlSearch(),
     filters = new URLSearchParams(urlSearch),
+    currentSearch = useRef(urlSearch),
     sequence = useRef(0),
     saving = useRef(false),
     editor = useRef<HTMLDetailsElement>(null),
@@ -182,6 +210,7 @@ export function EventPanel({
     filterTrigger = useRef<HTMLButtonElement>(null),
     filterSearch = useRef<HTMLInputElement>(null),
     rangeDetails = useRef<HTMLDetailsElement>(null);
+  currentSearch.current = urlSearch;
   const [filtersOpen, setFiltersOpen] = useState(false);
   // BKP007.3: the sheet's own filter copy. `null` means "no sheet open"; it is
   // taken from the applied URL on open and thrown away on close.
@@ -222,6 +251,19 @@ export function EventPanel({
   // dialog uses; the contact form is a view inside the editor, never a second
   // dialog level.
   const contactSearch = useContactSearch();
+  const detailIdRef = useRef<string | null>(null);
+  const openGroup = useRef<{ id: string; eventDate: string | null } | null>(
+    null,
+  );
+  detailIdRef.current = detailId;
+  const resourceProjectionSequence = useRef(0);
+  const resourceProjectionActive = useRef<number | null>(null);
+  const [resourceProjections, setResourceProjections] = useState<
+    Record<string, { version: number; resources?: EventResources }>
+  >({});
+  const recordDirty = useRef(false);
+  const deferredList = useRef(false);
+  const [recordListDeferred, setRecordListDeferred] = useState(false);
   const [view, setView] = useState<'event' | 'contact'>('event'),
     [pickedContact, setPickedContact] = useState<ContactHit | null>(null),
     [pickerFocus, setPickerFocus] = useState(0),
@@ -229,6 +271,8 @@ export function EventPanel({
     [createdContacts, setCreatedContacts] = useState<ContactHit[]>([]);
   async function refresh() {
     const current = ++sequence.current;
+    const projectionRevision = resourceProjectionSequence.current;
+    const projectionWasActive = resourceProjectionActive.current !== null;
     setLoading(true);
     setLoadFailed(false);
     try {
@@ -244,7 +288,7 @@ export function EventPanel({
           fetch(
             '/api/v1' +
               path +
-              (path === '/events' ? eventQuery(urlSearch) : ''),
+              (path === '/events' ? eventQuery(currentSearch.current) : ''),
           ),
         ),
       );
@@ -259,7 +303,43 @@ export function EventPanel({
           Choice[],
         ];
       if (current !== sequence.current) return;
-      setRows(events.events);
+      if (recordDirty.current) {
+        deferRecordList();
+        return;
+      }
+      if (
+        !projectionWasActive &&
+        resourceProjectionActive.current === null &&
+        projectionRevision === resourceProjectionSequence.current
+      ) {
+        setResourceProjections((current) => {
+          const next = { ...current };
+          for (const row of events.events) {
+            if (
+              next[row.id] &&
+              validResources(row.resources) &&
+              row.version >= next[row.id]!.version
+            )
+              delete next[row.id];
+          }
+          return next;
+        });
+      }
+      setRows((currentRows) => {
+        const openId = detailIdRef.current;
+        const openRow = currentRows.find((row) => row.id === openId);
+        if (!openId || !openRow) return events.events;
+        const latest = events.events.find((row) => row.id === openId);
+        if (!latest) return [...events.events, openRow];
+        if (
+          !Number.isSafeInteger(latest.version) ||
+          latest.version < openRow.version
+        )
+          return events.events.map((row) =>
+            row.id === openId ? openRow : row,
+          );
+        return events.events;
+      });
       // The admin is served by the API that sends the counters with the list; a
       // payload without them (a cached older bundle) shows the empty answer
       // instead of inventing a number from the loaded rows.
@@ -279,6 +359,56 @@ export function EventPanel({
     } finally {
       if (current === sequence.current) setLoading(false);
     }
+  }
+  async function refreshResourceProjection(confirmed: EventRow) {
+    const request = ++resourceProjectionSequence.current;
+    resourceProjectionActive.current = request;
+    setResourceProjections((current) => ({
+      ...current,
+      [confirmed.id]: { version: confirmed.version },
+    }));
+    const query = new URLSearchParams({ q: confirmed.name });
+    if (confirmed.eventDate) {
+      query.set('from', confirmed.eventDate);
+      query.set('to', confirmed.eventDate);
+    } else query.set('undated', 'true');
+    try {
+      const response = await fetch('/api/v1/events?' + query);
+      if (!response.ok) return;
+      const listing = (await response.json()) as { events: EventRow[] };
+      const row = listing.events.find((item) => item.id === confirmed.id);
+      if (
+        request !== resourceProjectionSequence.current ||
+        detailIdRef.current !== confirmed.id ||
+        !validResources(row?.resources) ||
+        !Number.isSafeInteger(row.version) ||
+        row.version < confirmed.version
+      )
+        return;
+      const resources = row.resources;
+      ++resourceProjectionSequence.current;
+      setResourceProjections((current) => ({
+        ...current,
+        [confirmed.id]: { version: row.version, resources },
+      }));
+    } catch {
+      // Keep the explicit stale marker until a later successful refresh.
+    } finally {
+      if (resourceProjectionActive.current === request)
+        resourceProjectionActive.current = null;
+    }
+  }
+  function deferRecordList() {
+    deferredList.current = true;
+    setRecordListDeferred(true);
+  }
+  function flushRecordList() {
+    if (!deferredList.current) return;
+    deferredList.current = false;
+    setRecordListDeferred(false);
+    setTimeout(() => {
+      void refresh().catch(() => setReloadWarning(true));
+    }, 0);
   }
   useEffect(() => {
     if (!draft || venueEdited) return;
@@ -311,6 +441,11 @@ export function EventPanel({
   useEffect(() => {
     const changed = () => {
       const id = window.location.hash.slice(1);
+      if (detailIdRef.current && id !== 'event-' + detailIdRef.current) {
+        openGroup.current = null;
+        detailIdRef.current = id.startsWith('event-') ? id.slice(6) : null;
+        flushRecordList();
+      }
       if (!id.startsWith('event-')) {
         setDetailId(null);
         return;
@@ -319,6 +454,12 @@ export function EventPanel({
         id.startsWith('event-') &&
         rows.some((row) => 'event-' + row.id === id)
       ) {
+        const selected = rows.find((row) => 'event-' + row.id === id)!;
+        if (openGroup.current?.id !== selected.id)
+          openGroup.current = {
+            id: selected.id,
+            eventDate: selected.eventDate,
+          };
         setDetailId(id.slice(6));
         document.getElementById(id)?.scrollIntoView?.();
       } else setDetailId(null);
@@ -642,9 +783,22 @@ export function EventPanel({
   // The undated sort is a view of the loaded list; dates and the other filters
   // already went to the server.
   const undatedOnly = filters.get('undated') === 'true',
-    shown = undatedOnly ? rows.filter((row) => !row.eventDate) : rows,
+    shown = undatedOnly
+      ? rows.filter((row) => !row.eventDate || row.id === detailId)
+      : rows,
     activeCriteria = activeFilterCriteria(urlSearch),
-    groups = monthGroups(shown);
+    groups = monthGroups(
+      shown.map((row) => ({
+        row,
+        eventDate:
+          openGroup.current?.id === row.id
+            ? openGroup.current.eventDate
+            : row.eventDate,
+      })),
+    ).map((group) => ({
+      ...group,
+      entries: group.entries.map((entry) => entry.row),
+    }));
   // A modal sheet makes the list behind it inert, so it is opened only in the
   // narrow frame and closes again when the column returns.
   useEffect(() => {
@@ -1502,7 +1656,19 @@ export function EventPanel({
                               text line on the meta row — no second link, no
                               new column. */}
                               <span className="event-resources">
-                                {eventResourcesText(row.resources)}
+                                {resourceProjections[row.id] &&
+                                (!resourceProjections[row.id]!.resources ||
+                                  row.version >
+                                    resourceProjections[row.id]!.version)
+                                  ? 'Ressourcenstand nicht aktualisiert'
+                                  : row.resources &&
+                                      !validResources(row.resources) &&
+                                      !resourceProjections[row.id]?.resources
+                                    ? 'Ressourcenstand nicht aktualisiert'
+                                    : eventResourcesText(
+                                        resourceProjections[row.id]
+                                          ?.resources ?? row.resources,
+                                      )}
                               </span>
                               {/* A quiet origin label, not a status: the automatic
                               website option stays an ordinary event card. */}
@@ -1630,54 +1796,94 @@ export function EventPanel({
                         </div>
                       </div>
                       {detailId === row.id && (
-                        <EventDetails
-                          key={row.id}
-                          revision={row.version}
-                          id={row.id}
-                          csrfToken={csrfToken}
-                          statuses={statuses}
-                          onChanged={async (
-                            message = 'Eventstatus gespeichert.',
-                          ) => {
-                            setMessage(message);
-                            try {
-                              await refresh();
-                            } catch {
-                              setReloadWarning(true);
-                            }
-                          }}
-                          onEdit={(event) => {
-                            setCreating(false);
-                            setCreateInitial(null);
-                            // A new editing context always starts on the event.
-                            setView('event');
-                            setVenue(
-                              initialVenueText(
-                                event,
-                                locations.find(
-                                  (choice) => choice.id === event.locationId,
+                        <>
+                          {recordListDeferred && (
+                            <p role="status">
+                              Das Event bleibt bis zum Schließen geöffnet. Die
+                              Trefferliste wird danach aktualisiert.
+                            </p>
+                          )}
+                          <EventDetails
+                            key={row.id}
+                            revision={row.version}
+                            id={row.id}
+                            csrfToken={csrfToken}
+                            statuses={statuses}
+                            types={types}
+                            packages={packages}
+                            locations={locations}
+                            onRecordConfirmed={(confirmed) => {
+                              ++resourceProjectionSequence.current;
+                              ++sequence.current;
+                              setLoading(false);
+                              setRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === confirmed.id &&
+                                  confirmed.version >= entry.version
+                                    ? {
+                                        ...confirmed,
+                                        ...(entry.resources
+                                          ? { resources: entry.resources }
+                                          : {}),
+                                      }
+                                    : entry,
                                 ),
-                              ),
-                            );
-                            setVenueEdited(false);
-                            setDraft(event);
-                            setEditing(true);
-                            setDetailId(null);
-                            window.history.replaceState(null, '', '#events');
-                          }}
-                          onClose={() => {
-                            setDetailId(null);
-                            window.location.hash = 'events';
-                            requestAnimationFrame(() =>
-                              document
-                                .getElementById('event-' + row.id)
-                                ?.querySelector<HTMLAnchorElement>(
-                                  '.event-summary',
-                                )
-                                ?.focus(),
-                            );
-                          }}
-                        />
+                              );
+                              deferRecordList();
+                              if (detailIdRef.current !== confirmed.id)
+                                flushRecordList();
+                            }}
+                            onResourceConfirmed={(confirmed) => {
+                              void refreshResourceProjection(confirmed);
+                            }}
+                            onRecordDirtyChange={(dirty) => {
+                              recordDirty.current = dirty;
+                            }}
+                            onChanged={async (
+                              message = 'Eventstatus gespeichert.',
+                            ) => {
+                              setMessage(message);
+                              deferRecordList();
+                            }}
+                            onEdit={(event) => {
+                              setCreating(false);
+                              setCreateInitial(null);
+                              // A new editing context always starts on the event.
+                              setView('event');
+                              setVenue(
+                                initialVenueText(
+                                  event,
+                                  locations.find(
+                                    (choice) => choice.id === event.locationId,
+                                  ),
+                                ),
+                              );
+                              setVenueEdited(false);
+                              setDraft(event);
+                              setEditing(true);
+                              detailIdRef.current = null;
+                              openGroup.current = null;
+                              setDetailId(null);
+                              window.history.replaceState(null, '', '#events');
+                              flushRecordList();
+                            }}
+                            onClose={() => {
+                              detailIdRef.current = null;
+                              openGroup.current = null;
+                              setDetailId(null);
+                              window.location.hash = 'events';
+                              flushRecordList();
+                              requestAnimationFrame(() =>
+                                document
+                                  .getElementById('event-' + row.id)
+                                  ?.querySelector<HTMLAnchorElement>(
+                                    '.event-summary',
+                                  )
+                                  ?.focus(),
+                              );
+                            }}
+                          />
+                        </>
                       )}
                     </li>
                   ))}

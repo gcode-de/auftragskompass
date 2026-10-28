@@ -1649,7 +1649,11 @@ test('a confirmed resource save stays visible in the list when the parent refres
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     if (options) {
       puts += 1;
-      return Response.json({ ...row, ...JSON.parse(String(options.body)) });
+      return Response.json({
+        ...row,
+        ...JSON.parse(String(options.body)),
+        version: 2,
+      });
     }
     if (url === '/api/v1/events/synthetic/availability') {
       availability += 1;
@@ -1686,7 +1690,13 @@ test('a confirmed resource save stays visible in the list when the parent refres
       .getByRole('button', { name: 'Zuweisung und Termin speichern' })
       .closest('form')!,
   );
-  await screen.findByText('Ressourcen und Termin gespeichert.');
+  expect(
+    await screen.findAllByText('Ressourcen und Termin gespeichert.'),
+  ).not.toHaveLength(0);
+  await screen.findByText(/Trefferliste wird danach aktualisiert/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event-Details schließen' }),
+  );
   await screen.findByText(/Liste konnte nicht neu geladen werden/);
   expect(puts).toBe(1);
   expect(availability).toBe(2);
@@ -3217,4 +3227,571 @@ test('opening another event returns from the contact view to the event form', as
   expect(screen.getByText(/Kunde: Synthetic main/)).toBeTruthy();
   expect(store.puts).toHaveLength(0);
   expect(store.contactPosts).toHaveLength(0);
+});
+
+test('refreshes a changed event list after leaving its record via hash navigation', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic#events');
+  let saved = false,
+    listCalls = 0;
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      saved = true;
+      return Response.json({ ...row, name: 'Changed event', version: 2 });
+    }
+    if (url === '/api/v1/events/synthetic')
+      return Response.json({
+        event: row,
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      });
+    if (url.startsWith('/api/v1/events?')) {
+      listCalls++;
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: saved ? [] : [row],
+      });
+    }
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
+  const name = await screen.findByLabelText('Eventname');
+  fireEvent.change(name, { target: { value: 'Changed event' } });
+  fireEvent.blur(name);
+  await screen.findByRole('heading', { name: 'Event: Changed event' });
+  const before = listCalls;
+  window.location.hash = 'events';
+  fireEvent(window, new HashChangeEvent('hashchange'));
+  await waitFor(() => expect(listCalls).toBeGreaterThan(before));
+  await screen.findByText('Keine Events gefunden.');
+});
+
+test('resource date save across months keeps the open record mounted until confirmation finishes', async () => {
+  const january = { ...row, eventDate: '2031-01-10' };
+  let saved = false,
+    release!: (response: Response) => void;
+  const refresh = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      saved = true;
+      return Response.json({
+        ...january,
+        ...JSON.parse(String(options.body)),
+        eventDate: '2031-02-10',
+        version: 2,
+      });
+    }
+    if (url === '/api/v1/events/synthetic/availability')
+      return Response.json([]);
+    if (url === '/api/v1/events/synthetic')
+      return saved
+        ? refresh
+        : Response.json({
+            event: january,
+            contacts: [],
+            location: null,
+            eventType: null,
+            package: null,
+            activities: [],
+          });
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({ timeZone: 'Europe/Berlin', events: [january] });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
+  const record = await screen.findByRole('region', { name: 'Event-Details' });
+  fireEvent.click(within(record).getByRole('button', { name: 'Ressourcen' }));
+  const resources = await screen.findByRole('region', {
+    name: 'Ressourcenzuweisung',
+  });
+  const date = await within(resources).findByLabelText('Eventdatum');
+  await waitFor(() =>
+    expect((date as HTMLInputElement).closest('fieldset')?.disabled).toBe(
+      false,
+    ),
+  );
+  fireEvent.change(date, { target: { value: '2031-02-10' } });
+  fireEvent.submit(
+    within(resources)
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await within(resources).findByText('Zuweisung und Termin gespeichert.');
+  expect(record.isConnected).toBe(true);
+  expect(resources.isConnected).toBe(true);
+  expect(screen.getByRole('region', { name: 'Event-Details' })).toBe(record);
+  release(
+    Response.json({
+      event: { ...january, eventDate: '2031-02-10', version: 2 },
+      contacts: [],
+      location: null,
+      eventType: null,
+      package: null,
+      activities: [],
+    }),
+  );
+  await screen.findByText('Ressourcen und Termin gespeichert.');
+  expect(record.isConnected).toBe(true);
+});
+
+test.each(['close', 'hash'])(
+  'refreshes the filtered list when an autosave finishes after %s',
+  async (exit) => {
+    window.history.replaceState(null, '', '/?q=Synthetic#events');
+    let saved = false,
+      release!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') return pending;
+      if (url === '/api/v1/events/synthetic')
+        return Response.json({
+          event: row,
+          contacts: [],
+          location: null,
+          eventType: null,
+          package: null,
+          activities: [],
+        });
+      if (url.startsWith('/api/v1/events?'))
+        return Response.json({
+          timeZone: 'Europe/Berlin',
+          events: saved ? [] : [row],
+        });
+      if (url === '/api/v1/statuses')
+        return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+      return Response.json([]);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<EventPanel csrfToken="csrf" />);
+    fireEvent.click(
+      await screen.findByRole('link', { name: /Synthetic event/ }),
+    );
+    const name = await screen.findByLabelText('Eventname');
+    fireEvent.change(name, { target: { value: 'Changed event' } });
+    fireEvent.blur(name);
+    await waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith(
+        '/api/v1/events/synthetic',
+        expect.objectContaining({ method: 'PUT' }),
+      ),
+    );
+    if (exit === 'close')
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Event-Details schließen' }),
+      );
+    else {
+      window.location.hash = 'events';
+      fireEvent(window, new HashChangeEvent('hashchange'));
+    }
+    saved = true;
+    await act(async () =>
+      release(Response.json({ ...row, name: 'Changed event', version: 2 })),
+    );
+    await screen.findByText('Keine Events gefunden.');
+    vi.restoreAllMocks();
+  },
+);
+
+test('retries a filter refresh discarded while an event draft is active', async () => {
+  window.history.replaceState(null, '', '/#events');
+  const fetcher = vi.fn(async (url: string) => {
+    if (url === '/api/v1/events/synthetic')
+      return Response.json({
+        event: row,
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      });
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: url.includes('q=Absent') ? [] : [row],
+      });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
+  const name = await screen.findByLabelText('Eventname');
+  fireEvent.change(name, { target: { value: 'Draft event' } });
+  act(() => updateUrlSearch({ q: 'Absent' }));
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenCalledWith('/api/v1/events?q=Absent'),
+  );
+  fireEvent.keyDown(name, { key: 'Escape' });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event-Details schließen' }),
+  );
+  await screen.findByText('Keine Events gefunden.');
+});
+
+test('a late autosave confirmation refreshes the current filter', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic#events');
+  let release!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') return pending;
+    if (url === '/api/v1/events/synthetic')
+      return Response.json({
+        event: row,
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      });
+    if (url.startsWith('/api/v1/events?'))
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: url.includes('q=Other') ? [] : [row],
+      });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
+  const name = await screen.findByLabelText('Eventname');
+  fireEvent.change(name, { target: { value: 'Changed event' } });
+  fireEvent.blur(name);
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/v1/events/synthetic',
+      expect.objectContaining({ method: 'PUT' }),
+    ),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event-Details schließen' }),
+  );
+  act(() => updateUrlSearch({ q: 'Other' }));
+  await screen.findByText('Keine Events gefunden.');
+  await act(async () =>
+    release(Response.json({ ...row, name: 'Changed event', version: 2 })),
+  );
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) => url === '/api/v1/events?q=Other')
+        .length,
+    ).toBeGreaterThan(1),
+  );
+  expect(screen.getByText('Keine Events gefunden.')).toBeTruthy();
+  vi.restoreAllMocks();
+});
+
+test('confirmed resource booking refreshes the open card projection without closing it', async () => {
+  let saved = false;
+  const resources = {
+    units: [
+      {
+        unitId: 'fictional-unit',
+        name: 'Fictional box',
+        code: 'BOX',
+        ordinal: 1,
+        state: 'hold',
+        stale: false,
+        unitEnabled: true,
+        resourceState: 'active',
+        resourceBlocked: false,
+        conflict: false,
+      },
+    ],
+    assigned: 1,
+    booked: 0,
+    hold: 1,
+    conflict: false,
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      saved = true;
+      return Response.json({ ...row, version: 2 });
+    }
+    if (url.endsWith('/availability')) return Response.json([]);
+    if (url === '/api/v1/events/synthetic')
+      return Response.json({
+        event: { ...row, version: saved ? 2 : 1 },
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      });
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: [
+          { ...row, version: saved ? 2 : 1, ...(saved ? { resources } : {}) },
+        ],
+      });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
+  const record = await screen.findByRole('region', { name: 'Event-Details' });
+  fireEvent.click(within(record).getByRole('button', { name: 'Ressourcen' }));
+  const group = await screen.findByRole('region', {
+    name: 'Ressourcenzuweisung',
+  });
+  await waitFor(() =>
+    expect(
+      within(group)
+        .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+        .matches(':disabled'),
+    ).toBe(false),
+  );
+  fireEvent.submit(
+    within(group)
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText(/Fictional box/);
+  expect(record.isConnected).toBe(true);
+  resources.units[0]!.name = 'Updated fictional box';
+  fireEvent(window, new Event('focus'));
+  await screen.findByText(/Updated fictional box/);
+});
+
+test.each(['failure', 'missing', 'older', 'malformed', 'missing-version'])(
+  'unavailable resource projection (%s) marks the open card stale',
+  async (result) => {
+    let saved = false;
+    const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        saved = true;
+        return Response.json({ ...row, version: 2 });
+      }
+      if (url.endsWith('/availability')) return Response.json([]);
+      if (url === '/api/v1/events/synthetic')
+        return Response.json({
+          event: { ...row, version: saved ? 2 : 1 },
+          contacts: [],
+          location: null,
+          eventType: null,
+          package: null,
+          activities: [],
+        });
+      if (url.startsWith('/api/v1/events')) {
+        if (saved && result === 'failure')
+          return new Response(null, { status: 500 });
+        return Response.json({
+          timeZone: 'Europe/Berlin',
+          events:
+            saved && result === 'missing'
+              ? []
+              : [
+                  {
+                    ...row,
+                    version:
+                      saved && result === 'missing-version'
+                        ? undefined
+                        : saved && result !== 'older'
+                          ? 2
+                          : 1,
+                    resources:
+                      result === 'malformed' && saved
+                        ? {}
+                        : {
+                            units: [],
+                            assigned: 0,
+                            booked: 0,
+                            hold: 0,
+                            conflict: false,
+                          },
+                  },
+                ],
+        });
+      }
+      if (url === '/api/v1/statuses')
+        return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+      return Response.json([]);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    render(<EventPanel csrfToken="csrf" />);
+    fireEvent.click(
+      await screen.findByRole('link', { name: /Synthetic event/ }),
+    );
+    const record = await screen.findByRole('region', { name: 'Event-Details' });
+    fireEvent.click(within(record).getByRole('button', { name: 'Ressourcen' }));
+    const group = await screen.findByRole('region', {
+      name: 'Ressourcenzuweisung',
+    });
+    await waitFor(() =>
+      expect(
+        within(group)
+          .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+          .matches(':disabled'),
+      ).toBe(false),
+    );
+    fireEvent.submit(
+      within(group)
+        .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+        .closest('form')!,
+    );
+    await screen.findByText('Ressourcenstand nicht aktualisiert');
+    expect(screen.queryByText('Noch keine Ressource')).toBeNull();
+  },
+);
+
+test('a later list refresh cannot replace the confirmed open event with an older version', async () => {
+  window.history.replaceState(null, '', '/?q=Synthetic#events');
+  let saved = false;
+  const resources = {
+    units: [
+      {
+        unitId: 'fictional-unit',
+        name: 'Fictional box',
+        code: 'BOX',
+        ordinal: 1,
+        state: 'hold',
+        stale: false,
+        unitEnabled: true,
+        resourceState: 'active',
+        resourceBlocked: false,
+        conflict: false,
+      },
+    ],
+    assigned: 1,
+    booked: 0,
+    hold: 1,
+    conflict: false,
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      saved = true;
+      return Response.json({ ...row, name: 'Synthetic changed', version: 2 });
+    }
+    if (url.endsWith('/availability')) return Response.json([]);
+    if (url === '/api/v1/events/synthetic')
+      return Response.json({
+        event: {
+          ...row,
+          name: saved ? 'Synthetic changed' : row.name,
+          version: saved ? 2 : 1,
+        },
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      });
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: [{ ...row, resources }],
+      });
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
+  const name = await screen.findByLabelText('Eventname');
+  fireEvent.change(name, { target: { value: 'Synthetic changed' } });
+  fireEvent.blur(name);
+  await screen.findByRole('heading', { name: 'Event: Synthetic changed' });
+  await waitFor(() =>
+    expect(screen.getByText('Alle Änderungen gespeichert.')).toBeTruthy(),
+  );
+  const previous = fetcher.mock.calls.filter(([url]) =>
+    url.startsWith('/api/v1/events?'),
+  ).length;
+  fireEvent(window, new Event('focus'));
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) => url.startsWith('/api/v1/events?'))
+        .length,
+    ).toBeGreaterThan(previous),
+  );
+  await waitFor(() =>
+    expect(document.querySelector('.event-title')?.textContent).toBe(
+      'Synthetic changed',
+    ),
+  );
+  expect(document.querySelector('.event-resources')?.textContent).toContain(
+    'Fictional box',
+  );
+  expect(window.location.search).toContain('q=Synthetic');
+});
+
+test('a delayed PUT confirmation cannot replace a newer event from the list', async () => {
+  let release!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  let newer = false;
+  let newerReads = 0;
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') return pending;
+    if (url.endsWith('/availability')) return Response.json([]);
+    if (url === '/api/v1/events/synthetic')
+      return Response.json({
+        event: row,
+        contacts: [],
+        location: null,
+        eventType: null,
+        package: null,
+        activities: [],
+      });
+    if (url.startsWith('/api/v1/events')) {
+      if (newer && ++newerReads > 1) return new Promise<Response>(() => {});
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: [newer ? { ...row, name: 'Synthetic newer', version: 3 } : row],
+      });
+    }
+    if (url === '/api/v1/statuses')
+      return Response.json([{ code: 'inquiry', label: 'Anfrage' }]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
+  const name = await screen.findByLabelText('Eventname');
+  fireEvent.change(name, { target: { value: 'Synthetic older' } });
+  fireEvent.blur(name);
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some(([, options]) => options?.method === 'PUT'),
+    ).toBe(true),
+  );
+  newer = true;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event-Details schließen' }),
+  );
+  fireEvent(window, new Event('focus'));
+  await screen.findByRole('link', { name: /Synthetic newer/ });
+  await act(async () =>
+    release(Response.json({ ...row, name: 'Synthetic older', version: 2 })),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('link', { name: /Synthetic newer/ })).toBeTruthy(),
+  );
+  expect(screen.queryByRole('link', { name: /Synthetic older/ })).toBeNull();
 });

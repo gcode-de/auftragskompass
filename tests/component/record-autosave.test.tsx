@@ -308,3 +308,86 @@ test('registers dirty drafts, in-flight writes and unresolved errors for navigat
   unmount();
   expect(hasUnsavedChanges()).toBe(false);
 });
+
+test('adopts a clean external confirmation and uses its version for the next blur', async () => {
+  const write = vi.fn(async (input: Input, version: number) => ({
+    ...input,
+    id: initial.id,
+    version: version + 1,
+  }));
+  const { result, onConfirmed } = setup(write);
+  const remote = { ...initial, email: 'external@example.invalid', version: 2 };
+  act(() => expect(result.current.adoptExternal(remote)).toBe(true));
+  expect(result.current.values.email).toBe(remote.email);
+  expect(result.current.dirty).toBe(false);
+  expect(onConfirmed).toHaveBeenCalledWith(remote);
+  await act(async () => {
+    result.current.setField('name', 'Next');
+    result.current.commitFields(['name']);
+  });
+  expect(write).toHaveBeenCalledWith(
+    { ...initialInput(), email: remote.email, name: 'Next' },
+    2,
+  );
+});
+
+test('external confirmations never replace a draft, pending save or unresolved failure', async () => {
+  const pending = deferred<Row>();
+  const write = vi.fn(() => pending.promise);
+  const { result } = setup(write);
+  const remote = { ...initial, name: 'External', version: 8 };
+  act(() => result.current.setField('name', 'Draft'));
+  expect(result.current.adoptExternal(remote)).toBe(false);
+  act(() => result.current.commitFields(['name']));
+  expect(result.current.adoptExternal(remote)).toBe(false);
+  expect(result.current.values.name).toBe('Draft');
+  expect(result.current.confirmed.version).toBe(1);
+  await act(async () =>
+    pending.resolve({ ...initial, name: 'Draft', version: 2 }),
+  );
+  act(() => expect(result.current.adoptExternal(remote)).toBe(true));
+  expect(result.current.confirmed.version).toBe(8);
+});
+
+test('external version adoption refuses older or inconsistent equal-version rows', () => {
+  const { result, onConfirmed } = setup(vi.fn(async () => initial));
+  expect(result.current.adoptExternal({ ...initial, version: 0 })).toBe(false);
+  expect(
+    result.current.adoptExternal({ ...initial, name: 'Inconsistent' }),
+  ).toBe(false);
+  expect(result.current.adoptExternal({ ...initial })).toBe(true);
+  expect(onConfirmed).not.toHaveBeenCalled();
+  expect(result.current.values.name).toBe(initial.name);
+});
+
+test('external rows cannot clear a paused unknown write outcome', async () => {
+  const { result } = setup(
+    vi.fn(async (): Promise<Row> => {
+      throw Error('Lost reply');
+    }),
+  );
+  await act(async () => {
+    result.current.setField('name', 'Submitted');
+    result.current.commitFields(['name']);
+  });
+  expect(result.current.status).toBe('paused');
+  expect(result.current.adoptExternal({ ...initial, version: 8 })).toBe(false);
+  expect(result.current.values.name).toBe('Submitted');
+});
+
+test('external adoption preserves an active return to the old value as a new draft', () => {
+  const { result } = setup(vi.fn(async () => initial));
+  act(() => {
+    result.current.setField('name', 'Temporary');
+    result.current.setField('name', initial.name);
+  });
+  expect(result.current.dirty).toBe(false);
+  const remote = { ...initial, name: 'External', version: 2 };
+  act(() => expect(result.current.adoptExternal(remote)).toBe(true));
+  expect(result.current.confirmed).toEqual(remote);
+  expect(result.current.values.name).toBe(initial.name);
+  expect(result.current.dirty).toBe(true);
+  act(() => result.current.cancelFields(['name']));
+  expect(result.current.values.name).toBe('External');
+  expect(result.current.dirty).toBe(false);
+});

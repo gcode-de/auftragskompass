@@ -1,6 +1,82 @@
 # Projektübergabe AuftragsKompass
 
+## Betriebsnachtrag: automatischer Test-Updater, 28.10.2026
+
+Nach einem Clusterumzug des App-Containers wurde der alleinige Test-Updater
+auf dessen aktuellen Host umgezogen. Unitprüfung und Prüflauf waren grün,
+die letzte Sicherung wurde zwischen Host und Container abgeglichen; die
+drei App-Container waren gesund. Bei einem erneuten Umzug muss der Updater
+ebenfalls sicher umgestellt werden. Betriebsdetails und Sicherungsnachweise
+liegen ausschließlich in der privaten Betreiberübergabe außerhalb von Git.
+Keine parallelen Updater oder automatischer Rollback nach Migration.
+
+## EDIT-02.1: Abschluss, 28.10.2026
+
+Ein abschließender Review fand und behob eine Race bei verspäteter PUT-Antwort
+gegen eine neuere Listenzeile; Regression zuerst rot und danach grün.
+
+Direkte Eventstammdaten bearbeiten: Name, Art, Paket, Quelle, Ort und
+Beschreibung speichern beim Verlassen; Escape verwirft nur die aktuelle
+noch nicht abgeschlossene Eingabe. Status und Ressourcen teilen dieselbe
+Eventversion, sperren sich gegenseitig bei Entwürfen und ungeklärten
+Mutationen und benötigen nach 409/Antwortverlust einen ausdrücklichen
+Serverabgleich. Die bestätigte Ressourcenanzeige nutzt eine echte, gegen
+Version und Anfragereihenfolge abgesicherte Listenprojektion; kann diese
+nicht übernommen werden, wird sie als veraltet bezeichnet.
+
+Abnahme auf dem abschließenden Stand: 1606/1606 Tests mit Coverage grün,
+96,50 % Zeilen und 91,24 % Zweige; geänderter Code 339/360 Zeilen und
+378/450 Zweige. Format/Lint/Typen/Build, 20 Workspace- und drei Docs-Tests
+grün. Chromium: Event-Inline und Google-/Passwort-Login 3/3;
+Dateien-Prüfungen im vorherigen Lauf 2/2. Tests und unabhängige Reviews
+prüften Rückfragen, Konflikte, Versionswechsel, Filter und Ressourcen. Beim
+letzten Reviewtest für ältere Listenantworten war der erste RED-Versuch wegen
+eines unpassenden Selektors ungültig; die korrigierte Regression besteht.
+Ein einmal beobachteter Widerspruch zwischen URL und Dokumentfilter konnte
+bisher nicht gezielt reproduziert werden; unveränderte Browserassertionen
+bestanden bei der Wiederholung. Screenshots und Impeccable-Detector geprüft.
+CI und Live-Auslieferung nach Push gesondert prüfen; keine Kundendaten,
+realen Geschäftsaktionen, Aufgaben/Workflows, Auswertungen oder Exporte.
+
+Nächster autorisierter Slice: EDIT-02.2 Hauptkontakt in der Eventakte direkt
+bearbeiten. Zuerst im Plan aktivieren, bestehende Auswahl und Autosave-Hook
+wiederverwenden; weitere Kontakte erhalten und bei Hauptkontaktwechsel
+Duplikate verhindern. Bei Rollenänderungen Eventversion/Buchungsschutz,
+409/Antwortverlust und expliziten Abgleich erhalten. Danach weitere
+Event-/Kontaktverbesserungen und fehlende Angebots-/Rechnungswege.
+
 Stand der Fortsetzung: **27.10.2026**. Aktuelle Abschnitte stehen oben; frühere datierte Berichte bleiben historische Nachweise. Einstieg für eine neue Arbeitssession und kompakter Funktionsüberblick. Dieses Dokument ersetzt weder den aktuellen Git-/CI-/Betriebsabgleich noch das Lastenheft. Bei Fortsetzung aktualisieren; keine alten Kontingentwerte oder Chat-Automationen ungeprüft wiederverwenden.
+
+## H077: Eventstammdaten mit derselben Autosave-Regel, 27.10.2026
+
+EDIT-02.1 ergänzt Name, Art, Paket, Quelle, Ort/individuelle Anschrift und
+Beschreibung direkt in der Eventakte. Der Kontakt-Autosave-Hook übernimmt
+zusätzlich saubere externe Bestätigungen, damit Status, Ressourcen und direkte
+Felder dieselbe aktuelle Eventversion verwenden. Vollständige PUTs nutzen eine
+explizite Whitelist ohne Antwortfelder. Status-/Ressourcenentwürfe und laufende
+Mutationen sperren Stammdatenänderungen synchron und umgekehrt.
+
+Bestätigte Zeilen werden sofort übernommen. Die offene Zeile behält ihre
+Monatsgruppe bis zum Verlassen, damit ein Ressourcen-Terminwechsel die Akte
+nicht während des laufenden Speichervorgangs neu mountet. Die Filterliste wird
+nach Schließen, Hash-/Browser-Zurück oder Wechsel in die vollständige
+Bearbeitung geprüft; ein GET-Fehler erhält die bestätigten Daten. Vorhandene
+Ressourcen- und Buchungsprüfungen bleiben unverändert. Termin, Kontaktrollen,
+Notizen und Status-Autosave folgen in getrennten beauftragten Unter-Slices;
+die bisherigen vollständigen Formulare bleiben bis dahin erreichbar.
+Vertrag: [Events](events.md).
+
+Unabhängige Reviews fanden den Monatsgruppen-Remount und den fehlenden
+Listenrefresh nach Browser-Zurück; beide erhalten gezielte Regressionen.
+Die Abnahme dieses Slices läuft noch. Bei der Sessionübergabe: letzter
+fokussierter Lauf 134 grün / 1 rot (`/tmp/ak-event-handoff-focused.log`), offen
+ist die Ressourcenbestätigung im Eventlisten-Test (ca. Zeile 1693). Der frühere
+Gesamtcoverage-Lauf endete mit 1575 grün / 5 rot, überwiegend inzwischen
+korrigierte unvollständige DTO-Fixtures; kein finaler Coverage-Nachweis.
+Der letzte verifizierte Live-Stand
+bleibt `9ba428e` für API/Worker/Admin und `2527d01` für den Gateway, alle vier
+gesund; die öffentliche App antwortet mit HTTP 200. Neuere lokale oder
+gepushte Änderungen sind damit noch nicht als ausgeliefert belegt.
 
 ## H076: Kontakte mit Blur-Autosave und Escape, 27.10.2026
 
