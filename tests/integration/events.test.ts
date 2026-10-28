@@ -567,6 +567,73 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
       { id: additional.id, role: 'additional' },
     ]);
 
+    // Additional contacts have the same isolation and archive rules as the
+    // primary contact, even when several links change in one event version.
+    const secondAdditional = await contacts.save(
+      actorId,
+      fictionalContact('Fictional second additional'),
+    );
+    const expanded = await putContacts(7, null, [
+      additional.id,
+      secondAdditional.id,
+    ]);
+    expect(expanded.statusCode).toBe(200);
+    expect(expanded.json()).toMatchObject({
+      additionalContactIds: expect.arrayContaining([
+        additional.id,
+        secondAdditional.id,
+      ]),
+      version: 8,
+    });
+    await contacts.save(
+      actorId,
+      { ...fictionalContact('Fictional additional'), state: 'archived' },
+      additional.id,
+      1,
+    );
+    const preserveAdditional = await putContacts(8, null, [
+      additional.id,
+      secondAdditional.id,
+    ]);
+    expect(preserveAdditional.statusCode).toBe(200);
+    expect(preserveAdditional.json().version).toBe(9);
+    for (const [rejected, error] of [
+      [[additional.id, foreignContact.id], 'invalid_reference'],
+      [[additional.id, archivedNew.id], 'invalid_reference'],
+      [[additional.id, additional.id], 'invalid_request'],
+    ] as const) {
+      const response = await putContacts(9, null, [...rejected]);
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error).toBe(error);
+      expect((await (await readContacts()).json()).event).toMatchObject({
+        additionalContactIds: expect.arrayContaining([
+          additional.id,
+          secondAdditional.id,
+        ]),
+        version: 9,
+      });
+    }
+    const [removeFirst, removeSecond] = await Promise.all([
+      putContacts(9, null, [secondAdditional.id]),
+      putContacts(9, null, [additional.id]),
+    ]);
+    expect([removeFirst.statusCode, removeSecond.statusCode].sort()).toEqual([
+      200, 409,
+    ]);
+    const winner =
+      removeFirst.statusCode === 200 ? secondAdditional.id : additional.id;
+    expect((await (await readContacts()).json()).event).toMatchObject({
+      additionalContactIds: [winner],
+      version: 10,
+    });
+    const clearedAdditional = await putContacts(10, null, []);
+    expect(clearedAdditional.statusCode).toBe(200);
+    expect(clearedAdditional.json()).toMatchObject({
+      additionalContactIds: [],
+      version: 11,
+    });
+    expect((await (await readContacts()).json()).contacts).toEqual([]);
+
     await pool.query(
       'ALTER TABLE audit_events RENAME TO temporarily_missing_audit',
     );

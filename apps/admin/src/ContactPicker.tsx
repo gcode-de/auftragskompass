@@ -139,7 +139,7 @@ export function ContactPicker({
           autoComplete="off"
           value={search.query}
           aria-describedby={helpId}
-          aria-controls={hitsId}
+          aria-controls={search.hits.length > 0 ? hitsId : undefined}
           onChange={(event) => search.search(event.currentTarget.value)}
           // Enter belongs to the surrounding form, not to a search that runs
           // while typing: it must never save the event by accident.

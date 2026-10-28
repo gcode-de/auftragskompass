@@ -1,5 +1,22 @@
 # Projektübergabe AuftragsKompass
 
+## EDIT-02.3: Eventkontakte und Picker-Zugänglichkeit, 28.10.2026
+
+Nach `bfa90fa` ergänzt EDIT-02.3 die direkte Bearbeitung weiterer Eventkontakte
+mit gruppiertem Blur/Escape und derselben versionierten
+Warteschlange. RED/Green-Regressionen decken auch laufende und wartende
+Änderungen, Antwortverlust, mehrere Konflikte und aktive Entwürfe ab. API-
+Integration umfasst mehrere Kontakte, Mandanten, Archiv, Duplikate und parallele
+Versionen. Unabhängiges Review fand keine weiteren Blocker; Chromium 3/3 bei
+320/1280 px und beiden Themes, Format, Lint, Typen und Build sind grün. Der
+vollständige Coverage-Lauf bestand 1.626 Tests; geänderte Zeilen 63/63 und
+Branches 50/56. CI für `bfa90fa` scheiterte in zwei Chromium-Axe-Prüfungen:
+der bestehende Hauptkontaktpicker verwies bei leerer Suche auf eine nicht
+vorhandene Trefferliste. Der gemeinsame Picker ist mit RED/Green korrigiert;
+beide Auth-Browserabläufe und die weiteren betroffenen Abläufe sind 7/7 grün.
+Die CI des gepushten HEAD prüfen.
+Keinen neueren Stand ohne grüne Images und überprüften Updater als live ausgeben.
+
 ## CI-EDIT-02.2: CI-Test eingegrenzt, 28.10.2026
 
 GitHub-Lauf 40708170257 für `4a2c1d7` scheiterte am Komponententest für

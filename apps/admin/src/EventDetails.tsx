@@ -212,6 +212,7 @@ export function EventDetails({
     row: EventRow,
     contact?: ContactHit,
     details?: ConfirmedContact[],
+    known?: ContactHit[],
   ) {
     const chosenLocation = locations.find((item) => item.id === row.locationId);
     ++loadSequence.current;
@@ -231,15 +232,17 @@ export function EventDetails({
                 const existing = (details ?? current.contacts).find(
                   (person) => person.id === id,
                 );
+                const searched = known?.find((person) => person.id === id);
                 return {
                   id,
                   name:
                     existing?.name ??
-                    (contact?.id === id
-                      ? contact.name
+                    ((searched ?? (contact?.id === id ? contact : undefined))
+                      ? (searched ?? contact)!.name
                       : 'Zugeordneter Kontakt'),
                   contactPerson:
                     existing?.contactPerson ??
+                    searched?.contactPerson ??
                     (contact?.id === id ? (contact.contactPerson ?? '') : ''),
                   email: existing?.email ?? '',
                   phone: existing?.phone ?? '',

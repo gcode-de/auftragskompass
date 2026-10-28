@@ -10,6 +10,10 @@ import {
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { EventCreateDialog } from '../../apps/admin/src/EventCreateDialog.js';
+import {
+  ContactPicker,
+  type ContactSearchState,
+} from '../../apps/admin/src/ContactPicker.js';
 import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 afterEach(() => {
   cleanup();
@@ -1086,4 +1090,48 @@ test('a double submit creates exactly one contact', async () => {
   await screen.findByText(/Kunde: Synthetic single contact/);
   expect(contactPosts).toHaveLength(1);
   expect(posts).toHaveLength(0);
+});
+
+test('contact picker references a result list only while it exists', () => {
+  const picker = (
+    state: ContactSearchState,
+    hits: { id: string; name: string; state: string }[] = [],
+  ) => (
+    <ContactPicker
+      search={{ query: '', state, hits, search: vi.fn(), reset: vi.fn() }}
+      idPrefix="synthetic-picker"
+      label="Fictional contact search"
+      value=""
+      selected={null}
+      hiddenName="primaryContactId"
+      onSelect={vi.fn()}
+      onClear={vi.fn()}
+    />
+  );
+  const view = render(picker('idle'));
+  for (const [state, hits] of [
+    ['idle', []],
+    ['loading', []],
+    ['failed', []],
+    ['ready', []],
+    [
+      'ready',
+      [{ id: 'synthetic-contact', name: 'Fictional person', state: 'active' }],
+    ],
+  ] as const) {
+    view.rerender(picker(state, [...hits]));
+    const input = screen.getByLabelText('Fictional contact search');
+    const target = input.getAttribute('aria-controls');
+    if (!hits.length) {
+      expect(target).toBeNull();
+    } else {
+      expect(target).toBeTruthy();
+      const list = document.getElementById(target!);
+      expect(list?.tagName).toBe('UL');
+      expect(list?.getAttribute('aria-label')).toBe('Kontakte gefunden');
+      expect(
+        within(list!).getByRole('button', { name: /Fictional person/ }),
+      ).toBeTruthy();
+    }
+  }
 });

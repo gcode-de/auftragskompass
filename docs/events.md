@@ -39,6 +39,15 @@ solange ergänzende Kontaktdaten noch nicht geladen wurden, weist sie darauf
 hin. Beim Serverabgleich werden mit derselben Eventversion geladene Details
 übernommen.
 
+Weitere Kontakte können in derselben Akte gesucht, hinzugefügt und entfernt
+werden. Die Gruppe speichert beim Verlassen; Escape verwirft nur den aktuellen
+ungesendeten Gruppenentwurf. Hauptkontakt und bereits gewählte Kontakte werden
+nicht erneut angeboten; bestehende archivierte Zuordnungen bleiben erhalten,
+neue Zuordnungen sind nur für aktive Kontakte möglich. Bei einem ausdrücklichen
+Konfliktabgleich werden die beabsichtigten Hinzufügungen und Entfernungen auf
+den aktuellen Serverstand angewandt. So bleiben auch zwischenzeitliche fremde
+Änderungen erhalten, die nicht Gegenstand des eigenen Entwurfs sind.
+
 Termin, weitere Kontaktrollen, interne Notizen und Status sind weiterhin über
 die vorhandenen vollständigen Formulare bearbeitbar.
 Die atomaren Ressourcen- und Buchungsprüfungen bleiben maßgeblich; ein

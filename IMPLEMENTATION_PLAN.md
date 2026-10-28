@@ -19,6 +19,28 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **EDIT-02.3 — `feat: autosave additional event contacts`**:
+  Weitere Kontakte direkt in der Eventakte hinzufügen und entfernen; vorhandene
+  Kontaktsuche und dieselbe versionierte Event-Autosave-Warteschlange nutzen.
+  Gruppierter Entwurf speichert beim Verlassen; Escape verwirft nur die noch
+  ungesendete Auswahl, nicht frühere Blur-Aufträge. Hauptkontakt und bereits
+  gewählte Kontakte nicht doppelt anbieten; bestehende archivierte Zuordnungen
+  erhalten, keine neuen archivierten Zuordnungen. Hauptkontaktwechsel und rasche
+  aufeinanderfolgende Änderungen dürfen keine Zuordnung wiederherstellen oder
+  überschreiben; bei Konflikten bewusst abgleichen und fremde neue Kontakte
+  erhalten. Bestehende Mandanten-, Versions-, Ressourcen-, Buchungs- und
+  Navigationssperren beibehalten. Keine API, Migration, Neuanlage, Aufgaben,
+  Auswertungen oder Exporte. RED zuerst, komponenten- und browsergestützte
+  Prüfung von Blur/Escape, Fokus, Fehlern, Warteschlange und Konflikt; passende
+  API-Integrationsfälle und mobile Darstellung berücksichtigen. Der in CI-Lauf
+  40771829787 belegte ungültige ARIA-Verweis des gemeinsamen Hauptkontakt-
+  Suchfelds wird in diesem Kontakt-Slice mit repariert und mit Axe bei leerer
+  Suche und Treffern geprüft; keine Lockerung der Barrierefreiheitstests.
+  Abschluss: 1.626 Tests im vollständigen Coverage-Lauf, geänderte Zeilen
+  63/63 und Branches 50/56. Format, Lint, Typen, Build und betroffene Chromium-
+  Abläufe (7/7 einschließlich Google-/Passwort-Axe) grün; unabhängige Reviews
+  und 320/1280-Theme-Screenshots geprüft.
+
 - [x] **CI-EDIT-02.2 — `test: verify event editor focus before escape`**:
   Fehlgeschlagenen GitHub-Lauf 40708170257 untersuchen. Test für gegenseitige
   Status-/Stammdaten-Sperren prüft vor der Eingabe, dass das Feld bedienbar und

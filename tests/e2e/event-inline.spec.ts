@@ -130,3 +130,149 @@ test('event details save fields on blur and Escape discards the current edit', a
     });
   }
 });
+
+for (const width of [320, 1280]) {
+  test(`additional event contacts save by blur and retain keyboard focus at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const id = '33333333-3333-4333-8333-333333333333';
+    const primary = '44444444-4444-4444-8444-444444444444';
+    const first = '55555555-5555-4555-8555-555555555555';
+    const second = '66666666-6666-4666-8666-666666666666';
+    const people = [
+      { id: primary, name: 'Fictional primary', state: 'active' },
+      { id: first, name: 'Fictional first', state: 'active' },
+      { id: second, name: 'Fictional second', state: 'active' },
+    ];
+    let event = {
+      id,
+      version: 1,
+      name: 'Synthetic event',
+      status: 'inquiry',
+      eventDate: null,
+      startsAt: null,
+      endsAt: null,
+      timeZone: 'Europe/Berlin',
+      eventTypeId: null,
+      packageId: null,
+      locationId: null,
+      venue: null,
+      venueOverride: false,
+      primaryContactId: primary,
+      additionalContactIds: [] as string[],
+      source: '',
+      description: '',
+      notesHtml: '',
+    };
+    const writes: Record<string, unknown>[] = [];
+    await page.route('**/api/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (
+        path === `/api/v1/events/${id}` &&
+        route.request().method() === 'PUT'
+      ) {
+        const input = route.request().postDataJSON();
+        writes.push(input);
+        event = { ...event, ...input, version: event.version + 1 };
+        return route.fulfill({ json: event });
+      }
+      if (path === `/api/v1/events/${id}`)
+        return route.fulfill({
+          json: {
+            event,
+            contacts: [
+              {
+                ...people[0],
+                contactPerson: '',
+                email: '',
+                phone: '',
+                mobile: '',
+                role: 'primary',
+              },
+            ],
+            location: null,
+            eventType: null,
+            package: null,
+            activities: [],
+            websiteInquiryAvailable: false,
+          },
+        });
+      if (path === '/api/v1/events')
+        return route.fulfill({
+          json: { events: [event], timeZone: 'Europe/Berlin' },
+        });
+      if (path === '/api/v1/contacts') return route.fulfill({ json: people });
+      if (path === '/api/v1/statuses')
+        return route.fulfill({ json: [{ code: 'inquiry', label: 'Anfrage' }] });
+      return route.fulfill({ json: [] });
+    });
+    await page.route('**/auth/**', (route) =>
+      route.fulfill({ status: 503, json: {} }),
+    );
+    await page.route('**/auth/me', (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { 'x-auth-mode': 'password' },
+        json: { email: 'fictional@example.invalid', csrfToken: 'synthetic' },
+      }),
+    );
+    await page.goto('/#event-' + id);
+    const editor = page.getByRole('region', {
+      name: 'Eventstammdaten direkt bearbeiten',
+    });
+    const group = editor.getByRole('group', { name: 'Weitere Kontakte' });
+    const search = group.getByLabel('Weitere Kontakte suchen');
+    await search.fill('Fictional');
+    await group.getByRole('button', { name: /Fictional first/ }).click();
+    await search.focus();
+    await search.press('Escape');
+    await expect(
+      group.getByRole('button', { name: 'Fictional first entfernen' }),
+    ).toHaveCount(0);
+    expect(writes).toHaveLength(0);
+    await search.fill('Fictional');
+    await group.getByRole('button', { name: /Fictional first/ }).click();
+    await expect(search).toBeFocused();
+    const secondResult = group.getByRole('button', {
+      name: /Fictional second/,
+    });
+    await secondResult.focus();
+    await secondResult.press('Enter');
+    await expect(search).toBeFocused();
+    await editor.getByLabel('Eventart').focus();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0]).toMatchObject({
+      version: 1,
+      primaryContactId: primary,
+      additionalContactIds: [first, second],
+    });
+    for (const theme of ['light', 'dark'] as const) {
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+        await page.getByRole('button', { name: /modus aktivieren/i }).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await group.screenshot({
+        path: test
+          .info()
+          .outputPath(`additional-contacts-${width}-${theme}.png`),
+      });
+    }
+    const remove = group.getByRole('button', {
+      name: 'Fictional first entfernen',
+    });
+    await remove.focus();
+    await remove.press('Enter');
+    await expect(search).toBeFocused();
+    expect(writes).toHaveLength(1);
+    await editor.getByLabel('Eventart').focus();
+    await expect.poll(() => writes.length).toBe(2);
+    expect(writes[1]).toMatchObject({
+      version: 2,
+      primaryContactId: primary,
+      additionalContactIds: [second],
+    });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width + 1);
+  });
+}

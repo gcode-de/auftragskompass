@@ -8,6 +8,8 @@ import {
 import { useRecordAutosave } from './useRecordAutosave.js';
 import {
   ContactPicker,
+  contactHitLimit,
+  contactLine,
   useContactSearch,
   type ContactHit,
 } from './ContactPicker.js';
@@ -141,6 +143,7 @@ export const EventInlineEditor = forwardRef<
       row: EventRow,
       contact?: ContactHit,
       details?: ConfirmedContact[],
+      known?: ContactHit[],
     ) => void;
   }
 >(function EventInlineEditor(
@@ -163,6 +166,8 @@ export const EventInlineEditor = forwardRef<
   dirtyCallback.current = onDirtyChange;
   const [invalid, setInvalid] = useState<string>('');
   const contactSearch = useContactSearch();
+  const additionalSearch = useContactSearch();
+  const additionalInput = useRef<HTMLInputElement>(null);
   const [knownContacts, setKnownContacts] = useState<ContactHit[]>([]);
   const latestRow = useRef(event);
   const remoteDetails = useRef<{
@@ -212,7 +217,7 @@ export const EventInlineEditor = forwardRef<
         },
         body: JSON.stringify({
           ...input,
-          additionalContactIds: latestRow.current.additionalContactIds.filter(
+          additionalContactIds: input.additionalContactIds.filter(
             (id) => id !== input.primaryContactId,
           ),
           version,
@@ -242,6 +247,24 @@ export const EventInlineEditor = forwardRef<
     toInput: eventInput,
     write,
     read,
+    rebasePatch: (patch, previous, current) => {
+      if (!patch.additionalContactIds) return patch;
+      const removed = new Set(
+        previous.additionalContactIds.filter(
+          (id) => !patch.additionalContactIds!.includes(id),
+        ),
+      );
+      const added = patch.additionalContactIds.filter(
+        (id) => !previous.additionalContactIds.includes(id),
+      );
+      return {
+        ...patch,
+        additionalContactIds: [
+          ...current.additionalContactIds.filter((id) => !removed.has(id)),
+          ...added.filter((id) => !current.additionalContactIds.includes(id)),
+        ],
+      };
+    },
     onConfirmed: (row) => {
       latestRow.current = row;
       const contact = knownContacts.find(
@@ -251,7 +274,9 @@ export const EventInlineEditor = forwardRef<
         remoteDetails.current?.version === row.version
           ? remoteDetails.current.contacts
           : undefined;
-      if (details) onConfirmed(row, contact, details);
+      if (knownContacts.length)
+        onConfirmed(row, contact, details, knownContacts);
+      else if (details) onConfirmed(row, contact, details);
       else if (contact) onConfirmed(row, contact);
       else onConfirmed(row);
     },
@@ -364,6 +389,11 @@ export const EventInlineEditor = forwardRef<
           state: 'unknown',
         }
       : null);
+  const availableAdditional = additionalSearch.hits.filter(
+    (hit) =>
+      hit.id !== save.values.primaryContactId &&
+      !save.values.additionalContactIds.includes(hit.id),
+  );
   const place = locations.find((row) => row.id === save.values.locationId);
   const venue = initialVenueText(save.values, place);
   function displayValue(
@@ -434,6 +464,130 @@ export const EventInlineEditor = forwardRef<
             onSelect={chooseContact}
             onClear={() => chooseContact(null)}
           />
+        </fieldset>
+        <fieldset
+          aria-label="Weitere Kontakte"
+          onBlur={(event) => {
+            if (
+              event.currentTarget.contains(
+                event.relatedTarget as Node | null,
+              ) ||
+              !canEdit()
+            )
+              return;
+            save.commitFields(['additionalContactIds']);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            save.cancelFields(['additionalContactIds']);
+            additionalSearch.reset();
+          }}
+        >
+          <legend>Weitere Kontakte</legend>
+          {save.values.additionalContactIds.length === 0 ? (
+            <p>Keine weiteren Kontakte zugeordnet.</p>
+          ) : (
+            <ul>
+              {save.values.additionalContactIds.map((id) => {
+                const name =
+                  knownContacts.find((item) => item.id === id)?.name ??
+                  contacts.find((item) => item.id === id)?.name ??
+                  'Zugeordneter Kontakt';
+                return (
+                  <li key={id}>
+                    {name}{' '}
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      aria-label={`${name} entfernen`}
+                      onClick={() => {
+                        if (!canEdit()) return;
+                        additionalInput.current?.focus();
+                        onDirtyChange(true);
+                        save.setField(
+                          'additionalContactIds',
+                          save.values.additionalContactIds.filter(
+                            (item) => item !== id,
+                          ),
+                        );
+                      }}
+                    >
+                      Entfernen
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <label>
+            Weitere Kontakte suchen
+            <input
+              ref={additionalInput}
+              type="search"
+              maxLength={200}
+              autoComplete="off"
+              value={additionalSearch.query}
+              onChange={(event) =>
+                additionalSearch.search(event.currentTarget.value)
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.preventDefault();
+              }}
+            />
+          </label>
+          {additionalSearch.state === 'loading' && (
+            <p role="status">Kontakte werden gesucht …</p>
+          )}
+          {additionalSearch.state === 'failed' && (
+            <p role="status">
+              Kontakte konnten nicht gesucht werden. Die bisherige Auswahl
+              bleibt bestehen.
+            </p>
+          )}
+          {additionalSearch.state === 'ready' &&
+            availableAdditional.length === 0 && (
+              <p role="status">Keine weiteren Kontakte gefunden.</p>
+            )}
+          {save.values.additionalContactIds.length >= 50 && (
+            <p role="status">Maximal 50 weitere Kontakte möglich.</p>
+          )}
+          <ul
+            className="contact-picker-hits"
+            aria-label="Weitere Kontakte gefunden"
+          >
+            {availableAdditional.slice(0, contactHitLimit).map((hit) => (
+              <li key={hit.id}>
+                <button
+                  type="button"
+                  className="contact-picker-hit"
+                  disabled={
+                    hit.state !== 'active' ||
+                    save.values.additionalContactIds.length >= 50
+                  }
+                  onClick={() => {
+                    if (!canEdit()) return;
+                    additionalInput.current?.focus();
+                    onDirtyChange(true);
+                    setKnownContacts((current) => [
+                      ...current.filter((item) => item.id !== hit.id),
+                      hit,
+                    ]);
+                    save.setField('additionalContactIds', [
+                      ...save.values.additionalContactIds,
+                      hit.id,
+                    ]);
+                  }}
+                >
+                  <span className="contact-picker-name">{hit.name}</span>
+                  <span className="contact-picker-detail">
+                    {contactLine(hit)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </fieldset>
         <label>
           Eventart

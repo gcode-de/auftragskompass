@@ -8,6 +8,12 @@ type Options<Input, Row> = {
   write: (input: Input, version: number) => Promise<Row>;
   read: () => Promise<Row>;
   onConfirmed?: (row: Row) => void;
+  /** Rebase an individual committed patch onto the latest confirmed input. */
+  rebasePatch?: (
+    patch: Partial<Input>,
+    previous: Input,
+    current: Input,
+  ) => Partial<Input>;
 };
 const equal = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -19,7 +25,11 @@ export function useRecordAutosave<
 >(options: Options<Input, Row>) {
   type Field = keyof Input;
   type Patch = Partial<Input>;
-  type Job = { patch: Patch; edits: Partial<Record<Field, number>> };
+  type Job = {
+    patch: Patch;
+    previous: Input;
+    edits: Partial<Record<Field, number>>;
+  };
   const callbacks = useRef(options);
   callbacks.current = options;
   const state = useRef({
@@ -94,15 +104,19 @@ export function useRecordAutosave<
     if (current.flight || current.status !== 'idle' || !mounted.current) return;
     while (current.queue.length && mounted.current) {
       const job = current.queue.shift()!,
-        patch = job.patch,
-        input = base();
+        input = base(),
+        patch =
+          callbacks.current.rebasePatch?.(job.patch, job.previous, input) ??
+          job.patch;
       if (
         (Object.keys(patch) as Field[]).every((key) =>
           equal(patch[key], input[key]),
         )
-      )
+      ) {
+        adopt(current.confirmed, job);
         continue;
-      current.flight = job;
+      }
+      current.flight = { ...job, patch };
       current.status = 'saving';
       publish();
       let row: Row;
@@ -135,13 +149,20 @@ export function useRecordAutosave<
     state.current.values = { ...state.current.values, [key]: value };
     publish();
   }
+  function expectedInput(): Input {
+    const current = state.current;
+    let expected = { ...base(), ...current.flight?.patch };
+    for (const job of current.queue) {
+      const patch =
+        callbacks.current.rebasePatch?.(job.patch, job.previous, expected) ??
+        job.patch;
+      expected = { ...expected, ...patch };
+    }
+    return expected;
+  }
   function commitFields(fields: readonly Field[]) {
     const current = state.current,
-      expected = {
-        ...base(),
-        ...current.flight?.patch,
-        ...Object.assign({}, ...current.queue.map((job) => job.patch)),
-      },
+      expected = expectedInput(),
       patch: Patch = {};
     for (const key of fields) {
       if (!equal(current.values[key], expected[key]))
@@ -152,21 +173,24 @@ export function useRecordAutosave<
       }
     }
     if (!Object.keys(patch).length) return;
-    current.queue.push({ patch, edits: { ...current.edits } });
+    current.queue.push({
+      patch,
+      previous: expected,
+      edits: { ...current.edits },
+    });
     publish();
     void drain();
   }
   function cancelFields(fields: readonly Field[]) {
     const current = state.current;
     // Earlier blurs are already submissions, even while waiting for another PUT.
-    const expected = base();
+    const expected = expectedInput();
     for (const key of fields) {
       let edit = (current.edits[key] ?? 0) + 1;
       let pending = false;
       for (const job of [current.flight, ...current.queue]) {
         if (job && key in job.patch) {
           pending = true;
-          expected[key] = job.patch[key] as Input[typeof key];
           edit = job.edits[key] ?? edit;
         }
       }
@@ -212,6 +236,25 @@ export function useRecordAutosave<
   function reapply() {
     const current = state.current;
     if (!current.remote || current.flight) return;
+    if (callbacks.current.rebasePatch) {
+      const previous = expectedInput();
+      let next = callbacks.current.toInput(current.remote);
+      for (const job of current.queue) {
+        next = {
+          ...next,
+          ...callbacks.current.rebasePatch(job.patch, job.previous, next),
+        };
+      }
+      const draft: Patch = {};
+      for (const key of Object.keys(current.values) as Field[]) {
+        if (!equal(current.values[key], previous[key]))
+          draft[key] = current.values[key];
+      }
+      current.values = {
+        ...next,
+        ...callbacks.current.rebasePatch(draft, previous, next),
+      };
+    }
     adopt(current.remote);
     current.remote = null;
     current.status = 'idle';
