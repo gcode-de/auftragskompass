@@ -19,6 +19,19 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **CI-EDIT-02.2 — `test: verify event editor focus before escape`**:
+  Fehlgeschlagenen GitHub-Lauf 40708170257 untersuchen. Test für gegenseitige
+  Status-/Stammdaten-Sperren prüft vor der Eingabe, dass das Feld bedienbar und
+  fokussiert ist, sowie vor/nach Escape, dass kein PUT ausgelöst wurde. Kein
+  Abschwächen der Sperren, Assertions oder Timeouts. Ein vorangehender Blur mit
+  laufendem PUT reproduziert den Fehlerzustand, aber die ursprüngliche Ursache
+  ist nicht aus dem CI-Log belegt. Betroffene Komponententests, schnelle Gates
+  und vollständiger Diff-Review vor Commit und Push. Images und automatische
+  Auslieferung erst nach grünem CI prüfen.
+  Lokal 840 Komponententests, 274 Unit-Tests, Format, Lint, Typen, Build,
+  Workspace- und Dokumentationsprüfung grün; nach der ergänzten Negativprüfung
+  die betroffene Komponentendatei 30/30 grün. Unabhängiges Review erfolgt.
+
 - [x] **EDIT-02.2 — `feat: autosave the event primary contact`**:
   Hauptkontakt in der Eventakte über vorhandene Kontaktsuche auswählen oder
   entfernen. Die Auswahl bildet einen Feldentwurf und wird beim Verlassen

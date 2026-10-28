@@ -1,5 +1,20 @@
 # Projektübergabe AuftragsKompass
 
+## CI-EDIT-02.2: CI-Test eingegrenzt, 28.10.2026
+
+GitHub-Lauf 40708170257 für `4a2c1d7` scheiterte am Komponententest für
+Escape und die gegenseitigen Event-/Status-Sperren; Images wurden übersprungen.
+Die konkrete Ursache ist aus dem CI-Log nicht belegt. Ein Blur vor Escape
+reproduziert den Zustand, weil ein bereits eingereichter PUT bewusst nicht
+abgebrochen wird; ob dieser Blur im CI stattfand, ist unbekannt. Der Test wartet
+nun auf ein bedienbares Feld und prüft Fokus und ausbleibende PUTs explizit,
+ohne bestehende Assertions oder Timeouts zu schwächen. Anwendungscode blieb
+unverändert. Lokal 840 Komponenten-, 274 Unit- und 30 gezielte Komponententests
+sowie Format, Lint, Typen, Build, Workspace und Docs grün. CI/Images nach dem
+Push und die automatische Auslieferung separat prüfen. Die Website zeigte bei
+der letzten Prüfung noch Revision `3eabe65`; neuere Änderungen nicht als live
+ausgeben, bevor Updater, Sicherung und Revisionen überprüft sind.
+
 ## Aktuell: EDIT-02.2, 28.10.2026
 
 EDIT-02.1 ist als `225e6f1` auf `codex/ux-event-simplification` gepusht;

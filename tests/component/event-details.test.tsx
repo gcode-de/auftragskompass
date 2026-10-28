@@ -1003,11 +1003,22 @@ test('metadata and status edits lock each other and adopt the confirmed version 
   const status = screen.getByLabelText(
     'Status des Events',
   ) as HTMLSelectElement;
+  await waitFor(() => expect(name.closest('fieldset')?.disabled).toBe(false));
   name.focus();
+  expect(document.activeElement).toBe(name);
   fireEvent.change(name, { target: { value: 'Unfinished' } });
   expect(status.closest('fieldset')?.disabled).toBe(true);
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'PUT'),
+  ).toBe(false);
   fireEvent.keyDown(name, { key: 'Escape' });
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'PUT'),
+  ).toBe(false);
   await waitFor(() => expect(status.closest('fieldset')?.disabled).toBe(false));
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'PUT'),
+  ).toBe(false);
   fireEvent.change(status, { target: { value: 'option' } });
   expect(name.closest('fieldset')?.disabled).toBe(true);
   fireEvent.submit(
