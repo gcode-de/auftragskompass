@@ -13,6 +13,16 @@ Entdopplung nur umsetzen, wenn dieselben Testprojekte, Fehler und Coverage-Gates
 nachweislich weiterhin zuverlässig geprüft werden. Bestehende Tests nicht
 pauschal löschen oder fachliche Schutzprüfungen abschwächen.
 
+CI-TEST-01 ist uncommittet vorbereitet und pausiert: Ein vollständiger lokaler
+Prüflauf bestand Coverage und 38 Chromiumtests, scheiterte aber in beiden
+HTTPS-Anmeldeabläufen an einem alten Notizvorschau-Selektor. CI-EDIT-02.5
+repariert diesen Selektor mit unveränderter Inhaltsprüfung; beide betroffenen
+Anmeldeabläufe waren gezielt grün. Danach CI-TEST-01 fortsetzen: Die doppelten
+Einzelaufrufe aus `pnpm check` entfallen,
+alle drei Projekte bleiben im Coverage-Lauf und alle übrigen Gates erhalten.
+Ein gezielter Workspace-Test schützt die Auswahl. CI und Lieferstatus des
+tatsächlichen HEAD anschließend getrennt bestätigen.
+
 ## EDIT-02.5: Direkte Eventnotizen, 29.10.2026
 
 Interne Eventnotizen lassen sich im bestehenden Notizenbereich direkt bearbeiten.

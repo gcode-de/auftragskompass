@@ -4268,7 +4268,9 @@ async function signInScenario(
       .click();
     await events.getByRole('button', { name: 'Notizen', exact: true }).click();
     await expect(
-      events.getByLabel('Notizen: Synthetic browser event').locator('strong'),
+      events
+        .getByRole('textbox', { name: 'Interne Notizen' })
+        .locator('strong'),
     ).toHaveText('Fictional browser note');
     expect(
       await page.evaluate(() => Object.hasOwn(window, 'syntheticBad')),

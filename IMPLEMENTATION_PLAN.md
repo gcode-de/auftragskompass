@@ -19,6 +19,26 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **CI-EDIT-02.5 — `test: check notes editor in authenticated browser flows`**:
+  Die beiden im vollständigen lokalen Chromiumlauf fehlgeschlagenen HTTPS-
+  Anmeldeabläufe verwenden noch den nach EDIT-02.5 entfernten Vorschau-Selektor.
+  Den Selektor auf den sichtbaren Notizeditor aktualisieren und die bestehende
+  Assertion zum formatierten Notizinhalt unverändert erhalten. Beide betroffenen
+  Abläufe und passende schnelle Gates prüfen. Keine Änderung des Anwendungscodes.
+  CI-TEST-01 bleibt bis zum Push dieses Testfixes liegen. Beide HTTPS-Abläufe
+  (Google und Passwort) bestehen gezielt; unabhängiges Review und schnelle Gates
+  sind grün. Der volle GitHub-Lauf muss danach erneut abgewartet werden.
+
+- [ ] **CI-TEST-01 — `ci: run test projects once with coverage`**:
+  Den auf Nutzerhinweis belegten doppelten Testlauf in `pnpm check` entfernen.
+  `test:coverage` führt weiterhin alle drei bestehenden Vitest-Projekte mit
+  unveränderten globalen Coverage-Grenzen aus; Format, Lint, Typen, Workspace-,
+  Dokumentations-, Chromium-, Build- und Betriebsprüfungen sowie die separate
+  Changed-Code-Coverage in CI bleiben verpflichtend. Test zuerst für die
+  vollständige Projekt- und Gate-Auswahl sowie das Ausbleiben doppelter Läufe;
+  keine Tests löschen und keine Schranken senken. Wirksamkeit im nächsten
+  GitHub-Lauf anhand tatsächlicher Dauer und Ergebnissen prüfen.
+
 - [x] **EDIT-02.5 — `feat: autosave event notes in the event record`**:
   Interne Eventnotizen direkt im bestehenden Notizenbereich bearbeiten
   (BKP013, Beobachtung B04; das Autosave-Verhalten der Referenz ist nicht
