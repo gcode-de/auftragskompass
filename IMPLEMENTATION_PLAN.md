@@ -19,6 +19,23 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **EDIT-02.4 — `feat: edit event schedule in the event record`**:
+  Den bisher nur lesenden Terminbereich in der Eventakte direkt bearbeitbar
+  machen (BKP013, Beobachtung B04/B): Datum und vorhandenes Start-/Endpaar
+  als zusammenhängenden Entwurf mit lokaler Uhrzeiteingabe. Derselbe
+  versionierte Event-Autosave-Pfad speichert beim Verlassen der Gruppe; Escape
+  verwirft nur den aktiven ungesendeten Entwurf. Datums-/Zeitvalidierung und
+  vorhandene Zeithilfen wiederverwenden. Bestätigte Ressourcen und Buchungen
+  dürfen nicht aufgehoben oder ohne atomare Serverprüfung verschoben werden;
+  Status-/Ressourcen-/Versionssperren und Konfliktabgleich bleiben bestehen.
+  Keine neue API, Migration oder nachgeahmte zusätzliche Zeitplaneinträge.
+  RED zuerst, fachliche Negativfälle, Tastatur, mobile/weite Darstellung,
+  Entwürfe und Konflikte testen; UI-Review, passende Gates und Browserprüfung.
+  Abschluss: 1.634 Tests im vollständigen Coverage-Lauf; geänderte Zeilen
+  113/126, Zweige 91/110. Format, Lint, Typen, Build, Dokumentationsprüfung,
+  vier betroffene Chromium-Abläufe sowie synthetische Screenshots 320/1280 px
+  in beiden Themes grün. Unabhängiges Review und Detector ohne Befunde.
+
 - [x] **EDIT-02.3 — `feat: autosave additional event contacts`**:
   Weitere Kontakte direkt in der Eventakte hinzufügen und entfernen; vorhandene
   Kontaktsuche und dieselbe versionierte Event-Autosave-Warteschlange nutzen.

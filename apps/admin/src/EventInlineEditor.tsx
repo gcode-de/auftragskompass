@@ -6,6 +6,9 @@ import {
   useState,
 } from 'react';
 import { useRecordAutosave } from './useRecordAutosave.js';
+import { registerUnsavedChanges } from './unsaved-changes.js';
+import { EventTimeField } from './EventTimeField.js';
+import { localDateTime, resolveEventTime } from './event-time.js';
 import {
   ContactPicker,
   contactHitLimit,
@@ -58,6 +61,9 @@ const inputKeys: (keyof Input)[] = [
 ];
 const editableLabels = {
   name: 'Eventname',
+  eventDate: 'Eventdatum',
+  startsAt: 'Eventbeginn',
+  endsAt: 'Eventende',
   eventTypeId: 'Eventart',
   packageId: 'Fotobox-Paket',
   locationId: 'Gespeicherter Ort',
@@ -165,6 +171,23 @@ export const EventInlineEditor = forwardRef<
     dirtyCallback = useRef(onDirtyChange);
   dirtyCallback.current = onDirtyChange;
   const [invalid, setInvalid] = useState<string>('');
+  const [schedule, setSchedule] = useState(() => ({
+    eventDate: event.eventDate ?? '',
+    startsAt: localDateTime(event.startsAt, event.timeZone),
+    endsAt: localDateTime(event.endsAt, event.timeZone),
+  }));
+  const [scheduleKey, setScheduleKey] = useState(0);
+  const [scheduleError, setScheduleError] = useState('');
+  const scheduleDirty = useRef(false);
+  const scheduleGroup = useRef<HTMLFieldSetElement>(null);
+  const restoreScheduleFocus = useRef<string | null>(null);
+  const scheduleRevision = useRef(0);
+  const scheduleSubmission = useRef<{
+    eventDate: string | null;
+    startsAt: string | null;
+    endsAt: string | null;
+    revision: number;
+  } | null>(null);
   const contactSearch = useContactSearch();
   const additionalSearch = useContactSearch();
   const additionalInput = useRef<HTMLInputElement>(null);
@@ -228,12 +251,24 @@ export const EventInlineEditor = forwardRef<
         'Speichern nicht bestätigt. Bitte Serverstand prüfen, bevor du erneut speicherst.',
       );
     }
-    if (!response.ok)
+    if (!response.ok) {
+      const failure: unknown = await response.json().catch(() => null);
+      if (
+        response.status === 409 &&
+        failure &&
+        typeof failure === 'object' &&
+        'error' in failure &&
+        failure.error === 'reservations_need_review'
+      )
+        throw Error(
+          'Termin kann wegen bestehender Buchungen nicht verschoben werden. Bitte zuerst die Ressourcenzuweisung prüfen; es wurde nichts automatisch geändert.',
+        );
       throw Error(
         response.status === 409
           ? 'Event wurde inzwischen geändert. Bitte Serverstand prüfen.'
           : 'Speichern nicht bestätigt. Bitte Serverstand prüfen, bevor du erneut speicherst.',
       );
+    }
     const row: unknown = await response.json().catch(() => null);
     if (!validEventRow(row, event.id, version + 1))
       throw Error(
@@ -266,6 +301,31 @@ export const EventInlineEditor = forwardRef<
       };
     },
     onConfirmed: (row) => {
+      const currentSchedule = scheduleSubmission.current;
+      if (
+        currentSchedule &&
+        currentSchedule.eventDate === row.eventDate &&
+        currentSchedule.startsAt === row.startsAt &&
+        currentSchedule.endsAt === row.endsAt &&
+        currentSchedule.revision === scheduleRevision.current
+      ) {
+        scheduleDirty.current = false;
+        scheduleSubmission.current = null;
+      }
+      if (
+        !scheduleDirty.current &&
+        (schedule.eventDate !== (row.eventDate ?? '') ||
+          schedule.startsAt !== localDateTime(row.startsAt, row.timeZone) ||
+          schedule.endsAt !== localDateTime(row.endsAt, row.timeZone))
+      ) {
+        setSchedule({
+          eventDate: row.eventDate ?? '',
+          startsAt: localDateTime(row.startsAt, row.timeZone),
+          endsAt: localDateTime(row.endsAt, row.timeZone),
+        });
+        setScheduleKey((value) => value + 1);
+        setScheduleError('');
+      }
       latestRow.current = row;
       const contact = knownContacts.find(
         (item) => item.id === row.primaryContactId,
@@ -281,12 +341,129 @@ export const EventInlineEditor = forwardRef<
       else onConfirmed(row);
     },
   });
-  useImperativeHandle(ref, () => ({ adoptExternal: save.adoptExternal }));
+  useImperativeHandle(ref, () => ({
+    adoptExternal: (row) => {
+      if (scheduleDirty.current) return false;
+      scheduleSubmission.current = null;
+      return save.adoptExternal(row);
+    },
+  }));
   useEffect(() => {
-    onDirtyChange(save.dirty);
+    onDirtyChange(save.dirty || scheduleDirty.current);
   });
+  useEffect(() => {
+    const name = restoreScheduleFocus.current;
+    if (!name) return;
+    restoreScheduleFocus.current = null;
+    const target =
+      scheduleGroup.current?.querySelector<HTMLElement>(`[name="${name}"]`) ??
+      (name.endsWith('Choice')
+        ? scheduleGroup.current?.querySelector<HTMLElement>(
+            `[name="${name.slice(0, -'Choice'.length)}"]`,
+          )
+        : null);
+    target?.focus();
+  }, [scheduleKey]);
+  useEffect(
+    () =>
+      registerUnsavedChanges(() => save.dirty || scheduleDirty.current, true),
+    [save.dirty],
+  );
+  useEffect(() => {
+    const unload = (event: BeforeUnloadEvent) => {
+      if (!scheduleDirty.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', unload);
+    return () => window.removeEventListener('beforeunload', unload);
+  }, []);
   useEffect(() => () => dirtyCallback.current(false), []);
   type Field = keyof Input;
+  function resetSchedule() {
+    const current = save.values;
+    setSchedule({
+      eventDate: current.eventDate ?? '',
+      startsAt: localDateTime(current.startsAt, event.timeZone),
+      endsAt: localDateTime(current.endsAt, event.timeZone),
+    });
+    setScheduleKey((value) => value + 1);
+    setScheduleError('');
+    scheduleDirty.current = false;
+    scheduleRevision.current += 1;
+    dirtyCallback.current(save.dirty);
+  }
+  function commitSchedule(group: HTMLFieldSetElement) {
+    if (!canEdit()) return;
+    const startInput = group.querySelector<HTMLInputElement>(
+        'input[name="startsAt"]',
+      ),
+      endInput = group.querySelector<HTMLInputElement>('input[name="endsAt"]'),
+      startChoice = group.querySelector<HTMLSelectElement>(
+        'select[name="startsAtChoice"]',
+      ),
+      endChoice = group.querySelector<HTMLSelectElement>(
+        'select[name="endsAtChoice"]',
+      ),
+      startLocal = startInput?.value ?? '',
+      endLocal = endInput?.value ?? '';
+    if (Boolean(startLocal) !== Boolean(endLocal)) {
+      scheduleSubmission.current = null;
+      setScheduleError('Beginn und Ende müssen gemeinsam angegeben werden.');
+      return;
+    }
+    const start = resolveEventTime(startLocal, event.timeZone, {
+        originalInstant: save.values.startsAt,
+        choice: (startChoice?.value ?? '') as 'earlier' | 'later' | '',
+      }),
+      end = resolveEventTime(endLocal, event.timeZone, {
+        originalInstant: save.values.endsAt,
+        choice: (endChoice?.value ?? '') as 'earlier' | 'later' | '',
+      });
+    if (
+      (start.kind !== 'unique' && start.kind !== 'empty') ||
+      (end.kind !== 'unique' && end.kind !== 'empty')
+    ) {
+      scheduleSubmission.current = null;
+      setScheduleError(
+        'Bitte gültige Uhrzeiten wählen; doppelte Herbstzeiten brauchen eine bewusste Auswahl.',
+      );
+      return;
+    }
+    const startsAt = start.kind === 'unique' ? start.instant : null,
+      endsAt = end.kind === 'unique' ? end.instant : null;
+    if (startsAt && endsAt && Date.parse(startsAt) >= Date.parse(endsAt)) {
+      scheduleSubmission.current = null;
+      setScheduleError('Das Ende muss nach dem Beginn liegen.');
+      return;
+    }
+    const eventDate = startLocal
+      ? startLocal.slice(0, 10)
+      : group.querySelector<HTMLInputElement>('input[name="eventDate"]')
+          ?.value || null;
+    if (
+      eventDate === save.values.eventDate &&
+      startsAt === save.values.startsAt &&
+      endsAt === save.values.endsAt
+    ) {
+      scheduleDirty.current = false;
+      scheduleSubmission.current = null;
+      setScheduleError('');
+      dirtyCallback.current(save.dirty);
+      return;
+    }
+    scheduleSubmission.current = {
+      eventDate,
+      startsAt,
+      endsAt,
+      revision: scheduleRevision.current,
+    };
+    save.setField('eventDate', eventDate);
+    save.setField('startsAt', startsAt);
+    save.setField('endsAt', endsAt);
+    save.commitFields(['eventDate', 'startsAt', 'endsAt']);
+    setScheduleError('');
+  }
   function field(keys: Field[], key: Field) {
     return {
       onChange: (
@@ -423,6 +600,119 @@ export const EventInlineEditor = forwardRef<
       </p>
       <fieldset disabled={locked} className="event-inline-fields">
         <legend className="sr-only">Eventstammdaten</legend>
+        <fieldset
+          key={'schedule:' + scheduleKey}
+          ref={scheduleGroup}
+          aria-label="Termin"
+          onChange={(event) => {
+            const target = event.target;
+            if (
+              !(target instanceof HTMLInputElement) &&
+              !(target instanceof HTMLSelectElement)
+            )
+              return;
+            if (
+              target instanceof HTMLSelectElement &&
+              target.name.endsWith('Choice')
+            ) {
+              scheduleDirty.current = true;
+              scheduleRevision.current += 1;
+              dirtyCallback.current(true);
+              return;
+            }
+            if (target.name === 'eventDate') {
+              setSchedule((current) => ({
+                ...current,
+                eventDate: target.value,
+              }));
+            } else if (target.name === 'startsAt') {
+              setSchedule((current) => ({
+                ...current,
+                startsAt: target.value,
+                eventDate: target.value.slice(0, 10),
+              }));
+            } else if (target.name === 'endsAt') {
+              setSchedule((current) => ({ ...current, endsAt: target.value }));
+            }
+            scheduleDirty.current = true;
+            scheduleRevision.current += 1;
+            dirtyCallback.current(true);
+          }}
+          onBlur={(event) => {
+            if (
+              event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              return;
+            if (scheduleDirty.current) commitSchedule(event.currentTarget);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            restoreScheduleFocus.current =
+              event.target instanceof HTMLElement
+                ? event.target.getAttribute('name')
+                : null;
+            save.cancelFields(['eventDate', 'startsAt', 'endsAt']);
+            resetSchedule();
+          }}
+        >
+          <legend>Termin</legend>
+          <label>
+            Eventdatum
+            <input
+              name="eventDate"
+              type="date"
+              value={schedule.eventDate}
+              readOnly={Boolean(schedule.startsAt)}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setSchedule((current) => ({
+                  ...current,
+                  eventDate: value,
+                }));
+              }}
+            />
+          </label>
+          <p className="event-panel-hint">
+            Bei Beginn gilt das Startdatum. Ohne Uhrzeiten: Tagesbuchung oder
+            ohne Datum.
+          </p>
+          <EventTimeField
+            key={'start:' + scheduleKey}
+            name="startsAt"
+            label="Terminbeginn"
+            timeZone={event.timeZone}
+            instant={save.values.startsAt}
+            idPrefix="event-inline-schedule"
+            onChange={(value) => {
+              setSchedule((current) => ({
+                ...current,
+                startsAt: value,
+                eventDate: value.slice(0, 10),
+              }));
+              scheduleDirty.current = true;
+              dirtyCallback.current(true);
+            }}
+          />
+          <EventTimeField
+            key={'end:' + scheduleKey}
+            name="endsAt"
+            label="Terminende"
+            timeZone={event.timeZone}
+            instant={save.values.endsAt}
+            idPrefix="event-inline-schedule"
+            onChange={(value) => {
+              setSchedule((current) => ({ ...current, endsAt: value }));
+              scheduleDirty.current = true;
+              dirtyCallback.current(true);
+            }}
+          />
+          <p className="event-panel-hint">
+            Beginn und Ende gemeinsam oder gar nicht.
+          </p>
+          {scheduleError && <p role="alert">{scheduleError}</p>}
+        </fieldset>
         <label>
           Eventname
           <input
@@ -713,8 +1003,24 @@ export const EventInlineEditor = forwardRef<
             type="button"
             className="secondary-action"
             onClick={() => {
-              if (window.confirm('Deine ungespeicherten Änderungen verwerfen?'))
+              if (
+                window.confirm('Deine ungespeicherten Änderungen verwerfen?')
+              ) {
+                const row = save.remote;
+                scheduleSubmission.current = null;
+                scheduleDirty.current = false;
                 save.useRemote();
+                if (row) {
+                  setSchedule({
+                    eventDate: row.eventDate ?? '',
+                    startsAt: localDateTime(row.startsAt, row.timeZone),
+                    endsAt: localDateTime(row.endsAt, row.timeZone),
+                  });
+                  setScheduleKey((value) => value + 1);
+                  setScheduleError('');
+                  scheduleRevision.current += 1;
+                }
+              }
             }}
           >
             Serverstand übernehmen

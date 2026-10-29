@@ -434,6 +434,112 @@ test('existing event and resource APIs fail safely when a future reservation nee
   }
 });
 
+test('event PUT preserves future holds and bookings when schedule edits lack assignments', async () => {
+  const config = {
+    origin: 'https://admin.example.invalid',
+    tenantId,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerEventRoutes(app, pool, tenantId);
+  const cookies = { '__Host-ak-session': 'synthetic-events' };
+  const headers = {
+    origin: config.origin,
+    'x-csrf-token': digest('csrf:synthetic-events'),
+  };
+  const events = eventRepository(pool, tenantId);
+  const reservations = reservationRepository(pool, tenantId);
+  const resource = await resourceRepository(pool, tenantId).save(actorId, {
+    ...resourceInput,
+    code: 'SYNTH-SCHEDULE-PUT',
+    category: 'Fotobox',
+  });
+  const units = await reservations.units(resource.id);
+  try {
+    for (const state of ['hold', 'booked'] as const) {
+      const original = await events.save(actorId, eventInput);
+      const assigned =
+        state === 'booked'
+          ? await events.save(
+              actorId,
+              { ...eventInput, status: 'booked' },
+              original.id,
+              1,
+              [{ unitId: units[1]!.id, periodSource: 'event' }],
+            )
+          : original;
+      if (state === 'hold')
+        await reservations.createHold(actorId, {
+          requestId: randomUUID(),
+          eventId: original.id,
+          unitId: units[0]!.id,
+          eventVersion: 1,
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        });
+      const before = await reservations.list(original.id);
+      const oldEvent = (await events.detail(original.id)).event;
+      const put = (patch: Record<string, unknown>) =>
+        app.inject({
+          method: 'PUT',
+          url: '/api/v1/events/' + original.id,
+          cookies,
+          headers,
+          payload: {
+            ...eventInput,
+            status: state === 'booked' ? 'booked' : 'inquiry',
+            version: assigned.version,
+            ...patch,
+          },
+        });
+      const nextDay = new Date(start.getTime() + 86400000);
+      const cases = [
+        {
+          eventDate: nextDay.toISOString().slice(0, 10),
+          startsAt: nextDay.toISOString(),
+          endsAt: new Date(end.getTime() + 86400000).toISOString(),
+        },
+        { startsAt: new Date(start.getTime() + 1800000).toISOString() },
+        { endsAt: new Date(end.getTime() + 1800000).toISOString() },
+        { eventDate: null, startsAt: null, endsAt: null },
+      ];
+      for (const patch of cases) {
+        const response = await put(patch);
+        expect(response.statusCode).toBe(409);
+        expect(response.json().error).toBe('reservations_need_review');
+        expect((await events.detail(original.id)).event).toEqual(oldEvent);
+        expect(await reservations.list(original.id)).toEqual(before);
+      }
+      const unchanged = await put({
+        description: 'Fictional unchanged schedule metadata',
+      });
+      expect(unchanged.statusCode).toBe(200);
+      expect(unchanged.json().version).toBe(assigned.version + 1);
+      expect(await reservations.list(original.id)).toEqual(before);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('application and SQL triggers lock the same tenant even with uppercase UUID input', async () => {
   const synthetic = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   await drizzle(pool).transaction(async (tx) => {

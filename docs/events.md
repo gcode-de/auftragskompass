@@ -48,7 +48,18 @@ Konfliktabgleich werden die beabsichtigten Hinzufügungen und Entfernungen auf
 den aktuellen Serverstand angewandt. So bleiben auch zwischenzeitliche fremde
 Änderungen erhalten, die nicht Gegenstand des eigenen Entwurfs sind.
 
-Termin, weitere Kontaktrollen, interne Notizen und Status sind weiterhin über
+Der Termin ist direkt als zusammengehörige Gruppe aus Datum, Beginn und Ende
+bearbeitbar. Beim Verlassen der Gruppe wird eine gültige Änderung über dieselbe
+versionierte Warteschlange gespeichert; Escape verwirft den noch nicht
+eingereichten Gruppenentwurf. Datum ohne Uhrzeiten und undatierte Events sind
+möglich; Beginn und Ende müssen gemeinsam angegeben werden. Bei einem Beginn
+ergibt sich das Datum aus dessen lokalem Tag. Der Server lehnt Terminänderungen
+bei bestehenden aktiven Reservierungen ab, wenn diese nicht ausdrücklich im
+Ressourcenformular geprüft werden. Die direkte Bearbeitung ändert dabei keine
+Ressourcenzuweisung. Bei Ablehnung bleibt der Entwurf für den Serverabgleich
+erhalten; die ausdrückliche Übernahme des Serverstands verwirft ihn.
+
+Weitere Kontaktrollen, interne Notizen und Status sind weiterhin über
 die vorhandenen vollständigen Formulare bearbeitbar.
 Die atomaren Ressourcen- und Buchungsprüfungen bleiben maßgeblich; ein
 Stammdaten-Blur führt keine Ressourcenbuchung aus.

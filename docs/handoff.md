@@ -1,5 +1,20 @@
 # Projektübergabe AuftragsKompass
 
+## EDIT-02.4: Direkte Terminbearbeitung, 29.10.2026
+
+Datum und Zeitpaar bilden in der Eventakte einen gemeinsamen Blur-/Escape-
+Entwurf. Die versionierte Warteschlange, Navigationsschutz, Konfliktabgleich
+und atomare Buchungsprüfung bleiben erhalten. Aktive Holds und Buchungen werden
+bei abgelehnten Änderungen nicht verändert; eine Reservierungsablehnung erklärt
+den nächsten Schritt. Komponenten-, API- und synthetische Browserprüfungen,
+unabhängiges Review und 1.634 Tests mit Coverage waren lokal grün; geänderte
+Zeilen 113/126, Zweige 91/110. Browserprüfung bei 320/1280 px und in beiden
+Themes; Format, Lint, Typen, Dokumentationsprüfung und Build grün. Ausgangsbasis
+war `237e206`, diese war zuletzt mit grünem CI und allen drei gesunden
+Containern ausgeliefert. Nach diesem Commit tatsächlichen CI- und Updaterstand
+prüfen; eine neuere Revision erst nach erfolgreicher Images- und
+Sicherungsprüfung als live bezeichnen. Echte Geschäftsdaten nicht verändern.
+
 ## EDIT-02.3: Eventkontakte und Picker-Zugänglichkeit, 28.10.2026
 
 Nach `bfa90fa` ergänzt EDIT-02.3 die direkte Bearbeitung weiterer Eventkontakte

@@ -289,3 +289,14 @@ angebunden. Der finale Detector zeigt keine Befunde in geändertem Code; seine
 61 Hinweise in älteren Teilen der gemeinsamen CSS-Datei wurden nicht pauschal
 als Teil dieses Slices umgebaut. Mobil-/Desktop-/Theme-Abnahme gehört zum
 konkreten Browserbeleg, nicht allein zu diesem Designeintrag.
+
+### Direkte Terminbearbeitung (EDIT-02.4, 29.10.2026)
+
+In der Eventakte bildet „Termin“ eine beschriftete Feldgruppe mit Datum,
+Beginn und Ende. Ein kurzer Hinweis im bestehenden `event-panel-hint`-Stil
+erläutert Tagesbuchung und Startdatum; zusätzliche Karten, Farben oder
+Animationen entfallen. Auf schmalen Displays stehen die nativen Felder
+untereinander. Ein ungültiger oder noch nicht bestätigter Entwurf bleibt
+sichtbar; Konflikt und Abgleich verwenden die bestehenden Meldungen und
+Aktionen. Escape stellt den Fokus auf das aktuelle Feld beziehungsweise auf das
+Zeitfeld zurück, wenn eine Auswahl nicht mehr angezeigt wird.

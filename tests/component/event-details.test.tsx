@@ -1032,6 +1032,32 @@ test('metadata and status edits lock each other and adopt the confirmed version 
   expect(status.closest('fieldset')?.disabled).toBe(true);
 });
 
+test('an active schedule draft blocks status and resource mutations', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(detail)),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  const schedule = await screen.findByRole('group', { name: 'Termin' });
+  const date = within(schedule).getByLabelText('Eventdatum');
+  const status = screen.getByLabelText(
+    'Status des Events',
+  ) as HTMLSelectElement;
+  fireEvent.change(date, { target: { value: '2026-11-23' } });
+  expect(status.closest('fieldset')?.disabled).toBe(true);
+  fireEvent.keyDown(date, { key: 'Escape' });
+  await waitFor(() => expect(status.closest('fieldset')?.disabled).toBe(false));
+});
+
 test('resource draft locks metadata, and a confirmed resource version survives failed reload', async () => {
   const unit = {
     unitId: 'synthetic-unit',

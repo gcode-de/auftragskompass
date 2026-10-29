@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { createRef } from 'react';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,7 +9,11 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { EventInlineEditor } from '../../apps/admin/src/EventInlineEditor.js';
+import {
+  EventInlineEditor,
+  type EventInlineHandle,
+} from '../../apps/admin/src/EventInlineEditor.js';
+import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 
 afterEach(() => {
   cleanup();
@@ -277,6 +283,245 @@ test('returns to the already assigned saved location without deleting the old ov
     venue: 'Individual address',
     venueOverride: false,
   });
+});
+
+test('edits a date-only event schedule in the event record and saves on blur', async () => {
+  const fetcher = vi.fn(
+    async (_url: RequestInfo | URL, options?: RequestInit) =>
+      Response.json({
+        ...event,
+        ...JSON.parse(String(options?.body)),
+        version: 2,
+      }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={event}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const schedule = screen.getByRole('group', { name: 'Termin' });
+  const date = within(schedule).getByLabelText('Eventdatum');
+  fireEvent.change(date, { target: { value: '2026-11-03' } });
+  fireEvent.blur(date);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body))).toMatchObject({
+    eventDate: '2026-11-03',
+    startsAt: null,
+    endsAt: null,
+  });
+});
+
+test('a local schedule draft blocks navigation and reload until Escape discards it', () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={event}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const date = screen.getByLabelText('Eventdatum');
+  fireEvent.change(date, { target: { value: '2026-11-03' } });
+  expect(hasUnsavedChanges()).toBe(true);
+  const beforeUnload = new Event('beforeunload', { cancelable: true });
+  fireEvent(window, beforeUnload);
+  expect(beforeUnload.defaultPrevented).toBe(true);
+  fireEvent.keyDown(date, { key: 'Escape' });
+  expect(document.activeElement).toBe(screen.getByLabelText('Eventdatum'));
+  fireEvent.blur(date);
+  expect(hasUnsavedChanges()).toBe(false);
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+test('external schedule confirmation refreshes clean fields and preserves an active draft', () => {
+  const handle = createRef<EventInlineHandle>();
+  vi.stubGlobal('fetch', vi.fn());
+  render(
+    <EventInlineEditor
+      ref={handle}
+      event={{
+        ...event,
+        eventDate: '2026-10-16',
+        startsAt: '2026-10-16T16:00:00Z',
+        endsAt: '2026-10-16T18:00:00Z',
+      }}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const moved = {
+    ...event,
+    version: 2,
+    eventDate: '2026-11-22',
+    startsAt: '2026-11-22T16:00:00Z',
+    endsAt: '2026-11-22T18:00:00Z',
+  };
+  act(() => expect(handle.current?.adoptExternal(moved)).toBe(true));
+  expect(screen.getByLabelText('Eventdatum')).toHaveProperty(
+    'value',
+    '2026-11-22',
+  );
+  const date = screen.getByLabelText('Eventdatum');
+  fireEvent.change(date, { target: { value: '2026-12-04' } });
+  expect(handle.current?.adoptExternal({ ...moved, version: 3 })).toBe(false);
+  expect(date).toHaveProperty('value', '2026-12-04');
+});
+
+test('a changed repeated fall-back time requires an explicit choice before the grouped save', async () => {
+  const fetcher = vi.fn(
+    async (_url: RequestInfo | URL, options?: RequestInit) =>
+      Response.json({
+        ...event,
+        ...JSON.parse(String(options?.body)),
+        version: 2,
+      }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={event}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const schedule = screen.getByRole('group', { name: 'Termin' });
+  fireEvent.change(within(schedule).getByLabelText('Terminbeginn'), {
+    target: { value: '2026-10-25T02:30' },
+  });
+  fireEvent.change(within(schedule).getByLabelText('Terminende'), {
+    target: { value: '2026-10-25T03:30' },
+  });
+  fireEvent.blur(schedule);
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(
+    await screen.findByText(
+      /doppelte Herbstzeiten brauchen eine bewusste Auswahl/,
+    ),
+  ).toBeTruthy();
+  fireEvent.change(
+    within(schedule).getByLabelText('Uhrzeitwahl Terminbeginn'),
+    {
+      target: { value: 'later' },
+    },
+  );
+  fireEvent.blur(schedule);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body))).toMatchObject({
+    eventDate: '2026-10-25',
+    startsAt: '2026-10-25T01:30:00Z',
+    endsAt: '2026-10-25T02:30:00Z',
+    version: 1,
+  });
+});
+
+test('Escape from a repeated-time choice restores focus to its time input', () => {
+  vi.stubGlobal('fetch', vi.fn());
+  render(
+    <EventInlineEditor
+      event={event}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const schedule = screen.getByRole('group', { name: 'Termin' });
+  const start = within(schedule).getByLabelText('Terminbeginn');
+  fireEvent.change(start, { target: { value: '2026-10-25T02:30' } });
+  const choice = within(schedule).getByLabelText('Uhrzeitwahl Terminbeginn');
+  fireEvent.keyDown(choice, { key: 'Escape' });
+  expect(document.activeElement).toBe(
+    within(screen.getByRole('group', { name: 'Termin' })).getByLabelText(
+      'Terminbeginn',
+    ),
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('reservations conflict reconciliation adopts the remote schedule without resending the draft', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  const fetcher = vi.fn(
+    async (_url: RequestInfo | URL, options?: RequestInit) =>
+      options?.method === 'PUT'
+        ? Response.json({ error: 'reservations_need_review' }, { status: 409 })
+        : Response.json({
+            event: {
+              ...event,
+              eventDate: '2026-11-05',
+              version: 2,
+            },
+          }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventInlineEditor
+      event={event}
+      csrfToken="synthetic"
+      types={[]}
+      packages={[]}
+      locations={[]}
+      locked={false}
+      canEdit={() => true}
+      onDirtyChange={() => {}}
+      onConfirmed={() => {}}
+    />,
+  );
+  const schedule = screen.getByRole('group', { name: 'Termin' });
+  const date = within(schedule).getByLabelText('Eventdatum');
+  fireEvent.change(date, { target: { value: '2026-11-03' } });
+  fireEvent.blur(schedule);
+  expect(
+    await screen.findByText(/wegen bestehender Buchungen nicht verschoben/),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Aktuellen Stand laden' }),
+  );
+  await screen.findByText(/Deine Eingabe: 2026-11-03; Serverstand: 2026-11-05/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Serverstand übernehmen' }),
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText('Eventdatum')).toHaveProperty(
+      'value',
+      '2026-11-05',
+    ),
+  );
+  fireEvent.blur(screen.getByRole('group', { name: 'Termin' }));
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+  ).toHaveLength(1);
 });
 
 test('invalid names and synchronous write locks prevent saves', () => {
