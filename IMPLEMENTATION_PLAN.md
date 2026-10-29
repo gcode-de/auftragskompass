@@ -29,7 +29,7 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   (Google und Passwort) bestehen gezielt; unabhängiges Review und schnelle Gates
   sind grün. Der volle GitHub-Lauf muss danach erneut abgewartet werden.
 
-- [ ] **CI-TEST-01 — `ci: run test projects once with coverage`**:
+- [x] **CI-TEST-01 — `ci: run test projects once with coverage`**:
   Den auf Nutzerhinweis belegten doppelten Testlauf in `pnpm check` entfernen.
   `test:coverage` führt weiterhin alle drei bestehenden Vitest-Projekte mit
   unveränderten globalen Coverage-Grenzen aus; Format, Lint, Typen, Workspace-,
@@ -37,7 +37,12 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   Changed-Code-Coverage in CI bleiben verpflichtend. Test zuerst für die
   vollständige Projekt- und Gate-Auswahl sowie das Ausbleiben doppelter Läufe;
   keine Tests löschen und keine Schranken senken. Wirksamkeit im nächsten
-  GitHub-Lauf anhand tatsächlicher Dauer und Ergebnissen prüfen.
+  GitHub-Lauf anhand tatsächlicher Dauer und Ergebnissen prüfen. Lokal waren
+  Coverage mit 1.640 Tests und 38 Browserfälle grün; ein alter Browserselektor
+  wurde in CI-EDIT-02.5 repariert und beide Abläufe anschließend gezielt grün
+  geprüft. Workspace, Betriebsprüfung, Build und schnelle Gates sind grün;
+  unabhängiges Review erfolgte. Ein vollständig grüner zusammenhängender
+  GitHub-Lauf steht noch aus.
 
 - [x] **EDIT-02.5 — `feat: autosave event notes in the event record`**:
   Interne Eventnotizen direkt im bestehenden Notizenbereich bearbeiten

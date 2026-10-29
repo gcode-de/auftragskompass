@@ -30,6 +30,35 @@ test('runtime dependency audit blocks publication before quality and cannot igno
   assert.match(workflow, /images:\s*needs: quality/);
 });
 
+test('quality runs every Vitest project once with coverage and keeps the other gates', () => {
+  const { scripts } = JSON.parse(readFileSync('package.json', 'utf8'));
+  const commands = scripts.check.split(' && ');
+  for (const gate of [
+    'pnpm format:check',
+    'pnpm lint',
+    'pnpm typecheck',
+    'pnpm test:workspace',
+    'pnpm test:docs',
+    'pnpm test:coverage',
+    'pnpm test:e2e',
+    'pnpm build',
+    'pnpm test:ops',
+  ])
+    assert.equal(
+      commands.filter((command) => command === gate).length,
+      1,
+      gate,
+    );
+  for (const project of ['unit', 'component', 'integration']) {
+    assert.match(
+      scripts['test:coverage'],
+      new RegExp(`--project ${project}\\b`),
+    );
+    assert.ok(!commands.includes(`pnpm test:${project}`));
+  }
+  assert.match(scripts['test:coverage'], /--coverage\b/);
+});
+
 test('CI retains only the synthetic Chromium output for seven days, including failed runs', () => {
   const workflow = readFileSync('.github/workflows/quality.yml', 'utf8');
   const step =
