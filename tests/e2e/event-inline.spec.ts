@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 test('event details save fields on blur and Escape discards the current edit', async ({
   page,
@@ -377,5 +378,152 @@ test('event record edits a date-only schedule with Escape and versioned blur sav
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width + 1);
+  }
+});
+
+test('event notes preserve formatting and safely paste before saving on blur', async ({
+  page,
+}) => {
+  const id = '88888888-8888-4888-8888-888888888888';
+  let event = {
+    id,
+    version: 1,
+    name: 'Synthetic notes event',
+    status: 'inquiry',
+    eventDate: null,
+    startsAt: null,
+    endsAt: null,
+    timeZone: 'Europe/Berlin',
+    eventTypeId: null,
+    packageId: null,
+    locationId: null,
+    venue: null,
+    venueOverride: false,
+    primaryContactId: null,
+    additionalContactIds: [],
+    source: '',
+    description: '',
+    notesHtml:
+      '<p>Fictional <strong>existing</strong> <a href="https://example.invalid">link</a></p>',
+  };
+  const writes: Record<string, unknown>[] = [];
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === `/api/v1/events/${id}` && route.request().method() === 'PUT') {
+      const input = route.request().postDataJSON();
+      writes.push(input);
+      event = { ...event, ...input, version: event.version + 1 };
+      return route.fulfill({ json: event });
+    }
+    if (path === `/api/v1/events/${id}`)
+      return route.fulfill({
+        json: {
+          event,
+          contacts: [],
+          location: null,
+          eventType: null,
+          package: null,
+          activities: [],
+          websiteInquiryAvailable: false,
+        },
+      });
+    if (path === '/api/v1/events')
+      return route.fulfill({
+        json: { events: [event], timeZone: 'Europe/Berlin' },
+      });
+    if (path === '/api/v1/statuses')
+      return route.fulfill({ json: [{ code: 'inquiry', label: 'Anfrage' }] });
+    return route.fulfill({ json: [] });
+  });
+  await page.route('**/auth/**', (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+  await page.route('**/auth/me', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'x-auth-mode': 'password' },
+      json: { email: 'fictional@example.invalid', csrfToken: 'synthetic' },
+    }),
+  );
+  await page.goto('/#event-' + id);
+  await page.getByRole('button', { name: 'Notizen', exact: true }).click();
+  const editor = page.getByRole('textbox', { name: 'Interne Notizen' });
+  await expect(editor.locator('strong')).toHaveText('existing');
+  await expect(editor.locator('a')).toHaveAttribute(
+    'href',
+    'https://example.invalid',
+  );
+  await editor.focus();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' discarded');
+  await page.keyboard.press('Escape');
+  await expect(editor).not.toContainText('discarded');
+  expect(writes).toHaveLength(0);
+  await editor.focus();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' text');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await page.getByRole('button', { name: 'Fett', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(editor.locator('strong, b').last()).toHaveText('text');
+  await editor.focus();
+  await page.keyboard.press('End');
+  for (let index = 0; index < 4; index++)
+    await page.keyboard.press('Shift+ArrowLeft');
+  const linkDisclosure = page.getByText('Link', { exact: true });
+  await linkDisclosure.focus();
+  await page.keyboard.press('Enter');
+  const accessibility = await new AxeBuilder({ page })
+    .include('[aria-labelledby="event-panel-notes"]')
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+  await page.getByLabel('Linkadresse').fill('https://fictional.invalid');
+  await page.getByRole('button', { name: 'Link einfügen' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(editor.locator('a').last()).toHaveAttribute(
+    'href',
+    'https://fictional.invalid/',
+  );
+  expect(writes).toHaveLength(0);
+  await editor.focus();
+  await page.keyboard.press('End');
+  await editor.evaluate((node) => {
+    const clipboard = new DataTransfer();
+    clipboard.setData('text/plain', '<img src=x onerror=alert(1)>');
+    clipboard.setData('text/html', '<img src=x onerror=alert(1)>');
+    node.dispatchEvent(
+      new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: clipboard,
+      }),
+    );
+  });
+  await expect(editor.locator('img')).toHaveCount(0);
+  await expect(editor).toContainText('<img src=x onerror=alert(1)>');
+  await linkDisclosure.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: /modus aktivieren/i }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(String(writes[0]?.notesHtml)).toContain('&lt;img');
+  expect(String(writes[0]?.notesHtml)).toContain('existing');
+  expect(String(writes[0]?.notesHtml)).toContain('https://example.invalid');
+  await expect(editor).toContainText('<img src=x onerror=alert(1)>');
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ['light', 'dark'] as const) {
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+        await page.getByRole('button', { name: /modus aktivieren/i }).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.getByRole('region', { name: 'Interne Notizen' }).screenshot({
+        path: test.info().outputPath(`event-notes-${width}-${theme}.png`),
+      });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+    }
   }
 });

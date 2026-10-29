@@ -19,6 +19,26 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **EDIT-02.5 — `feat: autosave event notes in the event record`**:
+  Interne Eventnotizen direkt im bestehenden Notizenbereich bearbeiten
+  (BKP013, Beobachtung B04; das Autosave-Verhalten der Referenz ist nicht
+  belegt). Vorhandenen HTML-/Sanitizer-Vertrag und die gemeinsame versionierte
+  Event-Autosave-Warteschlange verwenden; ein kleiner formatierter Editor ohne
+  neue Abhängigkeit vermeidet die HTML-Rohtexteingabe. Kein zweiter
+  konkurrierender Hook, keine neue API oder Migration. Beim Verlassen speichern, Escape
+  verwirft nur den aktuellen ungesendeten Entwurf. Nur bestätigtes,
+  serverseitig bereinigtes HTML als Vorschau darstellen. Bereichswechsel,
+  andere Feldentwürfe, Navigation, Status, Ressourcen, Konflikt und unklare
+  Antworten dürfen keine Eingaben oder bestätigte Mutationen verlieren.
+  Tests zuerst: Komponentenfälle für Blur/Escape, Warteschlange, Fokus und
+  Abgleich; API-Integration für Sanitizer und Schutzregeln; synthetische
+  Chromium-Prüfung für Mobil/Desktop und beide Themes. Danach Review,
+  notwendige Gates, Dokumentation, explizites Staging und sofortiger Push.
+  Abschluss: vollständiger Coverage-Lauf mit 1.638 Tests grün; danach zwei
+  gezielte Bedienprüfungen ergänzt. Gezielte Changed-Code-Abdeckung 169/183
+  Zeilen und 105/131 Zweige, eigenständiger Chromium-/Axe-Ablauf 320/1280 px
+  in beiden Themes grün. Unabhängiges Review und Sicherheitskorrekturen erfolgt.
+
 - [x] **EDIT-02.4 — `feat: edit event schedule in the event record`**:
   Den bisher nur lesenden Terminbereich in der Eventakte direkt bearbeitbar
   machen (BKP013, Beobachtung B04/B): Datum und vorhandenes Start-/Endpaar

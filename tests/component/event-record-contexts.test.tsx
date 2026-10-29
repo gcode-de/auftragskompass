@@ -288,9 +288,9 @@ test('a dirty status or resource draft survives every work area switch', async (
   // The notes keep their own reachable area instead of being folded away.
   fireEvent.click(tab('Notizen'));
   expect(
-    within(area('Interne Notizen')).getByLabelText(
-      'Notizen: Fictional record event',
-    ).textContent,
+    within(area('Interne Notizen')).getByRole('textbox', {
+      name: 'Interne Notizen',
+    }).textContent,
   ).toContain('Fictional record note');
 });
 

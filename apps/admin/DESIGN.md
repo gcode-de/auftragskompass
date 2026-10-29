@@ -300,3 +300,13 @@ untereinander. Ein ungültiger oder noch nicht bestätigter Entwurf bleibt
 sichtbar; Konflikt und Abgleich verwenden die bestehenden Meldungen und
 Aktionen. Escape stellt den Fokus auf das aktuelle Feld beziehungsweise auf das
 Zeitfeld zurück, wenn eine Auswahl nicht mehr angezeigt wird.
+
+### Interne Notizen (EDIT-02.5, 29.10.2026)
+
+Der Notizenbereich zeigt den Inhalt einmal im direkt bearbeitbaren Feld.
+Fett, Kursiv und Unterstrichen stehen als kompakte Aktionen darüber; „Link“
+öffnet die Adresseingabe erst bei Bedarf. Die Aktionen bilden eine beschriftete
+Gruppe mit normaler Tab-Reihenfolge. Auf schmalen Displays bricht sie um, ohne
+seitliches Scrollen. Beim Verlassen speichert die bestehende Event-Warteschlange;
+Entwürfe, Konflikte und Fehler bleiben erkennbar. Der Editor zeigt formatierte
+Inhalte statt HTML-Quelltext; die Bereinigung beim Speichern bleibt unverändert.

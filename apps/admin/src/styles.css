@@ -1159,6 +1159,53 @@ time {
   padding: 0;
   margin: 0;
 }
+.event-note-composer {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.event-note-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.4rem;
+}
+.event-note-link summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.event-note-link[open] {
+  flex: 1 1 14rem;
+}
+.event-note-toolbar button {
+  align-self: end;
+}
+.event-note-editor {
+  min-height: 9rem;
+  max-width: 100%;
+  padding: 0.7rem;
+  border: 1px solid var(--field-border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: inherit;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.event-note-editor:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.event-note-editor[contenteditable='false'] {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.event-note-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
 .contact-inline-conflicts dl {
   display: block;
 }

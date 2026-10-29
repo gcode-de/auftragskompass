@@ -314,10 +314,13 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
       digest('synthetic-foreign-export'),
     );
     const foreignActor = (await foreignAccess.list())[0]!.userId!;
-    await eventRepository(pool, foreignTenant).save(foreignActor, {
-      ...simple,
-      name: 'Fictional foreign export event',
-    });
+    const foreignEvent = await eventRepository(pool, foreignTenant).save(
+      foreignActor,
+      {
+        ...simple,
+        name: 'Fictional foreign export event',
+      },
+    );
     expect(
       (
         await app.inject({
@@ -392,6 +395,72 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
         })
       ).json(),
     ).toHaveLength(1);
+    // The notes editor writes through the full versioned event PUT. Server
+    // sanitization and authorization must hold on that path as well as POST.
+    const noteEvent = await create({
+      ...simple,
+      name: 'Fictional notes event',
+    });
+    expect(noteEvent.statusCode).toBe(201);
+    const notesPut = (
+      id: string,
+      version: number,
+      extra: Record<string, unknown> = {},
+    ) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/v1/events/' + id,
+        cookies,
+        headers,
+        payload: {
+          ...simple,
+          name: 'Fictional notes event',
+          version,
+          notesHtml:
+            '<p>Fictional <strong>safe</strong><script>bad()</script><a href="javascript:bad()" onclick="bad()">link</a></p>',
+          ...extra,
+        },
+      });
+    const savedNotes = await notesPut(noteEvent.json().id, 1);
+    expect(savedNotes.statusCode).toBe(200);
+    expect(savedNotes.json()).toMatchObject({
+      version: 2,
+      notesHtml: '<p>Fictional <strong>safe</strong><a>link</a></p>',
+    });
+    const detailNotes = await app.inject({
+      url: '/api/v1/events/' + noteEvent.json().id,
+      cookies,
+    });
+    expect(detailNotes.json().event.notesHtml).toBe(
+      savedNotes.json().notesHtml,
+    );
+    const staleNotes = await notesPut(noteEvent.json().id, 1, {
+      notesHtml: '<p>Fictional stale</p>',
+    });
+    expect(staleNotes.statusCode).toBe(409);
+    const foreignNotes = await notesPut(foreignEvent.id, 1);
+    expect(foreignNotes.statusCode).toBe(404);
+    const missingCsrf = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/events/' + noteEvent.json().id,
+      cookies,
+      payload: { ...simple, version: 2, notesHtml: '<p>Fictional blocked</p>' },
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+    const unauthenticated = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/events/' + noteEvent.json().id,
+      payload: { ...simple, version: 2, notesHtml: '<p>Fictional blocked</p>' },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(
+      (await eventRepository(pool, tenantId).detail(noteEvent.json().id)).event,
+    ).toMatchObject({ version: 2, notesHtml: savedNotes.json().notesHtml });
+    expect(
+      (await eventRepository(pool, foreignTenant).detail(foreignEvent.id))
+        .event,
+    ).toMatchObject({ version: 1, notesHtml: simple.notesHtml });
+
     const update = (id: string, version: number) =>
       app.inject({
         method: 'PUT',

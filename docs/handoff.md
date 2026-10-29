@@ -1,5 +1,36 @@
 # Projektübergabe AuftragsKompass
 
+## Testaufwand: Nutzerhinweis, 29.10.2026
+
+Neue Tests gezielt auf relevante Verhaltensänderungen, Sicherheitsregeln und
+Fehlerfälle beschränken; keine Tests allein für hohe Stückzahlen hinzufügen.
+Passende Tests während der Entwicklung gezielt ausführen und Gesamtläufe nicht
+ohne konkreten Anlass wiederholen. Die verbindlichen Qualitäts- und
+Coverage-Grenzen bleiben bestehen. CI-Beschleunigung nach EDIT-02.5 als eigenen
+nummerierten Slice prüfen: `pnpm check` führt derzeit Unit-, Komponenten- und
+Integrationstests einzeln und danach nochmals zusammen mit Coverage aus. Eine
+Entdopplung nur umsetzen, wenn dieselben Testprojekte, Fehler und Coverage-Gates
+nachweislich weiterhin zuverlässig geprüft werden. Bestehende Tests nicht
+pauschal löschen oder fachliche Schutzprüfungen abschwächen.
+
+## EDIT-02.5: Direkte Eventnotizen, 29.10.2026
+
+Interne Eventnotizen lassen sich im bestehenden Notizenbereich direkt bearbeiten.
+Die Eventakte hält Details und Notizen eingehängt und verwendet eine gemeinsame
+versionierte Warteschlange; die serverseitige HTML-Bereinigung bleibt maßgeblich.
+Bookitup-Autosave ist für diesen Bereich nicht belegt. Der Editor zeigt
+Formatierung ohne HTML-Rohtext; eine Linkeingabe öffnet bei Bedarf. Ergänzte
+API-Tests für Sanitizer und Schutzfälle waren 6/6 grün. Unabhängiges Review mit
+Korrektur für
+leeres oder gesperrtes Einfügen, gezielte Queue-/Konflikttests und ein
+synthetischer Chromium-/Axe-Ablauf sind grün. Nach einem korrigierten
+Altselektor bestanden 1.638 Tests im vollständigen Coverage-Lauf. Nach zwei
+zusätzlichen gezielten Bedienprüfungen belegt der betroffene Komponentenlauf
+169/183 geänderte Zeilen und 105/131 Zweige. Den vollständigen CI-Lauf und die
+Auslieferung des tatsächlichen Commits weiterhin prüfen; Änderungen nicht
+zurücksetzen. Vor Fortsetzung Arbeitsbaum, laufende Tests und CI prüfen; keinen
+parallelen Agenten auf denselben Dateien einsetzen.
+
 ## EDIT-02.4: Direkte Terminbearbeitung, 29.10.2026
 
 Datum und Zeitpaar bilden in der Eventakte einen gemeinsamen Blur-/Escape-
@@ -10,10 +41,11 @@ den nächsten Schritt. Komponenten-, API- und synthetische Browserprüfungen,
 unabhängiges Review und 1.634 Tests mit Coverage waren lokal grün; geänderte
 Zeilen 113/126, Zweige 91/110. Browserprüfung bei 320/1280 px und in beiden
 Themes; Format, Lint, Typen, Dokumentationsprüfung und Build grün. Ausgangsbasis
-war `237e206`, diese war zuletzt mit grünem CI und allen drei gesunden
-Containern ausgeliefert. Nach diesem Commit tatsächlichen CI- und Updaterstand
-prüfen; eine neuere Revision erst nach erfolgreicher Images- und
-Sicherungsprüfung als live bezeichnen. Echte Geschäftsdaten nicht verändern.
+war `237e206`. `42c1c5e` wurde nach grünem CI 40957584752 automatisch
+ausgeliefert: alle drei Container gesund auf dem exakten Commit, Checkpoint-
+Kopien auf Container, Host und Betreiberrechner mit gleicher Prüfsumme.
+Neuere Revisionen erst nach erfolgreicher Images- und Sicherungsprüfung als
+live bezeichnen. Echte Geschäftsdaten nicht verändern.
 
 ## EDIT-02.3: Eventkontakte und Picker-Zugänglichkeit, 28.10.2026
 

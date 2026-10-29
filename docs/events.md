@@ -59,7 +59,15 @@ Ressourcenformular geprüft werden. Die direkte Bearbeitung ändert dabei keine
 Ressourcenzuweisung. Bei Ablehnung bleibt der Entwurf für den Serverabgleich
 erhalten; die ausdrückliche Übernahme des Serverstands verwirft ihn.
 
-Weitere Kontaktrollen, interne Notizen und Status sind weiterhin über
+Interne Notizen können im Notizenbereich direkt bearbeitet werden. Der Editor
+zeigt vorhandene Formatierungen, bietet Fett, Kursiv, Unterstreichen und Links
+und fügt Inhalte aus der Zwischenablage als Text ein. Ein Verlassen des
+gesamten Editors speichert über dieselbe versionierte Event-Warteschlange;
+Escape verwirft nur den aktuellen ungesendeten Entwurf. Der Server bereinigt
+das gespeicherte HTML weiterhin. Konflikte und unklare Antworten erfordern
+einen ausdrücklichen Abgleich; aktive Entwürfe bleiben dabei erhalten.
+
+Weitere Kontaktrollen und Status sind weiterhin über
 die vorhandenen vollständigen Formulare bearbeitbar.
 Die atomaren Ressourcen- und Buchungsprüfungen bleiben maßgeblich; ein
 Stammdaten-Blur führt keine Ressourcenbuchung aus.

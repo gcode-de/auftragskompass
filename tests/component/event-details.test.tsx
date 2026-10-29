@@ -256,7 +256,7 @@ test('shows one record section and retains the selected section on a refreshed e
     screen.queryByRole('combobox', { name: 'Status des Events' }),
   ).toBeNull();
   expect(
-    screen.getByLabelText('Notizen: Synthetic detail event').textContent,
+    screen.getByRole('textbox', { name: 'Interne Notizen' }).textContent,
   ).toContain('Fictional note');
   view.rerender(<EventDetails {...props} revision={2} />);
   await vi.waitFor(() =>
@@ -270,6 +270,66 @@ test('shows one record section and retains the selected section on a refreshed e
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
   expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
+});
+
+test('internal notes save on blur and Escape discards the next draft without a PUT', async () => {
+  let current = { ...event };
+  const writes: Record<string, unknown>[] = [];
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      const body = JSON.parse(String(options.body)) as Record<string, unknown>;
+      writes.push(body);
+      current = {
+        ...current,
+        ...body,
+        notesHtml: '<strong>Sanitized server note</strong>',
+        version: current.version + 1,
+      };
+      return Response.json(current);
+    }
+    return Response.json({ ...detail, event: current });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="synthetic-csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', {
+    name: 'Event: Synthetic detail event',
+    level: 2,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+
+  const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
+  fireEvent.input(editor, {
+    target: { innerHTML: '<em>Fictional edited note</em>' },
+  });
+  fireEvent.blur(editor);
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toMatchObject({
+    version: 1,
+    notesHtml: '<em>Fictional edited note</em>',
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByRole('textbox', { name: 'Interne Notizen' }).innerHTML,
+    ).toBe('<strong>Sanitized server note</strong>'),
+  );
+
+  fireEvent.input(editor, {
+    target: { innerHTML: '<script>discard me</script>' },
+  });
+  fireEvent.keyDown(editor, { key: 'Escape' });
+  expect(writes).toHaveLength(1);
+  expect(
+    screen.getByRole('textbox', { name: 'Interne Notizen' }).innerHTML,
+  ).toBe('<strong>Sanitized server note</strong>');
 });
 
 test('a confirmed status save is reported even when the reload fails and can be retried', async () => {
@@ -1671,4 +1731,327 @@ test('contact reconciliation displays the actual details from the adopted server
   expect(
     screen.getByRole('link', { name: 'fictional@example.invalid' }),
   ).toBeTruthy();
+});
+
+test('active notes draft survives conflict, reconciliation and reapply', async () => {
+  const writes: Record<string, unknown>[] = [];
+  let failFirst!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    failFirst = resolve;
+  });
+  const remote = { ...event, version: 2, notesHtml: '<p>Fictional remote</p>' };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        const body = JSON.parse(String(options.body));
+        writes.push(body);
+        if (writes.length === 1) return pending;
+        return Response.json({
+          ...remote,
+          ...body,
+          version: writes.length + 1,
+        });
+      }
+      return Response.json({
+        ...detail,
+        event: writes.length ? remote : event,
+      });
+    }),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="synthetic"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  const notes = screen.getByRole('textbox', {
+    name: 'Interne Notizen',
+  }) as HTMLDivElement;
+  fireEvent.input(notes, {
+    target: { innerHTML: '<p>Fictional submitted</p>' },
+  });
+  fireEvent.blur(notes);
+  await waitFor(() => expect(writes).toHaveLength(1));
+  fireEvent.input(notes, {
+    target: { innerHTML: '<p>Fictional active draft</p>' },
+  });
+  failFirst(Response.json({}, { status: 409 }));
+  await screen.findByText(/Event wurde inzwischen geändert/);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Aktuellen Stand laden' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Meine abgeschlossenen Änderungen anwenden',
+    }),
+  );
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes[1]).toMatchObject({
+    version: 2,
+    notesHtml: '<p>Fictional submitted</p>',
+  });
+  expect(notes.innerHTML).toBe('<p>Fictional active draft</p>');
+  fireEvent.blur(notes);
+  await waitFor(() => expect(writes).toHaveLength(3));
+  expect(writes[2]).toMatchObject({
+    version: 3,
+    notesHtml: '<p>Fictional active draft</p>',
+  });
+});
+
+test('Escape keeps submitted and queued notes while discarding the current draft', async () => {
+  const writes: Record<string, unknown>[] = [];
+  let release!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        const body = JSON.parse(String(options.body));
+        writes.push(body);
+        return writes.length === 1
+          ? pending
+          : Response.json({ ...event, ...body, version: 3 });
+      }
+      return Response.json(detail);
+    }),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="synthetic"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  const notes = screen.getByRole('textbox', {
+    name: 'Interne Notizen',
+  }) as HTMLDivElement;
+  fireEvent.input(notes, { target: { innerHTML: '<p>Fictional first</p>' } });
+  fireEvent.blur(notes);
+  await waitFor(() => expect(writes).toHaveLength(1));
+  fireEvent.input(notes, { target: { innerHTML: '<p>Fictional queued</p>' } });
+  fireEvent.blur(notes);
+  fireEvent.input(notes, { target: { innerHTML: '<p>Fictional discard</p>' } });
+  fireEvent.keyDown(notes, { key: 'Escape' });
+  expect(notes.innerHTML).toBe('<p>Fictional queued</p>');
+  expect(writes).toHaveLength(1);
+  release(
+    Response.json({
+      ...event,
+      notesHtml: '<p>Fictional first</p>',
+      version: 2,
+    }),
+  );
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes[1]).toMatchObject({
+    version: 2,
+    notesHtml: '<p>Fictional queued</p>',
+  });
+  await waitFor(() => expect(notes.innerHTML).toBe('<p>Fictional queued</p>'));
+  expect(writes).toHaveLength(2);
+});
+
+test('empty clipboard and drop data preserve notes and locked notes reject insertion', async () => {
+  const fetcher = vi.fn(async () => Response.json(detail));
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="synthetic"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
+  const selectAll = () => {
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+  const initial = editor.innerHTML;
+  selectAll();
+  fireEvent.paste(editor, { clipboardData: { getData: () => '' } });
+  expect.soft(editor.innerHTML).toBe(initial);
+  editor.innerHTML = initial;
+  selectAll();
+  fireEvent.drop(editor, { dataTransfer: { getData: () => '' } });
+  expect.soft(editor.innerHTML).toBe(initial);
+  editor.innerHTML = initial;
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
+    target: { value: 'option' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  expect(editor.getAttribute('aria-disabled')).toBe('true');
+  selectAll();
+  fireEvent.paste(editor, {
+    clipboardData: { getData: () => 'Fictional blocked paste' },
+  });
+  expect.soft(editor.innerHTML).toBe(initial);
+  editor.innerHTML = initial;
+  selectAll();
+  fireEvent.drop(editor, {
+    dataTransfer: { getData: () => 'Fictional blocked drop' },
+  });
+  expect.soft(editor.innerHTML).toBe(initial);
+});
+
+test('notes formatting and safe links preserve the selected existing text', async () => {
+  const writes: Record<string, unknown>[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        const body = JSON.parse(String(options.body));
+        writes.push(body);
+        return Response.json({ ...event, ...body, version: 2 });
+      }
+      return Response.json(detail);
+    }),
+  );
+  const originalCommand = document.execCommand;
+  document.execCommand = vi.fn(() => true);
+  try {
+    render(
+      <EventDetails
+        statuses={statuses}
+        id="synthetic-event"
+        csrfToken="synthetic"
+        onChanged={vi.fn()}
+        onEdit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByRole('heading', {
+      name: 'Event: Synthetic detail event',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+    const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
+    expect(editor.innerHTML).toBe('<strong>Fictional note</strong>');
+    fireEvent.change(screen.getByLabelText('Linkadresse'), {
+      target: { value: 'https://example.invalid/fictional' },
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Link einfügen',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(editor.querySelector('a')).toBeNull();
+    editor.focus();
+    const selection = window.getSelection()!;
+    const range = document.createRange();
+    range.selectNodeContents(editor.querySelector('strong')!);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.mouseUp(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'Kursiv' }));
+    expect(document.execCommand).toHaveBeenCalledWith('italic');
+    fireEvent.change(screen.getByLabelText('Linkadresse'), {
+      target: { value: 'javascript:alert(1)' },
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Link einfügen',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.change(screen.getByLabelText('Linkadresse'), {
+      target: { value: 'https://example.invalid/fictional' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Link einfügen' }));
+    expect(editor.querySelector('a')?.getAttribute('href')).toBe(
+      'https://example.invalid/fictional',
+    );
+    expect(editor.querySelector('a')?.textContent).toBe('Fictional note');
+    expect(document.activeElement).toBe(editor);
+    fireEvent.blur(editor);
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]?.notesHtml).toContain('https://example.invalid/fictional');
+  } finally {
+    document.execCommand = originalCommand;
+  }
+});
+
+test('notes paste inserts plain text, Enter inserts a break, and oversize input is rejected', async () => {
+  const writes: Record<string, unknown>[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        const body = JSON.parse(String(options.body));
+        writes.push(body);
+        return Response.json({ ...event, ...body, version: 2 });
+      }
+      return Response.json(detail);
+    }),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="synthetic"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
+  editor.focus();
+  const original = editor.innerHTML;
+  fireEvent.compositionStart(editor);
+  fireEvent.input(editor, { target: { innerHTML: 'Fictional composing' } });
+  expect(writes).toHaveLength(0);
+  fireEvent.compositionEnd(editor);
+  expect(editor.textContent).toBe('Fictional composing');
+  fireEvent.keyDown(editor, { key: 'Escape' });
+  expect(editor.innerHTML).toBe(original);
+  const selection = window.getSelection()!;
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  fireEvent.paste(editor, {
+    clipboardData: {
+      getData: (type: string) =>
+        type === 'text/plain'
+          ? '<script>Fictional paste</script>'
+          : '<b>Ignored HTML</b>',
+    },
+  });
+  expect(editor.textContent).toBe('<script>Fictional paste</script>');
+  expect(editor.querySelector('script')).toBeNull();
+  fireEvent.keyDown(editor, { key: 'Enter' });
+  expect(editor.querySelector('br')).toBeTruthy();
+  const accepted = editor.innerHTML;
+  fireEvent.input(editor, { target: { innerHTML: 'x'.repeat(20001) } });
+  expect(editor.innerHTML).toBe(accepted);
+  expect(screen.getByText(/Die Notiz ist zu lang/)).toBeTruthy();
+  fireEvent.blur(editor);
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]?.notesHtml).toBe(accepted);
 });
