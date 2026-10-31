@@ -19,6 +19,11 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **DOC-PDF-01 — `feat: align document print layout with reference`**:
+  Gemeinsames Vorschau- und PDF-Layout am bereitgestellten Bookitup-Beispiel
+  ausrichten: Logo rechts, dezente Tabellenköpfe und gut lesbare Summen. Keine
+  Angaben erfinden; bestehende Dokumentinhalte und eingefrorene PDFs bewahren.
+
 - [x] **DOC-FOOT-01 — `fix: place document closing text after positions`**:
   In allen vom gemeinsamen Dokumenteditor unterstützten Dokumentarten und in
   Dokumentvorlagen den Schlusstext hinter den Positionen anordnen; Inhalte,

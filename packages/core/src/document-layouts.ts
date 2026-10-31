@@ -287,15 +287,18 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
     <title>${escapeHtml(input.documentNumber)}</title>
     <style>
       body { color: ${layout.textColor}; font-family: ${fontStacks[layout.fontFamily]}; font-size: 11pt; margin: 18mm 16mm; }
-      h1 { color: ${layout.primaryColor}; font-size: 15pt; margin: 6mm 0 3mm; }
-      .sender { border-bottom: 1px solid ${layout.primaryColor}; font-size: 8pt; padding-bottom: 1mm; }
+      h1 { font-size: 15pt; margin: 6mm 0 3mm; }
+      .sender { border-bottom: 1px solid #aaaaaa; font-size: 8pt; padding-bottom: 1mm; }
+      address { font-style: normal; }
       .meta { display: flex; justify-content: space-between; margin-bottom: 4mm; }
       table { border-collapse: collapse; width: 100%; }
-      th { border-bottom: 1px solid ${layout.primaryColor}; text-align: left; }
+      thead { background: #eeeeee; }
+      th { text-align: left; }
       td, th { padding: 1.5mm 1mm; }
       td:last-child, th:last-child, .totals td:last-child { text-align: right; }
       .totals { margin-top: 3mm; margin-left: auto; width: 60mm; }
-${pageNumbers}      .logo { display: block; max-height: 18mm; margin-bottom: 2mm; }
+      .totals tr:last-child { background: #eeeeee; font-weight: bold; }
+${pageNumbers}      .logo { display: block; max-height: 25mm; max-width: 50mm; width: auto; height: auto; margin-left: auto; margin-bottom: 2mm; }
     </style>
   </head>
   <body>

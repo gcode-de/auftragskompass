@@ -194,6 +194,13 @@ describe('renderDocumentHtml', () => {
       '<img class="logo" src="data:image/png;base64,QUJD" alt="">',
     );
   });
+  test('uses a restrained print layout with a right-aligned, bounded logo', () => {
+    const html = renderDocumentHtml(base);
+    expect(html).toContain('margin-left: auto');
+    expect(html).toContain('max-width: 50mm');
+    expect(html).toContain('thead { background: #eeeeee; }');
+    expect(html).toContain('.totals tr:last-child { background: #eeeeee;');
+  });
   test('escapes description, recipient and placeholders so nothing breaks out', () => {
     const html = renderDocumentHtml({
       ...base,
