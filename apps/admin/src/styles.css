@@ -1077,11 +1077,48 @@ time {
 .product-summary {
   font-variant-numeric: tabular-nums;
 }
+.contact-list {
+  list-style: none;
+  padding: 0;
+}
 .contact-list > li {
   scroll-margin-top: 6rem;
 }
+.contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.5rem;
+  background: var(--field-surface);
+}
+.contact-name-link {
+  display: flex;
+  align-items: center;
+  flex: 1 0 100%;
+  min-width: 0;
+  min-height: 44px;
+  color: var(--ink);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.contact-name-link:hover,
+.contact-name-link:focus-visible {
+  text-decoration: underline;
+}
+.contact-row > a:not(.contact-name-link) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--quiet-ink);
+}
+.contact-row > span {
+  color: var(--muted);
+}
 .contact-row > button {
-  margin: 0.25rem;
+  margin: 0 0 0 auto;
 }
 /* BKP011.1: the reading record opens inline in its row; it stays secondary to
    the page's single primary action and shows the stored values unabridged. */

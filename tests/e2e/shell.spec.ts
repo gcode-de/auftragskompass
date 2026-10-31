@@ -137,6 +137,60 @@ function contrast(a: string, b: string) {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
+test('contact rows keep names and actions readable on narrow screens', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.body.innerHTML = `<main class="workspace-page"><section><ul class="contact-list"><li><div class="contact-row"><a class="contact-name-link" href="#contact">Ein fiktiver Kontakt mit einem sehr langen Namen</a><span>Fiktive Ansprechpartnerin</span><a href="mailto:example@example.invalid">E-Mail</a><a href="tel:123">Anrufen</a><button class="icon-action tier-quiet-icon" aria-label="Kontakt bearbeiten">✎</button></div></li></ul></section></main>`;
+  });
+  for (const theme of ['light', 'dark']) {
+    await page
+      .locator('html')
+      .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      const values = await page.evaluate(() => {
+        const list = document.querySelector('.contact-list')!;
+        const row = document.querySelector('.contact-row')!;
+        const name = document.querySelector('.contact-name-link')!;
+        const mail = row.querySelector('a[href^="mailto:"]')!;
+        return {
+          marker: getComputedStyle(list).listStyleType,
+          nameWeight: getComputedStyle(name).fontWeight,
+          nameColor: getComputedStyle(name).color,
+          rowBackground: getComputedStyle(row).backgroundColor,
+          nameHeight: name.getBoundingClientRect().height,
+          mailHeight: mail.getBoundingClientRect().height,
+          overflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
+      expect(values.marker).toBe('none');
+      expect(Number(values.nameWeight)).toBeGreaterThanOrEqual(600);
+      expect(
+        contrast(values.nameColor, values.rowBackground),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(values.nameHeight).toBeGreaterThanOrEqual(44);
+      expect(values.mailHeight).toBeGreaterThanOrEqual(44);
+      expect(values.overflow).toBeLessThanOrEqual(0);
+      await page.screenshot({
+        path: `tests/test-results/contact-hierarchy-${theme}-${width}.png`,
+      });
+    }
+  }
+  await page.locator('.contact-name-link').focus();
+  await expect(page.locator('.contact-name-link')).toHaveCSS(
+    'outline-style',
+    'solid',
+  );
+  await page
+    .locator('.contact-row')
+    .evaluate((row) => row.setAttribute('hidden', ''));
+  await expect(page.locator('.contact-row')).toBeHidden();
+});
+
 test('event months and cards keep their hierarchy across themes and widths', async ({
   page,
 }) => {
