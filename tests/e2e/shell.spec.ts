@@ -137,6 +137,68 @@ function contrast(a: string, b: string) {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
+test('event months and cards keep their hierarchy across themes and widths', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.body.innerHTML = `<main class="workspace-page"><section><section class="event-month"><h2>Oktober 2030 <span class="event-month-count">· 2 Events</span></h2><ul class="event-list"><li class="event-card" data-status="booked"><div class="event-row"><a class="event-summary" href="#event"><span class="event-date"><span class="event-date-day">24</span></span><span class="event-body"><span class="event-status">Gebucht</span><span class="event-title">Eine fiktive Veranstaltung mit einem besonders langen Namen</span></span></a></div></li><li class="event-card" data-status="option"><div class="event-row"><span class="event-title">Weitere fiktive Veranstaltung</span></div></li></ul></section><section class="event-month"><h3>November 2030 <span class="event-month-count">· 1 Event</span></h3></section></section></main>`;
+  });
+  for (const theme of ['light', 'dark']) {
+    await page
+      .locator('html')
+      .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const values = await page.evaluate(() => {
+        const h2 = document.querySelector('.event-month h2')!;
+        const h3 = document.querySelector('.event-month h3')!;
+        const count = h2.querySelector('span')!;
+        const card = document.querySelector('.event-card')!;
+        const panel = document.querySelector('.workspace-page > section')!;
+        return {
+          month2: getComputedStyle(h2).backgroundColor,
+          month3: getComputedStyle(h3).backgroundColor,
+          card: getComputedStyle(card).backgroundColor,
+          cardText: getComputedStyle(card).color,
+          monthText: getComputedStyle(h2).color,
+          countText: getComputedStyle(count).color,
+          panel: getComputedStyle(panel).backgroundColor,
+          titleWeight: getComputedStyle(h2).fontWeight,
+          countWeight: getComputedStyle(count).fontWeight,
+          overflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
+      expect(values.month2).toBe(values.month3);
+      expect(values.card).not.toBe(values.panel);
+      expect(contrast(values.cardText, values.card)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(contrast(values.monthText, values.month2)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(contrast(values.countText, values.month2)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(Number(values.countWeight)).toBeLessThan(
+        Number(values.titleWeight),
+      );
+      expect(values.overflow).toBeLessThanOrEqual(0);
+      await page.screenshot({
+        path: `tests/test-results/event-hierarchy-${theme}-${width}.png`,
+      });
+    }
+  }
+  await page.locator('.event-summary').focus();
+  await expect(page.locator('.event-summary')).toBeFocused();
+  await expect(page.locator('.event-summary')).toHaveCSS(
+    'outline-style',
+    'solid',
+  );
+});
+
 test('both themes keep a neutral reference surface readable at 390 and 1280', async ({
   page,
 }) => {

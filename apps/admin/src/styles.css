@@ -1649,26 +1649,30 @@ summary {
 .event-month {
   margin-top: 2rem;
 }
-.event-month > h3 {
+.event-month > :is(h2, h3) {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.75rem;
   font-size: 1.1rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.75rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--table-surface);
 }
-.event-month > h3 span {
+.event-month > :is(h2, h3) span {
   font-size: 0.8rem;
   font-weight: 400;
   color: var(--muted);
 }
-.event-month > h3 span.event-month-count {
+.event-month > :is(h2, h3) span.event-month-count {
   font-variant-numeric: tabular-nums;
 }
 .event-list {
   list-style: none;
   padding: 0;
+  display: grid;
+  gap: 0.6rem;
 }
 .event-list > li {
   padding: 1.25rem 0;
@@ -1684,6 +1688,12 @@ summary {
 .event-list > li.event-card {
   padding: 1rem 0 1rem 0.85rem;
   border-inline-start: 3px solid var(--event-status-tone);
+}
+.event-list > li.event-card:has(> .event-row:not([hidden])) {
+  padding-right: 0.85rem;
+  border-bottom: 0;
+  border-radius: 0.5rem;
+  background: var(--field-surface);
 }
 :is(.event-card, .event-record-head)[data-status='inquiry'] {
   --event-status-tone: var(--status-inquiry);

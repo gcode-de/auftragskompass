@@ -24,6 +24,12 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   Bankverbindungs-Integrationstests anhand der neuen Darstellung aktualisieren;
   die Prüfungen auf unveränderte finale Dokumente und fehlende Zeilen erhalten.
 
+- [x] **BKP014.7 — `style: clarify event list hierarchy in both themes`**:
+  Monatsüberschriften auf Event- und Suchansicht gleichermaßen gestalten und
+  Eventzeilen durch dezente Flächen und Abstände besser unterscheiden. Namen,
+  Status, Tastaturbedienung und mobile Vollständigkeit bleiben erhalten;
+  Kontrast und Ansichten bei 320, 390, 768 und 1280 px in beiden Themes prüfen.
+
 - [x] **DOC-LOGO-01 — `feat: resize large logos before upload`**:
   Große PNG- und JPEG-Logos im Browser proportional verkleinern und innerhalb
   der bestehenden Uploadgrenze speichern; Fehler ohne unklaren Serverstand
