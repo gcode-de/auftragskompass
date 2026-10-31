@@ -333,10 +333,10 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     await fileInput.setInputFiles({
       name: 'fictional-too-large.png',
       mimeType: 'image/png',
-      buffer: Buffer.alloc(512 * 1024 + 1),
+      buffer: Buffer.alloc(10 * 1024 * 1024 + 1),
     });
     await uploadButton.click();
-    await expect(layout.getByRole('alert')).toContainText('512 KiB');
+    await expect(layout.getByRole('alert')).toContainText('10 MiB');
     expect(logoRequests).toHaveLength(0);
     expect(await documentLayoutRepository(pool, tenantId, store).get()).toEqual(
       initialRow,

@@ -19,6 +19,11 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **DOC-LOGO-01 — `feat: resize large logos before upload`**:
+  Große PNG- und JPEG-Logos im Browser proportional verkleinern und innerhalb
+  der bestehenden Uploadgrenze speichern; Fehler ohne unklaren Serverstand
+  melden und unveränderte kleinere Dateien weiterhin direkt hochladen.
+
 - [x] **DOC-PDF-01 — `feat: align document print layout with reference`**:
   Gemeinsames Vorschau- und PDF-Layout am bereitgestellten Bookitup-Beispiel
   ausrichten: Logo rechts, dezente Tabellenköpfe und gut lesbare Summen. Keine

@@ -389,13 +389,13 @@ test('logo size and type checks keep the saved layout and never send invalid fil
   fireEvent.click(screen.getByRole('button', { name: 'Logo hinzufügen' }));
   const input = screen.getByLabelText('Logodatei');
   const tooLarge = new File(
-    [new Uint8Array(512 * 1024 + 1)],
+    [new Uint8Array(10 * 1024 * 1024 + 1)],
     'large-logo.png',
     { type: 'image/png' },
   );
   fireEvent.change(input, { target: { files: [tooLarge] } });
   fireEvent.click(screen.getByRole('button', { name: 'Logo hochladen' }));
-  expect(screen.getByRole('alert').textContent).toContain('höchstens 512 KiB');
+  expect(screen.getByRole('alert').textContent).toContain('höchstens 10 MiB');
   expect(calls.filter((call) => call.url.endsWith('/logo'))).toHaveLength(0);
   expect(screen.getByText('large-logo.png')).toBeTruthy();
 
@@ -407,6 +407,74 @@ test('logo size and type checks keep the saved layout and never send invalid fil
   expect(screen.getByRole('alert').textContent).toContain(
     'PNG- oder JPEG-Datei',
   );
+  expect(calls.filter((call) => call.url.endsWith('/logo'))).toHaveLength(0);
+});
+
+test('resizes a large logo before sending it to the existing upload endpoint', async () => {
+  const bitmap = { width: 2400, height: 1200, close: vi.fn() };
+  vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue(bitmap));
+  const drawImage = vi.fn();
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    drawImage,
+  } as never);
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(
+    (callback) => callback(new Blob(['small'], { type: 'image/png' })),
+  );
+  const calls = api((_url, options) =>
+    options?.method === 'PUT'
+      ? Response.json({
+          ...saved,
+          version: 4,
+          logoKey: 'logo-fictional.png',
+          logoMediaType: 'image/png',
+        })
+      : Response.json(saved),
+  );
+  render(<DocumentLayoutPanel csrfToken="fictional-csrf" active />);
+  await screen.findByText(/Fictional Studio/);
+  fireEvent.click(screen.getByRole('button', { name: 'Logo hinzufügen' }));
+  fireEvent.change(screen.getByLabelText('Logodatei'), {
+    target: {
+      files: [
+        new File([new Uint8Array(600 * 1024)], 'large.png', {
+          type: 'image/png',
+        }),
+      ],
+    },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Logo hochladen' }));
+  expect(await screen.findByText('Logo gespeichert.')).toBeTruthy();
+  expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 1200, 600);
+  expect(
+    (calls.find((call) => call.url.endsWith('/logo'))?.options?.body as Blob)
+      .size,
+  ).toBeLessThanOrEqual(512 * 1024);
+  expect(bitmap.close).toHaveBeenCalled();
+});
+
+test('a failed logo resize keeps the selection without sending a request', async () => {
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn().mockRejectedValue(new Error('invalid image')),
+  );
+  const calls = api(() => Response.json(saved));
+  render(<DocumentLayoutPanel csrfToken="fictional-csrf" active />);
+  await screen.findByText(/Fictional Studio/);
+  fireEvent.click(screen.getByRole('button', { name: 'Logo hinzufügen' }));
+  fireEvent.change(screen.getByLabelText('Logodatei'), {
+    target: {
+      files: [
+        new File([new Uint8Array(600 * 1024)], 'invalid.png', {
+          type: 'image/png',
+        }),
+      ],
+    },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Logo hochladen' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'konnte nicht verkleinert',
+  );
+  expect(screen.getByText('invalid.png')).toBeTruthy();
   expect(calls.filter((call) => call.url.endsWith('/logo'))).toHaveLength(0);
 });
 

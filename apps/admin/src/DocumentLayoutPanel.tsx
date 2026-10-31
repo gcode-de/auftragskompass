@@ -1,6 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
+async function resizeLogo(file: File): Promise<Blob> {
+  if (file.size <= 512 * 1024) return file;
+  const bitmap = await createImageBitmap(file);
+  try {
+    let scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('canvas unavailable');
+    for (let attempt = 0; attempt < 8; attempt++) {
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const result = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, file.type, 0.85),
+      );
+      if (result && result.type === file.type && result.size <= 512 * 1024)
+        return result;
+      scale *= 0.7;
+    }
+    throw new Error('image too large');
+  } finally {
+    bitmap.close();
+  }
+}
+
 type LayoutInput = {
   senderName: string;
   senderStreet: string;
@@ -415,8 +440,8 @@ export function DocumentLayoutPanel({
       !logoFile
     )
       return;
-    if (logoFile.size > 512 * 1024) {
-      setError('Die Logodatei darf höchstens 512 KiB groß sein.');
+    if (logoFile.size > 10 * 1024 * 1024) {
+      setError('Die Logodatei darf höchstens 10 MiB groß sein.');
       return;
     }
     if (logoFile.type !== 'image/png' && logoFile.type !== 'image/jpeg') {
@@ -433,6 +458,19 @@ export function DocumentLayoutPanel({
     previewSequence.current++;
     setPreviewBusy(false);
     clearPreview();
+    let upload: Blob;
+    try {
+      upload = await resizeLogo(selectedFile);
+    } catch {
+      if (sequence === logoSequence.current) {
+        setError(
+          'Das Logo konnte nicht verkleinert werden. Bitte eine gültige PNG- oder JPEG-Datei auswählen.',
+        );
+        setBusy(false);
+      }
+      return;
+    }
+    if (sequence !== logoSequence.current) return;
     try {
       const response = await fetch('/api/v1/document-layout/logo', {
         method: 'PUT',
@@ -440,7 +478,7 @@ export function DocumentLayoutPanel({
           'content-type': selectedFile.type,
           'x-csrf-token': csrfToken,
         },
-        body: selectedFile,
+        body: upload,
       });
       if (sequence !== logoSequence.current) return;
       if (!response.ok) {
@@ -583,7 +621,8 @@ export function DocumentLayoutPanel({
                 />
               </label>
               <p id="document-layout-logo-help">
-                PNG oder JPEG, höchstens 512 KiB.
+                PNG oder JPEG, höchstens 10 MiB. Große Dateien werden
+                automatisch verkleinert.
               </p>
               {logoFile && <p>{logoFile.name}</p>}
               {busy && <p role="status">Logo wird hochgeladen …</p>}
