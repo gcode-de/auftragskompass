@@ -68,9 +68,9 @@ async function signInScenario(
   mode: 'google' | 'password',
   filesAudit = false,
 ) {
-  // The separate files matrix has its own budget; the remaining journey keeps
-  // its original budget and still exercises both authentication modes.
-  test.setTimeout(filesAudit ? 180000 : mode === 'password' ? 240000 : 180000);
+  // The full journeys include many accessibility checks and need more time on
+  // the shared CI runner. The separate files matrix keeps its own budget.
+  test.setTimeout(filesAudit ? 180000 : 360000);
   const dir = await mkdtemp(join(tmpdir(), 'ak-tls-'));
   const container = await new PostgreSqlContainer(
     'postgres:17.6-alpine',

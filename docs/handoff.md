@@ -1,5 +1,16 @@
 # Projektübergabe AuftragsKompass
 
+## CI-AUTH-01, 31.10.2026
+
+GitHub-Lauf 40963485443 scheiterte an Zeitlimits in zwei umfangreichen
+authentifizierten Chromiumabläufen (Google 180 s, Passwort 240 s). Beide
+erreichten zuvor zahlreiche echte Prüfungen; ein Hänger ist nicht belegt.
+CI-AUTH-01 hebt die Grenzen dieser beiden Abläufe auf jeweils 360 s an, ohne
+Assertions oder Prüfungen zu entfernen. Lokal bestanden beide Abläufe (1,3 und
+2,3 Minuten); die GitHub-CI muss die Änderung bestätigen. Das ist eine
+kurzfristige Stabilisierung, keine nachgewiesene Beschleunigung. Das Aufteilen
+der langen Abläufe bleibt sinnvoll, um CI-Laufzeit und Fehlersuche zu verbessern.
+
 ## Testaufwand: Nutzerhinweis, 29.10.2026
 
 Neue Tests gezielt auf relevante Verhaltensänderungen, Sicherheitsregeln und

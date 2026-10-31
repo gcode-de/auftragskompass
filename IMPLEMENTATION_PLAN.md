@@ -19,6 +19,17 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **CI-AUTH-01 — `test: allow time for full authenticated browser journeys`**:
+  GitHub-Lauf 40963485443 untersuchen: die bestehenden umfangreichen Google- und
+  Passwort-Abläufe erreichten ihre Zeitgrenzen, nachdem zahlreiche tatsächliche
+  Browser- und Barrierefreiheitsprüfungen durchgeführt wurden. Die Laufzeitgrenze
+  für diese beiden langen Abläufe angemessen erhöhen, ohne Prüfungen, Assertions
+  oder den separaten Dateien-Ablauf zu entfernen. Beide Abläufe gezielt ausführen;
+  anschließend die tatsächliche GitHub-CI und sichere automatische Auslieferung
+  prüfen. Weitere Entkopplung großer Tests bleibt ein eigener Schritt. Lokal
+  bestanden beide betroffenen Abläufe; Format, Lint, Typen und Docs sind grün.
+  Die Wirksamkeit muss der GitHub-Lauf noch bestätigen.
+
 - [x] **CI-EDIT-02.5 — `test: check notes editor in authenticated browser flows`**:
   Die beiden im vollständigen lokalen Chromiumlauf fehlgeschlagenen HTTPS-
   Anmeldeabläufe verwenden noch den nach EDIT-02.5 entfernten Vorschau-Selektor.
