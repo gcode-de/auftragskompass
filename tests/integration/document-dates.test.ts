@@ -667,18 +667,17 @@ test('a due day exists only on a final document with a payment term', async () =
 test('non-invoice documents print neither line and keep their exact bytes', async () => {
   const s = await scenario(),
     chain = await invoiceDraft(s);
-  // Golden hashes captured from the rendering before this slice: an offer, a
-  // confirmation and an invoice without a term must still produce exactly those
-  // bytes, because the print option is only ever set where a value exists.
+  // Golden hashes for the DOC-PDF-01 layout: an offer, a confirmation and an
+  // invoice without a term keep their exact bytes until the layout changes.
   const finalized = await s.repo.finalize(s.actor, chain.invoice.id);
   expect(chain.offer.snapshotHash).toBe(
-    'fb3ab8369022aa5fb048e1b9996688e5b3e9354124b45fc9b742eebdf2fff86f',
+    '3b9316518f0811b867ceb710c83d3fb8daa4ef731c55a6504989e83ee5af6d49',
   );
   expect(chain.confirmation.snapshotHash).toBe(
-    'a543e89f35f9265e4854844e25e37975f332f5f52a249cb665578fa22c0ce336',
+    '17ef66e847703dfaa0b7deeabbc35aecdb6c188a44f6f5f6c275f6180b987e86',
   );
   expect(finalized.snapshotHash).toBe(
-    '1cd17ed94accdb0a53af00cd148acea98c670576ddcf3656a6c0372ecef72d58',
+    'ae2fbcbecb36e056bae26142543b0b769d7174d7171c100cd1d68a10782ff3f8',
   );
   const invoiceHtml = s.rendered.at(-1)!;
   expect(invoiceHtml).not.toContain('Leistungsdatum');
@@ -1055,16 +1054,16 @@ test('documents without a bank account keep their exact bytes', async () => {
   const s = await scenario(),
     chain = await invoiceDraft(s),
     finalized = await s.repo.finalize(s.actor, chain.invoice.id);
-  // The three gold hashes of the dates slice: a document without an account
-  // prints no account line, so not one byte of it moves.
+  // The DOC-PDF-01 golden hashes also cover documents without an account;
+  // account-free output remains stable unless the layout changes deliberately.
   expect(chain.offer.snapshotHash).toBe(
-    'fb3ab8369022aa5fb048e1b9996688e5b3e9354124b45fc9b742eebdf2fff86f',
+    '3b9316518f0811b867ceb710c83d3fb8daa4ef731c55a6504989e83ee5af6d49',
   );
   expect(chain.confirmation.snapshotHash).toBe(
-    'a543e89f35f9265e4854844e25e37975f332f5f52a249cb665578fa22c0ce336',
+    '17ef66e847703dfaa0b7deeabbc35aecdb6c188a44f6f5f6c275f6180b987e86',
   );
   expect(finalized.snapshotHash).toBe(
-    '1cd17ed94accdb0a53af00cd148acea98c670576ddcf3656a6c0372ecef72d58',
+    'ae2fbcbecb36e056bae26142543b0b769d7174d7171c100cd1d68a10782ff3f8',
   );
   for (const html of s.rendered) expect(html).not.toContain('Bankverbindung');
 });

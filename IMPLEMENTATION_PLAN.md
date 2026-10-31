@@ -19,6 +19,11 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **CI-DOC-01 — `test: update document layout reference hashes`**:
+  Nach DOC-PDF-01 die synthetischen HTML-Referenzprüfsummen der Datums- und
+  Bankverbindungs-Integrationstests anhand der neuen Darstellung aktualisieren;
+  die Prüfungen auf unveränderte finale Dokumente und fehlende Zeilen erhalten.
+
 - [x] **DOC-LOGO-01 — `feat: resize large logos before upload`**:
   Große PNG- und JPEG-Logos im Browser proportional verkleinern und innerhalb
   der bestehenden Uploadgrenze speichern; Fehler ohne unklaren Serverstand
