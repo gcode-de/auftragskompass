@@ -50,7 +50,7 @@ test('all eight original labels, required flags, package values and privacy rema
     'Telefonnummer (optional)',
     'Veranstaltungsort (optional)',
     'Gewünschtes Fotobox-Paket (optional)',
-    'Kommentar (optional)',
+    'Details zur Veranstaltung (optional)',
   ])
     expect((screen.getByLabelText(label) as HTMLInputElement).required).toBe(
       false,
@@ -97,7 +97,9 @@ test('uncertain receipt keeps the same frozen request and disables editing until
   expect(bodies[1]).toBe(bodies[0]);
   expect(screen.queryByLabelText('Vorname *')).toBeNull();
   expect(screen.getByRole('status').textContent).not.toContain('Visitor');
-  expect(screen.getByRole('status').textContent).toContain('keine Buchung');
+  expect(screen.getByRole('status').textContent).toContain(
+    'Wir melden uns innerhalb von 24 Stunden!',
+  );
 });
 test('server rejection permits correction; rate limiting preserves the existing attempt and explains recovery', async () => {
   const fetcher = vi.fn(async () => new Response('{}', { status: 400 }));
@@ -163,9 +165,7 @@ test('the selected package remains fully readable on narrow screens and can retu
   render(<InquiryForm gatewayOrigin={origin} />);
   const select = screen.getByLabelText('Gewünschtes Fotobox-Paket (optional)');
   fireEvent.change(select, { target: { value: 'easy-print-plus' } });
-  expect(document.querySelector('.ak-package-choice')?.textContent).toBe(
-    'easy print+ (400 Ausdrucke, Drucklayout)',
-  );
+  expect(document.querySelector('.ak-package-choice')).toBeNull();
   fireEvent.change(select, { target: { value: '' } });
   expect(document.querySelector('.ak-package-choice')).toBeNull();
 });

@@ -42,8 +42,7 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
   const [state, setState] = useState<
       'editing' | 'sending' | 'uncertain' | 'received'
     >('editing'),
-    [error, setError] = useState<InquiryClientError['reason'] | null>(null),
-    [packageLabel, setPackageLabel] = useState<string | null>(null);
+    [error, setError] = useState<InquiryClientError['reason'] | null>(null);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -57,8 +56,8 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
     return (
       <section className="ak-inquiry" aria-label="Fotobox-Anfrage">
         <p role="status" ref={feedback} tabIndex={-1} className="ak-feedback">
-          Vielen Dank. Ihre Anfrage ist eingegangen. Damit ist noch keine
-          Buchung bestätigt.
+          Vielen Dank. Ihre Anfrage ist eingegangen. Wir melden uns innerhalb
+          von 24 Stunden!
         </p>
       </section>
     );
@@ -130,7 +129,9 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
                 }
               >
                 <label htmlFor={id + '-' + field.name}>
-                  {field.label}
+                  {field.name === 'comment'
+                    ? 'Details zur Veranstaltung'
+                    : field.label}
                   {field.required ? ' *' : ' (optional)'}
                 </label>
                 {field.type === 'textarea' ? (
@@ -148,13 +149,6 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
                       name={field.name}
                       defaultValue=""
                       disabled={state === 'uncertain'}
-                      onChange={(event) =>
-                        setPackageLabel(
-                          event.currentTarget.value
-                            ? event.currentTarget.selectedOptions[0]!.label
-                            : null,
-                        )
-                      }
                     >
                       <option value="">Noch nicht entschieden</option>
                       {field.options.map((option) => (
@@ -163,9 +157,6 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
                         </option>
                       ))}
                     </select>
-                    {packageLabel && (
-                      <p className="ak-package-choice">{packageLabel}</p>
-                    )}
                   </>
                 ) : (
                   <input

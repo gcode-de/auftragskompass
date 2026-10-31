@@ -19,6 +19,14 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **FORM-UI-01 — `fix: simplify website inquiry form presentation`**:
+  Websiteformular hell darstellen, Kommentar als „Details zur Veranstaltung“
+  beschriften, gewähltes Paket nicht wiederholen und die bestätigte Nachricht
+  um die vom Betreiber gewünschte 24-Stunden-Rückmeldung ergänzen. Feldnamen und
+  Transportvertrag bleiben unverändert. Acht betroffene Komponententests,
+  Chromium mit Hell-/Dunkel-Geräteeinstellung, Format, Lint, Typen, Docs und
+  Build lokal grün. CI und automatische Auslieferung separat prüfen.
+
 - [x] **CI-AUTH-01 — `test: allow time for full authenticated browser journeys`**:
   GitHub-Lauf 40963485443 untersuchen: die bestehenden umfangreichen Google- und
   Passwort-Abläufe erreichten ihre Zeitgrenzen, nachdem zahlreiche tatsächliche

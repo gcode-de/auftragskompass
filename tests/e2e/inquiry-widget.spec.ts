@@ -139,6 +139,7 @@ test('isolated public form is accessible in both themes at mobile, tablet and de
   }
   for (const theme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator('#inquiry')).toHaveCSS('color-scheme', 'light');
     await page.evaluate(
       (dark) => document.body.classList.toggle('dark', dark),
       theme === 'dark',
@@ -165,7 +166,7 @@ test('isolated public form is accessible in both themes at mobile, tablet and de
     .getByLabel('Gewünschtes Fotobox-Paket (optional)')
     .selectOption('easy-print-plus');
   await page
-    .getByLabel('Kommentar (optional)')
+    .getByLabel('Details zur Veranstaltung (optional)')
     .fill(
       'Fictional original <message> ' + 'Long fictional comment '.repeat(40),
     );
@@ -174,9 +175,7 @@ test('isolated public form is accessible in both themes at mobile, tablet and de
     'Eingang ist noch unklar',
   );
   await expect(page.getByLabel('Vorname *')).toHaveJSProperty('readOnly', true);
-  await expect(page.locator('.ak-package-choice')).toHaveText(
-    'easy print+ (400 Ausdrucke, Drucklayout)',
-  );
+  await expect(page.locator('.ak-package-choice')).toHaveCount(0);
   await expect(page.getByRole('alert')).toBeFocused();
   await inspect('widget-uncertain-mobile');
   expect(await inquiryInbox(pool, storage).pending(10, now)).toHaveLength(1);

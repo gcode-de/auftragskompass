@@ -1,5 +1,5 @@
 :host {
-  color-scheme: light dark;
+  color-scheme: light;
   --ak-surface: light-dark(#fff, #202824);
   --ak-ink: light-dark(#202d29, #e4ede7);
   --ak-muted: light-dark(#596b64, #afc2b6);
@@ -183,8 +183,4 @@
   .ak-inquiry button {
     inline-size: 100%;
   }
-}
-.ak-package-choice {
-  margin-block: 0.4rem 0;
-  color: var(--ak-muted);
 }

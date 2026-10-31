@@ -485,6 +485,12 @@ wurde versandt und die bestehende Website bleibt unverändert.
 
 ## Einbettbare Formular-Komponente (E004.18)
 
+FORM-UI-01: Das Websiteformular verwendet unabhängig vom Geräteschema die
+helle Darstellung. Das optionale Kommentarfeld heißt sichtbar „Details zur
+Veranstaltung“; sein technischer Feldname bleibt unverändert. Das gewählte
+Paket wird nur im Auswahlfeld gezeigt. Die Eingangsbestätigung kündigt die vom
+Betreiber gewünschte Rückmeldung innerhalb von 24 Stunden an.
+
 `mountInquiryForm(element, { gatewayOrigin })` rendert genau die bisherigen acht
 Felder in einem offenen Shadow DOM. Externe Website-Regeln verändern die Eingaben
 nicht; ein vom Modulstandort aufgelöstes externes Stylesheet wird vor dem Formular
