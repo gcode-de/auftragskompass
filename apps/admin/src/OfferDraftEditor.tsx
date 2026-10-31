@@ -825,16 +825,6 @@ export function OfferDraftEditor({
                 />
               </label>
               <label>
-                Schlusstext
-                <textarea
-                  value={values?.outroText ?? ''}
-                  maxLength={4000}
-                  rows={4}
-                  disabled={!values || loading || busy}
-                  onChange={(event) => change('outroText', event.target.value)}
-                />
-              </label>
-              <label>
                 Gültigkeit in Tagen
                 <input
                   type="number"
@@ -1143,6 +1133,16 @@ export function OfferDraftEditor({
                 {exactMinorUnits(detail.grossMinor) ?? '—'} €
               </p>
             </section>
+            <label>
+              Schlusstext
+              <textarea
+                value={values?.outroText ?? ''}
+                maxLength={4000}
+                rows={4}
+                disabled={!values || loading || busy}
+                onChange={(event) => change('outroText', event.target.value)}
+              />
+            </label>
             <div className="document-actions offer-draft-actions">
               <button
                 type="submit"

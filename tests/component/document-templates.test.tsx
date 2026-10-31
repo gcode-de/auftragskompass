@@ -197,6 +197,17 @@ function createdResponse(body: Record<string, unknown>) {
 function openCreate() {
   fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));
 }
+test('template closing text follows the positions', async () => {
+  setup(() => Response.json(template));
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findByRole('button', { name: 'Vorlage anlegen' });
+  openCreate();
+  const position = screen.getByRole('heading', { name: 'Positionen' });
+  expect(
+    position.compareDocumentPosition(screen.getByLabelText('Schlusstext')) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
 function openRowActions(name: string) {
   const toggle = screen.getByRole('button', {
     name: `Weitere Aktionen für ${name}`,

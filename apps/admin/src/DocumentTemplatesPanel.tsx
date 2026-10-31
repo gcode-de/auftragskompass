@@ -773,9 +773,9 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       ['name', nextDraft?.name ?? ''],
       ['subject', nextDraft?.subject ?? ''],
       ['introText', nextDraft?.introText ?? ''],
-      ['outroText', nextDraft?.outroText ?? ''],
       ['validityDays', String(nextDraft?.validityDays ?? 14)],
       ['state', nextDraft?.state ?? 'active'],
+      ['outroText', nextDraft?.outroText ?? ''],
     ]);
     baselinePositions.current = JSON.stringify(nextPositions);
     setEditorGeneration((current) => current + 1);
@@ -1691,19 +1691,6 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             </label>
             {placeholderPickerFor('introText')}
             <label>
-              Schlusstext
-              <textarea
-                name="outroText"
-                maxLength={4000}
-                defaultValue={draft?.outroText ?? ''}
-                onFocus={() => rememberPlaceholderCaret('outroText')}
-                onKeyUp={() => rememberPlaceholderCaret('outroText')}
-                onSelect={() => rememberPlaceholderCaret('outroText')}
-                onMouseUp={() => rememberPlaceholderCaret('outroText')}
-              />
-            </label>
-            {placeholderPickerFor('outroText')}
-            <label>
               Angebotsgültigkeit in Tagen
               <input
                 name="validityDays"
@@ -1829,6 +1816,19 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             >
               Position hinzufügen
             </button>
+            <label>
+              Schlusstext
+              <textarea
+                name="outroText"
+                maxLength={4000}
+                defaultValue={draft?.outroText ?? ''}
+                onFocus={() => rememberPlaceholderCaret('outroText')}
+                onKeyUp={() => rememberPlaceholderCaret('outroText')}
+                onSelect={() => rememberPlaceholderCaret('outroText')}
+                onMouseUp={() => rememberPlaceholderCaret('outroText')}
+              />
+            </label>
+            {placeholderPickerFor('outroText')}
             <button className="primary-action" disabled={previewBusy}>
               Vorlage speichern
             </button>

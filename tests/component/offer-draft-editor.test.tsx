@@ -296,6 +296,11 @@ test('a draft opens focused with editable saved positions and previews only pers
   expect(fieldValue('Gültigkeit in Tagen')).toBe('14');
   const firstPosition = screen.getByRole('group', { name: 'Position 1' });
   expect(
+    firstPosition.compareDocumentPosition(
+      screen.getByLabelText('Schlusstext'),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
     (
       screen.getByLabelText('Beschreibung', {
         selector: 'input',

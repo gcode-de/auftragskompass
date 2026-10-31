@@ -19,6 +19,12 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **DOC-FOOT-01 — `fix: place document closing text after positions`**:
+  In allen vom gemeinsamen Dokumenteditor unterstützten Dokumentarten und in
+  Dokumentvorlagen den Schlusstext hinter den Positionen anordnen; Inhalte,
+  Speicherung und Platzhalter unverändert lassen. Reihenfolge gezielt getestet;
+  128 betroffene Komponententests, ein Chromium-Ablauf und schnelle Gates grün.
+
 - [x] **FORM-UI-01 — `fix: simplify website inquiry form presentation`**:
   Websiteformular hell darstellen, Kommentar als „Details zur Veranstaltung“
   beschriften, gewähltes Paket nicht wiederholen und die bestätigte Nachricht
