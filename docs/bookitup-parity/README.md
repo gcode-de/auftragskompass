@@ -25,6 +25,12 @@ Explizite neue Vorgaben:
 
 ## Lesereihenfolge für einen neuen Agenten
 
+**Neue Ressourcenbeobachtung vom 01.11.2026:** Das zuvor eingeschränkte
+Modul wurde lesend untersucht. Für aktuelle Einzelheiten und ausdrücklich
+unbekannte Regeln gilt [Ressourcen: Beobachtung und Umsetzungsauftrag](resources-2026-11-01.md).
+Ältere Hinweise auf eine generell gesperrte Ressourcenanlage sind überholt;
+die produktbezogene Automatik zeigte weiterhin eine Upgrade-Schranke.
+
 1. [AGENTS.md](../../AGENTS.md), [Projektübergabe](../handoff.md), relevante Anforderungen im [Lastenheft](../../Lastenheft_Fotobox-Verwaltung_MVP.md), aktuellen [Implementierungsplan](../../IMPLEMENTATION_PLAN.md).
 2. [Beobachtungen und Funktionsvergleich](observations.md): Was wurde wirklich gesehen, was nur im Code festgestellt, was ist offen?
 3. [UI- und Interaktionsvertrag](design-contract.md): Zielanordnung, mobile Regeln, Filter, Details, Themes und Fehlerzustände.
