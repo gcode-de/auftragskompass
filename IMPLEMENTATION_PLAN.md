@@ -19,6 +19,10 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **BKP030.2 — `docs: capture event resource planning reference`**:
+  Die beobachtete Event-Ressourcennavigation und den ungespeicherten Dialog
+  für Planungsgruppen ergänzen, ohne reale Eventdaten oder Speicherannahmen.
+
 - [x] **BKP010.4 — `style: clarify product list hierarchy`**:
   Produktnamen und Preis-/Steuer-/Statusangaben klar gliedern und vorhandene
   Aktionen ausrichten; Suche, Archivierung, exakte Beträge und Dialoge erhalten.
