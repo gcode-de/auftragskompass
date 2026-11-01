@@ -224,6 +224,16 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 
 ## Components
 
+- **Stammdatenkataloge (BKP-MASTER-01):** Eventarten, Paketwerte und
+  Absagegründe zeigen zunächst ihre vorhandenen Einträge. Ein nativer
+  Aufklappbereich öffnet den Editor; Bearbeiten öffnet und fokussiert ihn.
+  Einklappen erhält den Entwurf und kennzeichnet ungespeicherte Eingaben.
+  Ein Wechsel zu einem anderen Eintrag fragt vor dem Verwerfen nach. Listen
+  und Bedienelemente behalten die 44px-Ziele und umbrechen bei wenig Platz.
+  Ist Speichern bestätigt, aber der Listenabruf fehlgeschlagen, bleibt die
+  Bearbeitung bis zur erfolgreichen Aktualisierung gesperrt und die Meldung
+  unterscheidet den bestätigten Schreibvorgang vom fehlenden Abgleich.
+
 - **Produktliste (BKP010.4):** Produktname und Preis-/Steuer-/Zustandsangaben
   stehen in einer ruhigen Zeile untereinander; Bearbeiten und weitere Aktionen
   bleiben daneben und können mobil umbrechen. Aufgeklappte Aktionen stehen

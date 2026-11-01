@@ -137,6 +137,36 @@ function contrast(a: string, b: string) {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
+test('master data disclosure stays usable on mobile and desktop in both themes', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.body.innerHTML = `<main class="workspace-page"><section><h2>Fiktive Stammdaten</h2><ul class="master-data-list"><li><span>Eine besonders lange fiktive Bezeichnung – Aktiv</span><button class="secondary-action">Bearbeiten</button></li></ul><details class="master-data-editor"><summary>Eintrag hinzufügen</summary><form><label>Bezeichnung<input></label><button class="primary-action">Speichern</button></form></details></section></main>`;
+  });
+  for (const theme of ['light', 'dark']) {
+    await page
+      .locator('html')
+      .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect(page.getByRole('textbox')).toBeHidden();
+      await page.getByText('Eintrag hinzufügen').click();
+      await expect(page.getByRole('textbox')).toBeVisible();
+      const overflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+      await page.screenshot({
+        path: `tests/test-results/master-data-${theme}-${width}.png`,
+      });
+      await page.getByText('Eintrag hinzufügen').click();
+    }
+  }
+});
+
 test('product rows keep their details and actions usable in both themes', async ({
   page,
 }) => {

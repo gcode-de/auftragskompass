@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { registerUnsavedChanges } from './unsaved-changes.js';
 type Entry = {
   id: string;
   name: string;
@@ -20,16 +21,27 @@ export function MasterDataPanel({
    * carries that page's single dominant save action. */
   primary?: boolean;
 }) {
+  const editor = useRef<HTMLDetailsElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const saving = useRef(false);
   const [rows, setRows] = useState<Entry[]>([]),
     [draft, setDraft] = useState(empty);
   const [editing, setEditing] = useState<Entry | null>(null);
   const [message, setMessage] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [reloadFailed, setReloadFailed] = useState(false);
+  const baseline = editing ?? empty;
+  const dirty =
+    draft.name !== baseline.name ||
+    draft.position !== baseline.position ||
+    draft.state !== baseline.state;
+  useEffect(() => registerUnsavedChanges(() => dirty), [dirty]);
   const url = '/api/v1/master-data/' + kind;
   async function refresh() {
     const response = await fetch(url);
     if (!response.ok) throw new Error('load');
     setRows((await response.json()) as Entry[]);
+    setReloadFailed(false);
   }
   useEffect(() => {
     void refresh().catch(() =>
@@ -37,6 +49,8 @@ export function MasterDataPanel({
     );
   }, [kind]);
   async function save() {
+    if (saving.current || reloadFailed) return;
+    saving.current = true;
     setBusy(true);
     setMessage('');
     try {
@@ -62,110 +76,76 @@ export function MasterDataPanel({
         );
         return;
       }
-      await refresh();
+      let refreshed = true;
+      try {
+        await refresh();
+      } catch {
+        refreshed = false;
+        setReloadFailed(true);
+      }
       setEditing(null);
       setDraft(empty);
-      setMessage('Gespeichert.');
+      if (editor.current) {
+        const restoreFocus = editor.current.contains(document.activeElement);
+        editor.current.open = false;
+        if (restoreFocus) editor.current.querySelector('summary')?.focus();
+      }
+      setMessage(
+        refreshed
+          ? 'Gespeichert.'
+          : 'Gespeichert, aber die Liste konnte nicht aktualisiert werden. Bitte Liste aktualisieren.',
+      );
     } catch {
       setMessage('Verbindung fehlgeschlagen. Deine Eingabe bleibt erhalten.');
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
   return (
     <section aria-label={title}>
       <h2>{title}</h2>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-      >
-        <fieldset disabled={busy}>
-          <legend>{editing ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}</legend>
-          <label htmlFor={`${kind}-name`}>Bezeichnung</label>
-          <input
-            id={`${kind}-name`}
-            required
-            maxLength={120}
-            value={draft.name}
-            onChange={(event) =>
-              setDraft({ ...draft, name: event.target.value })
-            }
-          />
-          <label htmlFor={`${kind}-position`}>Sortierung</label>
-          <input
-            id={`${kind}-position`}
-            type="number"
-            min={0}
-            max={9999}
-            required
-            value={draft.position}
-            onChange={(event) =>
-              setDraft({ ...draft, position: Number(event.target.value) })
-            }
-          />
-          <label htmlFor={`${kind}-state`}>Zustand</label>
-          <select
-            id={`${kind}-state`}
-            value={draft.state}
-            onChange={(event) =>
-              setDraft({ ...draft, state: event.target.value })
-            }
-          >
-            <option value="active">Aktiv</option>
-            <option value="inactive">Inaktiv</option>
-            <option value="archived">Archiviert</option>
-          </select>
-          <button className={primary ? 'primary-action' : 'secondary-action'}>
-            Speichern
-          </button>
-          {editing && (
-            <button
-              type="button"
-              className="tertiary-action"
-              onClick={() => {
-                setEditing(null);
-                setDraft(empty);
-              }}
-            >
-              Abbrechen
-            </button>
-          )}
-        </fieldset>
-      </form>
       <button
         className="tertiary-action"
         disabled={busy}
         onClick={() =>
-          void refresh().catch(() =>
-            setMessage('Liste konnte nicht geladen werden.'),
-          )
+          void refresh()
+            .then(() => setMessage('Liste aktualisiert.'))
+            .catch(() => setMessage('Liste konnte nicht geladen werden.'))
         }
       >
         Liste aktualisieren
       </button>
       <p role="status">{message}</p>
-      <ul>
+      <ul className="master-data-list">
         {rows.map((row) => (
           <li key={row.id}>
-            {row.name} –{' '}
-            {row.state === 'active'
-              ? 'Aktiv'
-              : row.state === 'inactive'
-                ? 'Inaktiv'
-                : 'Archiviert'}{' '}
+            <span>
+              {row.name} –{' '}
+              {row.state === 'active'
+                ? 'Aktiv'
+                : row.state === 'inactive'
+                  ? 'Inaktiv'
+                  : 'Archiviert'}
+            </span>{' '}
             <button
               className="secondary-action"
-              disabled={busy}
+              disabled={busy || reloadFailed}
               aria-label={`Bearbeiten: ${row.name}`}
               onClick={() => {
+                if (
+                  dirty &&
+                  !window.confirm('Ungespeicherte Eingaben verwerfen?')
+                )
+                  return;
+                if (editor.current) editor.current.open = true;
                 setEditing(row);
                 setDraft({
                   name: row.name,
                   position: row.position,
                   state: row.state,
                 });
+                nameInput.current?.focus();
               }}
             >
               Bearbeiten
@@ -173,6 +153,72 @@ export function MasterDataPanel({
           </li>
         ))}
       </ul>
+      <details className="master-data-editor" ref={editor}>
+        <summary>
+          {editing ? 'Eintrag bearbeiten' : 'Eintrag hinzufügen'}
+          {dirty && <span> · Ungespeichert</span>}
+        </summary>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <fieldset disabled={busy || reloadFailed}>
+            <legend>{editing ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}</legend>
+            <label htmlFor={`${kind}-name`}>Bezeichnung</label>
+            <input
+              ref={nameInput}
+              id={`${kind}-name`}
+              required
+              maxLength={120}
+              value={draft.name}
+              onChange={(event) =>
+                setDraft({ ...draft, name: event.target.value })
+              }
+            />
+            <label htmlFor={`${kind}-position`}>Sortierung</label>
+            <input
+              id={`${kind}-position`}
+              type="number"
+              min={0}
+              max={9999}
+              required
+              value={draft.position}
+              onChange={(event) =>
+                setDraft({ ...draft, position: Number(event.target.value) })
+              }
+            />
+            <label htmlFor={`${kind}-state`}>Zustand</label>
+            <select
+              id={`${kind}-state`}
+              value={draft.state}
+              onChange={(event) =>
+                setDraft({ ...draft, state: event.target.value })
+              }
+            >
+              <option value="active">Aktiv</option>
+              <option value="inactive">Inaktiv</option>
+              <option value="archived">Archiviert</option>
+            </select>
+            <button className={primary ? 'primary-action' : 'secondary-action'}>
+              Speichern
+            </button>
+            {editing && (
+              <button
+                type="button"
+                className="tertiary-action"
+                onClick={() => {
+                  setEditing(null);
+                  setDraft(empty);
+                }}
+              >
+                Abbrechen
+              </button>
+            )}
+          </fieldset>
+        </form>
+      </details>
       <p>Archivierte Einträge bleiben für bestehende Zuordnungen erhalten.</p>
     </section>
   );

@@ -3020,6 +3020,7 @@ async function signInScenario(
     });
     await navigate('Einstellungen', 'Stammdaten');
     const packages = page.getByRole('region', { name: 'Paketwerte' });
+    await packages.getByText('Eintrag hinzufügen', { exact: true }).click();
     await packages
       .getByLabel('Bezeichnung', { exact: true })
       .fill('Synthetic browser package');

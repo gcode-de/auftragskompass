@@ -11,6 +11,7 @@ import {
   MasterDataPanel,
   MasterDataSettings,
 } from '../../apps/admin/src/MasterDataPanel.js';
+import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -22,6 +23,86 @@ const row = {
   position: 0,
   version: 1,
 };
+test('keeps catalog editors closed until needed and protects a pending draft', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json([row])),
+  );
+  const confirm = vi.fn(() => false);
+  vi.stubGlobal('confirm', confirm);
+  render(
+    <MasterDataPanel kind="package" title="Paketwerte" csrfToken="csrf" />,
+  );
+  await screen.findByRole('button', { name: 'Bearbeiten: Synthetic entry' });
+  expect(screen.getByText('Eintrag hinzufügen').closest('details')?.open).toBe(
+    false,
+  );
+  fireEvent.click(screen.getByText('Eintrag hinzufügen'));
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Unsaved synthetic' },
+  });
+  fireEvent.click(screen.getByText('Eintrag hinzufügen'));
+  expect(screen.getByText('Ungespeichert', { exact: false })).toBeTruthy();
+  expect(screen.getByText('Eintrag hinzufügen').closest('details')?.open).toBe(
+    false,
+  );
+  expect(hasUnsavedChanges()).toBe(true);
+  fireEvent.click(screen.getByText('Eintrag hinzufügen'));
+  expect((screen.getByLabelText('Bezeichnung') as HTMLInputElement).value).toBe(
+    'Unsaved synthetic',
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeiten: Synthetic entry' }),
+  );
+  expect(confirm).toHaveBeenCalled();
+  expect((screen.getByLabelText('Bezeichnung') as HTMLInputElement).value).toBe(
+    'Unsaved synthetic',
+  );
+});
+test('a confirmed save followed by a failed refresh cannot be submitted twice', async () => {
+  let failRefresh = false;
+  let writes = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        writes++;
+        failRefresh = true;
+        return Response.json(row);
+      }
+      if (failRefresh) throw new Error('offline');
+      return Response.json([row]);
+    }),
+  );
+  render(
+    <MasterDataPanel kind="package" title="Paketwerte" csrfToken="csrf" />,
+  );
+  await screen.findByText('Synthetic entry – Aktiv');
+  fireEvent.click(screen.getByText('Eintrag hinzufügen'));
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), {
+    target: { value: 'Synthetic new' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Gespeichert.*Liste konnte nicht aktualisiert/);
+  fireEvent.click(screen.getByText('Eintrag hinzufügen'));
+  expect(
+    screen.getByRole('button', { name: 'Speichern' }).matches(':disabled'),
+  ).toBe(true);
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Speichern' }).closest('form')!,
+  );
+  expect(writes).toBe(1);
+  failRefresh = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Liste aktualisieren' }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Speichern' }).matches(':disabled'),
+    ).toBe(false),
+  );
+  expect(writes).toBe(1);
+});
 test('creates, edits, archives and cancels using native accessible controls', async () => {
   let rows = [row];
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
@@ -37,6 +118,7 @@ test('creates, edits, archives and cancels using native accessible controls', as
   fireEvent.click(
     await screen.findByRole('button', { name: 'Bearbeiten: Synthetic entry' }),
   );
+  expect(document.activeElement).toBe(screen.getByLabelText('Bezeichnung'));
   fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
   expect((screen.getByLabelText('Bezeichnung') as HTMLInputElement).value).toBe(
     '',
@@ -93,6 +175,7 @@ test('retains drafts on conflict, duplicate, denied and network errors', async (
     <MasterDataPanel kind="package" title="Paketwerte" csrfToken="csrf" />,
   );
   await screen.findByText('Synthetic entry – Inaktiv');
+  fireEvent.click(screen.getByText('Eintrag hinzufügen'));
   fireEvent.change(screen.getByLabelText('Bezeichnung'), {
     target: { value: 'Keep draft' },
   });

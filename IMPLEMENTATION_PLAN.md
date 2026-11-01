@@ -24,6 +24,14 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   Den aktuellen tenant-lokalen Monat prüfen und für die 31-Tage-Geometrie ein
   festes synthetisches Datum wählen; keine Prüfungen oder Zeitgrenzen entfernen.
 
+- [x] **BKP-MASTER-01 — `style: simplify master data editing`**:
+  Die drei Stammdatenkataloge listenorientiert darstellen und ihre bisher
+  ständig sichtbaren Formulare erst bei Bedarf öffnen. Ein- und Ausklappen
+  erhält Entwürfe; Bearbeiten öffnet den Editor, der Wechsel verwirft keine
+  unbestätigte Eingabe ohne Rückfrage. Bestätigte Speicherung mit fehlgeschlagenem
+  Listenabruf klar melden und erneutes Speichern bis zum Abgleich sperren.
+  Bestehende API und Versionen erhalten.
+
 - [x] **BKP030.2 — `docs: capture event resource planning reference`**:
   Die beobachtete Event-Ressourcennavigation und den ungespeicherten Dialog
   für Planungsgruppen ergänzen, ohne reale Eventdaten oder Speicherannahmen.

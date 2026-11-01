@@ -314,6 +314,7 @@ test('settings lists render one primary action and name every other tier', async
   );
   const master = screen.getByRole('region', { name: 'Paketwerte' });
   await within(master).findByText(/Synthetic entry/);
+  fireEvent.click(within(master).getByText('Eintrag hinzufügen'));
   expectHierarchy(master, 'Stammdaten');
   expect(tier(within(master).getByRole('button', { name: 'Speichern' }))).toBe(
     'primary-action',
