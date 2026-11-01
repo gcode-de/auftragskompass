@@ -19,6 +19,11 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **CI-CALENDAR-01 — `test: remove calendar month dependency`**:
+  Der große Chromiumablauf erwartet beim Kalenderstart irrtümlich Oktober.
+  Den aktuellen tenant-lokalen Monat prüfen und für die 31-Tage-Geometrie ein
+  festes synthetisches Datum wählen; keine Prüfungen oder Zeitgrenzen entfernen.
+
 - [x] **BKP030.2 — `docs: capture event resource planning reference`**:
   Die beobachtete Event-Ressourcennavigation und den ungespeicherten Dialog
   für Planungsgruppen ergänzen, ohne reale Eventdaten oder Speicherannahmen.

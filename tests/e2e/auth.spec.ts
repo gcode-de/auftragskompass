@@ -4787,9 +4787,20 @@ async function signInScenario(
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
     }
+    const currentMonth = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'Europe/Berlin',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date());
     await expect(
       calendar.getByRole('group', { name: 'Kalenderzeitraum' }),
-    ).toContainText('Oktober');
+    ).toContainText(currentMonth);
+    // Keep the 31-day geometry check independent of the day the test runs.
+    await calendar.getByLabel('Kalenderdatum').fill('2030-10-20');
+    await expect(
+      calendar.getByRole('group', { name: 'Kalenderzeitraum' }),
+    ).toContainText('Oktober 2030');
+    await expect(calendar.locator('.calendar-day')).toHaveCount(31);
     const occupancy = calendar.locator('summary', {
       hasText: 'Ressourcenbelegung',
     });
