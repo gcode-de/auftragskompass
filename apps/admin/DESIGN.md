@@ -224,6 +224,12 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 
 ## Components
 
+- **Ressourcenliste (BKP009.3):** Jede vorhandene Ressource erscheint als
+  ruhige Zeile mit hervorgehobenem Namen, darunter Bestand, Kategorie und
+  Status; die Bearbeiten-Aktion ist am Zeilenende ausgerichtet und bleibt
+  mindestens 44px hoch. Auf schmalen Flächen dürfen Name und Aktion umbrechen.
+  Suche, Filter und die getrennte Sperrverwaltung bleiben unverändert.
+
 - **Kontaktliste (BKP011.2):** Die Listenansicht verwendet ruhige Flächen
   `field-surface` ohne Aufzählungspunkte. Der vollständige Kontaktname steht
   hervorgehoben in einer eigenen Zeile; Ansprechpartner, Archivstatus und

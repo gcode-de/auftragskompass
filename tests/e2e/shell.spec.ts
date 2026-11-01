@@ -137,6 +137,59 @@ function contrast(a: string, b: string) {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
+test('resource rows keep their details and edit action usable in both themes', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.body.innerHTML = `<main class="workspace-page"><section><ul class="resource-list"><li class="resource-row"><span class="resource-summary"><strong>Fiktive Ressource mit einem besonders langen Namen</strong><span class="sr-only"> – </span><span class="resource-meta">2 Stück – Fiktive Kategorie – Aktiv</span></span><button class="secondary-action">Bearbeiten</button></li></ul></section></main>`;
+  });
+  for (const theme of ['light', 'dark']) {
+    await page
+      .locator('html')
+      .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      const values = await page.evaluate(() => {
+        const row = document.querySelector('.resource-row')!;
+        const name = row.querySelector('strong')!;
+        const meta = row.querySelector('.resource-meta')!;
+        const button = row.querySelector('button')!;
+        return {
+          background: getComputedStyle(row).backgroundColor,
+          name: getComputedStyle(name).color,
+          meta: getComputedStyle(meta).color,
+          nameWeight: getComputedStyle(name).fontWeight,
+          metaWeight: getComputedStyle(meta).fontWeight,
+          buttonHeight: button.getBoundingClientRect().height,
+          overflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
+      expect(contrast(values.name, values.background)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(contrast(values.meta, values.background)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(Number(values.nameWeight)).toBeGreaterThan(
+        Number(values.metaWeight),
+      );
+      expect(values.buttonHeight).toBeGreaterThanOrEqual(44);
+      expect(values.overflow).toBeLessThanOrEqual(0);
+      await page.screenshot({
+        path: `tests/test-results/resource-hierarchy-${theme}-${width}.png`,
+      });
+    }
+  }
+  await page.getByRole('button', { name: 'Bearbeiten' }).focus();
+  await expect(page.getByRole('button', { name: 'Bearbeiten' })).toHaveCSS(
+    'outline-style',
+    'solid',
+  );
+});
+
 test('contact rows keep names and actions readable on narrow screens', async ({
   page,
 }) => {

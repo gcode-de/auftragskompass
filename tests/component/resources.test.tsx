@@ -10,6 +10,9 @@ import {
   within,
 } from '@testing-library/react';
 import { ResourcePanel } from '../../apps/admin/src/ResourcePanel.js';
+const summaryText = (value: string) => (_: string, element: Element | null) =>
+  element?.classList.contains('resource-summary') === true &&
+  element.textContent?.replace(/\s+/g, ' ').trim() === value;
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -92,7 +95,7 @@ test('the resource page starts with the compact toolbar and the list, without an
   render(<ResourcePanel csrfToken="csrf" />);
   const resources = screen.getByRole('region', { name: 'Ressourcen' });
   await within(resources).findByText(
-    'Synthetic box – 1 Stück – Fotobox – Aktiv',
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
   );
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByLabelText('Bezeichnung')).toBeNull();
@@ -111,12 +114,22 @@ test('the resource page starts with the compact toolbar and the list, without an
   expect(create.textContent).toBe('');
   expect(create.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   // The list states name, quantity, category, state and the block flag.
+  expect(screen.getByText('Synthetic box').tagName).toBe('STRONG');
   expect(
-    screen.getByText('Synthetic spare – 2 Stück – Zubehör – Inaktiv'),
+    screen
+      .getByRole('button', { name: 'Ressource bearbeiten: Synthetic box' })
+      .closest('li'),
+  ).toBe(screen.getByText('Synthetic box').closest('li'));
+  expect(
+    screen.getByText(
+      summaryText('Synthetic spare – 2 Stück – Zubehör – Inaktiv'),
+    ),
   ).toBeTruthy();
   expect(
     screen.getByText(
-      'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      summaryText(
+        'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      ),
     ),
   ).toBeTruthy();
   expect(screen.getByRole('region', { name: 'Ressourcen' })).toBeTruthy();
@@ -140,7 +153,9 @@ test('the resource page starts with the compact toolbar and the list, without an
 test('the plus action opens an accessible dialog with focus, focus trap, cancel and Escape return', async () => {
   vi.stubGlobal('fetch', listFetcher());
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   const create = screen.getByRole('button', { name: 'Ressource anlegen' });
   create.focus();
   const dialog = await openCreate();
@@ -200,7 +215,9 @@ test('keeps the complete field contract and edits with the row version', async (
     }),
   );
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   let dialog = await openCreate();
   const fields: [string, string, string][] = [
     ['Bezeichnung', '', '120'],
@@ -279,7 +296,9 @@ test('returns focus to the plus action when the edited row disappears after savi
     }),
   );
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   const dialog = await openEdit('Synthetic box');
   fireEvent.change(within(dialog).getByLabelText('Zustand'), {
     target: { value: 'archived' },
@@ -296,7 +315,9 @@ test('an untouched dialog is not dirty and a changed draft needs an explicit dis
   const confirm = vi.fn(() => false);
   vi.stubGlobal('confirm', confirm);
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   let dialog = await openEdit('Synthetic box');
   expect(hasUnsavedChanges()).toBe(false);
   fireEvent.change(within(dialog).getByLabelText('Bezeichnung'), {
@@ -335,7 +356,9 @@ test('a double submit sends exactly one mutation and holds the dialog open while
   );
   vi.stubGlobal('fetch', fetcher);
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   const dialog = await openEdit('Synthetic box');
   fireEvent.change(within(dialog).getByLabelText('Bezeichnung'), {
     target: { value: 'Synthetic pending box' },
@@ -375,7 +398,9 @@ test('keeps entered values after conflict, duplicate code, in-use and connection
   vi.stubGlobal('fetch', fetcher);
   render(<ResourcePanel csrfToken="csrf" />);
   await screen.findByText(
-    'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+    summaryText(
+      'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+    ),
   );
   const dialog = await openEdit('Synthetic retired');
   fireEvent.change(within(dialog).getByLabelText('Bezeichnung'), {
@@ -422,7 +447,9 @@ test('reports a saved resource honestly when the following list load fails and r
   });
   vi.stubGlobal('fetch', fetcher);
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   failList = true;
   const dialog = await openEdit('Synthetic box');
   fireEvent.change(within(dialog).getByLabelText('Bezeichnung'), {
@@ -451,7 +478,9 @@ test('reports a saved resource honestly when the following list load fails and r
   fireEvent.click(
     screen.getByRole('button', { name: 'Ressourcen erneut laden' }),
   );
-  await screen.findByText('Synthetic saved box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic saved box – 1 Stück – Fotobox – Aktiv'),
+  );
   expect(mutations(fetcher)).toHaveLength(1);
   expect(
     screen.queryByText(
@@ -478,7 +507,9 @@ test('filters by name, code, category and state and keeps the filter state while
     }),
   );
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   const search = screen.getByLabelText('Ressourcen suchen') as HTMLInputElement;
   const category = screen.getByLabelText(
     'Kategorie filtern',
@@ -490,24 +521,30 @@ test('filters by name, code, category and state and keeps the filter state while
     Array.from(category.options).map((option) => option.textContent),
   ).toEqual(['Alle Kategorien', 'Fotobox', 'Zubehör']);
   fireEvent.change(search, { target: { value: 'SPARE' } });
-  expect(screen.queryByText(/Synthetic box –/)).toBeNull();
+  expect(screen.queryByText('Synthetic box')).toBeNull();
   expect(
-    screen.getByText('Synthetic spare – 2 Stück – Zubehör – Inaktiv'),
+    screen.getByText(
+      summaryText('Synthetic spare – 2 Stück – Zubehör – Inaktiv'),
+    ),
   ).toBeTruthy();
   fireEvent.change(search, { target: { value: 'syn-1' } });
   expect(
-    screen.getByText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+    screen.getByText(summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv')),
   ).toBeTruthy();
   expect(screen.queryByText(/Synthetic spare/)).toBeNull();
   fireEvent.change(search, { target: { value: 'zubehör' } });
   expect(
-    screen.getByText('Synthetic spare – 2 Stück – Zubehör – Inaktiv'),
+    screen.getByText(
+      summaryText('Synthetic spare – 2 Stück – Zubehör – Inaktiv'),
+    ),
   ).toBeTruthy();
-  expect(screen.queryByText(/Synthetic box –/)).toBeNull();
+  expect(screen.queryByText('Synthetic box')).toBeNull();
   fireEvent.change(search, { target: { value: 'retired' } });
   expect(
     screen.getByText(
-      'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      summaryText(
+        'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      ),
     ),
   ).toBeTruthy();
   let dialog = await openEdit('Synthetic retired');
@@ -520,7 +557,9 @@ test('filters by name, code, category and state and keeps the filter state while
   fireEvent.change(state, { target: { value: 'archived' } });
   expect(
     screen.getByText(
-      'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      summaryText(
+        'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      ),
     ),
   ).toBeTruthy();
   expect(screen.queryByText(/Synthetic spare/)).toBeNull();
@@ -535,10 +574,12 @@ test('filters by name, code, category and state and keeps the filter state while
   expect(state.value).toBe('archived');
   expect(
     screen.getByText(
-      'Synthetic retired renamed – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      summaryText(
+        'Synthetic retired renamed – 3 Stück – Fotobox – Archiviert – Gesperrt',
+      ),
     ),
   ).toBeTruthy();
-  expect(screen.queryByText(/Synthetic box –/)).toBeNull();
+  expect(screen.queryByText('Synthetic box')).toBeNull();
 });
 
 test('separates an empty inventory from a filter without matches and offers a reset', async () => {
@@ -558,7 +599,9 @@ test('separates an empty inventory from a filter without matches and offers a re
   cleanup();
   vi.stubGlobal('fetch', listFetcher([row, spare]));
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   fireEvent.change(screen.getByLabelText('Ressourcen suchen'), {
     target: { value: 'Synthetic missing' },
   });
@@ -569,7 +612,7 @@ test('separates an empty inventory from a filter without matches and offers a re
     (screen.getByLabelText('Ressourcen suchen') as HTMLInputElement).value,
   ).toBe('');
   expect(
-    screen.getByText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+    screen.getByText(summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv')),
   ).toBeTruthy();
   expect(screen.queryByText(/Keine Treffer/)).toBeNull();
 });
@@ -590,7 +633,9 @@ test('reports loading until the list is there and keeps a retry on load failures
   expect(resources.getAttribute('aria-busy')).toBe('true');
   expect(screen.getByText('Ressourcen werden geladen …')).toBeTruthy();
   await act(async () => finish(Response.json([row])));
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   expect(resources.getAttribute('aria-busy')).toBe('false');
   expect(screen.queryByText('Ressourcen werden geladen …')).toBeNull();
   cleanup();
@@ -610,7 +655,9 @@ test('reports loading until the list is there and keeps a retry on load failures
   fireEvent.click(
     screen.getByRole('button', { name: 'Ressourcen aktualisieren' }),
   );
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   expect(
     screen.queryByText('Ressourcen konnten nicht geladen werden.'),
   ).toBeNull();
@@ -624,7 +671,9 @@ test('resource create, edit, archive, cancel and loading failures', async () => 
   });
   vi.stubGlobal('fetch', fetcher);
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   let dialog = await openEdit('Synthetic box');
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'Ressource abbrechen' }),
@@ -641,7 +690,9 @@ test('resource create, edit, archive, cancel and loading failures', async () => 
     target: { value: 'Fotobox' },
   });
   submitSave(dialog);
-  await screen.findByText('New synthetic – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('New synthetic – 1 Stück – Fotobox – Aktiv'),
+  );
   dialog = await openEdit('New synthetic');
   fireEvent.click(within(dialog).getByLabelText('Gesperrt'));
   fireEvent.change(within(dialog).getByLabelText('Zustand'), {
@@ -649,7 +700,7 @@ test('resource create, edit, archive, cancel and loading failures', async () => 
   });
   submitSave(dialog);
   await screen.findByText(
-    'New synthetic – 1 Stück – Fotobox – Archiviert – Gesperrt',
+    summaryText('New synthetic – 1 Stück – Fotobox – Archiviert – Gesperrt'),
   );
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/resources/synthetic',
@@ -668,7 +719,9 @@ test('resource failures preserve edits and permit reload', async () => {
     }),
   );
   render(<ResourcePanel csrfToken="csrf" />);
-  await screen.findByText('Synthetic box – 1 Stück – Fotobox – Aktiv');
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
   const dialog = await openEdit('Synthetic box');
   for (const text of [
     /Inzwischen geändert/,

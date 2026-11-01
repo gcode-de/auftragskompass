@@ -1072,6 +1072,34 @@ time {
 .product-toolbar .section-actions {
   margin-left: 0;
 }
+.resource-list {
+  list-style: none;
+  padding: 0;
+}
+.resource-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.5rem;
+  background: var(--field-surface);
+}
+.resource-summary {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.resource-meta {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.resource-row > button {
+  align-self: center;
+  margin: 0 0 0 auto;
+}
 /* BKP010: one line per product keeps name, price basis, tax, unit and state
    aligned without a second column set. */
 .product-summary {

@@ -19,6 +19,12 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **BKP009.3 — `style: clarify resource list hierarchy`**:
+  Bestehende Ressourcenliste als übersichtliche Zeilen mit führendem Namen,
+  sekundären Bestands-/Kategorie-/Statusangaben und ausgerichteter Bearbeitung
+  gestalten. Filter, Sperren, API und Datenmodell bleiben unverändert. Beide
+  Themes, Mobilbreiten und vorhandene Bedienabläufe gezielt prüfen.
+
 - [x] **BKP030.1 — `docs: document observed resource workflows`**:
   Das nun aktivierte Bookitup-Ressourcenmodul lesend untersuchen und belegte
   Ansichten, Modellhinweise, Bedienung, Grenzen und sichere Folgeschritte für

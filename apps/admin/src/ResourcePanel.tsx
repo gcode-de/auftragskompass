@@ -426,13 +426,17 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           </button>
         </>
       )}
-      <ul>
+      <ul className="resource-list">
         {filtered.map((row) => (
-          <li key={row.id}>
-            <span>
-              {row.name} – {String(row.quantity)} Stück – {row.category} –{' '}
-              {label(row.state)}
-              {row.blocked ? ' – Gesperrt' : ''}
+          <li key={row.id} className="resource-row">
+            <span className="resource-summary">
+              <strong>{row.name}</strong>
+              <span className="sr-only"> – </span>
+              <span className="resource-meta">
+                {String(row.quantity)} Stück – {row.category} –{' '}
+                {label(row.state)}
+                {row.blocked ? ' – Gesperrt' : ''}
+              </span>
             </span>{' '}
             <button
               className="secondary-action"
