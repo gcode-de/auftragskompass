@@ -585,6 +585,11 @@ test('keeps the confirmed contact visible when refreshing search membership fail
     within(details).getByRole('button', { name: 'Kontakt-Details schließen' }),
   );
   expect(
+    screen.queryByText(
+      'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+    ),
+  ).toBeNull();
+  expect(
     await screen.findByText(
       'Kontakt gespeichert, die Liste konnte nicht neu geladen werden.',
     ),

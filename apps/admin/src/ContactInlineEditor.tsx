@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRecordAutosave } from './useRecordAutosave.js';
 import type { Contact } from './ContactDialog.js';
 
@@ -105,7 +105,7 @@ export function ContactInlineEditor({
     read,
     onConfirmed,
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     onDirtyChange?.(save.dirty);
   });
   useEffect(() => () => dirtyCallback.current?.(false), []);
