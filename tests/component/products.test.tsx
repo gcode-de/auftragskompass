@@ -10,6 +10,9 @@ import {
   within,
 } from '@testing-library/react';
 import { ProductPanel } from '../../apps/admin/src/ProductPanel.js';
+const summaryText = (value: string) => (_: string, element: Element | null) =>
+  element?.classList.contains('product-summary') === true &&
+  element.textContent?.replace(/\s+/g, ' ').trim() === value;
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -126,7 +129,7 @@ test('the product page leads with its list, toolbar and no exposed editor', asyn
   const products = screen.getByRole('region', { name: 'Produkte' });
   expect(products.getAttribute('aria-busy')).toBe('true');
   expect(screen.getByText('Produkte werden geladen …')).toBeTruthy();
-  await within(products).findByText(rowText);
+  await within(products).findByText(summaryText(rowText));
   expect(products.getAttribute('aria-busy')).toBe('false');
   expect(screen.queryByText('Produkte werden geladen …')).toBeNull();
   expect(within(products).getByRole('heading', { level: 2 })).toBeTruthy();
@@ -156,7 +159,7 @@ test('the product page leads with its list, toolbar and no exposed editor', asyn
 test('the plus action opens one accessible dialog with focus, trap, dirty guard and focus return', async () => {
   vi.stubGlobal('fetch', listFetcher());
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const create = screen.getByRole('button', { name: 'Produkt anlegen' });
   create.focus();
   const dialog = await openCreate();
@@ -224,7 +227,7 @@ test('duplicate opens a new record and copies the state one to one', async () =>
   const fetcher = crudFetcher([row, retired]);
   vi.stubGlobal('fetch', fetcher);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   let dialog = await openEdit('Synthetic product');
   fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -247,7 +250,9 @@ test('duplicate opens a new record and copies the state one to one', async () =>
   submitSave(dialog);
   await screen.findByText('Produkt gespeichert.');
   await screen.findByText(
-    'Synthetic product (Kopie) – 0,01 € Netto – 19 % – Stück – Aktiv',
+    summaryText(
+      'Synthetic product (Kopie) – 0,01 € Netto – 19 % – Stück – Aktiv',
+    ),
   );
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/products',
@@ -266,14 +271,16 @@ test('duplicate opens a new record and copies the state one to one', async () =>
     }),
   );
   // The original row is untouched by its copy.
-  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
   dialog = await openEdit('Synthetic product (Kopie)');
   fireEvent.change(within(dialog).getByLabelText('Produktzustand'), {
     target: { value: 'archived' },
   });
   submitSave(dialog);
   await screen.findByText(
-    'Synthetic product (Kopie) – 0,01 € Netto – 19 % – Stück – Archiviert',
+    summaryText(
+      'Synthetic product (Kopie) – 0,01 € Netto – 19 % – Stück – Archiviert',
+    ),
   );
   // A copy of an archived product stays archived: no invented activation rule.
   openActions('Synthetic retired');
@@ -299,7 +306,7 @@ test('keeps the field contract, its defaults and the 0 and maximum amounts', asy
   const posted: Record<string, unknown>[] = [];
   vi.stubGlobal('fetch', crudFetcher([row, retired], posted));
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   let dialog = await openCreate();
   const fields: [string, string, string][] = [
     ['Produktname', '', '120'],
@@ -350,7 +357,7 @@ test('keeps the field contract, its defaults and the 0 and maximum amounts', asy
   });
   submitSave(dialog);
   await screen.findByText(
-    'Synthetic free – 0,00 € Brutto – 0 % – Pauschale – Aktiv',
+    summaryText('Synthetic free – 0,00 € Brutto – 0 % – Pauschale – Aktiv'),
   );
   expect(posted[0]).toMatchObject({
     name: 'Synthetic free',
@@ -375,7 +382,9 @@ test('keeps the field contract, its defaults and the 0 and maximum amounts', asy
   });
   submitSave(dialog);
   await screen.findByText(
-    'Synthetic maximum – 90071992547409,91 € Brutto – 100 % – Stück – Aktiv',
+    summaryText(
+      'Synthetic maximum – 90071992547409,91 € Brutto – 100 % – Stück – Aktiv',
+    ),
   );
   expect(posted[1]!.priceMinor).toBe(Number.MAX_SAFE_INTEGER);
   expect(posted[1]!.taxBasisPoints).toBe(10000);
@@ -387,7 +396,7 @@ test('keeps the field contract, its defaults and the 0 and maximum amounts', asy
   });
   submitSave(dialog);
   await screen.findByText(
-    'Synthetic product – 19,99 € Brutto – 19 % – Stück – Inaktiv',
+    summaryText('Synthetic product – 19,99 € Brutto – 19 % – Stück – Inaktiv'),
   );
   expect(posted[2]!.version).toBe(1);
   expect(posted[2]!.state).toBe('inactive');
@@ -397,7 +406,7 @@ test('reports invalid decimal values per field and never sends a request', async
   const fetcher = crudFetcher([row]);
   vi.stubGlobal('fetch', fetcher);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const dialog = await openCreate();
   fireEvent.change(within(dialog).getByLabelText('Produktname'), {
     target: { value: 'Synthetic decimal' },
@@ -449,7 +458,7 @@ test('reports invalid decimal values per field and never sends a request', async
 test('filters by name, description, unit and state and keeps the filter across editing', async () => {
   vi.stubGlobal('fetch', crudFetcher([row, service, retired]));
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const search = screen.getByLabelText('Produkte suchen') as HTMLInputElement;
   const state = screen.getByLabelText('Zustand filtern') as HTMLSelectElement;
   expect(search.value).toBe('');
@@ -458,27 +467,27 @@ test('filters by name, description, unit and state and keeps the filter across e
     ['Alle Zustände', 'Aktiv', 'Inaktiv', 'Archiviert'],
   );
   fireEvent.change(search, { target: { value: 'BETREUUNG' } });
-  expect(screen.getByText(serviceText)).toBeTruthy();
-  expect(screen.queryByText(rowText)).toBeNull();
+  expect(screen.getByText(summaryText(serviceText))).toBeTruthy();
+  expect(screen.queryByText(summaryText(rowText))).toBeNull();
   fireEvent.change(search, { target: { value: 'stunde' } });
-  expect(screen.getByText(serviceText)).toBeTruthy();
-  expect(screen.queryByText(rowText)).toBeNull();
+  expect(screen.getByText(summaryText(serviceText))).toBeTruthy();
+  expect(screen.queryByText(summaryText(rowText))).toBeNull();
   fireEvent.change(search, { target: { value: 'retired' } });
-  expect(screen.getByText(retiredText)).toBeTruthy();
-  expect(screen.queryByText(serviceText)).toBeNull();
+  expect(screen.getByText(summaryText(retiredText))).toBeTruthy();
+  expect(screen.queryByText(summaryText(serviceText))).toBeNull();
   fireEvent.change(search, { target: { value: 'No such product' } });
   expect(
     screen.getByText('Keine Treffer für die aktuellen Filter.'),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
   expect(search.value).toBe('');
-  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
   fireEvent.change(state, { target: { value: 'archived' } });
-  expect(screen.getByText(retiredText)).toBeTruthy();
-  expect(screen.queryByText(rowText)).toBeNull();
+  expect(screen.getByText(summaryText(retiredText))).toBeTruthy();
+  expect(screen.queryByText(summaryText(rowText))).toBeNull();
   fireEvent.change(state, { target: { value: 'inactive' } });
-  expect(screen.getByText(serviceText)).toBeTruthy();
-  expect(screen.queryByText(retiredText)).toBeNull();
+  expect(screen.getByText(summaryText(serviceText))).toBeTruthy();
+  expect(screen.queryByText(summaryText(retiredText))).toBeNull();
   fireEvent.change(state, { target: { value: 'archived' } });
   let dialog = await openEdit('Synthetic retired');
   fireEvent.keyDown(dialog, { key: 'Escape' });
@@ -490,11 +499,13 @@ test('filters by name, description, unit and state and keeps the filter across e
   });
   submitSave(dialog);
   await screen.findByText(
-    'Synthetic retired renamed – 123,45 € Brutto – 7 % – Pauschale – Archiviert',
+    summaryText(
+      'Synthetic retired renamed – 123,45 € Brutto – 7 % – Pauschale – Archiviert',
+    ),
   );
   expect(search.value).toBe('');
   expect(state.value).toBe('archived');
-  expect(screen.queryByText(rowText)).toBeNull();
+  expect(screen.queryByText(summaryText(rowText))).toBeNull();
 });
 
 test('separates an empty catalogue from a filter without matches', async () => {
@@ -509,23 +520,24 @@ test('separates an empty catalogue from a filter without matches', async () => {
   cleanup();
   vi.stubGlobal('fetch', listFetcher([row, service]));
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   fireEvent.change(screen.getByLabelText('Produkte suchen'), {
     target: { value: 'No such product' },
   });
   await screen.findByText(/Keine Treffer/);
   expect(screen.queryByText(/Noch keine Produkte/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
-  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
   expect(screen.queryByText(/Keine Treffer/)).toBeNull();
 });
 
 test('names price basis, tax, unit and state in every row', async () => {
   vi.stubGlobal('fetch', listFetcher([row, service, retired]));
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
-  expect(screen.getByText(serviceText)).toBeTruthy();
-  expect(screen.getByText(retiredText)).toBeTruthy();
+  await screen.findByText(summaryText(rowText));
+  expect(screen.getByText('Synthetic product').tagName).toBe('STRONG');
+  expect(screen.getByText(summaryText(serviceText))).toBeTruthy();
+  expect(screen.getByText(summaryText(retiredText))).toBeTruthy();
   for (const item of screen.getAllByRole('listitem'))
     expect(item.textContent).toMatch(/Brutto|Netto/);
 });
@@ -538,7 +550,7 @@ test('keeps the dialog and its values after a conflict and a rejected save', asy
   });
   vi.stubGlobal('fetch', fetcher);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const dialog = await openEdit('Synthetic product');
   fireEvent.change(within(dialog).getByLabelText('Produktname'), {
     target: { value: 'Synthetic draft product' },
@@ -581,7 +593,7 @@ test('reports a saved product honestly when the list load fails and retries with
   });
   vi.stubGlobal('fetch', fetcher);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   failList = true;
   const dialog = await openEdit('Synthetic product');
   fireEvent.change(within(dialog).getByLabelText('Produktname'), {
@@ -593,7 +605,9 @@ test('reports a saved product honestly when the list load fails and retries with
   // The confirmed row from the response is visible even without the reload.
   expect(
     screen.getByText(
-      'Synthetic saved product – 19,99 € Brutto – 19 % – Stück – Aktiv',
+      summaryText(
+        'Synthetic saved product – 19,99 € Brutto – 19 % – Stück – Aktiv',
+      ),
     ),
   ).toBeTruthy();
   await screen.findByText(
@@ -629,7 +643,9 @@ test('reports a saved product honestly when the list load fails and retries with
   );
   expect(
     screen.getByText(
-      'Synthetic saved product – 19,99 € Brutto – 19 % – Stück – Aktiv',
+      summaryText(
+        'Synthetic saved product – 19,99 € Brutto – 19 % – Stück – Aktiv',
+      ),
     ),
   ).toBeTruthy();
   expect(mutations(fetcher)).toHaveLength(1);
@@ -638,11 +654,11 @@ test('reports a saved product honestly when the list load fails and retries with
 test('returns focus to the create action when the filtered row disappears after saving', async () => {
   vi.stubGlobal('fetch', crudFetcher([row, service]));
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   fireEvent.change(screen.getByLabelText('Zustand filtern'), {
     target: { value: 'active' },
   });
-  expect(screen.queryByText(serviceText)).toBeNull();
+  expect(screen.queryByText(summaryText(serviceText))).toBeNull();
   const dialog = await openEdit('Synthetic product');
   fireEvent.change(within(dialog).getByLabelText('Produktzustand'), {
     target: { value: 'archived' },
@@ -673,7 +689,7 @@ test('a double submit sends exactly one mutation and holds the dialog open while
   );
   vi.stubGlobal('fetch', fetcher);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const dialog = await openEdit('Synthetic product');
   fireEvent.change(within(dialog).getByLabelText('Produktname'), {
     target: { value: 'Synthetic pending product' },
@@ -722,7 +738,7 @@ test('locks saving after an unknown outcome and never repeats the mutation', asy
   });
   vi.stubGlobal('fetch', fetcher);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const dialog = await openCreate();
   fireEvent.change(within(dialog).getByLabelText('Produktname'), {
     target: { value: 'Synthetic unclear product' },
@@ -782,7 +798,7 @@ test('reports loading, list failures and a retry without inventing rows', async 
   fireEvent.click(
     screen.getByRole('button', { name: 'Produkte aktualisieren' }),
   );
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   expect(
     screen.queryByText('Produkte konnten nicht geladen werden.'),
   ).toBeNull();
@@ -793,7 +809,7 @@ test('reports loading, list failures and a retry without inventing rows', async 
     screen.getByRole('button', { name: 'Produkte aktualisieren' }),
   );
   await screen.findByText('Produkte konnten nicht geladen werden.');
-  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
   cleanup();
   // A 403 is reported as a load failure, not as an empty catalogue.
   vi.stubGlobal(
@@ -843,7 +859,7 @@ function archiveFetcher(
 test('rare row actions stay behind one named disclosure until it is opened', async () => {
   vi.stubGlobal('fetch', listFetcher([row, service, retired]));
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const toggle = actionToggle('Synthetic product');
   expect(toggle.textContent).toBe('Aktionen');
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -900,7 +916,7 @@ test('rare row actions stay behind one named disclosure until it is opened', asy
 test('only one row disclosure is open and Escape, focus leaving the row and an outside click close it', async () => {
   vi.stubGlobal('fetch', listFetcher([row, service]));
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const first = actionToggle('Synthetic product');
   const second = actionToggle('Synthetic service');
   fireEvent.click(first);
@@ -942,7 +958,7 @@ test('only one row disclosure is open and Escape, focus leaving the row and an o
 test('archiving sends the versioned PUT, updates only that row and keeps its trigger reachable', async () => {
   const { writes } = archiveFetcher([row, service]);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const toggle = openActions('Synthetic product');
   const archive = screen.getByRole('button', {
     name: 'Produkt archivieren: Synthetic product',
@@ -970,12 +986,14 @@ test('archiving sends the versioned PUT, updates only that row and keeps its tri
   });
   expect(
     screen.getByText(
-      'Synthetic product – 19,99 € Brutto – 19 % – Stück – Archiviert',
+      summaryText(
+        'Synthetic product – 19,99 € Brutto – 19 % – Stück – Archiviert',
+      ),
     ),
   ).toBeTruthy();
   // Only the archived row changed; the neighbour keeps its price and state.
-  expect(screen.getByText(serviceText)).toBeTruthy();
-  expect(screen.queryByText(rowText)).toBeNull();
+  expect(screen.getByText(summaryText(serviceText))).toBeTruthy();
+  expect(screen.queryByText(summaryText(rowText))).toBeNull();
   // The disclosure closed and its trigger stays visible and focused.
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
   await waitFor(() => expect(document.activeElement).toBe(toggle));
@@ -992,7 +1010,7 @@ test('a version conflict while archiving explains it and keeps the row and its a
     Response.json({ error: 'conflict' }, { status: 409 }),
   );
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const toggle = openActions('Synthetic product');
   fireEvent.click(
     screen.getByRole('button', {
@@ -1006,7 +1024,7 @@ test('a version conflict while archiving explains it and keeps the row and its a
   );
   expect(writes).toHaveLength(1);
   // The row and its data stay exactly as they were read.
-  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
   // The action is visible again so the user can retry after reloading.
   const retry = screen.getByRole('button', {
     name: 'Produkt archivieren: Synthetic product',
@@ -1036,7 +1054,7 @@ test('an archive click sends one request and a rejected archive restores the vis
   });
   vi.stubGlobal('fetch', fetcher);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   const toggle = openActions('Synthetic product');
   const archive = screen.getByRole('button', {
     name: 'Produkt archivieren: Synthetic product',
@@ -1059,7 +1077,7 @@ test('an archive click sends one request and a rejected archive restores the vis
   expect(alert.textContent).toBe(
     'Archivieren fehlgeschlagen. Produkt und Berechtigung prüfen.',
   );
-  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
   expect(writes).toHaveLength(1);
   // The actions are visible again; a retry without a response is reported
   // honestly instead of pretending the product was archived.
@@ -1075,13 +1093,13 @@ test('an archive click sends one request and a rejected archive restores the vis
     ).toBeTruthy(),
   );
   expect(writes).toHaveLength(2);
-  expect(screen.getByText(rowText)).toBeTruthy();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
 });
 
 test('an archived product can still be reactivated through the edit dialog', async () => {
   const { writes } = archiveFetcher([row]);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   openActions('Synthetic product');
   fireEvent.click(
     screen.getByRole('button', {
@@ -1089,7 +1107,9 @@ test('an archived product can still be reactivated through the edit dialog', asy
     }),
   );
   await screen.findByText(
-    'Synthetic product – 19,99 € Brutto – 19 % – Stück – Archiviert',
+    summaryText(
+      'Synthetic product – 19,99 € Brutto – 19 % – Stück – Archiviert',
+    ),
   );
   const dialog = await openEdit('Synthetic product');
   expect(
@@ -1101,7 +1121,7 @@ test('an archived product can still be reactivated through the edit dialog', asy
   });
   submitSave(dialog);
   await screen.findByText(
-    'Synthetic product – 19,99 € Brutto – 19 % – Stück – Aktiv',
+    summaryText('Synthetic product – 19,99 € Brutto – 19 % – Stück – Aktiv'),
   );
   expect(writes).toHaveLength(2);
   expect(writes[1]!.body.version).toBe(2);
@@ -1111,7 +1131,7 @@ test('an archived product can still be reactivated through the edit dialog', asy
 test('archiving a filtered row hands the focus to the create action', async () => {
   const { writes } = archiveFetcher([row, service]);
   render(<ProductPanel csrfToken="csrf" />);
-  await screen.findByText(rowText);
+  await screen.findByText(summaryText(rowText));
   fireEvent.change(screen.getByLabelText('Zustand filtern'), {
     target: { value: 'active' },
   });
@@ -1125,7 +1145,7 @@ test('archiving a filtered row hands the focus to the create action', async () =
   expect(writes).toHaveLength(1);
   // The archived row no longer matches the filter, so the focus goes to the
   // create action instead of being lost with the removed row.
-  expect(screen.queryByText(rowText)).toBeNull();
+  expect(screen.queryByText(summaryText(rowText))).toBeNull();
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Produkt anlegen' })).toBe(
       document.activeElement,

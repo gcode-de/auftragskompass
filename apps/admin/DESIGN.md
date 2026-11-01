@@ -224,6 +224,11 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 
 ## Components
 
+- **Produktliste (BKP010.4):** Produktname und Preis-/Steuer-/Zustandsangaben
+  stehen in einer ruhigen Zeile untereinander; Bearbeiten und weitere Aktionen
+  bleiben daneben und können mobil umbrechen. Aufgeklappte Aktionen stehen
+  darunter. Die bestehenden Fokus-, Archiv- und Speicherregeln bleiben erhalten.
+
 - **Ressourcenliste (BKP009.3):** Jede vorhandene Ressource erscheint als
   ruhige Zeile mit hervorgehobenem Namen, darunter Bestand, Kategorie und
   Status; die Bearbeiten-Aktion ist am Zeilenende ausgerichtet und bleibt

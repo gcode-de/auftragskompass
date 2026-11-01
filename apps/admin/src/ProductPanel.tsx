@@ -126,7 +126,7 @@ function label(state: string) {
   return stateLabels[state] ?? state;
 }
 function summary(row: Product) {
-  return `${row.name} – ${priceText(row)} – ${taxText(row.taxBasisPoints)} – ${row.unit} – ${label(row.state)}`;
+  return `${priceText(row)} – ${taxText(row.taxBasisPoints)} – ${row.unit} – ${label(row.state)}`;
 }
 
 export function ProductPanel({ csrfToken }: { csrfToken: string }) {
@@ -626,7 +626,11 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               focusActionToggle(row.id);
             }}
           >
-            <span className="product-summary">{summary(row)}</span>{' '}
+            <span className="product-summary">
+              <strong>{row.name}</strong>
+              <span className="sr-only"> – </span>
+              <span className="product-meta">{summary(row)}</span>
+            </span>{' '}
             <button
               className="secondary-action"
               disabled={busy}

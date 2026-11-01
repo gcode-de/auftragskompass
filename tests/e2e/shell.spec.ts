@@ -137,6 +137,51 @@ function contrast(a: string, b: string) {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
+test('product rows keep their details and actions usable in both themes', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.body.innerHTML = `<main class="workspace-page"><section><ul class="product-list"><li class="product-row"><span class="product-summary"><strong>Fiktives Produkt mit einem besonders langen Namen</strong><span class="sr-only"> – </span><span class="product-meta">199,00 € Brutto – 19 % – Stück – Aktiv</span></span><button class="secondary-action">Bearbeiten</button><button class="tertiary-action">Aktionen</button><span role="group" hidden><button>Duplizieren</button></span></li></ul></section></main>`;
+  });
+  for (const theme of ['light', 'dark']) {
+    await page
+      .locator('html')
+      .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      const values = await page.evaluate(() => {
+        const row = document.querySelector('.product-row')!;
+        const name = row.querySelector('strong')!;
+        const meta = row.querySelector('.product-meta')!;
+        return {
+          bg: getComputedStyle(row).backgroundColor,
+          name: getComputedStyle(name).color,
+          meta: getComputedStyle(meta).color,
+          nameWeight: getComputedStyle(name).fontWeight,
+          metaWeight: getComputedStyle(meta).fontWeight,
+          buttons: Array.from(row.querySelectorAll(':scope > button')).map(
+            (b) => b.getBoundingClientRect().height,
+          ),
+          overflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        };
+      });
+      expect(contrast(values.name, values.bg)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(values.meta, values.bg)).toBeGreaterThanOrEqual(4.5);
+      expect(Number(values.nameWeight)).toBeGreaterThan(
+        Number(values.metaWeight),
+      );
+      expect(values.buttons.every((height) => height >= 44)).toBe(true);
+      expect(values.overflow).toBeLessThanOrEqual(0);
+      await page.screenshot({
+        path: `tests/test-results/product-hierarchy-${theme}-${width}.png`,
+      });
+    }
+  }
+});
+
 test('resource rows keep their details and edit action usable in both themes', async ({
   page,
 }) => {
