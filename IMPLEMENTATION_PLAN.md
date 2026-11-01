@@ -19,6 +19,10 @@ BKP020.2 (Dateien am Event), EDIT-01ff (kontextuelle Event-/Kontaktbearbeitung),
 DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage).
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
+- [x] **CI-FOCUS-01 — `test: wait for document logo focus restoration`**:
+  Die bestehende Fokusprüfung nach Logo-Abgleich auf die asynchrone
+  Fokuswiederherstellung warten lassen; alle übrigen Assertions beibehalten.
+
 - [x] **CI-CONTACT-01 — `fix: synchronize contact dirty state before paint`**:
   Den im GitHub-Lauf beobachteten Zeitspalt schließen, in dem die Kontaktakte
   nach bestätigtem Autosave noch als schmutzig gilt. Bestehende Speicherung,

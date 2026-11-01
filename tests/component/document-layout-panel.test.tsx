@@ -328,8 +328,10 @@ test('an uncertain logo upload preserves the selected file and offers GET reconc
     }),
   );
   expect(await screen.findByText('Dokumentlayout neu geladen.')).toBeTruthy();
-  expect(document.activeElement).toBe(
-    screen.getByRole('button', { name: 'Logo hinzufügen' }),
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Logo hinzufügen' }),
+    ),
   );
   expect(screen.queryByText('fictional-logo.png')).toBeNull();
   expect(hasUnsavedChanges()).toBe(false);
