@@ -2011,7 +2011,9 @@ export function EventPanel({
                             ) => {
                               recordDirty.current = false;
                               detailIdRef.current = null;
+                              openGroup.current = null;
                               setDetailId(null);
+                              window.history.replaceState(null, '', '#events');
                               setMessage(removalMessage);
                               void Promise.all([
                                 refresh()

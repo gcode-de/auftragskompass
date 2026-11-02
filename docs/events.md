@@ -94,8 +94,9 @@ Wiederherstellungseinträge. `POST /api/v1/events/:id/restore` benötigt die
 aktuelle Tombstone-Version und CSRF. Die Wiederherstellung ist auditiert und
 erhöht die Version. War das Event gebucht, wird sein Status auf Option gesetzt;
 alte Reservierungen bleiben freigegeben und müssen bewusst neu zugewiesen
-werden. Unklare Schreibantworten werden anhand aktiver und entfernter Listen
-abgeglichen, nicht blind erneut ausgeführt.
+werden. Nach einer bestätigten oder unklaren Entfernung führt die Oberfläche
+zur Eventliste zurück. Unklare Schreibantworten werden anhand aktiver und
+entfernter Listen abgeglichen, nicht blind erneut ausgeführt.
 
 ## Kompaktes Anlegen (H029)
 

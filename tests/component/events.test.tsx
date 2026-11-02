@@ -535,6 +535,7 @@ test('confirmed event removal refreshes both lists and reports refresh failures'
   expect(
     screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
   ).toBeNull();
+  expect(window.location.hash).toBe('#events');
 });
 
 test.each(['rejected', 'reload failed'])(

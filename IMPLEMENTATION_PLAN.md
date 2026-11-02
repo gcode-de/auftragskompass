@@ -2251,6 +2251,7 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] **C027.4 — `fix: correct resource assignment guidance`**: Veraltete Behauptung entfernen, eine Fotobox sei zum Buchen eines Events erforderlich; ein kurzer Hinweis erklärt stattdessen die Zuweisung und Verfügbarkeitsprüfung. Komponententest prüft den angezeigten Text.
 - [x] **E004.19 — `fix: align inquiry preview wording`**: Die interne Formularvorschau zeigt dieselbe Feldbeschriftung „Details zur Veranstaltung“ wie das öffentliche Widget; Schema, Feldname, Verarbeitung und Versand bleiben unverändert. Der Komponententest prüft alle acht Felder und die konkrete Beschriftung.
 - [x] **BKP013.3 — `style: place event actions in the record header`**: Die seltene Aktion „Event entfernen“ liegt in einem nativen, zunächst geschlossenen Menü im Eventkopf und bleibt in allen Eventbereichen erreichbar. Bestätigung, Dirty- und Versionsschutz bleiben unverändert. Komponententests prüfen Auffindbarkeit, Tastaturbedienung und die bestehenden Fehler- und Löschpfade; synthetische Ansichten in beiden Themes bei Mobil- und Desktopbreite prüfen.
+- [x] **C027.5 — `fix: return to events after removing a record`**: Nach bestätigter oder ungeklärter Entfernung wird der Aktenlink durch die Eventliste ersetzt, sodass ein Neuladen keine entfernte Akte erneut öffnet; die bestehenden Listenabgleiche und Hinweise bleiben erhalten. Komponententest prüft die Adresse nach Entfernung.
 - [ ] C027–C075 und C077–C085: noch nicht implementiert oder abgenommen
 
 ## 2. Qualitätsregeln
