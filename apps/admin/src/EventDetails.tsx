@@ -982,6 +982,27 @@ export function EventDetails({
                 <span className="event-source-quiet">Website</span>
               )}
             </p>
+            <details className="event-record-actions">
+              <summary>Weitere Eventaktionen</summary>
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={
+                  busy ||
+                  loading ||
+                  metadataDirty.current ||
+                  dirty.current ||
+                  resourcesDirty.current ||
+                  resourceMutation.current ||
+                  saving.current ||
+                  statusUncertainRef.current ||
+                  resourceUncertainRef.current
+                }
+                onClick={() => void removeEvent()}
+              >
+                Event entfernen
+              </button>
+            </details>
           </header>
           <nav className="record-navigation" aria-label="Bereiche des Events">
             {areas.map((entry) => (
@@ -1131,24 +1152,6 @@ export function EventDetails({
                     Statusentwurf verwerfen und Ressourcen korrigieren
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={
-                    busy ||
-                    loading ||
-                    metadataDirty.current ||
-                    dirty.current ||
-                    resourcesDirty.current ||
-                    resourceMutation.current ||
-                    saving.current ||
-                    statusUncertainRef.current ||
-                    resourceUncertainRef.current
-                  }
-                  onClick={() => void removeEvent()}
-                >
-                  Event entfernen
-                </button>
                 <button
                   type="button"
                   className="icon-action tier-quiet-icon"

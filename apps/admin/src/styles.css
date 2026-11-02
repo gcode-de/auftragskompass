@@ -2142,6 +2142,9 @@ summary {
 .event-record-place {
   overflow-wrap: anywhere;
 }
+.event-record-actions > summary {
+  color: var(--quiet-ink);
+}
 .event-record h3 {
   font-size: 1rem;
   margin-block: 1.33em;

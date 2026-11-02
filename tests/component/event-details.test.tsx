@@ -2336,6 +2336,34 @@ test('notes paste inserts plain text, Enter inserts a break, and oversize input 
   expect(writes[0]?.notesHtml).toBe(accepted);
 });
 
+test('event actions stay compact and available in each section', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/events/' + event.id
+        ? Response.json(detail)
+        : Response.json([]),
+    ),
+  );
+  render(
+    <EventDetails
+      id={event.id}
+      csrfToken="synthetic"
+      statuses={statuses}
+      onChanged={async () => {}}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  const menu = screen.getByText('Weitere Eventaktionen').closest('details')!;
+  expect(menu.open).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
+  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
+  expect(menu.open).toBe(true);
+  expect(screen.getByRole('button', { name: 'Event entfernen' })).toBeTruthy();
+});
+
 test('event removal is confirmed, versioned and refuses unsaved drafts', async () => {
   const confirm = vi.fn(() => true),
     onRemoved = vi.fn();
@@ -2366,6 +2394,7 @@ test('event removal is confirmed, versioned and refuses unsaved drafts', async (
     );
   details();
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
   const remove = screen.getByRole('button', { name: 'Event entfernen' });
   fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'booked' },
@@ -2374,6 +2403,7 @@ test('event removal is confirmed, versioned and refuses unsaved drafts', async (
   cleanup();
   details();
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
   const cleanRemove = screen.getByRole('button', { name: 'Event entfernen' });
   expect((cleanRemove as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(cleanRemove);
@@ -2419,6 +2449,7 @@ test('a missing event after a removal attempt keeps the record open for reconcil
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
   fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
   await screen.findByText(
     'Event konnte nicht entfernt werden. Serverstand prüfen.',
@@ -2461,6 +2492,7 @@ test.each(['server', 'malformed', 'offline'])(
     await screen.findByRole('heading', {
       name: 'Event: Synthetic detail event',
     });
+    fireEvent.click(screen.getByText('Weitere Eventaktionen'));
     fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
     await waitFor(() =>
       expect(onRemoved).toHaveBeenCalledWith(expect.stringMatching(/unklar/)),

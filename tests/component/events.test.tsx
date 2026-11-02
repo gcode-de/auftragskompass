@@ -529,6 +529,7 @@ test('confirmed event removal refreshes both lists and reports refresh failures'
   );
   render(<EventPanel csrfToken="csrf" />);
   await screen.findByRole('heading', { name: 'Event: Synthetic event' });
+  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
   fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
   await screen.findByText(/Listenaktualisierung fehlgeschlagen/);
   expect(
