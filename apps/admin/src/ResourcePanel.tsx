@@ -341,8 +341,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
     <section id="resources" aria-label="Ressourcen" aria-busy={loading || busy}>
       <h2>Ressourcen</h2>
       <p>
-        Fotoboxen erhalten die Kategorie „Fotobox“. Nur mit einer festen
-        Fotobox-Zuweisung kann ein Event gebucht werden.
+        Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.
       </p>
       <div className="resource-toolbar">
         <label>

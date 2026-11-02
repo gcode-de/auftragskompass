@@ -93,6 +93,11 @@ test('the resource page starts with the compact toolbar and the list, without an
     ),
   );
   render(<ResourcePanel csrfToken="csrf" />);
+  expect(
+    screen.getByText(
+      'Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.',
+    ),
+  ).toBeTruthy();
   const resources = screen.getByRole('region', { name: 'Ressourcen' });
   await within(resources).findByText(
     summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
