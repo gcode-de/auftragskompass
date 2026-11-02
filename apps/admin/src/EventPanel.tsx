@@ -690,7 +690,11 @@ export function EventPanel({
               ? 'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.'
               : error.error === 'reservations_need_review'
                 ? 'Für diesen Termin gibt es Reservierungen. Änderungen müssen gemeinsam geprüft werden.'
-                : 'Speichern fehlgeschlagen. Termin, Zuordnungen und Anmeldung prüfen.',
+                : error.error === 'resource_conflict'
+                  ? 'Die Ressourcenzuweisung kollidiert mit einer anderen Belegung. Bitte Zuweisungen prüfen.'
+                  : error.error === 'unit_unavailable'
+                    ? 'Eine zugewiesene Ressource ist gesperrt oder nicht verfügbar. Bitte Zuweisungen prüfen.'
+                    : 'Speichern fehlgeschlagen. Termin, Zuordnungen und Anmeldung prüfen.',
         );
         return;
       }
@@ -1272,23 +1276,13 @@ export function EventPanel({
                       }
                     >
                       {statuses.map((option) => (
-                        <option
-                          key={option.code}
-                          value={option.code}
-                          disabled={
-                            option.code === 'booked' &&
-                            draft?.status !== 'booked'
-                          }
-                        >
+                        <option key={option.code} value={option.code}>
                           {option.label}
                         </option>
                       ))}
                     </select>
                   </label>
-                  <p>
-                    Gebucht wird mit einer konkreten Ressourcenzuweisung
-                    verfügbar.
-                  </p>
+                  <p>Ressourcen können jederzeit zugewiesen werden.</p>
                   <fieldset>
                     <legend>Hauptkontakt</legend>
                     <ContactPicker

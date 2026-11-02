@@ -162,11 +162,6 @@ export async function assignEventResources(
   await expireTenant(tx, tenantId);
   const plan = await resourcePlan(tx, tenantId, event, assignments);
   const selected = plan.filter((row) => row.selected);
-  if (
-    event.status === 'booked' &&
-    !selected.some((row) => row.category.trim().toLowerCase() === 'fotobox')
-  )
-    throw new ResourcePlanError('booking_required');
   for (const row of selected) {
     if (row.reason) throw new ResourcePlanError(row.reason);
     if (new Date(row.endsAt!) <= new Date())
@@ -226,37 +221,4 @@ export async function assignEventResources(
     });
     await appendAudit(tx, tenantId, 'reservation.created', actorId, id);
   }
-}
-export async function hasBookedBox(
-  tx: Transaction,
-  tenantId: string,
-  eventId: string,
-) {
-  const rows = await tx
-    .select({ id: reservations.id })
-    .from(reservations)
-    .innerJoin(
-      resourceUnits,
-      and(
-        eq(resourceUnits.tenantId, reservations.tenantId),
-        eq(resourceUnits.id, reservations.unitId),
-      ),
-    )
-    .innerJoin(
-      resources,
-      and(
-        eq(resources.tenantId, resourceUnits.tenantId),
-        eq(resources.id, resourceUnits.resourceId),
-      ),
-    )
-    .where(
-      and(
-        eq(reservations.tenantId, tenantId),
-        eq(reservations.eventId, eventId),
-        eq(reservations.state, 'booked'),
-        sql`lower(trim(${resources.category}))='fotobox'`,
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
 }

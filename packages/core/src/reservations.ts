@@ -61,6 +61,7 @@ export async function transitionEventReservations(
   actorId: string,
   previous: string,
   next: string,
+  promoteHolds = false,
 ) {
   const rows = await tx
     .select()
@@ -76,11 +77,14 @@ export async function transitionEventReservations(
   let remaining = false;
   const now = new Date();
   for (const row of rows) {
-    const state = stateAfterEvent(previous, next, row.state, row.endsAt, now);
+    const state =
+      promoteHolds && next === 'booked' && row.state === 'hold'
+        ? 'booked'
+        : stateAfterEvent(previous, next, row.state, row.endsAt, now);
     if (state !== row.state) {
       await tx
         .update(reservations)
-        .set({ state })
+        .set({ state, ...(state === 'booked' ? { expiresAt: null } : {}) })
         .where(
           and(eq(reservations.tenantId, tenantId), eq(reservations.id, row.id)),
         );

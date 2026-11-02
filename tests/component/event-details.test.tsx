@@ -126,8 +126,12 @@ test('event details collect contacts, venue, notes and activities and save statu
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   fireEvent.change(screen.getByLabelText('Status des Events'), {
-    target: { value: 'option' },
+    target: { value: 'booked' },
   });
+  expect(
+    (screen.getByLabelText('Status des Events') as HTMLSelectElement)
+      .selectedOptions[0]!.disabled,
+  ).toBe(false);
   fireEvent.submit(
     screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
   );
@@ -141,6 +145,11 @@ test('event details collect contacts, venue, notes and activities and save statu
       body: expect.stringContaining('"version":1'),
     }),
   );
+  expect(
+    JSON.parse(
+      String(fetcher.mock.calls.find(([, options]) => options)?.[1]?.body),
+    ),
+  ).toMatchObject({ status: 'booked', version: 1 });
   const editButton = screen.getByRole('button', {
     name: 'Stammdaten bearbeiten: Synthetic detail event',
   });
@@ -231,6 +240,49 @@ test('event detail errors preserve loaded data and allow retries', async () => {
     />,
   );
   await screen.findByText(/Event-Details konnte nicht geladen/);
+});
+
+test.each([
+  [
+    'resource_conflict',
+    'Die Ressourcenzuweisung kollidiert mit einer anderen Belegung. Bitte Zuweisungen prüfen.',
+  ],
+  [
+    'unit_unavailable',
+    'Eine zugewiesene Ressource ist gesperrt oder nicht verfügbar. Bitte Zuweisungen prüfen.',
+  ],
+])('event status explains %s reservation failures', async (code, message) => {
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    options
+      ? Response.json({ error: code }, { status: 409 })
+      : Response.json({
+          ...detail,
+          contacts: [],
+          location: null,
+          eventType: null,
+          package: null,
+          activities: [],
+        }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
+    target: { value: 'booked' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText(message);
 });
 
 test('shows one record section and retains the selected section on a refreshed event version', async () => {

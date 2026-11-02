@@ -73,10 +73,9 @@ wird ein extern als Gebucht markierter Auftrag zunächst ausdrücklich als
 **ungeprüfte Bestandszusage** erfasst. Er darf nicht durch ein stilles Umbenennen
 zu einer normalen Anfrage oder Option unsichtbar werden.
 
-Technisch muss die vorhandene Regel bestehen bleiben: Ein Event im Zielstatus
-Gebucht hat mindestens eine konfliktfrei fest zugewiesene Fotobox. Entweder
-bleibt die noch ungeprüfte Zusage außerhalb dieses Zielstatus sichtbar oder sie
-wird bei C076 zusammen mit der ausdrücklich geprüften Ressourcenzuordnung
+Eine noch ungeprüfte Zusage bleibt bis zur ausdrücklichen Prüfung außerhalb des
+Zielstatus sichtbar. Nach ausdrücklicher Prüfung darf sie auch ohne Ressource
+Gebucht werden; ausgewählte Einheiten werden weiterhin konfliktgeprüft und
 atomar bestätigt. Der Import darf den Datenbankschutz nicht abschalten und keine
 Box anhand von Namen, Paketen oder Freitext automatisch fest zuweisen.
 

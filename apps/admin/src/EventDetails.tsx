@@ -647,7 +647,11 @@ export function EventDetails({
             ? 'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.'
             : error.error === 'import_review_required'
               ? 'Ungeprüfte Bestandszusagen zuerst in der Import-Prüfliste abgleichen.'
-              : 'Status konnte nicht gespeichert werden. Eingaben und Anmeldung prüfen.',
+              : error.error === 'resource_conflict'
+                ? 'Die Ressourcenzuweisung kollidiert mit einer anderen Belegung. Bitte Zuweisungen prüfen.'
+                : error.error === 'unit_unavailable'
+                  ? 'Eine zugewiesene Ressource ist gesperrt oder nicht verfügbar. Bitte Zuweisungen prüfen.'
+                  : 'Status konnte nicht gespeichert werden. Eingaben und Anmeldung prüfen.',
         );
         return;
       }
@@ -973,11 +977,7 @@ export function EventDetails({
                         }}
                       >
                         {statuses.map((status) => (
-                          <option
-                            key={status.code}
-                            value={status.code}
-                            disabled={status.code === 'booked'}
-                          >
+                          <option key={status.code} value={status.code}>
                             {status.label}
                           </option>
                         ))}

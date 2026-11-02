@@ -511,17 +511,6 @@ test('review APIs enforce tenant isolation, CSRF, input validation and safe manu
       })
     ).json().error,
   ).toBe('invalid_reference');
-  expect(
-    (
-      await app.inject({
-        method: 'PUT',
-        url: path,
-        cookies,
-        headers,
-        payload: { ...payload, assignments: [] },
-      })
-    ).json().error,
-  ).toBe('booking_required');
   const preview = await app.inject({
     url:
       path +
@@ -556,6 +545,23 @@ test('review APIs enforce tenant isolation, CSRF, input validation and safe manu
       })
     ).json().error,
   ).toBe('future_promise');
+  const resourceFreeBooking = await app.inject({
+    method: 'PUT',
+    url: path,
+    cookies,
+    headers,
+    payload: { ...payload, assignments: [] },
+  });
+  expect(resourceFreeBooking.statusCode).toBe(200);
+  const importedBookingId = resourceFreeBooking.json().eventId as string;
+  expect(importedBookingId).toBeTruthy();
+  expect(
+    (
+      await pool.query('SELECT status FROM events WHERE id=$1', [
+        importedBookingId,
+      ])
+    ).rows[0].status,
+  ).toBe('booked');
   const closed = '/api/v1/imports/bookitup/promises/' + promiseId;
   expect((await app.inject({ url: closed, cookies })).json().reviewAction).toBe(
     'event',

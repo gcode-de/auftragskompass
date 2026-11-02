@@ -975,7 +975,7 @@ test('booking changes preserve buffer snapshots, history, and versions; manual a
   ).toBe(true);
 });
 
-test('assignment validation rejects duplicate, missing and unavailable units, missing periods, and accessory-only bookings', async () => {
+test('assignment validation rejects duplicate, missing and unavailable units and missing periods', async () => {
   const repo = reservationRepository(pool, tenantId),
     events = eventRepository(pool, tenantId),
     resources = resourceRepository(pool, tenantId);
@@ -987,17 +987,23 @@ test('assignment validation rejects duplicate, missing and unavailable units, mi
   const units = await repo.units(box.id),
     event = await events.save(actorId, eventInput);
   const assignment = { unitId: units[0]!.id, periodSource: 'event' as const };
+  const resourceFree = await events.save(
+    actorId,
+    { ...eventInput, status: 'booked' },
+    event.id,
+    1,
+    [],
+  );
+  expect(resourceFree.status).toBe('booked');
+  const eventWithResources = await events.save(actorId, eventInput);
   await expect(
-    events.save(actorId, { ...eventInput, status: 'booked' }, event.id, 1, []),
-  ).rejects.toThrow('booking_required');
-  await expect(
-    events.save(actorId, eventInput, event.id, 1, [
+    events.save(actorId, eventInput, eventWithResources.id, 1, [
       assignment,
       { ...assignment, unitId: assignment.unitId.toUpperCase() },
     ]),
   ).rejects.toThrow('invalid_assignments');
   await expect(
-    events.save(actorId, eventInput, event.id, 1, [
+    events.save(actorId, eventInput, eventWithResources.id, 1, [
       { ...assignment, unitId: randomUUID() },
     ]),
   ).rejects.toThrow('invalid_reference');
@@ -1006,9 +1012,13 @@ test('assignment validation rejects duplicate, missing and unavailable units, mi
     events.save(actorId, input, undated.id, 1, [assignment]),
   ).rejects.toThrow('invalid_period');
   await expect(
-    events.save(actorId, { ...eventInput, status: 'cancelled' }, event.id, 1, [
-      assignment,
-    ]),
+    events.save(
+      actorId,
+      { ...eventInput, status: 'cancelled' },
+      eventWithResources.id,
+      1,
+      [assignment],
+    ),
   ).rejects.toThrow('event_unavailable');
   await resources.save(
     actorId,
@@ -1022,19 +1032,24 @@ test('assignment validation rejects duplicate, missing and unavailable units, mi
     1,
   );
   await expect(
-    events.save(actorId, eventInput, event.id, 1, [assignment]),
+    events.save(actorId, eventInput, eventWithResources.id, 1, [assignment]),
   ).rejects.toThrow('unit_unavailable');
   const accessory = (await resources.list()).find(
     (row) => row.code === 'GLAMOUR',
   )!;
-  await expect(
-    events.save(actorId, { ...eventInput, status: 'booked' }, event.id, 1, [
+  const accessoryBooking = await events.save(
+    actorId,
+    { ...eventInput, status: 'booked' },
+    eventWithResources.id,
+    1,
+    [
       {
         unitId: (await repo.units(accessory.id))[0]!.id,
         periodSource: 'event',
       },
-    ]),
-  ).rejects.toThrow('booking_required');
+    ],
+  );
+  expect(accessoryBooking.status).toBe('booked');
   const past = {
     unitId: (await repo.units(accessory.id))[0]!.id,
     periodSource: 'manual' as const,
@@ -1042,18 +1057,180 @@ test('assignment validation rejects duplicate, missing and unavailable units, mi
     baseEnd: '2000-01-01T13:00:00Z',
   };
   await expect(
-    events.save(actorId, eventInput, event.id, 1, [past]),
+    events.save(actorId, eventInput, eventWithResources.id, 2, [past]),
   ).rejects.toThrow('past_reservation');
   await expect(
-    events.save(randomUUID(), eventInput, event.id, 1, []),
+    events.save(randomUUID(), eventInput, eventWithResources.id, 2, []),
   ).rejects.toThrow('forbidden');
-  expect(await repo.list(event.id)).toEqual([]);
-  expect((await events.detail(event.id)).event.version).toBe(1);
+  expect(
+    (await repo.list(eventWithResources.id)).map((row) => row.state),
+  ).toEqual(['booked']);
+  expect((await events.detail(eventWithResources.id)).event.version).toBe(2);
 });
 
-test('deferred database checks protect booked events when assignments or resource categories are changed directly', async () => {
+test('status-only booking promotes compatible holds and safely handles conflicts and replacements', async () => {
+  const resources = resourceRepository(pool, tenantId),
+    reservations = reservationRepository(pool, tenantId),
+    events = eventRepository(pool, tenantId);
+  const resource = await resources.save(actorId, {
+    ...resourceInput,
+    code: 'SYNTH-HOLD-PROMOTION',
+    category: 'Fotobox',
+    quantity: 4,
+  });
+  const units = await reservations.units(resource.id);
+  const first = await events.save(actorId, eventInput);
+  const firstHold = await reservations.createHold(actorId, {
+    requestId: randomUUID(),
+    eventId: first.id,
+    unitId: units[0]!.id,
+    eventVersion: 1,
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  });
+  const booked = await events.save(
+    actorId,
+    { ...eventInput, status: 'booked' },
+    first.id,
+    1,
+  );
+  expect(booked.status).toBe('booked');
+  expect(await reservations.list(first.id)).toEqual([
+    expect.objectContaining({
+      id: firstHold.id,
+      state: 'booked',
+      expiresAt: null,
+    }),
+  ]);
+  await pool.query(
+    'UPDATE resources SET blocked=true WHERE tenant_id=$1 AND id=$2',
+    [tenantId, resource.id],
+  );
+  const alreadyBookedEdit = await events.save(
+    actorId,
+    { ...eventInput, status: 'booked', description: 'Fictional metadata edit' },
+    first.id,
+    2,
+  );
+  expect(alreadyBookedEdit.status).toBe('booked');
+  expect(alreadyBookedEdit.version).toBe(3);
+  await pool.query(
+    'UPDATE resources SET blocked=false WHERE tenant_id=$1 AND id=$2',
+    [tenantId, resource.id],
+  );
+
+  const legacy = await events.save(actorId, eventInput);
+  const legacyHold = await reservations.createHold(actorId, {
+    requestId: randomUUID(),
+    eventId: legacy.id,
+    unitId: units[3]!.id,
+    eventVersion: 1,
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  });
+  await pool.query(
+    "UPDATE events SET status='booked' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, legacy.id],
+  );
+  await events.save(
+    actorId,
+    { ...eventInput, status: 'booked', description: 'Fictional legacy edit' },
+    legacy.id,
+    1,
+  );
+  expect(
+    (await reservations.list(legacy.id)).find(
+      (row) => row.id === legacyHold.id,
+    ),
+  ).toMatchObject({
+    state: 'hold',
+    expiresAt: expect.any(Date),
+  });
+
+  const replacement = await events.save(actorId, eventInput);
+  const replacementHold = await reservations.createHold(actorId, {
+    requestId: randomUUID(),
+    eventId: replacement.id,
+    unitId: units[1]!.id,
+    eventVersion: 1,
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  });
+  const swapped = await events.save(
+    actorId,
+    { ...eventInput, status: 'booked' },
+    replacement.id,
+    1,
+    [{ unitId: units[2]!.id, periodSource: 'event' }],
+  );
+  expect(swapped.status).toBe('booked');
+  expect(
+    (await reservations.list(replacement.id)).find(
+      (row) => row.id === replacementHold.id,
+    )?.state,
+  ).toBe('released');
+  expect(
+    (await reservations.list(replacement.id)).some(
+      (row) => row.unitId === units[2]!.id && row.state === 'booked',
+    ),
+  ).toBe(true);
+
+  const conflicted = await events.save(actorId, eventInput);
+  const conflictingHold = await reservations.createHold(actorId, {
+    requestId: randomUUID(),
+    eventId: conflicted.id,
+    unitId: units[1]!.id,
+    eventVersion: 1,
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  });
+  await insertReservation(pool, units[1]!.id, null, 'blocked');
+  await expect(
+    events.save(actorId, { ...eventInput, status: 'booked' }, conflicted.id, 1),
+  ).rejects.toThrow('resource_conflict');
+  expect((await events.detail(conflicted.id)).event.status).toBe('inquiry');
+  expect(
+    (await reservations.list(conflicted.id)).find(
+      (row) => row.id === conflictingHold.id,
+    )?.state,
+  ).toBe('hold');
+
+  const disabled = await events.save(actorId, eventInput);
+  const disabledHold = await reservations.createHold(actorId, {
+    requestId: randomUUID(),
+    eventId: disabled.id,
+    unitId: units[3]!.id,
+    eventVersion: 1,
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  });
+  await pool.query(
+    'UPDATE resources SET blocked=true WHERE tenant_id=$1 AND id=$2',
+    [tenantId, resource.id],
+  );
+  await expect(
+    events.save(actorId, { ...eventInput, status: 'booked' }, disabled.id, 1),
+  ).rejects.toThrow('unit_unavailable');
+  expect(
+    (await reservations.list(disabled.id)).find(
+      (row) => row.id === disabledHold.id,
+    )?.state,
+  ).toBe('hold');
+  await pool.query(
+    'UPDATE resources SET blocked=false WHERE tenant_id=$1 AND id=$2',
+    [tenantId, resource.id],
+  );
+});
+
+test('booked events may exist without resources while assigned reservations remain protected', async () => {
   const { units, event } = await conflictFixture();
   const unit = units[0]!.id;
+  await pool.query(
+    "UPDATE events SET status='booked' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, event.id],
+  );
+  expect(
+    (await eventRepository(pool, tenantId).detail(event.id)).event.status,
+  ).toBe('booked');
+  await pool.query(
+    "UPDATE events SET status='option' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, event.id],
+  );
   await pool.query(
     "UPDATE resources SET category='Fotobox' WHERE tenant_id=$1 AND id=$2",
     [tenantId, units[0]!.resourceId],
@@ -1063,26 +1240,16 @@ test('deferred database checks protect booked events when assignments or resourc
     "UPDATE events SET status='booked' WHERE tenant_id=$1 AND id=$2",
     [tenantId, event.id],
   );
-  await expect(
-    pool.query("UPDATE reservations SET state='released' WHERE id=$1", [
-      reservation,
-    ]),
-  ).rejects.toMatchObject({
-    code: '23514',
-    constraint: 'booked_event_requires_box',
-  });
-  await expect(
-    pool.query(
-      "UPDATE resources SET category='Zubehör' WHERE tenant_id=$1 AND id=$2",
-      [tenantId, units[0]!.resourceId],
-    ),
-  ).rejects.toMatchObject({ constraint: 'booked_event_requires_box' });
-  await expect(
-    pool.query('DELETE FROM reservations WHERE id=$1', [reservation]),
-  ).rejects.toMatchObject({ constraint: 'booked_event_requires_box' });
+  await pool.query("UPDATE reservations SET state='released' WHERE id=$1", [
+    reservation,
+  ]);
+  await pool.query(
+    "UPDATE resources SET category='Zubehör' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, units[0]!.resourceId],
+  );
   expect(
     (await reservationRepository(pool, tenantId).list(event.id))[0]!.state,
-  ).toBe('booked');
+  ).toBe('released');
 });
 
 test('authenticated availability and assignment API validates plans, isolates tenants, and reports conflicts safely', async () => {
@@ -1200,7 +1367,6 @@ test('authenticated availability and assignment API validates plans, isolates te
         })
       ).statusCode,
     ).toBe(404);
-    expect((await put({ status: 'booked' })).statusCode).toBe(409);
     expect(
       (
         await put({
@@ -1296,8 +1462,17 @@ test('authenticated availability and assignment API validates plans, isolates te
         version: 1,
       },
     });
-    expect(recategorize.statusCode).toBe(409);
-    expect(recategorize.json().error).toBe('resource_in_use');
+    expect(recategorize.statusCode).toBe(200);
+    const resourceFree = await events.save(actorId, eventInput);
+    const directBooking = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/events/' + resourceFree.id,
+      cookies,
+      headers,
+      payload: { ...eventInput, version: 1, status: 'booked' },
+    });
+    expect(directBooking.statusCode).toBe(200);
+    expect(directBooking.json().status).toBe('booked');
   } finally {
     await app.close();
   }

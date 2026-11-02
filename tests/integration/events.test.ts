@@ -142,7 +142,7 @@ test('events link only tenant-owned active records, preserve archived references
     ]),
   ).rejects.toMatchObject({ code: '23503' });
   await expect(
-    pool.query("UPDATE events SET status='booked' WHERE tenant_id=$1", [
+    pool.query("UPDATE events SET status='not-a-status' WHERE tenant_id=$1", [
       tenantId,
     ]),
   ).rejects.toMatchObject({ code: '23514' });
@@ -200,9 +200,16 @@ test('events link only tenant-owned active records, preserve archived references
     'not_found',
   );
   await expect(repo.save(randomUUID(), input)).rejects.toThrow('forbidden');
-  await expect(
-    repo.save(actorId, { ...input, status: 'booked' }),
-  ).rejects.toThrow('booking_required');
+  const resourceFreeBooking = await repo.save(actorId, {
+    ...input,
+    status: 'booked',
+    eventTypeId: null,
+    packageId: null,
+    locationId: null,
+    primaryContactId: null,
+    additionalContactIds: [],
+  });
+  expect(resourceFreeBooking.status).toBe('booked');
   await expect(
     pool.query('DELETE FROM contacts WHERE tenant_id=$1 AND id=$2', [
       tenantId,
@@ -284,9 +291,9 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
       { primaryContactId: 'bad' },
     ])
       expect((await create({ ...simple, ...bad })).statusCode).toBe(400);
-    expect((await create({ ...simple, status: 'booked' })).statusCode).toBe(
-      409,
-    );
+    const booked = await create({ ...simple, status: 'booked' });
+    expect(booked.statusCode).toBe(201);
+    expect(booked.json().status).toBe('booked');
     expect(
       (await create({ ...simple, eventTypeId: randomUUID() })).statusCode,
     ).toBe(400);
@@ -299,7 +306,7 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     expect(created.json()).not.toHaveProperty('tenantId');
     const listed = await app.inject({ url: '/api/v1/events', cookies });
     expect(listed.json().timeZone).toBe('Europe/Berlin');
-    expect(listed.json().events).toHaveLength(2);
+    expect(listed.json().events).toHaveLength(4);
     const foreignTenant = randomUUID();
     await bootstrapAccess(
       pool,

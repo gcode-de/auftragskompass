@@ -287,7 +287,7 @@ Prioritäten:
 **RE-06 MUSS:** Die Verfügbarkeitsprüfung muss Überschneidungen einschließlich Pufferzeiten erkennen.
 **RE-07 MUSS:** Eine feste Buchung darf nicht gespeichert werden, wenn dieselbe Fotobox im Zeitraum bereits fest gebucht ist.
 **RE-08 MUSS:** Anfragen und Optionen dürfen als Vormerkung erfasst werden; konkurrierende Vormerkungen müssen deutlich sichtbar sein.
-**RE-09 MUSS:** Beim Wechsel eines Events auf „Gebucht“ muss mindestens eine verfügbare Fotobox fest zugewiesen sein.
+**RE-09 MUSS (Nutzeränderung 02.11.2026):** Ein Event darf unabhängig von einer Ressourcenzuweisung auf „Gebucht“ gesetzt werden. Wenn Ressourcen zugewiesen sind, müssen feste Reservierungen weiterhin verfügbar und konfliktfrei sein.
 **RE-10 MUSS:** Beim Wechsel auf „Nicht verfügbar“ oder „Annulliert“ müssen zukünftige Reservierungen dieses Events aufgehoben werden.
 **RE-11 MUSS:** Ein Wechsel der Fotobox muss konfliktgeprüft und im Logbuch protokolliert werden.
 **RE-12 MUSS:** Kalender und Eventliste müssen Ressourcenbelegung und Konflikte auf einen Blick zeigen.

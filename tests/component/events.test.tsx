@@ -404,6 +404,38 @@ test('opens a compact create dialog without disturbing the grouped list', async 
   expect(screen.getByRole('heading', { name: /Oktober 2026/ })).toBeTruthy();
 });
 
+test('event creation allows booking without choosing a resource', async () => {
+  const fetcher = mocker();
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  const dialog = await screen.findByRole('dialog', { name: 'Neues Event' });
+  const status = within(dialog).getByLabelText(
+    'Eventstatus',
+  ) as HTMLSelectElement;
+  expect(
+    (status.querySelector('option[value="booked"]') as HTMLOptionElement | null)
+      ?.disabled,
+  ).toBe(false);
+  fireEvent.change(status, { target: { value: 'booked' } });
+  fireEvent.change(within(dialog).getByLabelText('Eventname'), {
+    target: { value: 'Synthetic resource-free booking' },
+  });
+  fireEvent.submit(
+    within(dialog)
+      .getByRole('button', { name: 'Event speichern' })
+      .closest('form')!,
+  );
+  await findRow(/Synthetic resource-free booking/);
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/events',
+    expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"status":"booked"'),
+    }),
+  );
+});
+
 test('groups multiple events in the same month and keeps undated events separate', async () => {
   const base = mocker();
   vi.stubGlobal(
@@ -1349,6 +1381,34 @@ test('editing a booked event keeps its status unchanged', async () => {
     name: 'Synthetic booked rename',
     status: 'booked',
   });
+});
+
+test.each([
+  [
+    'resource_conflict',
+    'Die Ressourcenzuweisung kollidiert mit einer anderen Belegung. Bitte Zuweisungen prüfen.',
+  ],
+  [
+    'unit_unavailable',
+    'Eine zugewiesene Ressource ist gesperrt oder nicht verfügbar. Bitte Zuweisungen prüfen.',
+  ],
+])('event editor explains %s reservation failures', async (code, message) => {
+  const fetcher = mocker([code]);
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  showForms();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Event bearbeiten: Synthetic event',
+    }),
+  );
+  fireEvent.change(screen.getByLabelText('Eventstatus'), {
+    target: { value: 'booked' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
+  );
+  await screen.findByText(message);
 });
 
 test('a start makes the business date read-only and derived while date-only and undated events stay possible', async () => {

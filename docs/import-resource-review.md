@@ -23,9 +23,10 @@ anschließend einzeln abgeglichen werden.
 
 Mit **Geprüfte Bestandszusage übernehmen** werden der operative Auftrag, seine
 Kontaktzuordnungen, Reservierungen, Importzuordnung und Prüfvermerk gemeinsam
-festgeschrieben. Gebucht benötigt mindestens eine tatsächlich verfügbare Fotobox.
-Zubehör allein genügt nicht. Die Datenbank schützt weiterhin vor Überschneidungen;
-bei einer dritten gleichzeitigen Buchung bleibt die Zusage mit sichtbarem Konflikt
+festgeschrieben. Nach der Nutzeränderung vom 02.11.2026 darf der Auftrag auch
+ohne Ressource Gebucht werden. Jede zugewiesene Einheit wird weiterhin auf
+Überschneidungen geprüft; die Datenbank schützt diese Regel. Bei einer dritten
+gleichzeitigen Buchung bleibt die Zusage mit sichtbarem Konflikt
 offen, bis eine andere Ressource oder eine fachlich korrekte Lösung gewählt wird.
 Ein Fehler lässt weder einen halben Auftrag noch einen erledigten Prüfvermerk
 zurück. Nach erfolgreichem Abgleich aktualisieren sich Prüfliste und Kalender.

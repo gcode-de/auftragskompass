@@ -135,7 +135,6 @@ test.each([
   ['conflict', /Inzwischen geändert/],
   ['import_review_required', /Ungeprüfte Bestandszusagen zuerst/],
   ['resource_conflict', /Belegungskonflikt/],
-  ['booking_required', /Mindestens eine verfügbare/],
   ['unit_unavailable', /Eine gewählte Einheit/],
   ['event_unavailable', /alle Zuweisungen abwählen/],
   ['invalid_period', /vollständigen, gültigen/],

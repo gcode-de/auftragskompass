@@ -171,3 +171,7 @@ Logbuch und Importherkunft sind nicht Bestandteil dieses Exports. Für eine
 Wiederherstellung bleibt die vollständige verschlüsselte Datenbanksicherung
 maßgeblich. Downloads enthalten personenbezogene Inhalte und gehören in den
 privaten Sicherungsbestand außerhalb von Git.
+
+## Status Gebucht ohne Ressource
+
+Ein Event darf mit Status Gebucht gespeichert werden, auch wenn noch keine Ressource zugewiesen ist (Nutzeränderung 02.11.2026). Im Statusformular und bei der Eventanlage ist Gebucht auswählbar. Eine vorhandene aktive Vormerkung wird bei einem Statuswechsel ohne Ressourcenauswahl atomar festgeschrieben, sofern Einheit und Zeitraum noch verfügbar sind; Konflikte oder gesperrte Einheiten brechen die gesamte Änderung ab. Bei einer vollständigen Ressourcenauswahl können Vormerkungen im selben Vorgang ersetzt oder entfernt werden. Der Datenbank-Exclusion-Constraint schützt weiterhin alle festen Reservierungen gegen Überlappung.

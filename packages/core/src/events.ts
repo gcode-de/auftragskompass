@@ -3,7 +3,6 @@ import { registerCalendarRoutes } from './calendar.js';
 import { csv } from './contacts.js';
 import {
   assignEventResources,
-  hasBookedBox,
   resourcePlan,
   ResourcePlanError,
   type ResourceAssignment,
@@ -643,14 +642,6 @@ export function eventRepository(pool: Connection, tenantId: string) {
             : undefined;
           if (id && !old) throw new EventError('not_found');
           if (old && old.version !== version) throw new EventError('conflict');
-          if (
-            input.status === 'booked' &&
-            !assignments &&
-            (!old ||
-              old.status !== 'booked' ||
-              !(await hasBookedBox(tx, tenantId, old.id)))
-          )
-            throw new EventError('booking_required');
           const [tenant] = await tx
             .select()
             .from(tenants)
@@ -663,6 +654,21 @@ export function eventRepository(pool: Connection, tenantId: string) {
             timeZone,
           );
           if (old) {
+            if (
+              input.status === 'booked' &&
+              old.status !== 'booked' &&
+              !assignments
+            ) {
+              const plan = await resourcePlan(tx, tenantId, {
+                ...old,
+                startsAt: old.startsAt ? new Date(old.startsAt) : null,
+                endsAt: old.endsAt ? new Date(old.endsAt) : null,
+              });
+              if (plan.some((row) => row.selected && row.reason))
+                throw new ResourcePlanError('unit_unavailable');
+              if (plan.some((row) => row.selected && !row.available))
+                throw new ResourcePlanError('resource_conflict');
+            }
             const remaining = await transitionEventReservations(
               tx,
               tenantId,
@@ -670,6 +676,9 @@ export function eventRepository(pool: Connection, tenantId: string) {
               actorId,
               old.status,
               input.status,
+              !assignments &&
+                old.status !== 'booked' &&
+                input.status === 'booked',
             );
             if (
               remaining &&
@@ -830,8 +839,6 @@ export function eventRepository(pool: Connection, tenantId: string) {
             throw new ResourcePlanError('reservations_need_review');
           if (cause?.code === '23P01')
             throw new ResourcePlanError('resource_conflict');
-          if (cause?.constraint === 'booked_event_requires_box')
-            throw new ResourcePlanError('booking_required');
           throw error;
         });
     },
@@ -1054,7 +1061,6 @@ export function registerEventRoutes(
             : [
                   'conflict',
                   'import_review_required',
-                  'booking_required',
                   'reservations_need_review',
                   'resource_conflict',
                   'unit_unavailable',

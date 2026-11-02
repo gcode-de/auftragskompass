@@ -63,8 +63,6 @@ const errors: Record<string, string> = {
     'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.',
   resource_conflict:
     'Belegungskonflikt. Die bisherige Buchung bleibt erhalten.',
-  booking_required:
-    'Mindestens eine verfügbare Ressource der Kategorie Fotobox wählen.',
   unit_unavailable:
     'Eine gewählte Einheit ist gesperrt, inaktiv oder archiviert.',
   event_unavailable:

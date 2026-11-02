@@ -628,7 +628,6 @@ export function importRepository(pool: Pool, tenantId: string) {
             'invalid_schedule',
             'invalid_notes',
             'conflict',
-            'booking_required',
             'reservations_need_review',
             'resource_conflict',
             'unit_unavailable',

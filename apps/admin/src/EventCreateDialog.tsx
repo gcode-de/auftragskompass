@@ -456,11 +456,7 @@ export function EventCreateDialog({
                     }
                   >
                     {statuses.map((option) => (
-                      <option
-                        key={option.code}
-                        value={option.code}
-                        disabled={option.code === 'booked'}
-                      >
+                      <option key={option.code} value={option.code}>
                         {option.label}
                       </option>
                     ))}
