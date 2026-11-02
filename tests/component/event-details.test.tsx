@@ -162,6 +162,192 @@ test('event details collect contacts, venue, notes and activities and save statu
   );
   expect(close).toHaveBeenCalledOnce();
 });
+test('a resource rejection keeps a status draft retryable without a server reload', async () => {
+  let puts = 0;
+  let storedEvent = { ...event };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      puts++;
+      if (puts === 1)
+        return Response.json({ error: 'resource_conflict' }, { status: 409 });
+      storedEvent = { ...storedEvent, status: 'booked', version: 2 };
+      return Response.json(storedEvent);
+    }
+    if (url.endsWith('/availability')) return Response.json([]);
+    if (url === '/api/v1/events/synthetic-event')
+      return Response.json({ ...detail, event: storedEvent });
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  const status = (await screen.findByLabelText(
+    'Status des Events',
+  )) as HTMLSelectElement;
+  fireEvent.change(status, { target: { value: 'booked' } });
+  const save = () =>
+    fireEvent.submit(
+      screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+    );
+  save();
+  await screen.findByText(/Die Ressourcenzuweisung kollidiert/);
+  expect(status.disabled).toBe(false);
+  expect(
+    fetcher.mock.calls.filter(
+      ([url, options]) => url === '/api/v1/events/synthetic-event' && !options,
+    ),
+  ).toHaveLength(1);
+
+  save();
+  await screen.findByText('Status gespeichert.');
+  const writes = fetcher.mock.calls.filter(
+    ([, options]) => options?.method === 'PUT',
+  );
+  expect(writes).toHaveLength(2);
+  expect(
+    writes.map(([, options]) => JSON.parse(String(options?.body)).version),
+  ).toEqual([1, 1]);
+});
+test('a rejected booking can discard only its status draft, correct resources, and book again', async () => {
+  let puts = 0;
+  let assignedUnit = 'synthetic-unit-a';
+  let storedEvent = { ...event };
+  const unitA = {
+      unitId: 'synthetic-unit-a',
+      resourceId: 'synthetic-resource-a',
+      name: 'Fictional box A',
+      code: 'SYNTH-A',
+      category: 'Fotobox',
+      ordinal: 1,
+      selected: true,
+      periodSource: 'event',
+      baseStart: event.startsAt,
+      baseEnd: event.endsAt,
+      beforeDays: 0,
+      afterDays: 0,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      available: true,
+      reason: null,
+      conflicts: [],
+    },
+    unitB = {
+      ...unitA,
+      unitId: 'synthetic-unit-b',
+      resourceId: 'synthetic-resource-b',
+      name: 'Fictional box B',
+      code: 'SYNTH-B',
+      ordinal: 2,
+      selected: false,
+    };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      puts++;
+      if (puts === 1)
+        return Response.json({ error: 'resource_conflict' }, { status: 409 });
+      const body = JSON.parse(String(options.body)) as Record<string, unknown>;
+      if (Array.isArray(body.assignments)) {
+        assignedUnit = (body.assignments[0] as { unitId: string }).unitId;
+      }
+      storedEvent = { ...storedEvent, ...body, version: puts };
+      delete (storedEvent as Record<string, unknown>).assignments;
+      return Response.json(storedEvent);
+    }
+    if (url.endsWith('/availability'))
+      return Response.json([
+        { ...unitA, selected: assignedUnit === unitA.unitId },
+        { ...unitB, selected: assignedUnit === unitB.unitId },
+      ]);
+    if (url === '/api/v1/events/synthetic-event')
+      return Response.json({ ...detail, event: storedEvent });
+    return Response.json([]);
+  });
+  const dirty = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onEdit={() => {}}
+      onClose={() => {}}
+      onRecordDirtyChange={dirty}
+    />,
+  );
+  const status = (await screen.findByLabelText(
+    'Status des Events',
+  )) as HTMLSelectElement;
+  fireEvent.change(status, { target: { value: 'booked' } });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText(/Die Ressourcenzuweisung kollidiert/);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Statusentwurf verwerfen und Ressourcen korrigieren',
+    }),
+  );
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+  ).toHaveLength(1);
+  expect(
+    screen
+      .getByRole('button', { name: 'Ressourcen' })
+      .getAttribute('aria-current'),
+  ).toBe('location');
+  expect(
+    (screen.getByLabelText('Status des Events') as HTMLSelectElement).value,
+  ).toBe('inquiry');
+  expect(dirty).toHaveBeenLastCalledWith(false);
+
+  const checkboxA = await screen.findByLabelText(
+    'Fictional box A · Einheit 1 zuweisen',
+  );
+  const checkboxB = screen.getByLabelText(
+    'Fictional box B · Einheit 2 zuweisen',
+  );
+  expect((checkboxA as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(checkboxA);
+  fireEvent.click(checkboxB);
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Zuweisung und Termin speichern' })
+      .closest('form')!,
+  );
+  await screen.findByText('Ressourcen und Termin gespeichert.');
+  const writes = fetcher.mock.calls.filter(
+    ([, options]) => options?.method === 'PUT',
+  );
+  expect(JSON.parse(String(writes[1]![1]!.body)).assignments).toEqual([
+    { unitId: unitB.unitId, periodSource: 'event' },
+  ]);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
+    target: { value: 'booked' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await screen.findByText('Status gespeichert.');
+  const allWrites = fetcher.mock.calls.filter(
+    ([, options]) => options?.method === 'PUT',
+  );
+  expect(allWrites).toHaveLength(3);
+  expect(JSON.parse(String(allWrites[2]![1]!.body))).toMatchObject({
+    status: 'booked',
+    version: 2,
+  });
+});
 test('event detail errors preserve loaded data and allow retries', async () => {
   let error = 'conflict';
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
@@ -1414,6 +1600,48 @@ test('resource conflict reconciliation adopts the new version before another boo
   );
   expect(JSON.parse(String(puts[1]![1]!.body)).version).toBe(3);
 });
+
+test.each([
+  ['unknown 409', 'unexpected_error', 409, /Antwort unklar/],
+  ['structured 503', 'resource_conflict', 503, /Serverantwort unklar/],
+])(
+  '%s keeps status writes blocked until the server is reconciled',
+  async (_name, error, statusCode, message) => {
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+      options
+        ? Response.json({ error }, { status: statusCode })
+        : Response.json(detail),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    render(
+      <EventDetails
+        statuses={statuses}
+        id="synthetic-event"
+        csrfToken="csrf"
+        onChanged={async () => {}}
+        onEdit={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const status = (await screen.findByLabelText(
+      'Status des Events',
+    )) as HTMLSelectElement;
+    fireEvent.change(status, { target: { value: 'booked' } });
+    fireEvent.submit(
+      screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+    );
+    await screen.findByText(message);
+    expect(status.closest('fieldset')?.disabled).toBe(true);
+    expect(
+      screen.getByRole('button', {
+        name: 'Serverstand prüfen und Eingaben verwerfen',
+      }),
+    ).toBeTruthy();
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT'),
+    ).toHaveLength(1);
+  },
+);
 
 test('status reconciliation resets a draft even when the server version is unchanged', async () => {
   vi.stubGlobal(

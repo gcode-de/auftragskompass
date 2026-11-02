@@ -48,6 +48,13 @@ const statuses = [
   ['unavailable', 'Nicht verfügbar'],
   ['cancelled', 'Annulliert'],
 ];
+const correctableConflicts = new Set([
+  'incomplete_import',
+  'import_review_required',
+  'reservations_need_review',
+  'resource_conflict',
+  'unit_unavailable',
+]);
 const errors: Record<string, string> = {
   incomplete_import:
     'Kontakt, Paket und Datum im Quelldatensatz vor der Bestätigung vervollständigen.',
@@ -63,6 +70,8 @@ const errors: Record<string, string> = {
     'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.',
   resource_conflict:
     'Belegungskonflikt. Die bisherige Buchung bleibt erhalten.',
+  reservations_need_review:
+    'Der Eventtermin hat sich geändert. Zuweisungen und Zeitraum prüfen.',
   unit_unavailable:
     'Eine gewählte Einheit ist gesperrt, inaktiv oder archiviert.',
   event_unavailable:
@@ -380,12 +389,22 @@ export function ResourceAssignments({
       });
       if (!response.ok) {
         const error = (await response.json()) as { error: string };
-        if (response.status === 409 && onConfirmed) {
+        const needsReconciliation =
+          response.status >= 500 ||
+          (response.status === 409 && !correctableConflicts.has(error.error));
+        if (needsReconciliation) {
           uncertain.current = true;
           onUnconfirmedChange?.(true);
           setUnconfirmed(true);
           dirty.current = true;
           onDirtyChange?.(true);
+          setMessage(
+            response.status >= 500
+              ? 'Serverantwort unklar. Vor einem erneuten Versuch den Serverstand abgleichen.'
+              : (errors[error.error] ??
+                  'Speichern fehlgeschlagen. Aktuellen Serverstand prüfen.'),
+          );
+          return;
         }
         setMessage(
           errors[error.error] ??
@@ -411,13 +430,11 @@ export function ResourceAssignments({
         setReloadWarning(true);
       }
     } catch {
-      if (onConfirmed) {
-        uncertain.current = true;
-        onUnconfirmedChange?.(true);
-        setUnconfirmed(true);
-        dirty.current = true;
-        onDirtyChange?.(true);
-      }
+      uncertain.current = true;
+      onUnconfirmedChange?.(true);
+      setUnconfirmed(true);
+      dirty.current = true;
+      onDirtyChange?.(true);
       setMessage(
         'Verbindung fehlgeschlagen. Aktuellen Stand vor einem erneuten Versuch laden.',
       );

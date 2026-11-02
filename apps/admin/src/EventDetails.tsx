@@ -62,6 +62,17 @@ const areas: { value: Area; label: string }[] = [
   { value: 'notes', label: 'Notizen' },
   { value: 'activity', label: 'Logbuch' },
 ];
+const correctableStatusConflicts = new Set([
+  'import_review_required',
+  'reservations_need_review',
+  'resource_conflict',
+  'unit_unavailable',
+]);
+const resourceStatusConflicts = new Set([
+  'reservations_need_review',
+  'resource_conflict',
+  'unit_unavailable',
+]);
 // A wide frame keeps contact and place beside the main information; the narrow
 // frame offers the same context behind one deliberate disclosure, so the form
 // stays the first thing. Without a media query the context stays visible
@@ -191,6 +202,7 @@ export function EventDetails({
     [legacyBlocked, setLegacyBlocked] = useState(false),
     [resourceVersion, setResourceVersion] = useState<number | null>(null),
     [statusUncertain, setStatusUncertain] = useState(false),
+    [statusResourceCorrection, setStatusResourceCorrection] = useState(false),
     [notesDraft, setNotesDraft] = useState(''),
     [notesLimitReached, setNotesLimitReached] = useState(false),
     [linkAddress, setLinkAddress] = useState(''),
@@ -618,6 +630,7 @@ export function EventDetails({
       return;
     saving.current = true;
     ++loadSequence.current;
+    setStatusResourceCorrection(false);
     legacyChanged();
     setBusy(true);
     setMessage('');
@@ -637,11 +650,26 @@ export function EventDetails({
       });
       if (!response.ok) {
         const error = (await response.json()) as { error: string };
-        if (response.status === 409) {
+        const uncertain =
+          response.status >= 500 ||
+          (response.status === 409 &&
+            !correctableStatusConflicts.has(error.error));
+        if (uncertain) {
           statusUncertainRef.current = true;
           setStatusUncertain(true);
           dirty.current = true;
+          setMessage(
+            response.status >= 500
+              ? 'Serverantwort unklar. Vor einem erneuten Versuch den Serverstand abgleichen.'
+              : error.error === 'conflict'
+                ? 'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.'
+                : 'Antwort unklar. Vor einem erneuten Versuch den Serverstand abgleichen.',
+          );
+          return;
         }
+        setStatusResourceCorrection(
+          response.status === 409 && resourceStatusConflicts.has(error.error),
+        );
         setMessage(
           error.error === 'conflict'
             ? 'Inzwischen geändert. Bitte Eingaben prüfen und den aktuellen Stand neu laden.'
@@ -651,7 +679,9 @@ export function EventDetails({
                 ? 'Die Ressourcenzuweisung kollidiert mit einer anderen Belegung. Bitte Zuweisungen prüfen.'
                 : error.error === 'unit_unavailable'
                   ? 'Eine zugewiesene Ressource ist gesperrt oder nicht verfügbar. Bitte Zuweisungen prüfen.'
-                  : 'Status konnte nicht gespeichert werden. Eingaben und Anmeldung prüfen.',
+                  : error.error === 'reservations_need_review'
+                    ? 'Der Termin hat sich geändert. Bitte Zuweisungen und Zeitraum prüfen.'
+                    : 'Status konnte nicht gespeichert werden. Eingaben und Anmeldung prüfen.',
         );
         return;
       }
@@ -673,6 +703,7 @@ export function EventDetails({
     } catch {
       statusUncertainRef.current = true;
       setStatusUncertain(true);
+      setStatusResourceCorrection(false);
       dirty.current = true;
       setMessage(
         'Verbindung fehlgeschlagen. Aktuellen Stand vor einem erneuten Versuch laden.',
@@ -682,6 +713,25 @@ export function EventDetails({
       legacyChanged();
       setBusy(false);
     }
+  }
+  function discardStatusDraftAndCorrectResources() {
+    if (
+      saving.current ||
+      metadataDirty.current ||
+      resourcesDirty.current ||
+      resourceMutation.current ||
+      statusUncertainRef.current ||
+      resourceUncertainRef.current
+    )
+      return;
+    dirty.current = false;
+    setStatusResourceCorrection(false);
+    setEpoch((current) => current + 1);
+    setArea('resources');
+    setMessage(
+      'Statusentwurf verworfen. Ressourcenzuweisung korrigieren und den Status erneut setzen.',
+    );
+    legacyChanged();
   }
   async function reconcileStatus() {
     if (
@@ -972,6 +1022,7 @@ export function EventDetails({
                         name="status"
                         defaultValue={data.event.status}
                         onChange={() => {
+                          setStatusResourceCorrection(false);
                           dirty.current = true;
                           legacyChanged();
                         }}
@@ -986,6 +1037,24 @@ export function EventDetails({
                     <button className="primary-action">Status speichern</button>
                   </fieldset>
                 </form>
+                {statusResourceCorrection && (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={
+                      busy ||
+                      loading ||
+                      metadataDirty.current ||
+                      resourcesDirty.current ||
+                      resourceMutation.current ||
+                      statusUncertainRef.current ||
+                      resourceUncertainRef.current
+                    }
+                    onClick={discardStatusDraftAndCorrectResources}
+                  >
+                    Statusentwurf verwerfen und Ressourcen korrigieren
+                  </button>
+                )}
                 <button
                   type="button"
                   className="icon-action tier-quiet-icon"

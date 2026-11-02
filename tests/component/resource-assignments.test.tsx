@@ -98,6 +98,68 @@ test('resource assignment shows buffers, previews availability and books with ev
   ).toBe(true);
 });
 
+test('a business conflict keeps the assignment draft editable for a same-version retry', async () => {
+  let puts = 0;
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      puts++;
+      return puts === 1
+        ? Response.json({ error: 'resource_conflict' }, { status: 409 })
+        : Response.json({ ...event, status: 'booked', version: 2 });
+    }
+    return Response.json([resource]);
+  });
+  const confirmed = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <ResourceAssignments
+      event={event}
+      csrfToken="csrf"
+      onChanged={async () => {}}
+      onConfirmed={confirmed}
+    />,
+  );
+  const checkbox = await screen.findByLabelText(
+    'Fictional box · Einheit 1 zuweisen',
+  );
+  fireEvent.click(checkbox);
+  fireEvent.change(screen.getByLabelText('Buchungsstatus'), {
+    target: { value: 'booked' },
+  });
+  submit();
+  await screen.findByText(/Belegungskonflikt/);
+  expect((checkbox as HTMLInputElement).checked).toBe(true);
+  expect(
+    fetcher.mock.calls.filter(
+      ([url, options]) =>
+        url === '/api/v1/events/synthetic-event' && options === undefined,
+    ),
+  ).toHaveLength(0);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Zuweisung und Termin speichern',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+
+  submit();
+  await screen.findByText('Zuweisung und Termin gespeichert.');
+  const writes = fetcher.mock.calls.filter(
+    ([, options]) => options?.method === 'PUT',
+  );
+  expect(writes).toHaveLength(2);
+  expect(
+    writes.map(([, options]) => JSON.parse(String(options?.body)).version),
+  ).toEqual([1, 1]);
+  expect(
+    fetcher.mock.calls.filter(
+      ([url]) => url === '/api/v1/events/synthetic-event/availability',
+    ),
+  ).toHaveLength(1);
+  expect(confirmed).toHaveBeenCalledOnce();
+});
+
 const mount = (changed = async () => {}) =>
   render(
     <ResourceAssignments event={event} csrfToken="csrf" onChanged={changed} />,
@@ -297,9 +359,6 @@ test('preview failures and invalid or ambiguous time input do not claim availabi
   fetcher.mockResolvedValue(Response.json([]));
   fireEvent.click(preview);
   await screen.findByText('Verfügbarkeit konnte nicht geprüft werden.');
-  fetcher.mockRejectedValue(Error('offline'));
-  submit();
-  await screen.findByText(/Verbindung fehlgeschlagen/);
   const start = screen.getByLabelText('Eventbeginn', { exact: true });
   const callsBefore = fetcher.mock.calls.length;
   fireEvent.change(start, { target: { value: '2030-03-31T02:30' } });
@@ -308,6 +367,17 @@ test('preview failures and invalid or ambiguous time input do not claim availabi
   expect(fetcher.mock.calls).toHaveLength(callsBefore);
   expect(document.activeElement).toBe(start);
   expect((start as HTMLInputElement).value).toBe('2030-03-31T02:30');
+  fetcher.mockRejectedValue(Error('offline'));
+  fireEvent.change(start, { target: { value: '2030-10-16T18:00' } });
+  submit();
+  await screen.findByText(/Verbindung fehlgeschlagen/);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Zuweisung und Termin speichern',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
 });
 
 test('import review reuses assignment controls through its own protected endpoint and strips read-only metadata', async () => {
@@ -885,14 +955,18 @@ test('a booking write keeps the effective place untouched', async () => {
   });
 });
 
-test.each(['malformed', 'conflict'])(
+test.each(['malformed', 'conflict', 'unknown', 'server_error'])(
   'resource %s blocks another write until explicit server reload',
   async (failure) => {
     const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
       options
         ? failure === 'conflict'
           ? Response.json({ error: 'conflict' }, { status: 409 })
-          : Response.json({})
+          : failure === 'unknown'
+            ? Response.json({ error: 'unexpected_error' }, { status: 409 })
+            : failure === 'server_error'
+              ? Response.json({ error: 'resource_conflict' }, { status: 503 })
+              : Response.json({})
         : Response.json([resource]),
     );
     const changed = vi.fn().mockResolvedValue(undefined);
@@ -913,7 +987,11 @@ test.each(['malformed', 'conflict'])(
     await screen.findByText(
       failure === 'conflict'
         ? /Inzwischen geändert/
-        : /Verbindung fehlgeschlagen/,
+        : failure === 'unknown'
+          ? /Speichern fehlgeschlagen/
+          : failure === 'server_error'
+            ? /Serverantwort unklar/
+            : /Verbindung fehlgeschlagen/,
     );
     const button = screen.getByRole('button', {
       name: 'Zuweisung und Termin speichern',
