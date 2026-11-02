@@ -42,7 +42,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   expect(applied).toEqual(expected);
   // Event file links are additive; existing document constraints and indexes
   // below must survive the new relationship and audit column unchanged.
-  expect(applied.at(-1)!.name).toBe('0050_event_library_files.sql');
+  expect(applied.map((migration) => migration.name)).toContain(
+    '0050_event_library_files.sql',
+  );
   const fileLinkForeignKeys = (
     await pool.query<{ def: string }>(
       "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='event_library_files'::regclass AND contype='f'",
