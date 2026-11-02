@@ -77,7 +77,9 @@ export function InquiryPreview() {
                 }
               >
                 <label htmlFor={id + '-' + field.name}>
-                  {field.label}
+                  {field.name === 'comment'
+                    ? 'Details zur Veranstaltung'
+                    : field.label}
                   {field.required ? ' *' : ' (optional)'}
                 </label>
                 {field.type === 'textarea' ? (

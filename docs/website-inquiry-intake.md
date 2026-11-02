@@ -171,6 +171,10 @@ Kontaktzuordnung, Event, Herkunftsbeleg und Logbucheintrag
 Reservierung, keine Mail und keine Paket-/Eventartzuordnung. Das Original bleibt
 unverändert in `website_inquiries.payload` gespeichert.
 
+Die interne Formularvorschau beschriftet das optionale Feld `comment` wie das
+öffentliche Widget mit „Details zur Veranstaltung“. Der technische Feldname
+und die Verarbeitung des Inhalts bleiben unverändert.
+
 `startWebsiteOptionDrain` (`packages/core/src/website-option-worker.ts`) arbeitet
 pro Takt den **vollständigen** noch nicht übernommenen Bestand ab: Seiten von
 höchstens zehn Eingängen (`NOT EXISTS`, sortiert nach lokalem Eingang und ID),

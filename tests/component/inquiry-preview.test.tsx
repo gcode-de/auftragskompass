@@ -15,7 +15,8 @@ test('previews every existing field and checks locally without sending or storin
   await screen.findByLabelText('Vorname *');
   for (const field of inquiryFormV1.fields) {
     const input = screen.getByLabelText(
-      field.label + (field.required ? ' *' : ' (optional)'),
+      (field.name === 'comment' ? 'Details zur Veranstaltung' : field.label) +
+        (field.required ? ' *' : ' (optional)'),
     );
     expect((input as HTMLInputElement).required).toBe(field.required);
   }
