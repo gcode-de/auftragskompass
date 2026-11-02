@@ -220,6 +220,10 @@ Quell-ID zugeordnet werden. Die Datenbank erzwingt Mandanten- und Eventart-/Pake
 `import_promises` bewahrt ausdrücklich ungeprüfte Quellzusagen samt bereinigten
 Eventdaten und Zeitzone auf. Diese Datensätze sind noch keine bestätigten Events
 im operativen Kalender. Sie werden nicht als Anfrage oder Option umbenannt.
+Entfernte Events (C027.3) erscheinen nicht als aktive Importziele. Ein vorhandenes
+Mapping auf ein entferntes Ziel bleibt erhalten und blockiert die erneute Übernahme
+unter derselben externen Kennung. Das Event muss zunächst ausdrücklich
+wiederhergestellt werden; ein automatisches Wiederbeleben oder Umhängen erfolgt nicht.
 E003.3 zeigt die gesonderte Prüfliste und kennzeichnet den unvollständigen
 Kalender; die Produktivfreigabe bleibt bis zum Abgleich gesperrt.
 C076 muss vor endgültiger Übernahme Zeitangaben und Verknüpfungen erneut durch

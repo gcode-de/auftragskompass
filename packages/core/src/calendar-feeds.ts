@@ -132,7 +132,7 @@ export function calendarFeedRepository(
             FROM events e
             LEFT JOIN locations l ON l.tenant_id=e.tenant_id AND l.id=e.location_id
             LEFT JOIN master_data t ON t.tenant_id=e.tenant_id AND t.id=e.event_type_id
-            WHERE e.tenant_id=${tenantId} AND e.event_date IS NOT NULL
+            WHERE e.tenant_id=${tenantId} AND e.deleted_at IS NULL AND e.event_date IS NOT NULL
               AND (${feed.resourceId}::uuid IS NULL OR EXISTS(
                 SELECT 1 FROM reservations s
                 JOIN resource_units u ON u.tenant_id=s.tenant_id AND u.id=s.unit_id

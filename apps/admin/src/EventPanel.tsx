@@ -202,6 +202,7 @@ export function EventPanel({
     currentSearch = useRef(urlSearch),
     sequence = useRef(0),
     saving = useRef(false),
+    removedMutation = useRef(false),
     editor = useRef<HTMLDetailsElement>(null),
     createTrigger = useRef<HTMLButtonElement>(null),
     createReturnFocus = useRef<HTMLElement | null>(null),
@@ -216,6 +217,18 @@ export function EventPanel({
   // taken from the applied URL on open and thrown away on close.
   const [filterDraft, setFilterDraft] = useState<FilterValues | null>(null);
   const [rows, setRows] = useState<EventRow[]>([]),
+    [removedRows, setRemovedRows] = useState<
+      {
+        id: string;
+        name: string;
+        status: string;
+        eventDate: string | null;
+        version: number;
+        deletedAt: string;
+      }[]
+    >([]),
+    [viewingRemoved, setViewingRemoved] = useState(false),
+    [removedBusy, setRemovedBusy] = useState(false),
     // BKP007.2: the two filter counters are the server's tenant-wide aggregate of
     // this answer, not a count of the loaded rows.
     [counts, setCounts] = useState<FilterCounts>(emptyFilterCounts),
@@ -358,6 +371,72 @@ export function EventPanel({
       }
     } finally {
       if (current === sequence.current) setLoading(false);
+    }
+  }
+  async function loadRemoved(): Promise<boolean> {
+    setRemovedBusy(true);
+    try {
+      const response = await fetch('/api/v1/events/removed');
+      if (!response.ok) throw Error('load removed');
+      setRemovedRows(await response.json());
+      return true;
+    } catch {
+      setMessage('Entfernte Events konnten nicht geladen werden.');
+      return false;
+    } finally {
+      setRemovedBusy(false);
+    }
+  }
+  async function restoreRemoved(row: (typeof removedRows)[number]) {
+    if (
+      removedMutation.current ||
+      !window.confirm(
+        'Event wiederherstellen? Frühere Ressourcenbuchungen bleiben freigegeben und werden nicht automatisch neu gebucht.',
+      )
+    )
+      return;
+    removedMutation.current = true;
+    setRemovedBusy(true);
+    setMessage('Event wird wiederhergestellt …');
+    let confirmed = false;
+    try {
+      const response = await fetch('/api/v1/events/' + row.id + '/restore', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ version: row.version }),
+      });
+      if (!response.ok) throw Error('restore');
+      confirmed = true;
+      const restored = (await response.json()) as EventRow;
+      const summary =
+        restored.status === 'option' && row.status === 'booked'
+          ? 'Event wiederhergestellt. Der frühere Buchungsstatus wurde auf Option gesetzt; Ressourcen bitte neu zuweisen.'
+          : 'Event wiederhergestellt. Frühere Ressourcenbuchungen bleiben freigegeben.';
+      const [activeLoaded, removedLoaded] = await Promise.all([
+        refresh()
+          .then(() => true)
+          .catch(() => false),
+        loadRemoved(),
+      ]);
+      setMessage(
+        activeLoaded && removedLoaded
+          ? summary
+          : summary +
+              ' Die Listenaktualisierung ist fehlgeschlagen; bitte neu laden.',
+      );
+    } catch {
+      await Promise.all([loadRemoved(), refresh().catch(() => {})]);
+      setMessage(
+        confirmed
+          ? 'Wiederherstellung wurde bestätigt; die Listenaktualisierung ist fehlgeschlagen. Bitte neu laden.'
+          : 'Wiederherstellung unklar oder abgelehnt. Entfernte Events neu laden und Status prüfen.',
+      );
+    } finally {
+      removedMutation.current = false;
+      setRemovedBusy(false);
     }
   }
   async function refreshResourceProjection(confirmed: EventRow) {
@@ -803,6 +882,7 @@ export function EventPanel({
       ...group,
       entries: group.entries.map((entry) => entry.row),
     }));
+  const visibleGroups = viewingRemoved ? [] : groups;
   // A modal sheet makes the list behind it inert, so it is opened only in the
   // narrow frame and closes again when the column returns.
   useEffect(() => {
@@ -1119,6 +1199,24 @@ export function EventPanel({
       <div className="section-heading" hidden={showingDetail}>
         {showHeading && <h2>Events</h2>}
         <div className="section-actions">
+          <button
+            type="button"
+            className="tertiary-action"
+            disabled={busy || removedBusy}
+            onClick={() => {
+              if (viewingRemoved) {
+                setViewingRemoved(false);
+                void refresh().catch(() => {});
+              } else {
+                setViewingRemoved(true);
+                void loadRemoved();
+              }
+            }}
+          >
+            {viewingRemoved
+              ? 'Aktive Events anzeigen'
+              : 'Entfernte Events anzeigen'}
+          </button>
           <button
             ref={createTrigger}
             className="icon-action tier-primary-icon"
@@ -1535,10 +1633,42 @@ export function EventPanel({
             </div>
           )}
           {loading && <p role="status">Events werden geladen …</p>}
-          {!loading && !loadFailed && !shown.length && (
+          {viewingRemoved && (
+            <section aria-label="Entfernte Events" className="removed-events">
+              <h3>Entfernte Events</h3>
+              {removedBusy && (
+                <p role="status">Entfernte Events werden geladen …</p>
+              )}
+              {!removedBusy && removedRows.length === 0 && (
+                <p>Keine entfernten Events.</p>
+              )}
+              <ul className="event-list">
+                {removedRows.map((entry) => (
+                  <li key={entry.id}>
+                    <p>
+                      <strong>{entry.name}</strong> ·{' '}
+                      {statuses.find((status) => status.code === entry.status)
+                        ?.label ?? entry.status}{' '}
+                      · entfernt{' '}
+                      {new Date(entry.deletedAt).toLocaleDateString('de-DE')}
+                    </p>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={removedBusy}
+                      onClick={() => void restoreRemoved(entry)}
+                    >
+                      Event wiederherstellen
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {!viewingRemoved && !loading && !loadFailed && !shown.length && (
             <p>Keine Events gefunden.</p>
           )}
-          {groups.map(({ month, entries }) => {
+          {visibleGroups.map(({ month, entries }) => {
             const label = month
               ? new Intl.DateTimeFormat('de-DE', {
                   month: 'long',
@@ -1875,6 +2005,28 @@ export function EventPanel({
                                   )
                                   ?.focus(),
                               );
+                            }}
+                            onRemoved={(
+                              removalMessage = 'Event entfernt. Finale Dokumente und Historie bleiben erhalten.',
+                            ) => {
+                              recordDirty.current = false;
+                              detailIdRef.current = null;
+                              setDetailId(null);
+                              setMessage(removalMessage);
+                              void Promise.all([
+                                refresh()
+                                  .then(() => true)
+                                  .catch(() => false),
+                                loadRemoved(),
+                              ]).then(([activeLoaded, removedLoaded]) => {
+                                if (!activeLoaded || !removedLoaded) {
+                                  setReloadWarning(true);
+                                  setMessage(
+                                    removalMessage +
+                                      ' Listenaktualisierung fehlgeschlagen; bitte neu laden.',
+                                  );
+                                }
+                              });
                             }}
                           />
                         </>

@@ -290,6 +290,52 @@ test('event links enforce tenancy, archive state and concurrent idempotency', as
   expect(putKeys).toHaveLength(1);
 });
 
+test('removed events keep historical file links but deny direct event-file access', async () => {
+  const eventId = randomUUID(),
+    actor = (
+      await pool.query<{ user_id: string }>(
+        'SELECT user_id FROM memberships WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0]!.user_id;
+  await pool.query(
+    "INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html) VALUES ($1,$2,'Fictional removed-file event','inquiry','','Europe/Berlin','','')",
+    [tenantId, eventId],
+  );
+  const file = (await upload()).json(),
+    url = `/api/v1/events/${eventId}/library-files`;
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: url + '/' + file.id,
+        cookies,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(200);
+  await pool.query(
+    'UPDATE events SET deleted_at=now(), deleted_by=$1 WHERE tenant_id=$2 AND id=$3',
+    [actor, tenantId, eventId],
+  );
+  expect((await app.inject({ url, cookies })).statusCode).toBe(404);
+  expect(
+    (
+      await app.inject({
+        method: 'DELETE',
+        url: url + '/' + file.id,
+        cookies,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(404);
+  const links = await pool.query(
+    'SELECT file_id FROM event_library_files WHERE tenant_id=$1 AND event_id=$2',
+    [tenantId, eventId],
+  );
+  expect(links.rows).toEqual([{ file_id: file.id }]);
+});
+
 test('foreign files and events stay inaccessible through both link mutations', async () => {
   const eventId = randomUUID(),
     foreignEventId = randomUUID();

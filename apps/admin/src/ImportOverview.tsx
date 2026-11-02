@@ -16,10 +16,11 @@ type Overview = {
     section: string;
     externalId: string;
     targetId: string;
-    name: string;
+    name: string | null;
     sourceStatus: string;
     targetVersion: number;
-    currentVersion: number;
+    currentVersion: number | null;
+    targetMissing: boolean;
     locallyChanged: boolean;
     pendingResourceReview: boolean;
     reviewAction: string | null;
@@ -215,20 +216,29 @@ export function ImportOverview({
                 {overview.mappings.map((row) => (
                   <tr key={JSON.stringify([row.section, row.externalId])}>
                     <td>{sectionLabels[row.section]}</td>
-                    <th scope="row">{row.name}</th>
+                    <th scope="row">
+                      {row.targetMissing ? 'Event entfernt' : (row.name ?? '–')}
+                    </th>
                     <td>Bookitup · {row.externalId}</td>
                     <td>{row.sourceStatus || '–'}</td>
                     <td>
-                      {row.reviewAction === 'excluded_past'
-                        ? 'Nach Zeitablauf ausgeschlossen · '
-                        : row.pendingResourceReview
-                          ? 'Ressourcenprüfung offen · '
-                          : ''}
-                      {row.locallyChanged
-                        ? 'Lokal geändert'
-                        : 'Unverändert seit Übernahme'}{' '}
-                      · Version {row.currentVersion} (übernommen:{' '}
-                      {row.targetVersion})
+                      {row.targetMissing
+                        ? 'Ziel entfernt · Neuübernahme prüfen'
+                        : row.reviewAction === 'excluded_past'
+                          ? 'Nach Zeitablauf ausgeschlossen · '
+                          : row.pendingResourceReview
+                            ? 'Ressourcenprüfung offen · '
+                            : ''}
+                      {!row.targetMissing &&
+                        (row.locallyChanged
+                          ? 'Lokal geändert'
+                          : 'Unverändert seit Übernahme')}{' '}
+                      {!row.targetMissing && (
+                        <>
+                          · Version {row.currentVersion} (übernommen:{' '}
+                          {row.targetVersion})
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

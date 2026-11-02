@@ -191,6 +191,8 @@ export const events = pgTable('events', {
   description: text('description').notNull(),
   notesHtml: text('notes_html').notNull(),
   version: integer('version').notNull().default(1),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedBy: uuid('deleted_by'),
 });
 export const eventContacts = pgTable('event_contacts', {
   tenantId: uuid('tenant_id').notNull(),

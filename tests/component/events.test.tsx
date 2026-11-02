@@ -493,6 +493,99 @@ test('direct record links hide list controls and an unknown link never keeps an 
   expect(screen.getByRole('button', { name: 'Event anlegen' })).toBeTruthy();
 });
 
+test('confirmed event removal refreshes both lists and reports refresh failures', async () => {
+  window.history.replaceState(null, '', '/#event-synthetic');
+  vi.stubGlobal(
+    'confirm',
+    vi.fn(() => true),
+  );
+  const base = mocker();
+  let removed = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'DELETE') {
+        removed = true;
+        return Response.json({
+          id: row.id,
+          version: 2,
+          deletedAt: '2032-01-01T00:00:00Z',
+        });
+      }
+      if (url === '/api/v1/events/removed')
+        return removed ? new Response('', { status: 503 }) : Response.json([]);
+      if (url === '/api/v1/events/synthetic')
+        return Response.json({
+          event: row,
+          contacts: [],
+          location: null,
+          eventType: null,
+          package: null,
+          activities: [],
+        });
+      if (url.endsWith('/availability')) return Response.json([]);
+      return base(url, options);
+    }),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
+  await screen.findByText(/Listenaktualisierung fehlgeschlagen/);
+  expect(
+    screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
+  ).toBeNull();
+});
+
+test.each(['rejected', 'reload failed'])(
+  'restore reports %s without pretending the lists are current',
+  async (failure) => {
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    );
+    let attempted = false;
+    const base = mocker();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, options?: RequestInit) => {
+        if (url === '/api/v1/events/removed') {
+          if (attempted && failure === 'reload failed')
+            return new Response('', { status: 503 });
+          return Response.json([
+            {
+              id: row.id,
+              name: row.name,
+              status: 'booked',
+              eventDate: null,
+              version: 2,
+              deletedAt: '2032-01-01T00:00:00Z',
+            },
+          ]);
+        }
+        if (url === '/api/v1/events/synthetic/restore') {
+          attempted = true;
+          return failure === 'rejected'
+            ? new Response('', { status: 503 })
+            : Response.json({ ...row, status: 'option', version: 3 });
+        }
+        return base(url, options);
+      }),
+    );
+    render(<EventPanel csrfToken="csrf" />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Entfernte Events anzeigen' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Event wiederherstellen' }),
+    );
+    await screen.findByText(
+      failure === 'rejected'
+        ? /Wiederherstellung unklar oder abgelehnt/
+        : /Listenaktualisierung ist fehlgeschlagen/,
+    );
+  },
+);
+
 test('opening, closing and editing a record returns to the correct list and editor controls', async () => {
   const base = mocker();
   vi.stubGlobal(
@@ -3854,4 +3947,72 @@ test('a delayed PUT confirmation cannot replace a newer event from the list', as
     expect(screen.getByRole('link', { name: /Synthetic newer/ })).toBeTruthy(),
   );
   expect(screen.queryByRole('link', { name: /Synthetic older/ })).toBeNull();
+});
+
+test('removed events can be restored without silently restoring old bookings', async () => {
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirm);
+  let activeRows: Record<string, unknown>[] = [];
+  let removedRows = [
+    {
+      id: 'synthetic',
+      name: 'Synthetic event',
+      status: 'booked',
+      eventDate: null,
+      version: 2,
+      deletedAt: '2032-01-01T00:00:00.000Z',
+    },
+  ];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === '/api/v1/events/removed') return Response.json(removedRows);
+    if (
+      options?.method === 'POST' &&
+      url === '/api/v1/events/synthetic/restore'
+    ) {
+      removedRows = [];
+      const restored = { ...row, status: 'option', version: 3 };
+      activeRows = [restored];
+      return Response.json(restored);
+    }
+    if (url.startsWith('/api/v1/events'))
+      return Response.json({
+        timeZone: 'Europe/Berlin',
+        events: activeRows,
+        filterCounts: { undated: 0, inquiries: 0 },
+      });
+    if (url === '/api/v1/statuses')
+      return Response.json([
+        { code: 'option', label: 'Option' },
+        { code: 'booked', label: 'Gebucht' },
+      ]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventPanel csrfToken="csrf" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Entfernte Events anzeigen' }),
+  );
+  const removed = await screen.findByRole('region', {
+    name: 'Entfernte Events',
+  });
+  expect(await within(removed).findByText(/Gebucht/)).toBeTruthy();
+  fireEvent.click(
+    within(removed).getByRole('button', { name: 'Event wiederherstellen' }),
+  );
+  await screen.findByText(/frühere Buchungsstatus wurde auf Option gesetzt/);
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/events/synthetic/restore',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ version: 2 }),
+    }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Aktive Events anzeigen' }),
+  );
+  expect(
+    await screen.findByRole('link', { name: /Synthetic event/ }),
+  ).toBeTruthy();
+  expect(removedRows).toHaveLength(0);
 });

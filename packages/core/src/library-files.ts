@@ -234,7 +234,7 @@ export function libraryFileRepository(
   return {
     async listForEvent(eventId: string): Promise<LibraryFileRow[]> {
       const event = await db.execute(
-        sql`SELECT id FROM events WHERE tenant_id = ${tenantId} AND id = ${eventId}`,
+        sql`SELECT id FROM events WHERE tenant_id = ${tenantId} AND id = ${eventId} AND deleted_at IS NULL`,
       );
       if (!event.rows.length) throw new LibraryFileError('not_found');
       const result = (await db.execute(
@@ -252,7 +252,7 @@ export function libraryFileRepository(
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
         const event = await tx.execute(
-          sql`SELECT id FROM events WHERE tenant_id = ${tenantId} AND id = ${eventId}`,
+          sql`SELECT id FROM events WHERE tenant_id = ${tenantId} AND id = ${eventId} AND deleted_at IS NULL`,
         );
         if (!event.rows.length) throw new LibraryFileError('not_found');
         const file = await readRow(tx, fileId);

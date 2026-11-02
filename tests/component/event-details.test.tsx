@@ -2335,3 +2335,135 @@ test('notes paste inserts plain text, Enter inserts a break, and oversize input 
   await waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0]?.notesHtml).toBe(accepted);
 });
+
+test('event removal is confirmed, versioned and refuses unsaved drafts', async () => {
+  const confirm = vi.fn(() => true),
+    onRemoved = vi.fn();
+  vi.stubGlobal('confirm', confirm);
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'DELETE')
+      return Response.json({
+        id: event.id,
+        version: 2,
+        deletedAt: '2032-01-01T00:00:00.000Z',
+      });
+    if (url === '/api/v1/events/' + event.id) return Response.json(detail);
+    if (url.endsWith('/availability')) return Response.json([]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const details = () =>
+    render(
+      <EventDetails
+        id={event.id}
+        csrfToken="synthetic-csrf"
+        statuses={statuses}
+        onChanged={async () => {}}
+        onEdit={vi.fn()}
+        onClose={vi.fn()}
+        onRemoved={onRemoved}
+      />,
+    );
+  details();
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  const remove = screen.getByRole('button', { name: 'Event entfernen' });
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
+    target: { value: 'booked' },
+  });
+  expect((remove as HTMLButtonElement).disabled).toBe(true);
+  cleanup();
+  details();
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  const cleanRemove = screen.getByRole('button', { name: 'Event entfernen' });
+  expect((cleanRemove as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(cleanRemove);
+  fireEvent.click(cleanRemove);
+  await waitFor(() => expect(onRemoved).toHaveBeenCalledOnce());
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'DELETE'),
+  ).toHaveLength(1);
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/events/' + event.id,
+    expect.objectContaining({
+      method: 'DELETE',
+      headers: expect.objectContaining({ 'x-csrf-token': 'synthetic-csrf' }),
+      body: JSON.stringify({ version: event.version, confirm: true }),
+    }),
+  );
+});
+
+test('a missing event after a removal attempt keeps the record open for reconciliation', async () => {
+  const onRemoved = vi.fn();
+  vi.stubGlobal(
+    'confirm',
+    vi.fn(() => true),
+  );
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'DELETE')
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    if (url === '/api/v1/events/' + event.id) return Response.json(detail);
+    if (url.endsWith('/availability')) return Response.json([]);
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      id={event.id}
+      csrfToken="synthetic-csrf"
+      statuses={statuses}
+      onChanged={async () => {}}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+      onRemoved={onRemoved}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
+  await screen.findByText(
+    'Event konnte nicht entfernt werden. Serverstand prüfen.',
+  );
+  expect(onRemoved).not.toHaveBeenCalled();
+});
+
+test.each(['server', 'malformed', 'offline'])(
+  'an unconfirmed removal (%s) requires list reconciliation',
+  async (failure) => {
+    const onRemoved = vi.fn();
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, options?: RequestInit) => {
+        if (options?.method === 'DELETE') {
+          if (failure === 'offline') throw Error('offline');
+          return failure === 'server'
+            ? Response.json({ error: 'unavailable' }, { status: 503 })
+            : Response.json({});
+        }
+        if (url === '/api/v1/events/' + event.id) return Response.json(detail);
+        return Response.json([]);
+      }),
+    );
+    render(
+      <EventDetails
+        id={event.id}
+        csrfToken="synthetic"
+        statuses={statuses}
+        onChanged={async () => {}}
+        onEdit={vi.fn()}
+        onClose={vi.fn()}
+        onRemoved={onRemoved}
+      />,
+    );
+    await screen.findByRole('heading', {
+      name: 'Event: Synthetic detail event',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
+    await waitFor(() =>
+      expect(onRemoved).toHaveBeenCalledWith(expect.stringMatching(/unklar/)),
+    );
+  },
+);

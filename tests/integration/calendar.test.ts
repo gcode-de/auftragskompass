@@ -12,6 +12,7 @@ import {
 } from '../../packages/core/src/access.js';
 import { registerAuth, digest } from '../../packages/core/src/auth.js';
 import { registerEventRoutes } from '../../packages/core/src/events.js';
+import { eventRepository } from '../../packages/core/src/events.js';
 import {
   createHealthServer,
   loadRuntimeConfig,
@@ -132,6 +133,35 @@ test('calendar exposes only tenant events and uses local calendar days through D
     ).toBe(400);
 });
 
+test('a removed event no longer appears in the operational calendar', async () => {
+  const repo = eventRepository(pool, tenantId),
+    actor = (await accessRepository(pool, tenantId).list())[0]!.userId!,
+    event = await repo.save(actor, {
+      name: 'Fictional removed calendar event',
+      status: 'option',
+      eventTypeId: null,
+      packageId: null,
+      locationId: null,
+      primaryContactId: null,
+      additionalContactIds: [],
+      source: 'Synthetic fixture',
+      eventDate: '2030-10-27',
+      startsAt: '2030-10-27T10:00:00Z',
+      endsAt: '2030-10-27T12:00:00Z',
+      description: '',
+      notesHtml: '',
+    });
+  await repo.remove(actor, event.id, event.version);
+  const response = await app.inject({
+    url: '/api/v1/calendar?date=2030-10-27&view=day',
+    cookies,
+  });
+  expect(response.statusCode).toBe(200);
+  expect(
+    response.json().events.map((row: { id: string }) => row.id),
+  ).not.toContain(event.id);
+});
+
 test('resource timeline includes buffers and soft conflicts, ignores expired holds and freed blocks, and retains inactive history', async () => {
   const unit = (
     await pool.query(
@@ -140,7 +170,10 @@ test('resource timeline includes buffers and soft conflicts, ignores expired hol
     )
   ).rows[0].id;
   const event = (
-    await pool.query('SELECT id FROM events WHERE tenant_id=$1', [tenantId])
+    await pool.query(
+      "SELECT id FROM events WHERE tenant_id=$1 AND name='Fictional overnight event'",
+      [tenantId],
+    )
   ).rows[0].id;
   const second = randomUUID();
   await pool.query(

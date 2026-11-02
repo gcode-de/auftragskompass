@@ -1,5 +1,11 @@
 # Projektübergabe AuftragsKompass
 
+## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
+
+- `72fc8b2` erlaubt Gebucht ohne Ressource; `5d82197` hält die Ressourcenauswahl bei fachlichen Konflikten korrigierbar; `1d48993` repariert den Migrationstest. GitHub-Lauf 41475787135 für `1d48993` bestand Quality und Images. Auf dem aktuellen Host pve2 sind API, Worker und Admin gesund und tragen exakt diese Revision. Der einzige Updater-Timer ist aktiv, keine Fehlersperre liegt vor. Der Vorab-Dump wurde auf Container, Host und Betreiberrechner mit identischem SHA-256 abgeglichen. Der Worker hat `AK_INQUIRY_OPTION_DRAIN=on` und `AK_INQUIRY_DEFAULT_CONTACT_COUNTRY=DE`; die App-Diagnose zeigte keine offenen Website-Eingänge. Kein echter Eingang wurde für diese Prüfung erzeugt.
+- **C027.3:** Wiederherstellbare Evententfernung mit Vorwärtsmigration, atomarer Freigabe aktiver Reservierungen, Sicherheitsprüfungen für Kalender, Import, Dokumente und Dateien. Gebuchte Events kehren als Option ohne Reservierungen zurück; finale Belege und Historie bleiben erhalten. Ein unabhängiges Review fand Import-/Beleg-Sonderfälle, die korrigiert und gezielt getestet wurden. Format, Lint, Typen, Dokumentationsprüfung, Build, betroffene Komponenten-/Datenbanktests und Coverage waren lokal grün; Changed-Code-Coverage: 129/135 Zeilen und 128/142 Zweige. Synthetische Chromium-Ansichten wurden bei 390 und 1280 px in beiden Themes angesehen. GitHub-CI und tatsächliche Auslieferung des C027.3-Commits nach dem Push prüfen; kein produktives Event zur Abnahme löschen.
+- Im ausgelieferten Ressourcenstamm steht noch der überholte Hinweis, eine Fotobox sei Voraussetzung für Gebucht. Als separaten kleinen Slice korrigieren. Die vorgefundenen untracked `scripts/__pycache__/` und `tests/ops/__pycache__/` nicht stagen. Den bestehenden alleinigen Updater und die Checkpointprüfung beibehalten; keine parallelen manuellen Updates.
+
 ## CI-AUTH-01, 31.10.2026
 
 GitHub-Lauf 40963485443 scheiterte an Zeitlimits in zwei umfangreichen

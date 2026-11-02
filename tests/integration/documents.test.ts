@@ -23,6 +23,7 @@ import {
 } from '../../packages/core/src/documents.js';
 import { documentPaymentRepository } from '../../packages/core/src/document-payments.js';
 import { readDocumentPdf } from '../../packages/core/src/document-artifacts.js';
+import { eventRepository } from '../../packages/core/src/events.js';
 import {
   StorageError,
   type StorageAdapter,
@@ -9280,4 +9281,76 @@ test('invalid filter values are refused for direct repository callers too', asyn
       s.repo.list(filters as never),
       JSON.stringify(filters),
     ).rejects.toMatchObject({ reason: 'invalid_filter' });
+});
+
+test('removing an event blocks new document references but preserves final documents', async () => {
+  const scenario = await filterScenario(),
+    repo = scenario.repo,
+    finalized = (await repo.get(scenario.offerId))!,
+    eventId = finalized.eventId!,
+    contactId = finalized.contactId!,
+    originalPdf = await repo.pdf(finalized.id),
+    events = eventRepository(pool, scenario.scope),
+    event = await events.detail(eventId);
+  await events.remove(scenario.actor, eventId, event.event.version);
+  await expect(
+    repo.createBlankOffer(scenario.actor, { eventId, contactId }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  const retained = await repo.list({ eventId });
+  expect(
+    retained.some((row) => row.id === finalized.id && row.state === 'final'),
+  ).toBe(true);
+  expect(await repo.pdf(finalized.id)).toEqual(originalPdf);
+});
+
+test('document copy actions refuse tombstoned event references', async () => {
+  const scenario = await filterScenario(),
+    invoice = await filterInvoice(scenario, 14),
+    deposit = await filterDeposit(scenario, 14),
+    eventId = (
+      await pool.query(
+        'SELECT event_id FROM documents WHERE tenant_id=$1 AND id=$2',
+        [scenario.scope, invoice.id],
+      )
+    ).rows[0].event_id as string,
+    event = await eventRepository(pool, scenario.scope).detail(eventId);
+  await eventRepository(pool, scenario.scope).remove(
+    scenario.actor,
+    eventId,
+    event.event.version,
+  );
+
+  await expect(
+    scenario.repo.createOrderConfirmation(
+      scenario.actor,
+      scenario.offerId,
+      scenario.offerVersion,
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    scenario.repo.createInvoice(
+      scenario.actor,
+      scenario.confirmationId,
+      scenario.confirmationVersion,
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    scenario.repo.createDepositInvoice(
+      scenario.actor,
+      scenario.confirmationId,
+      scenario.confirmationVersion,
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  await expect(
+    scenario.repo.createCorrection(
+      scenario.actor,
+      invoice.id,
+      invoice.version,
+      'credit',
+    ),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  const retained = await scenario.repo.list({ eventId });
+  expect(retained.map((row) => row.id)).toEqual(
+    expect.arrayContaining([invoice.id, deposit.id]),
+  );
 });

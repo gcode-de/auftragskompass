@@ -687,6 +687,42 @@ test('operative events keep resolved contacts and nullable references and use no
   ).toBe(1);
 });
 
+test('removed imported events remain visible as missing mappings and cannot be replayed', async () => {
+  const manifest = distinctImport('-removed-target'),
+    repo = importRepository(pool, tenantId),
+    id = await actor();
+  manifest.events[0]!.data.status = 'Anfrage';
+  manifest.events[0]!.data.startsAt = '2030-10-27T18:00:00+01:00';
+  manifest.events[0]!.data.endsAt = '2030-10-27T20:00:00+01:00';
+  await repo.run(id, request(manifest));
+  const eventId = (
+    await pool.query(
+      'SELECT event_id FROM import_records WHERE tenant_id=$1 AND external_id=$2',
+      [tenantId, manifest.events[0]!.externalId],
+    )
+  ).rows[0].event_id as string;
+  await pool.query(
+    'UPDATE events SET deleted_at=clock_timestamp(), deleted_by=$3, version=version+1 WHERE tenant_id=$1 AND id=$2',
+    [tenantId, eventId, id],
+  );
+
+  const overview = await repo.overview(id);
+  const mapping = overview.mappings.find(
+    (row) => row.externalId === manifest.events[0]!.externalId,
+  );
+  expect(mapping).toMatchObject({
+    targetId: eventId,
+    name: null,
+    targetMissing: true,
+    currentVersion: null,
+    locallyChanged: true,
+  });
+  await expect(repo.run(id, request(manifest))).rejects.toMatchObject({
+    message: 'target_conflict',
+    section: 'events',
+  });
+});
+
 test('invalid, conflicting and cross-tenant binding decisions cannot mutate targets', async () => {
   const manifest = distinctImport('-decisions'),
     repo = importRepository(pool, tenantId),

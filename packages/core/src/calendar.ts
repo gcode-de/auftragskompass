@@ -132,6 +132,7 @@ export function calendarRepository(pool: Pool, tenantId: string) {
             .where(
               and(
                 eq(events.tenantId, tenantId),
+                isNull(events.deletedAt),
                 lte(events.eventDate, window.to),
                 gte(
                   sql<string>`coalesce(((${events.endsAt}-interval '1 millisecond') AT TIME ZONE ${events.timeZone})::date,${events.eventDate})`,

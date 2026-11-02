@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Temporal } from '@js-temporal/polyfill';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import {
   contacts,
@@ -1392,7 +1392,13 @@ export function documentRepository(
         ? await database(connection)
             .select({ id: events.id })
             .from(events)
-            .where(and(eq(events.tenantId, tenantId), eq(events.id, id)))
+            .where(
+              and(
+                eq(events.tenantId, tenantId),
+                eq(events.id, id),
+                isNull(events.deletedAt),
+              ),
+            )
         : table === 'contact'
           ? await database(connection)
               .select({ id: contacts.id })
@@ -2049,6 +2055,7 @@ export function documentRepository(
           // needs both references; an offer without them cannot be copied.
           if (!offer.eventId || !offer.contactId)
             throw new DocumentError('missing_reference');
+          await assertReference(tx, 'event', offer.eventId);
           // A very old offer may have no stored wording at all. Copying it would
           // produce an unprintable document, so it is refused instead of guessed.
           if (
@@ -2172,6 +2179,7 @@ export function documentRepository(
             throw new DocumentError('invalid_state');
           if (confirmation.version !== expectedVersion)
             throw new DocumentError('conflict');
+          await assertReference(tx, 'event', confirmation.eventId);
           // The confirmation keeps no status of its own; the order it was copied
           // from does. A withdrawn offer withdraws the order, so it is refused
           // here even though the confirmation itself says `final`. The status is
@@ -2303,6 +2311,7 @@ export function documentRepository(
           throw new DocumentError('invalid_state');
         if (confirmation.version !== expectedVersion)
           throw new DocumentError('conflict');
+        await assertReference(tx, 'event', confirmation.eventId);
         // The order itself may be withdrawn even though the confirmation is
         // still final; the status is read exactly like `createInvoice` reads it.
         const source = await offerStateOf(tx, confirmationId);
@@ -2552,6 +2561,7 @@ export function documentRepository(
           // blank-document rule needs both references and the three texts.
           if (!source.eventId || !source.contactId)
             throw new DocumentError('missing_reference');
+          await assertReference(tx, 'event', source.eventId);
           if (
             source.introText === null ||
             source.outroText === null ||

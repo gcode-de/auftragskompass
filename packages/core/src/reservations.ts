@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { and, asc, eq, gt, lt, lte, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, lt, lte, inArray, isNull, sql } from 'drizzle-orm';
 import { events, reservations, resourceUnits, resources } from './schema.js';
 import {
   lockTenant,
@@ -166,7 +166,11 @@ export function reservationRepository(pool: Pool, tenantId: string) {
           .select()
           .from(events)
           .where(
-            and(eq(events.tenantId, tenantId), eq(events.id, input.eventId)),
+            and(
+              eq(events.tenantId, tenantId),
+              eq(events.id, input.eventId),
+              isNull(events.deletedAt),
+            ),
           );
         if (!event) throw new ReservationError('not_found');
         if (event.version !== input.eventVersion)

@@ -576,6 +576,22 @@ test('original inquiry endpoint is tenant-scoped, read-only and keeps complete s
       (await eventRepository(pool, tenantId).detail(result.eventId))
         .websiteInquiryAvailable,
     ).toBe(true);
+    const activeEvent = await eventRepository(pool, tenantId).detail(
+      result.eventId,
+    );
+    await eventRepository(pool, tenantId).remove(
+      actorId,
+      result.eventId,
+      activeEvent.event.version,
+    );
+    expect(
+      (
+        await app.inject({
+          url,
+          headers: { cookie: '__Host-ak-session=' + token },
+        })
+      ).statusCode,
+    ).toBe(404);
   } finally {
     await app.close();
   }

@@ -26,6 +26,8 @@ export type AuditAction =
   | 'location.updated'
   | 'event.created'
   | 'event.updated'
+  | 'event.removed'
+  | 'event.restored'
   | 'reservation.created'
   | 'reservation.updated'
   | 'reservation.expired'

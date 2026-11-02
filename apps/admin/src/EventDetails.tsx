@@ -142,6 +142,7 @@ export function EventDetails({
   onChanged,
   onEdit,
   onClose,
+  onRemoved,
   types = [],
   packages = [],
   locations = [],
@@ -156,6 +157,7 @@ export function EventDetails({
   onChanged: (message?: string) => Promise<void>;
   onEdit: (event: EventRow) => void;
   onClose: () => void;
+  onRemoved?: (message?: string) => void;
   types?: VenueChoice[];
   packages?: VenueChoice[];
   locations?: VenueChoice[];
@@ -714,6 +716,80 @@ export function EventDetails({
       setBusy(false);
     }
   }
+  async function removeEvent() {
+    if (
+      !data ||
+      saving.current ||
+      busy ||
+      loading ||
+      metadataDirty.current ||
+      dirty.current ||
+      resourcesDirty.current ||
+      resourceMutation.current ||
+      statusUncertainRef.current ||
+      resourceUncertainRef.current
+    )
+      return;
+    if (
+      !window.confirm(
+        'Event entfernen? Aktive Ressourcen werden freigegeben. Finale Dokumente und Historie bleiben erhalten. Das Event kann später wiederhergestellt werden; frühere Buchungen werden dabei nicht reaktiviert.',
+      )
+    )
+      return;
+    saving.current = true;
+    setBusy(true);
+    setMessage('Event wird entfernt …');
+    try {
+      const response = await fetch('/api/v1/events/' + id, {
+        method: 'DELETE',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ version: data.event.version, confirm: true }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (response.status >= 500) {
+          onRemoved?.(
+            'Entfernungsstatus unklar. Bitte den Eintrag in aktiver und entfernter Eventliste abgleichen.',
+          );
+          return;
+        }
+        setMessage(
+          body?.error === 'conflict'
+            ? 'Event wurde zwischenzeitlich geändert. Bitte neu laden.'
+            : 'Event konnte nicht entfernt werden. Serverstand prüfen.',
+        );
+        return;
+      }
+      const result = (await response.json().catch(() => null)) as {
+        id?: unknown;
+        version?: unknown;
+        deletedAt?: unknown;
+      } | null;
+      if (
+        result?.id !== id ||
+        result.version !== data.event.version + 1 ||
+        typeof result.deletedAt !== 'string'
+      ) {
+        onRemoved?.(
+          'Entfernungsstatus unklar. Bitte den Eintrag in aktiver und entfernter Eventliste abgleichen.',
+        );
+        return;
+      }
+      onRemoved?.();
+    } catch {
+      onRemoved?.(
+        'Verbindung unklar. Bitte den Eintrag in aktiver und entfernter Eventliste abgleichen.',
+      );
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  }
   function discardStatusDraftAndCorrectResources() {
     if (
       saving.current ||
@@ -1055,6 +1131,24 @@ export function EventDetails({
                     Statusentwurf verwerfen und Ressourcen korrigieren
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    busy ||
+                    loading ||
+                    metadataDirty.current ||
+                    dirty.current ||
+                    resourcesDirty.current ||
+                    resourceMutation.current ||
+                    saving.current ||
+                    statusUncertainRef.current ||
+                    resourceUncertainRef.current
+                  }
+                  onClick={() => void removeEvent()}
+                >
+                  Event entfernen
+                </button>
                 <button
                   type="button"
                   className="icon-action tier-quiet-icon"

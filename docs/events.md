@@ -72,6 +72,31 @@ die vorhandenen vollständigen Formulare bearbeitbar.
 Die atomaren Ressourcen- und Buchungsprüfungen bleiben maßgeblich; ein
 Stammdaten-Blur führt keine Ressourcenbuchung aus.
 
+## Entfernen und Wiederherstellen (C027.3)
+
+`DELETE /api/v1/events/:id` benötigt `{ "version": n, "confirm": true }`,
+Administratorrolle, Origin und CSRF. Der Server entfernt nicht physisch:
+Event-Tombstone, Versionsfortschritt, Audit und die Freigabe aller aktiven,
+zukünftigen Vormerkungen/Buchungen werden mandantengesperrt und atomar
+gespeichert. Abgelaufene, beendete und andere historische Reservierungen bleiben
+unverändert. Versionskonflikt oder Auditfehler rollen den Vorgang zurück.
+
+Entfernte Events fehlen in aktiven Listen, Kontaktsuche, Eventsuche, Zählwerten,
+CSV, Kalender, ICS und Import-Zieltreffern. Direkte Detail-, Verfügbarkeits-,
+Ressourcen-, Website-Anfrage- und Dateizuordnungszugriffe behandeln sie als
+nicht gefunden. Neue Angebots-/Rechnungsentwürfe dürfen kein entferntes Event
+referenzieren. Vorhandene Dokumente, Eventkontakte, Aktivitäten, Datei-Links,
+Importherkunft und Reservierungszeilen bleiben erhalten; finale Belege werden
+nicht verändert.
+
+`GET /api/v1/events/removed` liefert Administratoren die entfernbaren
+Wiederherstellungseinträge. `POST /api/v1/events/:id/restore` benötigt die
+aktuelle Tombstone-Version und CSRF. Die Wiederherstellung ist auditiert und
+erhöht die Version. War das Event gebucht, wird sein Status auf Option gesetzt;
+alte Reservierungen bleiben freigegeben und müssen bewusst neu zugewiesen
+werden. Unklare Schreibantworten werden anhand aktiver und entfernter Listen
+abgeglichen, nicht blind erneut ausgeführt.
+
 ## Kompaktes Anlegen (H029)
 
 „Event anlegen“ öffnet einen modalen Dialog mit nativem Datumsfeld, einem

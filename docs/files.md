@@ -81,7 +81,9 @@ Event, ohne die Datei zu archivieren oder zu löschen.
   eine neue Verbindung zu einer archivierten Datei liefert `409`.
 - `DELETE /api/v1/events/:eventId/library-files/:fileId`: Zuordnung entfernen;
   `204`, auch bei wiederholtem Entfernen. Fehlende oder fremde Events/Dateien
-  liefern `404`, ohne fremde Verbindungen offenzulegen.
+  liefern `404`, ohne fremde Verbindungen offenzulegen. Entfernte Events
+  werden für diese Eventpfade ebenfalls als nicht gefunden behandelt; die
+  gespeicherte historische Verknüpfung bleibt bestehen.
 
 Zusammengesetzte Fremdschlüssel sichern beide Mandantenbezüge. Schreibvorgänge
 werden mit der Archivierung serialisiert, benötigen Administratorberechtigung

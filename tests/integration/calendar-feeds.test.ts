@@ -11,6 +11,7 @@ import {
   accessRepository,
 } from '../../packages/core/src/access.js';
 import { registerAuth, digest } from '../../packages/core/src/auth.js';
+import { eventRepository } from '../../packages/core/src/events.js';
 import {
   calendarFeedRepository,
   registerCalendarFeedRoutes,
@@ -488,4 +489,30 @@ test('the ics location is the effective place only', async () => {
   expect(entry).toContain('LOCATION:\r\n');
   expect(entry).not.toContain('Fictional renamed hall');
   expect(entry).not.toContain('Fictional street');
+});
+
+test('calendar feeds omit events after their tombstone is written', async () => {
+  const events = eventRepository(pool, tenant),
+    created = await events.save(actor, {
+      name: 'Fictional removed feed event',
+      status: 'option',
+      eventTypeId: null,
+      packageId: null,
+      locationId: null,
+      primaryContactId: null,
+      additionalContactIds: [],
+      source: 'Synthetic fixture',
+      eventDate: '2032-01-02',
+      startsAt: '2032-01-02T18:00:00Z',
+      endsAt: '2032-01-02T20:00:00Z',
+      description: '',
+      notesHtml: '',
+    }),
+    savedFeed = await calendarFeedRepository(pool, tenant, origin).save(
+      actor,
+      input,
+    );
+  await events.remove(actor, created.id, created.version);
+  const body = (await feed(savedFeed.url)).body;
+  expect(body).not.toContain('Fictional removed feed event');
 });

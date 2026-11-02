@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { database } from './database.js';
 import { AccessError, requireAdministrator } from './access.js';
-import { websiteInquiries } from './schema.js';
+import { events, websiteInquiries } from './schema.js';
 import { isWebsiteInquiry } from './website-inquiries.js';
 import { inquiryFormV1 } from './inquiry-form.js';
 
@@ -95,6 +95,17 @@ export function registerWebsiteInquiryRoutes(
         const value = await database(pool).transaction(
           async (tx) => {
             await requireAdministrator(tx, tenantId, actorId);
+            const [event] = await tx
+              .select({ id: events.id })
+              .from(events)
+              .where(
+                and(
+                  eq(events.tenantId, tenantId),
+                  eq(events.id, request.params.id),
+                  isNull(events.deletedAt),
+                ),
+              );
+            if (!event) return null;
             const [row] = await tx
               .select({ payload: websiteInquiries.payload })
               .from(websiteInquiries)

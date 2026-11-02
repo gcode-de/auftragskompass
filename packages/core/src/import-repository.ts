@@ -162,7 +162,7 @@ async function targetRows(tx: Transaction, tenantId: string, section: Section) {
         state: sql<null>`NULL`,
       })
       .from(events)
-      .where(scope(events));
+      .where(and(scope(events), isNull(events.deletedAt)));
   return tx
     .select()
     .from(masterData)
@@ -226,21 +226,30 @@ export function importRepository(pool: Pool, tenantId: string) {
                 row.promiseId)!;
               const target = row.promiseId
                 ? promises.find((promise) => promise.id === row.promiseId)!
-                : targets.get(row.section as Section)!.get(targetId)!;
+                : targets.get(row.section as Section)!.get(targetId);
+              const targetMissing = !target;
               return {
                 section: row.section,
                 externalId: row.externalId,
                 targetId,
-                name: 'data' in target ? target.data.name : target.name,
+                name: target
+                  ? 'data' in target
+                    ? target.data.name
+                    : target.name
+                  : null,
                 sourceStatus: row.sourceStatus,
                 targetVersion: row.targetVersion,
-                currentVersion: target.version,
-                locallyChanged: row.targetVersion !== target.version,
+                currentVersion: target?.version ?? null,
+                targetMissing,
+                locallyChanged: !target || row.targetVersion !== target.version,
                 pendingResourceReview: Boolean(
-                  row.promiseId && 'reviewedAt' in target && !target.reviewedAt,
+                  row.promiseId &&
+                  target &&
+                  'reviewedAt' in target &&
+                  !target.reviewedAt,
                 ),
                 reviewAction:
-                  row.promiseId && 'reviewAction' in target
+                  row.promiseId && target && 'reviewAction' in target
                     ? target.reviewAction
                     : (promises.find(
                         (promise) => promise.reviewedEventId === targetId,
@@ -359,6 +368,19 @@ export function importRepository(pool: Pool, tenantId: string) {
               )
                 fail('mapping_conflict');
               if (old && old.contentHash === contentHash) {
+                if (section === 'events' && old.eventId) {
+                  const [activeEvent] = await tx
+                    .select({ id: events.id })
+                    .from(events)
+                    .where(
+                      and(
+                        eq(events.tenantId, tenantId),
+                        eq(events.id, old.eventId),
+                        isNull(events.deletedAt),
+                      ),
+                    );
+                  if (!activeEvent) fail('target_conflict');
+                }
                 refs.set(key(section, entry.externalId), targetId!);
                 result.counts[section].unchanged++;
                 continue;

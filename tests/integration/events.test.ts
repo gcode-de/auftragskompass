@@ -222,6 +222,116 @@ test('events link only tenant-owned active records, preserve archived references
     ]),
   ).rejects.toMatchObject({ code: '23514' });
 });
+
+test('event removal hides it from active reads, releases reservations, and restore does not rebook', async () => {
+  const repo = eventRepository(pool, tenantId),
+    base = {
+      ...input,
+      eventTypeId: null,
+      packageId: null,
+      locationId: null,
+      primaryContactId: null,
+      additionalContactIds: [],
+    },
+    event = await repo.save(actorId, base),
+    resource = await resourceRepository(pool, tenantId).save(actorId, {
+      name: 'Synthetic removal resource',
+      code: 'SYN-REMOVE',
+      category: 'Fictional equipment',
+      description: 'Fictional fixture',
+      quantity: 2,
+      beforeDays: 0,
+      afterDays: 0,
+      blocked: false,
+      state: 'active',
+      position: 0,
+    }),
+    unit = (await reservationRepository(pool, tenantId).units(resource.id))[0]!;
+  const scheduled = await repo.save(
+    actorId,
+    {
+      ...base,
+      eventDate: '2032-06-10',
+      startsAt: '2032-06-10T10:00:00Z',
+      endsAt: '2032-06-10T12:00:00Z',
+    },
+    event.id,
+    event.version,
+  );
+  await reservationRepository(pool, tenantId).createHold(actorId, {
+    requestId: randomUUID(),
+    eventId: event.id,
+    unitId: unit.id,
+    eventVersion: scheduled.version,
+    expiresAt: null,
+  });
+  const booked = await repo.save(
+    actorId,
+    {
+      ...base,
+      status: 'booked',
+      eventDate: '2032-06-10',
+      startsAt: '2032-06-10T10:00:00Z',
+      endsAt: '2032-06-10T12:00:00Z',
+    },
+    event.id,
+    scheduled.version,
+  );
+  const historicalUnit = (
+    await reservationRepository(pool, tenantId).units(resource.id)
+  )[1]!;
+  await drizzle(pool)
+    .insert(reservationTable)
+    .values({
+      tenantId,
+      id: randomUUID(),
+      requestId: randomUUID(),
+      requestHash: 'a'.repeat(64),
+      eventId: event.id,
+      unitId: historicalUnit.id,
+      state: 'booked',
+      periodSource: 'event',
+      baseStart: new Date('2020-01-01T10:00:00Z'),
+      baseEnd: new Date('2020-01-01T12:00:00Z'),
+      timeZone: 'Europe/Berlin',
+      beforeDays: 0,
+      afterDays: 0,
+      startsAt: new Date('2020-01-01T10:00:00Z'),
+      endsAt: new Date('2020-01-01T12:00:00Z'),
+      expiresAt: null,
+    });
+  const removed = await repo.remove(actorId, event.id, booked.version);
+  expect(removed.version).toBe(booked.version + 1);
+  expect(await repo.list()).not.toContainEqual(
+    expect.objectContaining({ id: event.id }),
+  );
+  await expect(repo.detail(event.id)).rejects.toThrow('not_found');
+  expect(
+    (await reservationRepository(pool, tenantId).list(event.id)).map(
+      (row) => row.state,
+    ),
+  ).toEqual(['booked', 'released']);
+  const restored = await repo.restore(actorId, event.id, removed.version);
+  expect(restored.version).toBe(removed.version + 1);
+  expect(
+    (await reservationRepository(pool, tenantId).list(event.id)).map(
+      (row) => row.state,
+    ),
+  ).toEqual(['booked', 'released']);
+  expect(restored.status).toBe('option');
+  expect(await repo.detail(event.id)).toMatchObject({
+    event: { id: event.id },
+  });
+  const audit = await pool.query<{ action: string }>(
+    "SELECT action FROM audit_events WHERE tenant_id=$1 AND record_id=$2 AND action IN ('event.removed','event.restored')",
+    [tenantId, event.id],
+  );
+  expect(audit.rows.map((entry) => entry.action)).toEqual([
+    'event.removed',
+    'event.restored',
+  ]);
+  await repo.remove(actorId, event.id, restored.version);
+});
 test('event API validates schedule, prevents unauthenticated access and rolls back audit failures', async () => {
   const config = {
     origin: 'https://admin.example.invalid',
@@ -264,6 +374,9 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     });
   const simple = {
     ...input,
+    eventDate: '2026-10-16',
+    startsAt: '2026-10-16T18:00:00.000Z',
+    endsAt: '2026-10-17T01:00:00.000Z',
     primaryContactId: null,
     additionalContactIds: [],
     eventTypeId: null,
@@ -289,8 +402,10 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
       { eventDate: '2026-02-30' },
       { endsAt: null },
       { primaryContactId: 'bad' },
-    ])
-      expect((await create({ ...simple, ...bad })).statusCode).toBe(400);
+    ]) {
+      const response = await create({ ...simple, ...bad });
+      expect(response.statusCode, JSON.stringify(bad)).toBe(400);
+    }
     const booked = await create({ ...simple, status: 'booked' });
     expect(booked.statusCode).toBe(201);
     expect(booked.json().status).toBe('booked');
@@ -709,6 +824,120 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
       version: 11,
     });
     expect((await (await readContacts()).json()).contacts).toEqual([]);
+
+    const removeUrl = '/api/v1/events/' + created.json().id;
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: removeUrl,
+          payload: { version: 11, confirm: true },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: removeUrl,
+          cookies,
+          payload: { version: 11, confirm: true },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: removeUrl,
+          cookies,
+          headers,
+          payload: { version: 11, confirm: false },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: removeUrl,
+          cookies,
+          headers,
+          payload: { version: 10, confirm: true },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: removeUrl,
+      cookies,
+      headers,
+      payload: { version: 11, confirm: true },
+    });
+    expect(removed.statusCode).toBe(200);
+    expect((await app.inject({ url: removeUrl, cookies })).statusCode).toBe(
+      404,
+    );
+    expect(
+      (await app.inject({ url: removeUrl + '/availability', cookies }))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: removeUrl,
+          cookies,
+          headers,
+          payload: { ...simple, version: 12 },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ url: '/api/v1/events/export.csv', cookies })).body,
+    ).not.toContain(created.json().id);
+    expect(
+      (await app.inject({ url: '/api/v1/events/removed', cookies })).json(),
+    ).toContainEqual(
+      expect.objectContaining({ id: created.json().id, version: 12 }),
+    );
+    expect(
+      (await app.inject({ url: '/api/v1/events/removed' })).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: removeUrl + '/restore',
+          cookies,
+          payload: { version: 12 },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: removeUrl + '/restore',
+          cookies,
+          headers,
+          payload: { version: 11 },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const restored = await app.inject({
+      method: 'POST',
+      url: removeUrl + '/restore',
+      cookies,
+      headers,
+      payload: { version: 12 },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json()).toMatchObject({
+      id: created.json().id,
+      status: 'unavailable',
+      version: 13,
+    });
 
     await pool.query(
       'ALTER TABLE audit_events RENAME TO temporarily_missing_audit',

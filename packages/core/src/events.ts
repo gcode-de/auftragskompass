@@ -146,6 +146,7 @@ function narrowing(db: Reads, tenantId: string, filters: EventFilters) {
   const pattern = '%' + (filters.q ?? '').replace(/[\\%_]/g, '\\$&') + '%';
   return [
     eq(events.tenantId, tenantId),
+    isNull(events.deletedAt),
     filters.status ? eq(events.status, filters.status) : undefined,
     filters.eventTypeId
       ? eq(events.eventTypeId, filters.eventTypeId)
@@ -270,18 +271,23 @@ async function readRows(
         ),
       ),
     );
-  return rows.map((row) => ({
-    ...row,
-    startsAt: row.startsAt?.toISOString() ?? null,
-    endsAt: row.endsAt?.toISOString() ?? null,
-    primaryContactId:
-      links.find((link) => link.eventId === row.id && link.role === 'primary')
-        ?.contactId ?? null,
-    additionalContactIds: links
-      .filter((link) => link.eventId === row.id && link.role === 'additional')
-      .map((link) => link.contactId)
-      .sort(),
-  }));
+  return rows.map((row) => {
+    const { deletedAt: _deletedAt, deletedBy: _deletedBy, ...publicRow } = row;
+    void _deletedAt;
+    void _deletedBy;
+    return {
+      ...publicRow,
+      startsAt: row.startsAt?.toISOString() ?? null,
+      endsAt: row.endsAt?.toISOString() ?? null,
+      primaryContactId:
+        links.find((link) => link.eventId === row.id && link.role === 'primary')
+          ?.contactId ?? null,
+      additionalContactIds: links
+        .filter((link) => link.eventId === row.id && link.role === 'additional')
+        .map((link) => link.contactId)
+        .sort(),
+    };
+  });
 }
 // BKP007.2: the result counters answer "how many would this option show?" over
 // the whole tenant, so they must also see the undated events and the inquiries
@@ -459,6 +465,125 @@ async function withResourceSummaries<T extends { id: string }>(
 export function eventRepository(pool: Connection, tenantId: string) {
   const db = database(pool);
   return {
+    async removed(actorId: string) {
+      return db.transaction(async (tx) => {
+        await requireAdministrator(tx, tenantId, actorId);
+        const rows = await tx
+          .select({
+            id: events.id,
+            name: events.name,
+            status: events.status,
+            eventDate: events.eventDate,
+            version: events.version,
+            deletedAt: events.deletedAt,
+          })
+          .from(events)
+          .where(
+            and(
+              eq(events.tenantId, tenantId),
+              sql`${events.deletedAt} is not null`,
+            ),
+          )
+          .orderBy(asc(events.deletedAt), asc(events.name));
+        return rows.map((row) => ({
+          ...row,
+          deletedAt: row.deletedAt!.toISOString(),
+        }));
+      });
+    },
+    async remove(actorId: string, id: string, version: number) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [event] = await tx
+          .select({
+            id: events.id,
+            version: events.version,
+            deletedAt: events.deletedAt,
+          })
+          .from(events)
+          .where(and(eq(events.tenantId, tenantId), eq(events.id, id)));
+        if (!event || event.deletedAt) throw new EventError('not_found');
+        if (event.version !== version) throw new EventError('conflict');
+        const released = await tx
+          .update(reservations)
+          .set({ state: 'released' })
+          .where(
+            and(
+              eq(reservations.tenantId, tenantId),
+              eq(reservations.eventId, id),
+              inArray(reservations.state, ['hold', 'booked']),
+              gt(reservations.endsAt, sql`clock_timestamp()`),
+              sql`reservation_is_active(${reservations.state},${reservations.expiresAt},clock_timestamp())`,
+            ),
+          )
+          .returning({ id: reservations.id });
+        for (const reservation of released)
+          await appendAudit(
+            tx,
+            tenantId,
+            'reservation.updated',
+            actorId,
+            reservation.id,
+          );
+        const [removed] = await tx
+          .update(events)
+          .set({
+            deletedAt: new Date(),
+            deletedBy: actorId,
+            version: version + 1,
+          })
+          .where(
+            and(
+              eq(events.tenantId, tenantId),
+              eq(events.id, id),
+              eq(events.version, version),
+              isNull(events.deletedAt),
+            ),
+          )
+          .returning({ version: events.version, deletedAt: events.deletedAt });
+        if (!removed) throw new EventError('conflict');
+        await appendAudit(tx, tenantId, 'event.removed', actorId, id);
+        return {
+          id,
+          version: removed.version,
+          deletedAt: removed.deletedAt!.toISOString(),
+        };
+      });
+    },
+    async restore(actorId: string, id: string, version: number) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [restored] = await tx
+          .update(events)
+          .set({
+            deletedAt: null,
+            deletedBy: null,
+            version: version + 1,
+            status: sql`CASE WHEN ${events.status} = 'booked' THEN 'option' ELSE ${events.status} END`,
+          })
+          .where(
+            and(
+              eq(events.tenantId, tenantId),
+              eq(events.id, id),
+              eq(events.version, version),
+              sql`${events.deletedAt} is not null`,
+            ),
+          )
+          .returning({ id: events.id });
+        if (!restored) {
+          const [event] = await tx
+            .select({ id: events.id })
+            .from(events)
+            .where(and(eq(events.tenantId, tenantId), eq(events.id, id)));
+          if (!event) throw new EventError('not_found');
+          throw new EventError('conflict');
+        }
+        await appendAudit(tx, tenantId, 'event.restored', actorId, id);
+        return (await readRows(tx, tenantId, undefined, id))[0]!;
+      });
+    },
     async list(contactId?: string, filters: EventFilters = {}) {
       return db.transaction(
         (tx) => readRows(tx, tenantId, contactId, undefined, filters),
@@ -1073,6 +1198,84 @@ export function registerEventRoutes(
   }
   const assignmentSchema = resourceAssignmentSchema,
     availabilityRow = resourceAvailabilitySchema;
+  app.get('/api/v1/events/removed', async (_request, reply) => {
+    try {
+      return await repo.removed(_request.authSession!.userId);
+    } catch (error) {
+      return failure(error, reply);
+    }
+  });
+  const removalParams = {
+    type: 'object',
+    required: ['id'],
+    properties: { id: { type: 'string', format: 'uuid' } },
+  };
+  app.delete<{
+    Params: { id: string };
+    Body: { version: number; confirm: true };
+  }>(
+    '/api/v1/events/:id',
+    {
+      schema: {
+        params: removalParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version', 'confirm'],
+          properties: { version, confirm: { const: true } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'version', 'deletedAt'],
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              version,
+              deletedAt: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.remove(
+          request.authSession!.userId,
+          request.params.id,
+          request.body.version,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/events/:id/restore',
+    {
+      schema: {
+        params: removalParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version },
+        },
+        response: { 200: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.restore(
+          request.authSession!.userId,
+          request.params.id,
+          request.body.version,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   app.get<{
     Params: { id: string };
     Querystring: { unitId?: string; baseStart?: string; baseEnd?: string };
