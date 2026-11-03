@@ -312,7 +312,10 @@ async function offerDraftScenario(browser: Browser) {
     await page.getByLabel('E-Mail oder Benutzername').fill('fictional.offer');
     await page.getByLabel('Passwort', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
-    await expect(page.getByText(login, { exact: true })).toBeVisible();
+    await expect(page.getByText(login, { exact: true })).toBeAttached();
+    await expect(
+      page.getByRole('button', { name: 'Abmelden', exact: true }),
+    ).toBeVisible();
     await page
       .getByRole('navigation', { name: 'Hauptnavigation' })
       .getByRole('link', { name: 'Events', exact: true })

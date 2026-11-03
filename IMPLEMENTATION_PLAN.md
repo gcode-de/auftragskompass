@@ -10,6 +10,10 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-ICON-01 — `test: recognize hidden account identity`**: Browserprüfungen prüfen die vorhandene Kontoidentität trotz eingeklappter Leiste, ohne Sichtbarkeit der E-Mail zu verlangen.
+
+- [ ] **BKP006.4 — `style: place settings navigation beside content`**: Einstellungsnavigation auf breiten Ansichten links neben dem Inhalt anordnen; mobile Auswahl und alle vorhandenen Bereiche erhalten.
+
 - [x] **BKP006.3 — `style: default to compact icon navigation`**: Desktop standardmäßig als schmale Symbolleiste mit AK-Heimlink anzeigen, ohne E-Mail oder Beschriftungen; mobile Navigation, Labels und wählbare Erweiterung erhalten.
 
 - [x] **BKP006.2 — `fix: align header utility controls`**: Suche und Farbschema in der Desktop-Kopfzeile mittig ausrichten; vorhandene Bedienung und Touchflächen erhalten.

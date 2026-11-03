@@ -202,7 +202,10 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     await page.getByLabel('E-Mail oder Benutzername').fill(username);
     await page.getByLabel('Passwort', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
-    await expect(page.getByText(login, { exact: true })).toBeVisible();
+    await expect(page.getByText(login, { exact: true })).toBeAttached();
+    await expect(
+      page.getByRole('button', { name: 'Abmelden', exact: true }),
+    ).toBeVisible();
 
     // A temporary read failure must offer retry, while the real initial 404
     // below leads to explicit setup instead of disguising an API outage.
