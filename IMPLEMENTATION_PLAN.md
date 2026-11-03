@@ -10,6 +10,14 @@
 
 ### Betreiberauftrag 03.11.2026: Dokumenterstellung an Bookitup angleichen
 
+- [x] **DOC-PLAN-01 — `docs: map document creation paths`**: Die vorhandenen dokumentbezogenen Erstellungswege und Schutzregeln als Grundlage für den Bookitup-ähnlichen Dokumentdialog und die Folge-Slices dokumentieren; keine zusätzlichen Dokumentaktionen vortäuschen.
+
+- [ ] **DOC-UX-03 — Dokumentauswahl im Event**: Den bestehenden Angebotsweg in einen zugänglichen, kompakten Auswahldialog mit Eventkontakt und Vorlage/Blanko überführen. Weitere Dokumentarten erst anbieten, wenn ihre tatsächlichen Erstellungswege vollständig bedienbar sind. Tastatur, Mobilbreite, Fehler, unklare Antworten und Fokus-Rückkehr erhalten.
+
+- [ ] **DOC-CREATE-02 — Quellengebundene Dokumentarten**: Für Auftragsbestätigung, Anzahlungs-, Schluss- und Standardrechnung sowie Korrektur zulässige Quellbelege und Versionen im Dialog auswählen. Bestehende Status-, Mandanten-, CSRF-, Nummern- und Unveränderlichkeitsschutzregeln erhalten; Gutschrift als vorhandene Korrekturrichtung behandeln. Freie, von Quelldokumenten unabhängige Anlage erfordert eigene fachlich vollständige Slices statt Umgehung bestehender Regeln.
+
+- [ ] **DOC-PRODUCT-01 — Produktoptionen in Dokumenten**: Produkt-/Positionsdarstellung und die fehlenden belegten Optionen Brutto/Netto und Rabatt in Euro oder Prozent mit exakter Minor-Unit-Arithmetik, revisionssicherer Speicherung und Mobilansicht ausarbeiten; Produktstamm und bestehende finale Dokumente bleiben unverändert. Keine Ressourcenverknüpfung vortäuschen, bevor Datenmodell und Konfliktregeln vorhanden sind.
+
 - [x] **DOC-UX-02 — `style: prioritize event documents before library files`**: Geschäftsdokumente in der Event-Dateiansicht vor Bibliotheksdateien anzeigen; Verknüpfen, Lade-/Fehlerzustände und Navigation erhalten.
 
 - [x] **DOC-UX-01 — `style: disclose offer creation on demand`**: Den vorhandenen Angebots-Anlagebereich in der Eventakte erst nach bewusster Öffnung zeigen. Vorlage, Kontakt-, Schreib-, Konflikt- und Fokusverhalten erhalten; mobile und Tastaturbedienung sowie bestehende Tests prüfen. Keine nicht unterstützten Dokumentarten vortäuschen.
