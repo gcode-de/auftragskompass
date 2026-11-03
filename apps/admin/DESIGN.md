@@ -295,6 +295,10 @@ auch lange Namen brechen neben dem Knopf um.
 Produktzeilen verwenden denselben Stift sowie eine ruhige, beschriftete
 Dreipunktaktion für seltene Vorgänge; lange Namen brechen neben ihnen um.
 
+„Dokumente“ in der Hauptnavigation öffnet die vorhandene Geschäftsdokumentliste
+mit denselben Filtern; die Dateibibliothek wird dort ausgeblendet. Der bisherige
+Dateienbereich bleibt über sein bestehendes Ziel und seine Deep Links erreichbar.
+
 ## Do's and Don'ts
 
 **Do:**

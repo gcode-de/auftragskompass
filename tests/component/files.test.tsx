@@ -355,6 +355,24 @@ test('a failed request keeps the last good rows and reports the applied filter s
   expect(await screen.findByText(/Keine Dokumente/)).toBeTruthy();
 });
 
+test('the documents area describes a failed request and retry as documents', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(null, { status: 503 })),
+  );
+  render(<FilesPanel documentsOnly />);
+  const area = screen.getByRole('region', { name: 'Dokumente' });
+  expect(
+    within(area).getByRole('complementary', { name: 'Dokumentfilter' }),
+  ).toBeTruthy();
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Dokumente konnten nicht geladen werden.',
+  );
+  expect(
+    screen.getByRole('button', { name: 'Dokumente erneut laden' }),
+  ).toBeTruthy();
+});
+
 test('an empty result is distinguished from an error and the reset only clears its own filters', async () => {
   window.history.replaceState(
     null,

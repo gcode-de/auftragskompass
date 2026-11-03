@@ -169,12 +169,20 @@ export function AuthPanel() {
               showHeading={route === 'search'}
             />
           </div>
-          <div className="workspace-page" hidden={route !== 'files'}>
-            <FilesPanel active={route === 'files'} />
-            <LibraryFiles
-              csrfToken={user.csrfToken}
-              active={route === 'files'}
+          <div
+            className="workspace-page"
+            hidden={route !== 'files' && route !== 'documents'}
+          >
+            <FilesPanel
+              active={route === 'files' || route === 'documents'}
+              documentsOnly={route === 'documents'}
             />
+            <div hidden={route !== 'files'}>
+              <LibraryFiles
+                csrfToken={user.csrfToken}
+                active={route === 'files'}
+              />
+            </div>
           </div>
           <div className="workspace-page" hidden={route !== 'calendar'}>
             <CalendarPanel key={importRevision} />

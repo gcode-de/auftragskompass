@@ -289,9 +289,11 @@ function dateText(day: string) {
 export function FilesPanel({
   active = true,
   revision = 0,
+  documentsOnly = false,
 }: {
   active?: boolean;
   revision?: number;
+  documentsOnly?: boolean;
 } = {}) {
   const sequence = useRef(0),
     [rows, setRows] = useState<FileRow[]>([]),
@@ -610,16 +612,21 @@ export function FilesPanel({
     );
   }
   return (
-    <section id="files" className="files-panel" aria-label="Dateien">
+    <section
+      id="files"
+      className="files-panel"
+      aria-label={documentsOnly ? 'Dokumente' : 'Dateien'}
+    >
       <p className="files-subtitle">
-        Geschäftsdokumente aus Angeboten und Rechnungen. Hochgeladene Dateien
-        stehen in der Dateibibliothek darunter.
+        {documentsOnly
+          ? 'Geschäftsdokumente aus Angeboten und Rechnungen.'
+          : 'Geschäftsdokumente aus Angeboten und Rechnungen. Hochgeladene Dateien stehen in der Dateibibliothek darunter.'}
       </p>
       <div className="files-layout">
         {wide ? (
           <aside
             className="files-context files-filters"
-            aria-label="Dateifilter"
+            aria-label={documentsOnly ? 'Dokumentfilter' : 'Dateifilter'}
           >
             {filterPanel(false)}
           </aside>
@@ -667,7 +674,7 @@ export function FilesPanel({
             <dialog
               id="file-filter-panel"
               className="event-filter-drawer files-filter-drawer"
-              aria-label="Dateifilter"
+              aria-label={documentsOnly ? 'Dokumentfilter' : 'Dateifilter'}
               ref={drawer}
               onCancel={(event) => {
                 event.preventDefault();
@@ -712,20 +719,29 @@ export function FilesPanel({
           {failed && (
             <div className="reload-warning">
               <p role="alert">
-                {loadFailure} Angezeigt ist der letzte Stand; die Filter zeigen
-                den angeforderten Stand.
+                {documentsOnly
+                  ? 'Dokumente konnten nicht geladen werden.'
+                  : loadFailure}{' '}
+                Angezeigt ist der letzte Stand; die Filter zeigen den
+                angeforderten Stand.
               </p>
               <button
                 type="button"
                 className="tertiary-action"
                 onClick={() => void load()}
               >
-                Dateien erneut laden
+                {documentsOnly
+                  ? 'Dokumente erneut laden'
+                  : 'Dateien erneut laden'}
               </button>
             </div>
           )}
           {loading && !rows.length ? (
-            <p role="status">Dateien werden geladen …</p>
+            <p role="status">
+              {documentsOnly
+                ? 'Dokumente werden geladen …'
+                : 'Dateien werden geladen …'}
+            </p>
           ) : rows.length ? (
             <div className="files-table-shell">
               <table className="files-table">

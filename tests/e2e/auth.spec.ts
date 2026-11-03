@@ -808,6 +808,13 @@ async function signInScenario(
       "INSERT INTO events(tenant_id,id,name,status,source,event_date,time_zone,description,notes_html) VALUES ($1::uuid,'33333333-3333-4333-8333-333333333333','Synthetic browser wedding','option','Fictional browser files fixture',DATE '2031-05-01','Europe/Berlin','','') ON CONFLICT DO NOTHING",
       [config.tenantId],
     );
+    await navigate('Dokumente');
+    await expect(
+      page.getByRole('region', { name: 'Dokumente', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Dateibibliothek', exact: true }),
+    ).toBeHidden();
     await navigate('Dateien');
     const files = page.getByRole('region', { name: 'Dateien', exact: true });
     await expect(files).toBeVisible();

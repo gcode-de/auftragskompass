@@ -10,6 +10,11 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP019.1 — `feat: expose documents in main navigation`**:
+  Die bestehende Geschäftsdokumentliste zusätzlich als eigenen Bereich in der
+  Hauptnavigation anbieten; dort die Dateibibliothek ausblenden. Der bisherige
+  Dateienbereich und vorhandene Deep Links, Filter und Schutzregeln bleiben.
+
 - [x] **BKP030.6 — `feat: disclose resource filters on mobile`**:
   Die Filter auf schmalen Bildschirmen über einen beschrifteten Knopf öffnen,
   aktive Kriterien zählen und Eingaben beim Schließen erhalten. Desktopfilter,

@@ -119,6 +119,19 @@ test('visible screens keep one page title and the detail uses Event language', a
     within(details).getByRole('button', { name: 'Event-Details schließen' }),
   );
 
+  await go('/#documents');
+  expect(
+    await screen.findByRole('heading', {
+      level: 1,
+      name: 'Dokumente – zur Eventübersicht',
+    }),
+  ).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Dokumente' })).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Dateibibliothek' })).toBeNull();
+  await go('/#files');
+  expect(await screen.findByRole('region', { name: 'Dateien' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Dateibibliothek' })).toBeTruthy();
+
   await go('/#contacts');
   await screen.findByRole('region', { name: 'Kontakte' });
   expect(

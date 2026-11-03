@@ -1372,6 +1372,7 @@ test('each mounted workspace route shows at most one primary action in the real 
     ['/#events', 'Events – zur Eventübersicht'],
     ['/#contacts', 'Kontakte – zur Eventübersicht'],
     ['/#files', 'Dateien – zur Eventübersicht'],
+    ['/#documents', 'Dokumente – zur Eventübersicht'],
     ['/#calendar', 'Kalender – zur Eventübersicht'],
     ['/#settings', 'Einstellungen – zur Eventübersicht', 'Eventarten'],
     ['/#settings-resources', 'Ressourcen – zur Eventübersicht', 'Ressourcen'],

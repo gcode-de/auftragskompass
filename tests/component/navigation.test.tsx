@@ -111,6 +111,7 @@ test('resolves deep links, settings and browser history without losing search', 
   expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('events');
   for (const [hash, section] of [
     ['#files', 'files'],
+    ['#documents', 'documents'],
     ['#calendar', 'calendar'],
     ['#settings-calendar', 'subscriptions'],
     ['#settings', 'settings'],
@@ -314,19 +315,22 @@ test('resources are directly accessible in desktop and mobile navigation while s
     ).toBe(current === 'Ressourcen' ? 'page' : null);
   }
 });
-test('the resource shortcut respects unsaved event changes', () => {
-  window.history.replaceState(null, '', '/#event-fictional');
-  render(<Navigation />);
-  const unregister = registerUnsavedChanges(() => true, true);
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  const resourceLink = within(
-    screen.getByLabelText('Arbeitsbereiche'),
-  ).getByRole('link', { name: 'Ressourcen' });
-  expect(clickLink(resourceLink)).toBe(true);
-  expect(confirm).toHaveBeenCalledOnce();
-  expect(window.location.hash).toBe('#event-fictional');
-  unregister();
-});
+test.each(['Ressourcen', 'Dokumente'])(
+  '%s shortcut respects unsaved event changes',
+  (name) => {
+    window.history.replaceState(null, '', '/#event-fictional');
+    render(<Navigation />);
+    const unregister = registerUnsavedChanges(() => true, true);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const resourceLink = within(
+      screen.getByLabelText('Arbeitsbereiche'),
+    ).getByRole('link', { name });
+    expect(clickLink(resourceLink)).toBe(true);
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(window.location.hash).toBe('#event-fictional');
+    unregister();
+  },
+);
 test('mobile menu opens as a modal and closes on selection or Escape', () => {
   shimDialog();
   render(<Workspace />);
