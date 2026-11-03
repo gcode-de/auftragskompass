@@ -365,3 +365,5 @@ Inhalte statt HTML-Quelltext; die Bereinigung beim Speichern bleibt unverändert
 
 
 Die Eventfilter zeigen keine technische Zeitzonenzeile; Zeiträume verwenden weiterhin die konfigurierte Geschäftszeitzone.
+
+Bei der Ressourcenzuweisung stehen Belegungsprüfung und die unverbindliche Vormerkung im Vordergrund; technische Zeitzonendetails bleiben der Oberfläche fern.

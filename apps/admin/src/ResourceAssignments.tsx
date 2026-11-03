@@ -518,9 +518,8 @@ export function ResourceAssignments({
       )}
       {loading && <p>Verfügbarkeit wird geladen …</p>}
       <p>
-        Zeitzone: {event.timeZone}. Uhrzeiten werden automatisch in dieser
-        Zeitzone gespeichert. Jede Speicherung prüft die Belegung erneut;
-        Vormerkungen sind keine feste Zusage.
+        Jede Speicherung prüft die Belegung erneut; Vormerkungen sind keine
+        feste Zusage.
       </p>
       <form
         ref={form}

@@ -181,6 +181,8 @@ test('manual resource times use the tenant timezone and preserve per-unit period
   vi.stubGlobal('fetch', fetcher);
   mount();
   await screen.findByLabelText('Fictional box · Einheit 1 zuweisen');
+  expect(screen.queryByText(/Zeitzone:/)).toBeNull();
+  expect(screen.getByText(/Vormerkungen sind keine feste Zusage/)).toBeTruthy();
   submit();
   await screen.findByText('Zuweisung und Termin gespeichert.');
   const payload = JSON.parse(

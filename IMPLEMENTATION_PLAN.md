@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP030.7 — `style: simplify resource assignment guidance`**: Ressourcenzuordnung von technischen Zeitzonenhinweisen entlasten; Hinweise zu Belegungsprüfung und Vormerkung sowie lokale Zeitberechnung erhalten.
+
 - [x] **BKP007.5 — `style: simplify event filter timezone display`**: Die technische Zeitzonenzeile im Eventfilter entfernen, tenant-lokale Datumsberechnung und Ladeverhalten erhalten.
 
 - [x] **CI-EVENT-04 — `test: wait for loaded website event details`**: Im bestehenden Website-Optionstest die geladene Eventüberschrift statt der bereits während des Ladens vorhandenen Region abwarten.
