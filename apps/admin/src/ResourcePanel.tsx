@@ -88,7 +88,15 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   const dialog = useRef<HTMLDivElement>(null);
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const createTrigger = useRef<HTMLButtonElement>(null);
+  const filterTrigger = useRef<HTMLButtonElement>(null);
+  const filterGroup = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const [wideFilters, setWideFilters] = useState(
+    () =>
+      typeof window.matchMedia !== 'function' ||
+      window.matchMedia('(min-width: 960px)').matches,
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [rows, setRows] = useState<Resource[]>([]),
     [editing, setEditing] = useState<Resource | null>(null),
     [open, setOpen] = useState(false),
@@ -104,6 +112,10 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [reloadFailed, setReloadFailed] = useState(false);
+  const filterCount =
+    Number(Boolean(search.trim())) +
+    Number(Boolean(category)) +
+    Number(Boolean(state));
   const dirty = open && JSON.stringify(values) !== JSON.stringify(baseline);
   const needle = search.trim().toLowerCase();
   const categories = Array.from(new Set(rows.map((row) => row.category))).sort(
@@ -142,6 +154,29 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   }
   useEffect(() => {
     void refresh().catch(() => setMessage(loadFailureMessage));
+  }, []);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const viewport = window.matchMedia('(min-width: 960px)');
+    const changed = () => {
+      if (
+        !viewport.matches &&
+        filterGroup.current?.contains(document.activeElement)
+      )
+        setFiltersOpen(true);
+      const moveFocus =
+        viewport.matches && document.activeElement === filterTrigger.current;
+      setWideFilters(viewport.matches);
+      if (moveFocus)
+        requestAnimationFrame(() => {
+          if (viewport.matches)
+            filterGroup.current
+              ?.querySelector<HTMLInputElement>('input')
+              ?.focus();
+        });
+    };
+    viewport.addEventListener('change', changed);
+    return () => viewport.removeEventListener('change', changed);
   }, []);
   useEffect(() => registerUnsavedChanges(() => dirty), [dirty]);
   useEffect(() => {
@@ -369,45 +404,63 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
         Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.
       </p>
       <div className="resource-layout">
-        <div
-          className="resource-toolbar"
-          role="group"
-          aria-label="Ressourcenfilter"
-        >
-          <label>
-            Ressourcen suchen
-            <input
-              value={search}
-              maxLength={200}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <label>
-            Kategorie filtern
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
+        <div className="resource-filter-column">
+          {!wideFilters && (
+            <button
+              ref={filterTrigger}
+              type="button"
+              className="secondary-action resource-filter-trigger"
+              aria-label={`Filter, aktive Kriterien: ${filterCount}`}
+              aria-expanded={filtersOpen}
+              aria-controls="resource-filter-panel"
+              onClick={() => setFiltersOpen((current) => !current)}
             >
-              <option value="">Alle Kategorien</option>
-              {categories.map((entry) => (
-                <option key={entry} value={entry}>
-                  {entry}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Zustand filtern
-            <select
-              value={state}
-              onChange={(event) => setState(event.target.value)}
-            >
-              <option value="">Alle Zustände</option>
-              <option value="active">Aktiv</option>
-              <option value="inactive">Inaktiv</option>
-              <option value="archived">Archiviert</option>
-            </select>
-          </label>
+              Filter <span className="event-count">{filterCount}</span>
+            </button>
+          )}
+          <div
+            ref={filterGroup}
+            id="resource-filter-panel"
+            className="resource-toolbar"
+            role="group"
+            aria-label="Ressourcenfilter"
+            hidden={!wideFilters && !filtersOpen}
+          >
+            <label>
+              Ressourcen suchen
+              <input
+                value={search}
+                maxLength={200}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <label>
+              Kategorie filtern
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+              >
+                <option value="">Alle Kategorien</option>
+                {categories.map((entry) => (
+                  <option key={entry} value={entry}>
+                    {entry}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Zustand filtern
+              <select
+                value={state}
+                onChange={(event) => setState(event.target.value)}
+              >
+                <option value="">Alle Zustände</option>
+                <option value="active">Aktiv</option>
+                <option value="inactive">Inaktiv</option>
+                <option value="archived">Archiviert</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div className="resource-results">
           {loading && <p role="status">Ressourcen werden geladen …</p>}

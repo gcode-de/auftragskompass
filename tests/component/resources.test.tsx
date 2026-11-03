@@ -169,6 +169,79 @@ test('the resource page starts with the compact toolbar and the list, without an
   ).toBeTruthy();
 });
 
+test('mobile filters disclose without losing selected criteria', async () => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  vi.stubGlobal('fetch', listFetcher([row, spare]));
+  render(<ResourcePanel csrfToken="csrf" />);
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
+  const toggle = screen.getByRole('button', {
+    name: 'Filter, aktive Kriterien: 0',
+  });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(
+    document.getElementById(toggle.getAttribute('aria-controls')!)?.hidden,
+  ).toBe(true);
+  fireEvent.click(toggle);
+  fireEvent.change(screen.getByLabelText('Ressourcen suchen'), {
+    target: { value: 'spare' },
+  });
+  expect(screen.queryByText('Synthetic box')).toBeNull();
+  expect(screen.getByText('Synthetic spare')).toBeTruthy();
+  expect(toggle.getAttribute('aria-label')).toBe('Filter, aktive Kriterien: 1');
+  fireEvent.click(toggle);
+  expect(
+    document.getElementById(toggle.getAttribute('aria-controls')!)?.hidden,
+  ).toBe(true);
+  fireEvent.click(toggle);
+  expect(
+    (screen.getByLabelText('Ressourcen suchen') as HTMLInputElement).value,
+  ).toBe('spare');
+});
+test('resource filters preserve keyboard focus across viewport changes', async () => {
+  let listener = () => {};
+  const media = {
+    matches: true,
+    addEventListener: vi.fn((_name: string, callback: () => void) => {
+      listener = callback;
+    }),
+    removeEventListener: vi.fn(),
+  };
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => media),
+  );
+  vi.stubGlobal('fetch', listFetcher());
+  render(<ResourcePanel csrfToken="csrf" />);
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
+  const search = screen.getByLabelText('Ressourcen suchen');
+  search.focus();
+  act(() => {
+    media.matches = false;
+    listener();
+  });
+  const toggle = screen.getByRole('button', {
+    name: 'Filter, aktive Kriterien: 0',
+  });
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(document.activeElement).toBe(search);
+  toggle.focus();
+  act(() => {
+    media.matches = true;
+    listener();
+  });
+  await waitFor(() => expect(document.activeElement).toBe(search));
+});
 test('the plus action opens an accessible dialog with focus, focus trap, cancel and Escape return', async () => {
   vi.stubGlobal('fetch', listFetcher());
   render(<ResourcePanel csrfToken="csrf" />);

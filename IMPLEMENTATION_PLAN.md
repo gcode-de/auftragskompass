@@ -10,6 +10,11 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP030.6 — `feat: disclose resource filters on mobile`**:
+  Die Filter auf schmalen Bildschirmen über einen beschrifteten Knopf öffnen,
+  aktive Kriterien zählen und Eingaben beim Schließen erhalten. Desktopfilter,
+  Filterlogik, Tastaturbedienung und Fokus bei Breitenwechsel bleiben erhalten.
+
 - [x] **BKP010.5 — `style: compact product row actions`**:
   Produktbearbeitung und zusätzliche Aktionen als kompakte, benannte Symbole
   analog zu Event- und Ressourcenzeilen ausrichten. Offenlegung, Fokus,

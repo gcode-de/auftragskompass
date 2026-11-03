@@ -3095,9 +3095,22 @@ async function signInScenario(
         .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
       for (const width of [390, 1280]) {
         await page.setViewportSize({ width, height: 800 });
+        if (width < 960) {
+          const toggle = resources.getByRole('button', {
+            name: /Filter, aktive Kriterien: \d+/,
+          });
+          await expect(toggle).toBeVisible();
+          if ((await toggle.getAttribute('aria-expanded')) === 'false') {
+            await page.screenshot({
+              path: `tests/test-results/resources-collapsed-${mode}-${theme}-${width}.png`,
+            });
+            await toggle.click();
+          }
+        }
         const filter = resources.getByRole('group', {
           name: 'Ressourcenfilter',
         });
+        await expect(filter).toBeVisible();
         const result = resources.locator('.resource-results');
         const filterBox = (await filter.boundingBox())!;
         const resultBox = (await result.boundingBox())!;

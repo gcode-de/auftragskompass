@@ -1077,6 +1077,12 @@ time {
   grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
+.resource-filter-trigger {
+  margin-bottom: 0.75rem;
+}
+.resource-layout .resource-toolbar[hidden] {
+  display: none;
+}
 .resource-layout .resource-toolbar {
   align-content: start;
   margin: 0;

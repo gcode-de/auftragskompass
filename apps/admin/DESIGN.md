@@ -284,8 +284,10 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 ### Ressourcenfilter (BKP030.4)
 
 Die Ressourcenverwaltung gruppiert Suche, Kategorie und Zustand als beschriftete
-Filter. Ab 960px stehen sie links neben der Ergebnisliste, darunter in der
-Lesereihenfolge über ihr. Die Anlegeaktion steht im Bereichskopf. Fehlermeldungen,
+Filter. Ab 960px stehen sie links neben der Ergebnisliste; darunter öffnet ein
+Filterknopf die Felder über der Liste und nennt die Zahl aktiver Kriterien.
+Auswahl und Fokus bleiben beim Schließen und beim Breitenwechsel erhalten.
+Die Anlegeaktion steht im Bereichskopf. Fehlermeldungen,
 leere Treffer und Aktualisieren bleiben bei den Ergebnissen; bestehende Farben,
 Fokuszustände und Ressourcensperren bleiben erhalten.
 Die Bearbeitung erscheint als beschrifteter Stiftknopf mit 44px Bedienfläche;
