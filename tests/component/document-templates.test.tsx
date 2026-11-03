@@ -731,6 +731,10 @@ test('secondary template actions open one row at a time and dismiss accessibly',
       name: 'Vorlage duplizieren: Fictional offer',
     }),
   ).toBeTruthy();
+  fireEvent.pointerDown(secondToggle);
+  secondToggle.focus();
+  expect(firstToggle.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.pointerUp(secondToggle);
   fireEvent.click(secondToggle);
   expect(firstToggle.getAttribute('aria-expanded')).toBe('false');
   expect(secondToggle.getAttribute('aria-expanded')).toBe('true');

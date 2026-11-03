@@ -493,13 +493,34 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       if (row && target instanceof Node && !row.contains(target))
         setOpenActionsId(null);
     };
-    const onPointerDown = (event: PointerEvent) => closeIfOutside(event.target);
-    const onFocusIn = (event: FocusEvent) => closeIfOutside(event.target);
+    let switchingToggle: Element | null = null;
+    const onPointerDown = (event: PointerEvent) => {
+      const toggle =
+        event.target instanceof Element
+          ? event.target.closest('.document-template-action-toggle')
+          : null;
+      switchingToggle =
+        toggle &&
+        [...actionRowRefs.current.values()].some((row) => row.contains(toggle))
+          ? toggle
+          : null;
+      if (!switchingToggle) closeIfOutside(event.target);
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if (event.target !== switchingToggle) closeIfOutside(event.target);
+    };
+    const onPointerEnd = () => {
+      switchingToggle = null;
+    };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('pointerup', onPointerEnd);
+    document.addEventListener('pointercancel', onPointerEnd);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('pointerup', onPointerEnd);
+      document.removeEventListener('pointercancel', onPointerEnd);
     };
   }, [openActionsId]);
   function trackArchiveFocus(id: string, origin: HTMLElement) {

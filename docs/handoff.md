@@ -1,6 +1,6 @@
 # Projektübergabe AuftragsKompass
 
-**CI-Nachtrag 03.11.2026:** Lauf 41627928987 scheiterte unter anderem an der Barrierefreiheitsregel für das sichtbare AK im Heimlink. CI-ICON-02 ergänzt AK im zugänglichen Namen; gezielte Chromium-Axe-Prüfung und 172 Komponentenfälle grün. Ein weiterer Menütest scheiterte im CI einmal, lief lokal isoliert grün; neuer CI-Gesamtlauf ist abzuwarten. Auto-Deployment erst bei grüner CI und Images.
+**CI-Nachtrag 03.11.2026:** Lauf 41627928987 scheiterte unter anderem an der Barrierefreiheitsregel für das sichtbare AK im Heimlink. CI-ICON-02 ergänzt AK im zugänglichen Namen; gezielte Chromium-Axe-Prüfung und 172 Komponentenfälle grün. Lauf 41630080680 scheiterte erneut am Vorlagenmenü-Wechsel. CI-TEMPLATE-01 erhält das alte Menü während Pointer- und Fokusübergang bis zum Klick; 96 Komponentenfälle und der betroffene Chromium-Ablauf bestanden lokal. Neuer CI-Gesamtlauf ist abzuwarten. Auto-Deployment erst bei grüner CI und Images.
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
 

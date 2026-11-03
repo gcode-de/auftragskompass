@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-TEMPLATE-01 — `fix: preserve template menu switch during pointer focus`**: Beim Wechsel per Maus oder Touch darf das alte Menü vor dem abgeschlossenen Klick das Ziel nicht verschieben; Tastatur- und Außenklick-Verhalten erhalten.
+
 - [x] **CI-ICON-02 — `fix: include visible logo in accessible home label`**: Das sichtbare AK im barrierefreien Namen des Heimlinks aufführen und bestehende Prüfungen anpassen; CI-Vorlagenprüfung erneut ausführen.
 
 - [x] **CI-ICON-01 — `test: recognize hidden account identity`**: Browserprüfungen prüfen die vorhandene Kontoidentität trotz eingeklappter Leiste, ohne Sichtbarkeit der E-Mail zu verlangen.
