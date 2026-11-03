@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { clickLink } from '../helpers/click-link.js';
 import {
   act,
@@ -21,6 +21,7 @@ import {
   eventQuery,
   updateUrlSearch,
 } from '../../apps/admin/src/url-state.js';
+beforeEach(() => localStorage.setItem('ak-sidebar-icon-rail', 'expanded'));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -493,6 +494,22 @@ test('shows the running version next to the brand without disturbing navigation'
   expect(sidebar.getByRole('link', { name: 'Events' })).toBeTruthy();
 });
 
+test('desktop navigation starts as an icon rail even with an old expanded preference', () => {
+  localStorage.removeItem('ak-sidebar-icon-rail');
+  localStorage.setItem('ak-sidebar', 'expanded');
+  render(<Workspace />);
+  const sidebar = screen.getByLabelText('Arbeitsbereiche');
+  expect(sidebar.className).toContain('collapsed');
+  expect(
+    within(sidebar).getByRole('button', { name: 'Navigation ausklappen' }),
+  ).toBeTruthy();
+  expect(
+    within(sidebar).getByRole('link', {
+      name: 'AuftragsKompass – zur Eventübersicht',
+    }),
+  ).toBeTruthy();
+});
+
 test('desktop navigation collapses to labelled icons and remembers the preference', () => {
   window.history.replaceState(null, '', '/#events');
   render(<Workspace />);
@@ -505,7 +522,7 @@ test('desktop navigation collapses to labelled icons and remembers the preferenc
   collapse.focus();
   fireEvent.click(collapse);
   expect(sidebar.className).toContain('collapsed');
-  expect(localStorage.getItem('ak-sidebar')).toBe('collapsed');
+  expect(localStorage.getItem('ak-sidebar-icon-rail')).toBe('collapsed');
   const events = within(sidebar).getByRole('link', { name: 'Events' });
   expect(events.getAttribute('title')).toBe('Events');
   expect(events.getAttribute('aria-current')).toBe('page');
@@ -522,29 +539,32 @@ test('desktop navigation collapses to labelled icons and remembers the preferenc
   expect(expand.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(expand);
   expect(collapsedSidebar.className).not.toContain('collapsed');
-  expect(localStorage.getItem('ak-sidebar')).toBe('expanded');
+  expect(localStorage.getItem('ak-sidebar-icon-rail')).toBe('expanded');
   const collapsedBrand = within(collapsedSidebar).getByRole('link', {
     name: 'AuftragsKompass – zur Eventübersicht',
   });
   expect(collapsedBrand.getAttribute('title')).toBe(
     'AuftragsKompass – zur Eventübersicht',
   );
-  localStorage.setItem('ak-sidebar', 'collapsed');
-  fireEvent(window, new StorageEvent('storage', { key: 'ak-sidebar' }));
+  localStorage.setItem('ak-sidebar-icon-rail', 'collapsed');
+  fireEvent(
+    window,
+    new StorageEvent('storage', { key: 'ak-sidebar-icon-rail' }),
+  );
   expect(collapsedSidebar.className).toContain('collapsed');
   localStorage.clear();
   fireEvent(window, new StorageEvent('storage', { key: null }));
-  expect(collapsedSidebar.className).not.toContain('collapsed');
+  expect(collapsedSidebar.className).toContain('collapsed');
 });
 
-test('an unknown sidebar preference falls back to expanded', () => {
-  localStorage.setItem('ak-sidebar', 'invalid');
+test('an unknown sidebar preference falls back to collapsed', () => {
+  localStorage.setItem('ak-sidebar-icon-rail', 'invalid');
   render(<Workspace />);
-  expect(screen.getByLabelText('Arbeitsbereiche').className).not.toContain(
+  expect(screen.getByLabelText('Arbeitsbereiche').className).toContain(
     'collapsed',
   );
   expect(
-    screen.getByRole('button', { name: 'Navigation einklappen' }),
+    screen.getByRole('button', { name: 'Navigation ausklappen' }),
   ).toBeTruthy();
 });
 
@@ -600,11 +620,11 @@ test('sidebar collapse still works when browser storage is blocked', () => {
   });
   render(<Workspace />);
   const sidebar = screen.getByLabelText('Arbeitsbereiche');
-  expect(sidebar.className).not.toContain('collapsed');
-  fireEvent.click(
-    within(sidebar).getByRole('button', { name: 'Navigation einklappen' }),
-  );
   expect(sidebar.className).toContain('collapsed');
+  fireEvent.click(
+    within(sidebar).getByRole('button', { name: 'Navigation ausklappen' }),
+  );
+  expect(sidebar.className).not.toContain('collapsed');
   get.mockRestore();
   set.mockRestore();
 });
@@ -678,7 +698,7 @@ test('Dateien is a first-class main entry with quiet, labelled icon controls', (
 });
 
 test('the collapsed sidebar keeps Dateien active, labelled and keyboard reachable', () => {
-  localStorage.setItem('ak-sidebar', 'collapsed');
+  localStorage.setItem('ak-sidebar-icon-rail', 'collapsed');
   window.history.replaceState(null, '', '/?q=keep#files');
   render(<Workspace />);
   const sidebar = screen.getByLabelText('Arbeitsbereiche');
@@ -760,14 +780,20 @@ test('a stored preference change keeps focus on the collapse control', () => {
     name: 'Navigation einklappen',
   });
   toggle.focus();
-  localStorage.setItem('ak-sidebar', 'collapsed');
-  fireEvent(window, new StorageEvent('storage', { key: 'ak-sidebar' }));
+  localStorage.setItem('ak-sidebar-icon-rail', 'collapsed');
+  fireEvent(
+    window,
+    new StorageEvent('storage', { key: 'ak-sidebar-icon-rail' }),
+  );
   expect(sidebar.className).toContain('collapsed');
   expect(document.activeElement).toBe(toggle);
   expect(toggle.getAttribute('aria-label')).toBe('Navigation ausklappen');
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
-  localStorage.setItem('ak-sidebar', 'expanded');
-  fireEvent(window, new StorageEvent('storage', { key: 'ak-sidebar' }));
+  localStorage.setItem('ak-sidebar-icon-rail', 'expanded');
+  fireEvent(
+    window,
+    new StorageEvent('storage', { key: 'ak-sidebar-icon-rail' }),
+  );
   expect(sidebar.className).not.toContain('collapsed');
   expect(document.activeElement).toBe(toggle);
 });
@@ -807,7 +833,7 @@ test('the collapse control never hijacks the home link or its native clicks', ()
   fireEvent.click(toggle);
   expect(confirm).not.toHaveBeenCalled();
   expect(window.location.hash).toBe('#calendar');
-  expect(localStorage.getItem('ak-sidebar')).toBe('collapsed');
+  expect(localStorage.getItem('ak-sidebar-icon-rail')).toBe('collapsed');
   const brand = within(sidebar).getByRole('link', {
     name: 'AuftragsKompass – zur Eventübersicht',
   });

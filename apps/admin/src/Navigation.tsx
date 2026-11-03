@@ -23,9 +23,9 @@ import {
 
 function sidebarPreference(): boolean {
   try {
-    return localStorage.getItem('ak-sidebar') === 'collapsed';
+    return localStorage.getItem('ak-sidebar-icon-rail') !== 'expanded';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -271,7 +271,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
   }, []);
   useEffect(() => {
     const stored = (event: StorageEvent) => {
-      if (event.key === 'ak-sidebar' || event.key === null)
+      if (event.key === 'ak-sidebar-icon-rail' || event.key === null)
         setCollapsed(sidebarPreference());
     };
     window.addEventListener('storage', stored);
@@ -300,7 +300,10 @@ export function Navigation({ account }: { account?: ReactNode }) {
     const next = !collapsed;
     setCollapsed(next);
     try {
-      localStorage.setItem('ak-sidebar', next ? 'collapsed' : 'expanded');
+      localStorage.setItem(
+        'ak-sidebar-icon-rail',
+        next ? 'collapsed' : 'expanded',
+      );
     } catch {
       /* Browser privacy settings may disable preference storage. */
     }
@@ -479,6 +482,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
             {title}
           </a>
         </h1>
+        <span className="desktop-version">Version {appVersionLabel}</span>
         <div className={'global-search-shell' + (searchOpen ? ' open' : '')}>
           {searchOpen ? (
             <form className="global-search" onSubmit={submitSearch}>

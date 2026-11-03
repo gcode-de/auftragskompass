@@ -454,6 +454,7 @@ async function signInScenario(
       await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
     } else
       await page.getByRole('link', { name: 'Mit Google anmelden' }).click();
+    await page.getByRole('button', { name: 'Navigation ausklappen' }).click();
     await expect(
       page.getByText('synthetic@example.invalid', { exact: true }),
     ).toBeVisible();
@@ -691,16 +692,20 @@ async function signInScenario(
     // A preference change from another tab keeps the control as focus target.
     await resizeToggle.focus();
     await page.evaluate(() => {
-      localStorage.setItem('ak-sidebar', 'collapsed');
-      window.dispatchEvent(new StorageEvent('storage', { key: 'ak-sidebar' }));
+      localStorage.setItem('ak-sidebar-icon-rail', 'collapsed');
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'ak-sidebar-icon-rail' }),
+      );
     });
     await expect(sidebar).toHaveClass(/collapsed/);
     await expect(
       sidebar.getByRole('button', { name: 'Navigation ausklappen' }),
     ).toBeFocused();
     await page.evaluate(() => {
-      localStorage.setItem('ak-sidebar', 'expanded');
-      window.dispatchEvent(new StorageEvent('storage', { key: 'ak-sidebar' }));
+      localStorage.setItem('ak-sidebar-icon-rail', 'expanded');
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'ak-sidebar-icon-rail' }),
+      );
     });
     await expect(sidebar).not.toHaveClass(/collapsed/);
 

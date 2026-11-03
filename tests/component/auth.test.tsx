@@ -67,7 +67,7 @@ test('authenticated logout carries CSRF protection and supports retry', async ()
 });
 
 test('collapsed sidebar keeps a failed logout status visible and announced', async () => {
-  localStorage.setItem('ak-sidebar', 'collapsed');
+  localStorage.setItem('ak-sidebar-icon-rail', 'collapsed');
   let logoutCalls = 0;
   const fetcher = vi.fn(async (url: string) => {
     if (url === '/api/v1/events')

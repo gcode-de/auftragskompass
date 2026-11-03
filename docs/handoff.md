@@ -2,6 +2,8 @@
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
 
+- BKP006.3 startet Desktop mit schmaler Symbolleiste und AK-Heimlink; die Langform bleibt freiwillig auswählbar, die Versionsangabe steht in der Kopfzeile.
+
 - BKP006.2 richtet Suche und Farbschema in der Kopfzeile mittig aus.
 
 - BKP007.4 ergänzt den Event-Schnellfilter „Letzter Monat“ mit bestehender Kalender- und Filterlogik. CI und Auslieferung des aktuellen HEAD nach Push prüfen.
