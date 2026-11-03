@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-EVENT-04 — `test: wait for loaded website event details`**: Im bestehenden Website-Optionstest die geladene Eventüberschrift statt der bereits während des Ladens vorhandenen Region abwarten.
+
 - [x] **CI-TEMPLATE-01 — `fix: preserve template menu switch during pointer focus`**: Beim Wechsel per Maus oder Touch darf das alte Menü vor dem abgeschlossenen Klick das Ziel nicht verschieben; Tastatur- und Außenklick-Verhalten erhalten.
 
 - [x] **CI-ICON-02 — `fix: include visible logo in accessible home label`**: Das sichtbare AK im barrierefreien Namen des Heimlinks aufführen und bestehende Prüfungen anpassen; CI-Vorlagenprüfung erneut ausführen.

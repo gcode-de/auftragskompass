@@ -2796,7 +2796,7 @@ test('the event list carries website options with a quiet origin label and no ex
   fireEvent.click(link);
   const card = await screen.findByRole('region', { name: 'Event-Details' });
   expect(
-    within(card).getByRole('heading', {
+    await within(card).findByRole('heading', {
       name: 'Event: Fictional website option',
     }),
   ).toBeTruthy();
