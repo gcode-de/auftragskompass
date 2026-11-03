@@ -645,6 +645,9 @@ nav svg {
   border-top: 1px solid var(--border);
   margin-bottom: 1.25rem;
 }
+.workspace-toolbar > .theme-toggle {
+  align-self: center;
+}
 .workspace-heading {
   margin: 0;
   min-width: 0;

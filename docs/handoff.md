@@ -2,6 +2,8 @@
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
 
+- BKP006.2 richtet Suche und Farbschema in der Kopfzeile mittig aus.
+
 - BKP007.4 ergänzt den Event-Schnellfilter „Letzter Monat“ mit bestehender Kalender- und Filterlogik. CI und Auslieferung des aktuellen HEAD nach Push prüfen.
 
 - GitHub-Lauf 41543769579 für `f7c7bd5` war vollständig grün (Quality und Images). Der alleinige Updater lieferte diesen Stand aus; API, Worker und Admin waren gesund und trugen exakt diese OCI-Revision. Die Vorab-Dumps auf CT 114, pve2 und Betreiberrechner stimmten im SHA-256 überein. Keine echten Geschäftsdatensätze zur Prüfung verändert.

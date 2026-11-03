@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP006.2 — `fix: align header utility controls`**: Suche und Farbschema in der Desktop-Kopfzeile mittig ausrichten; vorhandene Bedienung und Touchflächen erhalten.
+
 - [x] **BKP007.4 — `feat: add last month event filter`**: Den Vormonat als Schnellfilter ergänzen; Monats- und Jahresgrenzen, Auswahlzustand und vorhandene Filter erhalten.
 
 - [x] **CI-CALENDAR-03 — `test: keep today distinct from selected day`**:

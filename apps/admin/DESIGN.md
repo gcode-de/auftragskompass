@@ -300,6 +300,8 @@ mit denselben Filtern; die Dateibibliothek wird dort ausgeblendet. Der bisherige
 Dateienbereich bleibt über sein bestehendes Ziel und seine Deep Links erreichbar.
 Ein kurzer Hinweis mit Rückweg zu Events erklärt die aktuell vorhandene Angebotserstellung.
 
+Die Kopfzeile zentriert Suche und Farbschema vertikal auf derselben Höhe.
+
 ## Do's and Don'ts
 
 **Do:**

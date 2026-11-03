@@ -608,6 +608,23 @@ test('both themes keep a neutral reference surface readable at 390 and 1280', as
   }
 });
 
+test('header utilities share one vertical center', async ({ page }) => {
+  await page.goto('/');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => {
+    document.body.innerHTML = `<header class="workspace-toolbar" style="height:80px"><h1 class="workspace-heading">Events</h1><div class="global-search-shell"><button class="search-shortcut icon-action tier-quiet-icon" aria-label="Suche öffnen"></button></div><button class="theme-toggle tertiary-action" aria-label="Farbschema"></button></header>`;
+  });
+  const search = (await page
+    .getByRole('button', { name: 'Suche öffnen' })
+    .boundingBox())!;
+  const theme = (await page
+    .getByRole('button', { name: 'Farbschema' })
+    .boundingBox())!;
+  expect(
+    Math.abs(search.y + search.height / 2 - (theme.y + theme.height / 2)),
+  ).toBeLessThanOrEqual(1);
+});
+
 test('built React shell loads in Chromium without runtime errors', async ({
   page,
 }) => {
