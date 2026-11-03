@@ -4,6 +4,8 @@
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
 
+- BKP007.5 entfernt die technische Zeitzonenzeile aus dem Eventfilter; die tenant-lokale Berechnung bleibt erhalten. 113 betroffene Komponentenfälle, ein Chromium-Ablauf und schnelle Gates lokal grün; CI und Auslieferung nach Push prüfen.
+
 - BKP006.4 ordnet die Einstellungen ab 1100px mit einer vertikalen Navigation neben dem Inhalt an; mobil bleibt die Auswahl erhalten.
 
 - BKP006.3 startet Desktop mit schmaler Symbolleiste und AK-Heimlink; die Langform bleibt freiwillig auswählbar, die Versionsangabe steht in der Kopfzeile.

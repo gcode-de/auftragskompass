@@ -362,3 +362,6 @@ Gruppe mit normaler Tab-Reihenfolge. Auf schmalen Displays bricht sie um, ohne
 seitliches Scrollen. Beim Verlassen speichert die bestehende Event-Warteschlange;
 Entwürfe, Konflikte und Fehler bleiben erkennbar. Der Editor zeigt formatierte
 Inhalte statt HTML-Quelltext; die Bereinigung beim Speichern bleibt unverändert.
+
+
+Die Eventfilter zeigen keine technische Zeitzonenzeile; Zeiträume verwenden weiterhin die konfigurierte Geschäftszeitzone.

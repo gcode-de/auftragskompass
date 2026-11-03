@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP007.5 — `style: simplify event filter timezone display`**: Die technische Zeitzonenzeile im Eventfilter entfernen, tenant-lokale Datumsberechnung und Ladeverhalten erhalten.
+
 - [x] **CI-EVENT-04 — `test: wait for loaded website event details`**: Im bestehenden Website-Optionstest die geladene Eventüberschrift statt der bereits während des Ladens vorhandenen Region abwarten.
 
 - [x] **CI-TEMPLATE-01 — `fix: preserve template menu switch during pointer focus`**: Beim Wechsel per Maus oder Touch darf das alte Menü vor dem abgeschlossenen Klick das Ziel nicht verschieben; Tastatur- und Außenklick-Verhalten erhalten.

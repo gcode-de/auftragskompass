@@ -2734,7 +2734,7 @@ test('a preset without a tenant zone neither writes nor marks anything', async (
       .getByRole('button', { name: 'Nächster Monat' })
       .getAttribute('aria-pressed'),
   ).toBe('false');
-  expect(screen.getByText('Zeitzone: Wird geladen')).toBeTruthy();
+  expect(screen.queryByText(/Zeitzone:/)).toBeNull();
 });
 
 test('the event list carries website options with a quiet origin label and no exceptions queue', async () => {

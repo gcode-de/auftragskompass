@@ -1735,10 +1735,6 @@ summary {
   font-weight: 600;
   color: var(--accent);
 }
-.event-timezone {
-  color: var(--muted);
-  font-size: 0.875rem;
-}
 /* H041: the sort choice, the quick date presets and the counters of the
    bookitup list filters. None of them relies on colour alone: the selected
    row keeps weight and border, the active preset keeps a 2px border. */

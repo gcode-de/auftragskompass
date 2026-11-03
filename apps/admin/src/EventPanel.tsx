@@ -1190,7 +1190,6 @@ export function EventPanel({
             </button>
           </div>
         </fieldset>
-        <p className="event-timezone">Zeitzone: {zone || 'Wird geladen'}</p>
       </form>
     );
   }

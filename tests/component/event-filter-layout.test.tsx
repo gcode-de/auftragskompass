@@ -274,8 +274,12 @@ test('both presentations read the same applied filter state', async () => {
     (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
   ).toBe('Synthetic');
   // The status select only knows its options once the statuses arrived; the
-  // panel remounts on the loaded zone, exactly as before.
-  await screen.findByText('Zeitzone: Europe/Berlin');
+  // panel finishes loading its data before the values are asserted.
+  await waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
+    ).toBe('false'),
+  );
   expect(
     (screen.getByLabelText('Filterstatus') as HTMLSelectElement).value,
   ).toBe('inquiry');
@@ -289,7 +293,11 @@ test('both presentations read the same applied filter state', async () => {
   const trigger = await screen.findByRole('button', { name: /^Filter/ });
   expect(screen.getByTestId('active-filter-count').textContent).toBe('3');
   fireEvent.click(trigger);
-  await screen.findByText('Zeitzone: Europe/Berlin');
+  await waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
+    ).toBe('false'),
+  );
   expect(
     (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
   ).toBe('Synthetic');
@@ -441,7 +449,11 @@ test('review regression: mobile sort preserves draft and cancel leaves applied U
   render(<EventPanel csrfToken="csrf" />);
   const trigger = await screen.findByRole('button', { name: /^Filter/ });
   fireEvent.click(trigger);
-  await screen.findByText('Zeitzone: Europe/Berlin');
+  await waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
+    ).toBe('false'),
+  );
   const pushes = vi.spyOn(window.history, 'pushState');
   fireEvent.change(screen.getByLabelText('Events suchen'), {
     target: { value: 'Synthetic unsaved search' },
@@ -462,7 +474,11 @@ test('the sheet keeps one draft across search, preset, sort and quick filter', a
   vi.stubGlobal('fetch', mocker());
   render(<EventPanel csrfToken="csrf" />);
   fireEvent.click(await screen.findByRole('button', { name: /^Filter/ }));
-  await screen.findByText('Zeitzone: Europe/Berlin');
+  await waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
+    ).toBe('false'),
+  );
   const pushes = vi.spyOn(window.history, 'pushState');
   const search = screen.getByLabelText('Events suchen') as HTMLInputElement;
   fireEvent.change(search, { target: { value: 'Synthetic mixed draft' } });
@@ -610,7 +626,11 @@ test('the in-sheet reset clears the draft without a history entry', async () => 
   render(<EventPanel csrfToken="csrf" />);
   const trigger = await screen.findByRole('button', { name: /^Filter/ });
   fireEvent.click(trigger);
-  await screen.findByText('Zeitzone: Europe/Berlin');
+  await waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
+    ).toBe('false'),
+  );
   const pushes = vi.spyOn(window.history, 'pushState');
   fireEvent.change(screen.getByLabelText('Events suchen'), {
     target: { value: 'Synthetic reset draft' },
