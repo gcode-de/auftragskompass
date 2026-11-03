@@ -362,6 +362,12 @@ test('the documents area describes a failed request and retry as documents', asy
   );
   render(<FilesPanel documentsOnly />);
   const area = screen.getByRole('region', { name: 'Dokumente' });
+  expect(within(area).getByText(/Neue Angebote.*Event.*Dateien/)).toBeTruthy();
+  expect(
+    within(area)
+      .getByRole('link', { name: 'Zur Eventübersicht' })
+      .getAttribute('href'),
+  ).toBe('#events');
   expect(
     within(area).getByRole('complementary', { name: 'Dokumentfilter' }),
   ).toBeTruthy();

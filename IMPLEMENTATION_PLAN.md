@@ -10,6 +10,11 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP019.2 — `fix: explain where new offers are created`**:
+  Im neuen Dokumentbereich den tatsächlich vorhandenen Weg zur Angebotserstellung
+  über Event → Dateien knapp benennen und zur Eventübersicht verlinken; keine
+  nicht vorhandene globale Dokumentanlage vortäuschen.
+
 - [x] **BKP019.1 — `feat: expose documents in main navigation`**:
   Die bestehende Geschäftsdokumentliste zusätzlich als eigenen Bereich in der
   Hauptnavigation anbieten; dort die Dateibibliothek ausblenden. Der bisherige

@@ -622,6 +622,12 @@ export function FilesPanel({
           ? 'Geschäftsdokumente aus Angeboten und Rechnungen.'
           : 'Geschäftsdokumente aus Angeboten und Rechnungen. Hochgeladene Dateien stehen in der Dateibibliothek darunter.'}
       </p>
+      {documentsOnly && (
+        <p className="files-subtitle">
+          Neue Angebote legst du im Event unter „Dateien“ an.{' '}
+          <a href="#events">Zur Eventübersicht</a>
+        </p>
+      )}
       <div className="files-layout">
         {wide ? (
           <aside

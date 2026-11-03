@@ -298,6 +298,7 @@ Dreipunktaktion für seltene Vorgänge; lange Namen brechen neben ihnen um.
 „Dokumente“ in der Hauptnavigation öffnet die vorhandene Geschäftsdokumentliste
 mit denselben Filtern; die Dateibibliothek wird dort ausgeblendet. Der bisherige
 Dateienbereich bleibt über sein bestehendes Ziel und seine Deep Links erreichbar.
+Ein kurzer Hinweis mit Rückweg zu Events erklärt die aktuell vorhandene Angebotserstellung.
 
 ## Do's and Don'ts
 
