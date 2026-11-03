@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 03.11.2026: Dokumenterstellung an Bookitup angleichen
 
+- [x] **DOC-UX-02 — `style: prioritize event documents before library files`**: Geschäftsdokumente in der Event-Dateiansicht vor Bibliotheksdateien anzeigen; Verknüpfen, Lade-/Fehlerzustände und Navigation erhalten.
+
 - [x] **DOC-UX-01 — `style: disclose offer creation on demand`**: Den vorhandenen Angebots-Anlagebereich in der Eventakte erst nach bewusster Öffnung zeigen. Vorlage, Kontakt-, Schreib-, Konflikt- und Fokusverhalten erhalten; mobile und Tastaturbedienung sowie bestehende Tests prüfen. Keine nicht unterstützten Dokumentarten vortäuschen.
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung

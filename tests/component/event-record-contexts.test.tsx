@@ -228,6 +228,12 @@ test('documents live in the files area instead of the details overview', async (
   const files = area('Dateien');
   const offers = await within(files).findByRole('region', { name: 'Angebote' });
   expect(await within(offers).findByText('AN-2030-0007')).toBeTruthy();
+  const library = within(files).getByRole('region', {
+    name: 'Eventdateien aus der Bibliothek',
+  });
+  expect(
+    offers.compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   const summary = within(offers).getByText('Angebot anlegen', {
     selector: 'summary',
   });

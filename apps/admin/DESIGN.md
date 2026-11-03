@@ -370,3 +370,5 @@ Bei der Ressourcenzuweisung stehen Belegungsprüfung und die unverbindliche Vorm
 
 
 Die Angebotsanlage in Event-Dateien ist ein natives, zunächst geschlossenes Disclosure; die Vorlagenwahl und das Anlegen erscheinen nach bewusstem Öffnen. Nach dem Schließen eines neu angelegten Blankoentwurfs kehrt der Fokus zum Disclosure zurück.
+
+Geschäftsdokumente stehen im Dateienbereich des Events vor der Dateibibliothek; beide bleiben erreichbar.

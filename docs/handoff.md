@@ -4,6 +4,8 @@
 
 Der zuvor grün geprüfte UX-Stand wurde einschließlich der Autostart-Korrektur H022 nach `main` fast-forwarded; die eigenständige Main-CI ist nach Push zu prüfen. Die nicht integrierte mobile Arbeit auf `codex/h042-mobile-geometry`, der aktive Update-Branch, der andere Checkout und beide Stashes bleiben erhalten. Die fünf nachweislich in `main` enthaltenen Altbranches wurden entfernt.
 
+DOC-UX-02 ordnet Eventdokumente vor Bibliotheksdateien an; die sichtbare Mobilansicht wurde bei 320 px geprüft. Bibliotheksaktionen und Dokumententwürfe behalten ihre Zustände.
+
 DOC-UX-01 auf `codex/document-creation-v1` zeigt den bestehenden Angebots-Picker erst nach Öffnen. Vorlage, Blankoanlage, bestehende Schreib-/Konfliktregeln und Fokus-Rückgabe bleiben erhalten. Bookitup zeigt im beobachteten Dialog Dokumentart, Vorlage und Kunde und sechs Dokumentarten; diese Beobachtung beweist keine Speicherung. Der Folgeauftrag umfasst weitere UX sowie fehlende Backendfunktionen für Dokumentarten und Produktoptionen; vollständige Parität ist nicht erreicht. Kein echtes Dokument zur Prüfung angelegt. REA-MCP war nicht verbunden; die Referenzbeobachtung stammt aus Chrome.
 
 Die verschlüsselte Bookitup-Sicherung vom 16.10. und die separat verschlüsselte Eventübersicht vom 03.11. liegen zusätzlich prüfsummengeprüft auf dem privaten NAS; Einzelheiten ausschließlich im privaten Sicherungsordner. Die Übersicht ersetzt keinen Delta-Abgleich und keine Übernahme zukünftiger Zusagen.
