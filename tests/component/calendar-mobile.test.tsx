@@ -210,7 +210,7 @@ test('the narrow month grid keeps one short day number per cell', async () => {
 });
 
 test('today and the selected day stay distinguishable without a green area', async () => {
-  const value = month(year, monthNumber, 10);
+  const value = month(year, monthNumber, today.endsWith('-10') ? 11 : 10);
   await renderMonth(value);
   const todayCells = document.querySelectorAll(
     '.calendar-day[data-today="true"]',

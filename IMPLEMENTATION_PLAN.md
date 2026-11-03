@@ -10,6 +10,10 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-CALENDAR-03 — `test: keep today distinct from selected day`**:
+  Der Kalendertest wählt auch am zehnten Tag ein anderes synthetisches Datum,
+  damit seine Prüfung von Heute- und Auswahlmarkierung dauerhaft aussagekräftig bleibt.
+
 - [x] **BKP019.2 — `fix: explain where new offers are created`**:
   Im neuen Dokumentbereich den tatsächlich vorhandenen Weg zur Angebotserstellung
   über Event → Dateien knapp benennen und zur Eventübersicht verlinken; keine
