@@ -28,6 +28,19 @@ test('the active criteria count the filter dimensions of the applied url', () =>
 // H041: the quick presets are tenant-local calendar dates. The instant picks
 // the tenant day, never the browser day.
 test('date presets use the tenant-local day, not the browser day', () => {
+  expect(
+    datePresetRange('last-month', '2032-03-15T12:00:00Z', 'Europe/Berlin'),
+  ).toEqual({ from: '2032-02-01', to: '2032-02-29' });
+  expect(
+    datePresetRange('last-month', '2031-01-15T12:00:00Z', 'Europe/Berlin'),
+  ).toEqual({ from: '2030-12-01', to: '2030-12-31' });
+  expect(
+    activeDatePreset(
+      '?from=2031-10-01&to=2031-10-31',
+      '2031-11-07T09:00:00Z',
+      'Europe/Berlin',
+    ),
+  ).toBe('last-month');
   // 23:30 UTC on 31 October is already 1 November in Berlin (UTC+1).
   const instant = '2031-10-31T23:30:00.000Z';
   expect(datePresetRange('this-month', instant, 'Europe/Berlin')).toEqual({

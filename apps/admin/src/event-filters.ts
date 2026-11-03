@@ -2,9 +2,11 @@ import { Temporal } from '@js-temporal/polyfill';
 
 // H041: the quick presets are plain tenant-local calendar dates, so the
 // server-side `from`/`to` filters stay exactly as they are.
-export type DatePreset = 'this-month' | 'next-month' | 'upcoming' | 'undated';
+export type DatePreset =
+  'last-month' | 'this-month' | 'next-month' | 'upcoming' | 'undated';
 export type PresetId = Exclude<DatePreset, 'undated'>;
 export const datePresets: { id: PresetId; label: string }[] = [
+  { id: 'last-month', label: 'Letzter Monat' },
   { id: 'this-month', label: 'Dieser Monat' },
   { id: 'next-month', label: 'Nächster Monat' },
   { id: 'upcoming', label: 'Nächste Events' },
@@ -33,7 +35,9 @@ export function datePresetRange(
   const month =
     preset === 'next-month'
       ? today.add({ months: 1 }).with({ day: 1 })
-      : today.with({ day: 1 });
+      : preset === 'last-month'
+        ? today.subtract({ months: 1 }).with({ day: 1 })
+        : today.with({ day: 1 });
   // `with({ day: 31 })` clamps to the month length, so the range always ends
   // on the real last local day (28/29/30/31) without a hand-written table.
   return { from: month.toString(), to: month.with({ day: 31 }).toString() };
@@ -52,12 +56,12 @@ export function activeDatePreset(
   // A stale bookmark may still carry a date bound beside `undated`; the sort
   // keeps its meaning, so the switch alone decides.
   if (params.get('undated') === 'true') return 'undated';
-  const candidate = (['this-month', 'next-month', 'upcoming'] as const).find(
-    (preset) => {
-      const range = datePresetRange(preset, instant, timeZone);
-      return Boolean(range) && range!.from === from && range!.to === to;
-    },
-  );
+  const candidate = (
+    ['last-month', 'this-month', 'next-month', 'upcoming'] as const
+  ).find((preset) => {
+    const range = datePresetRange(preset, instant, timeZone);
+    return Boolean(range) && range!.from === from && range!.to === to;
+  });
   return candidate ?? null;
 }
 

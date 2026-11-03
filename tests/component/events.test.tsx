@@ -2309,6 +2309,16 @@ test('the next month preset writes the following tenant-local month', async () =
       ),
     ).not.toHaveLength(0),
   );
+  fireEvent.click(screen.getByRole('button', { name: 'Letzter Monat' }));
+  const previous = new URLSearchParams(window.location.search);
+  expect(previous.get('from')).toBe('2026-09-01');
+  expect(previous.get('to')).toBe('2026-09-30');
+  expect(previous.get('q')).toBe('browser');
+  expect(
+    screen
+      .getByRole('button', { name: 'Letzter Monat' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
 });
 
 test('the active preset is marked selected without relying on colour only', async () => {
