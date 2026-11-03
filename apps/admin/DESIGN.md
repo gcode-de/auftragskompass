@@ -288,6 +288,8 @@ Filter. Ab 960px stehen sie links neben der Ergebnisliste, darunter in der
 Lesereihenfolge über ihr. Die Anlegeaktion steht im Bereichskopf. Fehlermeldungen,
 leere Treffer und Aktualisieren bleiben bei den Ergebnissen; bestehende Farben,
 Fokuszustände und Ressourcensperren bleiben erhalten.
+Die Bearbeitung erscheint als beschrifteter Stiftknopf mit 44px Bedienfläche;
+auch lange Namen brechen neben dem Knopf um.
 
 ## Do's and Don'ts
 

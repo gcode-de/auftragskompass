@@ -10,6 +10,11 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP030.5 — `style: compact resource row actions`**:
+  Die Ressourcenbearbeitung als kompakte, beschriftete Symbolaktion ausführen
+  und mit den Zeileninhalten auch mobil ausrichten. Der bedienbare Bereich,
+  Tastaturfokus, bestehender Editor und lange Namen bleiben erhalten.
+
 - [x] **BKP030.4 — `style: separate resource filters from results`**:
   Die vorhandenen Ressourcenfilter auf breiten Ansichten links neben der Liste
   gruppieren, mobil über der Liste; Anlage kompakt in den Bereichskopf setzen.

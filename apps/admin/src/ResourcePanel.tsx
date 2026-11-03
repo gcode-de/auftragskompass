@@ -446,12 +446,24 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
                   </span>
                 </span>{' '}
                 <button
-                  className="secondary-action"
+                  type="button"
+                  className="icon-action tier-quiet-icon"
                   disabled={busy}
                   aria-label={`Ressource bearbeiten: ${row.name}`}
+                  title="Ressource bearbeiten"
                   onClick={() => openEdit(row)}
                 >
-                  Bearbeiten
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
                 </button>
               </li>
             ))}

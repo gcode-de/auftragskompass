@@ -217,7 +217,7 @@ test('resource rows keep their details and edit action usable in both themes', a
 }) => {
   await page.goto('/');
   await page.evaluate(() => {
-    document.body.innerHTML = `<main class="workspace-page"><section><ul class="resource-list"><li class="resource-row"><span class="resource-summary"><strong>Fiktive Ressource mit einem besonders langen Namen</strong><span class="sr-only"> – </span><span class="resource-meta">2 Stück – Fiktive Kategorie – Aktiv</span></span><button class="secondary-action">Bearbeiten</button></li></ul></section></main>`;
+    document.body.innerHTML = `<main class="workspace-page"><section><ul class="resource-list"><li class="resource-row"><span class="resource-summary"><strong>Fiktive Ressource mit einem besonders langen Namen</strong><span class="sr-only"> – </span><span class="resource-meta">2 Stück – Fiktive Kategorie – Aktiv</span></span><button class="icon-action tier-quiet-icon" aria-label="Ressource bearbeiten: Fiktive Ressource" title="Ressource bearbeiten"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></li></ul></section></main>`;
   });
   for (const theme of ['light', 'dark']) {
     await page
@@ -258,11 +258,14 @@ test('resource rows keep their details and edit action usable in both themes', a
       });
     }
   }
-  await page.getByRole('button', { name: 'Bearbeiten' }).focus();
-  await expect(page.getByRole('button', { name: 'Bearbeiten' })).toHaveCSS(
-    'outline-style',
-    'solid',
-  );
+  await page
+    .getByRole('button', { name: 'Ressource bearbeiten: Fiktive Ressource' })
+    .focus();
+  await expect(
+    page.getByRole('button', {
+      name: 'Ressource bearbeiten: Fiktive Ressource',
+    }),
+  ).toHaveCSS('outline-style', 'solid');
 });
 
 test('contact rows keep names and actions readable on narrow screens', async ({

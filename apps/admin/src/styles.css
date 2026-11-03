@@ -1113,7 +1113,7 @@ time {
 }
 .resource-summary {
   display: flex;
-  flex: 1 1 14rem;
+  flex: 1 1 0;
   flex-direction: column;
   min-width: 0;
   overflow-wrap: anywhere;

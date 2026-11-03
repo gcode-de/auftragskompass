@@ -127,6 +127,11 @@ test('the resource page starts with the compact toolbar and the list, without an
   expect(create.getAttribute('title')).toBe('Ressource anlegen');
   expect(create.textContent).toBe('');
   expect(create.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  const edit = screen.getByRole('button', {
+    name: 'Ressource bearbeiten: Synthetic box',
+  });
+  expect(edit.getAttribute('title')).toBe('Ressource bearbeiten');
+  expect(edit.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   // The list states name, quantity, category, state and the block flag.
   expect(screen.getByText('Synthetic box').tagName).toBe('STRONG');
   expect(
