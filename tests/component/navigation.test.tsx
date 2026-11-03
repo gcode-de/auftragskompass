@@ -356,7 +356,7 @@ test('mobile menu opens as a modal and closes on selection or Escape', () => {
   fireEvent.click(trigger);
   window.history.replaceState(null, '', '/#events');
   const menuBrand = within(dialog).getByRole('link', {
-    name: 'AuftragsKompass – zur Eventübersicht',
+    name: 'AK – AuftragsKompass – zur Eventübersicht',
   });
   expect(menuBrand.getAttribute('href')).toBe('#events');
   expect(clickLink(menuBrand)).toBe(true);
@@ -449,7 +449,7 @@ test('brand and workspace title are real home links from both layouts without dr
   render(<Workspace />);
   const brand = within(screen.getByLabelText('Arbeitsbereiche')).getByRole(
     'link',
-    { name: 'AuftragsKompass – zur Eventübersicht' },
+    { name: 'AK – AuftragsKompass – zur Eventübersicht' },
   );
   const title = screen.getByRole('link', {
     name: 'Kalender – zur Eventübersicht',
@@ -505,7 +505,7 @@ test('desktop navigation starts as an icon rail even with an old expanded prefer
   ).toBeTruthy();
   expect(
     within(sidebar).getByRole('link', {
-      name: 'AuftragsKompass – zur Eventübersicht',
+      name: 'AK – AuftragsKompass – zur Eventübersicht',
     }),
   ).toBeTruthy();
 });
@@ -541,10 +541,10 @@ test('desktop navigation collapses to labelled icons and remembers the preferenc
   expect(collapsedSidebar.className).not.toContain('collapsed');
   expect(localStorage.getItem('ak-sidebar-icon-rail')).toBe('expanded');
   const collapsedBrand = within(collapsedSidebar).getByRole('link', {
-    name: 'AuftragsKompass – zur Eventübersicht',
+    name: 'AK – AuftragsKompass – zur Eventübersicht',
   });
   expect(collapsedBrand.getAttribute('title')).toBe(
-    'AuftragsKompass – zur Eventübersicht',
+    'AK – AuftragsKompass – zur Eventübersicht',
   );
   localStorage.setItem('ak-sidebar-icon-rail', 'collapsed');
   fireEvent(
@@ -726,7 +726,7 @@ test('the collapse control shares one compact row with the home link', () => {
   render(<Workspace />);
   const sidebar = screen.getByLabelText('Arbeitsbereiche');
   const brand = within(sidebar).getByRole('link', {
-    name: 'AuftragsKompass – zur Eventübersicht',
+    name: 'AK – AuftragsKompass – zur Eventübersicht',
   });
   const toggle = within(sidebar).getByRole('button', {
     name: 'Navigation einklappen',
@@ -750,7 +750,7 @@ test('the collapse control keeps its row and its focus node in both states', () 
   render(<Workspace />);
   const sidebar = screen.getByLabelText('Arbeitsbereiche');
   const brand = within(sidebar).getByRole('link', {
-    name: 'AuftragsKompass – zur Eventübersicht',
+    name: 'AK – AuftragsKompass – zur Eventübersicht',
   });
   const toggle = within(sidebar).getByRole('button', {
     name: 'Navigation einklappen',
@@ -814,7 +814,7 @@ test('the mobile drawer keeps exactly one menu access and no desktop collapse', 
   expect(drawer.querySelector('.sidebar-toggle')).toBeNull();
   expect(
     within(drawer).getByRole('link', {
-      name: 'AuftragsKompass – zur Eventübersicht',
+      name: 'AK – AuftragsKompass – zur Eventübersicht',
     }),
   ).toBeTruthy();
   expect(
@@ -835,7 +835,7 @@ test('the collapse control never hijacks the home link or its native clicks', ()
   expect(window.location.hash).toBe('#calendar');
   expect(localStorage.getItem('ak-sidebar-icon-rail')).toBe('collapsed');
   const brand = within(sidebar).getByRole('link', {
-    name: 'AuftragsKompass – zur Eventübersicht',
+    name: 'AK – AuftragsKompass – zur Eventübersicht',
   });
   expect(brand.getAttribute('href')).toBe('#events');
   // A modifier click opens a new tab: the app must not cancel it.

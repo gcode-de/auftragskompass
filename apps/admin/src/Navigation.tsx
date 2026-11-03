@@ -338,8 +338,8 @@ export function Navigation({ account }: { account?: ReactNode }) {
       <a
         className="menu-brand"
         href="#events"
-        aria-label="AuftragsKompass – zur Eventübersicht"
-        title="AuftragsKompass – zur Eventübersicht"
+        aria-label="AK – AuftragsKompass – zur Eventübersicht"
+        title="AK – AuftragsKompass – zur Eventübersicht"
         onClick={(event) => {
           followHome(event);
           if (dialog.current?.open) closeMenu();

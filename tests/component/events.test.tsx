@@ -2162,7 +2162,7 @@ test('an already-home brand click keeps an open create dialog and its inputs', a
   expect(
     clickLink(
       within(screen.getByLabelText('Arbeitsbereiche')).getByRole('link', {
-        name: 'AuftragsKompass – zur Eventübersicht',
+        name: 'AK – AuftragsKompass – zur Eventübersicht',
       }),
     ),
   ).toBe(true);
@@ -2206,7 +2206,7 @@ test('an already-home brand click keeps a dirty event editor unchanged', async (
   expect(
     clickLink(
       within(screen.getByLabelText('Arbeitsbereiche')).getByRole('link', {
-        name: 'AuftragsKompass – zur Eventübersicht',
+        name: 'AK – AuftragsKompass – zur Eventübersicht',
       }),
     ),
   ).toBe(true);

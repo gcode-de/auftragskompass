@@ -1003,7 +1003,7 @@ test('home links ask before discarding a dirty event detail and cancel keeps rou
   });
   const brand = within(screen.getByLabelText('Arbeitsbereiche')).getByRole(
     'link',
-    { name: 'AuftragsKompass – zur Eventübersicht' },
+    { name: 'AK – AuftragsKompass – zur Eventübersicht' },
   );
   const title = screen.getByRole('link', {
     name: 'Events – zur Eventübersicht',

@@ -502,9 +502,9 @@ async function signInScenario(
     await expect(expand).toHaveAttribute('aria-expanded', 'false');
     await expect(
       sidebar.getByRole('link', {
-        name: 'AuftragsKompass – zur Eventübersicht',
+        name: 'AK – AuftragsKompass – zur Eventübersicht',
       }),
-    ).toHaveAttribute('title', 'AuftragsKompass – zur Eventübersicht');
+    ).toHaveAttribute('title', 'AK – AuftragsKompass – zur Eventübersicht');
     await expand.click();
     await expect(sidebar).not.toHaveClass(/collapsed/);
     const resizeToggle = sidebar.getByRole('button', {
@@ -746,7 +746,7 @@ async function signInScenario(
       ).toHaveCount(0);
       await expect(menu.locator('.sidebar-toggle')).toHaveCount(0);
       const drawerBrand = menu.getByRole('link', {
-        name: 'AuftragsKompass – zur Eventübersicht',
+        name: 'AK – AuftragsKompass – zur Eventübersicht',
       });
       await expect(drawerBrand).toBeVisible();
       const drawerBrandBox = await drawerBrand.boundingBox();
@@ -6545,7 +6545,7 @@ async function signInScenario(
       document.documentElement.dataset.fictionalH031 = 'kept';
     });
     const desktopBrand = page.getByRole('link', {
-      name: 'AuftragsKompass – zur Eventübersicht',
+      name: 'AK – AuftragsKompass – zur Eventübersicht',
     });
     await expect(desktopBrand).toBeVisible();
     await expect(desktopBrand).toHaveAttribute('href', '#events');
@@ -6598,7 +6598,7 @@ async function signInScenario(
     await page.getByRole('button', { name: 'Menü öffnen' }).click();
     const menu = page.getByRole('dialog', { name: 'Menü' });
     const mobileBrand = menu.getByRole('link', {
-      name: 'AuftragsKompass – zur Eventübersicht',
+      name: 'AK – AuftragsKompass – zur Eventübersicht',
     });
     await expect(mobileBrand).toBeVisible();
     await mobileBrand.click();

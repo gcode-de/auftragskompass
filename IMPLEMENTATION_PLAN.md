@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-ICON-02 — `fix: include visible logo in accessible home label`**: Das sichtbare AK im barrierefreien Namen des Heimlinks aufführen und bestehende Prüfungen anpassen; CI-Vorlagenprüfung erneut ausführen.
+
 - [x] **CI-ICON-01 — `test: recognize hidden account identity`**: Browserprüfungen prüfen die vorhandene Kontoidentität trotz eingeklappter Leiste, ohne Sichtbarkeit der E-Mail zu verlangen.
 
 - [x] **BKP006.4 — `style: place settings navigation beside content`**: Einstellungsnavigation auf breiten Ansichten links neben dem Inhalt anordnen; mobile Auswahl und alle vorhandenen Bereiche erhalten.

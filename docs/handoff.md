@@ -1,5 +1,7 @@
 # Projektübergabe AuftragsKompass
 
+**CI-Nachtrag 03.11.2026:** Lauf 41627928987 scheiterte unter anderem an der Barrierefreiheitsregel für das sichtbare AK im Heimlink. CI-ICON-02 ergänzt AK im zugänglichen Namen; gezielte Chromium-Axe-Prüfung und 172 Komponentenfälle grün. Ein weiterer Menütest scheiterte im CI einmal, lief lokal isoliert grün; neuer CI-Gesamtlauf ist abzuwarten. Auto-Deployment erst bei grüner CI und Images.
+
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
 
 - BKP006.4 ordnet die Einstellungen ab 1100px mit einer vertikalen Navigation neben dem Inhalt an; mobil bleibt die Auswahl erhalten.

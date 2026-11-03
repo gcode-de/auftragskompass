@@ -644,7 +644,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     page.once('dialog', (event) => void event.dismiss());
     await page.setViewportSize({ width: 1280, height: 844 });
     await page
-      .getByRole('link', { name: 'AuftragsKompass – zur Eventübersicht' })
+      .getByRole('link', { name: 'AK – AuftragsKompass – zur Eventübersicht' })
       .click();
     const dialog = await navigationDialog;
     expect(dialog.type()).toBe('confirm');
