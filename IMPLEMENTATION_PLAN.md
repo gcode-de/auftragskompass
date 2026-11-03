@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **CI-MAIN-01 — `fix: handle release-sized coverage diffs`**: Changed-Code-Coverage muss den vollständigen 6,6-MB-Merge-Diff ohne Node-ENOBUFS auswerten; Grenzen und Fehler bei fehlender Coverage bleiben unverändert.
+
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
 - [x] **CI-EFFICIENCY-01 — `test: run file layout matrix once`**: Die loginunabhängige Dateien-Breiten-/Theme-/Axe-Matrix einmal mit Passwortlogin prüfen; beide vollständigen Loginabläufe und alle Layoutfälle erhalten.
