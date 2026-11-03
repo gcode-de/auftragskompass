@@ -15,6 +15,7 @@ import {
   SettingsNavigation,
   useWorkspaceRoute,
 } from '../../apps/admin/src/Navigation.js';
+import { registerUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 import {
   useUrlSearch,
   eventQuery,
@@ -217,7 +218,7 @@ test('the retired locations link redirects to events without a new history entry
   expect(window.location.hash).toBe('#events');
 });
 
-test('settings own resource and product management in desktop and mobile navigation', () => {
+test('resources are directly accessible in desktop and mobile navigation while settings links remain available', () => {
   window.history.replaceState(null, '', '/#resources');
   shimDialog();
   render(
@@ -228,14 +229,24 @@ test('settings own resource and product management in desktop and mobile navigat
   );
   const sidebar = screen.getByLabelText('Arbeitsbereiche');
   expect(
-    within(sidebar).queryByRole('link', { name: 'Ressourcen' }),
-  ).toBeNull();
+    within(sidebar)
+      .getByRole('link', { name: 'Ressourcen' })
+      .getAttribute('href'),
+  ).toBe('#resources');
+  expect(
+    within(sidebar)
+      .getByRole('link', { name: 'Ressourcen' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
   expect(within(sidebar).queryByRole('link', { name: 'Produkte' })).toBeNull();
   expect(
     within(sidebar)
       .getByRole('link', { name: 'Einstellungen' })
       .getAttribute('aria-current'),
-  ).toBe('page');
+  ).toBeNull();
+  expect(
+    screen.getByRole('heading', { name: 'Ressourcen – zur Eventübersicht' }),
+  ).toBeTruthy();
   const settingsNavigation = screen.getByRole('navigation', {
     name: 'Einstellungen',
   });
@@ -259,11 +270,10 @@ test('settings own resource and product management in desktop and mobile navigat
   fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
   const drawer = screen.getByRole('dialog', { name: 'Menü' });
   expect(
-    within(drawer).queryByRole('link', {
-      name: 'Ressourcen',
-      hidden: true,
-    }),
-  ).toBeNull();
+    within(drawer)
+      .getByRole('link', { name: 'Ressourcen', hidden: true })
+      .getAttribute('aria-current'),
+  ).toBe('page');
   expect(
     within(drawer).queryByRole('link', { name: 'Produkte', hidden: true }),
   ).toBeNull();
@@ -271,7 +281,7 @@ test('settings own resource and product management in desktop and mobile navigat
     within(drawer)
       .getByRole('link', { name: 'Einstellungen' })
       .getAttribute('aria-current'),
-  ).toBe('page');
+  ).toBeNull();
 
   for (const [hash, current, other] of [
     ['#settings-products', 'Produkte', 'Ressourcen'],
@@ -296,8 +306,26 @@ test('settings own resource and product management in desktop and mobile navigat
       within(sidebar)
         .getByRole('link', { name: 'Einstellungen' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe(current === 'Ressourcen' ? null : 'page');
+    expect(
+      within(sidebar)
+        .getByRole('link', { name: 'Ressourcen' })
+        .getAttribute('aria-current'),
+    ).toBe(current === 'Ressourcen' ? 'page' : null);
   }
+});
+test('the resource shortcut respects unsaved event changes', () => {
+  window.history.replaceState(null, '', '/#event-fictional');
+  render(<Navigation />);
+  const unregister = registerUnsavedChanges(() => true, true);
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const resourceLink = within(
+    screen.getByLabelText('Arbeitsbereiche'),
+  ).getByRole('link', { name: 'Ressourcen' });
+  expect(clickLink(resourceLink)).toBe(true);
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(window.location.hash).toBe('#event-fictional');
+  unregister();
 });
 test('mobile menu opens as a modal and closes on selection or Escape', () => {
   shimDialog();

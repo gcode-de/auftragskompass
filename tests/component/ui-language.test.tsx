@@ -215,7 +215,7 @@ test('search keeps distinct section headings and resources keep a valid outline'
   expect(
     screen.getByRole('heading', {
       level: 1,
-      name: 'Einstellungen – zur Eventübersicht',
+      name: 'Ressourcen – zur Eventübersicht',
     }),
   ).toBeTruthy();
   expect(

@@ -795,7 +795,10 @@ async function signInScenario(
       await expect(
         page
           .getByRole('navigation', { name: 'Hauptnavigation' })
-          .getByRole('link', { name: label, exact: true }),
+          .getByRole('link', {
+            name: setting === 'Ressourcen' ? 'Ressourcen' : label,
+            exact: true,
+          }),
       ).toHaveAttribute('aria-current', 'page');
       await audit(label + (setting ?? ''));
     };
@@ -3077,7 +3080,7 @@ async function signInScenario(
       page
         .getByRole('navigation', { name: 'Hauptnavigation' })
         .getByRole('link', { name: 'Ressourcen', exact: true }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     const resources = page.getByRole('region', {
       name: 'Ressourcen',
       exact: true,
@@ -3564,7 +3567,7 @@ async function signInScenario(
     });
     await expect(
       mobileDrawer.getByRole('link', { name: 'Ressourcen', exact: true }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     await mobileDrawer
       .getByRole('link', { name: 'Einstellungen', exact: true })
       .click();
@@ -5786,7 +5789,7 @@ async function signInScenario(
       ).toBeVisible();
       await expect(
         menu.getByRole('link', { name: 'Ressourcen', exact: true }),
-      ).toHaveCount(0);
+      ).toBeVisible();
       await expect(
         menu.getByRole('link', { name: 'Produkte', exact: true }),
       ).toHaveCount(0);

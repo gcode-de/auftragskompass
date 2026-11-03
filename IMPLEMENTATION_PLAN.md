@@ -14,7 +14,7 @@
   Der Barrierefreiheitstest für den dritten Monatstag berücksichtigt „Heute“,
   wenn dieser selbst der aktuelle Tag ist; Inhalts- und Namenprüfung bleiben.
 
-- [ ] **BKP030.3 — `feat: make resources directly accessible`**:
+- [x] **BKP030.3 — `feat: make resources directly accessible`**:
   Die bereits vorhandene Ressourcenverwaltung zusätzlich wie in der beobachteten
   Bookitup-Hauptnavigation direkt erreichbar machen, auf Desktop und mobil.
   Bestehende Einstellungslinks und Deep Links, Entwurfsschutz und fachliche

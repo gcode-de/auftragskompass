@@ -41,6 +41,11 @@ const links = [
     'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM7 14h3m4 0h3m-10 3h3',
   ],
   [
+    'resources',
+    'Ressourcen',
+    'M12 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM5 14a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm14 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM9.5 8 7 14m7.5-6 2.5 6M8 17h8',
+  ],
+  [
     'files',
     'Dateien',
     'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Zm-1 1v4h4M9 13h6m-6 3h6',
@@ -208,10 +213,11 @@ export function Navigation({ account }: { account?: ReactNode }) {
     q = new URLSearchParams(search).get('q') ?? '';
   const route = useWorkspaceRoute();
   const settings = isSettingsRoute(route);
+  const activeRoute = settings && route !== 'resources' ? 'settings' : route;
   const title =
     route === 'search'
       ? 'Suchergebnisse'
-      : links.find(([id]) => id === (settings ? 'settings' : route))![1];
+      : links.find(([id]) => id === activeRoute)![1];
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -350,9 +356,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
               href={'#' + id}
               aria-label={label}
               title={label}
-              aria-current={
-                id === (settings ? 'settings' : route) ? 'page' : undefined
-              }
+              aria-current={id === activeRoute ? 'page' : undefined}
               onClick={(event) => {
                 // H035: only the new Dateien entry asks, because leaving the
                 // event area unmounts its details and their registered draft.
