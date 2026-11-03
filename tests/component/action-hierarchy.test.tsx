@@ -363,13 +363,11 @@ test('settings lists render one primary action and name every other tier', async
       }),
     ),
   ).toBe('tertiary-action');
-  expect(
-    tier(
-      within(resources).getByRole('button', {
-        name: 'Ressource bearbeiten: Synthetic box',
-      }),
-    ),
-  ).toBe('secondary-action');
+  const editResource = within(resources).getByRole('button', {
+    name: 'Ressource bearbeiten: Synthetic box',
+  });
+  expect(tier(editResource)).toBe('icon-action');
+  expect(editResource.className).toContain('tier-quiet-icon');
   // BKP009.2: the maintenance management is a disclosure of its own. Closed,
   // it mounts no form and contributes no action to the page frame; opened, it
   // is a separate frame with exactly one primary and nothing unnamed.

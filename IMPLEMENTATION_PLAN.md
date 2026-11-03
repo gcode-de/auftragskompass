@@ -10,6 +10,10 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-RESOURCE-01 — `test: recognize compact resource edit action`**:
+  Die bestehende Hierarchieprüfung auf den beschrifteten, ruhigen Stiftknopf
+  abstimmen; die Prüfung auf eine eindeutige Primäraktion bleibt erhalten.
+
 - [x] **BKP030.5 — `style: compact resource row actions`**:
   Die Ressourcenbearbeitung als kompakte, beschriftete Symbolaktion ausführen
   und mit den Zeileninhalten auch mobil ausrichten. Der bedienbare Bereich,
