@@ -10,6 +10,11 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP010.5 — `style: compact product row actions`**:
+  Produktbearbeitung und zusätzliche Aktionen als kompakte, benannte Symbole
+  analog zu Event- und Ressourcenzeilen ausrichten. Offenlegung, Fokus,
+  Archivschutz und mobile Lesbarkeit langer Namen bleiben erhalten.
+
 - [x] **CI-RESOURCE-01 — `test: recognize compact resource edit action`**:
   Die bestehende Hierarchieprüfung auf den beschrifteten, ruhigen Stiftknopf
   abstimmen; die Prüfung auf eine eindeutige Primäraktion bleibt erhalten.

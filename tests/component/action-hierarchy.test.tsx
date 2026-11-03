@@ -424,19 +424,18 @@ test('settings lists render one primary action and name every other tier', async
       within(products).getByRole('button', { name: 'Produkte aktualisieren' }),
     ),
   ).toBe('tertiary-action');
-  expect(
-    tier(
-      within(products).getByRole('button', {
-        name: 'Produkt bearbeiten: Synthetic product',
-      }),
-    ),
-  ).toBe('secondary-action');
+  const productEdit = within(products).getByRole('button', {
+    name: 'Produkt bearbeiten: Synthetic product',
+  });
+  expect(tier(productEdit)).toBe('icon-action');
+  expect(productEdit.className).toContain('tier-quiet-icon');
   // BKP010.2: the rare row actions stay behind the row's named disclosure, so
   // only its trigger is part of the open row's tier contract.
   const productActions = within(products).getByRole('button', {
     name: 'Weitere Aktionen für Synthetic product',
   });
-  expect(tier(productActions)).toBe('tertiary-action');
+  expect(tier(productActions)).toBe('icon-action');
+  expect(productActions.className).toContain('tier-quiet-icon');
   for (const name of [
     'Produkt duplizieren: Synthetic product',
     'Produkt archivieren: Synthetic product',

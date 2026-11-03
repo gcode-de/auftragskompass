@@ -290,6 +290,8 @@ leere Treffer und Aktualisieren bleiben bei den Ergebnissen; bestehende Farben,
 Fokuszustände und Ressourcensperren bleiben erhalten.
 Die Bearbeitung erscheint als beschrifteter Stiftknopf mit 44px Bedienfläche;
 auch lange Namen brechen neben dem Knopf um.
+Produktzeilen verwenden denselben Stift sowie eine ruhige, beschriftete
+Dreipunktaktion für seltene Vorgänge; lange Namen brechen neben ihnen um.
 
 ## Do's and Don'ts
 

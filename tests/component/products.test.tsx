@@ -861,7 +861,8 @@ test('rare row actions stay behind one named disclosure until it is opened', asy
   render(<ProductPanel csrfToken="csrf" />);
   await screen.findByText(summaryText(rowText));
   const toggle = actionToggle('Synthetic product');
-  expect(toggle.textContent).toBe('Aktionen');
+  expect(toggle.getAttribute('title')).toBe('Weitere Aktionen');
+  expect(toggle.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
   expect(
     document.getElementById(toggle.getAttribute('aria-controls')!),
@@ -878,10 +879,12 @@ test('rare row actions stay behind one named disclosure until it is opened', asy
   ).toBeNull();
   // The frequent action stays directly reachable and named.
   expect(
-    screen.getByRole('button', {
-      name: 'Produkt bearbeiten: Synthetic product',
-    }).textContent,
-  ).toBe('Bearbeiten');
+    screen
+      .getByRole('button', {
+        name: 'Produkt bearbeiten: Synthetic product',
+      })
+      .getAttribute('title'),
+  ).toBe('Produkt bearbeiten');
   fireEvent.click(toggle);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   expect(

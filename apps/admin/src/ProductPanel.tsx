@@ -632,12 +632,24 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               <span className="product-meta">{summary(row)}</span>
             </span>{' '}
             <button
-              className="secondary-action"
+              type="button"
+              className="icon-action tier-quiet-icon"
               disabled={busy}
               aria-label={`Produkt bearbeiten: ${row.name}`}
+              title="Produkt bearbeiten"
               onClick={() => openEdit(row)}
             >
-              Bearbeiten
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
             </button>
             <button
               ref={(element) => {
@@ -645,9 +657,10 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
                 else actionToggleRefs.current.delete(row.id);
               }}
               type="button"
-              className="tertiary-action"
+              className="icon-action tier-quiet-icon"
               disabled={busy}
               aria-label={`Weitere Aktionen für ${row.name}`}
+              title="Weitere Aktionen"
               aria-expanded={openActionsId === row.id}
               aria-controls={`product-secondary-actions-${row.id}`}
               onClick={() =>
@@ -656,7 +669,11 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
                 )
               }
             >
-              Aktionen
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="12" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="19" cy="12" r="1.5" />
+              </svg>
             </button>
             <span
               id={`product-secondary-actions-${row.id}`}
