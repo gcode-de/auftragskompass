@@ -108,6 +108,15 @@ test('the resource page starts with the compact toolbar and the list, without an
     screen.queryByRole('button', { name: 'Ressource speichern' }),
   ).toBeNull();
   const search = screen.getByLabelText('Ressourcen suchen');
+  expect(search.closest('[aria-label="Ressourcenfilter"]')).toBeTruthy();
+  expect(
+    screen
+      .getByRole('button', { name: 'Ressource anlegen' })
+      .closest('.section-heading'),
+  ).toBeTruthy();
+  expect(
+    screen.getByText('Synthetic box').closest('.resource-results'),
+  ).toBeTruthy();
   expect(search.closest('form')).toBeNull();
   expect(
     search.closest('.resource-toolbar')!.nextElementSibling?.localName,

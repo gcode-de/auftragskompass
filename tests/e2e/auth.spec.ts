@@ -3085,6 +3085,52 @@ async function signInScenario(
       name: 'Ressourcen',
       exact: true,
     });
+    // BKP030.4: actual resource controls remain aligned at mobile and desktop
+    // widths in both themes; all API data in this scenario is synthetic.
+    const originalSize = page.viewportSize()!;
+    const originalTheme = await page.locator('html').getAttribute('data-theme');
+    for (const theme of ['light', 'dark']) {
+      await page
+        .locator('html')
+        .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
+      for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 800 });
+        const filter = resources.getByRole('group', {
+          name: 'Ressourcenfilter',
+        });
+        const result = resources.locator('.resource-results');
+        const filterBox = (await filter.boundingBox())!;
+        const resultBox = (await result.boundingBox())!;
+        if (width >= 960)
+          expect(filterBox.x + filterBox.width).toBeLessThanOrEqual(
+            resultBox.x,
+          );
+        else
+          expect(filterBox.y + filterBox.height).toBeLessThanOrEqual(
+            resultBox.y,
+          );
+        expect(
+          await page.evaluate(
+            () =>
+              document.documentElement.scrollWidth -
+              document.documentElement.clientWidth,
+          ),
+        ).toBeLessThanOrEqual(0);
+        await page.screenshot({
+          path: `tests/test-results/resources-layout-${mode}-${theme}-${width}.png`,
+        });
+      }
+    }
+    await page.setViewportSize(originalSize);
+    await page
+      .locator('html')
+      .evaluate(
+        (el, value) =>
+          value === null
+            ? el.removeAttribute('data-theme')
+            : el.setAttribute('data-theme', value),
+        originalTheme,
+      );
     await resources
       .getByRole('button', { name: 'Ressource bearbeiten: FB1', exact: true })
       .click();

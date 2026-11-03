@@ -281,6 +281,14 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 - **Bewegung:** Knöpfe skalieren bei Aktivierung auf `0.98` mit `150ms cubic-bezier(0.23, 1, 0.32, 1)`. Nur die Transformation wird animiert; Farben wechseln sofort, damit beim Darstellungswechsel keine gemischten Farbzustände entstehen. Bei `prefers-reduced-motion: reduce` entfallen Transition und Skalierung. Das Menü erhält nur bei Zeigeraufruf und `no-preference` eine Eintrittsbewegung über `220ms`, Ausgangsposition `translateX(-1rem)` und Deckkraft 0 via `@starting-style`. Tastaturaufruf und reduzierte Bewegung haben keine Menübewegung; keine eigene Austrittsanimation.
 - **Rückmeldungen:** `role="status"` für Status, `role="alert"` für Fehler. Leere Statusfelder verschwinden; „Angemeldet“ bleibt visuell verborgen für assistive Technik erhalten.
 
+### Ressourcenfilter (BKP030.4)
+
+Die Ressourcenverwaltung gruppiert Suche, Kategorie und Zustand als beschriftete
+Filter. Ab 960px stehen sie links neben der Ergebnisliste, darunter in der
+Lesereihenfolge über ihr. Die Anlegeaktion steht im Bereichskopf. Fehlermeldungen,
+leere Treffer und Aktualisieren bleiben bei den Ergebnissen; bestehende Farben,
+Fokuszustände und Ressourcensperren bleiben erhalten.
+
 ## Do's and Don'ts
 
 **Do:**

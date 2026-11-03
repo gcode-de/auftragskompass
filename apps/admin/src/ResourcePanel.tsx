@@ -339,45 +339,8 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   const title = editing ? 'Ressource bearbeiten' : 'Ressource anlegen';
   return (
     <section id="resources" aria-label="Ressourcen" aria-busy={loading || busy}>
-      <h2>Ressourcen</h2>
-      <p>
-        Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.
-      </p>
-      <div className="resource-toolbar">
-        <label>
-          Ressourcen suchen
-          <input
-            value={search}
-            maxLength={200}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <label>
-          Kategorie filtern
-          <select
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-          >
-            <option value="">Alle Kategorien</option>
-            {categories.map((entry) => (
-              <option key={entry} value={entry}>
-                {entry}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Zustand filtern
-          <select
-            value={state}
-            onChange={(event) => setState(event.target.value)}
-          >
-            <option value="">Alle Zustände</option>
-            <option value="active">Aktiv</option>
-            <option value="inactive">Inaktiv</option>
-            <option value="archived">Archiviert</option>
-          </select>
-        </label>
+      <div className="section-heading">
+        <h2>Ressourcen</h2>
         <div className="section-actions">
           <button
             ref={createTrigger}
@@ -402,75 +365,122 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           </button>
         </div>
       </div>
-      {loading && <p role="status">Ressourcen werden geladen …</p>}
-      {!loading && !loadFailed && !rows.length && (
-        <p>
-          Noch keine Ressourcen. Über „Ressource anlegen“ die erste Ressource
-          erfassen.
-        </p>
-      )}
-      {!loading && rows.length > 0 && !filtered.length && (
-        <>
-          <p>Keine Treffer für die aktuellen Filter.</p>
-          <button
-            type="button"
-            className="tertiary-action"
-            onClick={() => {
-              setSearch('');
-              setCategory('');
-              setState('');
-            }}
-          >
-            Filter zurücksetzen
-          </button>
-        </>
-      )}
-      <ul className="resource-list">
-        {filtered.map((row) => (
-          <li key={row.id} className="resource-row">
-            <span className="resource-summary">
-              <strong>{row.name}</strong>
-              <span className="sr-only"> – </span>
-              <span className="resource-meta">
-                {String(row.quantity)} Stück – {row.category} –{' '}
-                {label(row.state)}
-                {row.blocked ? ' – Gesperrt' : ''}
-              </span>
-            </span>{' '}
-            <button
-              className="secondary-action"
-              disabled={busy}
-              aria-label={`Ressource bearbeiten: ${row.name}`}
-              onClick={() => openEdit(row)}
-            >
-              Bearbeiten
-            </button>
-          </li>
-        ))}
-      </ul>
-      <p role="status">{message}</p>
-      {reloadFailed ? (
-        <div className="reload-warning">
-          <p role="status">{reloadFailureMessage}</p>
-          <button
-            type="button"
-            className="tertiary-action"
-            disabled={busy}
-            onClick={() => void retryReload()}
-          >
-            Ressourcen erneut laden
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="tertiary-action"
-          disabled={busy}
-          onClick={() => void retryList()}
+      <p>
+        Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.
+      </p>
+      <div className="resource-layout">
+        <div
+          className="resource-toolbar"
+          role="group"
+          aria-label="Ressourcenfilter"
         >
-          Ressourcen aktualisieren
-        </button>
-      )}
+          <label>
+            Ressourcen suchen
+            <input
+              value={search}
+              maxLength={200}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <label>
+            Kategorie filtern
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+            >
+              <option value="">Alle Kategorien</option>
+              {categories.map((entry) => (
+                <option key={entry} value={entry}>
+                  {entry}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Zustand filtern
+            <select
+              value={state}
+              onChange={(event) => setState(event.target.value)}
+            >
+              <option value="">Alle Zustände</option>
+              <option value="active">Aktiv</option>
+              <option value="inactive">Inaktiv</option>
+              <option value="archived">Archiviert</option>
+            </select>
+          </label>
+        </div>
+        <div className="resource-results">
+          {loading && <p role="status">Ressourcen werden geladen …</p>}
+          {!loading && !loadFailed && !rows.length && (
+            <p>
+              Noch keine Ressourcen. Über „Ressource anlegen“ die erste
+              Ressource erfassen.
+            </p>
+          )}
+          {!loading && rows.length > 0 && !filtered.length && (
+            <>
+              <p>Keine Treffer für die aktuellen Filter.</p>
+              <button
+                type="button"
+                className="tertiary-action"
+                onClick={() => {
+                  setSearch('');
+                  setCategory('');
+                  setState('');
+                }}
+              >
+                Filter zurücksetzen
+              </button>
+            </>
+          )}
+          <ul className="resource-list">
+            {filtered.map((row) => (
+              <li key={row.id} className="resource-row">
+                <span className="resource-summary">
+                  <strong>{row.name}</strong>
+                  <span className="sr-only"> – </span>
+                  <span className="resource-meta">
+                    {String(row.quantity)} Stück – {row.category} –{' '}
+                    {label(row.state)}
+                    {row.blocked ? ' – Gesperrt' : ''}
+                  </span>
+                </span>{' '}
+                <button
+                  className="secondary-action"
+                  disabled={busy}
+                  aria-label={`Ressource bearbeiten: ${row.name}`}
+                  onClick={() => openEdit(row)}
+                >
+                  Bearbeiten
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p role="status">{message}</p>
+          {reloadFailed ? (
+            <div className="reload-warning">
+              <p role="status">{reloadFailureMessage}</p>
+              <button
+                type="button"
+                className="tertiary-action"
+                disabled={busy}
+                onClick={() => void retryReload()}
+              >
+                Ressourcen erneut laden
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="tertiary-action"
+              disabled={busy}
+              onClick={() => void retryList()}
+            >
+              Ressourcen aktualisieren
+            </button>
+          )}
+        </div>
+      </div>
       {open && (
         <div className="form-dialog-backdrop">
           <div

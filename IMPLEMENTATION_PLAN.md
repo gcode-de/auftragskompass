@@ -10,6 +10,11 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **BKP030.4 — `style: separate resource filters from results`**:
+  Die vorhandenen Ressourcenfilter auf breiten Ansichten links neben der Liste
+  gruppieren, mobil über der Liste; Anlage kompakt in den Bereichskopf setzen.
+  Filter, Zustände, Sperrverwaltung und Editor bleiben vollständig bedienbar.
+
 - [x] **CI-CALENDAR-02 — `test: account for today in calendar label`**:
   Der Barrierefreiheitstest für den dritten Monatstag berücksichtigt „Heute“,
   wenn dieser selbst der aktuelle Tag ist; Inhalts- und Namenprüfung bleiben.

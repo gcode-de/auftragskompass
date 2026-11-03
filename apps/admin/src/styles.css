@@ -1072,6 +1072,32 @@ time {
 .product-toolbar .section-actions {
   margin-left: 0;
 }
+.resource-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+.resource-layout .resource-toolbar {
+  align-content: start;
+  margin: 0;
+}
+.resource-layout .resource-toolbar label {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.resource-results {
+  min-width: 0;
+}
+@media (min-width: 960px) {
+  .resource-layout {
+    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+    align-items: start;
+  }
+  .resource-layout .resource-toolbar {
+    display: grid;
+    gap: 0.75rem;
+  }
+}
 .resource-list {
   list-style: none;
   padding: 0;
