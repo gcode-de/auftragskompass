@@ -367,3 +367,6 @@ Inhalte statt HTML-Quelltext; die Bereinigung beim Speichern bleibt unverändert
 Die Eventfilter zeigen keine technische Zeitzonenzeile; Zeiträume verwenden weiterhin die konfigurierte Geschäftszeitzone.
 
 Bei der Ressourcenzuweisung stehen Belegungsprüfung und die unverbindliche Vormerkung im Vordergrund; technische Zeitzonendetails bleiben der Oberfläche fern.
+
+
+Die Angebotsanlage in Event-Dateien ist ein natives, zunächst geschlossenes Disclosure; die Vorlagenwahl und das Anlegen erscheinen nach bewusstem Öffnen. Nach dem Schließen eines neu angelegten Blankoentwurfs kehrt der Fokus zum Disclosure zurück.

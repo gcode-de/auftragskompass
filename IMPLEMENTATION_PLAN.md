@@ -8,6 +8,10 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+### Betreiberauftrag 03.11.2026: Dokumenterstellung an Bookitup angleichen
+
+- [x] **DOC-UX-01 — `style: disclose offer creation on demand`**: Den vorhandenen Angebots-Anlagebereich in der Eventakte erst nach bewusster Öffnung zeigen. Vorlage, Kontakt-, Schreib-, Konflikt- und Fokusverhalten erhalten; mobile und Tastaturbedienung sowie bestehende Tests prüfen. Keine nicht unterstützten Dokumentarten vortäuschen.
+
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
 - [x] **CI-EFFICIENCY-01 — `test: run file layout matrix once`**: Die loginunabhängige Dateien-Breiten-/Theme-/Axe-Matrix einmal mit Passwortlogin prüfen; beide vollständigen Loginabläufe und alle Layoutfälle erhalten.

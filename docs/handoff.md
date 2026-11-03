@@ -1,5 +1,13 @@
 # Projektübergabe AuftragsKompass
 
+## Dokumenterstellung und V1.0-Grundstand, 03.11.2026
+
+Der zuvor grün geprüfte UX-Stand wurde einschließlich der Autostart-Korrektur H022 nach `main` fast-forwarded; die eigenständige Main-CI ist nach Push zu prüfen. Die nicht integrierte mobile Arbeit auf `codex/h042-mobile-geometry`, der aktive Update-Branch, der andere Checkout und beide Stashes bleiben erhalten. Die fünf nachweislich in `main` enthaltenen Altbranches wurden entfernt.
+
+DOC-UX-01 auf `codex/document-creation-v1` zeigt den bestehenden Angebots-Picker erst nach Öffnen. Vorlage, Blankoanlage, bestehende Schreib-/Konfliktregeln und Fokus-Rückgabe bleiben erhalten. Bookitup zeigt im beobachteten Dialog Dokumentart, Vorlage und Kunde und sechs Dokumentarten; diese Beobachtung beweist keine Speicherung. Der Folgeauftrag umfasst weitere UX sowie fehlende Backendfunktionen für Dokumentarten und Produktoptionen; vollständige Parität ist nicht erreicht. Kein echtes Dokument zur Prüfung angelegt. REA-MCP war nicht verbunden; die Referenzbeobachtung stammt aus Chrome.
+
+Die verschlüsselte Bookitup-Sicherung vom 16.10. und die separat verschlüsselte Eventübersicht vom 03.11. liegen zusätzlich prüfsummengeprüft auf dem privaten NAS; Einzelheiten ausschließlich im privaten Sicherungsordner. Die Übersicht ersetzt keinen Delta-Abgleich und keine Übernahme zukünftiger Zusagen.
+
 **CI-Nachtrag 03.11.2026:** Lauf 41627928987 scheiterte unter anderem an der Barrierefreiheitsregel für das sichtbare AK im Heimlink. CI-ICON-02 ergänzt AK im zugänglichen Namen; gezielte Chromium-Axe-Prüfung und 172 Komponentenfälle grün. Lauf 41630080680 scheiterte erneut am Vorlagenmenü-Wechsel. CI-TEMPLATE-01 erhält das alte Menü während Pointer- und Fokusübergang bis zum Klick; 96 Komponentenfälle und der betroffene Chromium-Ablauf bestanden lokal. Der folgende CI-Lauf 41658731415 scheiterte an einem Eventtest, der die Überschrift vor Abschluss des Ladezustands abfragte. CI-EVENT-04 wartet auf die Überschrift; gezielter Komponententest und alle 14 Vorlagen-Chromiumabläufe lokal grün. Neuer CI-Gesamtlauf ist abzuwarten. Auto-Deployment erst bei grüner CI und Images.
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb

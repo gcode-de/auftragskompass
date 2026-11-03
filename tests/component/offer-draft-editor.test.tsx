@@ -277,6 +277,31 @@ function fieldValue(label: string) {
   ).value;
 }
 
+async function openOfferCreate() {
+  const summary = await screen.findByText('Angebot anlegen', {
+    selector: 'summary',
+  });
+  const disclosure = summary.closest('details');
+  if (!disclosure?.open) fireEvent.click(summary);
+  await screen.findByLabelText('Vorlage');
+  return summary;
+}
+
+test('offer creation starts closed and opens from its native disclosure', async () => {
+  setup({ documents: [] });
+  render(<EventDocuments {...props} />);
+  const summary = await screen.findByText('Angebot anlegen', {
+    selector: 'summary',
+  });
+  const disclosure = summary.closest('details');
+  expect(disclosure).toBeTruthy();
+  expect(disclosure?.open).toBe(false);
+
+  fireEvent.click(summary);
+  expect(await screen.findByLabelText('Vorlage')).toBeTruthy();
+  expect(disclosure?.open).toBe(true);
+});
+
 test('a draft opens focused with editable saved positions and previews only persisted values', async () => {
   const { calls } = setup();
   render(<EventDocuments {...props} />);
@@ -334,7 +359,7 @@ test('a draft opens focused with editable saved positions and previews only pers
 test('without a template an offer is created blank, empty stays calm, and the first saved position reloads', async () => {
   const { calls } = setup({ template: null, documents: [] });
   const view = render(<EventDocuments {...props} />);
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  const summary = await openOfferCreate();
   expect(screen.getByText(/Sie können auch ohne Vorlage/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Vorlage'), {
     target: { value: '' },
@@ -373,10 +398,13 @@ test('without a template an offer is created blank, empty stays calm, and the fi
   });
 
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(summary);
+  expect(summary.closest('details')?.open).toBe(false);
   fireEvent.click(
     screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
   expect(confirm).not.toHaveBeenCalled();
+  await waitFor(() => expect(document.activeElement).toBe(summary));
   fireEvent.click(
     screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
@@ -422,7 +450,7 @@ test('a lost blank-offer creation response requires checking the list before ano
     blankCreate: () => Promise.reject(new Error('connection lost')),
   });
   render(<EventDocuments {...props} />);
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  await openOfferCreate();
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(await screen.findByText(/Angebotsstatus ist unklar/)).toBeTruthy();
   expect(
@@ -449,7 +477,7 @@ test('a lost blank-offer creation response requires checking the list before ano
 test('blank creation still requires the event contact', async () => {
   setup({ template: null, documents: [] });
   render(<EventDocuments {...props} contactId={null} />);
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  await openOfferCreate();
   expect(
     screen.getByText(/Für ein Angebot zuerst einen Hauptkontakt zuordnen/),
   ).toBeTruthy();
@@ -467,12 +495,13 @@ test('initial list failure disables creation until a successful retry', async ()
   expect(screen.getByRole('alert').textContent).toContain(
     'Dateien konnten nicht geladen werden',
   );
+  await openOfferCreate();
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
   ).toHaveProperty('disabled', true);
 
   fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  await openOfferCreate();
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
   ).toHaveProperty('disabled', false);
@@ -486,7 +515,7 @@ test('a server error from blank creation requires list verification before retry
       Promise.resolve(Response.json({ error: 'unavailable' }, { status: 503 })),
   });
   render(<EventDocuments {...props} />);
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  await openOfferCreate();
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(await screen.findByText(/Angebotsstatus ist unklar/)).toBeTruthy();
   expect(
@@ -505,7 +534,7 @@ test('a client error from blank creation remains a known rejection', async () =>
       Promise.resolve(Response.json({ error: 'validation' }, { status: 400 })),
   });
   render(<EventDocuments {...props} />);
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  await openOfferCreate();
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(
     await screen.findByText(
@@ -524,7 +553,7 @@ test('a client error from blank creation remains a known rejection', async () =>
 test('a template-backed offer keeps the existing create flow when selected', async () => {
   const { calls } = setup({ documents: [] });
   render(<EventDocuments {...props} />);
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  await openOfferCreate();
   expect((screen.getByLabelText('Vorlage') as HTMLSelectElement).value).toBe(
     template.id,
   );
@@ -554,7 +583,7 @@ test('a malformed successful blank-create response is treated as uncertain and i
       ),
   });
   render(<EventDocuments {...props} />);
-  await screen.findByRole('option', { name: 'Ohne Vorlage' });
+  await openOfferCreate();
   fireEvent.change(screen.getByLabelText('Vorlage'), {
     target: { value: '' },
   });

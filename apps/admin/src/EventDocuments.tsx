@@ -315,7 +315,8 @@ export function EventDocuments({
       'idle' | 'loading' | 'ready' | 'failed'
     >('idle'),
     mutating = useRef(false),
-    editorTrigger = useRef<HTMLButtonElement | null>(null);
+    createSummary = useRef<HTMLElement>(null),
+    editorTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (editorId || !editorTrigger.current) return;
     editorTrigger.current.focus();
@@ -349,8 +350,7 @@ export function EventDocuments({
     if (!contactId || createUncertain || mutating.current) return;
     const isBlank = templateId === '',
       expectedTemplateId = templateId || null;
-    const createTrigger =
-      event.currentTarget.querySelector<HTMLButtonElement>('button');
+    const createTrigger = createSummary.current;
     mutating.current = true;
     setBusy('create');
     setMessage('');
@@ -2317,11 +2317,6 @@ export function EventDocuments({
             aria-labelledby="event-documents-heading"
           >
             <h4 id="event-documents-heading">Angebote</h4>
-            <p className="document-card-hint">
-              Ein Angebot entsteht als Entwurf aus einer Vorlage oder ohne
-              Vorlage. Beim Finalisieren erhält es seine Nummer und eine
-              unveränderliche PDF.
-            </p>
             {offers.length ? (
               rows(offers)
             ) : (
@@ -2339,34 +2334,37 @@ export function EventDocuments({
                 Für ein Angebot zuerst einen Hauptkontakt zuordnen.
               </p>
             )}
-            <form onSubmit={create}>
-              <fieldset
-                disabled={
-                  busy !== '' ||
-                  !contactId ||
-                  createUncertain ||
-                  initialLoadFailed ||
-                  reloadWarning
-                }
-              >
-                <legend>Neues Angebot</legend>
-                <label>
-                  Vorlage
-                  <select
-                    value={templateId}
-                    onChange={(event) => setTemplateId(event.target.value)}
-                  >
-                    <option value="">Ohne Vorlage</option>
-                    {templates.map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {entry.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button className="primary-action">Entwurf anlegen</button>
-              </fieldset>
-            </form>
+            <details>
+              <summary ref={createSummary}>Angebot anlegen</summary>
+              <form onSubmit={create}>
+                <fieldset
+                  disabled={
+                    busy !== '' ||
+                    !contactId ||
+                    createUncertain ||
+                    initialLoadFailed ||
+                    reloadWarning
+                  }
+                >
+                  <legend>Neues Angebot</legend>
+                  <label>
+                    Vorlage
+                    <select
+                      value={templateId}
+                      onChange={(event) => setTemplateId(event.target.value)}
+                    >
+                      <option value="">Ohne Vorlage</option>
+                      {templates.map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="primary-action">Entwurf anlegen</button>
+                </fieldset>
+              </form>
+            </details>
           </section>
           {otherGroups.map((group) => (
             <section

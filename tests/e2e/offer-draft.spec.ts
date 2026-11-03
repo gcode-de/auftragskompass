@@ -330,6 +330,26 @@ async function offerDraftScenario(browser: Browser) {
       .getByRole('button', { name: 'Dateien' })
       .click();
     const offers = page.getByRole('region', { name: 'Angebote' });
+    await expect(
+      offers.getByRole('button', { name: 'Entwurf anlegen' }),
+    ).toHaveCount(0);
+    await page.setViewportSize({ width: 320, height: 844 });
+    const createSummary = offers.getByText('Angebot anlegen', { exact: true });
+    await createSummary.focus();
+    await page.keyboard.press('Enter');
+    await expect(
+      offers.getByRole('button', { name: 'Entwurf anlegen' }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(321);
+    await createSummary.evaluate((node) =>
+      node.scrollIntoView({ block: 'center' }),
+    );
+    await page.screenshot({
+      path: test.info().outputPath('offer-create-mobile.png'),
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
     await offers.getByRole('button', { name: 'Entwurf anlegen' }).click();
     await expect(
       offers.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
@@ -917,6 +937,7 @@ async function offerDraftScenario(browser: Browser) {
       .getByRole('button', { name: 'Dateien' })
       .click();
     const blankOffers = page.getByRole('region', { name: 'Angebote' });
+    await blankOffers.getByText('Angebot anlegen', { exact: true }).click();
     const templatePicker = blankOffers.getByLabel('Vorlage');
     await expect(templatePicker).toHaveValue('');
     await expect(templatePicker.locator('option')).toHaveText(['Ohne Vorlage']);
