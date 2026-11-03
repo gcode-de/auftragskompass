@@ -240,7 +240,7 @@ test('today and the selected day stay distinguishable without a green area', asy
 
 test('the day name starts with the words the cell visibly shows', async () => {
   // WCAG 2.5.3 / axe `label-content-name-mismatch`: the accessible name must
-  // contain the visible label. The cell shows "3 5", so the name starts there.
+  // contain the visible label, including "Heute" when day 3 is today.
   const value = month(year, monthNumber, 10);
   await renderMonth(value);
   const normalize = (text: string) =>
@@ -256,7 +256,7 @@ test('the day name starts with the words the cell visibly shows', async () => {
     .map((node) => node.textContent!.trim())
     .filter(Boolean)
     .join(' ');
-  expect(visible).toBe('3 5');
+  expect(visible).toBe(day.dataset.today === 'true' ? '3 Heute 5' : '3 5');
   expect(normalize(label).startsWith(normalize(visible))).toBe(true);
   // Same rule for the today cell: number, then the word "Heute".
   const todayCell = document.querySelector('.calendar-day[data-today="true"]')!;

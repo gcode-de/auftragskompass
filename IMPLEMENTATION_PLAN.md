@@ -10,6 +10,17 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-CALENDAR-02 — `test: account for today in calendar label`**:
+  Der Barrierefreiheitstest für den dritten Monatstag berücksichtigt „Heute“,
+  wenn dieser selbst der aktuelle Tag ist; Inhalts- und Namenprüfung bleiben.
+
+- [ ] **BKP030.3 — `feat: make resources directly accessible`**:
+  Die bereits vorhandene Ressourcenverwaltung zusätzlich wie in der beobachteten
+  Bookitup-Hauptnavigation direkt erreichbar machen, auf Desktop und mobil.
+  Bestehende Einstellungslinks und Deep Links, Entwurfsschutz und fachliche
+  Reservierungslogik bleiben erhalten. Aktiver Zustand und Titel müssen den
+  Ressourcenbereich korrekt benennen; Navigation gezielt prüfen.
+
 Aufgaben/Workflows, Auswertungen und Exporte sind ausdrücklich ausgeschlossen.
 Direkte Feldbearbeitung speichert gemäß Betreiberentscheidung beim Verlassen des
 Feldes; Escape verwirft ausschließlich noch ungesendete Änderungen des aktiven
