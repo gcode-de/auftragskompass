@@ -4,6 +4,8 @@
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
 
+- CI-EFFICIENCY-01 prüft die loginunabhängige Dateien-Breiten-/Theme-/Axe-Matrix einmal statt doppelt; die vollständigen Google- und Passwortabläufe bleiben. Testliste und verbleibende Matrix lokal grün (20,8 s); konkrete CI-Zeitersparnis erst nach dem nächsten Lauf beurteilen.
+
 - BKP030.7 vereinfacht den Hinweis bei der Ressourcenzuweisung; Belegungsprüfung und Bedeutung von Vormerkungen bleiben sichtbar. Alle 37 zugehörigen Komponententests und schnelle Gates lokal grün; CI und Auslieferung nach Push prüfen.
 
 - BKP007.5 entfernt die technische Zeitzonenzeile aus dem Eventfilter; die tenant-lokale Berechnung bleibt erhalten. 113 betroffene Komponentenfälle, ein Chromium-Ablauf und schnelle Gates lokal grün; CI und Auslieferung nach Push prüfen.

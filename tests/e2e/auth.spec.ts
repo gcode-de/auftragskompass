@@ -6675,8 +6675,6 @@ for (const mode of ['google', 'password'] as const) {
   }) => signInScenario(browser, mode));
 }
 
-for (const mode of ['google', 'password'] as const) {
-  test(`Dateien responsive accessibility with ${mode} authentication`, async ({
-    browser,
-  }) => signInScenario(browser, mode, true));
-}
+test('Dateien responsive accessibility with password authentication', async ({
+  browser,
+}) => signInScenario(browser, 'password', true));

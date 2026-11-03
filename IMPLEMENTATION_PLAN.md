@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
+- [x] **CI-EFFICIENCY-01 — `test: run file layout matrix once`**: Die loginunabhängige Dateien-Breiten-/Theme-/Axe-Matrix einmal mit Passwortlogin prüfen; beide vollständigen Loginabläufe und alle Layoutfälle erhalten.
+
 - [x] **BKP030.7 — `style: simplify resource assignment guidance`**: Ressourcenzuordnung von technischen Zeitzonenhinweisen entlasten; Hinweise zu Belegungsprüfung und Vormerkung sowie lokale Zeitberechnung erhalten.
 
 - [x] **BKP007.5 — `style: simplify event filter timezone display`**: Die technische Zeitzonenzeile im Eventfilter entfernen, tenant-lokale Datumsberechnung und Ladeverhalten erhalten.
