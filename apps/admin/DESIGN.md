@@ -301,6 +301,7 @@ Dateienbereich bleibt über sein bestehendes Ziel und seine Deep Links erreichba
 Ein kurzer Hinweis mit Rückweg zu Events erklärt die aktuell vorhandene Angebotserstellung.
 
 Die Kopfzeile zentriert Suche und Farbschema vertikal auf derselben Höhe.
+Ab 1100px steht die Einstellungsnavigation als vertikale Spalte neben dem Inhalt; mobil bleibt die Bereichsauswahl erhalten.
 
 ## Do's and Don'ts
 

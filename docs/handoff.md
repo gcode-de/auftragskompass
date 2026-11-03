@@ -2,6 +2,8 @@
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
 
+- BKP006.4 ordnet die Einstellungen ab 1100px mit einer vertikalen Navigation neben dem Inhalt an; mobil bleibt die Auswahl erhalten.
+
 - BKP006.3 startet Desktop mit schmaler Symbolleiste und AK-Heimlink; die Langform bleibt freiwillig auswählbar, die Versionsangabe steht in der Kopfzeile.
 
 - BKP006.2 richtet Suche und Farbschema in der Kopfzeile mittig aus.

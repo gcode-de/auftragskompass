@@ -608,6 +608,33 @@ test('both themes keep a neutral reference surface readable at 390 and 1280', as
   }
 });
 
+test('settings navigation sits beside content on desktop and above it on mobile', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.body.innerHTML = `<main class="workspace"><section id="settings"><nav class="settings-navigation" aria-label="Einstellungen"><div class="settings-navigation-links"><a href="#settings">Stammdaten</a><a href="#settings-products">Produkte</a></div><label class="settings-navigation-select">Einstellungsbereich<select aria-label="Einstellungsbereich"><option>Stammdaten</option></select></label></nav><div><section><h2>Fiktiver Inhalt</h2></section></div></section></main>`;
+  });
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    const nav = (await page
+      .getByRole('navigation', { name: 'Einstellungen' })
+      .boundingBox())!;
+    const content = (await page
+      .getByRole('heading', { name: 'Fiktiver Inhalt' })
+      .boundingBox())!;
+    if (width > 1100) expect(nav.x + nav.width).toBeLessThanOrEqual(content.x);
+    else expect(nav.y + nav.height).toBeLessThanOrEqual(content.y);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(0);
+  }
+});
+
 test('header utilities share one vertical center', async ({ page }) => {
   await page.goto('/');
   await page.setViewportSize({ width: 1280, height: 800 });

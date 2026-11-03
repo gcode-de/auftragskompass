@@ -741,6 +741,35 @@ a.workspace-title:hover {
   background: var(--selected-surface);
   color: var(--selected-ink);
 }
+@media (min-width: 1100px) {
+  #settings:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+  #settings > :not(.settings-navigation) {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .settings-navigation {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 0 1rem 0 0;
+    margin: 0;
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+  }
+  .settings-navigation-links {
+    display: grid;
+  }
+  .settings-navigation-links a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
 .settings-navigation-select {
   display: none;
 }
