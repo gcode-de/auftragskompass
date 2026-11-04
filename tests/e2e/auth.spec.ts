@@ -5,7 +5,13 @@ import AxeBuilder from '@axe-core/playwright';
 import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
 import { registerImportRoutes } from '../../packages/core/src/import-routes.js';
 import { fictionalImport } from '../fixtures/minimal-import.js';
-import { expect, test, type Browser, type Route } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Browser,
+  type Locator,
+  type Route,
+} from '@playwright/test';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -41,6 +47,10 @@ import { registerDocumentTemplateRoutes } from '../../packages/core/src/document
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 import { StorageError } from '../../packages/core/src/storage.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
+async function openOfferPicker(scope: Locator) {
+  if (!(await scope.getByLabel('Vorlage').isVisible()))
+    await scope.getByText('Angebot anlegen', { exact: true }).click();
+}
 // RG-07: the due day of an invoice is its invoice day in the tenant calendar
 // plus the agreed term. The browser test recomputes it with the same tenant zone
 // the server uses, so the printed line and the stored row must agree.
@@ -1129,6 +1139,7 @@ async function signInScenario(
       .getByRole('button', { name: 'Dateien' })
       .click();
     const eventOffers = page.getByRole('region', { name: 'Angebote' });
+    await openOfferPicker(eventOffers);
     await eventOffers
       .getByLabel('Vorlage')
       .selectOption({ label: 'Fictional browser offer' });
@@ -2181,6 +2192,7 @@ async function signInScenario(
     // "offen / teilweise bezahlt / bezahlt" is derived only from those records.
     // A second, independent invoice is used because the first one is already
     // fully credited - a paid invoice may no longer be credited at all.
+    await openOfferPicker(eventOffers);
     await eventOffers
       .getByLabel('Vorlage')
       .selectOption({ label: 'Fictional browser offer' });
@@ -2479,6 +2491,7 @@ async function signInScenario(
     // BKP019.c3.2: the same order is also billed as the *final* invoice, which
     // settles the advances already billed on it. A third chain is used because a
     // confirmation carries exactly one invoice, standard or final.
+    await openOfferPicker(eventOffers);
     await eventOffers
       .getByLabel('Vorlage')
       .selectOption({ label: 'Fictional browser offer' });
@@ -4450,6 +4463,7 @@ async function signInScenario(
     await expect(
       record.getByText('Noch kein Angebot zu diesem Event.'),
     ).toBeVisible();
+    await openOfferPicker(createdOffer);
     await expect(record.getByLabel('Vorlage')).toHaveValue(offerTemplateRow.id);
     failEventFileRead = true;
     await record.getByRole('button', { name: 'Entwurf anlegen' }).click();

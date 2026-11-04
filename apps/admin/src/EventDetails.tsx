@@ -1335,18 +1335,18 @@ export function EventDetails({
               Dokumente dieses Events, nach ihrer Art getrennt. Was hier fehlt,
               ist noch nicht angelegt.
             </p>
-            <EventLibraryFiles
-              key={'library:' + data.event.id}
-              eventId={data.event.id}
-              csrfToken={csrfToken}
-              active={area === 'files'}
-            />
             <EventDocuments
               key={'documents:' + data.event.id}
               eventId={data.event.id}
               contactId={data.event.primaryContactId}
               timeZone={data.event.timeZone}
               csrfToken={csrfToken}
+            />
+            <EventLibraryFiles
+              key={'library:' + data.event.id}
+              eventId={data.event.id}
+              csrfToken={csrfToken}
+              active={area === 'files'}
             />
           </div>
           <div

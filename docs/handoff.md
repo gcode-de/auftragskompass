@@ -1,5 +1,7 @@
 # Projektübergabe AuftragsKompass
 
+**Zusammenführung 04.11.2026:** Die folgenden datierten Abschnitte sind historische Momentaufnahmen. Der vorliegende Integrationsstand enthält Telegram, die parallele CI, den Coverage-Fix und die abgeschlossenen Dokument-Oberflächenänderungen. Die offene Dokumentenfunktionalität bleibt im Plan; CI und Übernahme nach `main` sind noch zu prüfen.
+
 ## CI-Parallelisierung, 04.11.2026
 
 CI-PARALLEL-01 trennt die bisherigen Chromiumtests in einen unabhängigen Job;
@@ -29,6 +31,18 @@ lokal grün. CI und Auslieferung des jeweils aktuellen Commits sind gesondert
 zu prüfen.
 
 **Main-CI-Nachtrag 03.11.2026:** Lauf 41693090474 bestand die volle Testsuite, scheiterte aber bei Changed-Code-Coverage an Node-ENOBUFS für den 6,6-MB-Diff vom alten `main`. CI-MAIN-01 vergrößert ausschließlich den begrenzten Git-Ausgabepuffer; die Coverage-Schwellen bleiben erhalten. Mit dem CI-Coverage-Artefakt und genau diesem Release-Diff lokal geprüft: 10129/10491 Zeilen und 8852/9733 Zweige abgedeckt. Neuer CI-Lauf und Merge nach `main` müssen noch geprüft werden; V1.0 erst danach markieren. Dokumententwicklung liegt getrennt auf `codex/document-creation-v1`.
+
+## Dokumenterstellung und V1.0-Grundstand, 03.11.2026
+
+Der zuvor grün geprüfte UX-Stand wurde einschließlich der Autostart-Korrektur H022 nach `main` fast-forwarded; die eigenständige Main-CI ist nach Push zu prüfen. Die nicht integrierte mobile Arbeit auf `codex/h042-mobile-geometry`, der aktive Update-Branch, der andere Checkout und beide Stashes bleiben erhalten. Die fünf nachweislich in `main` enthaltenen Altbranches wurden entfernt.
+
+**Dokumentwege für die Fortsetzung:** Angebot: Vorlagen-POST `/api/v1/documents` oder `/api/v1/documents/blank-offer`, beide im Event-/Kontaktkontext. Auftragsbestätigung entsteht über `/:id/order-confirmation` aus einem angenommenen Angebot; Anzahlungsrechnung, Standardrechnung und Schlussrechnung über `/:id/deposit-invoice`, `/:id/invoice`, `/:id/final-invoice` aus einer finalisierten Auftragsbestätigung; eine Korrektur/Gutschrift über `/:id/correction` benötigt Quelle, Version und Richtung. Diese Schutzpfade nicht durch eine bloße UI-Auswahl umgehen. Schlussrechnung ist eine Rechnungsrolle. Katalogprodukte werden bereits bei Bedarf geladen und als eigenständig editierbare Positionen kopiert; Euro-Rabatt, freie Netto/Brutto-Wahl und Ressourcenbezüge sind gesondert zu prüfen und zu implementieren. Bookitup wurde nur lesend beobachtet; keine echte Erstellung vorgenommen.
+
+DOC-UX-02 ordnet Eventdokumente vor Bibliotheksdateien an; die sichtbare Mobilansicht wurde bei 320 px geprüft. Bibliotheksaktionen und Dokumententwürfe behalten ihre Zustände.
+
+DOC-UX-01 auf `codex/document-creation-v1` zeigt den bestehenden Angebots-Picker erst nach Öffnen. Vorlage, Blankoanlage, bestehende Schreib-/Konfliktregeln und Fokus-Rückgabe bleiben erhalten. Bookitup zeigt im beobachteten Dialog Dokumentart, Vorlage und Kunde und sechs Dokumentarten; diese Beobachtung beweist keine Speicherung. Der Folgeauftrag umfasst weitere UX sowie fehlende Backendfunktionen für Dokumentarten und Produktoptionen; vollständige Parität ist nicht erreicht. Kein echtes Dokument zur Prüfung angelegt. REA-MCP war nicht verbunden; die Referenzbeobachtung stammt aus Chrome.
+
+Die verschlüsselte Bookitup-Sicherung vom 16.10. und die separat verschlüsselte Eventübersicht vom 03.11. liegen zusätzlich prüfsummengeprüft auf dem privaten NAS; Einzelheiten ausschließlich im privaten Sicherungsordner. Die Übersicht ersetzt keinen Delta-Abgleich und keine Übernahme zukünftiger Zusagen.
 
 **CI-Nachtrag 03.11.2026:** Lauf 41627928987 scheiterte unter anderem an der Barrierefreiheitsregel für das sichtbare AK im Heimlink. CI-ICON-02 ergänzt AK im zugänglichen Namen; gezielte Chromium-Axe-Prüfung und 172 Komponentenfälle grün. Lauf 41630080680 scheiterte erneut am Vorlagenmenü-Wechsel. CI-TEMPLATE-01 erhält das alte Menü während Pointer- und Fokusübergang bis zum Klick; 96 Komponentenfälle und der betroffene Chromium-Ablauf bestanden lokal. Der folgende CI-Lauf 41658731415 scheiterte an einem Eventtest, der die Überschrift vor Abschluss des Ladezustands abfragte. CI-EVENT-04 wartet auf die Überschrift; gezielter Komponententest und alle 14 Vorlagen-Chromiumabläufe lokal grün. Neuer CI-Gesamtlauf ist abzuwarten. Auto-Deployment erst bei grüner CI und Images.
 

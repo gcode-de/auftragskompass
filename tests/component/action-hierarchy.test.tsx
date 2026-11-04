@@ -937,6 +937,11 @@ test('resource assignment, blocks, documents and website inbox stay on one prima
     />,
   );
   const documents = await screen.findByRole('region', { name: /Angebote/ });
+  const disclosure = within(documents).getByText('Angebot anlegen', {
+    selector: 'summary',
+  });
+  expect(disclosure.closest('details')?.open).toBe(false);
+  fireEvent.click(disclosure);
   await within(documents).findByRole('button', { name: 'Entwurf anlegen' });
   expectHierarchy(documents, 'Angebote');
   expect(

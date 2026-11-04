@@ -522,6 +522,17 @@ const props = {
   timeZone: 'Europe/Berlin',
   csrfToken: 'fictional-csrf',
 };
+
+async function openOfferCreate() {
+  const summary = await screen.findByText('Angebot anlegen', {
+    selector: 'summary',
+  });
+  const disclosure = summary.closest('details');
+  if (!disclosure?.open) fireEvent.click(summary);
+  await screen.findByLabelText('Vorlage');
+  return summary;
+}
+
 test('lists the offers of the event and only offers active templates', async () => {
   setup();
   render(<EventDocuments {...props} />);
@@ -530,6 +541,7 @@ test('lists the offers of the event and only offers active templates', async () 
     screen.getByText('Entwurf', { selector: '.document-row span' }),
   ).toBeTruthy();
   expect(screen.getByText(/249,00/)).toBeTruthy();
+  await openOfferCreate();
   const select = screen.getByLabelText('Vorlage') as HTMLSelectElement;
   expect(Array.from(select.options).map((option) => option.text)).toEqual([
     'Ohne Vorlage',
@@ -542,7 +554,7 @@ test('lists the offers of the event and only offers active templates', async () 
 test('a draft is created for this event and contact and the list reloads', async () => {
   const { calls } = setup();
   render(<EventDocuments {...props} />);
-  await screen.findByLabelText('Vorlage');
+  await openOfferCreate();
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(await screen.findByText('Entwurf angelegt.')).toBeTruthy();
   const create = calls.find((call) => call.method === 'POST')!;
@@ -591,6 +603,7 @@ test('no template permits blank creation, while a missing contact disables it', 
   const view = render(<EventDocuments {...props} contactId={null} />);
   expect(await screen.findByText(/Keine aktive Angebotsvorlage/)).toBeTruthy();
   expect(screen.getByText(/zuerst einen Hauptkontakt/)).toBeTruthy();
+  await openOfferCreate();
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
       .disabled,
@@ -601,6 +614,7 @@ test('no template permits blank creation, while a missing contact disables it', 
   render(<EventDocuments {...props} />);
   expect(await screen.findByText(/Keine aktive Angebotsvorlage/)).toBeTruthy();
   expect(screen.queryByText(/zuerst einen Hauptkontakt/)).toBeNull();
+  await openOfferCreate();
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
       .disabled,
@@ -621,6 +635,7 @@ test('a failed load is reported', async () => {
   expect(
     screen.getByRole('button', { name: 'Dateien erneut laden' }),
   ).toBeTruthy();
+  await openOfferCreate();
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
       .disabled,
@@ -632,7 +647,7 @@ test('a rejected draft and a failed pdf are explained to the operator', async ()
     create: () => Response.json({ error: 'not_found' }, { status: 404 }),
   });
   const view = render(<EventDocuments {...props} />);
-  await screen.findByLabelText('Vorlage');
+  await openOfferCreate();
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(
     await screen.findByText(/Entwurf konnte nicht angelegt werden/),
@@ -2973,6 +2988,7 @@ function reloadHarness(
 test('a draft created from a template stays visible when the list reload fails', async () => {
   const { lists, posts, control } = reloadHarness();
   render(<EventDocuments {...props} />);
+  await openOfferCreate();
   expect(
     ((await screen.findByLabelText('Vorlage')) as HTMLSelectElement).value,
   ).toBe('tpl-1');
@@ -3000,6 +3016,7 @@ test('a draft created from a template stays visible when the list reload fails',
 test('a draft created without a template also stays visible when the reload fails', async () => {
   const { posts, control } = reloadHarness();
   render(<EventDocuments {...props} />);
+  await openOfferCreate();
   fireEvent.change(await screen.findByLabelText('Vorlage'), {
     target: { value: '' },
   });
@@ -3029,7 +3046,7 @@ test('a draft created without a template also stays visible when the reload fail
 test('retrying the failed list reload only reads and never posts again', async () => {
   const { lists, posts, control } = reloadHarness();
   render(<EventDocuments {...props} />);
-  await screen.findByLabelText('Vorlage');
+  await openOfferCreate();
   control.listReply = () => new Response(null, { status: 503 });
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   await screen.findByText(/Dateiliste konnte nicht neu geladen werden/);
@@ -3047,7 +3064,7 @@ test('retrying the failed list reload only reads and never posts again', async (
 test('a successful retry replaces the local row with the stored version', async () => {
   const { posts, finals, control } = reloadHarness();
   render(<EventDocuments {...props} />);
-  await screen.findByLabelText('Vorlage');
+  await openOfferCreate();
   control.listReply = () => new Response(null, { status: 503 });
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   await screen.findByText(/Dateiliste konnte nicht neu geladen werden/);
@@ -3082,7 +3099,7 @@ test('an unanswered create leaves the list exactly as it was', async () => {
   const { posts, control } = reloadHarness({ stored: [] });
   control.createReply = () => new Response(null, { status: 500 });
   render(<EventDocuments {...props} />);
-  await screen.findByLabelText('Vorlage');
+  await openOfferCreate();
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(await screen.findByText(/Der Angebotsstatus ist unklar/)).toBeTruthy();
   const offers = screen.getByRole('region', { name: 'Angebote' });
@@ -3104,7 +3121,7 @@ test('a create answer for another event is unclear and never listed', async () =
   control.createReply = () =>
     Response.json({ ...created, eventId: 'event-2' }, { status: 201 });
   render(<EventDocuments {...props} />);
-  await screen.findByLabelText('Vorlage');
+  await openOfferCreate();
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(await screen.findByText(/Der Angebotsstatus ist unklar/)).toBeTruthy();
   const offers = screen.getByRole('region', { name: 'Angebote' });
@@ -3119,6 +3136,7 @@ test('the new draft joins the offers without disturbing the other cards', async 
   const { control } = reloadHarness({ stored: [draft, invoice] });
   render(<EventDocuments {...props} />);
   expect(await screen.findByText('RE-2030-0002')).toBeTruthy();
+  await openOfferCreate();
   control.listReply = () => new Response(null, { status: 500 });
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   await screen.findByText(/Dateiliste konnte nicht neu geladen werden/);
@@ -3133,7 +3151,7 @@ test('the new draft joins the offers without disturbing the other cards', async 
 test('the success message and the reload warning stay truthful', async () => {
   const { control } = reloadHarness();
   render(<EventDocuments {...props} />);
-  await screen.findByLabelText('Vorlage');
+  await openOfferCreate();
   control.listReply = () => new Response(null, { status: 500 });
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   await waitFor(() =>
@@ -3194,8 +3212,13 @@ test('documents are grouped and labelled by their actual kind', async () => {
   // Every row stays in exactly one card; the offer form belongs to the offers.
   expect(within(invoices).queryAllByText('Entwurf')).toEqual([]);
   expect(
-    within(offers).getByRole('button', { name: 'Entwurf anlegen' }),
+    within(offers).getByText('Angebot anlegen', { selector: 'summary' }),
   ).toBeTruthy();
+  expect(
+    within(offers)
+      .getByText('Angebot anlegen', { selector: 'summary' })
+      .closest('details')?.open,
+  ).toBe(false);
   expect(
     within(offers).queryByRole('heading', { name: 'Rechnungen' }),
   ).toBeNull();

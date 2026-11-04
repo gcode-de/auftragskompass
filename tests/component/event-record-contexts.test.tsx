@@ -228,8 +228,19 @@ test('documents live in the files area instead of the details overview', async (
   const files = area('Dateien');
   const offers = await within(files).findByRole('region', { name: 'Angebote' });
   expect(await within(offers).findByText('AN-2030-0007')).toBeTruthy();
+  const library = within(files).getByRole('region', {
+    name: 'Eventdateien aus der Bibliothek',
+  });
   expect(
-    within(offers).getByRole('button', { name: 'Entwurf anlegen' }),
+    offers.compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  const summary = within(offers).getByText('Angebot anlegen', {
+    selector: 'summary',
+  });
+  expect(summary.closest('details')?.open).toBe(false);
+  fireEvent.click(summary);
+  expect(
+    await within(offers).findByRole('button', { name: 'Entwurf anlegen' }),
   ).toBeTruthy();
 });
 
@@ -328,6 +339,10 @@ test('a confirmed document success stays visible when the list reload fails', as
   fireEvent.click(tab('Dateien'));
   const files = area('Dateien');
   const offers = await within(files).findByRole('region', { name: 'Angebote' });
+  const summary = within(offers).getByText('Angebot anlegen', {
+    selector: 'summary',
+  });
+  fireEvent.click(summary);
   const create = await within(offers).findByRole('button', {
     name: 'Entwurf anlegen',
   });
