@@ -543,7 +543,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
             }),
           ).toBeVisible();
           await expect(settingsSelect).toHaveValue('#settings-document-layout');
-          await expect(settingsSelect.locator('option')).toHaveCount(12);
+          await expect(settingsSelect.locator('option')).toHaveCount(13);
           await expect(
             settingsNavigation.getByRole('link', {
               name: 'Dokumentlayout',
