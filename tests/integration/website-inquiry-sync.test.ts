@@ -30,6 +30,10 @@ import {
 import { inquiryFormV1 } from '../../packages/core/src/inquiry-form.js';
 import { receiveWebsiteInquiryBatch } from '../../packages/core/src/website-inquiry-sync.js';
 import { importStagedWebsiteInquiry } from '../../packages/core/src/website-inquiry-deliveries.js';
+import {
+  encryptTelegramToken,
+  startTelegramNotifications,
+} from '../../packages/core/src/telegram.js';
 let container: StartedPostgreSqlContainer,
   pool: Pool,
   tenantId: string,
@@ -210,6 +214,198 @@ test('authentication, request correlation and strict batches fail closed before 
   ).rejects.toMatchObject({ reason: 'invalid' });
   expect(Object.values(await counts())).toEqual([0, 0, 0, 0, 0]);
   expect(await receive(batch([]))).toEqual({ status: 'applied', count: 0 });
+});
+
+test('only newly staged inquiries receive one notification job when Telegram is enabled', async () => {
+  const telegramKey = Buffer.alloc(32, 19);
+  const sealed = encryptTelegramToken(
+    '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+    telegramKey,
+  );
+  await pool.query(
+    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,enabled) VALUES($1,$2,$3,$4,$5,true)',
+    [tenantId, sealed.ciphertext, sealed.nonce, sealed.tag, 'fictional-chat'],
+  );
+  const value = batch();
+  expect(await receive(value)).toEqual({ status: 'applied', count: 1 });
+  expect(
+    await pool.query(
+      'SELECT inquiry_id FROM telegram_notification_jobs WHERE tenant_id=$1',
+      [tenantId],
+    ),
+  ).toMatchObject({ rowCount: 1 });
+  const replay = batch(
+    value.message.payload.inquiries,
+    value.requestId,
+    value.message.operationId,
+  );
+  expect(await receive(replay)).toEqual({ status: 'duplicate', count: 1 });
+  expect(
+    (
+      await pool.query(
+        'SELECT inquiry_id FROM telegram_notification_jobs WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rowCount,
+  ).toBe(1);
+  await pool.query(
+    'UPDATE telegram_settings SET enabled=false WHERE tenant_id=$1',
+    [tenantId],
+  );
+  expect(await receive(batch())).toEqual({ status: 'applied', count: 1 });
+  expect(
+    (
+      await pool.query(
+        'SELECT inquiry_id FROM telegram_notification_jobs WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rowCount,
+  ).toBe(1);
+});
+
+test('worker retries failures durably and sends only generic content', async () => {
+  const telegramKey = Buffer.alloc(32, 23);
+  const sealed = encryptTelegramToken(
+    '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+    telegramKey,
+  );
+  await pool.query(
+    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,enabled) VALUES($1,$2,$3,$4,$5,true)',
+    [tenantId, sealed.ciphertext, sealed.nonce, sealed.tag, 'fictional-chat'],
+  );
+  await receive(batch());
+  let calls = 0;
+  const worker = startTelegramNotifications(
+    pool,
+    telegramKey,
+    () => {},
+    async (url, init) => {
+      calls++;
+      expect(String(url)).toContain('/sendMessage');
+      expect(init?.redirect).toBe('error');
+      expect(String(init?.body)).not.toContain('sync@example.invalid');
+      return new Response(JSON.stringify({ ok: calls > 1 }), {
+        status: 200,
+      });
+    },
+  );
+  try {
+    await vi.waitFor(async () => expect(calls).toBe(1), {
+      timeout: 3000,
+      interval: 10,
+    });
+    await vi.waitFor(
+      async () =>
+        expect(
+          (
+            await pool.query(
+              'SELECT locked_at FROM telegram_notification_jobs WHERE tenant_id=$1',
+              [tenantId],
+            )
+          ).rows[0]?.locked_at,
+        ).toBeNull(),
+      { timeout: 3000, interval: 10 },
+    );
+    await pool.query(
+      'UPDATE telegram_notification_jobs SET available_at=now() WHERE tenant_id=$1',
+      [tenantId],
+    );
+    await vi.waitFor(
+      async () => {
+        const row = (
+          await pool.query(
+            'SELECT attempts,delivered_at FROM telegram_notification_jobs WHERE tenant_id=$1',
+            [tenantId],
+          )
+        ).rows[0];
+        expect(row?.attempts).toBe(2);
+        expect(row?.delivered_at).not.toBeNull();
+      },
+      { timeout: 7000, interval: 25 },
+    );
+  } finally {
+    await worker.stop();
+  }
+});
+
+test('worker keeps Telegram HTTP failures retryable', async () => {
+  const telegramKey = Buffer.alloc(32, 29);
+  const sealed = encryptTelegramToken(
+    '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+    telegramKey,
+  );
+  await pool.query(
+    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,enabled) VALUES($1,$2,$3,$4,$5,true)',
+    [tenantId, sealed.ciphertext, sealed.nonce, sealed.tag, 'fictional-chat'],
+  );
+  await receive(batch());
+  const reportError = vi.fn();
+  const worker = startTelegramNotifications(
+    pool,
+    telegramKey,
+    reportError,
+    async () => new Response(JSON.stringify({ ok: true }), { status: 503 }),
+  );
+  try {
+    await vi.waitFor(
+      async () => {
+        const row = (
+          await pool.query(
+            'SELECT attempts,delivered_at,locked_at FROM telegram_notification_jobs WHERE tenant_id=$1',
+            [tenantId],
+          )
+        ).rows[0];
+        expect(row?.attempts).toBe(1);
+        expect(row?.delivered_at).toBeNull();
+        expect(row?.locked_at).toBeNull();
+      },
+      { timeout: 3000, interval: 10 },
+    );
+    expect(reportError).toHaveBeenCalledOnce();
+  } finally {
+    await worker.stop();
+  }
+});
+
+test('worker leaves entries pending when the configured encryption key cannot decrypt the token', async () => {
+  const provisionedKey = Buffer.alloc(32, 31);
+  const sealed = encryptTelegramToken(
+    '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+    provisionedKey,
+  );
+  await pool.query(
+    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,enabled) VALUES($1,$2,$3,$4,$5,true)',
+    [tenantId, sealed.ciphertext, sealed.nonce, sealed.tag, 'fictional-chat'],
+  );
+  await receive(batch());
+  const reportError = vi.fn(),
+    fetcher = vi.fn();
+  const worker = startTelegramNotifications(
+    pool,
+    Buffer.alloc(32, 32),
+    reportError,
+    fetcher,
+  );
+  try {
+    await vi.waitFor(
+      async () => {
+        const row = (
+          await pool.query(
+            'SELECT attempts,delivered_at,locked_at FROM telegram_notification_jobs WHERE tenant_id=$1',
+            [tenantId],
+          )
+        ).rows[0];
+        expect(row?.attempts).toBe(1);
+        expect(row?.delivered_at).toBeNull();
+        expect(row?.locked_at).toBeNull();
+      },
+      { timeout: 3000, interval: 10 },
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledOnce();
+  } finally {
+    await worker.stop();
+  }
 });
 
 test('one expired or conflicting item rolls back the entire batch and its replay receipts', async () => {

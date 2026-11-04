@@ -1,8 +1,27 @@
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
-import { loadRuntimeConfig, migrate } from '@auftragskompass/core';
+import {
+  loadRuntimeConfig,
+  migrate,
+  telegramKeyFromSecret,
+} from '@auftragskompass/core';
 import { startWorkerRuntime } from './worker-start.js';
 const readSecret = (path: string): string => readFileSync(path, 'utf8');
+let telegramKey: Buffer | null = null;
+try {
+  if (process.env.AK_TELEGRAM_ENCRYPTION_KEY_FILE)
+    telegramKey = telegramKeyFromSecret(
+      readSecret(process.env.AK_TELEGRAM_ENCRYPTION_KEY_FILE),
+    );
+} catch {
+  if (process.env.AK_TELEGRAM_ENCRYPTION_KEY_FILE)
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        event: 'telegram_encryption_key_unavailable',
+      }),
+    );
+}
 try {
   const config = loadRuntimeConfig(process.env, readSecret);
   const pool = new Pool({
@@ -27,6 +46,7 @@ try {
     process.env,
     readSecret,
     () => pool.end(),
+    telegramKey,
   );
   await runtime.refreshSync();
   const { app } = runtime;

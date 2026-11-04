@@ -2,6 +2,7 @@ import { ThemeToggle } from './ThemeToggle.js';
 import { InquiryPreview } from './InquiryPreview.js';
 import { ExportPanel } from './ExportPanel.js';
 import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
+import { TelegramSettingsPanel } from './TelegramSettingsPanel.js';
 import { ImportPanel } from './ImportPanel.js';
 import { CalendarPanel } from './CalendarPanel.js';
 import {
@@ -213,6 +214,9 @@ export function AuthPanel() {
             </div>
             <div hidden={route !== 'subscriptions'}>
               <CalendarFeedsPanel csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'telegram'}>
+              <TelegramSettingsPanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'import'}>
               <ImportPanel

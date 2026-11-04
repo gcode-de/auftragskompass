@@ -65,6 +65,11 @@ export async function stageWebsiteInquiry(
         stagedAt: new Date(clock),
         stagedBy: actorId,
       });
+      // Snapshot opt-in at first local receipt; later activation never backfills old inquiries.
+      await tx.execute(sql`INSERT INTO telegram_notification_jobs (tenant_id, inquiry_id)
+        SELECT ${tenantId}, ${value.id} WHERE EXISTS (
+          SELECT 1 FROM telegram_settings WHERE tenant_id=${tenantId} AND enabled=true
+        ) ON CONFLICT (tenant_id, inquiry_id) DO NOTHING`);
       return { status: 'stored' as const };
     });
   } catch (error) {

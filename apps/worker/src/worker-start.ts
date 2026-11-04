@@ -9,6 +9,7 @@ import {
   startWebsiteOptionDrain,
   websiteOptionDependencies,
   loadWebsiteOptionConfig,
+  startTelegramNotifications,
   type InquirySyncConfig,
   type RuntimeConfig,
   type WebsiteOptionConfig,
@@ -26,6 +27,7 @@ export type WorkerRuntimeDependencies = {
     },
   ): FastifyInstance;
   probe(pool: Pool): Promise<boolean>;
+  telegramConfigured?(pool: Pool): Promise<boolean>;
   // Returned loops stop in reverse: the drain first, then sync, expiry, pool.
   startExpiry(pool: Pool, report: () => void): Loop & { stop(): Promise<void> };
   // Null means the drain is deliberately unconfigured, not broken.
@@ -56,6 +58,12 @@ export const workerRuntimeDependencies: WorkerRuntimeDependencies = {
     await pool.query('SELECT 1');
     return true;
   },
+  async telegramConfigured(pool) {
+    const { rows } = await pool.query<{ enabled: boolean }>(
+      'SELECT EXISTS (SELECT 1 FROM telegram_settings WHERE enabled) AS enabled',
+    );
+    return Boolean(rows[0]?.enabled);
+  },
   startExpiry: (pool, report) => startReservationExpiry(pool, report),
   loadOptionConfig: (env) => loadWebsiteOptionConfig(env),
   optionDrainActive: (env) => loadWebsiteOptionDrainActivation(env),
@@ -75,6 +83,7 @@ export async function startWorkerRuntime(
   env: NodeJS.ProcessEnv = process.env,
   readSecret: (path: string) => string = () => '',
   endPool: () => Promise<void> = async () => {},
+  telegramKey: Uint8Array | null = null,
 ) {
   let sync: Loop | null = null;
   const app = dependencies.createServer(config, {
@@ -88,6 +97,18 @@ export async function startWorkerRuntime(
   const expiry = dependencies.startExpiry(pool, () =>
     app.log.error('reservation_expiry_failed'),
   );
+  const telegram = telegramKey
+    ? startTelegramNotifications(pool, telegramKey, () =>
+        app.log.error('telegram_notification_failed'),
+      )
+    : null;
+  if (!telegramKey && dependencies.telegramConfigured)
+    void dependencies
+      .telegramConfigured(pool)
+      .then((enabled) => {
+        if (enabled) app.log.error('telegram_encryption_key_unavailable');
+      })
+      .catch(() => {});
   // Without the inquiry identities there is nothing to drain from: skip the
   // timer with one warning so entries stay visible in the inbox. A present but
   // malformed identity stays an error and keeps the drain unhealthy, because
@@ -154,6 +175,7 @@ export async function startWorkerRuntime(
     refreshSync,
     async close() {
       if (drain) await drain.stop();
+      if (telegram) await telegram.stop();
       if (sync) await sync.stop();
       await expiry.stop();
       await endPool();

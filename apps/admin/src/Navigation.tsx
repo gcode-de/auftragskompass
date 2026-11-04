@@ -67,6 +67,7 @@ const settingsLinks = [
   ['settings-resources', 'Ressourcen'],
   ['settings-products', 'Produkte'],
   ['settings-calendar', 'Kalender-Abos'],
+  ['settings-telegram', 'Telegram'],
   ['import-review', 'Datenimport'],
   ['settings-export', 'Datenexport'],
   ['settings-inquiry', 'Website-Formular'],
@@ -79,6 +80,7 @@ const settingsLinks = [
 export type WorkspaceRoute =
   | (typeof links)[number][0]
   | 'subscriptions'
+  | 'telegram'
   | 'import'
   | 'security'
   | 'inquiry'
@@ -93,6 +95,7 @@ export type WorkspaceRoute =
 export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'settings',
   'subscriptions',
+  'telegram',
   'import',
   'security',
   'export',
@@ -110,6 +113,7 @@ export function isSettingsRoute(route: WorkspaceRoute) {
 const settingsHashes = {
   settings: 'settings',
   subscriptions: 'settings-calendar',
+  telegram: 'settings-telegram',
   import: 'import-review',
   security: 'settings-security',
   export: 'settings-export',
@@ -133,6 +137,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'settings-website') return 'website';
   if (hash === 'import-review') return 'import';
   if (hash === 'settings-calendar') return 'subscriptions';
+  if (hash === 'settings-telegram') return 'telegram';
   if (hash === 'settings-inquiry') return 'inquiry';
   if (hash === 'settings-export') return 'export';
   if (hash === 'settings-security') return 'security';

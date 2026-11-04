@@ -30,6 +30,8 @@ import {
   registerLibraryFileRoutes,
   localStorageAdapter,
   chromiumPdfRenderer,
+  registerTelegramSettingsRoutes,
+  telegramKeyFromSecret,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -102,6 +104,23 @@ try {
     registerInquiryPreviewRoute(app);
     registerWebsiteInquiryRoutes(app, pool, auth.tenantId);
     registerWebsiteInboxRoutes(app, pool, auth.tenantId);
+    let telegramKey: Buffer | null = null;
+    try {
+      if (process.env.AK_TELEGRAM_ENCRYPTION_KEY_FILE)
+        telegramKey = telegramKeyFromSecret(
+          readFileSync(process.env.AK_TELEGRAM_ENCRYPTION_KEY_FILE, 'utf8'),
+        );
+    } catch {
+      telegramKey = null;
+      if (process.env.AK_TELEGRAM_ENCRYPTION_KEY_FILE)
+        console.error(
+          JSON.stringify({
+            level: 'error',
+            event: 'telegram_encryption_key_unavailable',
+          }),
+        );
+    }
+    registerTelegramSettingsRoutes(app, pool, auth.tenantId, telegramKey);
     registerAccessRoutes(app, pool, auth.tenantId, auth.mode ?? 'google');
     registerAuditRoutes(app, pool, auth.tenantId);
     registerMasterDataRoutes(app, pool, auth.tenantId);

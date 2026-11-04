@@ -6,6 +6,13 @@ export {
   type Probes,
 } from './runtime.js';
 export { migrate, identityRepository } from './identity.js';
+export {
+  registerTelegramSettingsRoutes,
+  telegramKeyFromSecret,
+  startTelegramNotifications,
+  encryptTelegramToken,
+  decryptTelegramToken,
+} from './telegram.js';
 export { loadAuthConfig } from './auth-config.js';
 export { googleProvider } from './oidc.js';
 export { registerAuth } from './auth.js';

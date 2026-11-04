@@ -95,6 +95,35 @@ function fixture(overrides: Partial<Fixture> = {}) {
 }
 
 describe('worker runtime wiring', () => {
+  test('reports a missing Telegram key only when notifications are configured', async () => {
+    const configured = fixture();
+    configured.dependencies.telegramConfigured = async () => true;
+    const runtime = await startWorkerRuntime(
+      { logLevel: 'silent' } as never,
+      {} as never,
+      configured.dependencies,
+    );
+    await vi.waitFor(() =>
+      expect(configured.state.calls).toContain(
+        'log:telegram_encryption_key_unavailable',
+      ),
+    );
+    await runtime.close();
+
+    const unused = fixture();
+    unused.dependencies.telegramConfigured = async () => false;
+    const unusedRuntime = await startWorkerRuntime(
+      { logLevel: 'silent' } as never,
+      {} as never,
+      unused.dependencies,
+    );
+    await Promise.resolve();
+    expect(unused.state.calls).not.toContain(
+      'log:telegram_encryption_key_unavailable',
+    );
+    await unusedRuntime.close();
+  });
+
   test('registers health checks, starts the drain, and stops drain, sync and pool in that order', async () => {
     const subject = fixture(),
       checks: Record<string, () => Promise<boolean>> = {};

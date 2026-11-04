@@ -1,5 +1,18 @@
 # Projektübergabe AuftragsKompass
 
+## Telegram für Website-Anfragen, 04.11.2026
+
+NOTIFY-01 ergänzt Administrator-Einstellungen und einen dauerhaften
+Benachrichtigungsauftrag für neu lokal eingegangene Website-Anfragen. Die
+Einrichtung und Betriebsgrenzen stehen in [Telegram-Benachrichtigungen](telegram-notifications.md).
+API und Worker benötigen denselben separat gesicherten Schlüssel; der Token
+wird nie zurückgegeben. Es werden keine Kundendaten an Telegram gesendet.
+Zustellung erfolgt mit Wiederholungen und kann bei unklarer Antwort doppelt
+sein. Bestehende Anfragen werden bei Aktivierung nicht nachträglich versendet.
+CI, Schlüsselbereitstellung und tatsächliche Auslieferung des aktuellen Commits
+vor Nutzung prüfen. Die Umstellung des Websiteformulars und ein finaler
+Bookitup-Abgleich sind damit noch nicht abgenommen.
+
 **CI-Nachtrag 03.11.2026:** Lauf 41627928987 scheiterte unter anderem an der Barrierefreiheitsregel für das sichtbare AK im Heimlink. CI-ICON-02 ergänzt AK im zugänglichen Namen; gezielte Chromium-Axe-Prüfung und 172 Komponentenfälle grün. Lauf 41630080680 scheiterte erneut am Vorlagenmenü-Wechsel. CI-TEMPLATE-01 erhält das alte Menü während Pointer- und Fokusübergang bis zum Klick; 96 Komponentenfälle und der betroffene Chromium-Ablauf bestanden lokal. Der folgende CI-Lauf 41658731415 scheiterte an einem Eventtest, der die Überschrift vor Abschluss des Ladezustands abfragte. CI-EVENT-04 wartet auf die Überschrift; gezielter Komponententest und alle 14 Vorlagen-Chromiumabläufe lokal grün. Neuer CI-Gesamtlauf ist abzuwarten. Auto-Deployment erst bei grüner CI und Images.
 
 ## Fortsetzung 03.11.2026: Eventbuchung und Papierkorb
