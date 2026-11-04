@@ -198,6 +198,13 @@ wiederaufnehmbaren Zustand. Der Worker startet in `apps/worker/src/worker-start.
 Herunterfahren stoppt zuerst dieser Lauf, dann Abfrage/Quittierung, Ablaufjob
 und zuletzt der Datenbankpool.
 
+**Zeitnahe Anlage:** Nach einem erfolgreichen Gateway-Abruf wird der aktivierte
+Optionstakt unmittelbar angestoßen. Läuft er schon, folgt ein weiterer Durchlauf;
+ein deaktivierter Takt bleibt deaktiviert. Bis zum nächsten Gateway-Abruf kann
+weiterhin das konfigurierte Abrufintervall vergehen (standardmäßig 30 Sekunden).
+Die Formularbestätigung beweist zunächst den Gateway-Eingang, nicht bereits die
+lokale Eventanlage.
+
 **Land für neue Kontakte:** Ohne ausdrückliche Konfiguration wird kein Land
 erfunden. `loadWebsiteOptionConfig` liest `AK_INQUIRY_DEFAULT_CONTACT_COUNTRY`
 (Muster `^[A-Z]{2}$`) und `AK_INQUIRY_OPTION_INTERVAL_MS` (5.000–600.000 ms,

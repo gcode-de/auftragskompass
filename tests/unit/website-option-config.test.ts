@@ -164,6 +164,26 @@ function fixtures() {
     failures,
     outages,
     pages: () => listed,
+    pending: (after?: { stagedAt: Date; id: string }) =>
+      backlog
+        .slice()
+        .sort(
+          (left, right) =>
+            left.stagedAt.getTime() - right.stagedAt.getTime() ||
+            (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+        )
+        .filter(
+          (row) =>
+            !after ||
+            row.stagedAt > after.stagedAt ||
+            (row.stagedAt.getTime() === after.stagedAt.getTime() &&
+              row.id > after.id),
+        )
+        .slice(0, 10),
+    complete: (id: string) => {
+      const index = backlog.findIndex((row) => row.id === id);
+      if (index >= 0) backlog.splice(index, 1);
+    },
     stage: (...ids: string[]) =>
       ids.forEach((id) =>
         backlog.push({
@@ -230,25 +250,130 @@ describe('website option drain', () => {
     await vi.advanceTimersByTimeAsync(120000);
     expect(fixture.calls.map((call) => call.id)).toEqual(['a', 'b', 'c', 'd']);
   });
-  test('a stopping drain never begins another page', async () => {
+  test('wake starts promptly and coalesces wake requests during an active drain', async () => {
+    let release!: () => void,
+      active = 0,
+      maxActive = 0;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const fixture = fixtures();
-    let resolveList!: (ids: { id: string; stagedAt: Date }[]) => void,
+    fixture.dependencies.processPending = async (
+      _connection,
+      tenant,
+      actor,
+      id,
+    ) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      fixture.calls.push({ tenantId: tenant, actorId: actor, id });
+      if (id === 'first') await blocked;
+      fixture.complete(id);
+      active--;
+    };
+    const drain = fixture.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fixture.pages()).toBe(1);
+
+    fixture.stage('first');
+    drain.wake();
+    await vi.waitFor(() =>
+      expect(fixture.calls.map((call) => call.id)).toEqual(['first']),
+    );
+    fixture.stage('second');
+    drain.wake();
+    drain.wake();
+    expect(maxActive).toBe(1);
+
+    release();
+    await vi.waitFor(() =>
+      expect(fixture.calls.map((call) => call.id)).toEqual(['first', 'second']),
+    );
+    expect(maxActive).toBe(1);
+    await drain.stop();
+  });
+  test('wake during the final empty listing reruns after an inquiry arrives', async () => {
+    let finishInitialList!: () => void,
       listed = 0;
-    fixture.dependencies.listPending = () => {
+    const initialList = new Promise<void>((resolve) => {
+      finishInitialList = resolve;
+    });
+    const fixture = fixtures();
+    fixture.dependencies.listPending = async (_connection, _tenant, after) => {
       listed++;
-      return new Promise((resolve) => {
-        resolveList = resolve;
-      });
+      const page = fixture.pending(after);
+      if (listed === 1) await initialList;
+      return page;
     };
     const drain = fixture.start();
     await vi.waitFor(() => expect(listed).toBe(1));
+
+    fixture.stage('arrived');
+    drain.wake();
+    finishInitialList();
+    await vi.waitFor(() =>
+      expect(fixture.calls.map((call) => call.id)).toContain('arrived'),
+    );
+    expect(listed).toBeGreaterThanOrEqual(3);
+    expect(fixture.calls.map((call) => call.id)).toEqual(['arrived']);
+    await drain.stop();
+  });
+  test('stop discards a queued wake after the active drain finishes', async () => {
+    let release!: () => void;
+    let listed = 0;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fixture = fixtures();
+    fixture.dependencies.listPending = async () => {
+      listed++;
+      await blocked;
+      return [];
+    };
+    const drain = fixture.start();
+    await vi.waitFor(() => expect(listed).toBe(1));
+    drain.wake();
     const stopping = drain.stop();
-    resolveList([]);
+    release();
     await stopping;
-    // The first page completed during stop; no further page or tick may start.
-    await vi.advanceTimersByTimeAsync(120000);
     expect(listed).toBe(1);
-    expect(fixture.calls).toEqual([]);
+  });
+  test('an immediate stop prevents the scheduled initial drain from listing', async () => {
+    const fixture = fixtures();
+    const drain = fixture.start();
+    await drain.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fixture.pages()).toBe(0);
+  });
+  test('stop waits for an active tick to finish every page', async () => {
+    let release!: () => void,
+      processing = false;
+    const ids = Array.from({ length: 11 }, (_, index) => `entry-${index}`);
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fixture = fixtures();
+    fixture.stage(...ids);
+    fixture.dependencies.processPending = async (
+      _connection,
+      tenant,
+      actor,
+      id,
+    ) => {
+      fixture.calls.push({ tenantId: tenant, actorId: actor, id });
+      if (id === ids[0]) {
+        processing = true;
+        await blocked;
+      }
+      fixture.complete(id);
+    };
+    const drain = fixture.start();
+    await vi.waitFor(() => expect(processing).toBe(true));
+    const stopping = drain.stop();
+    release();
+    await stopping;
+    expect(fixture.calls.map((call) => call.id)).toEqual(ids);
+    expect(fixture.pages()).toBe(3);
   });
 
   test('a failing entry is logged with a fixed code and never blocks the rest of the batch or readiness', async () => {

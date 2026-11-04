@@ -18,6 +18,7 @@ afterEach(() => {
 
 type Fixture = {
   calls: string[];
+  logs: unknown[][];
   ready: boolean;
   expiryReady: boolean;
   drainReady: boolean;
@@ -28,6 +29,7 @@ type Fixture = {
 function fixture(overrides: Partial<Fixture> = {}) {
   const state: Fixture = {
     calls: [],
+    logs: [],
     ready: true,
     expiryReady: true,
     drainReady: true,
@@ -37,8 +39,12 @@ function fixture(overrides: Partial<Fixture> = {}) {
   };
   const app = {
     log: {
-      error: (code: string) => state.calls.push('log:' + code),
-      warn: (code: string) => state.calls.push('warn:' + code),
+      error: (...args: unknown[]) => {
+        state.logs.push(args);
+        state.calls.push('log:' + String(args.at(-1) ?? args[0]));
+      },
+      warn: (...args: unknown[]) =>
+        state.calls.push('warn:' + String(args.at(-1) ?? args[0])),
     },
   } as unknown as FastifyInstance;
   const dependencies: WorkerRuntimeDependencies = {
@@ -70,6 +76,9 @@ function fixture(overrides: Partial<Fixture> = {}) {
         stop: async () => {
           state.calls.push('stopDrain');
         },
+        wake: () => {
+          state.calls.push('wakeDrain');
+        },
       };
     },
     loadSyncConfig: () => ({
@@ -95,6 +104,36 @@ function fixture(overrides: Partial<Fixture> = {}) {
 }
 
 describe('worker runtime wiring', () => {
+  test('logs safe Telegram failure categories without the underlying error', async () => {
+    const subject = fixture();
+    const runtime = await startWorkerRuntime(
+      { logLevel: 'silent' } as never,
+      {
+        connect: async () => {
+          throw new Error('fictional secret connection detail');
+        },
+      } as never,
+      subject.dependencies,
+      {},
+      () => '',
+      async () => {},
+      Buffer.alloc(32),
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(subject.state.logs).toContainEqual([
+          { telegramFailure: { type: 'database', stage: 'claim' } },
+          'telegram_notification_failed',
+        ]),
+      );
+      expect(JSON.stringify(subject.state.logs)).not.toContain(
+        'fictional secret',
+      );
+    } finally {
+      await runtime.close();
+    }
+  });
+
   test('reports a missing Telegram key only when notifications are configured', async () => {
     const configured = fixture();
     configured.dependencies.telegramConfigured = async () => true;
@@ -376,6 +415,37 @@ describe('worker runtime wiring', () => {
       'stopExpiry',
       'endPool',
     ]);
+  });
+  test('successful sync pulls wake only an activated option drain', async () => {
+    for (const [activation, shouldWake] of [
+      ['on', true],
+      ['off', false],
+    ] as const) {
+      const subject = fixture();
+      subject.dependencies.startSync = (_pool, _config, _report, onPull) => {
+        subject.state.calls.push('startSync');
+        onPull?.();
+        return {
+          ready: () => true,
+          stop: async () => {
+            subject.state.calls.push('stopSync');
+          },
+        };
+      };
+      const runtime = await startWorkerRuntime(
+        { logLevel: 'silent' } as never,
+        { query: () => 0 } as never,
+        subject.dependencies,
+        {
+          AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid',
+          AK_INQUIRY_OPTION_DRAIN: activation,
+        },
+        () => '',
+      );
+      expect(await runtime.refreshSync()).toBe(true);
+      expect(subject.state.calls.includes('wakeDrain')).toBe(shouldWake);
+      await runtime.close();
+    }
   });
   test('a malformed activation value is a configuration error instead of a pause', async () => {
     for (const value of ['1', 'true', 'ON', '']) {

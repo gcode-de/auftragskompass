@@ -344,7 +344,15 @@ test('worker keeps Telegram HTTP failures retryable', async () => {
     pool,
     telegramKey,
     reportError,
-    async () => new Response(JSON.stringify({ ok: true }), { status: 503 }),
+    async () =>
+      new Response(
+        JSON.stringify({
+          ok: false,
+          error_code: 401,
+          description: 'fictional secret and private chat must stay hidden',
+        }),
+        { status: 401 },
+      ),
   );
   try {
     await vi.waitFor(
@@ -362,8 +370,116 @@ test('worker keeps Telegram HTTP failures retryable', async () => {
       { timeout: 3000, interval: 10 },
     );
     expect(reportError).toHaveBeenCalledOnce();
+    expect(reportError).toHaveBeenCalledWith({
+      type: 'telegram_rejected',
+      httpStatus: 401,
+      errorCode: 401,
+    });
+    expect(JSON.stringify(reportError.mock.calls)).not.toContain(
+      'fictional secret',
+    );
   } finally {
     await worker.stop();
+  }
+});
+
+test('worker omits Telegram error codes outside the HTTP status range', async () => {
+  const telegramKey = Buffer.alloc(32, 37);
+  const sealed = encryptTelegramToken(
+    '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+    telegramKey,
+  );
+  await pool.query(
+    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,enabled) VALUES($1,$2,$3,$4,$5,true)',
+    [tenantId, sealed.ciphertext, sealed.nonce, sealed.tag, 'fictional-chat'],
+  );
+  await receive(batch());
+  const reportError = vi.fn();
+  const worker = startTelegramNotifications(
+    pool,
+    telegramKey,
+    reportError,
+    async () =>
+      new Response(JSON.stringify({ ok: false, error_code: 9000 }), {
+        status: 503,
+      }),
+  );
+  try {
+    await vi.waitFor(() => expect(reportError).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+      interval: 10,
+    });
+    expect(reportError).toHaveBeenCalledWith({
+      type: 'telegram_rejected',
+      httpStatus: 503,
+    });
+    expect(JSON.stringify(reportError.mock.calls)).not.toContain('9000');
+  } finally {
+    await worker.stop();
+  }
+});
+
+test('worker reports only fixed network and malformed-response details', async () => {
+  const telegramKey = Buffer.alloc(32, 41);
+  const sealed = encryptTelegramToken(
+    '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+    telegramKey,
+  );
+  await pool.query(
+    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,enabled) VALUES($1,$2,$3,$4,$5,true)',
+    [tenantId, sealed.ciphertext, sealed.nonce, sealed.tag, 'fictional-chat'],
+  );
+  await receive(batch());
+  const networkReport = vi.fn();
+  const networkWorker = startTelegramNotifications(
+    pool,
+    telegramKey,
+    networkReport,
+    async () => {
+      throw new TypeError('fictional token, chat and URL must stay hidden');
+    },
+  );
+  try {
+    await vi.waitFor(() => expect(networkReport).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+      interval: 10,
+    });
+    expect(networkReport).toHaveBeenCalledWith({
+      type: 'network',
+      category: 'request',
+    });
+    expect(JSON.stringify(networkReport.mock.calls)).not.toContain(
+      'fictional token',
+    );
+  } finally {
+    await networkWorker.stop();
+  }
+  await pool.query(
+    'UPDATE telegram_notification_jobs SET available_at=now() WHERE tenant_id=$1',
+    [tenantId],
+  );
+  const responseReport = vi.fn();
+  const responseWorker = startTelegramNotifications(
+    pool,
+    telegramKey,
+    responseReport,
+    async () =>
+      new Response('fictional private response body', { status: 502 }),
+  );
+  try {
+    await vi.waitFor(() => expect(responseReport).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+      interval: 10,
+    });
+    expect(responseReport).toHaveBeenCalledWith({
+      type: 'malformed_response',
+      httpStatus: 502,
+    });
+    expect(JSON.stringify(responseReport.mock.calls)).not.toContain(
+      'fictional private',
+    );
+  } finally {
+    await responseWorker.stop();
   }
 });
 
@@ -403,6 +519,7 @@ test('worker leaves entries pending when the configured encryption key cannot de
     );
     expect(fetcher).not.toHaveBeenCalled();
     expect(reportError).toHaveBeenCalledOnce();
+    expect(reportError).toHaveBeenCalledWith({ type: 'decryption' });
   } finally {
     await worker.stop();
   }

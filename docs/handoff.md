@@ -1,5 +1,16 @@
 # Projektübergabe AuftragsKompass
 
+**Formulare und Telegram, 04.11.2026:** Der aktive Optionstakt war im
+Testbetrieb eingeschaltet; bei der lesenden Prüfung waren keine abgeholten
+Eingänge zur Übernahme offen. Der Abruf erfolgt standardmäßig alle 30 Sekunden.
+INQUIRY-WAKE-01 stößt den aktiven Optionstakt nach erfolgreichem Abruf sofort an;
+die Formularbestätigung garantiert zunächst nur den Gateway-Eingang. CI und
+Auslieferung des neuen Commits müssen jeweils noch geprüft werden. Telegram war
+konfiguriert, mehrere Zustellversuche schlugen jedoch fehl und werden erneut
+versucht. Ein lesender Telegram-Zugriff war erfolgreich; die genaue Ursache der
+Sendefehler ist noch nicht bekannt. Keine echten Testanfragen erneut importieren
+und keine erfolgreichen Telegram-Zustellungen behaupten, bevor sie geprüft sind.
+
 **Zusammenführung 04.11.2026:** Die folgenden datierten Abschnitte sind historische Momentaufnahmen. Der vorliegende Integrationsstand enthält Telegram, die parallele CI, den Coverage-Fix und die abgeschlossenen Dokument-Oberflächenänderungen. Die offene Dokumentenfunktionalität bleibt im Plan; CI und Übernahme nach `main` sind noch zu prüfen.
 
 ## CI-Parallelisierung, 04.11.2026
@@ -24,6 +35,15 @@ sein. Bestehende Anfragen werden bei Aktivierung nicht nachträglich versendet.
 CI, Schlüsselbereitstellung und tatsächliche Auslieferung des aktuellen Commits
 vor Nutzung prüfen. Die Umstellung des Websiteformulars und ein finaler
 Bookitup-Abgleich sind damit noch nicht abgenommen.
+
+TG-DIAG-01 ergänzt feste, redigierte Fehlerkategorien und weckt bei erfolgreichem
+Speichern neuer Zugangsdaten nur offene, nicht gesperrte Telegram-Jobs tenant-
+isoliert. Gezielte Worker-/Einstellungs-/Anfrage-Tests, Typecheck und
+Dokumentationsprüfung sind lokal grün. CI und Auslieferung des jeweiligen
+Commits müssen noch geprüft werden; die Änderung erklärt nicht rückwirkend die
+zuvor fehlgeschlagenen Live-Sendungen. Nach erfolgreicher
+Auslieferung liefern neue Versuche künftig HTTP-Status und Telegram-Fehlercode
+ohne Antworttexte oder geheime Werte.
 
 CI-NOTIFY-01 aktualisiert die bestehende Chromiumprüfung für die nun 13
 Einstellungsbereiche; der vollständige betroffene Dokumentlayout-Ablauf war
