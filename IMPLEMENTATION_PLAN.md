@@ -16,6 +16,8 @@
 
 - [x] **NOTIFY-01 — `feat: notify about website inquiries via telegram`**: Administratoren können Bot-Token und Chat-ID in den Einstellungen sicher hinterlegen und entfernen. Neue, dauerhaft lokal angenommene Website-Eingänge erzeugen eine neutrale Telegram-Benachrichtigung über eine beständige Warteschlange; bestehende Eingänge werden nicht nachträglich versendet. Geheimnisse, Mandantentrennung, CSRF und Eingangsverarbeitung schützen; Ausfälle dürfen keine Anfrage verlieren. Zustände, Wiederholungen und Einrichtungsweg gezielt testen und dokumentieren.
 
+- [x] **CI-MAIN-01 — `fix: handle release-sized coverage diffs`**: Changed-Code-Coverage muss den vollständigen 6,6-MB-Merge-Diff ohne Node-ENOBUFS auswerten; Grenzen und Fehler bei fehlender Coverage bleiben unverändert.
+
 ### Betreiberauftrag 27.10.2026: gezielte Bedien- und Dokumentverbesserung
 
 - [x] **CI-EFFICIENCY-01 — `test: run file layout matrix once`**: Die loginunabhängige Dateien-Breiten-/Theme-/Axe-Matrix einmal mit Passwortlogin prüfen; beide vollständigen Loginabläufe und alle Layoutfälle erhalten.

@@ -68,6 +68,15 @@ export function changedCoverage(diff, lcov) {
     throw new Error('Changed branches below 80%');
   return totals;
 }
+// Release merges can compare several megabytes of changes; Node's default
+// child-process output buffer is only 1 MiB. Keep a finite, explicit limit.
+export function runGit(command, cwd) {
+  return execFileSync('git', command, {
+    encoding: 'utf8',
+    cwd,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+}
 // Deterministic coverage thresholds need one consistent base revision: CI
 // reviews the pushed range, while COVERAGE_DIFF=worktree reviews HEAD plus the
 // working copy (untracked sources made visible with intent-to-add).
@@ -89,8 +98,7 @@ if (
   const worktree = process.env.COVERAGE_DIFF === 'worktree';
   const commands = diffArgs(worktree ? undefined : revision, worktree);
   let diff = '';
-  for (const command of commands)
-    diff = execFileSync('git', command, { encoding: 'utf8' });
+  for (const command of commands) diff = runGit(command);
   console.log(
     changedCoverage(diff, readFileSync('coverage/lcov.info', 'utf8')),
   );
