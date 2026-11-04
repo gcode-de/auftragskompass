@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 04.11.2026: Anfragebenachrichtigung
 
+- [x] **INQUIRY-WAKE-01 — `fix: promptly process newly received inquiries`**: Nach erfolgreichem Gateway-Empfang den bereits aktivierten automatischen Optionstakt unmittelbar anstoßen, ohne laufende Takte zu überlappen oder einen Anstoß zu verlieren. Deaktivierung, idempotente Übernahme, dauerhafte Eingänge und Fehlerwiederholung bleiben unverändert; keine bestehenden echten Anfragen erneut übernehmen.
+
 - [x] **CI-PARALLEL-01 — `ci: run browser checks alongside quality`**: Browserprüfungen und alle übrigen Qualitätsprüfungen in unabhängigen CI-Jobs ausführen; beide müssen erfolgreich sein, bevor Images veröffentlicht werden. Lokal bleibt `pnpm check` vollständig, Coverage und Artefakte bleiben erhalten. Die tatsächlich erzielte Laufzeit erst nach störungsfreier CI messen.
 
 - [x] **CI-NOTIFY-01 — `test: include telegram in settings navigation count`**: Die bestehende Chromiumprüfung des Dokumentlayouts zählt auch den neuen Telegram-Einstellungsbereich; responsive und themenbezogene Prüfungen bleiben erhalten.

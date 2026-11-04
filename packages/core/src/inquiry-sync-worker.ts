@@ -9,6 +9,7 @@ export function startWebsiteInquirySync(
   pool: Pool,
   config: InquirySyncConfig,
   reportError: () => void,
+  onPull?: () => void,
 ) {
   const options = {
     origin: config.origin,
@@ -25,14 +26,15 @@ export function startWebsiteInquirySync(
       config.actorId,
       options,
     )
-      .then(() =>
-        acknowledgeWebsiteInquiries(
+      .then(() => {
+        onPull?.();
+        return acknowledgeWebsiteInquiries(
           pool,
           config.tenantId,
           config.actorId,
           options,
-        ),
-      )
+        );
+      })
       .then(() => {
         healthy = true;
       })

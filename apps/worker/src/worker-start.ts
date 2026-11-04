@@ -16,7 +16,11 @@ import {
   type WebsiteOptionDrainDependencies,
 } from '@auftragskompass/core';
 
-type Loop = { ready(): boolean; stop(): Promise<void> };
+type Loop = {
+  ready(): boolean;
+  stop(): Promise<void>;
+  wake?: () => void;
+};
 
 export type WorkerRuntimeDependencies = {
   createServer(
@@ -40,7 +44,7 @@ export type WorkerRuntimeDependencies = {
     config: WebsiteOptionConfig,
     reportEntryFailure: (code: string) => void,
     reportError: () => void,
-  ): Loop & { stop(): Promise<void> };
+  ): Loop;
   loadSyncConfig(
     env: NodeJS.ProcessEnv,
     readSecret: (path: string) => string,
@@ -49,6 +53,7 @@ export type WorkerRuntimeDependencies = {
     pool: Pool,
     config: InquirySyncConfig,
     report: () => void,
+    onPull?: () => void,
   ): Loop & { stop(): Promise<void> };
 };
 
@@ -70,8 +75,8 @@ export const workerRuntimeDependencies: WorkerRuntimeDependencies = {
   startDrain: (pool, dependencies, config, entry, error) =>
     startWebsiteOptionDrain(pool, dependencies, config, entry, error),
   loadSyncConfig: (env, readSecret) => loadInquirySyncConfig(env, readSecret),
-  startSync: (pool, config, report) =>
-    startWebsiteInquirySync(pool, config, report),
+  startSync: (pool, config, report, onPull) =>
+    startWebsiteInquirySync(pool, config, report, onPull),
 };
 
 // Startup order is the shutdown order reversed: the option drain stops first so
@@ -121,7 +126,7 @@ export async function startWorkerRuntime(
     app.log.error('website_option_config_invalid');
     return { ready: () => false, stop: async () => {} };
   };
-  const drain = (() => {
+  const drain: Loop | null = (() => {
     let optionConfig: WebsiteOptionConfig | null;
     try {
       optionConfig = dependencies.loadOptionConfig(env);
@@ -162,6 +167,7 @@ export async function startWorkerRuntime(
         pool,
         dependencies.loadSyncConfig(env, readSecret),
         () => app.log.error('inquiry_sync_failed'),
+        () => drain?.wake?.(),
       );
     } catch {
       app.log.error('inquiry_sync_config_invalid');

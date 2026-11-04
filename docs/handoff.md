@@ -1,5 +1,16 @@
 # Projektübergabe AuftragsKompass
 
+**Formulare und Telegram, 04.11.2026:** Der aktive Optionstakt war im
+Testbetrieb eingeschaltet; bei der lesenden Prüfung waren keine abgeholten
+Eingänge zur Übernahme offen. Der Abruf erfolgt standardmäßig alle 30 Sekunden.
+INQUIRY-WAKE-01 stößt den aktiven Optionstakt nach erfolgreichem Abruf sofort an;
+die Formularbestätigung garantiert zunächst nur den Gateway-Eingang. CI und
+Auslieferung des neuen Commits müssen jeweils noch geprüft werden. Telegram war
+konfiguriert, mehrere Zustellversuche schlugen jedoch fehl und werden erneut
+versucht. Ein lesender Telegram-Zugriff war erfolgreich; die genaue Ursache der
+Sendefehler ist noch nicht bekannt. Keine echten Testanfragen erneut importieren
+und keine erfolgreichen Telegram-Zustellungen behaupten, bevor sie geprüft sind.
+
 **Zusammenführung 04.11.2026:** Die folgenden datierten Abschnitte sind historische Momentaufnahmen. Der vorliegende Integrationsstand enthält Telegram, die parallele CI, den Coverage-Fix und die abgeschlossenen Dokument-Oberflächenänderungen. Die offene Dokumentenfunktionalität bleibt im Plan; CI und Übernahme nach `main` sind noch zu prüfen.
 
 ## CI-Parallelisierung, 04.11.2026

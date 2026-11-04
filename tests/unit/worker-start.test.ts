@@ -70,6 +70,9 @@ function fixture(overrides: Partial<Fixture> = {}) {
         stop: async () => {
           state.calls.push('stopDrain');
         },
+        wake: () => {
+          state.calls.push('wakeDrain');
+        },
       };
     },
     loadSyncConfig: () => ({
@@ -376,6 +379,37 @@ describe('worker runtime wiring', () => {
       'stopExpiry',
       'endPool',
     ]);
+  });
+  test('successful sync pulls wake only an activated option drain', async () => {
+    for (const [activation, shouldWake] of [
+      ['on', true],
+      ['off', false],
+    ] as const) {
+      const subject = fixture();
+      subject.dependencies.startSync = (_pool, _config, _report, onPull) => {
+        subject.state.calls.push('startSync');
+        onPull?.();
+        return {
+          ready: () => true,
+          stop: async () => {
+            subject.state.calls.push('stopSync');
+          },
+        };
+      };
+      const runtime = await startWorkerRuntime(
+        { logLevel: 'silent' } as never,
+        { query: () => 0 } as never,
+        subject.dependencies,
+        {
+          AK_GATEWAY_ORIGIN: 'https://fictional.example.invalid',
+          AK_INQUIRY_OPTION_DRAIN: activation,
+        },
+        () => '',
+      );
+      expect(await runtime.refreshSync()).toBe(true);
+      expect(subject.state.calls.includes('wakeDrain')).toBe(shouldWake);
+      await runtime.close();
+    }
   });
   test('a malformed activation value is a configuration error instead of a pause', async () => {
     for (const value of ['1', 'true', 'ON', '']) {

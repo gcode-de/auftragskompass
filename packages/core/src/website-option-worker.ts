@@ -159,8 +159,10 @@ export function startWebsiteOptionDrain(
   const held = new Set<string>();
   let stopping = false,
     healthy = false,
-    pending: Promise<void> | null = null;
+    pending: Promise<void> | null = null,
+    wakeRequested = false;
   const drain = async () => {
+    if (stopping) return;
     let after: WebsiteOptionCursor | undefined,
       infrastructureFailure = false;
     for (;;) {
@@ -208,14 +210,20 @@ export function startWebsiteOptionDrain(
     }
     if (!infrastructureFailure) healthy = true;
   };
-  const run = () => {
-    // After stop() no new listing or page may begin.
-    if (stopping || pending) return;
+  const run = (wake = false) => {
+    // After stop(), no new tick begins; an active tick finishes its pages.
+    if (stopping) return;
+    if (pending) {
+      if (wake) wakeRequested = true;
+      return;
+    }
+    wakeRequested = false;
     const work = Promise.resolve()
       .then(drain)
       .catch(() => {})
       .finally(() => {
         pending = null;
+        if (wakeRequested && !stopping) run(true);
       });
     pending = work;
   };
@@ -224,8 +232,10 @@ export function startWebsiteOptionDrain(
   timer.unref();
   return {
     ready: () => healthy,
+    wake: () => run(true),
     stop: async () => {
       stopping = true;
+      wakeRequested = false;
       clearInterval(timer);
       await pending;
     },
