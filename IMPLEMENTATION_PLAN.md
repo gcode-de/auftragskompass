@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 04.11.2026: Anfragebenachrichtigung
 
+- [x] **CI-PARALLEL-01 — `ci: run browser checks alongside quality`**: Browserprüfungen und alle übrigen Qualitätsprüfungen in unabhängigen CI-Jobs ausführen; beide müssen erfolgreich sein, bevor Images veröffentlicht werden. Lokal bleibt `pnpm check` vollständig, Coverage und Artefakte bleiben erhalten. Die tatsächlich erzielte Laufzeit erst nach störungsfreier CI messen.
+
 - [x] **CI-NOTIFY-01 — `test: include telegram in settings navigation count`**: Die bestehende Chromiumprüfung des Dokumentlayouts zählt auch den neuen Telegram-Einstellungsbereich; responsive und themenbezogene Prüfungen bleiben erhalten.
 
 - [x] **NOTIFY-01 — `feat: notify about website inquiries via telegram`**: Administratoren können Bot-Token und Chat-ID in den Einstellungen sicher hinterlegen und entfernen. Neue, dauerhaft lokal angenommene Website-Eingänge erzeugen eine neutrale Telegram-Benachrichtigung über eine beständige Warteschlange; bestehende Eingänge werden nicht nachträglich versendet. Geheimnisse, Mandantentrennung, CSRF und Eingangsverarbeitung schützen; Ausfälle dürfen keine Anfrage verlieren. Zustände, Wiederholungen und Einrichtungsweg gezielt testen und dokumentieren.

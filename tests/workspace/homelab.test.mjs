@@ -7,7 +7,7 @@ test('image publishing requires green quality gates, fixed repository name and a
   const publish = workflow.split('\n  images:\n')[1];
   assert.ok(publish, 'image publishing job missing');
   for (const required of [
-    'needs: quality',
+    'needs: [quality, browser]',
     "github.event_name == 'push'",
     'secrets.DOCKERHUB_TOKEN',
     'secrets.DOCKERHUB_USER',
@@ -40,6 +40,8 @@ test('image publication allowlist is exactly the reviewed branch refs in one pla
     'refs/heads/codex/ux-event-simplification',
   ]);
   const condition = publish.split('\n    runs-on:')[0];
+  assert.ok(!condition.includes('always()'));
+  assert.ok(!condition.includes('failure()'));
   assert.equal(condition.match(/github\.ref/g).length, 1);
   assert.ok(condition.includes("github.event_name == 'push'"));
   assert.ok(!condition.includes('pull_request'));

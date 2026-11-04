@@ -1,5 +1,15 @@
 # Projektübergabe AuftragsKompass
 
+## CI-Parallelisierung, 04.11.2026
+
+CI-PARALLEL-01 trennt die bisherigen Chromiumtests in einen unabhängigen Job;
+Qualitätsjob und Browserjob müssen beide erfolgreich sein, bevor Images
+erscheinen. `pnpm check` bleibt lokal vollständig; die übrigen Gates liegen in
+`pnpm check:quality`. Coverage und Chromium-Artefakte bleiben erhalten. Die
+geschätzte Zeitersparnis muss nach einem störungsfreien GitHub-Lauf gemessen
+werden. Der laufende Telegram-Release wurde durch den separaten Branch nicht
+ersetzt; vor einem Merge seinen tatsächlichen Auslieferungsstand prüfen.
+
 ## Telegram für Website-Anfragen, 04.11.2026
 
 NOTIFY-01 ergänzt Administrator-Einstellungen und einen dauerhaften

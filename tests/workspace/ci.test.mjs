@@ -7,7 +7,8 @@ test('CI runs complete gates on push and PR with pinned actions and read-only pe
     'push:',
     'pull_request:',
     'contents: read',
-    'pnpm check',
+    'pnpm check:quality',
+    'pnpm test:e2e',
     '--frozen-lockfile',
     'coverage/',
   ])
@@ -25,14 +26,14 @@ test('runtime dependency audit blocks publication before quality and cannot igno
     workflow.indexOf(audit) >
       workflow.indexOf('pnpm install --frozen-lockfile'),
   );
-  assert.ok(workflow.indexOf(audit) < workflow.indexOf('pnpm check'));
+  assert.ok(workflow.indexOf(audit) < workflow.indexOf('pnpm check:quality'));
   assert.ok(!workflow.includes('continue-on-error: true'));
-  assert.match(workflow, /images:\s*needs: quality/);
+  assert.match(workflow, /images:\s*needs: \[quality, browser\]/);
 });
 
 test('quality runs every Vitest project once with coverage and keeps the other gates', () => {
   const { scripts } = JSON.parse(readFileSync('package.json', 'utf8'));
-  const commands = scripts.check.split(' && ');
+  const commands = scripts['check:quality'].split(' && ');
   for (const gate of [
     'pnpm format:check',
     'pnpm lint',
@@ -40,7 +41,6 @@ test('quality runs every Vitest project once with coverage and keeps the other g
     'pnpm test:workspace',
     'pnpm test:docs',
     'pnpm test:coverage',
-    'pnpm test:e2e',
     'pnpm build',
     'pnpm test:ops',
   ])
@@ -57,12 +57,21 @@ test('quality runs every Vitest project once with coverage and keeps the other g
     assert.ok(!commands.includes(`pnpm test:${project}`));
   }
   assert.match(scripts['test:coverage'], /--coverage\b/);
+  assert.deepEqual(scripts.check.split(' && '), [
+    'pnpm check:quality',
+    'pnpm test:e2e',
+  ]);
+  assert.ok(!commands.includes('pnpm test:e2e'));
 });
 
 test('CI retains only the synthetic Chromium output for seven days, including failed runs', () => {
   const workflow = readFileSync('.github/workflows/quality.yml', 'utf8');
+  const browser = workflow.split('\n  browser:\n')[1]?.split('\n  images:')[0];
+  assert.ok(browser);
   const step =
-    workflow.match(/ {6}- name: Chromium evidence\n(?: {8}.*\n)+/)?.[0] ?? '';
+    (browser + '\n').match(
+      / {6}- name: Chromium evidence\n(?: {8}.*\n)+/,
+    )?.[0] ?? '';
   for (const expected of [
     'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     'if: always()',
@@ -73,5 +82,24 @@ test('CI retains only the synthetic Chromium output for seven days, including fa
   ])
     assert.ok(step.includes(expected), expected);
   assert.ok(!step.includes('include-hidden-files: true'));
-  assert.match(workflow, /images:\s*needs: quality/);
+  assert.match(workflow, /images:\s*needs: \[quality, browser\]/);
+});
+
+test('browser job runs independently and images require both checks', () => {
+  const workflow = readFileSync('.github/workflows/quality.yml', 'utf8');
+  const quality = workflow.split('\n  quality:\n')[1]?.split('\n  browser:')[0];
+  const browser = workflow.split('\n  browser:\n')[1]?.split('\n  images:')[0];
+  assert.ok(quality);
+  assert.ok(quality.includes('pnpm check:quality'));
+  assert.ok(!quality.includes('pnpm test:e2e'));
+  assert.ok(browser);
+  assert.doesNotMatch(browser, /\n {4}needs:/);
+  for (const command of [
+    'pnpm install --frozen-lockfile',
+    'pnpm --filter @auftragskompass/core build',
+    'pnpm exec playwright install --with-deps chromium',
+    'pnpm test:e2e',
+  ])
+    assert.ok(browser.includes(command), command);
+  assert.match(workflow, /images:\s*needs: \[quality, browser\]/);
 });

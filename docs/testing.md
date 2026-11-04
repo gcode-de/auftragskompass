@@ -9,6 +9,7 @@ Voraussetzungen: Node/pnpm gemäß [README](../README.md), Python 3 und laufende
 | `pnpm test:integration` | Migrationen, Mandantentrennung, OIDC, Freigaben, Parallelität und Audit-Rollback |
 | `pnpm test:e2e` | Chromium: HTTPS-Anmeldung, Cookie-Schutz, Kontofreigaben, Aussperrschutz und Logout |
 | `pnpm test:coverage` | Unit-, Komponenten- und Datenbanktests mit V8-Coverage |
+| `pnpm check:quality` | Alle Qualitätsgates und Build außer Chromium |
 | `pnpm check` | Sämtliche verfügbaren Qualitätsgates und Build |
 
 Testcontainers startet für die Integration eine frische PostgreSQL-17.6-Instanz mit zufälligem Port und entfernt sie anschließend. Es wird niemals eine externe `DATABASE_URL` verwendet. Bei nicht verfügbarem Docker schlägt der Test fehl, statt übersprungen zu werden. Der erste Lauf lädt das Containerimage. Alle Daten sind synthetisch; Google wird durch einen kontrollierten Transport mit signierten Test-Tokens simuliert.
@@ -19,6 +20,12 @@ Coverage umfasst alle TypeScript-Anwendungsquellen außer den drei Prozess-Einst
 
 Referenzen: [Vitest-Projekte](https://vitest.dev/guide/projects), [PostgreSQL-Testcontainers](https://node.testcontainers.org/modules/postgresql/).
 
-GitHub Actions führt `pnpm check` auf jedem Push und Pull Request unter Ubuntu und Node 24 aus, ohne Produktionssecrets und mit nur lesendem Repository-Token. Coverage-Artefakte werden sieben Tage gespeichert. Actions sind auf Commit-SHAs fixiert. Branch Protection wird durch den Workflow nicht verändert.
+GitHub Actions führt auf jedem Push und Pull Request `pnpm check:quality` und
+`pnpm test:e2e` in getrennten, parallelen Jobs unter Ubuntu und Node 24 aus.
+Die Browserprüfung baut ihre erforderlichen Pakete selbst. Beide Jobs müssen
+erfolgreich sein, bevor Images veröffentlicht werden. Die Prüfjobs verwenden
+keine Produktionssecrets und haben ein nur lesendes Repository-Token. Coverage-
+und Chromium-Artefakte werden sieben Tage gespeichert. Actions sind auf
+Commit-SHAs fixiert. Branch Protection wird durch den Workflow nicht verändert.
 
 Der HTTPS-Browsertest benötigt zusätzlich `openssl` zum Erzeugen eines kurzlebigen Zertifikats im temporären Verzeichnis. Schlüssel, Container und Datenbank werden danach entfernt. Die Freigabe-Integrationstests prüfen auch den Übergang von C009 auf C010, gebundene Google-Subjects, parallele Sperren und den unveränderbaren Auditpfad.
