@@ -28,14 +28,24 @@ zur Einstellung erhalten.
 Der Versand läuft über eine Datenbankwarteschlange mit Wiederholung bei
 Fehlern und einem auf sechs Stunden begrenzten Wiederholungsabstand. Auch
 dauerhaft ungültige Zugangsdaten werden weiter versucht; nach Korrektur der
-Zugangsdaten geht die Warteschlange weiter, Deaktivieren beendet sie. Fehler
-erscheinen ohne Zugangsdaten im Worker-Log. Telegram kann eine Nachricht
-angenommen haben, obwohl die Antwort verloren geht; beim erneuten Versuch kann
-dann ein Hinweis doppelt ankommen. Ein Hinweis belegt den lokalen Eingang, nicht die erfolgreiche
-Anlage oder Bearbeitung eines Events. Wenn die lokale App oder ihre Verbindung
-zum Gateway ausfällt, kann der Hinweis erst nach Wiederherstellung und lokaler
-Übernahme eintreffen. Das ersetzt keine Überwachung des Formulars oder
-Backups.
+gespeicherten Zugangsdaten setzt ungesperrte, offene Hinweise unmittelbar zur
+erneuten Zustellung frei. Ein bereits laufender Versand bleibt gesperrt, bis er
+endet oder seine Lease abläuft. Deaktivieren beendet wartende Hinweise.
+
+Worker-Logs unterscheiden Datenbank-, Entschlüsselungs-, Netzwerk-, ungültige
+Antwort- und Telegram-Ablehnungsfehler. Bei einer Ablehnung erscheinen nur der
+HTTP-Status und ein numerischer Telegram-Fehlercode, falls vorhanden. Antworttexte,
+URLs, Tokens, Chat-IDs und Anfragedaten werden nicht protokolliert. Eine
+`telegram_rejected`-Meldung mit HTTP-Status und Code ist ein Hinweis für den
+Betreiber, die gespeicherten Bot-/Chat-Zugangsdaten und Bot-Berechtigungen zu
+prüfen.
+
+Telegram kann eine Nachricht angenommen haben, obwohl die Antwort verloren
+geht; beim erneuten Versuch kann dann ein Hinweis doppelt ankommen. Ein Hinweis
+belegt den lokalen Eingang, nicht die erfolgreiche Anlage oder Bearbeitung eines
+Events. Wenn die lokale App oder ihre Verbindung zum Gateway ausfällt, kann der
+Hinweis erst nach Wiederherstellung und lokaler Übernahme eintreffen. Das ersetzt
+keine Überwachung des Formulars oder Backups.
 
 Bei Deaktivierung werden wartende Hinweise verworfen; ein bereits gestarteter
 Versand kann noch eintreffen. Für eine Ende-zu-Ende-Abnahme eine ausdrücklich

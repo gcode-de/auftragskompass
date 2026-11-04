@@ -36,6 +36,15 @@ CI, Schlüsselbereitstellung und tatsächliche Auslieferung des aktuellen Commit
 vor Nutzung prüfen. Die Umstellung des Websiteformulars und ein finaler
 Bookitup-Abgleich sind damit noch nicht abgenommen.
 
+TG-DIAG-01 ergänzt feste, redigierte Fehlerkategorien und weckt bei erfolgreichem
+Speichern neuer Zugangsdaten nur offene, nicht gesperrte Telegram-Jobs tenant-
+isoliert. Gezielte Worker-/Einstellungs-/Anfrage-Tests, Typecheck und
+Dokumentationsprüfung sind lokal grün. CI und Auslieferung des jeweiligen
+Commits müssen noch geprüft werden; die Änderung erklärt nicht rückwirkend die
+zuvor fehlgeschlagenen Live-Sendungen. Nach erfolgreicher
+Auslieferung liefern neue Versuche künftig HTTP-Status und Telegram-Fehlercode
+ohne Antworttexte oder geheime Werte.
+
 CI-NOTIFY-01 aktualisiert die bestehende Chromiumprüfung für die nun 13
 Einstellungsbereiche; der vollständige betroffene Dokumentlayout-Ablauf war
 lokal grün. CI und Auslieferung des jeweils aktuellen Commits sind gesondert

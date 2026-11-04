@@ -103,8 +103,11 @@ export async function startWorkerRuntime(
     app.log.error('reservation_expiry_failed'),
   );
   const telegram = telegramKey
-    ? startTelegramNotifications(pool, telegramKey, () =>
-        app.log.error('telegram_notification_failed'),
+    ? startTelegramNotifications(pool, telegramKey, (failure) =>
+        app.log.error(
+          { telegramFailure: failure },
+          'telegram_notification_failed',
+        ),
       )
     : null;
   if (!telegramKey && dependencies.telegramConfigured)

@@ -7,6 +7,44 @@ import {
   startTelegramNotifications,
 } from '../../packages/core/src/telegram.js';
 
+function claimedJobPool(failedUpdate: 'delivered' | 'retry') {
+  const key = Buffer.alloc(32, 51);
+  const sealed = encryptTelegramToken(
+    '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+    key,
+  );
+  const job = {
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    inquiry_id: '22222222-2222-4222-8222-222222222222',
+    chat_id: 'fictional-chat',
+    token_ciphertext: sealed.ciphertext,
+    token_nonce: sealed.nonce,
+    token_tag: sealed.tag,
+  };
+  const client = {
+    query: vi.fn(async (query: string) => {
+      if (query.startsWith('WITH picked')) return { rows: [job] };
+      if (
+        failedUpdate === 'delivered' &&
+        query.startsWith('UPDATE telegram_notification_jobs SET delivered_at')
+      )
+        throw new Error('fictional database detail');
+      if (
+        failedUpdate === 'retry' &&
+        query.startsWith('UPDATE telegram_notification_jobs SET locked_at=NULL')
+      )
+        throw new Error('fictional database detail');
+      return { rows: [] };
+    }),
+    release: vi.fn(),
+  };
+  return {
+    key,
+    client,
+    pool: { connect: vi.fn().mockResolvedValue(client) } as unknown as Pool,
+  };
+}
+
 describe('Telegram token encryption', () => {
   test('round trips with the provisioned 256-bit key and authenticates ciphertext', () => {
     const key = telegramKeyFromSecret('ab'.repeat(32));
@@ -42,6 +80,10 @@ describe('Telegram token encryption', () => {
     );
     try {
       await vi.waitFor(() => expect(reportError).toHaveBeenCalledOnce());
+      expect(reportError).toHaveBeenCalledWith({
+        type: 'database',
+        stage: 'claim',
+      });
     } finally {
       await worker.stop();
     }
@@ -65,6 +107,68 @@ describe('Telegram token encryption', () => {
       await vi.waitFor(() => expect(reportError).toHaveBeenCalledOnce());
       expect(client.release).toHaveBeenCalledOnce();
       expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+      expect(reportError).toHaveBeenCalledWith({
+        type: 'database',
+        stage: 'claim',
+      });
+    } finally {
+      await worker.stop();
+    }
+  });
+
+  test('classifies a delivered-status database failure without retrying the send immediately', async () => {
+    const { pool, key, client } = claimedJobPool('delivered');
+    const reportError = vi.fn();
+    const worker = startTelegramNotifications(
+      pool,
+      key,
+      reportError,
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+    try {
+      await vi.waitFor(() => expect(reportError).toHaveBeenCalledOnce());
+      expect(reportError).toHaveBeenCalledWith({
+        type: 'database',
+        stage: 'mark_delivered',
+      });
+      expect(
+        client.query.mock.calls.filter(([query]) =>
+          query.startsWith(
+            'UPDATE telegram_notification_jobs SET locked_at=NULL',
+          ),
+        ),
+      ).toHaveLength(0);
+      expect(JSON.stringify(reportError.mock.calls)).not.toContain(
+        'fictional database detail',
+      );
+    } finally {
+      await worker.stop();
+    }
+  });
+
+  test('reports retry-scheduling database failures separately from the request failure', async () => {
+    const { pool, key } = claimedJobPool('retry');
+    const reportError = vi.fn();
+    const worker = startTelegramNotifications(
+      pool,
+      key,
+      reportError,
+      async () => {
+        throw new TypeError('fictional request detail');
+      },
+    );
+    try {
+      await vi.waitFor(() => expect(reportError).toHaveBeenCalledTimes(2));
+      expect(reportError.mock.calls.map(([failure]) => failure)).toEqual([
+        { type: 'network', category: 'request' },
+        { type: 'database', stage: 'schedule_retry' },
+      ]);
+      expect(JSON.stringify(reportError.mock.calls)).not.toContain(
+        'fictional request detail',
+      );
+      expect(JSON.stringify(reportError.mock.calls)).not.toContain(
+        'fictional database detail',
+      );
     } finally {
       await worker.stop();
     }

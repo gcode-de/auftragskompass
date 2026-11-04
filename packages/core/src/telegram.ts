@@ -7,6 +7,13 @@ import { database } from './database.js';
 
 class TelegramEncryptionUnavailable extends Error {}
 
+export type TelegramNotificationFailure =
+  | { type: 'database'; stage: 'claim' | 'mark_delivered' | 'schedule_retry' }
+  | { type: 'decryption' }
+  | { type: 'network'; category: 'timeout' | 'request' }
+  | { type: 'malformed_response'; httpStatus: number }
+  | { type: 'telegram_rejected'; httpStatus: number; errorCode?: number };
+
 export function telegramKeyFromSecret(value: string): Buffer {
   const normalized = value.trim();
   if (!/^[0-9a-f]{64}$/i.test(normalized))
@@ -98,6 +105,8 @@ export function registerTelegramSettingsRoutes(
           await tx.execute(sql`INSERT INTO telegram_settings(tenant_id, token_ciphertext, token_nonce, token_tag, chat_id, enabled)
             VALUES(${tenantId},${sealed.ciphertext},${sealed.nonce},${sealed.tag},${request.body.chatId},true)
             ON CONFLICT(tenant_id) DO UPDATE SET token_ciphertext=EXCLUDED.token_ciphertext, token_nonce=EXCLUDED.token_nonce, token_tag=EXCLUDED.token_tag, chat_id=EXCLUDED.chat_id, enabled=true, updated_at=now()`);
+          await tx.execute(sql`UPDATE telegram_notification_jobs SET attempts=0, available_at=now()
+            WHERE tenant_id=${tenantId} AND delivered_at IS NULL AND cancelled_at IS NULL AND locked_at IS NULL`);
         });
         return reply.code(204).send();
       } catch (error) {
@@ -137,7 +146,7 @@ export function registerTelegramSettingsRoutes(
 export function startTelegramNotifications(
   pool: Pool,
   key: Uint8Array,
-  reportError: () => void,
+  reportError: (failure: TelegramNotificationFailure) => void,
   fetcher: typeof fetch = fetch,
 ) {
   let pending: Promise<void> | null = null;
@@ -161,8 +170,20 @@ export function startTelegramNotifications(
         await client.query('COMMIT');
         const job = claim.rows[0];
         if (!job) return;
+        const retry = async (failure: TelegramNotificationFailure) => {
+          reportError(failure);
+          try {
+            await client!.query(
+              "UPDATE telegram_notification_jobs SET locked_at=NULL, available_at=now()+least(interval '6 hours', interval '15 seconds' * power(2,least(attempts,10))) WHERE tenant_id=$1 AND inquiry_id=$2 AND delivered_at IS NULL AND cancelled_at IS NULL",
+              [job.tenant_id, job.inquiry_id],
+            );
+          } catch {
+            reportError({ type: 'database', stage: 'schedule_retry' });
+          }
+        };
+        let token: string;
         try {
-          const token = decryptTelegramToken(
+          token = decryptTelegramToken(
             {
               ciphertext: job.token_ciphertext,
               nonce: job.token_nonce,
@@ -170,7 +191,13 @@ export function startTelegramNotifications(
             },
             key,
           );
-          const response = await fetcher(
+        } catch {
+          await retry({ type: 'decryption' });
+          return;
+        }
+        let response: Response;
+        try {
+          response = await fetcher(
             `https://api.telegram.org/bot${token}/sendMessage`,
             {
               method: 'POST',
@@ -183,23 +210,53 @@ export function startTelegramNotifications(
               redirect: 'error',
             },
           );
-          const result = (await response.json()) as { ok?: boolean };
-          if (!response.ok || result.ok !== true)
-            throw new Error('telegram_rejected');
+        } catch (error) {
+          await retry({
+            type: 'network',
+            category:
+              error instanceof Error &&
+              (error.name === 'AbortError' || error.name === 'TimeoutError')
+                ? 'timeout'
+                : 'request',
+          });
+          return;
+        }
+        let result: { ok?: boolean; error_code?: number };
+        try {
+          result = (await response.json()) as {
+            ok?: boolean;
+            error_code?: number;
+          };
+        } catch {
+          await retry({
+            type: 'malformed_response',
+            httpStatus: response.status,
+          });
+          return;
+        }
+        if (!response.ok || result?.ok !== true) {
+          await retry({
+            type: 'telegram_rejected',
+            httpStatus: response.status,
+            ...(Number.isSafeInteger(result?.error_code) &&
+            result.error_code! >= 100 &&
+            result.error_code! <= 599
+              ? { errorCode: result.error_code }
+              : {}),
+          });
+          return;
+        }
+        try {
           await client.query(
             'UPDATE telegram_notification_jobs SET delivered_at=now(),locked_at=NULL WHERE tenant_id=$1 AND inquiry_id=$2',
             [job.tenant_id, job.inquiry_id],
           );
         } catch {
-          await client.query(
-            "UPDATE telegram_notification_jobs SET locked_at=NULL, available_at=now()+least(interval '6 hours', interval '15 seconds' * power(2,least(attempts,10))) WHERE tenant_id=$1 AND inquiry_id=$2",
-            [job.tenant_id, job.inquiry_id],
-          );
-          reportError();
+          reportError({ type: 'database', stage: 'mark_delivered' });
         }
       } catch {
         if (client) await client.query('ROLLBACK').catch(() => {});
-        reportError();
+        reportError({ type: 'database', stage: 'claim' });
       } finally {
         client?.release();
       }
