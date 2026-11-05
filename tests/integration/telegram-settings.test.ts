@@ -85,7 +85,7 @@ test('settings require a session and CSRF for mutation; the token is never retur
   ).toBe(401);
   expect(
     (await app.inject({ url: '/api/v1/settings/telegram', headers })).json(),
-  ).toEqual({ configured: false, chatId: '' });
+  ).toEqual({ configured: false, chatId: '', topicId: '' });
   expect(
     (
       await app.inject({
@@ -112,6 +112,7 @@ test('settings require a session and CSRF for mutation; the token is never retur
         payload: {
           botToken: '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
           chatId: 'fictional-chat',
+          topicId: '12345',
         },
       })
     ).statusCode,
@@ -126,12 +127,31 @@ test('settings require a session and CSRF for mutation; the token is never retur
         payload: {
           botToken: '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
           chatId: 'fictional-chat',
+          topicId: '-12',
+        },
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: '/api/v1/settings/telegram',
+        headers: { ...headers, ...csrf },
+        payload: {
+          botToken: '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
+          chatId: 'fictional-chat',
+          topicId: '12345',
         },
       })
     ).statusCode,
   ).toBe(204);
   const saved = await app.inject({ url: '/api/v1/settings/telegram', headers });
-  expect(saved.json()).toEqual({ configured: true, chatId: 'fictional-chat' });
+  expect(saved.json()).toEqual({
+    configured: true,
+    chatId: 'fictional-chat',
+    topicId: '12345',
+  });
   expect(saved.body).not.toContain('abcdefghijklmnopqrstuvwxyz');
   expect(
     (
@@ -161,7 +181,7 @@ test('settings require a session and CSRF for mutation; the token is never retur
   ).toBe(204);
   expect(
     (await app.inject({ url: '/api/v1/settings/telegram', headers })).json(),
-  ).toEqual({ configured: false, chatId: 'fictional-chat' });
+  ).toEqual({ configured: false, chatId: 'fictional-chat', topicId: '12345' });
 });
 
 test('missing encryption key fails configuration closed without returning a token', async () => {

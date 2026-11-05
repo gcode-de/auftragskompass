@@ -10,6 +10,8 @@
 
 ### Betreiberauftrag 04.11.2026: Anfragebenachrichtigung
 
+- [x] **TG-DETAIL-01 — `feat: send detailed inquiries to Telegram topics`**: Administratoren können optional eine Telegram-Topic-ID hinterlegen; ohne ID bleibt die bestehende Zustellung erhalten. Neue Website-Anfragen senden alle verfügbaren Formularfelder als begrenzten Klartext an das konfigurierte Ziel. Mandanten- und Geheimnisschutz, Wiederholungen und bestehende Einstellungen bleiben erhalten; Migration, API, Worker und Oberfläche gemeinsam prüfen.
+
 - [x] **TG-DIAG-01 — `fix: diagnose and retry Telegram notification failures`**: Worker-Logs erhalten ausschließlich feste Fehlerkategorien und numerischen Telegram-HTTP-/Fehlercode, niemals Tokens, Chat-IDs, URLs, Antworttexte oder Eingabedaten. Nach erfolgreichem Speichern neuer Zugangsdaten werden fehlgeschlagene, ungesperrte und nicht abgeschlossene Jobs tenant-isoliert sofort wiederholbar; laufende sowie zugestellte oder verworfene Jobs bleiben unberührt. Fehlerklassifikation, Log-Redaktion, Wiederholbarkeit und Parallelität gezielt testen und den Betriebsweg dokumentieren.
 
 - [x] **INQUIRY-WAKE-01 — `fix: promptly process newly received inquiries`**: Nach erfolgreichem Gateway-Empfang den bereits aktivierten automatischen Optionstakt unmittelbar anstoßen, ohne laufende Takte zu überlappen oder einen Anstoß zu verlieren. Deaktivierung, idempotente Übernahme, dauerhafte Eingänge und Fehlerwiederholung bleiben unverändert; keine bestehenden echten Anfragen erneut übernehmen.

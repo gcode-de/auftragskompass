@@ -1,8 +1,8 @@
 # Telegram-Benachrichtigungen für Website-Anfragen
 
 AuftragsKompass kann nach dem dauerhaften lokalen Empfang einer neuen
-Website-Anfrage einen neutralen Hinweis per Telegram senden. Die Nachricht
-enthält keine Kundendaten. Die Anfrage wird unabhängig vom Versand gespeichert
+Website-Anfrage einen Hinweis mit den Formularangaben per Telegram senden.
+Die Anfrage wird unabhängig vom Versand gespeichert
 und wie bisher verarbeitet. Bereits vor der Aktivierung lokal empfangene
 Anfragen werden nicht nachträglich benachrichtigt.
 
@@ -24,6 +24,17 @@ gewünschten Chat starten. Nur Personen mit Administratorrechten sollen Zugang
 zur Einstellung erhalten.
 
 ## Betrieb
+
+Optional kann eine numerische Topic-ID hinterlegt werden. Ohne Topic-ID sendet
+der Bot in den allgemeinen Chat. Telegram unterstützt Topics nur, wenn sie für
+den privaten Bot-Chat beziehungsweise die Forumgruppe aktiviert sind. Die ID
+muss zum gewählten Chat und Bot gehören; das Speichern prüft sie nicht.
+
+Neue Benachrichtigungen enthalten die verfügbaren Angaben aus dem
+Websiteformular einschließlich Kontaktdaten und Veranstaltungshinweisen. Diese
+Kundendaten werden damit an Telegram und den konfigurierten Chat übermittelt.
+Überschreitet der Text Telegrams Zeichenlimit, wird er sichtbar gekürzt; die
+vollständigen Angaben bleiben im AuftragsKompass einsehbar.
 
 Der Versand läuft über eine Datenbankwarteschlange mit Wiederholung bei
 Fehlern und einem auf sechs Stunden begrenzten Wiederholungsabstand. Auch

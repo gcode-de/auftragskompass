@@ -38,6 +38,9 @@ test('sets up or replaces a bot without ever reading its token back, then disabl
   fireEvent.change(screen.getByLabelText('Chat-ID'), {
     target: { value: 'fictional-chat-42' },
   });
+  fireEvent.change(screen.getByLabelText('Topic-ID (optional)'), {
+    target: { value: '12345' },
+  });
   fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
   await screen.findByText('Telegram-Einstellungen gespeichert.');
 
@@ -50,6 +53,7 @@ test('sets up or replaces a bot without ever reading its token back, then disabl
   expect(JSON.parse(put.options?.body as string)).toEqual({
     botToken: 'fictional-secret-token',
     chatId: 'fictional-chat-42',
+    topicId: '12345',
   });
   expect((token as HTMLInputElement).value).toBe('');
   expect(screen.getByText('Status: Eingerichtet')).toBeTruthy();

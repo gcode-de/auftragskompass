@@ -4,6 +4,7 @@ import type { Pool, PoolClient } from 'pg';
 import { sql } from 'drizzle-orm';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { database } from './database.js';
+import { renderWebsiteInquiryTelegramMessage } from './telegram-message.js';
 
 class TelegramEncryptionUnavailable extends Error {}
 
@@ -60,15 +61,17 @@ export function registerTelegramSettingsRoutes(
         await requireAdministrator(tx, tenantId, request.authSession!.userId);
         const { rows } = await tx.execute<{
           chat_id: string;
+          topic_id: string | null;
           enabled: boolean;
         }>(
-          sql`SELECT chat_id, enabled FROM telegram_settings WHERE tenant_id=${tenantId}`,
+          sql`SELECT chat_id, topic_id, enabled FROM telegram_settings WHERE tenant_id=${tenantId}`,
         );
         return rows[0];
       });
       return {
         configured: Boolean(value?.enabled),
         chatId: value?.chat_id ?? '',
+        topicId: value?.topic_id ?? '',
       };
     } catch (error) {
       return reply
@@ -76,7 +79,7 @@ export function registerTelegramSettingsRoutes(
         .send({ error: error instanceof AccessError ? 'forbidden' : 'failed' });
     }
   });
-  app.put<{ Body: { botToken: string; chatId: string } }>(
+  app.put<{ Body: { botToken: string; chatId: string; topicId?: string } }>(
     '/api/v1/settings/telegram',
     {
       schema: {
@@ -87,6 +90,11 @@ export function registerTelegramSettingsRoutes(
           properties: {
             botToken: { type: 'string', minLength: 20, maxLength: 512 },
             chatId: { type: 'string', minLength: 1, maxLength: 128 },
+            topicId: {
+              type: 'string',
+              maxLength: 15,
+              pattern: '^([1-9][0-9]{0,14})?$',
+            },
           },
         },
       },
@@ -102,9 +110,9 @@ export function registerTelegramSettingsRoutes(
           await requireAdministrator(tx, tenantId, request.authSession!.userId);
           if (!key) throw new TelegramEncryptionUnavailable();
           const sealed = encryptTelegramToken(request.body.botToken, key);
-          await tx.execute(sql`INSERT INTO telegram_settings(tenant_id, token_ciphertext, token_nonce, token_tag, chat_id, enabled)
-            VALUES(${tenantId},${sealed.ciphertext},${sealed.nonce},${sealed.tag},${request.body.chatId},true)
-            ON CONFLICT(tenant_id) DO UPDATE SET token_ciphertext=EXCLUDED.token_ciphertext, token_nonce=EXCLUDED.token_nonce, token_tag=EXCLUDED.token_tag, chat_id=EXCLUDED.chat_id, enabled=true, updated_at=now()`);
+          await tx.execute(sql`INSERT INTO telegram_settings(tenant_id, token_ciphertext, token_nonce, token_tag, chat_id, topic_id, enabled)
+            VALUES(${tenantId},${sealed.ciphertext},${sealed.nonce},${sealed.tag},${request.body.chatId},${request.body.topicId || null},true)
+            ON CONFLICT(tenant_id) DO UPDATE SET token_ciphertext=EXCLUDED.token_ciphertext, token_nonce=EXCLUDED.token_nonce, token_tag=EXCLUDED.token_tag, chat_id=EXCLUDED.chat_id, topic_id=EXCLUDED.topic_id, enabled=true, updated_at=now()`);
           await tx.execute(sql`UPDATE telegram_notification_jobs SET attempts=0, available_at=now()
             WHERE tenant_id=${tenantId} AND delivered_at IS NULL AND cancelled_at IS NULL AND locked_at IS NULL`);
         });
@@ -161,11 +169,13 @@ export function startTelegramNotifications(
           tenant_id: string;
           inquiry_id: string;
           chat_id: string;
+          topic_id: string | null;
+          payload: unknown;
           token_ciphertext: Buffer;
           token_nonce: Buffer;
           token_tag: Buffer;
         }>(
-          "WITH picked AS (SELECT j.tenant_id,j.inquiry_id FROM telegram_notification_jobs j WHERE j.delivered_at IS NULL AND j.cancelled_at IS NULL AND j.available_at <= now() AND (j.locked_at IS NULL OR j.locked_at < now()-interval '2 minutes') AND EXISTS (SELECT 1 FROM telegram_settings s WHERE s.tenant_id=j.tenant_id AND s.enabled) ORDER BY j.created_at FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE telegram_notification_jobs j SET locked_at=now(), attempts=j.attempts+1 FROM picked p,telegram_settings s WHERE j.tenant_id=p.tenant_id AND j.inquiry_id=p.inquiry_id AND s.tenant_id=j.tenant_id AND s.enabled RETURNING j.tenant_id,j.inquiry_id,s.chat_id,s.token_ciphertext,s.token_nonce,s.token_tag",
+          "WITH picked AS (SELECT j.tenant_id,j.inquiry_id FROM telegram_notification_jobs j WHERE j.delivered_at IS NULL AND j.cancelled_at IS NULL AND j.available_at <= now() AND (j.locked_at IS NULL OR j.locked_at < now()-interval '2 minutes') AND EXISTS (SELECT 1 FROM telegram_settings s WHERE s.tenant_id=j.tenant_id AND s.enabled) ORDER BY j.created_at FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE telegram_notification_jobs j SET locked_at=now(), attempts=j.attempts+1 FROM picked p,telegram_settings s,website_inquiry_deliveries d WHERE j.tenant_id=p.tenant_id AND j.inquiry_id=p.inquiry_id AND s.tenant_id=j.tenant_id AND s.enabled AND d.tenant_id=j.tenant_id AND d.id=j.inquiry_id RETURNING j.tenant_id,j.inquiry_id,s.chat_id,s.topic_id,s.token_ciphertext,s.token_nonce,s.token_tag,d.payload",
         );
         await client.query('COMMIT');
         const job = claim.rows[0];
@@ -204,7 +214,10 @@ export function startTelegramNotifications(
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
                 chat_id: job.chat_id,
-                text: 'Neue Website-Anfrage ist im AuftragsKompass eingegangen.',
+                ...(job.topic_id
+                  ? { message_thread_id: Number(job.topic_id) }
+                  : {}),
+                text: renderWebsiteInquiryTelegramMessage(job.payload),
               }),
               signal: AbortSignal.timeout(10000),
               redirect: 'error',
