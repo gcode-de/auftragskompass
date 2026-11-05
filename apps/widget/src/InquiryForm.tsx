@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   inquiryFormV1,
+  phonePattern,
   type InquirySubmission,
 } from '@auftragskompass/core/inquiry-form-definition';
 import {
@@ -34,15 +35,37 @@ const messages: Record<InquiryClientError['reason'], string> = {
   unavailable:
     'Der Eingang ist noch unklar. Ihre Angaben bleiben auf dieser Seite erhalten. Bitte senden Sie dieselbe Anfrage erneut.',
 };
+type FieldName = keyof InquirySubmission['fields'];
+type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+const phone = new RegExp(phonePattern);
+function fieldError(control: Control): string | undefined {
+  if (
+    control.validity.valueMissing ||
+    (control.required && !control.value.trim())
+  )
+    return 'Bitte füllen Sie dieses Pflichtfeld aus.';
+  if (control.name === 'phone' && !phone.test(control.value))
+    return 'Bitte geben Sie eine Telefonnummer mit Ziffern und üblichen Sonderzeichen ein.';
+  if (control.validity.typeMismatch && control.name === 'email')
+    return 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
+  if (control.name === 'eventDate' && !control.validity.valid)
+    return 'Bitte geben Sie ein gültiges Datum ein.';
+  if (!control.validity.valid) return 'Bitte prüfen Sie Ihre Eingabe.';
+  return undefined;
+}
 export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
   const id = useId(),
     attempt = useRef<ReturnType<typeof createInquirySubmission> | null>(null),
     active = useRef(true),
+    focusError = useRef<Control | null>(null),
     feedback = useRef<HTMLParagraphElement>(null);
   const [state, setState] = useState<
       'editing' | 'sending' | 'uncertain' | 'received'
     >('editing'),
-    [error, setError] = useState<InquiryClientError['reason'] | null>(null);
+    [error, setError] = useState<InquiryClientError['reason'] | null>(null),
+    [fieldErrors, setFieldErrors] = useState<
+      Partial<Record<FieldName, string>>
+    >({});
   useEffect(() => {
     active.current = true;
     return () => {
@@ -52,6 +75,10 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
   useEffect(() => {
     if (error || state === 'received') feedback.current?.focus();
   }, [error, state]);
+  useEffect(() => {
+    focusError.current?.focus();
+    focusError.current = null;
+  }, [fieldErrors]);
   if (state === 'received')
     return (
       <section className="ak-inquiry" aria-label="Fotobox-Anfrage">
@@ -64,11 +91,62 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
   return (
     <section className="ak-inquiry" aria-label="Fotobox anfragen">
       <form
+        noValidate
         aria-busy={state === 'sending'}
+        onBlur={(event) => {
+          const control = event.target as unknown as Control;
+          if (
+            !inquiryFormV1.fields.some((field) => field.name === control.name)
+          )
+            return;
+          setFieldErrors((previous) => ({
+            ...previous,
+            [control.name]: fieldError(control),
+          }));
+        }}
+        onInput={(event) => {
+          const control = event.target as unknown as Control;
+          if (
+            !inquiryFormV1.fields.some((field) => field.name === control.name)
+          )
+            return;
+          setFieldErrors((previous) =>
+            control.value || previous[control.name as FieldName]
+              ? { ...previous, [control.name]: fieldError(control) }
+              : previous,
+          );
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           if (state === 'sending') return;
           const form = event.currentTarget;
+          if (!attempt.current) {
+            const errors: Partial<Record<FieldName, string>> = {};
+            for (const field of inquiryFormV1.fields) {
+              const control = form.elements.namedItem(field.name) as Control;
+              const message = fieldError(control);
+              if (message) errors[field.name] = message;
+            }
+            const firstName = form.elements.namedItem('firstName') as Control;
+            const lastName = form.elements.namedItem('lastName') as Control;
+            if (
+              Array.from(firstName.value.trim() + ' ' + lastName.value.trim())
+                .length > 200
+            )
+              errors.lastName =
+                'Vor- und Nachname dürfen zusammen höchstens 200 Zeichen lang sein.';
+            const first = inquiryFormV1.fields.find(
+              (field) => errors[field.name],
+            );
+            if (first) {
+              focusError.current = form.elements.namedItem(
+                first.name,
+              ) as Control;
+              setFieldErrors(errors);
+              return;
+            }
+            setFieldErrors(errors);
+          }
           try {
             if (!attempt.current) {
               const data = new FormData(form),
@@ -141,6 +219,12 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
                     readOnly={state === 'uncertain'}
                     rows={4}
                     maxLength={lengths[field.name]}
+                    aria-invalid={fieldErrors[field.name] ? true : undefined}
+                    aria-describedby={
+                      fieldErrors[field.name]
+                        ? id + '-' + field.name + '-error'
+                        : undefined
+                    }
                   />
                 ) : field.type === 'select' ? (
                   <>
@@ -149,6 +233,12 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
                       name={field.name}
                       defaultValue=""
                       disabled={state === 'uncertain'}
+                      aria-invalid={fieldErrors[field.name] ? true : undefined}
+                      aria-describedby={
+                        fieldErrors[field.name]
+                          ? id + '-' + field.name + '-error'
+                          : undefined
+                      }
                     >
                       <option value="">Noch nicht entschieden</option>
                       {field.options.map((option) => (
@@ -175,9 +265,25 @@ export function InquiryForm({ gatewayOrigin }: { gatewayOrigin: string }) {
                     min={field.type === 'date' ? '0001-01-01' : undefined}
                     max={field.type === 'date' ? '9999-12-31' : undefined}
                     aria-describedby={
-                      field.required ? id + '-required' : undefined
+                      [
+                        field.required ? id + '-required' : '',
+                        fieldErrors[field.name]
+                          ? id + '-' + field.name + '-error'
+                          : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || undefined
                     }
+                    aria-invalid={fieldErrors[field.name] ? true : undefined}
                   />
+                )}
+                {fieldErrors[field.name] && (
+                  <p
+                    className="ak-field-error"
+                    id={id + '-' + field.name + '-error'}
+                  >
+                    {fieldErrors[field.name]}
+                  </p>
                 )}
               </div>
             ))}

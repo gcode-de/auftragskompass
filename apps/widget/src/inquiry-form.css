@@ -86,6 +86,13 @@
   accent-color: var(--ak-accent);
   scrollbar-color: var(--ak-border) var(--ak-field);
 }
+.ak-inquiry [aria-invalid='true'] {
+  border-color: var(--ak-alert-ink);
+}
+.ak-field-error {
+  color: var(--ak-alert-ink);
+  margin-block: 0.4rem 0;
+}
 .ak-inquiry textarea {
   resize: vertical;
   min-block-size: 7rem;

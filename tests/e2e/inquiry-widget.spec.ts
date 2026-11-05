@@ -159,6 +159,30 @@ test('isolated public form is accessible in both themes at mobile, tablet and de
   await page.getByLabel('E-Mail *').fill('visitor@example.invalid');
   await page.getByLabel('Veranstaltungsdatum *').fill('2030-10-27');
   await page.getByLabel('Telefonnummer (optional)').fill('+49 000 000000');
+  await page.getByLabel('Telefonnummer (optional)').fill('keine Nummer');
+  await page.getByRole('button', { name: 'Anfrage senden' }).click();
+  await expect(page.getByLabel('Telefonnummer (optional)')).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
+  await expect(
+    page.getByText(
+      'Bitte geben Sie eine Telefonnummer mit Ziffern und üblichen Sonderzeichen ein.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel('Telefonnummer (optional)')).toBeFocused();
+  await inspect('widget-phone-error-mobile');
+  for (const width of [768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await inspect('widget-phone-error-' + width);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(sends).toBe(0);
+  await page.getByLabel('Telefonnummer (optional)').fill('+49 000 000000');
+  await expect(page.getByLabel('Telefonnummer (optional)')).not.toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
   await page
     .getByLabel('Veranstaltungsort (optional)')
     .fill('Fictional demonstration hall');
