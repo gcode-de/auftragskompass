@@ -1,3 +1,5 @@
+// Shared with contact validation so the public form accepts the same characters.
+export const phonePattern = '^[+0-9() .\\/-]*$';
 // Observed on the public website on 2026-10-18; this is not a booking form.
 export const inquiryFormV1 = {
   id: 'fotobox-bw-main',

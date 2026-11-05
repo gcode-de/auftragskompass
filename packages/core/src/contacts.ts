@@ -6,6 +6,7 @@ import { and, asc, eq, or, ilike, inArray, ne } from 'drizzle-orm';
 import { contacts } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
+import { phonePattern } from './inquiry-form-definition.js';
 export type ContactInput = {
   kind: 'private' | 'company';
   name: string;
@@ -169,7 +170,7 @@ export function contactRepository(pool: Connection, tenantId: string) {
     },
   };
 }
-const phone = { type: 'string', maxLength: 60, pattern: '^[+0-9() .\\/-]*$' };
+const phone = { type: 'string', maxLength: 60, pattern: phonePattern };
 export const contactFields = {
   kind: { type: 'string', enum: ['private', 'company'] },
   name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },

@@ -1,5 +1,12 @@
 # Projektübergabe AuftragsKompass
 
+**Formular-Feldfehler, 05.11.2026:** FORM-ERROR-01 zeigt clientseitige
+Validierungsfehler unmittelbar am jeweiligen Feld, markiert es und fokussiert
+beim Senden das erste fehlerhafte Feld. Die Telefonnummer nutzt dieselbe
+Zeichenregel wie der Server; fehlende Pflichtangaben und Formatfehler bleiben
+zugänglich zugeordnet. Unklare Versandversuche behalten ihre eingefrorene
+Nutzlast für sichere Wiederholungen. CI und tatsächliche Auslieferung prüfen.
+
 **Telegram-Details und Topics, 05.11.2026:** TG-DETAIL-01 ergänzt eine
 optionale Topic-ID und sendet verfügbare Website-Formularfelder als Klartext an
 Telegram. Die explizite Nutzerentscheidung ersetzt die ältere Aussage unten,
