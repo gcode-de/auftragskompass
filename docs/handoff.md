@@ -1,5 +1,13 @@
 # Projektübergabe AuftragsKompass
 
+**Telegram-Details und Topics, 05.11.2026:** TG-DETAIL-01 ergänzt eine
+optionale Topic-ID und sendet verfügbare Website-Formularfelder als Klartext an
+Telegram. Die explizite Nutzerentscheidung ersetzt die ältere Aussage unten,
+Telegram erhalte keine Kundendaten. Lange Nachrichten sind sichtbar gekürzt;
+vollständige Eingaben bleiben in der App. Die Migration ergänzt ein optionales
+Feld ohne Änderung bestehender Ziele. CI, Sicherung, Auslieferung und der reale
+Versand in das gewünschte Topic sind vor einer Erfolgsmeldung zu prüfen.
+
 **Formulare und Telegram, 04.11.2026:** Der aktive Optionstakt war im
 Testbetrieb eingeschaltet; bei der lesenden Prüfung waren keine abgeholten
 Eingänge zur Übernahme offen. Der Abruf erfolgt standardmäßig alle 30 Sekunden.

@@ -1,10 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
-type TelegramSettings = { configured: boolean; chatId: string | null };
+type TelegramSettings = {
+  configured: boolean;
+  chatId: string | null;
+  topicId?: string;
+};
 
 export function TelegramSettingsPanel({ csrfToken }: { csrfToken: string }) {
   const [settings, setSettings] = useState<TelegramSettings | null>(null);
   const [chatId, setChatId] = useState('');
+  const [topicId, setTopicId] = useState('');
   const [botToken, setBotToken] = useState('');
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState('');
@@ -16,6 +21,7 @@ export function TelegramSettingsPanel({ csrfToken }: { csrfToken: string }) {
     const result = (await response.json()) as TelegramSettings;
     setSettings(result);
     setChatId(result.chatId ?? '');
+    setTopicId(result.topicId ?? '');
   }
 
   useEffect(() => {
@@ -29,6 +35,7 @@ export function TelegramSettingsPanel({ csrfToken }: { csrfToken: string }) {
         if (!active) return;
         setSettings(result);
         setChatId(result.chatId ?? '');
+        setTopicId(result.topicId ?? '');
       })
       .catch(() => {
         if (active) {
@@ -56,7 +63,11 @@ export function TelegramSettingsPanel({ csrfToken }: { csrfToken: string }) {
           'content-type': 'application/json',
           'x-csrf-token': csrfToken,
         },
-        body: JSON.stringify({ botToken, chatId: chatId.trim() }),
+        body: JSON.stringify({
+          botToken,
+          chatId: chatId.trim(),
+          topicId: topicId.trim(),
+        }),
       });
       if (!response.ok) throw Error('save');
       setBotToken('');
@@ -115,7 +126,8 @@ export function TelegramSettingsPanel({ csrfToken }: { csrfToken: string }) {
       <p>
         Optionaler Bot für Benachrichtigungen. Der Bot-Token wird gespeichert,
         aber aus Sicherheitsgründen nie wieder angezeigt. Das Speichern prüft
-        die Verbindung noch nicht.
+        die Verbindung noch nicht. Anfragedaten werden an Telegram und den
+        angegebenen Chat gesendet.
       </p>
       <p role={error ? 'alert' : 'status'}>{message}</p>
       {settings === null ? (
@@ -164,6 +176,17 @@ export function TelegramSettingsPanel({ csrfToken }: { csrfToken: string }) {
                   onChange={(event) => setChatId(event.target.value)}
                 />
               </label>
+              <label>
+                Topic-ID (optional)
+                <input
+                  name="topicId"
+                  inputMode="numeric"
+                  pattern="[1-9][0-9]{0,14}"
+                  value={topicId}
+                  onChange={(event) => setTopicId(event.target.value)}
+                />
+              </label>
+              <p>Leer lassen für den allgemeinen Chat.</p>
               <button className="primary-action" type="submit">
                 {settings.configured
                   ? 'Einstellungen aktualisieren'

@@ -263,15 +263,22 @@ test('only newly staged inquiries receive one notification job when Telegram is 
   ).toBe(1);
 });
 
-test('worker retries failures durably and sends only generic content', async () => {
+test('worker retries failures durably and sends inquiry details to the selected topic', async () => {
   const telegramKey = Buffer.alloc(32, 23);
   const sealed = encryptTelegramToken(
     '123456:abcdefghijklmnopqrstuvwxyz_ABCDEF',
     telegramKey,
   );
   await pool.query(
-    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,enabled) VALUES($1,$2,$3,$4,$5,true)',
-    [tenantId, sealed.ciphertext, sealed.nonce, sealed.tag, 'fictional-chat'],
+    'INSERT INTO telegram_settings(tenant_id,token_ciphertext,token_nonce,token_tag,chat_id,topic_id,enabled) VALUES($1,$2,$3,$4,$5,$6,true)',
+    [
+      tenantId,
+      sealed.ciphertext,
+      sealed.nonce,
+      sealed.tag,
+      'fictional-chat',
+      '12345',
+    ],
   );
   await receive(batch());
   let calls = 0;
@@ -283,7 +290,9 @@ test('worker retries failures durably and sends only generic content', async () 
       calls++;
       expect(String(url)).toContain('/sendMessage');
       expect(init?.redirect).toBe('error');
-      expect(String(init?.body)).not.toContain('sync@example.invalid');
+      const body = JSON.parse(String(init?.body));
+      expect(body.text).toContain('sync@example.invalid');
+      expect(body.message_thread_id).toBe(12345);
       return new Response(JSON.stringify({ ok: calls > 1 }), {
         status: 200,
       });
