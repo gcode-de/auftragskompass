@@ -1031,225 +1031,237 @@ export function EventDetails({
             <h3 id="event-panel-details">Details</h3>
             <div className="event-detail-layout">
               <div className="event-detail-main">
-                <h4>Termin</h4>
-                <dl>
-                  <dt>Datum</dt>
-                  <dd>
-                    {data.event.eventDate
-                      ? data.event.eventDate.split('-').reverse().join('.')
-                      : 'Ohne Datum'}
-                  </dd>
-                  {/* H037: a date-only booking says so; a real midnight start
+                <div className="event-detail-primary">
+                  <h4>Termin</h4>
+                  <dl>
+                    <dt>Datum</dt>
+                    <dd>
+                      {data.event.eventDate
+                        ? data.event.eventDate.split('-').reverse().join('.')
+                        : 'Ohne Datum'}
+                    </dd>
+                    {/* H037: a date-only booking says so; a real midnight start
                       keeps its genuine clock time from the stored timestamp. */}
-                  <dt>Beginn</dt>
-                  <dd>
-                    {data.event.startsAt
-                      ? time(data.event.startsAt)
-                      : 'Tagesbuchung, ohne Uhrzeit'}
-                  </dd>
-                  <dt>Ende</dt>
-                  <dd>
-                    {data.event.endsAt
-                      ? time(data.event.endsAt)
-                      : 'Ohne Uhrzeit'}
-                  </dd>
-                </dl>
-                <EventInlineEditor
-                  ref={inline}
-                  key={'inline:' + data.event.id}
-                  event={data.event}
-                  csrfToken={csrfToken}
-                  types={types}
-                  packages={packages}
-                  locations={locations}
-                  contacts={data.contacts}
-                  locked={metaBlocked || loading}
-                  canEdit={() =>
-                    !dirty.current &&
-                    !resourcesDirty.current &&
-                    !saving.current &&
-                    !resourceMutation.current &&
-                    !statusUncertainRef.current &&
-                    !resourceUncertainRef.current
-                  }
-                  onDirtyChange={metadataChanged}
-                  onSaveStateChange={notesSaveStateChanged}
-                  onNotesReset={discardNotesDraft}
-                  onConfirmed={applyConfirmed}
-                />
-                <h4>Allgemein</h4>
-                <dl>
-                  <dt>Eventart</dt>
-                  <dd>{data.eventType?.name ?? 'Noch offen'}</dd>
-                  <dt>Fotobox-Paket</dt>
-                  <dd>{data.package?.name ?? 'Noch offen'}</dd>
-                  <dt>Anfragequelle</dt>
-                  <dd>{data.event.source || 'Noch offen'}</dd>
-                  <dt>Beschreibung</dt>
-                  <dd>{data.event.description || 'Keine Beschreibung'}</dd>
-                </dl>
-                {data.websiteInquiryAvailable && (
-                  <WebsiteInquiry
-                    key={id}
-                    eventId={id}
-                    timeZone={data.event.timeZone}
+                    <dt>Beginn</dt>
+                    <dd>
+                      {data.event.startsAt
+                        ? time(data.event.startsAt)
+                        : 'Tagesbuchung, ohne Uhrzeit'}
+                    </dd>
+                    <dt>Ende</dt>
+                    <dd>
+                      {data.event.endsAt
+                        ? time(data.event.endsAt)
+                        : 'Ohne Uhrzeit'}
+                    </dd>
+                  </dl>
+                  <EventInlineEditor
+                    ref={inline}
+                    key={'inline:' + data.event.id}
+                    event={data.event}
+                    csrfToken={csrfToken}
+                    types={types}
+                    packages={packages}
+                    locations={locations}
+                    contacts={data.contacts}
+                    locked={metaBlocked || loading}
+                    canEdit={() =>
+                      !dirty.current &&
+                      !resourcesDirty.current &&
+                      !saving.current &&
+                      !resourceMutation.current &&
+                      !statusUncertainRef.current &&
+                      !resourceUncertainRef.current
+                    }
+                    onDirtyChange={metadataChanged}
+                    onSaveStateChange={notesSaveStateChanged}
+                    onNotesReset={discardNotesDraft}
+                    onConfirmed={applyConfirmed}
                   />
-                )}
-                <form
-                  key={data.event.version + ':' + epoch}
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void saveStatus(event.currentTarget);
-                  }}
-                >
-                  <fieldset
-                    disabled={
-                      busy ||
-                      loading ||
-                      statusUncertain ||
-                      resourceUncertainRef.current ||
-                      legacyBlocked ||
-                      resourcesDirty.current
-                    }
+                </div>
+                <div className="event-detail-overview">
+                  <h4>Allgemein</h4>
+                  <dl>
+                    <dt>Eventart</dt>
+                    <dd>{data.eventType?.name ?? 'Noch offen'}</dd>
+                    <dt>Fotobox-Paket</dt>
+                    <dd>{data.package?.name ?? 'Noch offen'}</dd>
+                    <dt>Anfragequelle</dt>
+                    <dd>{data.event.source || 'Noch offen'}</dd>
+                    <dt>Beschreibung</dt>
+                    <dd>{data.event.description || 'Keine Beschreibung'}</dd>
+                  </dl>
+                  {data.websiteInquiryAvailable && (
+                    <WebsiteInquiry
+                      key={id}
+                      eventId={id}
+                      timeZone={data.event.timeZone}
+                    />
+                  )}
+                  <form
+                    key={data.event.version + ':' + epoch}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveStatus(event.currentTarget);
+                    }}
                   >
-                    <legend>Status ändern</legend>
-                    <label>
-                      Status des Events
-                      <select
-                        name="status"
-                        defaultValue={data.event.status}
-                        onChange={() => {
-                          setStatusResourceCorrection(false);
-                          dirty.current = true;
-                          legacyChanged();
-                        }}
-                      >
-                        {statuses.map((status) => (
-                          <option key={status.code} value={status.code}>
-                            {status.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button className="primary-action">Status speichern</button>
-                  </fieldset>
-                </form>
-                {statusResourceCorrection && (
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    disabled={
-                      busy ||
-                      loading ||
-                      metadataDirty.current ||
-                      resourcesDirty.current ||
-                      resourceMutation.current ||
-                      statusUncertainRef.current ||
-                      resourceUncertainRef.current
-                    }
-                    onClick={discardStatusDraftAndCorrectResources}
-                  >
-                    Statusentwurf verwerfen und Ressourcen korrigieren
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="icon-action tier-quiet-icon"
-                  aria-label={`Stammdaten bearbeiten: ${data.event.name}`}
-                  title="Event bearbeiten"
-                  disabled={busy || loading}
-                  onClick={() => {
-                    if (
-                      (metadataDirty.current ||
-                        dirty.current ||
+                    <fieldset
+                      disabled={
+                        busy ||
+                        loading ||
+                        statusUncertain ||
+                        resourceUncertainRef.current ||
+                        legacyBlocked ||
+                        resourcesDirty.current
+                      }
+                    >
+                      <legend>Status ändern</legend>
+                      <label>
+                        Status des Events
+                        <select
+                          name="status"
+                          defaultValue={data.event.status}
+                          onChange={() => {
+                            setStatusResourceCorrection(false);
+                            dirty.current = true;
+                            legacyChanged();
+                          }}
+                        >
+                          {statuses.map((status) => (
+                            <option key={status.code} value={status.code}>
+                              {status.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button className="primary-action">
+                        Status speichern
+                      </button>
+                    </fieldset>
+                  </form>
+                  {statusResourceCorrection && (
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={
+                        busy ||
+                        loading ||
+                        metadataDirty.current ||
                         resourcesDirty.current ||
-                        saving.current ||
                         resourceMutation.current ||
                         statusUncertainRef.current ||
-                        resourceUncertainRef.current) &&
-                      !window.confirm(
-                        'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
+                        resourceUncertainRef.current
+                      }
+                      onClick={discardStatusDraftAndCorrectResources}
+                    >
+                      Statusentwurf verwerfen und Ressourcen korrigieren
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="icon-action tier-quiet-icon"
+                    aria-label={`Stammdaten bearbeiten: ${data.event.name}`}
+                    title="Event bearbeiten"
+                    disabled={busy || loading}
+                    onClick={() => {
+                      if (
+                        (metadataDirty.current ||
+                          dirty.current ||
+                          resourcesDirty.current ||
+                          saving.current ||
+                          resourceMutation.current ||
+                          statusUncertainRef.current ||
+                          resourceUncertainRef.current) &&
+                        !window.confirm(
+                          'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
+                        )
                       )
-                    )
-                      return;
-                    onEdit(data.event);
-                  }}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
+                        return;
+                      onEdit(data.event);
+                    }}
                   >
-                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </button>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <aside className="event-detail-aside">
                 <details className="event-aside" open={wideRecord}>
                   <summary>Kontakt und Ort</summary>
-                  <h4>Kontakt</h4>
-                  {/* A missing link is a normal open state of an option, not an
+                  <section className="event-aside-contact">
+                    <h4>Kontakt</h4>
+                    {/* A missing link is a normal open state of an option, not an
                       error and not a blocking step before the event exists. */}
-                  {!data.contacts.some(
-                    (person) => person.role === 'primary',
-                  ) && <p>Kontakt noch offen.</p>}
-                  <ul>
-                    {data.contacts.map((person) => (
-                      <li key={person.id}>
-                        {person.role === 'primary'
-                          ? 'Hauptkontakt'
-                          : 'Weiterer Kontakt'}
-                        : {person.name} {person.contactPerson}
-                        {person.detailsUnavailable &&
-                          ' (Kontaktdaten noch nicht geladen)'}{' '}
-                        {person.email && (
-                          <a
-                            href={'mailto:' + encodeURIComponent(person.email)}
-                          >
-                            {person.email}
-                          </a>
-                        )}{' '}
-                        {[person.phone, person.mobile]
-                          .filter(Boolean)
-                          .map((number, index) => (
+                    {!data.contacts.some(
+                      (person) => person.role === 'primary',
+                    ) && <p>Kontakt noch offen.</p>}
+                    <ul>
+                      {data.contacts.map((person) => (
+                        <li key={person.id}>
+                          {person.role === 'primary'
+                            ? 'Hauptkontakt'
+                            : 'Weiterer Kontakt'}
+                          : {person.name} {person.contactPerson}
+                          {person.detailsUnavailable &&
+                            ' (Kontaktdaten noch nicht geladen)'}{' '}
+                          {person.email && (
                             <a
-                              key={index}
-                              href={'tel:' + number.replace(/[^+0-9]/g, '')}
+                              href={
+                                'mailto:' + encodeURIComponent(person.email)
+                              }
                             >
-                              {number}{' '}
+                              {person.email}
                             </a>
-                          ))}
-                      </li>
-                    ))}
-                  </ul>
-                  <h4>Ort / Adresse</h4>
-                  {data.event.venueOverride ? (
-                    data.event.venue?.trim() ? (
-                      <p className="event-venue">{data.event.venue}</p>
+                          )}{' '}
+                          {[person.phone, person.mobile]
+                            .filter(Boolean)
+                            .map((number, index) => (
+                              <a
+                                key={index}
+                                href={'tel:' + number.replace(/[^+0-9]/g, '')}
+                              >
+                                {number}{' '}
+                              </a>
+                            ))}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                  <section className="event-aside-location">
+                    <h4>Ort / Adresse</h4>
+                    {data.event.venueOverride ? (
+                      data.event.venue?.trim() ? (
+                        <p className="event-venue">{data.event.venue}</p>
+                      ) : (
+                        <p>Kein Veranstaltungsort hinterlegt.</p>
+                      )
+                    ) : data.location ? (
+                      <>
+                        <p>{data.location.name}</p>
+                        <p>
+                          {[
+                            data.location.street,
+                            data.location.postalCode,
+                            data.location.city,
+                            data.location.country,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </p>
+                      </>
                     ) : (
-                      <p>Kein Veranstaltungsort hinterlegt.</p>
-                    )
-                  ) : data.location ? (
-                    <>
-                      <p>{data.location.name}</p>
-                      <p>
-                        {[
-                          data.location.street,
-                          data.location.postalCode,
-                          data.location.city,
-                          data.location.country,
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </p>
-                    </>
-                  ) : (
-                    <p>Ort offen.</p>
-                  )}
+                      <p>Ort offen.</p>
+                    )}
+                  </section>
                 </details>
               </aside>
             </div>

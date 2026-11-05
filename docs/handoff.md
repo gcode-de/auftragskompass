@@ -1,5 +1,12 @@
 # Projektübergabe AuftragsKompass
 
+**Eventübersicht, 05.11.2026:** BKP013.2 ordnet vorhandene Eventdaten auf
+breiten Ansichten in drei Spalten und zeigt Kontakt und Ort als getrennte
+Karten rechts; kleinere Ansichten bleiben gestapelt beziehungsweise zweispaltig.
+Autosave und bestehende Aktionen bleiben erhalten. Referenz ist die lesende
+Chrome-Ansicht von Bookitup; REA-MCP war nicht verbunden. Ein Aufgabenbereich
+wurde nicht vorgetäuscht. CI und tatsächliche Auslieferung erneut prüfen.
+
 **Formular-Feldfehler, 05.11.2026:** FORM-ERROR-01 zeigt clientseitige
 Validierungsfehler unmittelbar am jeweiligen Feld, markiert es und fokussiert
 beim Senden das erste fehlerhafte Feld. Die Telefonnummer nutzt dieselbe

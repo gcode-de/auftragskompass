@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **BKP013.2 — `style: arrange event details in reference columns`**: Die bestehende Eventübersicht auf breiten Ansichten mit Eventdaten, weiteren Details und rechts separierten Kontakt-/Ortskarten anordnen; auf schmalen Ansichten in sinnvoller Reihenfolge stapeln. Bestehende Aktionen, Entwürfe, Autosave und Bereichsnavigation unverändert erhalten. Keine Aufgabenfunktion vortäuschen.
+
 ### Betreiberauftrag 04.11.2026: Anfragebenachrichtigung
 
 - [x] **FORM-ERROR-01 — `fix: show inquiry validation errors at each field`**: Öffentliche Formulareingaben vor dem Versand mit konkreten, zugänglich zugeordneten Feldmeldungen prüfen, insbesondere Telefonnummern nach dem bestehenden Serverformat. Fehler auf Mobilgeräten sichtbar markieren, beim Korrigieren aktualisieren und den ersten Fehler fokussieren. Empfangsbestätigung, Servervalidierung und idempotente Wiederholung ungeklärter Sendungen unverändert erhalten.
