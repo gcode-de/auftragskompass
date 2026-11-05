@@ -427,6 +427,10 @@ test('the wide frame keeps contact and place beside the main information', async
     'details.event-aside',
   ) as HTMLDetailsElement;
   expect(aside.open).toBe(true);
+  expect(area('Details').querySelector('.event-detail-primary')).toBeTruthy();
+  expect(area('Details').querySelector('.event-detail-overview')).toBeTruthy();
+  expect(aside.querySelector('.event-aside-contact')).toBeTruthy();
+  expect(aside.querySelector('.event-aside-location')).toBeTruthy();
   expect(
     within(aside).getByRole('link', { name: 'record@example.invalid' }),
   ).toBeTruthy();

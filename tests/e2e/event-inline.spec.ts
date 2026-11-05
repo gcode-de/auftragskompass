@@ -120,13 +120,39 @@ test('event details save fields on blur and Escape discards the current edit', a
   await editor.getByLabel('Eventart').focus();
   await expect.poll(() => writes.length).toBe(3);
   expect(writes[2]).toMatchObject({ primaryContactId: null, version: 3 });
-  for (const width of [320, 1280]) {
+  for (const width of [320, 1280, 1600]) {
     await page.setViewportSize({ width, height: 900 });
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width + 1);
+    if (width === 1600) {
+      const first = await page.locator('.event-detail-primary').boundingBox();
+      const middle = await page.locator('.event-detail-overview').boundingBox();
+      const aside = await page.locator('.event-detail-aside').boundingBox();
+      expect(first!.x).toBeLessThan(middle!.x);
+      expect(middle!.x).toBeLessThan(aside!.x);
+      expect(Math.abs(first!.y - aside!.y)).toBeLessThan(2);
+    }
     await page.screenshot({
       path: test.info().outputPath(`event-inline-${width}.png`),
+      fullPage: true,
+    });
+  }
+  await page.getByRole('button', { name: 'Dunkelmodus aktivieren' }).click();
+  for (const width of [320, 1600]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width + 1);
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await page.screenshot({
+      path: test.info().outputPath(`event-layout-dark-${width}.png`),
       fullPage: true,
     });
   }
