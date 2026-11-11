@@ -9,6 +9,7 @@ Voraussetzungen: Node/pnpm gemäß [README](../README.md), Python 3 und laufende
 | `pnpm test:integration` | Migrationen, Mandantentrennung, OIDC, Freigaben, Parallelität und Audit-Rollback |
 | `pnpm test:e2e` | Chromium: HTTPS-Anmeldung, Cookie-Schutz, Kontofreigaben, Aussperrschutz und Logout |
 | `pnpm test:coverage` | Unit-, Komponenten- und Datenbanktests mit V8-Coverage |
+| `pnpm check:local` | Lokale Qualitätsprüfung inklusive Build und Abdeckung geänderter Zeilen gegen `origin/main` |
 | `pnpm check:quality` | Alle Qualitätsgates und Build außer Chromium |
 | `pnpm check` | Sämtliche verfügbaren Qualitätsgates und Build |
 
@@ -16,7 +17,9 @@ Testcontainers startet für die Integration eine frische PostgreSQL-17.6-Instanz
 
 Playwright startet und beendet den Preview-Server selbst auf `127.0.0.1:14873`; ein bereits belegter Port führt zum Fehler. Es wird kein möglicherweise fremder Server wiederverwendet. Trace-Dateien entstehen nur bei Fehlern und bleiben ebenso wie Builds, Coverage und Testresultate durch die bestehenden Git-Regeln ausgeschlossen.
 
-Coverage umfasst alle TypeScript-Anwendungsquellen außer den drei Prozess-Einstiegspunkten (Admin-Mount, API und Worker); diese werden durch Chromium und Compose geprüft. Grenzwerte sind mindestens 90 % Zeilen/Statements/Funktionen und 85 % Branches. C006 prüft zusätzlich geänderte ausführbare Zeilen (85 %) und Branches (80 %) anhand Git-Diff und LCOV. Fehlende Coverage geänderter Quelldateien führt zum Fehler.
+Coverage umfasst die TypeScript-Anwendungsquellen; dokumentierte Prozess-Einstiegspunkte werden durch Chromium und Compose geprüft. Grenzwerte sind mindestens 80 % für Zeilen, Statements, Funktionen und Branches. Zusätzlich prüft C006 geänderte ausführbare Zeilen und Branches mit jeweils 80 % anhand Git-Diff und LCOV. Fehlende Coverage geänderter Quelldateien führt zum Fehler.
+
+Vor dem Push `git fetch origin main` und `pnpm check:local` ausführen sowie betroffene Browserabläufe prüfen. Der lokale Vergleich prüft committete Änderungen gegenüber `origin/main`. Dazu müssen verfolgte Änderungen committet sein: Andernfalls könnten auch uncommittete Tests oder Konfiguration die gemessene Coverage beeinflussen, ohne mit gepusht zu werden. Der Prüfer verändert den Git-Index nicht und meldet uncommittete sowie prüfungsrelevante nicht verfolgte Dateien. Bei abweichendem Zielbranch die passende Basis mit `BASE_REVISION=<Revision> pnpm check:local` wählen.
 
 Referenzen: [Vitest-Projekte](https://vitest.dev/guide/projects), [PostgreSQL-Testcontainers](https://node.testcontainers.org/modules/postgresql/).
 

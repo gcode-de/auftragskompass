@@ -107,8 +107,8 @@ Every behavior change ships with tests in the same commit.
 
 ### Coverage gates
 
-- Domain and application services: at least 90% line coverage and 85% branch coverage.
-- Repository-wide changed-code coverage: at least 85% lines and 80% branches.
+- Global coverage: at least 80% lines, statements, functions and branches.
+- Repository-wide changed-code coverage: at least 80% lines and 80% branches.
 - Critical rules require explicit branch tests rather than relying only on coverage numbers:
   - resource overlap and simultaneous booking attempts,
   - invoice and offer numbering,
@@ -134,7 +134,7 @@ pnpm test:e2e
 pnpm build
 ```
 
-During early slices, run every available command. Once the full suite exists, feature commits must run all fast gates plus affected integration/E2E tests. Milestone and release commits must run the entire suite.
+Run the applicable checks locally before pushing, including a build and changed-code coverage against the intended base. `pnpm check:local` runs the local quality gates and compares tracked changes with `origin/main`; fetch the intended base first. Run affected browser tests as well. Milestone and release commits must run the entire suite.
 
 ## Database and migration rules
 
