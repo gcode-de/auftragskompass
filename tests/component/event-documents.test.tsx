@@ -682,6 +682,101 @@ test('a rejected draft and a failed pdf are explained to the operator', async ()
     await screen.findByText(/PDF konnte nicht erzeugt werden/),
   ).toBeTruthy();
 });
+test('the native dialog API opens the offer chooser and Escape returns focus', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLDialogElement.prototype,
+    'showModal',
+  );
+  const showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: showModal,
+  });
+  try {
+    setup({ documents: [] });
+    render(<EventDocuments {...props} />);
+    const trigger = await screen.findByRole('button', {
+      name: 'Angebot anlegen',
+    });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Angebot anlegen',
+    });
+    expect(showModal).toHaveBeenCalledOnce();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(dialog.isConnected).toBe(false);
+  } finally {
+    if (descriptor)
+      Object.defineProperty(
+        HTMLDialogElement.prototype,
+        'showModal',
+        descriptor,
+      );
+    else
+      delete (HTMLDialogElement.prototype as { showModal?: unknown }).showModal;
+  }
+});
+
+test('the dialog cancel event is prevented and closes the chooser', async () => {
+  setup({ documents: [] });
+  render(<EventDocuments {...props} />);
+  const trigger = await openOfferCreate();
+  const dialog = screen.getByRole('dialog', { name: 'Angebot anlegen' });
+  const cancel = new Event('cancel', { cancelable: true });
+
+  fireEvent(dialog, cancel);
+
+  expect(cancel.defaultPrevented).toBe(true);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test('the close button closes the dialog and returns focus to its trigger', async () => {
+  setup({ documents: [] });
+  render(<EventDocuments {...props} />);
+  const trigger = await openOfferCreate();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test('Escape and cancel cannot close the offer dialog while its POST is pending', async () => {
+  const { control } = reloadHarness();
+  let resolveCreate!: (reply: Response) => void;
+  control.createReply = () =>
+    new Promise<Response>((resolve) => {
+      resolveCreate = resolve;
+    });
+  render(<EventDocuments {...props} />);
+  const trigger = await openOfferCreate();
+  const dialog = screen.getByRole('dialog', { name: 'Angebot anlegen' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Schließen' })).toHaveProperty(
+      'disabled',
+      true,
+    ),
+  );
+  fireEvent.keyDown(window, { key: 'Escape' });
+  const cancel = new Event('cancel', { cancelable: true });
+  fireEvent(dialog, cancel);
+  expect(cancel.defaultPrevented).toBe(true);
+  expect(screen.getByRole('dialog', { name: 'Angebot anlegen' })).toBeTruthy();
+
+  resolveCreate(Response.json(created, { status: 201 }));
+  await screen.findByText('Entwurf angelegt.');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
 test('a withdrawn document is listed without actions', async () => {
   setup({ documents: [{ ...draft, state: 'withdrawn' }] });
   render(<EventDocuments {...props} />);
@@ -2965,7 +3060,8 @@ function reloadHarness(
     control = {
       listReply: (): Response | Promise<Response> =>
         Response.json(options.stored ?? []),
-      createReply: () => Response.json(created, { status: 201 }),
+      createReply: (): Response | Promise<Response> =>
+        Response.json(created, { status: 201 }),
     };
   vi.stubGlobal(
     'fetch',

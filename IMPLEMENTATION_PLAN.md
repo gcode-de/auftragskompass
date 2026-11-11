@@ -34,6 +34,8 @@
 
 - [x] **DOC-UX-03 — `feat: select event offer in a dialog`**: Den bestehenden Angebotsweg in einen zugänglichen, kompakten Auswahldialog mit Eventkontakt und Vorlage/Blanko überführen. Weitere Dokumentarten erst anbieten, wenn ihre tatsächlichen Erstellungswege vollständig bedienbar sind. Tastatur, Mobilbreite, Fehler, unklare Antworten und Fokus-Rückkehr erhalten.
 
+- [x] **CI-DOC-01 — `test: cover offer dialog dismissal`**: Dialog-Abbruch, Escape und Fokus-Rückkehr sowie die Sperre während laufender Anlage gezielt prüfen; bestehende Abdeckungsschwellen beibehalten.
+
 - [ ] **DOC-CREATE-02 — Quellengebundene Dokumentarten**: Für Auftragsbestätigung, Anzahlungs-, Schluss- und Standardrechnung sowie Korrektur zulässige Quellbelege und Versionen im Dialog auswählen. Bestehende Status-, Mandanten-, CSRF-, Nummern- und Unveränderlichkeitsschutzregeln erhalten; Gutschrift als vorhandene Korrekturrichtung behandeln. Freie, von Quelldokumenten unabhängige Anlage erfordert eigene fachlich vollständige Slices statt Umgehung bestehender Regeln.
 
 - [ ] **DOC-PRODUCT-01 — Produktoptionen in Dokumenten**: Produkt-/Positionsdarstellung und die fehlenden belegten Optionen Brutto/Netto und Rabatt in Euro oder Prozent mit exakter Minor-Unit-Arithmetik, revisionssicherer Speicherung und Mobilansicht ausarbeiten; Produktstamm und bestehende finale Dokumente bleiben unverändert. Keine Ressourcenverknüpfung vortäuschen, bevor Datenmodell und Konfliktregeln vorhanden sind.
