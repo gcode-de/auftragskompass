@@ -278,28 +278,27 @@ function fieldValue(label: string) {
 }
 
 async function openOfferCreate() {
-  const summary = await screen.findByText('Angebot anlegen', {
-    selector: 'summary',
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot anlegen',
   });
-  const disclosure = summary.closest('details');
-  if (!disclosure?.open) fireEvent.click(summary);
-  await screen.findByLabelText('Vorlage');
-  return summary;
+  fireEvent.click(trigger);
+  await screen.findByRole('dialog', { name: 'Angebot anlegen' });
+  return trigger;
 }
 
-test('offer creation starts closed and opens from its native disclosure', async () => {
+test('offer creation opens in a labelled dialog', async () => {
   setup({ documents: [] });
   render(<EventDocuments {...props} />);
-  const summary = await screen.findByText('Angebot anlegen', {
-    selector: 'summary',
+  expect(screen.queryByRole('dialog')).toBeNull();
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot anlegen',
   });
-  const disclosure = summary.closest('details');
-  expect(disclosure).toBeTruthy();
-  expect(disclosure?.open).toBe(false);
-
-  fireEvent.click(summary);
-  expect(await screen.findByLabelText('Vorlage')).toBeTruthy();
-  expect(disclosure?.open).toBe(true);
+  fireEvent.click(trigger);
+  expect(
+    await screen.findByRole('dialog', { name: 'Angebot anlegen' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Eventkontakt: Zugeordneter Kontakt')).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByLabelText('Vorlage'));
 });
 
 test('a draft opens focused with editable saved positions and previews only persisted values', async () => {
@@ -312,6 +311,9 @@ test('a draft opens focused with editable saved positions and previews only pers
   );
 
   await screen.findByLabelText('Betreff');
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByLabelText('Betreff')),
+  );
   expect(fieldValue('Betreff')).toBe('Fiktives Angebot');
   await waitFor(() =>
     expect(document.activeElement).toBe(screen.getByLabelText('Betreff')),
@@ -398,8 +400,7 @@ test('without a template an offer is created blank, empty stays calm, and the fi
   });
 
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  fireEvent.click(summary);
-  expect(summary.closest('details')?.open).toBe(false);
+  expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(
     screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
@@ -500,8 +501,19 @@ test('initial list failure disables creation until a successful retry', async ()
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
   ).toHaveProperty('disabled', true);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
-  await openOfferCreate();
+  fireEvent.click(
+    within(screen.getByRole('dialog', { name: 'Angebot anlegen' })).getByRole(
+      'button',
+      { name: 'Dateien erneut laden' },
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Entwurf anlegen' })
+        .closest('fieldset'),
+    ).toHaveProperty('disabled', false),
+  );
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
   ).toHaveProperty('disabled', false);

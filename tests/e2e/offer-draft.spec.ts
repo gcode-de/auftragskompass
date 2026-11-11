@@ -334,8 +334,10 @@ async function offerDraftScenario(browser: Browser) {
       offers.getByRole('button', { name: 'Entwurf anlegen' }),
     ).toHaveCount(0);
     await page.setViewportSize({ width: 320, height: 844 });
-    const createSummary = offers.getByText('Angebot anlegen', { exact: true });
-    await createSummary.focus();
+    const createButton = offers.getByRole('button', {
+      name: 'Angebot anlegen',
+    });
+    await createButton.focus();
     await page.keyboard.press('Enter');
     await expect(
       offers.getByRole('button', { name: 'Entwurf anlegen' }),
@@ -343,9 +345,9 @@ async function offerDraftScenario(browser: Browser) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(321);
-    await createSummary.evaluate((node) =>
-      node.scrollIntoView({ block: 'center' }),
-    );
+    await expect(
+      offers.getByRole('dialog', { name: 'Angebot anlegen' }),
+    ).toBeVisible();
     await page.screenshot({
       path: test.info().outputPath('offer-create-mobile.png'),
     });

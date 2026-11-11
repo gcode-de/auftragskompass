@@ -525,11 +525,10 @@ const props = {
 
 async function openOfferCreate() {
   const summary = await screen.findByText('Angebot anlegen', {
-    selector: 'summary',
+    selector: 'button',
   });
-  const disclosure = summary.closest('details');
-  if (!disclosure?.open) fireEvent.click(summary);
-  await screen.findByLabelText('Vorlage');
+  fireEvent.click(summary);
+  await screen.findByRole('dialog', { name: 'Angebot anlegen' });
   return summary;
 }
 
@@ -605,6 +604,9 @@ test('no template permits blank creation, while a missing contact disables it', 
   expect(screen.getByText(/zuerst einen Hauptkontakt/)).toBeTruthy();
   await openOfferCreate();
   expect(
+    screen.getByRole('button', { name: 'Schließen' }).hasAttribute('disabled'),
+  ).toBe(false);
+  expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
       .disabled,
   ).toBe(true);
@@ -636,6 +638,13 @@ test('a failed load is reported', async () => {
     screen.getByRole('button', { name: 'Dateien erneut laden' }),
   ).toBeTruthy();
   await openOfferCreate();
+  const dialog = screen.getByRole('dialog', { name: 'Angebot anlegen' });
+  expect(within(dialog).getByRole('alert').textContent).toMatch(
+    /Angebote und Vorlagen konnten nicht geladen werden/,
+  );
+  expect(
+    within(dialog).getByRole('button', { name: 'Dateien erneut laden' }),
+  ).toBeTruthy();
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
       .disabled,
@@ -651,6 +660,11 @@ test('a rejected draft and a failed pdf are explained to the operator', async ()
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(
     await screen.findByText(/Entwurf konnte nicht angelegt werden/),
+  ).toBeTruthy();
+  expect(
+    within(screen.getByRole('dialog', { name: 'Angebot anlegen' })).getByRole(
+      'alert',
+    ),
   ).toBeTruthy();
   view.unmount();
   cleanup();
@@ -668,6 +682,101 @@ test('a rejected draft and a failed pdf are explained to the operator', async ()
     await screen.findByText(/PDF konnte nicht erzeugt werden/),
   ).toBeTruthy();
 });
+test('the native dialog API opens the offer chooser and Escape returns focus', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLDialogElement.prototype,
+    'showModal',
+  );
+  const showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: showModal,
+  });
+  try {
+    setup({ documents: [] });
+    render(<EventDocuments {...props} />);
+    const trigger = await screen.findByRole('button', {
+      name: 'Angebot anlegen',
+    });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Angebot anlegen',
+    });
+    expect(showModal).toHaveBeenCalledOnce();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(dialog.isConnected).toBe(false);
+  } finally {
+    if (descriptor)
+      Object.defineProperty(
+        HTMLDialogElement.prototype,
+        'showModal',
+        descriptor,
+      );
+    else
+      delete (HTMLDialogElement.prototype as { showModal?: unknown }).showModal;
+  }
+});
+
+test('the dialog cancel event is prevented and closes the chooser', async () => {
+  setup({ documents: [] });
+  render(<EventDocuments {...props} />);
+  const trigger = await openOfferCreate();
+  const dialog = screen.getByRole('dialog', { name: 'Angebot anlegen' });
+  const cancel = new Event('cancel', { cancelable: true });
+
+  fireEvent(dialog, cancel);
+
+  expect(cancel.defaultPrevented).toBe(true);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test('the close button closes the dialog and returns focus to its trigger', async () => {
+  setup({ documents: [] });
+  render(<EventDocuments {...props} />);
+  const trigger = await openOfferCreate();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test('Escape and cancel cannot close the offer dialog while its POST is pending', async () => {
+  const { control } = reloadHarness();
+  let resolveCreate!: (reply: Response) => void;
+  control.createReply = () =>
+    new Promise<Response>((resolve) => {
+      resolveCreate = resolve;
+    });
+  render(<EventDocuments {...props} />);
+  const trigger = await openOfferCreate();
+  const dialog = screen.getByRole('dialog', { name: 'Angebot anlegen' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Schließen' })).toHaveProperty(
+      'disabled',
+      true,
+    ),
+  );
+  fireEvent.keyDown(window, { key: 'Escape' });
+  const cancel = new Event('cancel', { cancelable: true });
+  fireEvent(dialog, cancel);
+  expect(cancel.defaultPrevented).toBe(true);
+  expect(screen.getByRole('dialog', { name: 'Angebot anlegen' })).toBeTruthy();
+
+  resolveCreate(Response.json(created, { status: 201 }));
+  await screen.findByText('Entwurf angelegt.');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
 test('a withdrawn document is listed without actions', async () => {
   setup({ documents: [{ ...draft, state: 'withdrawn' }] });
   render(<EventDocuments {...props} />);
@@ -2949,8 +3058,10 @@ function reloadHarness(
     posts: { url: string; body: Record<string, unknown> }[] = [],
     finals: { body: Record<string, unknown> }[] = [],
     control = {
-      listReply: () => Response.json(options.stored ?? []),
-      createReply: () => Response.json(created, { status: 201 }),
+      listReply: (): Response | Promise<Response> =>
+        Response.json(options.stored ?? []),
+      createReply: (): Response | Promise<Response> =>
+        Response.json(created, { status: 201 }),
     };
   vi.stubGlobal(
     'fetch',
@@ -3011,6 +3122,24 @@ test('a draft created from a template stays visible when the list reload fails',
   expect(edit.disabled).toBe(false);
   expect(posts.map((post) => post.url)).toEqual(['/api/v1/documents']);
   expect(lists).toHaveLength(2);
+});
+
+test('a template create returns focus after its delayed list reload completes', async () => {
+  const { lists, control } = reloadHarness();
+  let resolveList!: (reply: Response) => void;
+  const delayedList = new Promise<Response>((resolve) => {
+    resolveList = resolve;
+  });
+  render(<EventDocuments {...props} />);
+  const trigger = await openOfferCreate();
+  control.listReply = () => delayedList;
+
+  fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+  await waitFor(() => expect(lists).toHaveLength(2));
+  expect(document.activeElement).not.toBe(trigger);
+
+  resolveList(Response.json([created]));
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
 
 test('a draft created without a template also stays visible when the reload fails', async () => {
@@ -3170,6 +3299,12 @@ test('the success message and the reload warning stay truthful', async () => {
   edit.focus();
   expect(document.activeElement).toBe(edit);
   // While the list is stale, a second create is impossible.
+  fireEvent.click(
+    within(screen.getByRole('region', { name: 'Angebote' })).getByRole(
+      'button',
+      { name: 'Angebot anlegen' },
+    ),
+  );
   expect(
     screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
       .disabled,
@@ -3212,13 +3347,9 @@ test('documents are grouped and labelled by their actual kind', async () => {
   // Every row stays in exactly one card; the offer form belongs to the offers.
   expect(within(invoices).queryAllByText('Entwurf')).toEqual([]);
   expect(
-    within(offers).getByText('Angebot anlegen', { selector: 'summary' }),
+    within(offers).getByRole('button', { name: 'Angebot anlegen' }),
   ).toBeTruthy();
-  expect(
-    within(offers)
-      .getByText('Angebot anlegen', { selector: 'summary' })
-      .closest('details')?.open,
-  ).toBe(false);
+  expect(screen.queryByRole('dialog')).toBeNull();
   expect(
     within(offers).queryByRole('heading', { name: 'Rechnungen' }),
   ).toBeNull();

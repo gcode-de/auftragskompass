@@ -234,11 +234,15 @@ test('documents live in the files area instead of the details overview', async (
   expect(
     offers.compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  const summary = within(offers).getByText('Angebot anlegen', {
-    selector: 'summary',
+  fireEvent.click(
+    within(offers).getByRole('button', { name: 'Angebot anlegen' }),
+  );
+  const dialog = await within(offers).findByRole('dialog', {
+    name: 'Angebot anlegen',
   });
-  expect(summary.closest('details')?.open).toBe(false);
-  fireEvent.click(summary);
+  expect(
+    within(dialog).getByText('Eventkontakt: Fictional contact'),
+  ).toBeTruthy();
   expect(
     await within(offers).findByRole('button', { name: 'Entwurf anlegen' }),
   ).toBeTruthy();
@@ -339,10 +343,9 @@ test('a confirmed document success stays visible when the list reload fails', as
   fireEvent.click(tab('Dateien'));
   const files = area('Dateien');
   const offers = await within(files).findByRole('region', { name: 'Angebote' });
-  const summary = within(offers).getByText('Angebot anlegen', {
-    selector: 'summary',
-  });
-  fireEvent.click(summary);
+  fireEvent.click(
+    within(offers).getByRole('button', { name: 'Angebot anlegen' }),
+  );
   const create = await within(offers).findByRole('button', {
     name: 'Entwurf anlegen',
   });

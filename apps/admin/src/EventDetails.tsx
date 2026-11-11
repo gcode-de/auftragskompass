@@ -1351,6 +1351,11 @@ export function EventDetails({
               key={'documents:' + data.event.id}
               eventId={data.event.id}
               contactId={data.event.primaryContactId}
+              contactName={
+                data.contacts.find(
+                  (contact) => contact.id === data.event.primaryContactId,
+                )?.name ?? null
+              }
               timeZone={data.event.timeZone}
               csrfToken={csrfToken}
             />
