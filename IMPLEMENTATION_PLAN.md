@@ -30,6 +30,8 @@
 
 ### Betreiberauftrag 03.11.2026: Dokumenterstellung an Bookitup angleichen
 
+- [x] **CI-LOCAL-80 — `test: check coverage locally before push`**: Globale und geänderte Coverage auf 80 % setzen; vor dem Push Build und Qualitätsprüfung samt geänderter Coverage gegen die Zielbasis lokal ermöglichen, ohne den Git-Index zu verändern. Fehlende Coverage und unberücksichtigte neue Quelldateien müssen Fehler bleiben.
+
 - [x] **DOC-PLAN-01 — `docs: map document creation paths`**: Die vorhandenen dokumentbezogenen Erstellungswege und Schutzregeln als Grundlage für den Bookitup-ähnlichen Dokumentdialog und die Folge-Slices dokumentieren; keine zusätzlichen Dokumentaktionen vortäuschen.
 
 - [x] **DOC-UX-03 — `feat: select event offer in a dialog`**: Den bestehenden Angebotsweg in einen zugänglichen, kompakten Auswahldialog mit Eventkontakt und Vorlage/Blanko überführen. Weitere Dokumentarten erst anbieten, wenn ihre tatsächlichen Erstellungswege vollständig bedienbar sind. Tastatur, Mobilbreite, Fehler, unklare Antworten und Fokus-Rückkehr erhalten.
