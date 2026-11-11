@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-UX-03: Angebotsauswahl
+
+Die Angebotsanlage in der Eventakte öffnet einen kompakten Dialog mit Hauptkontakt, aktiven Vorlagen und Blankoangebot. Unklare Antworten und Ladefehler bleiben sichtbar und erfordern eine erneute Listenabfrage; die vorhandenen fachlichen Schutzregeln und POST-Pfade bleiben bestehen. Andere Dokumentarten folgen erst in eigenen Slices. CI und Auslieferung jeweils am tatsächlichen Commit prüfen.
+
 **Eventübersicht, 05.11.2026:** BKP013.2 ordnet vorhandene Eventdaten auf
 breiten Ansichten in drei Spalten und zeigt Kontakt und Ort als getrennte
 Karten rechts; kleinere Ansichten bleiben gestapelt beziehungsweise zweispaltig.

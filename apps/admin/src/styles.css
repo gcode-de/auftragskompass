@@ -1582,6 +1582,17 @@ time {
   gap: 0.5rem;
   margin-top: 0.9rem;
 }
+.offer-create-dialog {
+  width: min(32rem, calc(100% - 1rem));
+  margin: auto;
+}
+.offer-create-dialog::backdrop {
+  background: var(--scrim);
+}
+.offer-create-dialog h4 {
+  margin: 0;
+  font-size: 1.25rem;
+}
 @media (max-width: 30rem) {
   .event-create-backdrop,
   .form-dialog-backdrop {

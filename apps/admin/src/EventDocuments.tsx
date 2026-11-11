@@ -254,17 +254,20 @@ async function validDocuments(reply: Response): Promise<DocumentRow[]> {
 export function EventDocuments({
   eventId,
   contactId,
+  contactName,
   timeZone,
   csrfToken,
 }: {
   eventId: string;
   contactId: string | null;
+  contactName?: string | null;
   timeZone: string;
   csrfToken: string;
 }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
     [templateId, setTemplateId] = useState(''),
+    [createDialogOpen, setCreateDialogOpen] = useState(false),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(''),
     [editorId, setEditorId] = useState(''),
@@ -315,13 +318,41 @@ export function EventDocuments({
       'idle' | 'loading' | 'ready' | 'failed'
     >('idle'),
     mutating = useRef(false),
-    createSummary = useRef<HTMLElement>(null),
+    createSummary = useRef<HTMLButtonElement>(null),
+    createDialog = useRef<HTMLDialogElement>(null),
+    createDialogWasOpen = useRef(false),
     editorTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (editorId || !editorTrigger.current) return;
     editorTrigger.current.focus();
     editorTrigger.current = null;
   }, [editorId]);
+  useEffect(() => {
+    if (!createDialogOpen) return;
+    const dialog = createDialog.current;
+    if (!dialog) return;
+    if (typeof dialog.showModal !== 'function') {
+      // jsdom has no showModal; browsers use the native modal focus behavior.
+      dialog.setAttribute('open', '');
+    } else if (!dialog.open) {
+      dialog.showModal();
+    }
+    createDialogWasOpen.current = true;
+    createDialog.current?.querySelector<HTMLElement>('select')?.focus();
+  }, [createDialogOpen]);
+  useEffect(() => {
+    if (createDialogOpen || !createDialogWasOpen.current || busy !== '') return;
+    if (!editorId) createSummary.current?.focus();
+    createDialogWasOpen.current = false;
+  }, [createDialogOpen, busy, editorId]);
+  useEffect(() => {
+    if (!createDialogOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && busy === '') setCreateDialogOpen(false);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [createDialogOpen, busy]);
   async function load() {
     const [documentReply, templateReply] = await Promise.all([
       fetch(
@@ -408,6 +439,7 @@ export function EventDocuments({
       setMessage(
         isBlank ? 'Leerer Angebotsentwurf angelegt.' : 'Entwurf angelegt.',
       );
+      setCreateDialogOpen(false);
       if (isBlank) setEditorId(created.id);
       try {
         await load();
@@ -2262,7 +2294,7 @@ export function EventDocuments({
     unknownRows = documents.filter((entry) => !knownKinds.has(entry.kind));
   return (
     <div className="event-documents">
-      <p role="status">{message}</p>
+      {!createDialogOpen && <p role="status">{message}</p>}
       {reloadWarning && (
         <div className="reload-warning">
           <p role="alert">
@@ -2279,7 +2311,7 @@ export function EventDocuments({
           </button>
         </div>
       )}
-      {createUncertain && (
+      {createUncertain && !createDialogOpen && (
         <div className="reload-warning">
           <p role="alert">
             Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und
@@ -2334,37 +2366,96 @@ export function EventDocuments({
                 Für ein Angebot zuerst einen Hauptkontakt zuordnen.
               </p>
             )}
-            <details>
-              <summary ref={createSummary}>Angebot anlegen</summary>
-              <form onSubmit={create}>
-                <fieldset
-                  disabled={
-                    busy !== '' ||
-                    !contactId ||
-                    createUncertain ||
-                    initialLoadFailed ||
-                    reloadWarning
-                  }
+            <button
+              ref={createSummary}
+              type="button"
+              className="secondary-action"
+              aria-haspopup="dialog"
+              disabled={busy !== ''}
+              onClick={() => {
+                setMessage('');
+                setCreateDialogOpen(true);
+              }}
+            >
+              Angebot anlegen
+            </button>
+            {createDialogOpen && (
+              <dialog
+                ref={createDialog}
+                className="form-dialog offer-create-dialog"
+                aria-labelledby="offer-create-heading"
+                aria-modal="true"
+                onCancel={(event) => {
+                  event.preventDefault();
+                  if (busy === '') setCreateDialogOpen(false);
+                }}
+              >
+                <h4 id="offer-create-heading">Angebot anlegen</h4>
+                <p>
+                  Eventkontakt:{' '}
+                  {contactId
+                    ? contactName?.trim() || 'Zugeordneter Kontakt'
+                    : 'Kein Hauptkontakt zugeordnet'}
+                </p>
+                {(createUncertain || initialLoadFailed || reloadWarning) && (
+                  <p role="alert">
+                    {createUncertain
+                      ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
+                      : initialLoadFailed
+                        ? 'Angebote und Vorlagen konnten nicht geladen werden. Bitte erneut laden, bevor Sie einen Entwurf anlegen.'
+                        : 'Die Dateiliste konnte nach dem letzten Speichern nicht aktualisiert werden. Bitte erneut laden, bevor Sie einen weiteren Entwurf anlegen.'}
+                  </p>
+                )}
+                {(createUncertain || initialLoadFailed || reloadWarning) && (
+                  <button
+                    type="button"
+                    className="tertiary-action"
+                    disabled={busy !== ''}
+                    onClick={retryLoad}
+                  >
+                    {createUncertain
+                      ? 'Angebote aktualisieren'
+                      : 'Dateien erneut laden'}
+                  </button>
+                )}
+                {message && <p role="alert">{message}</p>}
+                <form onSubmit={create}>
+                  <fieldset
+                    disabled={
+                      busy !== '' ||
+                      !contactId ||
+                      createUncertain ||
+                      initialLoadFailed ||
+                      reloadWarning
+                    }
+                  >
+                    <label>
+                      Vorlage
+                      <select
+                        value={templateId}
+                        onChange={(event) => setTemplateId(event.target.value)}
+                      >
+                        <option value="">Ohne Vorlage</option>
+                        {templates.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button className="primary-action">Entwurf anlegen</button>
+                  </fieldset>
+                </form>
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  disabled={busy !== ''}
+                  onClick={() => setCreateDialogOpen(false)}
                 >
-                  <legend>Neues Angebot</legend>
-                  <label>
-                    Vorlage
-                    <select
-                      value={templateId}
-                      onChange={(event) => setTemplateId(event.target.value)}
-                    >
-                      <option value="">Ohne Vorlage</option>
-                      {templates.map((entry) => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button className="primary-action">Entwurf anlegen</button>
-                </fieldset>
-              </form>
-            </details>
+                  Schließen
+                </button>
+              </dialog>
+            )}
           </section>
           {otherGroups.map((group) => (
             <section
