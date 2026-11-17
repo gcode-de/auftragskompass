@@ -2,6 +2,8 @@
 
 Stand **22.10.2026**, Analysebasis **cf68f1e** auf `codex/ux-event-simplification`, im geöffneten AuftragsKompass-Browser dieselbe Build-Kennung. Die Analyse liegt auf `codex/bookitup-parity-audit`. Ein alter Checkout auf `codex/local-runtime-ci` bei `414fa33` war nicht der ausgelieferte Stand und wurde ausdrücklich nicht als aktuelle UI bewertet. Vor einer Implementierung Remote, Quellstand und laufende Version neu prüfen.
 
+Der [priorisierte Backlog](backlog.md) sammelt bekannte und noch zu überprüfende Abweichungen; UI und Bedienung stehen zuerst.
+
 ## Verbindliches Ziel aus dem aktuellen Benutzerauftrag
 
 AuftragsKompass soll ein **möglichst vollständiger funktionaler und in der Bedienung naher Bookitup-Klon** werden. Behutsame Verbesserungen sind erwünscht, wenn sie die Bedienung einfacher machen. Eine eigene, deutlich abweichende Informationsarchitektur ist kein Erfolgskriterium. Die bisherigen technischen Sicherheitsregeln bleiben verbindlich. Alte MVP-Ausschlüsse begrenzen die neue Vergleichs- und Ausbauplanung nicht; daraus folgt aber weder ein sofortiger Gesamtumbau noch ein ungeprüfter Produktivwechsel.

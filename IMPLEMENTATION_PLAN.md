@@ -2537,3 +2537,5 @@ Dieser Stand ersetzt noch nicht bookitup vollständig, ist aber bereits als verl
 - Nach jedem Milestone: komplette Testsuite, E2E-Abnahme, aktualisierte Dokumentation und ein versionierter Tag.
 - Kein Milestone wird durch Überspringen eines fehlgeschlagenen Tests abgeschlossen.
 - Der konfigurierte Remote ist `https://github.com/gcode-de/auftragskompass.git`; Sichtbarkeit und Repository-Einstellungen werden nicht beiläufig geändert.
+
+- [x] **BACKLOG-01 — `docs: prioritize observed parity gaps`**: Belegte und noch zu verifizierende UI-, Funktions- und Betriebsbefunde mit Quellen und Evidenzgrenzen sammeln; UI-Angleichung vor späteren Fehlerbehebungen priorisieren.
