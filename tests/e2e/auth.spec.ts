@@ -1940,18 +1940,46 @@ async function signInScenario(
         name: 'Auftragsbestätigung ' + confirmedNumber + ' Anzahlung erstellen',
       })
       .click();
-    // The step asks once and writes nothing before the confirmation.
+    const depositDialog = page.getByRole('dialog', {
+      name: 'Anzahlungsrechnung anlegen',
+    });
+    await expect(depositDialog.getByRole('combobox').nth(1)).toHaveValue(
+      confirmation.id,
+    );
     await expect(
-      orders.getByRole('button', {
-        name: 'Auftragsbestätigung ' + confirmedNumber + ' Anzahlung anlegen',
-      }),
+      depositDialog.getByText(
+        /Kürzen Sie sie dort auf den vereinbarten Anzahlungsbetrag/,
+      ),
     ).toBeVisible();
+    // The source is selected in the shared dialog; nothing writes before submit.
+    await expect(
+      depositDialog.getByRole('button', { name: 'Anzahlungsrechnung anlegen' }),
+    ).toBeVisible();
+    const depositViewport = page.viewportSize() ?? {
+      width: 1280,
+      height: 720,
+    };
+    await page.setViewportSize({ width: 390, height: 844 });
+    const depositSource = depositDialog.getByRole('combobox').nth(1),
+      createDeposit = depositDialog.getByRole('button', {
+        name: 'Anzahlungsrechnung anlegen',
+      });
+    await expect(depositSource).toBeVisible();
+    await expect(createDeposit).toBeVisible();
+    await expect(createDeposit).toBeEnabled();
+    for (const control of [depositSource, createDeposit]) {
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(391);
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(845);
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.setViewportSize(depositViewport);
+    expect(page.viewportSize()).toEqual(depositViewport);
     expect(await depositCount()).toBe(0);
-    await orders
-      .getByRole('button', {
-        name: 'Auftragsbestätigung ' + confirmedNumber + ' Anzahlung anlegen',
-      })
-      .click();
+    await createDeposit.click();
     await expect(
       page.getByText('Anzahlungsrechnung als Entwurf angelegt.'),
     ).toBeVisible();
@@ -2569,13 +2597,14 @@ async function signInScenario(
             ' Anzahlung erstellen',
         })
         .click();
-      await orders
-        .getByRole('button', {
-          name:
-            'Auftragsbestätigung ' +
-            settlementConfirmation.number +
-            ' Anzahlung anlegen',
-        })
+      const depositDialog = page.getByRole('dialog', {
+        name: 'Anzahlungsrechnung anlegen',
+      });
+      await expect(depositDialog.getByRole('combobox').nth(1)).toHaveValue(
+        settlementConfirmation.id,
+      );
+      await depositDialog
+        .getByRole('button', { name: 'Anzahlungsrechnung anlegen' })
         .click();
       await expect(
         page.getByText('Anzahlungsrechnung als Entwurf angelegt.'),
