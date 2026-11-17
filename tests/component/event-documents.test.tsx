@@ -578,6 +578,54 @@ test('the document dialog offers confirmations only from eligible accepted offer
   ).toBe(false);
 });
 
+test('confirmation and deposit pickers without eligible sources show empty states and send no post', async () => {
+  const { calls } = setup({ documents: [] });
+  render(<EventDocuments {...props} />);
+  await openOfferCreate();
+  const dialog = screen.getByRole('dialog', { name: 'Angebot anlegen' }),
+    kind = within(dialog).getByLabelText('Dokumentenart') as HTMLSelectElement;
+
+  fireEvent.change(kind, { target: { value: 'order_confirmation' } });
+  const confirmationSource = within(dialog).getByLabelText(
+    'Angenommenes Angebot',
+  ) as HTMLSelectElement;
+  expect(
+    Array.from(confirmationSource.options).map((option) => option.text),
+  ).toEqual(['Kein geeignetes Angebot vorhanden']);
+  expect(
+    (
+      within(dialog).getByRole('button', {
+        name: 'Auftragsbestätigung anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.submit(confirmationSource.closest('form')!);
+
+  fireEvent.change(kind, { target: { value: 'deposit_invoice' } });
+  const depositSource = within(dialog).getByLabelText(
+    'Auftragsbestätigung',
+  ) as HTMLSelectElement;
+  expect(
+    Array.from(depositSource.options).map((option) => option.text),
+  ).toEqual(['Keine geeignete Auftragsbestätigung vorhanden']);
+  expect(
+    (
+      within(dialog).getByRole('button', {
+        name: 'Anzahlungsrechnung anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.submit(depositSource.closest('form')!);
+
+  expect(
+    calls.filter(
+      (call) =>
+        call.url.endsWith('/order-confirmation') ||
+        call.url.endsWith('/deposit-invoice'),
+    ),
+  ).toHaveLength(0);
+});
+
 test('the document dialog creates one confirmation with the selected source version', async () => {
   const { calls } = setup({ documents: [acceptedOffer, otherAcceptedOffer] });
   render(<EventDocuments {...props} />);
@@ -2115,7 +2163,58 @@ test('only a finalized confirmation offers the deposit action', async () => {
   }
 });
 
-test('a double click on the deposit confirms exactly one draft', async () => {
+test('the deposit picker includes only final confirmations from this event whose offer is not withdrawn', async () => {
+  const secondConfirmation = {
+      ...finalizedConfirmation,
+      id: 'doc-ab-2',
+      number: 'AB-2030-0002',
+      sourceDocumentId: otherAcceptedOffer.id,
+      version: 7,
+    },
+    withdrawnConfirmation = {
+      ...finalizedConfirmation,
+      id: 'doc-ab-withdrawn',
+      number: 'AB-2030-0003',
+      sourceDocumentId: 'doc-withdrawn',
+    },
+    otherEventConfirmation = {
+      ...finalizedConfirmation,
+      id: 'doc-ab-other-event',
+      eventId: 'event-2',
+      number: 'AB-2030-0004',
+    };
+  setup({
+    documents: [
+      acceptedOffer,
+      otherAcceptedOffer,
+      { ...acceptedOffer, id: 'doc-withdrawn', offerStatus: 'withdrawn' },
+      finalizedConfirmation,
+      secondConfirmation,
+      withdrawnConfirmation,
+      otherEventConfirmation,
+      confirmationDraft,
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  await openOfferCreate();
+  fireEvent.change(await screen.findByLabelText('Dokumentenart'), {
+    target: { value: 'deposit_invoice' },
+  });
+  const source = (await screen.findByLabelText(
+    'Auftragsbestätigung',
+  )) as HTMLSelectElement;
+  expect(Array.from(source.options).map((option) => option.text)).toEqual([
+    'Auftragsbestätigung AB-2030-0001',
+    'Auftragsbestätigung AB-2030-0002',
+  ]);
+  expect(
+    screen.queryByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0003 Anzahlung erstellen',
+    }),
+  ).toBeNull();
+});
+
+test('the deposit row action opens the source dialog and posts one selected version', async () => {
   const { calls } = setup({ documents: [finalizedConfirmation] });
   render(<EventDocuments {...props} />);
   const orders = await screen.findByRole('region', {
@@ -2127,17 +2226,28 @@ test('a double click on the deposit confirms exactly one draft', async () => {
       name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
     }),
   );
-  const confirm = within(row).getByRole('button', {
-    name: 'Auftragsbestätigung AB-2030-0001 Anzahlung anlegen',
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Anzahlungsrechnung anlegen',
   });
-  expect(confirm).toBeTruthy();
+  expect(
+    (within(dialog).getByLabelText('Auftragsbestätigung') as HTMLSelectElement)
+      .value,
+  ).toBe(finalizedConfirmation.id);
+  expect(
+    within(dialog).getByText(
+      /Positionen .* auf den vereinbarten Anzahlungsbetrag/,
+    ),
+  ).toBeTruthy();
   expect(calls.some((call) => call.url.endsWith('/deposit-invoice'))).toBe(
     false,
   );
   // Several advances per order are legitimate, so the server has no duplicate
   // rule: the saving guard is what keeps a double click from writing two.
-  fireEvent.click(confirm);
-  fireEvent.click(confirm);
+  const submit = within(dialog).getByRole('button', {
+    name: 'Anzahlungsrechnung anlegen',
+  });
+  fireEvent.click(submit);
+  fireEvent.click(submit);
   expect(
     await screen.findByText('Anzahlungsrechnung als Entwurf angelegt.'),
   ).toBeTruthy();
@@ -2152,6 +2262,12 @@ test('a double click on the deposit confirms exactly one draft', async () => {
     body: { version: 2 },
     headers: { 'x-csrf-token': 'fictional-csrf' },
   });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(document.activeElement).toBe(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  );
   // The new draft lands in its own card and names the confirmation it came from.
   const deposits = await screen.findByRole('region', {
     name: 'Anzahlungsrechnungen',
@@ -2163,7 +2279,7 @@ test('a double click on the deposit confirms exactly one draft', async () => {
   expect(within(deposits).getByText(/Aus Auftragsbestätigung/)).toBeTruthy();
 });
 
-test('cancelling the deposit sends nothing', async () => {
+test('Escape closes the deposit source dialog and returns focus without a request', async () => {
   const { calls } = setup({ documents: [finalizedConfirmation] });
   render(<EventDocuments {...props} />);
   const orders = await screen.findByRole('region', {
@@ -2175,14 +2291,17 @@ test('cancelling the deposit sends nothing', async () => {
       name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
     }),
   );
-  fireEvent.click(
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Anzahlungsrechnung anlegen',
+  });
+  fireEvent.keyDown(window, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(document.activeElement).toBe(
     within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung abbrechen',
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
     }),
   );
-  expect(
-    within(row).queryByRole('button', { name: /Anzahlung anlegen/ }),
-  ).toBeNull();
+  expect(dialog).toBeTruthy();
   expect(
     within(row).getByRole('button', {
       name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
@@ -2191,6 +2310,154 @@ test('cancelling the deposit sends nothing', async () => {
   expect(calls.some((call) => call.url.endsWith('/deposit-invoice'))).toBe(
     false,
   );
+});
+
+test('an unclear deposit result blocks another post until an explicit list reload', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation],
+    deposit: () => new Response(null, { status: 503 }),
+  });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  const row = within(orders).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Anzahlungsrechnung anlegen',
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Anzahlungsrechnung anlegen' }),
+  );
+  expect(
+    await within(dialog).findByText(/Status der Anzahlungsrechnung ist unklar/),
+  ).toBeTruthy();
+  expect(
+    (
+      within(dialog)
+        .getByLabelText('Dokumentenart')
+        .closest('fieldset') as HTMLFieldSetElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    calls.filter((call) => call.url.endsWith('/deposit-invoice')),
+  ).toHaveLength(1);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dateien aktualisieren' }),
+  );
+  expect(
+    await within(dialog).findByText(/Liste aktualisiert.*Anzahlungen prüfen/),
+  ).toBeTruthy();
+  expect(
+    (
+      within(dialog)
+        .getByLabelText('Dokumentenart')
+        .closest('fieldset') as HTMLFieldSetElement
+    ).disabled,
+  ).toBe(false);
+  expect(
+    calls.filter((call) => call.url.endsWith('/deposit-invoice')),
+  ).toHaveLength(1);
+});
+
+test('a saved deposit with a lost response appears after reload without a second post', async () => {
+  const listedDocuments: unknown[] = [finalizedConfirmation],
+    savedDeposit = { ...depositDraft, id: 'doc-az-saved-before-network-loss' },
+    { calls } = setup({
+      documents: listedDocuments,
+      deposit: () => {
+        listedDocuments.push(savedDeposit);
+        return Promise.reject(new TypeError('connection lost'));
+      },
+    });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  fireEvent.click(
+    within(orders).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Anzahlungsrechnung anlegen',
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Anzahlungsrechnung anlegen' }),
+  );
+  expect(
+    await within(dialog).findByText(/Status der Anzahlungsrechnung ist unklar/),
+  ).toBeTruthy();
+  expect(
+    calls.filter((call) => call.url.endsWith('/deposit-invoice')),
+  ).toHaveLength(1);
+
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dateien aktualisieren' }),
+  );
+  expect(
+    await within(dialog).findByText(/Liste aktualisiert.*Anzahlungen prüfen/),
+  ).toBeTruthy();
+  const deposits = await screen.findByRole('region', {
+    name: 'Anzahlungsrechnungen',
+  });
+  expect(within(deposits).getByRole('listitem')).toBeTruthy();
+  expect(
+    calls.filter((call) => call.url.endsWith('/deposit-invoice')),
+  ).toHaveLength(1);
+});
+
+test('an incomplete success response is treated as uncertain while the saved draft is reloaded', async () => {
+  const listedDocuments: unknown[] = [finalizedConfirmation],
+    savedDeposit = { ...depositDraft, id: 'doc-az-incomplete-response' },
+    { calls } = setup({
+      documents: listedDocuments,
+      deposit: () => {
+        listedDocuments.push(savedDeposit);
+        return Response.json(
+          { ...savedDeposit, eventId: 'event-2' },
+          { status: 201 },
+        );
+      },
+    });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  fireEvent.click(
+    within(orders).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Anzahlungsrechnung anlegen',
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Anzahlungsrechnung anlegen' }),
+  );
+  expect(
+    await within(dialog).findByText(
+      /Anzahlungsrechnung angelegt, aber die Antwort war unklar/,
+    ),
+  ).toBeTruthy();
+  const deposits = await screen.findByRole('region', {
+    name: 'Anzahlungsrechnungen',
+  });
+  expect(within(deposits).getByRole('listitem')).toBeTruthy();
+  expect(
+    (
+      within(dialog)
+        .getByLabelText('Dokumentenart')
+        .closest('fieldset') as HTMLFieldSetElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    calls.filter((call) => call.url.endsWith('/deposit-invoice')),
+  ).toHaveLength(1);
 });
 
 test('a refused deposit is explained instead of retried', async () => {
@@ -2218,9 +2485,12 @@ test('a refused deposit is explained instead of retried', async () => {
         name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
       }),
     );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Anzahlungsrechnung anlegen',
+    });
     fireEvent.click(
-      within(row).getByRole('button', {
-        name: 'Auftragsbestätigung AB-2030-0001 Anzahlung anlegen',
+      within(dialog).getByRole('button', {
+        name: 'Anzahlungsrechnung anlegen',
       }),
     );
     expect(await screen.findByText(message)).toBeTruthy();

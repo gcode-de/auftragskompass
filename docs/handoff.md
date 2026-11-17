@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-CREATE-02.2: Anzahlung im Dokumentdialog
+
+Der Dokumentdialog erstellt Anzahlungsentwürfe aus finalisierten Auftragsbestätigungen des Events über den bestehenden versionsgebundenen Weg. Mehrere Anzahlungen sind zulässig. Der Entwurf muss auf den vereinbarten Betrag gekürzt werden. Bei unklarer Antwort ist vor erneuter Anlage ein Listenabgleich nötig; eine Dublette lässt sich dabei nicht automatisch ausschließen. CI und Auslieferung des tatsächlichen Commits gesondert prüfen.
+
 ## DOC-CREATE-02.1: Auftragsbestätigung im Dokumentdialog
 
 Der Event-Dokumentdialog bietet neben Angeboten auch Auftragsbestätigungen aus finalisierten, angenommenen Angeboten desselben Events an. Bestehende Bestätigungen werden bei der Quellenauswahl berücksichtigt; die Zeilenaktion öffnet denselben Dialog. Der vorhandene versionsgebundene POST und seine Schutzregeln bleiben maßgeblich. Bei unklarer Antwort sperrt die Oberfläche weitere Anlage bis zur erneuten Listenabfrage. CI und Auslieferung des tatsächlichen Commits gesondert prüfen.
