@@ -267,6 +267,10 @@ export function EventDocuments({
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
     [templateId, setTemplateId] = useState(''),
+    [createKind, setCreateKind] = useState<'offer' | 'order_confirmation'>(
+      'offer',
+    ),
+    [confirmationSourceId, setConfirmationSourceId] = useState(''),
     [createDialogOpen, setCreateDialogOpen] = useState(false),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(''),
@@ -278,8 +282,6 @@ export function EventDocuments({
     [reloadWarning, setReloadWarning] = useState(false),
     [createUncertain, setCreateUncertain] = useState(false),
     [confirmWithdrawId, setConfirmWithdrawId] = useState(''),
-    // BKP019.b: the accepted offer whose confirmation is being confirmed.
-    [confirmConfirmationId, setConfirmConfirmationId] = useState(''),
     // BKP019.c1: the finalized confirmation whose invoice is being confirmed.
     [confirmInvoiceId, setConfirmInvoiceId] = useState(''),
     // BKP019.c3.1: the finalized confirmation whose deposit is being confirmed.
@@ -320,6 +322,7 @@ export function EventDocuments({
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
     createDialog = useRef<HTMLDialogElement>(null),
+    createDialogTrigger = useRef<HTMLElement | null>(null),
     createDialogWasOpen = useRef(false),
     editorTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -342,7 +345,11 @@ export function EventDocuments({
   }, [createDialogOpen]);
   useEffect(() => {
     if (createDialogOpen || !createDialogWasOpen.current || busy !== '') return;
-    if (!editorId) createSummary.current?.focus();
+    if (!editorId) {
+      const trigger = createDialogTrigger.current;
+      (trigger?.isConnected ? trigger : createSummary.current)?.focus();
+    }
+    createDialogTrigger.current = null;
     createDialogWasOpen.current = false;
   }, [createDialogOpen, busy, editorId]);
   useEffect(() => {
@@ -353,6 +360,29 @@ export function EventDocuments({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [createDialogOpen, busy]);
+  const existingConfirmationSources = new Set(
+    documents
+      .filter(
+        (entry) =>
+          entry.kind === 'order_confirmation' && entry.sourceDocumentId,
+      )
+      .map((entry) => entry.sourceDocumentId!),
+  );
+  const confirmationSources = documents.filter(
+    (entry) =>
+      entry.kind === 'offer' &&
+      entry.eventId === eventId &&
+      entry.state === 'final' &&
+      entry.offerStatus === 'accepted' &&
+      !existingConfirmationSources.has(entry.id),
+  );
+  useEffect(() => {
+    if (
+      createKind === 'order_confirmation' &&
+      !confirmationSources.some((entry) => entry.id === confirmationSourceId)
+    )
+      setConfirmationSourceId(confirmationSources[0]?.id ?? '');
+  }, [createKind, confirmationSourceId, confirmationSources]);
   async function load() {
     const [documentReply, templateReply] = await Promise.all([
       fetch(
@@ -454,6 +484,14 @@ export function EventDocuments({
       mutating.current = false;
       setBusy('');
     }
+  }
+  async function createSelected(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (createKind === 'offer') return create(event);
+    const source = confirmationSources.find(
+      (entry) => entry.id === confirmationSourceId,
+    );
+    if (source) await createConfirmation(source.id, source.version);
   }
   async function finalize(id: string, version: number) {
     if (mutating.current || editorBusy || editorDirty) return;
@@ -574,7 +612,6 @@ export function EventDocuments({
     mutating.current = true;
     setBusy(id);
     setMessage('');
-    setConfirmConfirmationId('');
     try {
       const reply = await fetch(
         '/api/v1/documents/' + id + '/order-confirmation',
@@ -587,6 +624,7 @@ export function EventDocuments({
           body: JSON.stringify({ version }),
         },
       );
+      if (reply.status >= 500) throw new Error('uncertain-confirmation');
       if (!reply.ok) {
         const result = (await reply.json()) as { error: string };
         setMessage(
@@ -620,10 +658,12 @@ export function EventDocuments({
           ...current.filter((row) => row.id !== created.id),
         ]);
         setMessage('Auftragsbestätigung als Entwurf angelegt.');
+        setCreateDialogOpen(false);
       } else
         setMessage(
           'Auftragsbestätigung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
         );
+      if (!confirmed) setCreateUncertain(true);
       try {
         await load();
         setReloadWarning(false);
@@ -631,7 +671,8 @@ export function EventDocuments({
         setReloadWarning(true);
       }
     } catch {
-      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+      setMessage('');
+      setCreateUncertain(true);
     } finally {
       mutating.current = false;
       setBusy('');
@@ -1165,7 +1206,9 @@ export function EventDocuments({
         if (createUncertain) {
           setCreateUncertain(false);
           setMessage(
-            'Liste aktualisiert. Bitte prüfen Sie vorhandene Angebote, bevor Sie erneut anlegen.',
+            createKind === 'offer'
+              ? 'Liste aktualisiert. Bitte prüfen Sie vorhandene Angebote, bevor Sie erneut anlegen.'
+              : 'Liste aktualisiert. Bitte prüfen Sie vorhandene Auftragsbestätigungen, bevor Sie erneut anlegen.',
           );
         }
       })
@@ -1731,58 +1774,32 @@ export function EventDocuments({
                 )}
               {/* BKP019.b: only an accepted offer can be confirmed, and only as
                   an explicit step - the confirmation starts as a draft. */}
-              {entry.state === 'final' &&
-                entry.kind === 'offer' &&
-                entry.offerStatus === 'accepted' &&
-                (confirmConfirmationId === entry.id ? (
-                  <>
-                    <button
-                      type="button"
-                      className="secondary-action"
-                      disabled={busy !== ''}
-                      aria-label={
-                        kindName(entry) +
-                        ' ' +
-                        (entry.number ?? '') +
-                        ' Auftragsbestätigung anlegen'
-                      }
-                      onClick={() =>
-                        void createConfirmation(entry.id, entry.version)
-                      }
-                    >
-                      Ja, Auftragsbestätigung anlegen
-                    </button>
-                    <button
-                      type="button"
-                      className="tertiary-action"
-                      disabled={busy !== ''}
-                      aria-label={
-                        kindName(entry) +
-                        ' ' +
-                        (entry.number ?? '') +
-                        ' Auftragsbestätigung abbrechen'
-                      }
-                      onClick={() => setConfirmConfirmationId('')}
-                    >
-                      Abbrechen
-                    </button>
-                  </>
-                ) : (
+              {entry.kind === 'offer' &&
+                confirmationSources.some(
+                  (source) => source.id === entry.id,
+                ) && (
                   <button
                     type="button"
                     className="secondary-action"
                     disabled={busy !== ''}
+                    aria-haspopup="dialog"
                     aria-label={
                       kindName(entry) +
                       ' ' +
                       (entry.number ?? '') +
                       ' Auftragsbestätigung erstellen'
                     }
-                    onClick={() => setConfirmConfirmationId(entry.id)}
+                    onClick={(event) => {
+                      setMessage('');
+                      setCreateKind('order_confirmation');
+                      setConfirmationSourceId(entry.id);
+                      createDialogTrigger.current = event.currentTarget;
+                      setCreateDialogOpen(true);
+                    }}
                   >
                     Auftragsbestätigung erstellen
                   </button>
-                ))}
+                )}
               {/* BKP019.c1: only a finalized confirmation can be invoiced, and
                   only as an explicit step - the invoice starts as a draft with
                   its own number range.
@@ -2314,8 +2331,9 @@ export function EventDocuments({
       {createUncertain && !createDialogOpen && (
         <div className="reload-warning">
           <p role="alert">
-            Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und
-            vorhandene Einträge prüfen, bevor Sie erneut anlegen.
+            {createKind === 'offer'
+              ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
+              : 'Der Status der Auftragsbestätigung ist unklar. Bitte Dateien aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'}
           </p>
           <button
             type="button"
@@ -2374,6 +2392,9 @@ export function EventDocuments({
               disabled={busy !== ''}
               onClick={() => {
                 setMessage('');
+                setCreateKind('offer');
+                setConfirmationSourceId('');
+                createDialogTrigger.current = createSummary.current;
                 setCreateDialogOpen(true);
               }}
             >
@@ -2390,22 +2411,31 @@ export function EventDocuments({
                   if (busy === '') setCreateDialogOpen(false);
                 }}
               >
-                <h4 id="offer-create-heading">Angebot anlegen</h4>
-                <p>
-                  Eventkontakt:{' '}
-                  {contactId
-                    ? contactName?.trim() || 'Zugeordneter Kontakt'
-                    : 'Kein Hauptkontakt zugeordnet'}
-                </p>
-                {(createUncertain || initialLoadFailed || reloadWarning) && (
-                  <p role="alert">
-                    {createUncertain
-                      ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
-                      : initialLoadFailed
-                        ? 'Angebote und Vorlagen konnten nicht geladen werden. Bitte erneut laden, bevor Sie einen Entwurf anlegen.'
-                        : 'Die Dateiliste konnte nach dem letzten Speichern nicht aktualisiert werden. Bitte erneut laden, bevor Sie einen weiteren Entwurf anlegen.'}
+                <h4 id="offer-create-heading">
+                  {createKind === 'offer'
+                    ? 'Angebot anlegen'
+                    : 'Auftragsbestätigung anlegen'}
+                </h4>
+                {createKind === 'offer' && (
+                  <p>
+                    Eventkontakt:{' '}
+                    {contactId
+                      ? contactName?.trim() || 'Zugeordneter Kontakt'
+                      : 'Kein Hauptkontakt zugeordnet'}
                   </p>
                 )}
+                {(createUncertain || initialLoadFailed || reloadWarning) &&
+                  !message && (
+                    <p role="alert">
+                      {createUncertain
+                        ? createKind === 'offer'
+                          ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
+                          : 'Der Status der Auftragsbestätigung ist unklar. Bitte Dateien aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
+                        : initialLoadFailed
+                          ? 'Angebote und Vorlagen konnten nicht geladen werden. Bitte erneut laden, bevor Sie einen Entwurf anlegen.'
+                          : 'Die Dateiliste konnte nach dem letzten Speichern nicht aktualisiert werden. Bitte erneut laden, bevor Sie einen weiteren Entwurf anlegen.'}
+                    </p>
+                  )}
                 {(createUncertain || initialLoadFailed || reloadWarning) && (
                   <button
                     type="button"
@@ -2414,36 +2444,104 @@ export function EventDocuments({
                     onClick={retryLoad}
                   >
                     {createUncertain
-                      ? 'Angebote aktualisieren'
+                      ? createKind === 'offer'
+                        ? 'Angebote aktualisieren'
+                        : 'Dateien aktualisieren'
                       : 'Dateien erneut laden'}
                   </button>
                 )}
                 {message && <p role="alert">{message}</p>}
-                <form onSubmit={create}>
+                <form onSubmit={(event) => void createSelected(event)}>
                   <fieldset
                     disabled={
                       busy !== '' ||
-                      !contactId ||
                       createUncertain ||
                       initialLoadFailed ||
                       reloadWarning
                     }
                   >
                     <label>
-                      Vorlage
+                      Dokumentenart
                       <select
-                        value={templateId}
-                        onChange={(event) => setTemplateId(event.target.value)}
+                        value={createKind}
+                        onChange={(event) => {
+                          const kind = event.target.value as
+                            'offer' | 'order_confirmation';
+                          setCreateKind(kind);
+                          if (kind === 'order_confirmation')
+                            setConfirmationSourceId(
+                              confirmationSources[0]?.id ?? '',
+                            );
+                        }}
                       >
-                        <option value="">Ohne Vorlage</option>
-                        {templates.map((entry) => (
-                          <option key={entry.id} value={entry.id}>
-                            {entry.name}
-                          </option>
-                        ))}
+                        <option value="offer">Angebot</option>
+                        <option value="order_confirmation">
+                          Auftragsbestätigung
+                        </option>
                       </select>
                     </label>
-                    <button className="primary-action">Entwurf anlegen</button>
+                    {createKind === 'offer' ? (
+                      <>
+                        <label>
+                          Vorlage
+                          <select
+                            disabled={!contactId}
+                            value={templateId}
+                            onChange={(event) =>
+                              setTemplateId(event.target.value)
+                            }
+                          >
+                            <option value="">Ohne Vorlage</option>
+                            {templates.map((entry) => (
+                              <option key={entry.id} value={entry.id}>
+                                {entry.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="primary-action"
+                          disabled={!contactId}
+                        >
+                          Entwurf anlegen
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <label>
+                          Angenommenes Angebot
+                          <select
+                            value={confirmationSourceId}
+                            required
+                            onChange={(event) =>
+                              setConfirmationSourceId(event.target.value)
+                            }
+                          >
+                            {confirmationSources.length ? (
+                              confirmationSources.map((entry) => (
+                                <option key={entry.id} value={entry.id}>
+                                  {'Angebot ' + (entry.number ?? 'Entwurf')}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="">
+                                Kein geeignetes Angebot vorhanden
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                        <button
+                          className="primary-action"
+                          disabled={
+                            !confirmationSources.some(
+                              (entry) => entry.id === confirmationSourceId,
+                            )
+                          }
+                        >
+                          Auftragsbestätigung anlegen
+                        </button>
+                      </>
+                    )}
                   </fieldset>
                 </form>
                 <button

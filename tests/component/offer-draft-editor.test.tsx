@@ -298,7 +298,7 @@ test('offer creation opens in a labelled dialog', async () => {
     await screen.findByRole('dialog', { name: 'Angebot anlegen' }),
   ).toBeTruthy();
   expect(screen.getByText('Eventkontakt: Zugeordneter Kontakt')).toBeTruthy();
-  expect(document.activeElement).toBe(screen.getByLabelText('Vorlage'));
+  expect(document.activeElement).toBe(screen.getByLabelText('Dokumentenart'));
 });
 
 test('a draft opens focused with editable saved positions and previews only persisted values', async () => {
@@ -483,8 +483,12 @@ test('blank creation still requires the event contact', async () => {
     screen.getByText(/Für ein Angebot zuerst einen Hauptkontakt zuordnen/),
   ).toBeTruthy();
   expect(
-    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset'),
-  ).toHaveProperty('disabled', true);
+    (
+      screen.getByRole('button', {
+        name: 'Entwurf anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
 });
 
 test('initial list failure disables creation until a successful retry', async () => {

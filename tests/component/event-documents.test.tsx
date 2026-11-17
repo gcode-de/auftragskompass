@@ -51,6 +51,12 @@ const draft = {
     offerStatus: 'accepted' as const,
     version: 4,
   },
+  otherAcceptedOffer = {
+    ...acceptedOffer,
+    id: 'doc-accepted-2',
+    number: 'AN-2030-0002',
+    version: 9,
+  },
   confirmationDraft = {
     id: 'doc-ab-1',
     kind: 'order_confirmation',
@@ -401,8 +407,17 @@ function setup(
         });
         if (options.orderConfirmation) return options.orderConfirmation();
         // The confirmed row replaces the old list on the following reload.
-        state.documents = [acceptedOffer, confirmationDraft];
-        return Response.json(confirmationDraft, { status: 201 });
+        const sourceId = url.split('/').at(-2)!,
+          source = state.documents.find(
+            (entry) => (entry as { id?: string }).id === sourceId,
+          ) as typeof acceptedOffer | undefined,
+          confirmation = {
+            ...confirmationDraft,
+            sourceDocumentId: sourceId,
+            sourceNumber: source?.number ?? acceptedOffer.number,
+          };
+        state.documents = [source ?? acceptedOffer, confirmation];
+        return Response.json(confirmation, { status: 201 });
       }
       // BKP019.c3.1: the advance payment is created from a finalized
       // confirmation. It is its own endpoint, so no invoice answer is reused.
@@ -532,6 +547,127 @@ async function openOfferCreate() {
   return summary;
 }
 
+test('the document dialog offers confirmations only from eligible accepted offers', async () => {
+  setup({
+    documents: [
+      acceptedOffer,
+      otherAcceptedOffer,
+      draft,
+      { ...sentOffer, id: 'doc-sent' },
+      { ...acceptedOffer, id: 'doc-withdrawn', offerStatus: 'withdrawn' },
+      confirmationDraft,
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  await openOfferCreate();
+  fireEvent.change(await screen.findByLabelText('Dokumentenart'), {
+    target: { value: 'order_confirmation' },
+  });
+  const source = (await screen.findByLabelText(
+    'Angenommenes Angebot',
+  )) as HTMLSelectElement;
+  expect(Array.from(source.options).map((option) => option.text)).toEqual([
+    'Angebot AN-2030-0002',
+  ]);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Auftragsbestätigung anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+});
+
+test('the document dialog creates one confirmation with the selected source version', async () => {
+  const { calls } = setup({ documents: [acceptedOffer, otherAcceptedOffer] });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('AN-2030-0002')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0002 Auftragsbestätigung erstellen',
+    }),
+  );
+  await screen.findByRole('dialog', { name: 'Auftragsbestätigung anlegen' });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Auftragsbestätigung anlegen' }),
+  );
+  expect(
+    await screen.findByText('Auftragsbestätigung als Entwurf angelegt.'),
+  ).toBeTruthy();
+  expect(
+    calls.filter((call) => call.url.endsWith('/order-confirmation')),
+  ).toHaveLength(1);
+  expect(
+    calls.find((call) => call.url.endsWith('/order-confirmation')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-accepted-2/order-confirmation',
+    method: 'POST',
+    body: { version: 9 },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Angebot anlegen' }),
+    ),
+  );
+});
+
+test('an unclear confirmation result blocks another post until the list is reloaded', async () => {
+  const { calls, state } = setup({
+    documents: [acceptedOffer],
+    orderConfirmation: () => new Response(null, { status: 503 }),
+  });
+  render(<EventDocuments {...props} />);
+  const row = (await screen.findByText('Angenommen')).closest(
+    'li',
+  ) as HTMLElement;
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Auftragsbestätigung anlegen',
+  });
+  const submit = within(dialog).getByRole('button', {
+    name: 'Auftragsbestätigung anlegen',
+  }) as HTMLButtonElement;
+  fireEvent.click(submit);
+  expect(
+    await within(dialog).findByText(
+      /Status der Auftragsbestätigung ist unklar/,
+    ),
+  ).toBeTruthy();
+  expect(
+    (
+      within(dialog)
+        .getByLabelText('Dokumentenart')
+        .closest('fieldset') as HTMLFieldSetElement | null
+    )?.disabled,
+  ).toBe(true);
+  expect(
+    calls.filter((call) => call.url.endsWith('/order-confirmation')),
+  ).toHaveLength(1);
+
+  state.documents = [acceptedOffer, confirmationDraft];
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dateien aktualisieren' }),
+  );
+  expect(await within(dialog).findByText(/Liste aktualisiert/)).toBeTruthy();
+  expect(
+    (
+      within(dialog).getByRole('button', {
+        name: 'Auftragsbestätigung anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    calls.filter((call) => call.url.endsWith('/order-confirmation')),
+  ).toHaveLength(1);
+});
+
 test('lists the offers of the event and only offers active templates', async () => {
   setup();
   render(<EventDocuments {...props} />);
@@ -598,7 +734,7 @@ test('a stale finalize is explained and the list refreshed', async () => {
   expect(await screen.findByText(/Bereits finalisiert/)).toBeTruthy();
 });
 test('no template permits blank creation, while a missing contact disables it', async () => {
-  setup({ documents: [], templates: [] });
+  setup({ documents: [acceptedOffer], templates: [] });
   const view = render(<EventDocuments {...props} contactId={null} />);
   expect(await screen.findByText(/Keine aktive Angebotsvorlage/)).toBeTruthy();
   expect(screen.getByText(/zuerst einen Hauptkontakt/)).toBeTruthy();
@@ -607,9 +743,28 @@ test('no template permits blank creation, while a missing contact disables it', 
     screen.getByRole('button', { name: 'Schließen' }).hasAttribute('disabled'),
   ).toBe(false);
   expect(
-    screen.getByRole('button', { name: 'Entwurf anlegen' }).closest('fieldset')!
-      .disabled,
+    (
+      screen.getByRole('button', {
+        name: 'Entwurf anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
+  expect((screen.getByLabelText('Vorlage') as HTMLSelectElement).disabled).toBe(
+    true,
+  );
+  const kind = screen.getByLabelText('Dokumentenart') as HTMLSelectElement;
+  expect(kind.closest('fieldset')!.disabled).toBe(false);
+  fireEvent.change(kind, { target: { value: 'order_confirmation' } });
+  expect(
+    screen.getByLabelText('Angenommenes Angebot').closest('fieldset')!.disabled,
+  ).toBe(false);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Auftragsbestätigung anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
   view.unmount();
   cleanup();
   setup({ documents: [], templates: [] });
@@ -1286,18 +1441,28 @@ test('an archived attachment stays readable without a dead link', async () => {
 // BKP019.b: an accepted offer can be confirmed without retyping a position. The
 // action exists exactly there - a draft, a sent or a withdrawn offer has none.
 test('only an accepted offer offers the confirmation action', async () => {
-  setup({ documents: [acceptedOffer] });
+  const { calls } = setup({ documents: [acceptedOffer] });
   render(<EventDocuments {...props} />);
   const row = (await screen.findByText('Angenommen')).closest(
     'li',
   ) as HTMLElement;
+  const trigger = within(row).getByRole('button', {
+    name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+  });
+  expect(trigger).toBeTruthy();
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Auftragsbestätigung anlegen',
+  });
+  expect(dialog).toBeTruthy();
   expect(
-    within(row).getByRole('button', {
-      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
-    }),
-  ).toBeTruthy();
-  // Nothing writes before the operator confirms the step.
-  expect(row.querySelector('form')).toBeNull();
+    (within(dialog).getByLabelText('Angenommenes Angebot') as HTMLSelectElement)
+      .value,
+  ).toBe(acceptedOffer.id);
+  // Nothing writes until the dialog's explicit submit.
+  expect(calls.some((call) => call.url.endsWith('/order-confirmation'))).toBe(
+    false,
+  );
   cleanup();
   for (const entry of [
     { ...finalized, offerStatus: null },
@@ -1326,9 +1491,12 @@ test('creating the confirmation asks once and posts the offer version', async ()
       name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
     }),
   );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Auftragsbestätigung anlegen',
+  });
   expect(
-    within(row).getByRole('button', {
-      name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+    within(dialog).getByRole('button', {
+      name: 'Auftragsbestätigung anlegen',
     }),
   ).toBeTruthy();
   // Nothing left the browser before the confirmation.
@@ -1336,8 +1504,8 @@ test('creating the confirmation asks once and posts the offer version', async ()
     false,
   );
   fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+    within(dialog).getByRole('button', {
+      name: 'Auftragsbestätigung anlegen',
     }),
   );
   expect(
@@ -1369,24 +1537,16 @@ test('cancelling the confirmation sends nothing', async () => {
   const row = (await screen.findByText('Angenommen')).closest(
     'li',
   ) as HTMLElement;
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
-    }),
-  );
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Angebot AN-2030-0001 Auftragsbestätigung abbrechen',
-    }),
-  );
-  expect(
-    within(row).queryByRole('button', { name: /Auftragsbestätigung anlegen/ }),
-  ).toBeNull();
-  expect(
-    within(row).getByRole('button', {
-      name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
-    }),
-  ).toBeTruthy();
+  const trigger = within(row).getByRole('button', {
+    name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
+  });
+  fireEvent.click(trigger);
+  await screen.findByRole('dialog', {
+    name: 'Auftragsbestätigung anlegen',
+  });
+  fireEvent.keyDown(window, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(document.activeElement).toBe(trigger);
   expect(calls.some((call) => call.url.endsWith('/order-confirmation'))).toBe(
     false,
   );
@@ -1407,9 +1567,12 @@ test('an existing confirmation is explained instead of retried', async () => {
       name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
     }),
   );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Auftragsbestätigung anlegen',
+  });
   fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+    within(dialog).getByRole('button', {
+      name: 'Auftragsbestätigung anlegen',
     }),
   );
   expect(
@@ -2983,9 +3146,12 @@ test('a refused or unanswered confirmation is explained and never invented', asy
         name: 'Angebot AN-2030-0001 Auftragsbestätigung erstellen',
       }),
     );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Auftragsbestätigung anlegen',
+    });
     fireEvent.click(
-      within(row).getByRole('button', {
-        name: 'Angebot AN-2030-0001 Auftragsbestätigung anlegen',
+      within(dialog).getByRole('button', {
+        name: 'Auftragsbestätigung anlegen',
       }),
     );
     return view;
@@ -3041,9 +3207,7 @@ test('a refused or unanswered confirmation is explained and never invented', asy
     throw new TypeError('offline');
   });
   expect(
-    await screen.findByText(
-      'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
-    ),
+    await screen.findByText(/Der Status der Auftragsbestätigung ist unklar/),
   ).toBeTruthy();
   view.unmount();
 });

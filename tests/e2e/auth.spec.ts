@@ -1289,16 +1289,16 @@ async function signInScenario(
         name: 'Angebot ' + offer.number + ' Auftragsbestätigung erstellen',
       })
       .click();
-    // The step asks once and writes nothing before the confirmation.
+    // The dialog selects the source offer and writes only on its explicit submit.
     await expect(
-      eventOffers.getByRole('button', {
-        name: 'Angebot ' + offer.number + ' Auftragsbestätigung anlegen',
+      page.getByRole('dialog', {
+        name: 'Auftragsbestätigung anlegen',
       }),
     ).toBeVisible();
     expect(await confirmationCount()).toBe(0);
-    await eventOffers
+    await page
       .getByRole('button', {
-        name: 'Angebot ' + offer.number + ' Auftragsbestätigung anlegen',
+        name: 'Auftragsbestätigung anlegen',
       })
       .click();
     await expect(
@@ -1377,22 +1377,12 @@ async function signInScenario(
         name: 'Angebot ' + offer.number + ' als PDF öffnen',
       }),
     ).toHaveAttribute('href', '/api/v1/documents/' + offer.id + '/pdf');
-    // A second attempt is explained, never silently written twice.
-    await eventOffers
-      .getByRole('button', {
-        name: 'Angebot ' + offer.number + ' Auftragsbestätigung erstellen',
-      })
-      .click();
-    await eventOffers
-      .getByRole('button', {
-        name: 'Angebot ' + offer.number + ' Auftragsbestätigung anlegen',
-      })
-      .click();
+    // The source is no longer offered once its confirmation exists.
     await expect(
-      page.getByText(
-        'Für dieses Angebot gibt es bereits eine Auftragsbestätigung.',
-      ),
-    ).toBeVisible();
+      eventOffers.getByRole('button', {
+        name: 'Angebot ' + offer.number + ' Auftragsbestätigung erstellen',
+      }),
+    ).toHaveCount(0);
     expect(await confirmationCount()).toBe(1);
     // BKP019.b2: the copied wording is correctable before it is frozen. The
     // confirmation opens the same editor an offer draft uses, under its own name.
@@ -2238,9 +2228,9 @@ async function signInScenario(
         name: 'Angebot ' + secondOfferNumber + ' Auftragsbestätigung erstellen',
       })
       .click();
-    await eventOffers
+    await page
       .getByRole('button', {
-        name: 'Angebot ' + secondOfferNumber + ' Auftragsbestätigung anlegen',
+        name: 'Auftragsbestätigung anlegen',
       })
       .click();
     await expect(
@@ -2538,10 +2528,9 @@ async function signInScenario(
           'Angebot ' + settlementOfferNumber + ' Auftragsbestätigung erstellen',
       })
       .click();
-    await eventOffers
+    await page
       .getByRole('button', {
-        name:
-          'Angebot ' + settlementOfferNumber + ' Auftragsbestätigung anlegen',
+        name: 'Auftragsbestätigung anlegen',
       })
       .click();
     await expect(

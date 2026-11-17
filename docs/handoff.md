@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-CREATE-02.1: Auftragsbestätigung im Dokumentdialog
+
+Der Event-Dokumentdialog bietet neben Angeboten auch Auftragsbestätigungen aus finalisierten, angenommenen Angeboten desselben Events an. Bestehende Bestätigungen werden bei der Quellenauswahl berücksichtigt; die Zeilenaktion öffnet denselben Dialog. Der vorhandene versionsgebundene POST und seine Schutzregeln bleiben maßgeblich. Bei unklarer Antwort sperrt die Oberfläche weitere Anlage bis zur erneuten Listenabfrage. CI und Auslieferung des tatsächlichen Commits gesondert prüfen.
+
 ## DOC-UX-03: Angebotsauswahl
 
 Die Angebotsanlage in der Eventakte öffnet einen kompakten Dialog mit Hauptkontakt, aktiven Vorlagen und Blankoangebot. Unklare Antworten und Ladefehler bleiben sichtbar und erfordern eine erneute Listenabfrage; die vorhandenen fachlichen Schutzregeln und POST-Pfade bleiben bestehen. Andere Dokumentarten folgen erst in eigenen Slices. CI und Auslieferung jeweils am tatsächlichen Commit prüfen.
