@@ -17,6 +17,7 @@
     "lint": "eslint apps packages scripts tests eslint.config.mjs prettier.config.mjs",
     "commit:check": "commitlint --config scripts/commitlint.config.mjs",
     "check": "pnpm check:quality && pnpm test:e2e",
+    "check:local": "COVERAGE_DIFF=preflight node scripts/changed-coverage.mjs && pnpm check:quality && COVERAGE_DIFF=local BASE_REVISION=${BASE_REVISION:-origin/main} node scripts/changed-coverage.mjs",
     "check:quality": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:workspace && pnpm test:docs && pnpm test:coverage && pnpm build && pnpm test:ops",
     "test:unit": "vitest run --config tests/vitest.config.ts --project unit",
     "test:component": "vitest run --config tests/vitest.config.ts --project component",

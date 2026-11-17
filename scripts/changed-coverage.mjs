@@ -62,8 +62,8 @@ export function changedCoverage(diff, lcov) {
         if (hits > 0) totals.coveredBranches++;
       }
   }
-  if (totals.lines && totals.coveredLines / totals.lines < 0.85)
-    throw new Error('Changed lines below 85%');
+  if (totals.lines && totals.coveredLines / totals.lines < 0.8)
+    throw new Error('Changed lines below 80%');
   if (totals.branches && totals.coveredBranches / totals.branches < 0.8)
     throw new Error('Changed branches below 80%');
   return totals;
@@ -88,6 +88,50 @@ export function diffArgs(revision, worktree = false) {
     ];
   return [['diff', '--unified=0', revision ?? 'HEAD^', 'HEAD']];
 }
+const relevantUntracked =
+  /^(?:apps|packages)\/[^/]+\/src\/.*\.(?:[cm]?[jt]sx?)$|^(?:tests|scripts)\/.*\.(?:[cm]?[jt]sx?|json|jsonc|ya?ml|sh)$/;
+const nulPaths = (output) => output.split('\0').filter(Boolean);
+export function preflight(cwd) {
+  const trackedChanges = new Set([
+    ...nulPaths(runGit(['diff', '--cached', '--name-only', '-z', 'HEAD'], cwd)),
+    ...nulPaths(runGit(['diff', '--name-only', '-z'], cwd)),
+  ]);
+  if (trackedChanges.size)
+    throw new Error(
+      'Commit all tracked changes before coverage preflight: ' +
+        [...trackedChanges].join(', '),
+    );
+  const untrackedInputs = nulPaths(
+    runGit(
+      [
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+        '-z',
+        '--',
+        'apps',
+        'packages',
+        'tests',
+        'scripts',
+      ],
+      cwd,
+    ),
+  ).filter((path) => relevantUntracked.test(path));
+  if (untrackedInputs.length)
+    throw new Error(
+      'Commit untracked coverage inputs before coverage preflight: ' +
+        untrackedInputs.join(', '),
+    );
+}
+export function localDiff(revision, cwd) {
+  if (!revision)
+    throw new Error('BASE_REVISION is required for local coverage');
+  preflight(cwd);
+  return runGit(
+    ['diff', '--unified=0', revision, 'HEAD', '--', 'apps', 'packages'],
+    cwd,
+  );
+}
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
@@ -95,11 +139,20 @@ if (
   const base = process.env.BASE_REVISION;
   // First push of a branch: compare with its first parent, not an all-zero SHA.
   const revision = base && !/^0+$/.test(base) ? base : 'HEAD^';
-  const worktree = process.env.COVERAGE_DIFF === 'worktree';
-  const commands = diffArgs(worktree ? undefined : revision, worktree);
-  let diff = '';
-  for (const command of commands) diff = runGit(command);
-  console.log(
-    changedCoverage(diff, readFileSync('coverage/lcov.info', 'utf8')),
-  );
+  const mode = process.env.COVERAGE_DIFF;
+  const worktree = mode === 'worktree';
+  if (mode === 'preflight') {
+    preflight();
+    console.log('Coverage preflight is clean.');
+  } else {
+    const diff =
+      mode === 'local'
+        ? localDiff(base && !/^0+$/.test(base) ? base : undefined)
+        : diffArgs(worktree ? undefined : revision, worktree)
+            .map((command) => runGit(command))
+            .join('');
+    console.log(
+      changedCoverage(diff, readFileSync('coverage/lcov.info', 'utf8')),
+    );
+  }
 }

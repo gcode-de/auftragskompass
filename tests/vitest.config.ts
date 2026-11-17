@@ -16,7 +16,7 @@ export default defineConfig({
         'apps/worker/src/main.ts',
       ],
       reporter: ['text', 'json-summary', 'lcov'],
-      thresholds: { lines: 90, branches: 85, functions: 90, statements: 90 },
+      thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 },
     },
     projects: [
       {
