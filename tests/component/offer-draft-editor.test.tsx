@@ -279,7 +279,7 @@ function fieldValue(label: string) {
 
 async function openOfferCreate() {
   const trigger = await screen.findByRole('button', {
-    name: 'Angebot anlegen',
+    name: 'Dokument anlegen',
   });
   fireEvent.click(trigger);
   await screen.findByRole('dialog', { name: 'Angebot anlegen' });
@@ -291,7 +291,7 @@ test('offer creation opens in a labelled dialog', async () => {
   render(<EventDocuments {...props} />);
   expect(screen.queryByRole('dialog')).toBeNull();
   const trigger = await screen.findByRole('button', {
-    name: 'Angebot anlegen',
+    name: 'Dokument anlegen',
   });
   fireEvent.click(trigger);
   expect(

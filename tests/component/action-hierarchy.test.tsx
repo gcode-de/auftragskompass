@@ -938,7 +938,7 @@ test('resource assignment, blocks, documents and website inbox stay on one prima
   );
   const documents = await screen.findByRole('region', { name: /Angebote/ });
   fireEvent.click(
-    within(documents).getByRole('button', { name: 'Angebot anlegen' }),
+    within(documents).getByRole('button', { name: 'Dokument anlegen' }),
   );
   await within(documents).findByRole('button', { name: 'Entwurf anlegen' });
   expectHierarchy(documents, 'Angebote');

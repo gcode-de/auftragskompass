@@ -335,7 +335,7 @@ async function offerDraftScenario(browser: Browser) {
     ).toHaveCount(0);
     await page.setViewportSize({ width: 320, height: 844 });
     const createButton = offers.getByRole('button', {
-      name: 'Angebot anlegen',
+      name: 'Dokument anlegen',
     });
     await createButton.focus();
     await page.keyboard.press('Enter');
@@ -939,7 +939,7 @@ async function offerDraftScenario(browser: Browser) {
       .getByRole('button', { name: 'Dateien' })
       .click();
     const blankOffers = page.getByRole('region', { name: 'Angebote' });
-    await blankOffers.getByText('Angebot anlegen', { exact: true }).click();
+    await blankOffers.getByText('Dokument anlegen', { exact: true }).click();
     const templatePicker = blankOffers.getByLabel('Vorlage');
     await expect(templatePicker).toHaveValue('');
     await expect(templatePicker.locator('option')).toHaveText(['Ohne Vorlage']);
@@ -1405,6 +1405,72 @@ async function offerDraftScenario(browser: Browser) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(1281);
+    const blankInvoiceEndpoint = '**/api/v1/documents/blank-invoice';
+    const invoiceRequests: unknown[] = [];
+    await context.route(blankInvoiceEndpoint, async (route) => {
+      invoiceRequests.push(route.request().postDataJSON());
+      const response = await route.fetch();
+      expect(response.status()).toBe(201);
+      if (invoiceRequests.length === 1) await route.abort('failed');
+      else await route.fulfill({ response });
+    });
+
+    const openDocuments = blankOffersAfterReload.getByRole('button', {
+      name: 'Dokument anlegen',
+    });
+    const invoiceDialog = page.getByRole('dialog', {
+      name: 'Rechnung ohne Auftragsbestätigung anlegen',
+    });
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 850 });
+      await openDocuments.click();
+      const kind = page.getByLabel('Dokumentenart');
+      await expect(kind).toBeFocused();
+      await kind.selectOption({ label: 'Rechnung ohne Auftragsbestätigung' });
+      await expect(invoiceDialog.getByText(/Eventkontakt/)).toBeVisible();
+      expect(
+        await invoiceDialog.evaluate((dialog) => dialog.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      await invoiceDialog.screenshot({
+        path: test.info().outputPath(`blank-invoice-${width}.png`),
+      });
+      await page.keyboard.press('Escape');
+      await expect(invoiceDialog).toBeHidden();
+      await expect(openDocuments).toBeFocused();
+    }
+    expect(invoiceRequests).toHaveLength(0);
+
+    await openDocuments.click();
+    await page.getByLabel('Dokumentenart').selectOption('blank_invoice');
+    await invoiceDialog
+      .getByRole('button', { name: 'Rechnungsentwurf anlegen' })
+      .click();
+    await expect(invoiceDialog.getByRole('alert')).toContainText(
+      'Ausgang der Anlage ist unklar',
+    );
+    const retryInvoice = invoiceDialog.getByRole('button', {
+      name: 'Anlage erneut versuchen',
+    });
+    await expect(retryInvoice).toBeFocused();
+    await retryInvoice.click();
+    await expect(
+      page.getByRole('heading', { name: 'Rechnung bearbeiten' }),
+    ).toBeVisible();
+    expect(invoiceRequests).toHaveLength(2);
+    expect(invoiceRequests[0]).toMatchObject({
+      eventId: event.id,
+      contactId: contact.id,
+      requestId: expect.stringMatching(/^[a-f0-9-]{36}$/),
+    });
+    expect(invoiceRequests[1]).toEqual(invoiceRequests[0]);
+    expect(
+      (
+        await pool.query(
+          "SELECT state, number, template_id FROM documents WHERE tenant_id=$1 AND event_id=$2 AND kind='invoice'",
+          [tenantId, event.id],
+        )
+      ).rows,
+    ).toEqual([{ state: 'draft', number: null, template_id: null }]);
   } finally {
     await context.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -1415,6 +1481,6 @@ async function offerDraftScenario(browser: Browser) {
   }
 }
 
-test('real Chromium saves an offer draft, preserves its template snapshot after reload, and previews without side effects', async ({
+test('real Chromium edits offers and opens one free invoice after a lost response', async ({
   browser,
 }) => offerDraftScenario(browser));

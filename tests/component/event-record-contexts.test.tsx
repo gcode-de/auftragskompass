@@ -235,7 +235,7 @@ test('documents live in the files area instead of the details overview', async (
     offers.compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   fireEvent.click(
-    within(offers).getByRole('button', { name: 'Angebot anlegen' }),
+    within(offers).getByRole('button', { name: 'Dokument anlegen' }),
   );
   const dialog = await within(offers).findByRole('dialog', {
     name: 'Angebot anlegen',
@@ -344,7 +344,7 @@ test('a confirmed document success stays visible when the list reload fails', as
   const files = area('Dateien');
   const offers = await within(files).findByRole('region', { name: 'Angebote' });
   fireEvent.click(
-    within(offers).getByRole('button', { name: 'Angebot anlegen' }),
+    within(offers).getByRole('button', { name: 'Dokument anlegen' }),
   );
   const create = await within(offers).findByRole('button', {
     name: 'Entwurf anlegen',

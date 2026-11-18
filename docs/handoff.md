@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-BLANK-INVOICE-02: freie Rechnung im Dokumentdialog
+
+Im Event-Dokumentdialog kann eine reguläre Rechnung ohne Auftragsbestätigung für den Hauptkontakt angelegt und im bestehenden Editor bearbeitet werden. Bei unklarer Antwort bleibt die Auftrags-ID im selben Browser-Tab auch nach Reload erhalten; getrennte Tabs haben eigene Auftrags-IDs. Ein beschädigter Wiederaufnahmezustand verlangt einen geprüften Listenabgleich und ausdrückliches Verwerfen mit Dublettenhinweis. CI und Auslieferung am tatsächlichen Commit prüfen.
+
 ## DOC-BLANK-INVOICE-01: freie Rechnungsentwürfe im Backend
 
 Ein eigener idempotenter Admin-Endpunkt erstellt reguläre Rechnungsentwürfe mit Event und Kontakt ohne Angebotsquelle. Die Oberfläche zur Auswahl und Anlage ist noch offen. Migration 0055 und die Schutzregeln für bestehende Dokumentarten gehören zum gleichen Schritt; CI und Auslieferung am tatsächlichen Commit prüfen.
