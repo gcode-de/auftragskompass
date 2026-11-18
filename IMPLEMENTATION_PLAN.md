@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **CI-DOC-UX-04 — `test: follow separate document editor`**: Den bestehenden Browserablauf für Angebotsentwürfe auf die eigene Editoransicht umstellen und alle fachlichen Prüfungen erhalten. Abnahme: Chromium-Ablauf mit synthetischen Daten läuft ohne Zugriff auf den ausgeblendeten Listenbereich.
+
 - [x] **DOC-UX-04 — `feat: open document editor in separate view`**: Den bestehenden Entwurfseditor in der Eventakte als eigene, übersichtliche Ansicht statt innerhalb der Dokumentzeile öffnen. Zurückführung, bestehende Speicher- und Konfliktschutzregeln, Fokus sowie alle unterstützten Dokumentarten und mobile Bedienung erhalten. Abnahme: Öffnen, Rückkehr ohne Verlust, Fehler- und Dirty-Zustände sowie Desktop-/Mobilansicht prüfen. Keine Änderung der Dokumentlogik.
 
 - [x] **BKP013.2 — `style: arrange event details in reference columns`**: Die bestehende Eventübersicht auf breiten Ansichten mit Eventdaten, weiteren Details und rechts separierten Kontakt-/Ortskarten anordnen; auf schmalen Ansichten in sinnvoller Reihenfolge stapeln. Bestehende Aktionen, Entwürfe, Autosave und Bereichsnavigation unverändert erhalten. Keine Aufgabenfunktion vortäuschen.
