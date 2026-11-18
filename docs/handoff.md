@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-UX-04: eigene Dokumentbearbeitung
+
+Die Dokumentbearbeitung öffnet innerhalb der Eventakte eine eigene Ansicht; Dokumentliste und Bibliothek werden dabei ausgeblendet. Bei ungesicherten Eingaben schützen Rückwege und Browsernavigation vor Verlust. Während der Finalisierung ist der Editor gesperrt. Ein Blankoangebot wird erst nach abgeschlossenem Listenabgleich geöffnet; unklare Abgleiche bleiben sichtbar. Der separate freie Rechnungsweg ohne Angebot oder Auftragsbestätigung ist weiterhin offen. CI und tatsächliche Auslieferung am Commit prüfen.
+
 ## DOC-CREATE-02.3: Rechnung im Dokumentdialog
 
 Reguläre Rechnungen lassen sich im Event-Dokumentdialog aus einer geeigneten finalisierten Auftragsbestätigung anlegen. Der bestehende versionsgebundene POST bleibt maßgeblich; nach unklarem Ergebnis sind konkurrierende Rechnungswege bis zum Listenabgleich gesperrt. CI und Auslieferung des tatsächlichen Commits gesondert prüfen.

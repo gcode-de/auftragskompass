@@ -2105,14 +2105,12 @@ test('the shared editor shows the invoice dates only for an invoice and saves th
       name: 'Rechnung Entwurf bearbeiten',
     }),
   );
-  const serviceDay = await within(invoiceRow).findByLabelText(/Leistungsdatum/);
+  const serviceDay = await screen.findByLabelText(/Leistungsdatum/);
   fireEvent.change(serviceDay, { target: { value: '2030-10-25' } });
-  fireEvent.change(within(invoiceRow).getByLabelText(/Zahlungsziel in Tagen/), {
+  fireEvent.change(screen.getByLabelText(/Zahlungsziel in Tagen/), {
     target: { value: '14' },
   });
-  fireEvent.click(
-    within(invoiceRow).getByRole('button', { name: 'Änderungen speichern' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
       serviceDate: '2030-10-25',
@@ -2121,10 +2119,9 @@ test('the shared editor shows the invoice dates only for an invoice and saves th
   );
   // The same editor on the offer shows neither field - an offer has no invoice
   // day, and the server would refuse one.
+  await screen.findByText('Änderungen gespeichert.');
   fireEvent.click(
-    await within(invoiceRow).findByRole('button', {
-      name: 'Bearbeitung schließen',
-    }),
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
   const offerRow = screen
     .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
@@ -2189,45 +2186,40 @@ test('the shared editor shows the bank account field only for an invoice and sav
       name: 'Rechnung Entwurf bearbeiten',
     }),
   );
-  const bank = await within(invoiceRow).findByLabelText(/Bankverbindung/);
+  const bank = await screen.findByLabelText(/Bankverbindung/);
   fireEvent.change(bank, {
     target: { value: 'Fiktive Bank\nIBAN DE00 0000 0000' },
   });
-  fireEvent.click(
-    within(invoiceRow).getByRole('button', { name: 'Änderungen speichern' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
       bankAccount: 'Fiktive Bank\nIBAN DE00 0000 0000',
     }),
   );
-  // The row shows the saved account without another list request.
-  await waitFor(() =>
-    expect(
-      invoiceRow.querySelector('.document-invoice-bank')?.textContent,
-    ).toBe('Bankverbindung Fiktive BankIBAN DE00 0000 0000'),
+  await screen.findByText('Änderungen gespeichert.');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
+  // The row shows the saved account without another list request.
+  const updatedInvoiceRow = within(
+    screen.getByRole('region', { name: 'Rechnungen' }),
+  ).getByRole('listitem');
+  expect(
+    updatedInvoiceRow.querySelector('.document-invoice-bank')?.textContent,
+  ).toBe('Bankverbindung Fiktive BankIBAN DE00 0000 0000');
   // Closing and reopening loads the stored value into the field again - a save
   // that never touched it may not clear it.
   fireEvent.click(
-    await within(invoiceRow).findByRole('button', {
-      name: 'Bearbeitung schließen',
-    }),
-  );
-  fireEvent.click(
-    within(invoiceRow).getByRole('button', {
+    within(updatedInvoiceRow).getByRole('button', {
       name: 'Rechnung Entwurf bearbeiten',
     }),
   );
   expect(
-    (
-      (await within(invoiceRow).findByLabelText(
-        /Bankverbindung/,
-      )) as HTMLTextAreaElement
-    ).value,
+    ((await screen.findByLabelText(/Bankverbindung/)) as HTMLTextAreaElement)
+      .value,
   ).toBe('Fiktive Bank\nIBAN DE00 0000 0000');
   fireEvent.click(
-    within(invoiceRow).getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
   // The same editor on the offer shows no account field - the server would
   // refuse one.
@@ -2691,20 +2683,19 @@ test('a deposit draft opens the shared editor under its own heading', async () =
   // The heading names the advance; neither the invoice nor the offer wording
   // may label it.
   expect(
-    await within(row).findByRole('heading', {
+    await screen.findByRole('heading', {
       name: 'Anzahlungsrechnung bearbeiten',
     }),
   ).toBeTruthy();
   expect(
-    within(row).queryByRole('heading', { name: 'Rechnung bearbeiten' }),
+    screen.queryByRole('heading', { name: 'Rechnung bearbeiten' }),
   ).toBeNull();
   expect(
-    within(row).queryByRole('heading', { name: 'Angebot bearbeiten' }),
+    screen.queryByRole('heading', { name: 'Angebot bearbeiten' }),
   ).toBeNull();
   // The copied order is there, so the operator can cut it down to the advance.
   expect(
-    ((await within(row).findByLabelText('Einleitung')) as HTMLTextAreaElement)
-      .value,
+    ((await screen.findByLabelText('Einleitung')) as HTMLTextAreaElement).value,
   ).toBe('Anzahlung auf den Auftrag.');
 });
 
@@ -3309,14 +3300,14 @@ test('an invoice draft opens the shared editor with its own texts', async () => 
   // The invoice keeps exactly the heading it had before the correction became
   // editable - the new kind must not relabel it.
   expect(
-    await within(row).findByRole('heading', { name: 'Rechnung bearbeiten' }),
+    await screen.findByRole('heading', { name: 'Rechnung bearbeiten' }),
   ).toBeTruthy();
   expect(
-    within(row).queryByRole('heading', {
+    screen.queryByRole('heading', {
       name: 'Rechnungskorrektur bearbeiten',
     }),
   ).toBeNull();
-  const editor = await within(row).findByLabelText('Einleitung');
+  const editor = await screen.findByLabelText('Einleitung');
   expect((editor as HTMLTextAreaElement).value).toBe(
     'Vielen Dank für Ihren Auftrag.',
   );
@@ -3342,18 +3333,18 @@ test('a correction draft opens the shared editor under its own heading and saves
     }),
   );
   expect(
-    await within(row).findByRole('heading', {
+    await screen.findByRole('heading', {
       name: 'Rechnungskorrektur bearbeiten',
     }),
   ).toBeTruthy();
   // No other kind's heading labels the correction.
   expect(
-    within(row).queryByRole('heading', { name: 'Rechnung bearbeiten' }),
+    screen.queryByRole('heading', { name: 'Rechnung bearbeiten' }),
   ).toBeNull();
   expect(
-    within(row).queryByRole('heading', { name: 'Angebot bearbeiten' }),
+    screen.queryByRole('heading', { name: 'Angebot bearbeiten' }),
   ).toBeNull();
-  const description = (await within(row).findByLabelText(
+  const description = (await screen.findByLabelText(
     'Beschreibung',
   )) as HTMLInputElement;
   expect(description.value).toBe('Fiktives Fotobox-Paket');
@@ -3364,20 +3355,18 @@ test('a correction draft opens the shared editor under its own heading and saves
   });
   // Leaving a changed correction asks with the correction's own wording.
   fireEvent.click(
-    within(row).getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
   expect(confirm).toHaveBeenCalledWith(
     'Ungespeicherte Änderungen an der Rechnungskorrektur verwerfen?',
   );
   expect(
-    within(row).getByRole('heading', {
+    screen.getByRole('heading', {
       name: 'Rechnungskorrektur bearbeiten',
     }),
   ).toBeTruthy();
-  fireEvent.click(
-    within(row).getByRole('button', { name: 'Änderungen speichern' }),
-  );
-  expect(await within(row).findByText('Änderungen gespeichert.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  expect(await screen.findByText('Änderungen gespeichert.')).toBeTruthy();
   const writes = calls.filter((call) => call.method === 'PUT');
   // Exactly the correction is written; the invoice it corrects is not.
   expect(writes).toHaveLength(1);
@@ -3416,16 +3405,16 @@ test('a correction draft opens the shared editor under its own heading and saves
   ).toBe(false);
   // Closing an unchanged correction returns to the row without a question.
   fireEvent.click(
-    within(row).getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
   expect(confirm).toHaveBeenCalledTimes(1);
   expect(
-    within(row).queryByRole('heading', {
+    screen.queryByRole('heading', {
       name: 'Rechnungskorrektur bearbeiten',
     }),
   ).toBeNull();
   expect(
-    within(row).getByRole('button', {
+    screen.getByRole('button', {
       name: 'Rechnungskorrektur Entwurf bearbeiten',
     }),
   ).toBeTruthy();
@@ -3448,28 +3437,26 @@ test('a confirmation draft opens the shared editor under its own heading and sav
     }),
   );
   expect(
-    await within(row).findByRole('heading', {
+    await screen.findByRole('heading', {
       name: 'Auftragsbestätigung bearbeiten',
     }),
   ).toBeTruthy();
   // The offer heading of the shared editor is never shown for a confirmation.
   expect(
-    within(row).queryByRole('heading', { name: 'Angebot bearbeiten' }),
+    screen.queryByRole('heading', { name: 'Angebot bearbeiten' }),
   ).toBeNull();
-  const intro = (await within(row).findByLabelText(
+  const intro = (await screen.findByLabelText(
     'Einleitung',
   )) as HTMLTextAreaElement;
   expect(intro.value).toBe('Vielen Dank für Ihren Auftrag.');
-  expect(
-    (within(row).getByLabelText('Betreff') as HTMLInputElement).value,
-  ).toBe('Auftragsbestätigung für {{contact}}');
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    'Auftragsbestätigung für {{contact}}',
+  );
   fireEvent.change(intro, {
     target: { value: 'Guten Tag, wir bestätigen Ihren Auftrag verbindlich.' },
   });
-  fireEvent.click(
-    within(row).getByRole('button', { name: 'Änderungen speichern' }),
-  );
-  expect(await within(row).findByText('Änderungen gespeichert.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  expect(await screen.findByText('Änderungen gespeichert.')).toBeTruthy();
   const writes = calls.filter((call) => call.method === 'PUT');
   // Exactly the confirmation is written; the offer draft of the event is not.
   expect(writes).toHaveLength(1);
@@ -3491,15 +3478,15 @@ test('a confirmation draft opens the shared editor under its own heading and sav
   ).toBe(false);
   // Closing returns to the row exactly like the offer editor does.
   fireEvent.click(
-    within(row).getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
   expect(
-    within(row).queryByRole('heading', {
+    screen.queryByRole('heading', {
       name: 'Auftragsbestätigung bearbeiten',
     }),
   ).toBeNull();
   expect(
-    within(row).getByRole('button', {
+    screen.getByRole('button', {
       name: 'Auftragsbestätigung Entwurf bearbeiten',
     }),
   ).toBeTruthy();
@@ -3515,16 +3502,41 @@ test('an offer draft keeps the offer heading and wording', async () => {
     within(row).getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   expect(
-    await within(row).findByRole('heading', { name: 'Angebot bearbeiten' }),
+    await screen.findByRole('heading', { name: 'Angebot bearbeiten' }),
   ).toBeTruthy();
   expect(
-    within(row).queryByRole('heading', {
+    screen.queryByRole('heading', {
       name: 'Auftragsbestätigung bearbeiten',
     }),
   ).toBeNull();
+  expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(
+    'Angebot für {{contact}}',
+  );
+});
+
+test('opening an offer draft replaces the document list and closing restores focus', async () => {
+  const { calls } = setup({ documents: [draft, invoiceFinal] });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+
+  await screen.findByRole('heading', { name: 'Angebot bearbeiten' });
+  expect(screen.queryByRole('region', { name: 'Angebote' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot Entwurf bearbeiten',
+  });
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
   expect(
-    (within(row).getByLabelText('Betreff') as HTMLInputElement).value,
-  ).toBe('Angebot für {{contact}}');
+    screen.queryByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  expect(calls.every((call) => call.method === 'GET')).toBe(true);
 });
 
 test('a refused or unanswered confirmation is explained and never invented', async () => {
@@ -3700,34 +3712,90 @@ test('a template create returns focus after its delayed list reload completes', 
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
 
-test('a draft created without a template also stays visible when the reload fails', async () => {
-  const { posts, control } = reloadHarness();
+test.each([500, 200])(
+  'a blank draft waits for list refresh and keeps the confirmed row when the list returns %s without it',
+  async (status) => {
+    const { lists, posts, control } = reloadHarness();
+    let resolveList!: (reply: Response) => void;
+    const delayedList = new Promise<Response>((resolve) => {
+      resolveList = resolve;
+    });
+    render(<EventDocuments {...props} />);
+    await openOfferCreate();
+    fireEvent.change(await screen.findByLabelText('Vorlage'), {
+      target: { value: '' },
+    });
+    control.createReply = () =>
+      Response.json({ ...created, templateId: null }, { status: 201 });
+    control.listReply = () => delayedList;
+    fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
+    await waitFor(() => expect(lists).toHaveLength(2));
+    expect(
+      screen.queryByRole('heading', { name: 'Angebot bearbeiten' }),
+    ).toBeNull();
+    expect(
+      screen.getByRole('dialog', { name: 'Angebot anlegen' }),
+    ).toBeTruthy();
+    resolveList(Response.json([], { status }));
+    expect(
+      await screen.findByText('Leerer Angebotsentwurf angelegt.'),
+    ).toBeTruthy();
+    expect(
+      await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
+    ).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Angebot bearbeiten' });
+    const close = screen.getByRole('button', { name: 'Bearbeitung schließen' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.click(close);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Angebot anlegen' }),
+    );
+    const offers = screen.getByRole('region', { name: 'Angebote' });
+    expect(within(offers).getByText(/130,00/)).toBeTruthy();
+    expect(
+      within(offers).getByRole('button', {
+        name: 'Angebot Entwurf bearbeiten',
+      }),
+    ).toBeTruthy();
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.url).toBe('/api/v1/documents/blank-offer');
+    expect(posts[0]!.body).toEqual({
+      eventId: 'event-1',
+      contactId: 'contact-1',
+    });
+  },
+);
+
+test('a blank offer finalized in another tab does not lock the draft list', async () => {
+  const other = { ...created, id: 'other-draft', templateId: null };
+  const { control } = reloadHarness({ stored: [other] });
   render(<EventDocuments {...props} />);
-  await openOfferCreate();
+  const trigger = await openOfferCreate();
   fireEvent.change(await screen.findByLabelText('Vorlage'), {
     target: { value: '' },
   });
   control.createReply = () =>
     Response.json({ ...created, templateId: null }, { status: 201 });
-  control.listReply = () => new Response(null, { status: 500 });
+  control.listReply = () =>
+    Response.json([
+      { ...created, state: 'final', number: 'AN-2030-0009', templateId: null },
+      other,
+    ]);
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
-  expect(
-    await screen.findByText('Leerer Angebotsentwurf angelegt.'),
-  ).toBeTruthy();
-  expect(
-    await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
-  ).toBeTruthy();
-  const offers = screen.getByRole('region', { name: 'Angebote' });
-  expect(within(offers).getByText(/130,00/)).toBeTruthy();
-  expect(
-    within(offers).getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
-  ).toBeTruthy();
-  expect(posts).toHaveLength(1);
-  expect(posts[0]!.url).toBe('/api/v1/documents/blank-offer');
-  expect(posts[0]!.body).toEqual({
-    eventId: 'event-1',
-    contactId: 'contact-1',
+
+  await screen.findByRole('link', {
+    name: 'Angebot AN-2030-0009 als PDF öffnen',
   });
+  expect(
+    screen.queryByRole('heading', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  const edit = screen.getByRole('button', {
+    name: 'Angebot Entwurf bearbeiten',
+  });
+  expect(edit).toHaveProperty('disabled', false);
+  fireEvent.click(edit);
+  await screen.findByRole('heading', { name: 'Angebot bearbeiten' });
 });
 
 test('retrying the failed list reload only reads and never posts again', async () => {

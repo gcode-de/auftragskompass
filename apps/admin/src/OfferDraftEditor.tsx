@@ -87,9 +87,11 @@ type Props = {
   // BKP019.b2: one editor serves both draft kinds; only the heading names the
   // document. An offer is the default, so its wording cannot change.
   kind?: string;
+  finalizing?: boolean;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onBusyChange: (busy: boolean) => void;
+  onProtectedChange: ((protectedEditor: boolean) => void) | undefined;
   onSavedMetadata: (
     metadata: Pick<
       DraftDetail,
@@ -300,9 +302,11 @@ export function OfferDraftEditor({
   documentId,
   csrfToken,
   kind,
+  finalizing = false,
   onClose,
   onDirtyChange,
   onBusyChange,
+  onProtectedChange,
   onSavedMetadata,
 }: Props) {
   const [values, setValues] = useState<DraftValues | null>(null),
@@ -311,7 +315,7 @@ export function OfferDraftEditor({
     [baselineLines, setBaselineLines] = useState<DraftLineValues[]>([]),
     [detail, setDetail] = useState<DraftDetail | null>(null),
     [loading, setLoading] = useState(false),
-    [busy, setBusy] = useState(false),
+    [saving, setSaving] = useState(false),
     [legacy, setLegacy] = useState(false),
     [conflict, setConflict] = useState(false),
     [uncertain, setUncertain] = useState(false),
@@ -334,9 +338,20 @@ export function OfferDraftEditor({
     subjectInput = useRef<HTMLInputElement | null>(null),
     lineInputRefs = useRef(new Map<string, HTMLInputElement>()),
     pendingLineFocus = useRef(''),
-    callbacks = useRef({ onDirtyChange, onBusyChange, onSavedMetadata });
-  callbacks.current = { onDirtyChange, onBusyChange, onSavedMetadata };
+    callbacks = useRef({
+      onDirtyChange,
+      onBusyChange,
+      onSavedMetadata,
+      onProtectedChange,
+    });
+  callbacks.current = {
+    onDirtyChange,
+    onBusyChange,
+    onSavedMetadata,
+    onProtectedChange,
+  };
 
+  const busy = saving || finalizing;
   const dirty = Boolean(
     values &&
     baseline &&
@@ -496,16 +511,24 @@ export function OfferDraftEditor({
     }
     pendingLineFocus.current = '';
   }, [lineValues]);
-  useEffect(() => registerUnsavedChanges(() => dirtyRef.current), []);
+  const protectedRef = useRef(false);
+  const protectedEditor = dirty || busy;
+  protectedRef.current = protectedEditor;
+  useEffect(() => registerUnsavedChanges(() => protectedRef.current, true), []);
+  useEffect(() => {
+    callbacks.current.onProtectedChange?.(protectedEditor);
+    return () => callbacks.current.onProtectedChange?.(false);
+  }, [protectedEditor]);
 
   function close() {
-    if (busyRef.current) return;
+    if (busyRef.current || finalizing) return;
     if (dirtyRef.current && !window.confirm(editorDiscardMessage(kind))) return;
     callbacks.current.onDirtyChange(false);
     onClose();
   }
 
   function change<K extends keyof DraftValues>(key: K, value: DraftValues[K]) {
+    if (finalizing) return;
     setValues((current) => (current ? { ...current, [key]: value } : current));
   }
 
@@ -514,6 +537,7 @@ export function OfferDraftEditor({
     field: K,
     value: DraftLineValues[K],
   ) {
+    if (finalizing) return;
     setLineValues((current) =>
       current.map((line) =>
         line.key === key ? { ...line, [field]: value } : line,
@@ -522,7 +546,8 @@ export function OfferDraftEditor({
   }
 
   function addLine() {
-    if (lineValues.length >= 1000 || busyRef.current || isBlocked) return;
+    if (lineValues.length >= 1000 || busyRef.current || finalizing || isBlocked)
+      return;
     lineSequence.current += 1;
     const key = `free-${lineSequence.current}`;
     pendingLineFocus.current = key;
@@ -581,7 +606,13 @@ export function OfferDraftEditor({
   }
 
   function openProductPicker() {
-    if (busyRef.current || loading || isBlocked || lineValues.length >= 1000)
+    if (
+      busyRef.current ||
+      finalizing ||
+      loading ||
+      isBlocked ||
+      lineValues.length >= 1000
+    )
       return;
     setProductPickerOpen(true);
     if (catalogState === 'idle' || catalogState === 'error') void loadCatalog();
@@ -590,6 +621,7 @@ export function OfferDraftEditor({
   function appendCatalogProduct() {
     if (
       busyRef.current ||
+      finalizing ||
       loading ||
       isBlocked ||
       lineValues.length >= 1000 ||
@@ -634,6 +666,7 @@ export function OfferDraftEditor({
   }
 
   function removeLine(key: string) {
+    if (finalizing) return;
     if (lineValues.length <= 1) return;
     const index = lineValues.findIndex((line) => line.key === key);
     setLineValues((current) => {
@@ -645,7 +678,7 @@ export function OfferDraftEditor({
   }
 
   async function reload() {
-    if (busyRef.current) return;
+    if (busyRef.current || finalizing) return;
     if (
       dirtyRef.current &&
       !window.confirm(
@@ -660,6 +693,7 @@ export function OfferDraftEditor({
     event.preventDefault();
     if (
       busyRef.current ||
+      finalizing ||
       !values ||
       !detail ||
       !needsSave ||
@@ -671,7 +705,7 @@ export function OfferDraftEditor({
     )
       return;
     busyRef.current = true;
-    setBusy(true);
+    setSaving(true);
     callbacks.current.onBusyChange(true);
     setMessage('');
     setError(false);
@@ -763,12 +797,12 @@ export function OfferDraftEditor({
       );
     } finally {
       busyRef.current = false;
-      setBusy(false);
+      setSaving(false);
       callbacks.current.onBusyChange(false);
     }
   }
 
-  function escape(event: KeyboardEvent<HTMLFormElement>) {
+  function escape(event: KeyboardEvent<HTMLElement>) {
     if (event.key !== 'Escape') return;
     event.preventDefault();
     event.stopPropagation();
@@ -779,6 +813,7 @@ export function OfferDraftEditor({
     <section
       className="offer-draft-editor"
       aria-labelledby={'offer-editor-' + documentId}
+      onKeyDown={escape}
     >
       <div className="offer-draft-editor-heading">
         <h5 id={'offer-editor-' + documentId}>{editorHeading(kind)}</h5>
@@ -792,6 +827,7 @@ export function OfferDraftEditor({
         </button>
       </div>
       <p role={error ? 'alert' : 'status'}>{message}</p>
+      {finalizing && <p role="status">Dokument wird finalisiert …</p>}
       {legacy && (
         <p className="document-hint">
           Dieser ältere Entwurf enthält keine gespeicherten Texte. Die aktuelle
@@ -801,7 +837,7 @@ export function OfferDraftEditor({
       )}
       {detail && (
         <>
-          <form onSubmit={(event) => void save(event)} onKeyDown={escape}>
+          <form onSubmit={(event) => void save(event)}>
             <div className="offer-draft-fields">
               <label>
                 Betreff
@@ -1159,7 +1195,7 @@ export function OfferDraftEditor({
                   isBlocked
                 }
               >
-                {busy ? 'Wird gespeichert …' : 'Änderungen speichern'}
+                {saving ? 'Wird gespeichert …' : 'Änderungen speichern'}
               </button>
               {dirty ||
               legacy ||
@@ -1171,15 +1207,17 @@ export function OfferDraftEditor({
                   <button type="button" className="secondary-action" disabled>
                     Vorschau öffnen
                   </button>
-                  <span className="document-hint">
-                    {!validLines
-                      ? 'Fügen Sie zuerst mindestens eine gültige Position hinzu.'
-                      : isBlocked
-                        ? 'Bitte zuerst den aktuellen Serverstand laden.'
-                        : loading
-                          ? 'Der Serverstand wird geladen.'
-                          : 'Bitte zuerst speichern, damit die Vorschau stimmt.'}
-                  </span>
+                  {!finalizing && (
+                    <span className="document-hint">
+                      {!validLines
+                        ? 'Fügen Sie zuerst mindestens eine gültige Position hinzu.'
+                        : isBlocked
+                          ? 'Bitte zuerst den aktuellen Serverstand laden.'
+                          : loading
+                            ? 'Der Serverstand wird geladen.'
+                            : 'Bitte zuerst speichern, damit die Vorschau stimmt.'}
+                    </span>
+                  )}
                 </>
               ) : (
                 <a
@@ -1201,7 +1239,7 @@ export function OfferDraftEditor({
                   Entwurf neu laden
                 </button>
               )}
-              {busy && <span role="status">Entwurf wird gespeichert …</span>}
+              {saving && <span role="status">Entwurf wird gespeichert …</span>}
               {loading && <span role="status">Entwurf wird geladen …</span>}
             </div>
           </form>
@@ -1215,6 +1253,7 @@ export function OfferDraftEditor({
             <button
               type="button"
               className="secondary-action"
+              disabled={busy}
               onClick={() => void loadDraft()}
             >
               Entwurf erneut laden

@@ -257,12 +257,18 @@ export function EventDocuments({
   contactName,
   timeZone,
   csrfToken,
+  recordRemoving = false,
+  onEditingChange,
+  onEditorProtectedChange,
 }: {
   eventId: string;
   contactId: string | null;
   contactName?: string | null;
   timeZone: string;
   csrfToken: string;
+  recordRemoving?: boolean;
+  onEditingChange?: (editing: boolean) => void;
+  onEditorProtectedChange?: (protectedEditor: boolean) => void;
 }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
@@ -321,12 +327,29 @@ export function EventDocuments({
     createDialog = useRef<HTMLDialogElement>(null),
     createDialogTrigger = useRef<HTMLElement | null>(null),
     createDialogWasOpen = useRef(false),
-    editorTrigger = useRef<HTMLElement | null>(null);
+    editorWorkspace = useRef<HTMLDivElement>(null),
+    editorTrigger = useRef<string | null>(null);
+  const editorEntry = documents.find(
+    (entry) =>
+      entry.id === editorId &&
+      entry.state === 'draft' &&
+      editableDraftKinds.has(entry.kind),
+  );
+  const editing = editorEntry !== undefined;
+  const finalizing = editing && busy === editorId;
   useEffect(() => {
-    if (editorId || !editorTrigger.current) return;
-    editorTrigger.current.focus();
+    onEditingChange?.(editing);
+    return () => onEditingChange?.(false);
+  }, [editing, onEditingChange]);
+  useEffect(() => {
+    if (editing) editorWorkspace.current?.querySelector('button')?.focus();
+  }, [editing]);
+  useEffect(() => {
+    if (editing || busy || editorTrigger.current === null) return;
+    const trigger = document.getElementById(editorTrigger.current);
+    (trigger ?? createSummary.current)?.focus();
     editorTrigger.current = null;
-  }, [editorId]);
+  }, [editing, busy]);
   useEffect(() => {
     if (!createDialogOpen) return;
     const dialog = createDialog.current;
@@ -412,7 +435,7 @@ export function EventDocuments({
     )
       setDepositSourceId(currentSources[0]?.id ?? '');
   }, [createKind, depositSourceId, currentSources]);
-  async function load() {
+  async function load(requiredDocumentId?: string) {
     const [documentReply, templateReply] = await Promise.all([
       fetch(
         '/api/v1/documents?eventId=' +
@@ -425,10 +448,17 @@ export function EventDocuments({
     const offers = ((await templateReply.json()) as TemplateRow[]).filter(
       (entry) => entry.kind === 'offer' && entry.state === 'active',
     );
-    setDocuments(await validDocuments(documentReply));
+    const rows = await validDocuments(documentReply);
+    if (
+      requiredDocumentId &&
+      !rows.some((row) => row.id === requiredDocumentId)
+    )
+      throw new Error('created-document-missing');
+    setDocuments(rows);
     setTemplates(offers);
     setTemplateId((current) => current || offers[0]?.id || '');
     setInitialLoadFailed(false);
+    return rows;
   }
   useEffect(() => {
     void load()
@@ -437,10 +467,10 @@ export function EventDocuments({
   }, [eventId]);
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!contactId || createUncertain || mutating.current) return;
+    if (!contactId || createUncertain || mutating.current || recordRemoving)
+      return;
     const isBlank = templateId === '',
       expectedTemplateId = templateId || null;
-    const createTrigger = createSummary.current;
     mutating.current = true;
     setBusy('create');
     setMessage('');
@@ -482,9 +512,6 @@ export function EventDocuments({
         created.version < 1
       )
         throw new Error('uncertain-create');
-      if (isBlank) {
-        editorTrigger.current = createTrigger;
-      }
       // BKP013.2: a confirmed create is real stored data, so both paths show
       // the row at once instead of waiting for the list. A failed reload can
       // then never hide a draft that already exists, and the reload below
@@ -498,13 +525,24 @@ export function EventDocuments({
       setMessage(
         isBlank ? 'Leerer Angebotsentwurf angelegt.' : 'Entwurf angelegt.',
       );
-      setCreateDialogOpen(false);
-      if (isBlank) setEditorId(created.id);
+      if (!isBlank) setCreateDialogOpen(false);
+      let editorDraft: DocumentRow | undefined = created;
       try {
-        await load();
+        const rows = await load(isBlank ? created.id : undefined);
+        editorDraft = rows.find((row) => row.id === created.id);
         setReloadWarning(false);
       } catch {
         setReloadWarning(true);
+      }
+      if (isBlank) {
+        if (
+          editorDraft?.state === 'draft' &&
+          editableDraftKinds.has(editorDraft.kind)
+        ) {
+          editorTrigger.current = '';
+          setEditorId(editorDraft.id);
+        }
+        setCreateDialogOpen(false);
       }
     } catch {
       setMessage('');
@@ -1378,6 +1416,21 @@ export function EventDocuments({
       </p>
     );
   }
+  function finalizeAction(entry: DocumentRow) {
+    return (
+      <button
+        type="button"
+        className="secondary-action"
+        disabled={busy !== '' || editorBusy || editorDirty}
+        aria-label={
+          kindName(entry) + ' ' + (entry.number ?? 'Entwurf') + ' finalisieren'
+        }
+        onClick={() => void finalize(entry.id, entry.version)}
+      >
+        Finalisieren
+      </button>
+    );
+  }
   function rows(entries: DocumentRow[]) {
     return (
       <ul className="document-list">
@@ -1641,18 +1694,24 @@ export function EventDocuments({
                 <>
                   {editableDraftKinds.has(entry.kind) && (
                     <button
+                      id={'edit-document-' + entry.id}
                       type="button"
                       className="secondary-action"
-                      disabled={busy !== '' || editorBusy || editorId !== ''}
+                      disabled={
+                        busy !== '' ||
+                        editorBusy ||
+                        editorId !== '' ||
+                        recordRemoving
+                      }
                       aria-label={
                         kindName(entry) +
                         ' ' +
                         (entry.number ?? 'Entwurf') +
                         ' bearbeiten'
                       }
-                      aria-expanded={editorId === entry.id}
                       onClick={(event) => {
-                        editorTrigger.current = event.currentTarget;
+                        if (recordRemoving) return;
+                        editorTrigger.current = event.currentTarget.id;
                         setEditorDirty(false);
                         setEditorId(entry.id);
                       }}
@@ -1660,20 +1719,7 @@ export function EventDocuments({
                       Bearbeiten
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    disabled={busy !== '' || editorBusy || editorDirty}
-                    aria-label={
-                      kindName(entry) +
-                      ' ' +
-                      (entry.number ?? 'Entwurf') +
-                      ' finalisieren'
-                    }
-                    onClick={() => void finalize(entry.id, entry.version)}
-                  >
-                    Finalisieren
-                  </button>
+                  {finalizeAction(entry)}
                 </>
               )}
               {entry.state === 'final' && (
@@ -2296,31 +2342,44 @@ export function EventDocuments({
                   </fieldset>
                 </form>
               )}
-            {editableDraftKinds.has(entry.kind) &&
-              editorId === entry.id &&
-              entry.state === 'draft' && (
-                <OfferDraftEditor
-                  documentId={entry.id}
-                  csrfToken={csrfToken}
-                  kind={entry.kind}
-                  onClose={() => {
-                    setEditorDirty(false);
-                    setEditorId('');
-                  }}
-                  onDirtyChange={setEditorDirty}
-                  onBusyChange={setEditorBusy}
-                  onSavedMetadata={(metadata) =>
-                    setDocuments((current) =>
-                      current.map((row) =>
-                        row.id === entry.id ? { ...row, ...metadata } : row,
-                      ),
-                    )
-                  }
-                />
-              )}
           </li>
         ))}
       </ul>
+    );
+  }
+  const reloadNotice = (
+    <p role="alert">
+      Gespeichert, aber die Dateiliste konnte nicht neu geladen werden. Nichts
+      erneut anlegen.
+    </p>
+  );
+  if (editorEntry) {
+    return (
+      <div className="event-document-editor" ref={editorWorkspace}>
+        {message && <p role="status">{message}</p>}
+        {reloadWarning && <div className="reload-warning">{reloadNotice}</div>}
+        <OfferDraftEditor
+          documentId={editorEntry.id}
+          csrfToken={csrfToken}
+          kind={editorEntry.kind}
+          finalizing={finalizing}
+          onClose={() => {
+            setEditorDirty(false);
+            setEditorId('');
+          }}
+          onDirtyChange={setEditorDirty}
+          onBusyChange={setEditorBusy}
+          onProtectedChange={onEditorProtectedChange}
+          onSavedMetadata={(metadata) =>
+            setDocuments((current) =>
+              current.map((row) =>
+                row.id === editorEntry.id ? { ...row, ...metadata } : row,
+              ),
+            )
+          }
+        />
+        <div className="document-actions">{finalizeAction(editorEntry)}</div>
+      </div>
     );
   }
   const offers = documents.filter((entry) => entry.kind === 'offer'),
@@ -2338,10 +2397,7 @@ export function EventDocuments({
       {!createDialogOpen && <p role="status">{message}</p>}
       {reloadWarning && (
         <div className="reload-warning">
-          <p role="alert">
-            Gespeichert, aber die Dateiliste konnte nicht neu geladen werden.
-            Nichts erneut anlegen.
-          </p>
+          {reloadNotice}
           <button
             type="button"
             className="tertiary-action"
@@ -2418,7 +2474,7 @@ export function EventDocuments({
               type="button"
               className="secondary-action"
               aria-haspopup="dialog"
-              disabled={busy !== '' || createUncertain}
+              disabled={busy !== '' || createUncertain || recordRemoving}
               onClick={() => {
                 setMessage('');
                 setCreateKind('offer');
