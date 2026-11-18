@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-CREATE-02.3: Rechnung im Dokumentdialog
+
+Reguläre Rechnungen lassen sich im Event-Dokumentdialog aus einer geeigneten finalisierten Auftragsbestätigung anlegen. Der bestehende versionsgebundene POST bleibt maßgeblich; nach unklarem Ergebnis sind konkurrierende Rechnungswege bis zum Listenabgleich gesperrt. CI und Auslieferung des tatsächlichen Commits gesondert prüfen.
+
 ## DOC-CREATE-02.2: Anzahlung im Dokumentdialog
 
 Der Dokumentdialog erstellt Anzahlungsentwürfe aus finalisierten Auftragsbestätigungen des Events über den bestehenden versionsgebundenen Weg. Mehrere Anzahlungen sind zulässig. Der Entwurf muss auf den vereinbarten Betrag gekürzt werden. Bei unklarer Antwort ist vor erneuter Anlage ein Listenabgleich nötig; eine Dublette lässt sich dabei nicht automatisch ausschließen. CI und Auslieferung des tatsächlichen Commits gesondert prüfen.

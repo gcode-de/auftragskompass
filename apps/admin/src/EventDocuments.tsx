@@ -268,7 +268,7 @@ export function EventDocuments({
     [templates, setTemplates] = useState<TemplateRow[]>([]),
     [templateId, setTemplateId] = useState(''),
     [createKind, setCreateKind] = useState<
-      'offer' | 'order_confirmation' | 'deposit_invoice'
+      'offer' | 'order_confirmation' | 'deposit_invoice' | 'invoice'
     >('offer'),
     [confirmationSourceId, setConfirmationSourceId] = useState(''),
     [depositSourceId, setDepositSourceId] = useState(''),
@@ -283,8 +283,6 @@ export function EventDocuments({
     [reloadWarning, setReloadWarning] = useState(false),
     [createUncertain, setCreateUncertain] = useState(false),
     [confirmWithdrawId, setConfirmWithdrawId] = useState(''),
-    // BKP019.c1: the finalized confirmation whose invoice is being confirmed.
-    [confirmInvoiceId, setConfirmInvoiceId] = useState(''),
     // BKP019.c3.2: the finalized confirmation whose final invoice is being
     // confirmed. A third own state - one step never confirms another.
     [confirmFinalInvoiceId, setConfirmFinalInvoiceId] = useState(''),
@@ -319,6 +317,7 @@ export function EventDocuments({
     >('idle'),
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
+    uncertainReload = useRef<HTMLButtonElement>(null),
     createDialog = useRef<HTMLDialogElement>(null),
     createDialogTrigger = useRef<HTMLElement | null>(null),
     createDialogWasOpen = useRef(false),
@@ -345,7 +344,10 @@ export function EventDocuments({
     if (createDialogOpen || !createDialogWasOpen.current || busy !== '') return;
     if (!editorId) {
       const trigger = createDialogTrigger.current;
-      (trigger?.isConnected ? trigger : createSummary.current)?.focus();
+      (trigger?.isConnected && !trigger.matches(':disabled')
+        ? trigger
+        : (uncertainReload.current ?? createSummary.current)
+      )?.focus();
     }
     createDialogTrigger.current = null;
     createDialogWasOpen.current = false;
@@ -386,6 +388,16 @@ export function EventDocuments({
     );
     return sourceOffer?.offerStatus !== 'withdrawn';
   });
+  const invoicedConfirmations = new Set(
+    documents
+      .filter((entry) => entry.kind === 'invoice' && entry.sourceDocumentId)
+      .map((entry) => entry.sourceDocumentId!),
+  );
+  const invoiceSources = depositSources.filter(
+    (entry) => !invoicedConfirmations.has(entry.id),
+  );
+  const currentSources =
+    createKind === 'invoice' ? invoiceSources : depositSources;
   useEffect(() => {
     if (
       createKind === 'order_confirmation' &&
@@ -395,11 +407,11 @@ export function EventDocuments({
   }, [createKind, confirmationSourceId, confirmationSources]);
   useEffect(() => {
     if (
-      createKind === 'deposit_invoice' &&
-      !depositSources.some((entry) => entry.id === depositSourceId)
+      (createKind === 'deposit_invoice' || createKind === 'invoice') &&
+      !currentSources.some((entry) => entry.id === depositSourceId)
     )
-      setDepositSourceId(depositSources[0]?.id ?? '');
-  }, [createKind, depositSourceId, depositSources]);
+      setDepositSourceId(currentSources[0]?.id ?? '');
+  }, [createKind, depositSourceId, currentSources]);
   async function load() {
     const [documentReply, templateReply] = await Promise.all([
       fetch(
@@ -512,8 +524,12 @@ export function EventDocuments({
       if (source) await createConfirmation(source.id, source.version);
       return;
     }
-    const source = depositSources.find((entry) => entry.id === depositSourceId);
-    if (source) await createDepositInvoice(source.id, source.version);
+    const source = currentSources.find((entry) => entry.id === depositSourceId);
+    if (source) {
+      if (createKind === 'invoice')
+        await createInvoice(source.id, source.version);
+      else await createDepositInvoice(source.id, source.version);
+    }
   }
   async function finalize(id: string, version: number) {
     if (mutating.current || editorBusy || editorDirty) return;
@@ -704,11 +720,18 @@ export function EventDocuments({
   // Nothing is retyped: the positions come from the confirmation, and the
   // invoice is a draft that is finalised with its own number later.
   async function createInvoice(id: string, version: number) {
-    if (mutating.current || editorBusy || editorDirty) return;
+    if (
+      mutating.current ||
+      editorBusy ||
+      editorDirty ||
+      createUncertain ||
+      reloadWarning ||
+      initialLoadFailed
+    )
+      return;
     mutating.current = true;
     setBusy(id);
     setMessage('');
-    setConfirmInvoiceId('');
     try {
       const reply = await fetch('/api/v1/documents/' + id + '/invoice', {
         method: 'POST',
@@ -718,6 +741,7 @@ export function EventDocuments({
         },
         body: JSON.stringify({ version }),
       });
+      if (reply.status >= 500) throw new Error('uncertain-invoice');
       if (!reply.ok) {
         const result = (await reply.json()) as { error: string };
         setMessage(
@@ -730,12 +754,14 @@ export function EventDocuments({
                 : result.error === 'invalid_state' ||
                     result.error === 'conflict'
                   ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
-                  : 'Rechnung konnte nicht erstellt werden. Bitte Angaben prüfen.',
+                  : result.error === 'number_not_configured'
+                    ? 'Für Rechnungen ist kein Nummernkreis hinterlegt. Bitte in den Einstellungen anlegen.'
+                    : 'Rechnung konnte nicht erstellt werden. Bitte Angaben prüfen.',
         );
         try {
           await load();
         } catch {
-          // The message above already says what to do.
+          setReloadWarning(true);
         }
         return;
       }
@@ -745,17 +771,22 @@ export function EventDocuments({
         created.id.length > 0 &&
         created.kind === 'invoice' &&
         created.state === 'draft' &&
-        created.eventId === eventId;
+        created.eventId === eventId &&
+        Number.isSafeInteger(created.version) &&
+        created.version > 0;
       if (confirmed) {
         setDocuments((current) => [
           created,
           ...current.filter((row) => row.id !== created.id),
         ]);
         setMessage('Rechnung als Entwurf angelegt.');
-      } else
+        setCreateDialogOpen(false);
+      } else {
+        setCreateUncertain(true);
         setMessage(
-          'Rechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+          'Der Status der Rechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.',
         );
+      }
       try {
         await load();
         setReloadWarning(false);
@@ -763,7 +794,8 @@ export function EventDocuments({
         setReloadWarning(true);
       }
     } catch {
-      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+      setMessage('');
+      setCreateUncertain(true);
     } finally {
       mutating.current = false;
       setBusy('');
@@ -854,7 +886,15 @@ export function EventDocuments({
   // except "yes". Because one confirmation carries exactly one invoice, the
   // screen offers this step only while no invoice of that confirmation exists.
   async function createFinalInvoice(id: string, version: number) {
-    if (mutating.current || editorBusy || editorDirty) return;
+    if (
+      mutating.current ||
+      editorBusy ||
+      editorDirty ||
+      createUncertain ||
+      reloadWarning ||
+      initialLoadFailed
+    )
+      return;
     mutating.current = true;
     setBusy(id);
     setMessage('');
@@ -1236,7 +1276,9 @@ export function EventDocuments({
               ? 'Liste aktualisiert. Bitte prüfen Sie vorhandene Angebote, bevor Sie erneut anlegen.'
               : createKind === 'order_confirmation'
                 ? 'Liste aktualisiert. Bitte prüfen Sie vorhandene Auftragsbestätigungen, bevor Sie erneut anlegen.'
-                : 'Liste aktualisiert. Bitte vorhandene Anzahlungen prüfen; der unklare Versuch lässt sich nicht sicher einer einzelnen Anzahlung zuordnen.',
+                : createKind === 'invoice'
+                  ? 'Liste aktualisiert. Bitte prüfen Sie vorhandene Rechnungen, bevor Sie erneut anlegen.'
+                  : 'Liste aktualisiert. Bitte vorhandene Anzahlungen prüfen; der unklare Versuch lässt sich nicht sicher einer einzelnen Anzahlung zuordnen.',
           );
         }
       })
@@ -1268,14 +1310,6 @@ export function EventDocuments({
       timeZone,
     }).format(new Date(value));
   }
-  // BKP019.c3.2: one confirmation carries exactly one invoice - the standard one
-  // or the final one. That is a database rule (`documents_one_invoice`), so the
-  // screen stops offering a second creation instead of letting it end in a 409.
-  const invoicedConfirmations = new Set(
-    documents
-      .filter((entry) => entry.kind === 'invoice' && entry.sourceDocumentId)
-      .map((entry) => entry.sourceDocumentId!),
-  );
   // BKP019.c3.2b: the guard of the finalization, shown before the click. The
   // bound is the claim of the confirmation - `gross + debits - credits`, exactly
   // what the server reads - against the corrected claims of its finalized
@@ -1809,7 +1843,7 @@ export function EventDocuments({
                   <button
                     type="button"
                     className="secondary-action"
-                    disabled={busy !== ''}
+                    disabled={busy !== '' || createUncertain}
                     aria-haspopup="dialog"
                     aria-label={
                       kindName(entry) +
@@ -1828,70 +1862,46 @@ export function EventDocuments({
                     Auftragsbestätigung erstellen
                   </button>
                 )}
-              {/* BKP019.c1: only a finalized confirmation can be invoiced, and
-                  only as an explicit step - the invoice starts as a draft with
-                  its own number range.
-                  BKP019.c3.2: exactly one invoice per confirmation is possible,
-                  so the step disappears once one exists (standard or final). */}
-              {entry.state === 'final' &&
-                entry.kind === 'order_confirmation' &&
-                !invoicedConfirmations.has(entry.id) &&
-                (confirmInvoiceId === entry.id ? (
-                  <>
-                    <button
-                      type="button"
-                      className="secondary-action"
-                      disabled={busy !== ''}
-                      aria-label={
-                        kindName(entry) +
-                        ' ' +
-                        (entry.number ?? '') +
-                        ' Rechnung anlegen'
-                      }
-                      onClick={() =>
-                        void createInvoice(entry.id, entry.version)
-                      }
-                    >
-                      Ja, Rechnung anlegen
-                    </button>
-                    <button
-                      type="button"
-                      className="tertiary-action"
-                      disabled={busy !== ''}
-                      aria-label={
-                        kindName(entry) +
-                        ' ' +
-                        (entry.number ?? '') +
-                        ' Rechnung abbrechen'
-                      }
-                      onClick={() => setConfirmInvoiceId('')}
-                    >
-                      Abbrechen
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    disabled={busy !== ''}
-                    aria-label={
-                      kindName(entry) +
-                      ' ' +
-                      (entry.number ?? '') +
-                      ' Rechnung erstellen'
-                    }
-                    onClick={() => setConfirmInvoiceId(entry.id)}
-                  >
-                    Rechnung erstellen
-                  </button>
-                ))}
+              {invoiceSources.some((source) => source.id === entry.id) && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    busy !== '' ||
+                    createUncertain ||
+                    reloadWarning ||
+                    initialLoadFailed
+                  }
+                  aria-haspopup="dialog"
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' Rechnung erstellen'
+                  }
+                  onClick={(event) => {
+                    setMessage('');
+                    setCreateKind('invoice');
+                    setDepositSourceId(entry.id);
+                    createDialogTrigger.current = event.currentTarget;
+                    setCreateDialogOpen(true);
+                  }}
+                >
+                  Rechnung erstellen
+                </button>
+              )}
               {/* Multiple advances per order are valid; this action always opens
                   the shared picker and never suggests an existing one is deduped. */}
               {depositSources.some((source) => source.id === entry.id) && (
                 <button
                   type="button"
                   className="secondary-action"
-                  disabled={busy !== ''}
+                  disabled={
+                    busy !== '' ||
+                    createUncertain ||
+                    reloadWarning ||
+                    initialLoadFailed
+                  }
                   aria-haspopup="dialog"
                   aria-label={
                     kindName(entry) +
@@ -1923,7 +1933,12 @@ export function EventDocuments({
                     <button
                       type="button"
                       className="secondary-action"
-                      disabled={busy !== ''}
+                      disabled={
+                        busy !== '' ||
+                        createUncertain ||
+                        reloadWarning ||
+                        initialLoadFailed
+                      }
                       aria-label={
                         kindName(entry) +
                         ' ' +
@@ -1939,7 +1954,12 @@ export function EventDocuments({
                     <button
                       type="button"
                       className="tertiary-action"
-                      disabled={busy !== ''}
+                      disabled={
+                        busy !== '' ||
+                        createUncertain ||
+                        reloadWarning ||
+                        initialLoadFailed
+                      }
                       aria-label={
                         kindName(entry) +
                         ' ' +
@@ -1955,7 +1975,12 @@ export function EventDocuments({
                   <button
                     type="button"
                     className="secondary-action"
-                    disabled={busy !== ''}
+                    disabled={
+                      busy !== '' ||
+                      createUncertain ||
+                      reloadWarning ||
+                      initialLoadFailed
+                    }
                     aria-label={
                       kindName(entry) +
                       ' ' +
@@ -2334,9 +2359,12 @@ export function EventDocuments({
               ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
               : createKind === 'order_confirmation'
                 ? 'Der Status der Auftragsbestätigung ist unklar. Bitte Dateien aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
-                : 'Der Status der Anzahlungsrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Anzahlungen prüfen, bevor Sie erneut anlegen.'}
+                : createKind === 'invoice'
+                  ? 'Der Status der Rechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.'
+                  : 'Der Status der Anzahlungsrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Anzahlungen prüfen, bevor Sie erneut anlegen.'}
           </p>
           <button
+            ref={uncertainReload}
             type="button"
             className="tertiary-action"
             disabled={busy !== ''}
@@ -2390,7 +2418,7 @@ export function EventDocuments({
               type="button"
               className="secondary-action"
               aria-haspopup="dialog"
-              disabled={busy !== ''}
+              disabled={busy !== '' || createUncertain}
               onClick={() => {
                 setMessage('');
                 setCreateKind('offer');
@@ -2417,7 +2445,9 @@ export function EventDocuments({
                     ? 'Angebot anlegen'
                     : createKind === 'order_confirmation'
                       ? 'Auftragsbestätigung anlegen'
-                      : 'Anzahlungsrechnung anlegen'}
+                      : createKind === 'invoice'
+                        ? 'Rechnung anlegen'
+                        : 'Anzahlungsrechnung anlegen'}
                 </h4>
                 {createKind === 'offer' && (
                   <p>
@@ -2435,7 +2465,9 @@ export function EventDocuments({
                           ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
                           : createKind === 'order_confirmation'
                             ? 'Der Status der Auftragsbestätigung ist unklar. Bitte Dateien aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
-                            : 'Der Status der Anzahlungsrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Anzahlungen prüfen, bevor Sie erneut anlegen.'
+                            : createKind === 'invoice'
+                              ? 'Der Status der Rechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.'
+                              : 'Der Status der Anzahlungsrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Anzahlungen prüfen, bevor Sie erneut anlegen.'
                         : initialLoadFailed
                           ? 'Angebote und Vorlagen konnten nicht geladen werden. Bitte erneut laden, bevor Sie einen Entwurf anlegen.'
                           : 'Die Dateiliste konnte nach dem letzten Speichern nicht aktualisiert werden. Bitte erneut laden, bevor Sie einen weiteren Entwurf anlegen.'}
@@ -2471,14 +2503,21 @@ export function EventDocuments({
                         value={createKind}
                         onChange={(event) => {
                           const kind = event.target.value as
-                            'offer' | 'order_confirmation' | 'deposit_invoice';
+                            | 'offer'
+                            | 'order_confirmation'
+                            | 'deposit_invoice'
+                            | 'invoice';
                           setCreateKind(kind);
                           if (kind === 'order_confirmation')
                             setConfirmationSourceId(
                               confirmationSources[0]?.id ?? '',
                             );
-                          if (kind === 'deposit_invoice')
-                            setDepositSourceId(depositSources[0]?.id ?? '');
+                          if (kind === 'deposit_invoice' || kind === 'invoice')
+                            setDepositSourceId(
+                              (kind === 'invoice'
+                                ? invoiceSources
+                                : depositSources)[0]?.id ?? '',
+                            );
                         }}
                       >
                         <option value="offer">Angebot</option>
@@ -2488,6 +2527,7 @@ export function EventDocuments({
                         <option value="deposit_invoice">
                           Anzahlungsrechnung
                         </option>
+                        <option value="invoice">Rechnung</option>
                       </select>
                     </label>
                     {createKind === 'offer' ? (
@@ -2562,8 +2602,8 @@ export function EventDocuments({
                               setDepositSourceId(event.target.value)
                             }
                           >
-                            {depositSources.length ? (
-                              depositSources.map((entry) => (
+                            {currentSources.length ? (
+                              currentSources.map((entry) => (
                                 <option key={entry.id} value={entry.id}>
                                   {'Auftragsbestätigung ' +
                                     (entry.number ?? 'Entwurf')}
@@ -2576,19 +2616,23 @@ export function EventDocuments({
                             )}
                           </select>
                         </label>
-                        <p className="document-hint">
-                          Die Positionen werden in den Entwurf kopiert. Kürzen
-                          Sie sie dort auf den vereinbarten Anzahlungsbetrag.
-                        </p>
+                        {createKind === 'deposit_invoice' && (
+                          <p className="document-hint">
+                            Die Positionen werden in den Entwurf kopiert. Kürzen
+                            Sie sie dort auf den vereinbarten Anzahlungsbetrag.
+                          </p>
+                        )}
                         <button
                           className="primary-action"
                           disabled={
-                            !depositSources.some(
+                            !currentSources.some(
                               (entry) => entry.id === depositSourceId,
                             )
                           }
                         >
-                          Anzahlungsrechnung anlegen
+                          {createKind === 'invoice'
+                            ? 'Rechnung anlegen'
+                            : 'Anzahlungsrechnung anlegen'}
                         </button>
                       </>
                     )}

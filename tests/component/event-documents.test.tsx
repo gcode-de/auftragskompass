@@ -1685,6 +1685,121 @@ test('only a finalized confirmation offers the invoice action', async () => {
   }
 });
 
+test('invoice picker offers eligible confirmations and blocks after an unclear response', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation],
+    invoice: () => {
+      throw new Error('offline');
+    },
+  });
+  render(<EventDocuments {...props} />);
+  await openOfferCreate();
+  fireEvent.change(screen.getByLabelText('Dokumentenart'), {
+    target: { value: 'invoice' },
+  });
+  const dialog = screen.getByRole('dialog', { name: 'Rechnung anlegen' });
+  expect(
+    (within(dialog).getByLabelText('Auftragsbestätigung') as HTMLSelectElement)
+      .value,
+  ).toBe(finalizedConfirmation.id);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Rechnung anlegen' }),
+  );
+  expect(
+    await within(dialog).findByText(/Status der Rechnung ist unklar/),
+  ).toBeTruthy();
+  expect(
+    within(dialog)
+      .getByRole('button', { name: 'Rechnung anlegen' })
+      .closest('fieldset')?.disabled,
+  ).toBe(true);
+  expect(calls.filter((call) => call.url.endsWith('/invoice'))).toHaveLength(1);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Schließen' }));
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Dateien aktualisieren' }),
+    ),
+  );
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Angebot anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dateien aktualisieren' }),
+  );
+  expect(
+    await screen.findByText(
+      /Liste aktualisiert. Bitte prüfen Sie vorhandene Rechnungen/,
+    ),
+  ).toBeTruthy();
+  expect(calls.filter((call) => call.url.endsWith('/invoice'))).toHaveLength(1);
+});
+
+test('invoice picker excludes invoiced, withdrawn, draft and foreign-event confirmations', async () => {
+  const available = {
+    ...finalizedConfirmation,
+    id: 'available',
+    number: 'AB-2',
+  };
+  setup({
+    documents: [
+      finalizedConfirmation,
+      invoiceDraft,
+      { ...finalizedConfirmation, id: 'final-invoiced' },
+      {
+        ...invoiceDraft,
+        id: 'final-invoice',
+        sourceDocumentId: 'final-invoiced',
+        invoiceRole: 'final',
+      },
+      available,
+      confirmationDraft,
+      { ...acceptedOffer, id: 'withdrawn', offerStatus: 'withdrawn' },
+      {
+        ...finalizedConfirmation,
+        id: 'withdrawn-confirmation',
+        sourceDocumentId: 'withdrawn',
+      },
+      { ...finalizedConfirmation, id: 'foreign', eventId: 'event-2' },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  await openOfferCreate();
+  fireEvent.change(screen.getByLabelText('Dokumentenart'), {
+    target: { value: 'invoice' },
+  });
+  const source = screen.getByLabelText(
+    'Auftragsbestätigung',
+  ) as HTMLSelectElement;
+  expect(Array.from(source.options).map((option) => option.value)).toEqual([
+    'available',
+  ]);
+});
+
 test('creating the invoice asks once and posts the confirmation version', async () => {
   const { calls } = setup({ documents: [finalizedConfirmation] });
   render(<EventDocuments {...props} />);
@@ -1697,18 +1812,10 @@ test('creating the invoice asks once and posts the confirmation version', async 
       name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
     }),
   );
-  expect(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
-    }),
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Rechnung anlegen' })).toBeTruthy();
   // Nothing left the browser before the confirmation.
   expect(calls.some((call) => call.url.endsWith('/invoice'))).toBe(false);
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
-    }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Rechnung anlegen' }));
   expect(
     await screen.findByText('Rechnung als Entwurf angelegt.'),
   ).toBeTruthy();
@@ -1739,10 +1846,16 @@ test('cancelling the invoice sends nothing', async () => {
       name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
     }),
   );
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Rechnung abbrechen',
-    }),
+  fireEvent(
+    screen.getByRole('dialog', { name: 'Rechnung anlegen' }),
+    new Event('cancel', { bubbles: true, cancelable: true }),
+  );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(row).getByRole('button', {
+        name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+      }),
+    ),
   );
   expect(
     within(row).queryByRole('button', { name: /Rechnung anlegen/ }),
@@ -1770,11 +1883,7 @@ test('an existing invoice is explained instead of retried', async () => {
       name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
     }),
   );
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
-    }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Rechnung anlegen' }));
   expect(
     await screen.findByText(
       'Für diese Auftragsbestätigung gibt es bereits eine Rechnung.',
@@ -1798,11 +1907,7 @@ test('a withdrawn order cannot be invoiced and says why', async () => {
       name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
     }),
   );
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
-    }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Rechnung anlegen' }));
   expect(
     await screen.findByText(
       'Der Auftrag wurde zurückgezogen. Eine Rechnung ist nicht möglich.',
@@ -1836,14 +1941,37 @@ test('an invoice refused for another reason names it instead of guessing', async
         name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
       }),
     );
-    fireEvent.click(
-      within(row).getByRole('button', {
-        name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
-      }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Rechnung anlegen' }));
     expect(await screen.findByText(message)).toBeTruthy();
     cleanup();
   }
+});
+
+test('an invoice response without a valid version remains uncertain', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation],
+    invoice: () =>
+      Response.json({ ...invoiceDraft, version: null }, { status: 201 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
+    }),
+  );
+  const dialog = screen.getByRole('dialog', { name: 'Rechnung anlegen' });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Rechnung anlegen' }),
+  );
+  expect(
+    await within(dialog).findByText(/Der Status der Rechnung ist unklar/),
+  ).toBeTruthy();
+  expect(
+    within(dialog)
+      .getByRole('button', { name: 'Rechnung anlegen' })
+      .closest('fieldset')?.disabled,
+  ).toBe(true);
+  expect(calls.filter((call) => call.url.endsWith('/invoice'))).toHaveLength(1);
 });
 
 test('an invoice answer for another event is unclear and never listed', async () => {
@@ -1862,14 +1990,10 @@ test('an invoice answer for another event is unclear and never listed', async ()
       name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
     }),
   );
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Rechnung anlegen',
-    }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Rechnung anlegen' }));
   expect(
     await screen.findByText(
-      'Rechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+      'Der Status der Rechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.',
     ),
   ).toBeTruthy();
   // The row was not shown as if it belonged to this event, and nothing retries.
