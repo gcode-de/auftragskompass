@@ -8,7 +8,11 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { EventDocuments } from '../../apps/admin/src/EventDocuments.js';
-import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
+import { EventDetails } from '../../apps/admin/src/EventDetails.js';
+import {
+  hasUnsavedChanges,
+  installUnsavedNavigationGuard,
+} from '../../apps/admin/src/unsaved-changes.js';
 
 afterEach(() => {
   cleanup();
@@ -143,7 +147,9 @@ function setup(
     productsGet?: () => Response | Promise<Response>;
     blankCreate?: () => Response | Promise<Response>;
     initialLoadFail?: boolean;
-    finalize?: (body: unknown) => Response;
+    finalize?: (body: unknown) => Response | Promise<Response>;
+    eventDetail?: object;
+    eventRemove?: () => Promise<Response>;
   } = {},
 ) {
   const calls: { url: string; method: string; body?: unknown }[] = [];
@@ -155,6 +161,18 @@ function setup(
     const method = init?.method ?? 'GET',
       body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, method, body });
+    if (
+      options.eventRemove &&
+      url === '/api/v1/events/event-1' &&
+      method === 'DELETE'
+    )
+      return options.eventRemove();
+    if (options.eventDetail && url === '/api/v1/events/event-1')
+      return Response.json(options.eventDetail);
+    if (options.eventDetail && url.startsWith('/api/v1/library-files'))
+      return Response.json([]);
+    if (options.eventDetail && url === '/api/v1/events/event-1/library-files')
+      return Response.json([]);
     if (url.startsWith('/api/v1/documents?eventId=')) {
       if (options.initialLoadFail && getAttempts++ === 0)
         return Response.json({ error: 'unavailable' }, { status: 503 });
@@ -361,7 +379,7 @@ test('a draft opens focused with editable saved positions and previews only pers
 test('without a template an offer is created blank, empty stays calm, and the first saved position reloads', async () => {
   const { calls } = setup({ template: null, documents: [] });
   const view = render(<EventDocuments {...props} />);
-  const summary = await openOfferCreate();
+  await openOfferCreate();
   expect(screen.getByText(/Sie können auch ohne Vorlage/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Vorlage'), {
     target: { value: '' },
@@ -405,7 +423,9 @@ test('without a template an offer is created blank, empty stays calm, and the fi
     screen.getByRole('button', { name: 'Bearbeitung schließen' }),
   );
   expect(confirm).not.toHaveBeenCalled();
-  await waitFor(() => expect(document.activeElement).toBe(summary));
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Angebot anlegen' }),
+  );
   fireEvent.click(
     screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
@@ -715,10 +735,12 @@ test('existing and free positions save exactly, removal/addition persist, and ro
       lines: savedLines,
     }),
   );
-  await waitFor(() =>
-    expect(document.querySelector('.document-meta')?.textContent).toContain(
-      '275,00',
-    ),
+  await screen.findByText('Änderungen gespeichert.');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(document.querySelector('.document-meta')?.textContent).toContain(
+    '275,00',
   );
   expect(
     calls.filter((call) => call.url === '/api/v1/documents/doc-1'),
@@ -1195,6 +1217,155 @@ test('position fields stay disabled while a save is pending and re-enable after 
   );
 });
 
+test('pending finalization locks draft fields, saving and closing until its result', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const { calls } = setup({ finalize: () => pending });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const subject = await screen.findByLabelText('Betreff');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
+  );
+  await screen.findByText('Dokument wird finalisiert …');
+  const close = screen.getByRole('button', { name: 'Bearbeitung schließen' });
+  const save = screen.getByRole('button', { name: 'Änderungen speichern' });
+  expect(subject).toHaveProperty('disabled', true);
+  expect(screen.getByRole('group', { name: 'Position 1' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  expect(close).toHaveProperty('disabled', true);
+  expect(save).toHaveProperty('disabled', true);
+  fireEvent.change(subject, {
+    target: { value: 'Fiktive Änderung während Finalisierung' },
+  });
+  fireEvent.keyDown(subject, { key: 'Escape' });
+  fireEvent.click(close);
+  fireEvent.submit(save.closest('form')!);
+  expect(subject.isConnected).toBe(true);
+  expect(fieldValue('Betreff')).toBe(content.subject);
+  expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(0);
+  finish(Response.json({ error: 'artifact_failed' }, { status: 409 }));
+  await screen.findByText(
+    'PDF konnte nicht erzeugt werden. Bitte Betreiber informieren.',
+  );
+  await waitFor(() => expect(subject).toHaveProperty('disabled', false));
+  fireEvent.click(close);
+  expect(subject.isConnected).toBe(false);
+});
+
+test('the document editor guards event removal, closing and browser navigation', async () => {
+  let finishRemoval!: (reply: Response) => void;
+  const pendingRemoval = new Promise<Response>((resolve) => {
+    finishRemoval = resolve;
+  });
+  const { calls } = setup({
+    eventRemove: () => pendingRemoval,
+    eventDetail: {
+      event: {
+        id: 'event-1',
+        version: 1,
+        name: 'Fiktives Event',
+        status: 'inquiry',
+        eventDate: null,
+        startsAt: null,
+        endsAt: null,
+        timeZone: 'Europe/Berlin',
+        eventTypeId: null,
+        packageId: null,
+        locationId: null,
+        venue: null,
+        venueOverride: false,
+        primaryContactId: 'contact-1',
+        additionalContactIds: [],
+        source: '',
+        description: '',
+        notesHtml: '',
+      },
+      contacts: [],
+      location: null,
+      eventType: null,
+      package: null,
+      activities: [],
+    },
+  });
+  const onClose = vi.fn(),
+    onRecordDirtyChange = vi.fn();
+  render(
+    <EventDetails
+      id="event-1"
+      csrfToken={props.csrfToken}
+      statuses={[]}
+      onChanged={async () => {}}
+      onEdit={vi.fn()}
+      onClose={onClose}
+      onRecordDirtyChange={onRecordDirtyChange}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Fiktives Event' });
+  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
+  const remove = screen.getByRole('button', { name: 'Event entfernen' });
+  expect(remove).toHaveProperty('disabled', false);
+  fireEvent.click(screen.getByRole('button', { name: 'Dateien' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const subject = await screen.findByLabelText('Betreff');
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const close = screen.getByRole('button', { name: 'Event-Details schließen' });
+  expect(remove).toHaveProperty('disabled', true);
+  fireEvent.click(close);
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(confirm).not.toHaveBeenCalled();
+  fireEvent.change(subject, {
+    target: { value: 'Fiktive ungespeicherte Eingabe' },
+  });
+  expect(onRecordDirtyChange).toHaveBeenLastCalledWith(true);
+  fireEvent.click(remove);
+  expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+  expect(confirm).not.toHaveBeenCalled();
+  fireEvent.click(close);
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(fieldValue('Betreff')).toBe('Fiktive ungespeicherte Eingabe');
+  const unload = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  const acceptedUrl = window.location.href;
+  const removeGuard = installUnsavedNavigationGuard();
+  try {
+    window.history.replaceState(null, '', '#event-other');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(window.location.href).toBe(acceptedUrl);
+  } finally {
+    removeGuard();
+    window.history.replaceState(null, '', acceptedUrl);
+  }
+  confirm.mockReturnValue(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(remove).toHaveProperty('disabled', false);
+  const edit = screen.getByRole('button', {
+    name: 'Angebot Entwurf bearbeiten',
+  });
+  const create = screen.getByRole('button', { name: 'Angebot anlegen' });
+  fireEvent.click(remove);
+  expect(calls.filter((call) => call.method === 'DELETE')).toHaveLength(1);
+  expect(edit).toHaveProperty('disabled', true);
+  expect(create).toHaveProperty('disabled', true);
+  fireEvent.click(edit);
+  expect(screen.queryByLabelText('Betreff')).toBeNull();
+  finishRemoval(Response.json({ error: 'conflict' }, { status: 409 }));
+  await waitFor(() => expect(edit).toHaveProperty('disabled', false));
+});
+
 test('legacy draft values are initialized from the current template only in the editor and disclosed', async () => {
   const archivedTemplate = { ...template, state: 'archived' };
   const { calls } = setup({
@@ -1270,7 +1441,7 @@ test('an invalid successful PUT response is treated as uncertain and keeps the i
   expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
 });
 
-test('an unchanged legacy snapshot needs an explicit save, and a second Edit click cannot unlock finalization', async () => {
+test('an unchanged legacy snapshot needs an explicit save and cannot be finalized while open', async () => {
   setup({ initial: detail(null) });
   render(<EventDocuments {...props} />);
   const edit = await screen.findByRole('button', {
@@ -1287,11 +1458,9 @@ test('an unchanged legacy snapshot needs an explicit save, and a second Edit cli
     ).toHaveProperty('disabled', true),
   );
 
-  fireEvent.click(edit);
-  expect(edit).toHaveProperty('disabled', true);
   expect(
-    screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
-  ).toHaveProperty('disabled', true);
+    screen.queryByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  ).toBeNull();
 });
 
 test('legacy text stays unavailable when its archived template is missing', async () => {
@@ -1391,8 +1560,11 @@ test('large stored totals and prices retain every cent in the editor and documen
   );
   const total = await screen.findByText(/Gesamtbetrag/);
   expect(total.textContent).toContain('90.071.992.547.409,91 €');
-  await waitFor(() =>
-    expect(screen.getAllByText(/90\.071\.992\.547\.409,91/)).toHaveLength(2),
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(document.querySelector('.document-meta')?.textContent).toContain(
+    '90.071.992.547.409,91 €',
   );
 });
 
@@ -1427,7 +1599,7 @@ test('dirty editor keeps route protection and Escape cancellation until discard 
   );
 });
 
-test('one dirty offer editor disables finalization actions on every draft row', async () => {
+test('a dirty offer editor blocks finalization and hides the other draft actions', async () => {
   setup({ documents: [draft, { ...draft, id: 'doc-2' }] });
   render(<EventDocuments {...props} />);
   const editButtons = await screen.findAllByRole('button', {
@@ -1437,13 +1609,10 @@ test('one dirty offer editor disables finalization actions on every draft row', 
   fireEvent.change(await screen.findByLabelText('Betreff'), {
     target: { value: 'Fiktiv, noch nicht gespeichert' },
   });
-  const finalizeButtons = screen.getAllByRole('button', {
-    name: /Angebot Entwurf finalisieren/,
-  });
-  expect(finalizeButtons).toHaveLength(2);
   expect(
-    finalizeButtons.every((button) => (button as HTMLButtonElement).disabled),
-  ).toBe(true);
+    screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
+  ).toHaveProperty('disabled', true);
+  expect(screen.queryByRole('region', { name: 'Angebote' })).toBeNull();
 });
 
 test('a conflict preserves the input and a failed explicit reload never replaces it', async () => {

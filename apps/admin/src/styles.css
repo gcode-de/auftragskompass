@@ -2427,6 +2427,21 @@ summary {
   margin: 0.25rem 0;
   font-size: 1rem;
 }
+.event-document-editor > .offer-draft-editor {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.event-document-editor .offer-draft-editor-heading h5 {
+  font-size: 1.25rem;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+.event-document-editor > .document-actions {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
 .offer-draft-editor > p {
   max-width: 70ch;
 }

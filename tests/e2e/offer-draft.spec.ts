@@ -391,17 +391,19 @@ async function offerDraftScenario(browser: Browser) {
     await offers
       .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
       .click();
-    await expect(offers.getByLabel('Betreff')).toHaveValue(
+    const editor = page.getByRole('region', { name: 'Angebot bearbeiten' });
+    await expect(offers).toHaveCount(0);
+    await expect(editor.getByLabel('Betreff')).toHaveValue(
       'Template subject before draft',
     );
-    await expect(offers.getByLabel('Einleitung')).toHaveValue(
+    await expect(editor.getByLabel('Einleitung')).toHaveValue(
       'Template introduction before draft',
     );
-    await expect(offers.getByLabel('Schlusstext')).toHaveValue(
+    await expect(editor.getByLabel('Schlusstext')).toHaveValue(
       'Template conclusion before draft',
     );
-    await expect(offers.getByLabel('Gültigkeit in Tagen')).toHaveValue('14');
-    const positions = offers.getByRole('region', { name: 'Positionen' });
+    await expect(editor.getByLabel('Gültigkeit in Tagen')).toHaveValue('14');
+    const positions = editor.getByRole('region', { name: 'Positionen' });
     const position1 = positions.getByRole('group', { name: 'Position 1' });
     const position2 = positions.getByRole('group', { name: 'Position 2' });
     await expect(position1.getByLabel('Beschreibung')).toHaveValue(
@@ -419,10 +421,10 @@ async function offerDraftScenario(browser: Browser) {
     await expect(position2.getByLabel('Beschreibung')).toHaveValue(
       'Fictional delivery',
     );
-    await offers.getByLabel('Betreff').fill('Fictional saved subject');
-    await offers.getByLabel('Einleitung').fill('Fictional saved introduction');
-    await offers.getByLabel('Schlusstext').fill('Fictional saved conclusion');
-    await offers.getByLabel('Gültigkeit in Tagen').fill('27');
+    await editor.getByLabel('Betreff').fill('Fictional saved subject');
+    await editor.getByLabel('Einleitung').fill('Fictional saved introduction');
+    await editor.getByLabel('Schlusstext').fill('Fictional saved conclusion');
+    await editor.getByLabel('Gültigkeit in Tagen').fill('27');
     await position1
       .getByLabel('Beschreibung')
       .fill('Fictional edited booth before catalog load');
@@ -459,23 +461,23 @@ async function offerDraftScenario(browser: Browser) {
       }
       await route.continue();
     });
-    await offers.getByRole('button', { name: 'Produkt hinzufügen' }).click();
+    await editor.getByRole('button', { name: 'Produkt hinzufügen' }).click();
     await catalogRequestStarted;
     await expect(
-      offers.getByText('Produktkatalog wird geladen.'),
+      editor.getByText('Produktkatalog wird geladen.'),
     ).toBeVisible();
     await position1
       .getByLabel('Beschreibung')
       .fill('Fictional edited booth during catalog load');
     releaseCatalogFailure();
-    await expect(offers.getByRole('alert')).toContainText(
+    await expect(editor.getByRole('alert')).toContainText(
       'Produktkatalog konnte nicht geladen werden.',
     );
     await expect(position1.getByLabel('Beschreibung')).toHaveValue(
       'Fictional edited booth during catalog load',
     );
-    await offers.getByRole('button', { name: 'Katalog erneut laden' }).click();
-    const productPicker = offers.getByLabel('Produkt aus Katalog');
+    await editor.getByRole('button', { name: 'Katalog erneut laden' }).click();
+    const productPicker = editor.getByLabel('Produkt aus Katalog');
     await expect(productPicker).toBeVisible();
     await expect(productPicker.getByRole('option')).toHaveCount(3);
     await expect(
@@ -484,7 +486,7 @@ async function offerDraftScenario(browser: Browser) {
       }),
     ).toHaveCount(0);
     await productPicker.selectOption(netProduct.id);
-    await offers
+    await editor
       .getByRole('button', { name: 'Als Position hinzufügen' })
       .click();
     const netPosition = positions.getByRole('group', { name: 'Position 3' });
@@ -504,7 +506,7 @@ async function offerDraftScenario(browser: Browser) {
       '0.00',
     );
     await productPicker.selectOption(grossProduct.id);
-    await offers
+    await editor
       .getByRole('button', { name: 'Als Position hinzufügen' })
       .click();
     const grossPosition = positions.getByRole('group', { name: 'Position 4' });
@@ -539,13 +541,13 @@ async function offerDraftScenario(browser: Browser) {
       positions.getByText('Änderungen werden beim Speichern neu berechnet.'),
     ).toBeVisible();
     await expect(
-      offers.getByRole('button', { name: 'Vorschau öffnen' }),
+      editor.getByRole('button', { name: 'Vorschau öffnen' }),
     ).toBeDisabled();
     await expect(
-      offers.getByText('Gespeicherter Gesamtbetrag: 195,00 €'),
+      editor.getByText('Gespeicherter Gesamtbetrag: 195,00 €'),
     ).toBeVisible();
-    await offers.getByRole('button', { name: 'Änderungen speichern' }).click();
-    await expect(offers.getByRole('status')).toContainText(
+    await editor.getByRole('button', { name: 'Änderungen speichern' }).click();
+    await expect(editor.getByRole('status')).toContainText(
       'Änderungen gespeichert.',
     );
 
@@ -652,7 +654,7 @@ async function offerDraftScenario(browser: Browser) {
       },
     ]);
     await expect(
-      offers.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
+      editor.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
     ).toBeVisible();
     await expect(position1.getByLabel('Beschreibung')).toHaveValue(
       'Fictional edited booth during catalog load',
@@ -738,23 +740,20 @@ async function offerDraftScenario(browser: Browser) {
       .getByRole('navigation', { name: 'Bereiche des Events' })
       .getByRole('button', { name: 'Dateien' })
       .click();
-    const reopenedOffers = page.getByRole('region', { name: 'Angebote' });
-    await reopenedOffers
+    await offers
       .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
       .click();
-    await expect(reopenedOffers.getByLabel('Betreff')).toHaveValue(
+    await expect(editor.getByLabel('Betreff')).toHaveValue(
       'Fictional saved subject',
     );
-    await expect(reopenedOffers.getByLabel('Einleitung')).toHaveValue(
+    await expect(editor.getByLabel('Einleitung')).toHaveValue(
       'Fictional saved introduction',
     );
-    await expect(reopenedOffers.getByLabel('Schlusstext')).toHaveValue(
+    await expect(editor.getByLabel('Schlusstext')).toHaveValue(
       'Fictional saved conclusion',
     );
-    await expect(reopenedOffers.getByLabel('Gültigkeit in Tagen')).toHaveValue(
-      '27',
-    );
-    const reopenedPositions = reopenedOffers.getByRole('region', {
+    await expect(editor.getByLabel('Gültigkeit in Tagen')).toHaveValue('27');
+    const reopenedPositions = editor.getByRole('region', {
       name: 'Positionen',
     });
     const reopenedPosition1 = reopenedPositions.getByRole('group', {
@@ -833,7 +832,7 @@ async function offerDraftScenario(browser: Browser) {
       '0.00',
     );
     await expect(
-      reopenedOffers.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
+      editor.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
     ).toBeVisible();
 
     const emptyCatalogRoute = (route: Route) =>
@@ -843,11 +842,9 @@ async function offerDraftScenario(browser: Browser) {
         body: '[]',
       });
     await context.route('**/api/v1/products', emptyCatalogRoute);
-    await reopenedOffers
-      .getByRole('button', { name: 'Produkt hinzufügen' })
-      .click();
+    await editor.getByRole('button', { name: 'Produkt hinzufügen' }).click();
     await expect(
-      reopenedOffers.getByText('Keine aktiven Produkte im Katalog.'),
+      editor.getByText('Keine aktiven Produkte im Katalog.'),
     ).toBeVisible();
     const emptyCatalogAxe = await new AxeBuilder({ page })
       .include('.offer-draft-editor')
@@ -855,9 +852,6 @@ async function offerDraftScenario(browser: Browser) {
       .analyze();
     expect(emptyCatalogAxe.violations).toEqual([]);
     await context.unroute('**/api/v1/products', emptyCatalogRoute);
-    await expect(
-      reopenedOffers.locator('.document-list > li .document-meta'),
-    ).toContainText('574,40 €');
     let previewBytes: Buffer | undefined;
     await context.route(
       '**/api/v1/documents/' + draftId + '/preview',
@@ -872,7 +866,7 @@ async function offerDraftScenario(browser: Browser) {
       .waitForEvent('response', (response) =>
         response.url().includes('/api/v1/documents/' + draftId + '/preview'),
       );
-    await reopenedOffers.getByRole('link', { name: 'Vorschau öffnen' }).click();
+    await editor.getByRole('link', { name: 'Vorschau öffnen' }).click();
     const preview = await previewResponse;
     expect(preview.status()).toBe(200);
     expect(preview.headers()['content-type']).toContain('application/pdf');
@@ -896,6 +890,11 @@ async function offerDraftScenario(browser: Browser) {
         )
       ).rows[0]!.next_value,
     ).toBe(37);
+
+    await editor.getByRole('button', { name: 'Bearbeitung schließen' }).click();
+    await expect(
+      offers.locator('.document-list > li .document-meta'),
+    ).toContainText('574,40 €');
 
     const currentTemplate = await templates.get(template.id);
     expect(currentTemplate).not.toBeNull();
@@ -998,26 +997,23 @@ async function offerDraftScenario(browser: Browser) {
       version: 1,
       lines: [],
     });
-    const blankEditor = blankOffers.locator('.offer-draft-editor');
-    const blankRow = blankEditor.locator('xpath=ancestor::li[1]');
-    await expect(blankEditor).toBeVisible();
-    await expect(blankEditor.getByLabel('Betreff')).toHaveValue('Angebot');
-    await expect(blankEditor.getByLabel('Einleitung')).toHaveValue('');
-    await expect(blankEditor.getByLabel('Schlusstext')).toHaveValue('');
-    await expect(blankEditor.getByLabel('Gültigkeit in Tagen')).toHaveValue(
-      '14',
-    );
+    const finalizeButton = page
+      .locator('.event-document-editor')
+      .getByRole('button', { name: 'Angebot Entwurf finalisieren' });
+    await expect(editor).toBeVisible();
+    await expect(editor.getByLabel('Betreff')).toHaveValue('Angebot');
+    await expect(editor.getByLabel('Einleitung')).toHaveValue('');
+    await expect(editor.getByLabel('Schlusstext')).toHaveValue('');
+    await expect(editor.getByLabel('Gültigkeit in Tagen')).toHaveValue('14');
     await expect(
-      blankEditor.getByText(
+      editor.getByText(
         'Noch keine Positionen. Fügen Sie eine freie Position hinzu oder wählen Sie ein Produkt aus dem Katalog.',
       ),
     ).toBeVisible();
     await expect(
-      blankEditor.getByRole('button', { name: 'Vorschau öffnen' }),
+      editor.getByRole('button', { name: 'Vorschau öffnen' }),
     ).toBeDisabled();
-    await expect(
-      blankRow.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
-    ).toBeDisabled();
+    await expect(finalizeButton).toBeDisabled();
     const blankOriginalTheme = await page
       .locator('html')
       .getAttribute('data-theme');
@@ -1083,20 +1079,20 @@ async function offerDraftScenario(browser: Browser) {
       ).rows[0]!.count,
     ).toBe('0');
 
-    await blankEditor
+    await editor
       .getByRole('button', { name: 'Freie Position hinzufügen' })
       .click();
-    const blankPosition = blankEditor.getByRole('group', {
+    const blankPosition = editor.getByRole('group', {
       name: 'Position 1',
     });
-    await blankEditor.getByLabel('Betreff').fill('Fictional standalone offer');
-    await blankEditor
+    await editor.getByLabel('Betreff').fill('Fictional standalone offer');
+    await editor
       .getByLabel('Einleitung')
       .fill('Fictional standalone introduction');
-    await blankEditor
+    await editor
       .getByLabel('Schlusstext')
       .fill('Fictional standalone conclusion');
-    await blankEditor.getByLabel('Gültigkeit in Tagen').fill('21');
+    await editor.getByLabel('Gültigkeit in Tagen').fill('21');
     await blankPosition
       .getByLabel('Beschreibung')
       .fill('Fictional standalone service');
@@ -1107,10 +1103,8 @@ async function offerDraftScenario(browser: Browser) {
       .fill('119.00');
     await blankPosition.getByLabel('Steuer in Prozent').fill('19');
     await blankPosition.getByLabel('Rabatt in Prozent').fill('0');
-    await blankEditor
-      .getByRole('button', { name: 'Änderungen speichern' })
-      .click();
-    await expect(blankEditor.getByRole('status')).toContainText(
+    await editor.getByRole('button', { name: 'Änderungen speichern' }).click();
+    await expect(editor.getByRole('status')).toContainText(
       'Änderungen gespeichert.',
     );
     expect(
@@ -1198,20 +1192,17 @@ async function offerDraftScenario(browser: Browser) {
     await blankRowAfterReload
       .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
       .click();
-    const blankEditorAfterReload = blankRowAfterReload.locator(
-      '.offer-draft-editor',
-    );
-    await expect(blankEditorAfterReload.getByLabel('Betreff')).toHaveValue(
+    await expect(editor.getByLabel('Betreff')).toHaveValue(
       'Fictional standalone offer',
     );
-    await expect(blankEditorAfterReload.getByLabel('Einleitung')).toHaveValue(
+    await expect(editor.getByLabel('Einleitung')).toHaveValue(
       'Fictional standalone introduction',
     );
-    await expect(blankEditorAfterReload.getByLabel('Schlusstext')).toHaveValue(
+    await expect(editor.getByLabel('Schlusstext')).toHaveValue(
       'Fictional standalone conclusion',
     );
     await expect(
-      blankEditorAfterReload
+      editor
         .getByRole('group', { name: 'Position 1' })
         .getByLabel('Beschreibung'),
     ).toHaveValue('Fictional standalone service');
@@ -1231,9 +1222,7 @@ async function offerDraftScenario(browser: Browser) {
           .url()
           .includes('/api/v1/documents/' + blankCreated.id + '/preview'),
       );
-    await blankEditorAfterReload
-      .getByRole('link', { name: 'Vorschau öffnen' })
-      .click();
+    await editor.getByRole('link', { name: 'Vorschau öffnen' }).click();
     const blankPreviewResponse = await blankPreviewResponsePromise;
     expect(blankPreviewResponse.status()).toBe(200);
     expect(blankPreviewResponse.headers()['content-type']).toContain(
@@ -1289,9 +1278,7 @@ async function offerDraftScenario(browser: Browser) {
         new URL(response.url()).pathname ===
         `/api/v1/documents/${blankCreated.id}/finalize`,
     );
-    await blankRowAfterReload
-      .getByRole('button', { name: 'Angebot Entwurf finalisieren' })
-      .click();
+    await finalizeButton.click();
     const [blankFinalizeRequest, blankFinalizeResponse] = await Promise.all([
       blankFinalizeRequestPromise,
       blankFinalizeResponsePromise,

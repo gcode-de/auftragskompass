@@ -1393,7 +1393,9 @@ async function signInScenario(
         name: 'Auftragsbestätigung Entwurf bearbeiten',
       })
       .click();
-    const confirmationEditor = orders.locator('.offer-draft-editor');
+    const confirmationEditor = page.getByRole('region', {
+      name: 'Auftragsbestätigung bearbeiten',
+    });
     await expect(
       confirmationEditor.getByRole('heading', {
         name: 'Auftragsbestätigung bearbeiten',
@@ -1430,7 +1432,8 @@ async function signInScenario(
     ).rows[0]!.intro_text;
     expect(offerIntroAfterEdit).toBe('Hallo');
     // Finalizing uses the confirmation's own number range.
-    await orders
+    await expect(orders).toHaveCount(0);
+    await page
       .getByRole('button', {
         name: 'Auftragsbestätigung Entwurf finalisieren',
       })
@@ -1592,10 +1595,19 @@ async function signInScenario(
     await invoices
       .getByRole('button', { name: 'Rechnung Entwurf bearbeiten' })
       .click();
-    const invoiceEditor = invoices.locator('.offer-draft-editor');
+    const invoiceEditor = page.getByRole('region', {
+      name: 'Rechnung bearbeiten',
+    });
     await expect(
       invoiceEditor.getByRole('heading', { name: 'Rechnung bearbeiten' }),
     ).toBeVisible();
+    await expect(invoices).toHaveCount(0);
+    await expect(invoiceEditor.getByLabel('Betreff')).toBeFocused();
+    const editorViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    const editorBounds = (await invoiceEditor.boundingBox())!;
+    expect(editorBounds.x).toBeGreaterThanOrEqual(0);
+    expect(editorBounds.x + editorBounds.width).toBeLessThanOrEqual(390);
     await invoiceEditor.getByLabel(/Leistungsdatum/).fill('2020-02-29');
     await invoiceEditor.getByLabel(/Zahlungsziel in Tagen/).fill('14');
     // RG-07b: the account is free text and printed word for word, so this run
@@ -1609,6 +1621,14 @@ async function signInScenario(
     await expect(
       invoiceEditor.getByText('Änderungen gespeichert.'),
     ).toBeVisible();
+    await invoiceEditor
+      .getByRole('button', { name: 'Bearbeitung schließen' })
+      .click();
+    await expect(invoiceEditor).toHaveCount(0);
+    await expect(
+      invoices.getByRole('button', { name: 'Rechnung Entwurf bearbeiten' }),
+    ).toBeFocused();
+    await page.setViewportSize(editorViewport);
     // The draft knows the agreed term but no due day: it is not printed yet.
     const draftDates = invoices.locator('.document-invoice-dates');
     await expect(draftDates).toContainText('Leistungsdatum 29.02.2020');
@@ -1618,9 +1638,6 @@ async function signInScenario(
     const draftBank = invoices.locator('.document-invoice-bank');
     await expect(draftBank).toContainText('Fiktive Bank');
     await expect(draftBank).toContainText('IBAN DE00 0000 0000 0000 0000 00');
-    await invoiceEditor
-      .getByRole('button', { name: 'Bearbeitung schließen' })
-      .click();
     // Finalizing uses the invoice's own number range.
     await invoices
       .getByRole('button', { name: 'Rechnung Entwurf finalisieren' })
@@ -1795,7 +1812,9 @@ async function signInScenario(
         name: 'Rechnungskorrektur Entwurf bearbeiten',
       })
       .click();
-    const correctionEditor = corrections.locator('.offer-draft-editor');
+    const correctionEditor = page.getByRole('region', {
+      name: 'Rechnungskorrektur bearbeiten',
+    });
     await expect(
       correctionEditor.getByRole('heading', {
         name: 'Rechnungskorrektur bearbeiten',
@@ -2639,7 +2658,9 @@ async function signInScenario(
           name: 'Anzahlungsrechnung Entwurf bearbeiten',
         })
         .click();
-      const depositEditor = deposits.locator('.offer-draft-editor');
+      const depositEditor = page.getByRole('region', {
+        name: 'Anzahlungsrechnung bearbeiten',
+      });
       await expect(
         depositEditor.getByRole('heading', {
           name: 'Anzahlungsrechnung bearbeiten',
@@ -2654,7 +2675,8 @@ async function signInScenario(
       await expect(
         depositEditor.getByText('Änderungen gespeichert.'),
       ).toBeVisible();
-      await deposits
+      await expect(deposits).toHaveCount(0);
+      await page
         .getByRole('button', {
           name: 'Anzahlungsrechnung Entwurf finalisieren',
         })
