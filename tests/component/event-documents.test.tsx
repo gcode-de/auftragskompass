@@ -12,6 +12,7 @@ import { EventDocuments } from '../../apps/admin/src/EventDocuments.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  sessionStorage.clear();
 });
 const draft = {
     id: 'doc-1',
@@ -306,9 +307,24 @@ const draft = {
     taxMinor: 2075,
     grossMinor: 13000,
   };
+const blankInvoiceProps = {
+  eventId: '3350080a-d2de-4a58-8b95-dab9426716d3',
+  contactId: '19a17bb8-4a7b-4d2a-8afe-47037163d857',
+  timeZone: 'Europe/Berlin',
+  csrfToken: 'fictional-csrf',
+};
+const freeInvoice = {
+  ...invoiceDraft,
+  id: '844552a9-05cc-4c20-9af4-a8a05f4335a6',
+  eventId: blankInvoiceProps.eventId,
+  contactId: blankInvoiceProps.contactId,
+  sourceDocumentId: null,
+  grossMinor: 0,
+};
 function setup(
   options: {
     documents?: unknown[];
+    documentsResponse?: () => Response;
     templates?: unknown[];
     finalize?: () => Response;
     create?: (url: string) => Response;
@@ -316,6 +332,7 @@ function setup(
     library?: () => Response;
     orderConfirmation?: () => Response;
     invoice?: () => Response;
+    blankInvoice?: () => Response | Promise<Response>;
     // BKP019.c3.2: the answer to a final invoice created from a confirmation.
     finalInvoice?: () => Response;
     // BKP019.c3.1: the answer to a deposit created from a confirmation.
@@ -364,7 +381,7 @@ function setup(
       const method = init?.method ?? 'GET';
       if (url.startsWith('/api/v1/documents?eventId=')) {
         calls.push({ url, method });
-        return Response.json(state.documents);
+        return options.documentsResponse?.() ?? Response.json(state.documents);
       }
       if (url === '/api/v1/library-files') {
         calls.push({ url, method });
@@ -387,6 +404,22 @@ function setup(
             : created,
           { status: 201 },
         );
+      }
+      if (url === '/api/v1/documents/blank-invoice') {
+        calls.push({
+          url,
+          method,
+          body: JSON.parse(String(init!.body)),
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.blankInvoice) return await options.blankInvoice();
+        state.documents = [freeInvoice];
+        drafts[freeInvoice.id] = {
+          ...freeInvoice,
+          ...invoiceWording,
+          lines: [],
+        };
+        return Response.json(freeInvoice, { status: 201 });
       }
       if (url.endsWith('/offer-status')) {
         calls.push({
@@ -539,7 +572,7 @@ const props = {
 };
 
 async function openOfferCreate() {
-  const summary = await screen.findByText('Angebot anlegen', {
+  const summary = await screen.findByText('Dokument anlegen', {
     selector: 'button',
   });
   fireEvent.click(summary);
@@ -657,7 +690,7 @@ test('the document dialog creates one confirmation with the selected source vers
   });
   await waitFor(() =>
     expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Angebot anlegen' }),
+      screen.getByRole('button', { name: 'Dokument anlegen' }),
     ),
   );
 });
@@ -901,7 +934,7 @@ test('the native dialog API opens the offer chooser and Escape returns focus', a
     setup({ documents: [] });
     render(<EventDocuments {...props} />);
     const trigger = await screen.findByRole('button', {
-      name: 'Angebot anlegen',
+      name: 'Dokument anlegen',
     });
     fireEvent.click(trigger);
     const dialog = await screen.findByRole('dialog', {
@@ -1685,6 +1718,309 @@ test('only a finalized confirmation offers the invoice action', async () => {
   }
 });
 
+async function openBlankInvoice() {
+  const trigger = await openOfferCreate();
+  fireEvent.change(screen.getByLabelText('Dokumentenart'), {
+    target: { value: 'blank_invoice' },
+  });
+  return {
+    trigger,
+    dialog: screen.getByRole('dialog', {
+      name: 'Rechnung ohne Auftragsbestätigung anlegen',
+    }),
+  };
+}
+
+test('a free invoice uses only the event and its main contact and opens the invoice editor', async () => {
+  const { calls } = setup({ documents: [], templates: [] });
+  render(
+    <EventDocuments {...blankInvoiceProps} contactName="Fiktiver Kontakt" />,
+  );
+  const { dialog } = await openBlankInvoice();
+  expect(within(dialog).getByText(/Fiktiver Kontakt/)).toBeTruthy();
+  expect(within(dialog).queryByLabelText('Vorlage')).toBeNull();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Rechnungsentwurf anlegen' }),
+  );
+  expect(
+    await screen.findByRole('heading', { name: 'Rechnung bearbeiten' }),
+  ).toBeTruthy();
+  expect(calls.filter((call) => call.method === 'POST')).toEqual([
+    {
+      url: '/api/v1/documents/blank-invoice',
+      method: 'POST',
+      body: {
+        eventId: blankInvoiceProps.eventId,
+        contactId: blankInvoiceProps.contactId,
+        requestId: expect.stringMatching(/^[a-f0-9-]{36}$/),
+      },
+      headers: {
+        'content-type': 'application/json',
+        'x-csrf-token': blankInvoiceProps.csrfToken,
+      },
+    },
+  ]);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Dokument anlegen' }),
+    ),
+  );
+});
+
+test('an unclear free invoice resumes the frozen request after close and remount', async () => {
+  const blankInvoice = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValueOnce(
+      Response.json({ ...freeInvoice, id: 'malformed' }, { status: 201 }),
+    )
+    .mockResolvedValueOnce(
+      Response.json(
+        { ...freeInvoice, sourceDocumentId: null, issuedAt: undefined },
+        { status: 201 },
+      ),
+    )
+    .mockResolvedValueOnce(
+      Response.json(
+        { ...freeInvoice, templateId: null, sourceDocumentId: null },
+        { status: 201 },
+      ),
+    );
+  const { calls } = setup({ documents: [], templates: [], blankInvoice });
+  const view = render(<EventDocuments {...blankInvoiceProps} />);
+  const { dialog } = await openBlankInvoice();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Rechnungsentwurf anlegen' }),
+  );
+  await within(dialog).findByText(/Ausgang der Anlage ist unklar/);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Schließen' }));
+  view.unmount();
+  render(<EventDocuments {...blankInvoiceProps} />);
+  const retry = await screen.findByRole('button', {
+    name: 'Anlage fortsetzen',
+  });
+  fireEvent.click(retry);
+  const resumed = screen.getByRole('dialog', {
+    name: 'Rechnung ohne Auftragsbestätigung anlegen',
+  });
+  fireEvent.click(
+    within(resumed).getByRole('button', { name: 'Anlage erneut versuchen' }),
+  );
+  await within(resumed).findByText(/Ausgang der Anlage ist unklar/);
+  fireEvent.click(
+    within(resumed).getByRole('button', { name: 'Anlage erneut versuchen' }),
+  );
+  await within(resumed).findByText(/Ausgang der Anlage ist unklar/);
+  fireEvent.click(
+    within(resumed).getByRole('button', { name: 'Anlage erneut versuchen' }),
+  );
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  const posts = calls.filter((call) => call.method === 'POST');
+  expect(posts).toHaveLength(4);
+  expect(posts).toEqual([posts[0], posts[0], posts[0], posts[0]]);
+});
+
+test('a damaged free invoice request requires a list check before it can be discarded', async () => {
+  const { calls } = setup({ documents: [freeInvoice], templates: [] });
+  sessionStorage.setItem(
+    'ak:blank-invoice:' + blankInvoiceProps.eventId,
+    JSON.stringify({
+      eventId: blankInvoiceProps.eventId,
+      contactId: blankInvoiceProps.contactId,
+      requestId: 'malformed',
+    }),
+  );
+  render(<EventDocuments {...blankInvoiceProps} />);
+  const button = await screen.findByRole('button', {
+    name: 'Anlage fortsetzen',
+  });
+  fireEvent.click(button);
+  const dialog = screen.getByRole('dialog', {
+    name: 'Rechnung ohne Auftragsbestätigung anlegen',
+  });
+  await within(dialog).findByText(/gespeicherte Auftrag ist beschädigt/);
+  expect(
+    within(dialog).queryByRole('button', { name: 'Rechnungsentwurf anlegen' }),
+  ).toBeNull();
+  fireEvent.click(
+    within(dialog).getByRole('button', {
+      name: 'Dateiliste aktualisieren und prüfen',
+    }),
+  );
+  await screen.findByText(/Dateien aktualisiert/);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('region', { name: 'Rechnungen' })).toBeTruthy();
+  fireEvent.click(button);
+  expect(
+    within(screen.getByRole('dialog')).getByRole('alert').textContent,
+  ).toMatch(/kann eine zweite Rechnung entstehen/);
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Dateiliste geprüft, Auftrag verwerfen',
+    }),
+  );
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Dokument anlegen' }),
+  );
+  expect(
+    sessionStorage.getItem('ak:blank-invoice:' + blankInvoiceProps.eventId),
+  ).toBeNull();
+  expect(
+    calls.filter((call) => call.url.includes('documents?eventId=')),
+  ).toHaveLength(2);
+  expect(calls.filter((call) => call.method === 'POST')).toHaveLength(0);
+});
+
+test('a damaged contact id and incomplete list cannot clear a frozen request', async () => {
+  const documentsResponse = vi
+    .fn()
+    .mockReturnValueOnce(Response.json([freeInvoice]))
+    .mockReturnValueOnce(Response.json({}))
+    .mockReturnValueOnce(Response.json([freeInvoice, { id: 'incomplete' }]))
+    .mockReturnValueOnce(Response.json([{ ...freeInvoice, issuedAt: 2030 }]))
+    .mockReturnValueOnce(Response.json([{ ...freeInvoice, kind: 'unknown' }]));
+  const { calls } = setup({ documentsResponse, templates: [] });
+  const key = 'ak:blank-invoice:' + blankInvoiceProps.eventId;
+  sessionStorage.setItem(
+    key,
+    JSON.stringify({
+      eventId: blankInvoiceProps.eventId,
+      contactId: 'malformed',
+      requestId: '7d21c43e-d70c-413a-8a63-50af2a4d1b81',
+    }),
+  );
+  render(<EventDocuments {...blankInvoiceProps} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Anlage fortsetzen' }),
+  );
+  const dialog = screen.getByRole('dialog', {
+    name: 'Rechnung ohne Auftragsbestätigung anlegen',
+  });
+  for (let attempt = 2; attempt <= 5; attempt++) {
+    fireEvent.click(
+      within(dialog).getByRole('button', {
+        name: 'Dateiliste aktualisieren und prüfen',
+      }),
+    );
+    await waitFor(() =>
+      expect(documentsResponse).toHaveBeenCalledTimes(attempt),
+    );
+    await within(dialog).findByText(
+      /Dateien konnten nicht aktualisiert werden/,
+    );
+  }
+  expect(
+    within(dialog).queryByRole('button', { name: /Auftrag verwerfen/ }),
+  ).toBeNull();
+  expect(sessionStorage.getItem(key)).not.toBeNull();
+  expect(calls.filter((call) => call.method === 'POST')).toHaveLength(0);
+});
+
+test('a free invoice requires a main contact', async () => {
+  const { calls } = setup({ documents: [], templates: [] });
+  render(<EventDocuments {...blankInvoiceProps} contactId={null} />);
+  const { dialog } = await openBlankInvoice();
+  expect(
+    within(dialog).getByText(/Für eine Rechnung zuerst einen Hauptkontakt/),
+  ).toBeTruthy();
+  expect(
+    (
+      within(dialog).getByRole('button', {
+        name: 'Rechnungsentwurf anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(calls.filter((call) => call.method === 'POST')).toHaveLength(0);
+});
+
+test('changing the main contact while the free invoice is pending keeps the frozen context', async () => {
+  let complete!: (response: Response) => void;
+  const blankInvoice = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          complete = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(
+      Response.json(
+        { ...freeInvoice, templateId: null, sourceDocumentId: null },
+        { status: 201 },
+      ),
+    );
+  const { calls } = setup({ documents: [], templates: [], blankInvoice });
+  const view = render(<EventDocuments {...blankInvoiceProps} />);
+  const { dialog } = await openBlankInvoice();
+  const submit = within(dialog).getByRole('button', {
+    name: 'Rechnungsentwurf anlegen',
+  });
+  fireEvent.click(submit);
+  fireEvent.click(submit);
+  expect(within(dialog).getByRole('status').textContent).toMatch(
+    /wird angelegt/,
+  );
+  expect(blankInvoice).toHaveBeenCalledTimes(1);
+  view.rerender(
+    <EventDocuments {...blankInvoiceProps} contactId="fictional-changed" />,
+  );
+  complete(
+    Response.json(
+      { ...freeInvoice, templateId: null, sourceDocumentId: null },
+      { status: 201 },
+    ),
+  );
+  await within(dialog).findByText(/Hauptkontakt wurde geändert/);
+  const retry = within(dialog).getByRole('button', {
+    name: 'Anlage erneut versuchen',
+  }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(true);
+  expect(
+    screen.queryByRole('heading', { name: 'Rechnung bearbeiten' }),
+  ).toBeNull();
+  const kind = screen.getByLabelText('Dokumentenart');
+  fireEvent.change(kind, { target: { value: 'offer' } });
+  expect(within(dialog).getByLabelText('Vorlage')).toBeTruthy();
+  fireEvent.change(kind, { target: { value: 'blank_invoice' } });
+  view.rerender(<EventDocuments {...blankInvoiceProps} />);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Anlage erneut versuchen' }),
+  );
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  const posts = calls.filter((call) => call.method === 'POST');
+  expect(posts).toHaveLength(2);
+  expect(posts[1]).toEqual(posts[0]);
+});
+
+test('a definitive refusal releases the request for a new free invoice attempt', async () => {
+  const blankInvoice = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({}, { status: 403 }))
+    .mockResolvedValueOnce(
+      Response.json(
+        { ...freeInvoice, templateId: null, sourceDocumentId: null },
+        { status: 201 },
+      ),
+    );
+  const { calls } = setup({ documents: [], templates: [], blankInvoice });
+  render(<EventDocuments {...blankInvoiceProps} />);
+  const { dialog } = await openBlankInvoice();
+  const submit = within(dialog).getByRole('button', {
+    name: 'Rechnungsentwurf anlegen',
+  });
+  fireEvent.click(submit);
+  await within(dialog).findByText(/Hauptkontakt und Anmeldung prüfen/);
+  fireEvent.click(submit);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  const posts = calls.filter((call) => call.method === 'POST');
+  expect(posts).toHaveLength(2);
+  expect(posts[1]?.body).not.toEqual(posts[0]?.body);
+});
+
 test('invoice picker offers eligible confirmations and blocks after an unclear response', async () => {
   const { calls } = setup({
     documents: [finalizedConfirmation],
@@ -1737,7 +2073,7 @@ test('invoice picker offers eligible confirmations and blocks after an unclear r
   expect(
     (
       screen.getByRole('button', {
-        name: 'Angebot anlegen',
+        name: 'Dokument anlegen',
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
@@ -2028,7 +2364,11 @@ test('an invoice row names its source confirmation, its own kind and the open st
   expect(
     within(invoices).getByText(/als Standardrechnung oder als Schlussrechnung/),
   ).toBeTruthy();
-  expect(within(invoices).getByText(/je Bestätigung genau eine/)).toBeTruthy();
+  expect(
+    within(invoices).getByText(
+      /Auftragsbestätigung entsteht genau eine Rechnung/,
+    ),
+  ).toBeTruthy();
   expect(
     within(invoices).queryByText(
       /Eine Schlussrechnung ist noch nicht verfügbar/,
@@ -3748,7 +4088,7 @@ test.each([500, 200])(
     expect(document.activeElement).toBe(close);
     fireEvent.click(close);
     expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Angebot anlegen' }),
+      screen.getByRole('button', { name: 'Dokument anlegen' }),
     );
     const offers = screen.getByRole('region', { name: 'Angebote' });
     expect(within(offers).getByText(/130,00/)).toBeTruthy();
@@ -3928,7 +4268,7 @@ test('the success message and the reload warning stay truthful', async () => {
   fireEvent.click(
     within(screen.getByRole('region', { name: 'Angebote' })).getByRole(
       'button',
-      { name: 'Angebot anlegen' },
+      { name: 'Dokument anlegen' },
     ),
   );
   expect(
@@ -3973,7 +4313,7 @@ test('documents are grouped and labelled by their actual kind', async () => {
   // Every row stays in exactly one card; the offer form belongs to the offers.
   expect(within(invoices).queryAllByText('Entwurf')).toEqual([]);
   expect(
-    within(offers).getByRole('button', { name: 'Angebot anlegen' }),
+    within(offers).getByRole('button', { name: 'Dokument anlegen' }),
   ).toBeTruthy();
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(

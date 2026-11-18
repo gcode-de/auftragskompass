@@ -49,7 +49,7 @@ import { StorageError } from '../../packages/core/src/storage.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 async function openOfferPicker(scope: Locator) {
   if (!(await scope.getByLabel('Vorlage').isVisible()))
-    await scope.getByText('Angebot anlegen', { exact: true }).click();
+    await scope.getByText('Dokument anlegen', { exact: true }).click();
 }
 // RG-07: the due day of an invoice is its invoice day in the tenant calendar
 // plus the agreed term. The browser test recomputes it with the same tenant zone

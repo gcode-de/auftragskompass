@@ -16,6 +16,8 @@ Stand: 17.11.2026. UI und Bedienung zuerst. Die Einträge sind Kandidaten für e
 
 ## 2. Funktion und Betrieb
 
+**Editor nach paralleler Finalisierung:** Wenn ein anderer Tab denselben Entwurf finalisiert und der anschließende Listenabgleich den fertigen Beleg liefert, kann die alte Editor-ID gesetzt bleiben und weitere Bearbeiten-Aktionen sperren. Reproduzierenden Test und sichere Rückkehr zur Liste in einem eigenen Schritt ergänzen; zuerst den aktuellen Stand prüfen.
+
 1. **Dokumentkette und unklare Anlegeausgänge** — Verbleibende quellgebundene Dokumentarten und Zahlungsabläufe einzeln gegen den aktuellen Stand prüfen. Laut Übergabe kann ein Listenabgleich nach unklarer Antwort bei Anzahlungen eine Dublette nicht sicher ausschließen; dafür einen gesonderten fachlichen Lösungsweg definieren. Quellen: [Implementierungsplan, DOC-CREATE-02](../../IMPLEMENTATION_PLAN.md), [Übergabe, DOC-CREATE-02.2](../handoff.md), [BKP019](tasks-documents-mail.md). **Historischer Stand; keine pauschale Aussage, alle Dokumentfunktionen fehlten.**
 2. **Ressourcenmodell erweitern** — Produktverknüpfungen, Mengenverrechnung und Set-/Case-Semantik einzeln modellieren; vorhandene Bestände, Historie und Reservierungsschutz erhalten. Quelle: [Ressourcenbeobachtung vom 01.11.](resources-2026-11-01.md). **Damals soweit geprüft nicht implementiert; heutigen Stand prüfen.**
 3. **Datei- und Mailgrundlagen** — Sichere Dateibibliothek und dauerhaften Mailkern mit Outbox und geklärten Providerfehlern vor Postfach, Composer, Vorlagen und Planung in getrennten Slices prüfen und ergänzen. Quelle: [BKP020–025](tasks-documents-mail.md). **Historischer Aufgabenstand; aktuelle Implementierung prüfen, bevor Defizite behauptet werden.**

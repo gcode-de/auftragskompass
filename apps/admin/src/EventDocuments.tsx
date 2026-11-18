@@ -1,4 +1,11 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 import { OfferDraftEditor } from './OfferDraftEditor.js';
 import { exactMinorUnits } from './FilesPanel.js';
@@ -58,6 +65,44 @@ type DocumentRow = {
   // RG-07b: the account the invoice prints, printed word for word.
   bankAccount?: string | null;
 };
+type CreateKind =
+  | 'offer'
+  | 'order_confirmation'
+  | 'deposit_invoice'
+  | 'invoice'
+  | 'blank_invoice';
+type BlankInvoiceRequest = {
+  eventId: string;
+  contactId: string;
+  requestId: string;
+};
+const documentUuid =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function readBlankInvoiceRequest(key: string, eventId: string) {
+  const body = sessionStorage.getItem(key);
+  if (body === null) return null;
+  try {
+    const input = JSON.parse(body) as Partial<BlankInvoiceRequest> | null;
+    if (
+      input?.eventId === eventId &&
+      typeof input.contactId === 'string' &&
+      documentUuid.test(input.contactId) &&
+      typeof input.requestId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        input.requestId,
+      )
+    ) {
+      return {
+        eventId,
+        contactId: input.contactId,
+        requestId: input.requestId,
+      };
+    }
+  } catch {
+    // An unreadable request must be checked against the list before discarding.
+  }
+  return 'invalid' as const;
+}
 type OfferStatus = 'sent' | 'accepted' | 'withdrawn';
 type CorrectionDirection = 'credit' | 'debit';
 type PaymentMethod = 'bank_transfer' | 'cash' | 'card' | 'other';
@@ -236,17 +281,33 @@ const editableDraftKinds = new Set<string>([
 ]);
 
 // One off-shape row must never take the whole event file down with it.
-async function validDocuments(reply: Response): Promise<DocumentRow[]> {
+async function validDocuments(
+  reply: Response,
+  expectedEventId?: string,
+): Promise<DocumentRow[]> {
   const rows = (await reply.json()) as DocumentRow[];
-  return Array.isArray(rows)
-    ? rows.filter(
-        (entry) =>
-          entry &&
-          stateLabels[entry.state] !== undefined &&
-          Number.isFinite(Date.parse(entry.finalizedAt ?? entry.issuedAt)) &&
-          Number.isFinite(entry.grossMinor),
-      )
-    : [];
+  if (!Array.isArray(rows)) {
+    if (expectedEventId) throw new Error('invalid-document-list');
+    return [];
+  }
+  const valid = rows.filter(
+    (entry) =>
+      entry &&
+      stateLabels[entry.state] !== undefined &&
+      Number.isFinite(Date.parse(entry.finalizedAt ?? entry.issuedAt)) &&
+      Number.isFinite(entry.grossMinor) &&
+      (!expectedEventId ||
+        (entry.eventId === expectedEventId &&
+          typeof entry.id === 'string' &&
+          documentUuid.test(entry.id) &&
+          knownKinds.has(entry.kind) &&
+          typeof entry.issuedAt === 'string' &&
+          (entry.finalizedAt === null ||
+            typeof entry.finalizedAt === 'string'))),
+  );
+  if (expectedEventId && valid.length !== rows.length)
+    throw new Error('invalid-document-list');
+  return valid;
 }
 
 // The event file is where an offer is born: it owns the contact and the date
@@ -273,9 +334,10 @@ export function EventDocuments({
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
     [templateId, setTemplateId] = useState(''),
-    [createKind, setCreateKind] = useState<
-      'offer' | 'order_confirmation' | 'deposit_invoice' | 'invoice'
-    >('offer'),
+    [createKind, setCreateKind] = useState<CreateKind>('offer'),
+    [pendingBlankInvoice, setPendingBlankInvoice] = useState<
+      BlankInvoiceRequest | 'invalid' | 'reviewed' | null
+    >(null),
     [confirmationSourceId, setConfirmationSourceId] = useState(''),
     [depositSourceId, setDepositSourceId] = useState(''),
     [createDialogOpen, setCreateDialogOpen] = useState(false),
@@ -328,7 +390,47 @@ export function EventDocuments({
     createDialogTrigger = useRef<HTMLElement | null>(null),
     createDialogWasOpen = useRef(false),
     editorWorkspace = useRef<HTMLDivElement>(null),
-    editorTrigger = useRef<string | null>(null);
+    editorTrigger = useRef<string | null>(null),
+    blankInvoiceSubmit = useRef<HTMLButtonElement>(null),
+    blankInvoiceContext = useRef<object | null>(null);
+  const blankInvoiceKey = 'ak:blank-invoice:' + eventId;
+  const blankInvoiceInvalid = typeof pendingBlankInvoice === 'string';
+  const blankInvoiceContextChanged =
+    pendingBlankInvoice !== null &&
+    typeof pendingBlankInvoice === 'object' &&
+    pendingBlankInvoice.contactId !== contactId;
+  useLayoutEffect(() => {
+    blankInvoiceContext.current = {};
+    return () => {
+      blankInvoiceContext.current = null;
+    };
+  }, [eventId, contactId, csrfToken]);
+  useEffect(() => {
+    try {
+      setPendingBlankInvoice(readBlankInvoiceRequest(blankInvoiceKey, eventId));
+    } catch {
+      // Saving the request is checked again before dispatch.
+      setPendingBlankInvoice(null);
+    }
+  }, [blankInvoiceKey, eventId]);
+  useEffect(() => {
+    if (
+      createKind === 'blank_invoice' &&
+      createDialogOpen &&
+      pendingBlankInvoice &&
+      busy === '' &&
+      !blankInvoiceContextChanged &&
+      !blankInvoiceInvalid
+    )
+      blankInvoiceSubmit.current?.focus();
+  }, [
+    createKind,
+    createDialogOpen,
+    pendingBlankInvoice,
+    busy,
+    blankInvoiceContextChanged,
+    blankInvoiceInvalid,
+  ]);
   const editorEntry = documents.find(
     (entry) =>
       entry.id === editorId &&
@@ -435,7 +537,10 @@ export function EventDocuments({
     )
       setDepositSourceId(currentSources[0]?.id ?? '');
   }, [createKind, depositSourceId, currentSources]);
-  async function load(requiredDocumentId?: string) {
+  async function load({
+    requiredDocumentId,
+    strict = false,
+  }: { requiredDocumentId?: string; strict?: boolean } = {}) {
     const [documentReply, templateReply] = await Promise.all([
       fetch(
         '/api/v1/documents?eventId=' +
@@ -448,7 +553,10 @@ export function EventDocuments({
     const offers = ((await templateReply.json()) as TemplateRow[]).filter(
       (entry) => entry.kind === 'offer' && entry.state === 'active',
     );
-    const rows = await validDocuments(documentReply);
+    const rows = await validDocuments(
+      documentReply,
+      strict ? eventId : undefined,
+    );
     if (
       requiredDocumentId &&
       !rows.some((row) => row.id === requiredDocumentId)
@@ -528,7 +636,9 @@ export function EventDocuments({
       if (!isBlank) setCreateDialogOpen(false);
       let editorDraft: DocumentRow | undefined = created;
       try {
-        const rows = await load(isBlank ? created.id : undefined);
+        const rows = await load(
+          isBlank ? { requiredDocumentId: created.id } : undefined,
+        );
         editorDraft = rows.find((row) => row.id === created.id);
         setReloadWarning(false);
       } catch {
@@ -552,9 +662,146 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  async function createBlankInvoice() {
+    if (
+      !contactId ||
+      mutating.current ||
+      createUncertain ||
+      initialLoadFailed ||
+      reloadWarning ||
+      blankInvoiceInvalid ||
+      recordRemoving ||
+      editorBusy ||
+      editorDirty
+    )
+      return;
+
+    let request: BlankInvoiceRequest;
+    let retry: boolean;
+    try {
+      const saved = readBlankInvoiceRequest(blankInvoiceKey, eventId);
+      if (saved === 'invalid') {
+        setPendingBlankInvoice(saved);
+        return;
+      }
+      retry = saved !== null;
+      request = saved ?? { eventId, contactId, requestId: crypto.randomUUID() };
+      if (request.eventId !== eventId || request.contactId !== contactId) {
+        setPendingBlankInvoice(request);
+        return;
+      }
+      sessionStorage.setItem(blankInvoiceKey, JSON.stringify(request));
+    } catch {
+      setMessage(
+        'Der Auftrag konnte im Browser nicht gesichert werden. Bitte Browser-Einstellungen prüfen.',
+      );
+      return;
+    }
+
+    const context = blankInvoiceContext.current;
+    mutating.current = true;
+    setBusy('blank_invoice');
+    setPendingBlankInvoice(request);
+    setMessage('');
+    try {
+      const reply = await fetch('/api/v1/documents/blank-invoice', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify(request),
+      });
+      if (blankInvoiceContext.current !== context) return;
+      if (
+        !retry &&
+        reply.status >= 400 &&
+        reply.status < 500 &&
+        ![408, 429].includes(reply.status)
+      ) {
+        sessionStorage.removeItem(blankInvoiceKey);
+        setPendingBlankInvoice(null);
+        setMessage(
+          'Rechnungsentwurf konnte nicht angelegt werden. Bitte Hauptkontakt und Anmeldung prüfen.',
+        );
+        return;
+      }
+      if (!reply.ok) throw new Error('uncertain-blank-invoice');
+      const created = (await reply.json()) as DocumentRow;
+      if (blankInvoiceContext.current !== context) return;
+      if (
+        !created?.id ||
+        typeof created.id !== 'string' ||
+        !documentUuid.test(created.id) ||
+        created.kind !== 'invoice' ||
+        (created.state !== 'draft' && created.state !== 'final') ||
+        created.eventId !== eventId ||
+        created.contactId !== contactId ||
+        created.templateId !== null ||
+        created.sourceDocumentId != null ||
+        typeof created.issuedAt !== 'string' ||
+        !Number.isFinite(Date.parse(created.issuedAt)) ||
+        (created.state === 'draft'
+          ? created.finalizedAt !== null || created.number !== null
+          : typeof created.finalizedAt !== 'string' ||
+            !Number.isFinite(Date.parse(created.finalizedAt)) ||
+            typeof created.number !== 'string' ||
+            !created.number) ||
+        !Number.isSafeInteger(created.grossMinor) ||
+        created.grossMinor < 0 ||
+        !Number.isSafeInteger(created.version) ||
+        created.version < 1
+      )
+        throw new Error('uncertain-blank-invoice');
+
+      sessionStorage.removeItem(blankInvoiceKey);
+      setPendingBlankInvoice(null);
+      setDocuments((current) => [
+        created,
+        ...current.filter((row) => row.id !== created.id),
+      ]);
+      setMessage(
+        created.state === 'draft'
+          ? 'Rechnungsentwurf angelegt.'
+          : 'Die Rechnung wurde bereits finalisiert.',
+      );
+      setCreateDialogOpen(false);
+      if (created.state === 'draft') {
+        editorTrigger.current = '';
+        setEditorId(created.id);
+      }
+    } catch {
+      // The request stays pending until the server confirms the document.
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
+  async function reviewInvalidInvoiceRequest() {
+    if (mutating.current) return;
+    mutating.current = true;
+    setBusy('review_blank_invoice');
+    setMessage('');
+    try {
+      await load({ strict: true });
+      setPendingBlankInvoice('reviewed');
+      setCreateDialogOpen(false);
+      setMessage(
+        'Dateien aktualisiert. Bitte prüfen Sie, ob die Rechnung bereits vorhanden ist.',
+      );
+    } catch {
+      setMessage(
+        'Dateien konnten nicht aktualisiert werden. Bitte erneut versuchen.',
+      );
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   async function createSelected(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (createKind === 'offer') return create(event);
+    if (createKind === 'blank_invoice') return createBlankInvoice();
     if (createKind === 'order_confirmation') {
       const source = confirmationSources.find(
         (entry) => entry.id === confirmationSourceId,
@@ -2477,13 +2724,13 @@ export function EventDocuments({
               disabled={busy !== '' || createUncertain || recordRemoving}
               onClick={() => {
                 setMessage('');
-                setCreateKind('offer');
+                setCreateKind(pendingBlankInvoice ? 'blank_invoice' : 'offer');
                 setConfirmationSourceId('');
                 createDialogTrigger.current = createSummary.current;
                 setCreateDialogOpen(true);
               }}
             >
-              Angebot anlegen
+              {pendingBlankInvoice ? 'Anlage fortsetzen' : 'Dokument anlegen'}
             </button>
             {createDialogOpen && (
               <dialog
@@ -2503,9 +2750,11 @@ export function EventDocuments({
                       ? 'Auftragsbestätigung anlegen'
                       : createKind === 'invoice'
                         ? 'Rechnung anlegen'
-                        : 'Anzahlungsrechnung anlegen'}
+                        : createKind === 'blank_invoice'
+                          ? 'Rechnung ohne Auftragsbestätigung anlegen'
+                          : 'Anzahlungsrechnung anlegen'}
                 </h4>
-                {createKind === 'offer' && (
+                {(createKind === 'offer' || createKind === 'blank_invoice') && (
                   <p>
                     Eventkontakt:{' '}
                     {contactId
@@ -2544,13 +2793,32 @@ export function EventDocuments({
                   </button>
                 )}
                 {message && <p role="alert">{message}</p>}
+                {createKind === 'blank_invoice' && (
+                  <>
+                    {busy === 'blank_invoice' && (
+                      <p role="status">Rechnungsentwurf wird angelegt …</p>
+                    )}
+                    {pendingBlankInvoice && busy === '' && (
+                      <p role="alert">
+                        {blankInvoiceInvalid
+                          ? pendingBlankInvoice === 'reviewed'
+                            ? 'Die ursprüngliche Rechnung kann bereits bestehen. Wenn Sie den gespeicherten Auftrag verwerfen und später erneut eine Rechnung anlegen, kann eine zweite Rechnung entstehen.'
+                            : 'Der gespeicherte Auftrag ist beschädigt. Prüfen Sie die Dateiliste auf eine bereits angelegte Rechnung.'
+                          : blankInvoiceContextChanged
+                            ? 'Der Hauptkontakt wurde geändert. Ordnen Sie für die Wiederholung den ursprünglichen Hauptkontakt zu.'
+                            : 'Der Ausgang der Anlage ist unklar. Sie können denselben Auftrag erneut versuchen.'}
+                      </p>
+                    )}
+                  </>
+                )}
                 <form onSubmit={(event) => void createSelected(event)}>
                   <fieldset
                     disabled={
                       busy !== '' ||
                       createUncertain ||
                       initialLoadFailed ||
-                      reloadWarning
+                      reloadWarning ||
+                      recordRemoving
                     }
                   >
                     <label>
@@ -2558,11 +2826,7 @@ export function EventDocuments({
                       <select
                         value={createKind}
                         onChange={(event) => {
-                          const kind = event.target.value as
-                            | 'offer'
-                            | 'order_confirmation'
-                            | 'deposit_invoice'
-                            | 'invoice';
+                          const kind = event.target.value as CreateKind;
                           setCreateKind(kind);
                           if (kind === 'order_confirmation')
                             setConfirmationSourceId(
@@ -2584,6 +2848,9 @@ export function EventDocuments({
                           Anzahlungsrechnung
                         </option>
                         <option value="invoice">Rechnung</option>
+                        <option value="blank_invoice">
+                          Rechnung ohne Auftragsbestätigung
+                        </option>
                       </select>
                     </label>
                     {createKind === 'offer' ? (
@@ -2611,6 +2878,62 @@ export function EventDocuments({
                         >
                           Entwurf anlegen
                         </button>
+                      </>
+                    ) : createKind === 'blank_invoice' ? (
+                      <>
+                        {!contactId && (
+                          <p className="document-hint">
+                            Für eine Rechnung zuerst einen Hauptkontakt
+                            zuordnen.
+                          </p>
+                        )}
+                        {blankInvoiceInvalid ? (
+                          pendingBlankInvoice === 'reviewed' ? (
+                            <button
+                              type="button"
+                              className="primary-action"
+                              onClick={() => {
+                                try {
+                                  sessionStorage.removeItem(blankInvoiceKey);
+                                  setPendingBlankInvoice(null);
+                                  setCreateDialogOpen(false);
+                                  setMessage(
+                                    'Gespeicherter Auftrag verworfen.',
+                                  );
+                                } catch {
+                                  setMessage(
+                                    'Der gespeicherte Auftrag lässt sich im Browser nicht entfernen.',
+                                  );
+                                }
+                              }}
+                            >
+                              Dateiliste geprüft, Auftrag verwerfen
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="primary-action"
+                              onClick={() => void reviewInvalidInvoiceRequest()}
+                            >
+                              Dateiliste aktualisieren und prüfen
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            ref={blankInvoiceSubmit}
+                            className="primary-action"
+                            disabled={
+                              !contactId ||
+                              blankInvoiceContextChanged ||
+                              editorBusy ||
+                              editorDirty
+                            }
+                          >
+                            {pendingBlankInvoice
+                              ? 'Anlage erneut versuchen'
+                              : 'Rechnungsentwurf anlegen'}
+                          </button>
+                        )}
                       </>
                     ) : createKind === 'order_confirmation' ? (
                       <>
@@ -2724,15 +3047,15 @@ export function EventDocuments({
                   so the card no longer denies it. */}
               {group.kind === 'invoice' && (
                 <p className="document-card-hint">
-                  Eine Rechnung entsteht aus einer Auftragsbestätigung – als
-                  Standardrechnung oder als Schlussrechnung, je Bestätigung
-                  genau eine. Die Schlussrechnung verrechnet die bereits
-                  gestellten Anzahlungen; eine finalisierte Rechnung wird nie
-                  ersetzt, sondern nur durch eine Rechnungskorrektur ergänzt.
-                  Zahlungseingänge werden manuell erfasst; Leistungsdatum und
-                  Zahlungsziel lassen sich je Rechnung im Entwurf angeben, und
-                  nach Ablauf des Zahlungsziels gilt ein offener Beleg als
-                  überfällig.
+                  Eine reguläre Rechnung kann direkt zum Event angelegt werden.
+                  Aus einer Auftragsbestätigung entsteht genau eine Rechnung als
+                  Standardrechnung oder als Schlussrechnung. Die Schlussrechnung
+                  verrechnet die bereits gestellten Anzahlungen; eine
+                  finalisierte Rechnung wird nie ersetzt, sondern nur durch eine
+                  Rechnungskorrektur ergänzt. Zahlungseingänge werden manuell
+                  erfasst; Leistungsdatum und Zahlungsziel lassen sich je
+                  Rechnung im Entwurf angeben, und nach Ablauf des Zahlungsziels
+                  gilt ein offener Beleg als überfällig.
                 </p>
               )}
               {/* BKP019.c3.2: a deposit stays its own claim with its own number.

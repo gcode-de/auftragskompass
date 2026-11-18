@@ -297,7 +297,7 @@ function fieldValue(label: string) {
 
 async function openOfferCreate() {
   const trigger = await screen.findByRole('button', {
-    name: 'Angebot anlegen',
+    name: 'Dokument anlegen',
   });
   fireEvent.click(trigger);
   await screen.findByRole('dialog', { name: 'Angebot anlegen' });
@@ -309,7 +309,7 @@ test('offer creation opens in a labelled dialog', async () => {
   render(<EventDocuments {...props} />);
   expect(screen.queryByRole('dialog')).toBeNull();
   const trigger = await screen.findByRole('button', {
-    name: 'Angebot anlegen',
+    name: 'Dokument anlegen',
   });
   fireEvent.click(trigger);
   expect(
@@ -424,7 +424,7 @@ test('without a template an offer is created blank, empty stays calm, and the fi
   );
   expect(confirm).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(
-    screen.getByRole('button', { name: 'Angebot anlegen' }),
+    screen.getByRole('button', { name: 'Dokument anlegen' }),
   );
   fireEvent.click(
     screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
@@ -1355,7 +1355,7 @@ test('the document editor guards event removal, closing and browser navigation',
   const edit = screen.getByRole('button', {
     name: 'Angebot Entwurf bearbeiten',
   });
-  const create = screen.getByRole('button', { name: 'Angebot anlegen' });
+  const create = screen.getByRole('button', { name: 'Dokument anlegen' });
   fireEvent.click(remove);
   expect(calls.filter((call) => call.method === 'DELETE')).toHaveLength(1);
   expect(edit).toHaveProperty('disabled', true);
