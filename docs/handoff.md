@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-BLANK-INVOICE-01: freie Rechnungsentwürfe im Backend
+
+Ein eigener idempotenter Admin-Endpunkt erstellt reguläre Rechnungsentwürfe mit Event und Kontakt ohne Angebotsquelle. Die Oberfläche zur Auswahl und Anlage ist noch offen. Migration 0055 und die Schutzregeln für bestehende Dokumentarten gehören zum gleichen Schritt; CI und Auslieferung am tatsächlichen Commit prüfen.
+
 ## DOC-CREATE-02.3: Rechnung im Dokumentdialog
 
 Reguläre Rechnungen lassen sich im Event-Dokumentdialog aus einer geeigneten finalisierten Auftragsbestätigung anlegen. Der bestehende versionsgebundene POST bleibt maßgeblich; nach unklarem Ergebnis sind konkurrierende Rechnungswege bis zum Listenabgleich gesperrt. CI und Auslieferung des tatsächlichen Commits gesondert prüfen.

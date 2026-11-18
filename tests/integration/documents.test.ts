@@ -1747,6 +1747,188 @@ test('the blank-offer API requires CSRF, event, and tenant contact context', asy
   }
 });
 
+test('the blank-invoice endpoint creates one editable draft across concurrent retries', async () => {
+  const config = {
+    origin: site,
+    tenantId,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  const { deps } = dependencies();
+  const repo = documentRepository(pool, tenantId, deps);
+  registerDocumentRoutes(app, pool, tenantId, deps);
+  const cookies = { '__Host-ak-session': 'synthetic-documents' };
+  const headers = {
+    origin: site,
+    'x-csrf-token': digest('csrf:synthetic-documents'),
+  };
+  const url = '/api/v1/documents/blank-invoice';
+  const payload = { eventId, contactId, requestId: randomUUID() };
+  const post = (body: object) =>
+    app.inject({ method: 'POST', url, cookies, headers, payload: body });
+  try {
+    await expect(
+      repo.createBlankInvoice(otherActorId, payload),
+    ).rejects.toMatchObject({
+      message: 'forbidden',
+    });
+    const removed = await confirmationContext(randomUUID());
+    await eventRepository(pool, removed.scope).remove(
+      removed.actor,
+      removed.event,
+      1,
+    );
+    await expect(
+      removed.repo.createBlankInvoice(removed.actor, {
+        requestId: payload.requestId,
+        eventId: removed.event,
+        contactId: removed.contact,
+      }),
+    ).rejects.toMatchObject({ reason: 'not_found' });
+    expect((await post({ eventId, contactId })).statusCode).toBe(400);
+    expect((await post({ ...payload, requestId: 'invalid' })).statusCode).toBe(
+      400,
+    );
+    expect(
+      (await app.inject({ method: 'POST', url, payload })).statusCode,
+    ).toBe(401);
+    expect(
+      (await app.inject({ method: 'POST', url, cookies, payload })).statusCode,
+    ).toBe(403);
+    expect(
+      (await post({ ...payload, contactId: otherContactId })).statusCode,
+    ).toBe(404);
+    expect((await post({ ...payload, eventId: randomUUID() })).statusCode).toBe(
+      404,
+    );
+    const [first, second] = await Promise.all([post(payload), post(payload)]);
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(201);
+    const draft = first.json();
+    expect(second.json()).toEqual(draft);
+    expect(draft).toMatchObject({
+      kind: 'invoice',
+      state: 'draft',
+      templateId: null,
+      eventId,
+      contactId,
+      subject: 'Rechnung',
+      number: null,
+      grossMinor: 0,
+      version: 1,
+      lines: [],
+    });
+    const reused = await post({ ...payload, contactId: otherContactId });
+    expect(reused.statusCode).toBe(409);
+    expect(reused.json()).toEqual({ error: 'conflict' });
+    const independent = await post({ ...payload, requestId: randomUUID() });
+    expect(independent.statusCode).toBe(201);
+    expect(independent.json().id).not.toBe(draft.id);
+    const saved = await pool.query(
+      'SELECT source_document_id, invoice_role FROM documents WHERE tenant_id=$1 AND id=$2',
+      [tenantId, draft.id],
+    );
+    expect(saved.rows).toEqual([
+      { source_document_id: null, invoice_role: null },
+    ]);
+    const audits = await pool.query(
+      'SELECT action FROM audit_events WHERE tenant_id=$1 AND record_id=$2',
+      [tenantId, draft.id],
+    );
+    expect(audits.rows).toEqual([{ action: 'document.created' }]);
+    await expect(
+      pool.query(
+        'UPDATE documents SET blank_invoice_request_id=$1 WHERE tenant_id=$2 AND id=$3',
+        [payload.requestId, tenantId, independent.json().id],
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+    expect(await invoiceSequence(tenantId)).toBeUndefined();
+    await documentNumberRepository(pool, tenantId).save(actorId, 'invoice', {
+      pattern: 'RE-{YYYY}-{SEQ}',
+      minLength: 4,
+      nextValue: 42,
+    });
+    await expect(
+      repo.finalize(actorId, draft.id, draft.version),
+    ).rejects.toMatchObject({
+      reason: 'empty_lines',
+    });
+    expect(await invoiceSequence(tenantId)).toBe(42);
+    const [replay, edited] = await Promise.all([
+      post(payload),
+      repo.updateDraftContent(actorId, draft.id, {
+        version: draft.version,
+        subject: 'Fiktive Rechnung',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+        lines: [
+          {
+            description: 'Fiktive Leistung',
+            quantity: 1,
+            unit: 'Stück',
+            unitPriceMinor: 11900,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+          },
+        ],
+      }),
+    ]);
+    expect(replay.statusCode).toBe(201);
+    const returned = replay.json();
+    expect(returned).toMatchObject(
+      returned.version === draft.version
+        ? {
+            version: draft.version,
+            subject: 'Rechnung',
+            grossMinor: 0,
+            lines: [],
+          }
+        : {
+            version: edited.version,
+            subject: 'Fiktive Rechnung',
+            grossMinor: 11900,
+            lines: [{ description: 'Fiktive Leistung', unitPriceMinor: 11900 }],
+          },
+    );
+    await expect(
+      repo.finalize(actorId, draft.id, draft.version),
+    ).rejects.toMatchObject({
+      reason: 'conflict',
+    });
+    const finalized = await repo.finalize(actorId, draft.id, edited.version);
+    expect(finalized).toMatchObject({ state: 'final', number: 'RE-2030-0042' });
+    expect(await invoiceSequence(tenantId)).toBe(43);
+    expect((await post(payload)).json()).toMatchObject({
+      id: draft.id,
+      state: 'final',
+      number: finalized.number,
+    });
+    expect(await invoiceSequence(tenantId)).toBe(43);
+  } finally {
+    await app.close();
+  }
+});
+
 test('a failing artefact store surfaces as a server error', async () => {
   const config = {
     origin: site,
@@ -4947,14 +5129,14 @@ test('the database keeps the source link inside confirmations of this tenant', a
       ),
     ),
   ).toBe('accepted');
-  // ... and `invoice` still is not, exactly as before this slice.
+  // A standalone invoice with missing text still violates the context check.
   expect(
     await code(
       pool.query(
         `INSERT INTO documents
           (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
            outro_text,validity_days)
-         VALUES ($1,$2,'invoice',NULL,$3,$4,$5,'Rechnung','','',14)`,
+         VALUES ($1,$2,'invoice',NULL,$3,$4,$5,'Rechnung',NULL,'',14)`,
         [offer.scope, randomUUID(), offer.event, offer.contact, now],
       ),
     ),
@@ -5620,8 +5802,7 @@ test('the database keeps the invoice source inside invoices of this tenant', asy
       issuedAt: '2030-10-26T10:00:00Z',
     },
   ]);
-  // A template-less invoice without a source stays refused - the blank-document
-  // rule of this database was not widened, only given its invoice path.
+  // A standalone regular invoice is allowed with its complete context.
   expect(
     await code(
       pool.query(
@@ -5632,7 +5813,27 @@ test('the database keeps the invoice source inside invoices of this tenant', asy
         [order.scope, randomUUID(), order.event, order.contact, now],
       ),
     ),
-  ).toBe('23514');
+  ).toBe('accepted');
+  for (const template of [null, order.templateId]) {
+    expect(
+      await code(
+        pool.query(
+          `INSERT INTO documents
+            (tenant_id,id,kind,template_id,event_id,contact_id,issued_at,subject,intro_text,
+             outro_text,validity_days,invoice_role)
+           VALUES ($1,$2,'invoice',$3,$4,$5,$6,'Rechnung','','',14,'final')`,
+          [
+            order.scope,
+            randomUUID(),
+            template,
+            order.event,
+            order.contact,
+            now,
+          ],
+        ),
+      ),
+    ).toBe('23514');
+  }
   // Copied from a confirmation of this tenant, it is allowed ...
   expect(
     await code(

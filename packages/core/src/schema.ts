@@ -426,6 +426,7 @@ export const documents = pgTable('documents', {
   id: uuid('id').notNull(),
   kind: text('kind').notNull(),
   templateId: uuid('template_id'),
+  blankInvoiceRequestId: uuid('blank_invoice_request_id'),
   eventId: uuid('event_id'),
   contactId: uuid('contact_id'),
   number: text('number'),
