@@ -166,6 +166,7 @@ export function EventDetails({
   onRecordDirtyChange?: (dirty: boolean) => void;
 }) {
   const [area, setArea] = useState<Area>('details');
+  const [editingDocument, setEditingDocument] = useState(false);
   const wideRecord = useWideRecord();
   const heading = useRef<HTMLHeadingElement>(null),
     detailsPanel = useRef<HTMLDivElement>(null),
@@ -196,6 +197,7 @@ export function EventDetails({
     [data, setData] = useState<Detail | null>(null),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
+    [removing, setRemoving] = useState(false),
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [refreshDeferred, setRefreshDeferred] = useState(false),
@@ -218,20 +220,29 @@ export function EventDetails({
       remoteNotesHtml: null,
     });
   const statusUncertainRef = useRef(false),
-    resourceUncertainRef = useRef(false);
+    resourceUncertainRef = useRef(false),
+    documentEditorProtected = useRef(false);
+  function hasRecordChanges() {
+    return (
+      metadataDirty.current ||
+      dirty.current ||
+      resourcesDirty.current ||
+      saving.current ||
+      resourceMutation.current ||
+      statusUncertainRef.current ||
+      resourceUncertainRef.current ||
+      documentEditorProtected.current
+    );
+  }
+  function documentEditorProtectionChanged(value: boolean) {
+    documentEditorProtected.current = value;
+    onRecordDirtyChange?.(hasRecordChanges());
+  }
   function refreshMetadataDirty() {
     const value = metadataEditorDirty.current || notesDraftDirty.current;
     metadataDirty.current = value;
     setLegacyBlocked(value);
-    onRecordDirtyChange?.(
-      value ||
-        dirty.current ||
-        resourcesDirty.current ||
-        saving.current ||
-        resourceMutation.current ||
-        statusUncertainRef.current ||
-        resourceUncertainRef.current,
-    );
+    onRecordDirtyChange?.(hasRecordChanges());
   }
   function metadataChanged(value: boolean) {
     metadataEditorDirty.current = value;
@@ -365,15 +376,7 @@ export function EventDetails({
     notesEditor.current?.focus();
   }
   function legacyChanged() {
-    onRecordDirtyChange?.(
-      metadataDirty.current ||
-        dirty.current ||
-        resourcesDirty.current ||
-        saving.current ||
-        resourceMutation.current ||
-        statusUncertainRef.current ||
-        resourceUncertainRef.current,
-    );
+    onRecordDirtyChange?.(hasRecordChanges());
     setMetaBlocked(
       dirty.current ||
         resourcesDirty.current ||
@@ -564,16 +567,7 @@ export function EventDetails({
   );
   useEffect(() => {
     const unload = (event: BeforeUnloadEvent) => {
-      if (
-        !dirty.current &&
-        !metadataDirty.current &&
-        !resourcesDirty.current &&
-        !saving.current &&
-        !resourceMutation.current &&
-        !statusUncertainRef.current &&
-        !resourceUncertainRef.current
-      )
-        return;
+      if (!hasRecordChanges()) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -717,18 +711,7 @@ export function EventDetails({
     }
   }
   async function removeEvent() {
-    if (
-      !data ||
-      saving.current ||
-      busy ||
-      loading ||
-      metadataDirty.current ||
-      dirty.current ||
-      resourcesDirty.current ||
-      resourceMutation.current ||
-      statusUncertainRef.current ||
-      resourceUncertainRef.current
-    )
+    if (!data || busy || loading || editingDocument || hasRecordChanges())
       return;
     if (
       !window.confirm(
@@ -738,6 +721,7 @@ export function EventDetails({
       return;
     saving.current = true;
     setBusy(true);
+    setRemoving(true);
     setMessage('Event wird entfernt …');
     try {
       const response = await fetch('/api/v1/events/' + id, {
@@ -788,6 +772,7 @@ export function EventDetails({
     } finally {
       saving.current = false;
       setBusy(false);
+      setRemoving(false);
     }
   }
   function discardStatusDraftAndCorrectResources() {
@@ -878,13 +863,7 @@ export function EventDetails({
         type="button"
         onClick={() => {
           if (
-            (metadataDirty.current ||
-              dirty.current ||
-              resourcesDirty.current ||
-              saving.current ||
-              resourceMutation.current ||
-              statusUncertainRef.current ||
-              resourceUncertainRef.current) &&
+            hasRecordChanges() &&
             !window.confirm(
               'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
             )
@@ -988,15 +967,7 @@ export function EventDetails({
                 type="button"
                 className="secondary-action"
                 disabled={
-                  busy ||
-                  loading ||
-                  metadataDirty.current ||
-                  dirty.current ||
-                  resourcesDirty.current ||
-                  resourceMutation.current ||
-                  saving.current ||
-                  statusUncertainRef.current ||
-                  resourceUncertainRef.current
+                  busy || loading || editingDocument || hasRecordChanges()
                 }
                 onClick={() => void removeEvent()}
               >
@@ -1165,13 +1136,7 @@ export function EventDetails({
                     disabled={busy || loading}
                     onClick={() => {
                       if (
-                        (metadataDirty.current ||
-                          dirty.current ||
-                          resourcesDirty.current ||
-                          saving.current ||
-                          resourceMutation.current ||
-                          statusUncertainRef.current ||
-                          resourceUncertainRef.current) &&
+                        hasRecordChanges() &&
                         !window.confirm(
                           'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
                         )
@@ -1342,8 +1307,10 @@ export function EventDetails({
             ref={filesPanel}
             hidden={area !== 'files'}
           >
-            <h3 id="event-panel-files">Dateien</h3>
-            <p className="event-panel-hint">
+            <h3 id="event-panel-files" hidden={editingDocument}>
+              Dateien
+            </h3>
+            <p className="event-panel-hint" hidden={editingDocument}>
               Dokumente dieses Events, nach ihrer Art getrennt. Was hier fehlt,
               ist noch nicht angelegt.
             </p>
@@ -1358,13 +1325,18 @@ export function EventDetails({
               }
               timeZone={data.event.timeZone}
               csrfToken={csrfToken}
+              onEditingChange={setEditingDocument}
+              recordRemoving={removing}
+              onEditorProtectedChange={documentEditorProtectionChanged}
             />
-            <EventLibraryFiles
-              key={'library:' + data.event.id}
-              eventId={data.event.id}
-              csrfToken={csrfToken}
-              active={area === 'files'}
-            />
+            <div hidden={editingDocument}>
+              <EventLibraryFiles
+                key={'library:' + data.event.id}
+                eventId={data.event.id}
+                csrfToken={csrfToken}
+                active={area === 'files'}
+              />
+            </div>
           </div>
           <div
             className="event-record-panel"
