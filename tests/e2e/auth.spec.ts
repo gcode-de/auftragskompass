@@ -1495,15 +1495,35 @@ async function signInScenario(
       .click();
     // The step asks once and writes nothing before the confirmation.
     await expect(
-      orders.getByRole('button', {
-        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung anlegen',
-      }),
+      page
+        .getByRole('dialog', { name: 'Rechnung anlegen' })
+        .getByRole('button', { name: 'Rechnung anlegen' }),
     ).toBeVisible();
+    const invoiceDialog = page.getByRole('dialog', {
+      name: 'Rechnung anlegen',
+    });
+    const invoiceViewport = page.viewportSize() ?? { width: 1280, height: 720 };
+    await page.setViewportSize({ width: 390, height: 844 });
+    const invoiceSource = invoiceDialog.getByRole('combobox').nth(1);
+    const createInvoice = invoiceDialog.getByRole('button', {
+      name: 'Rechnung anlegen',
+    });
+    await expect(invoiceSource).toBeVisible();
+    await expect(createInvoice).toBeEnabled();
+    for (const control of [invoiceSource, createInvoice]) {
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(391);
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(845);
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.setViewportSize(invoiceViewport);
     expect(await invoiceCount()).toBe(0);
-    await orders
-      .getByRole('button', {
-        name: 'Auftragsbestätigung ' + confirmedNumber + ' Rechnung anlegen',
-      })
+    await page
+      .getByRole('dialog', { name: 'Rechnung anlegen' })
+      .getByRole('button', { name: 'Rechnung anlegen' })
       .click();
     await expect(
       page.getByText('Rechnung als Entwurf angelegt.'),
@@ -2287,13 +2307,9 @@ async function signInScenario(
           ' Rechnung erstellen',
       })
       .click();
-    await orders
-      .getByRole('button', {
-        name:
-          'Auftragsbestätigung ' +
-          secondConfirmationNumber +
-          ' Rechnung anlegen',
-      })
+    await page
+      .getByRole('dialog', { name: 'Rechnung anlegen' })
+      .getByRole('button', { name: 'Rechnung anlegen' })
       .click();
     await expect(
       page.getByText('Rechnung als Entwurf angelegt.'),
