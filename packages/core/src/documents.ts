@@ -2,7 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { Temporal } from '@js-temporal/polyfill';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  sql,
+} from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import {
   contacts,
@@ -112,6 +123,7 @@ export type DocumentDraftInput = {
   lines?: DocumentLineDraft[];
 };
 export type BlankOfferInput = { eventId: string; contactId: string };
+type BlankInvoiceInput = BlankOfferInput & { requestId: string };
 export type DocumentDraftContent = {
   version: number;
   subject: string;
@@ -728,9 +740,12 @@ export function documentRepository(
     now = dependencies.now ?? (() => new Date()),
     scope = eq(documents.tenantId, tenantId);
 
+  const { blankInvoiceRequestId, ...documentReadColumns } =
+    getTableColumns(documents);
+
   async function readOne(connection: Connection, id: string) {
     const [document] = await database(connection)
-      .select()
+      .select(documentReadColumns)
       .from(documents)
       .where(and(scope, eq(documents.id, id)));
     if (!document) return null;
@@ -1411,40 +1426,70 @@ export function documentRepository(
     if (!row) throw new DocumentError('not_found');
   }
 
-  return {
-    async createBlankOffer(actorId: string, input: BlankOfferInput) {
+  async function createBlankDraft(
+    actorId: string,
+    input: BlankOfferInput,
+    kind: 'offer' | 'invoice',
+    requestId?: string,
+  ) {
+    return db.transaction(async (tx) => {
+      await lockTenant(tx, tenantId);
+      await requireAdministrator(tx, tenantId, actorId);
+      if (requestId) {
+        const [existing] = await tx
+          .select({
+            id: documents.id,
+            eventId: documents.eventId,
+            contactId: documents.contactId,
+          })
+          .from(documents)
+          .where(and(scope, eq(blankInvoiceRequestId, requestId)));
+        if (existing) {
+          if (
+            existing.eventId !== input.eventId.toLowerCase() ||
+            existing.contactId !== input.contactId.toLowerCase()
+          )
+            throw new DocumentError('conflict');
+          return (await readOne(tx, existing.id))!;
+        }
+      }
+      await assertReference(tx, 'event', input.eventId);
+      await assertReference(tx, 'contact', input.contactId);
       const id = randomUUID();
-      await db.transaction(async (tx) => {
-        await lockTenant(tx, tenantId);
-        await requireAdministrator(tx, tenantId, actorId);
-        await assertReference(tx, 'event', input.eventId);
-        await assertReference(tx, 'contact', input.contactId);
-        const at = now();
-        await tx.insert(documents).values({
-          tenantId,
-          id,
-          kind: 'offer',
-          templateId: null,
-          eventId: input.eventId,
-          contactId: input.contactId,
-          number: null,
-          state: 'draft',
-          issuedAt: at,
-          finalizedAt: null,
-          subject: 'Angebot',
-          introText: '',
-          outroText: '',
-          validityDays: 14,
-          snapshotHash: null,
-          pdfHash: null,
-          netMinor: 0,
-          taxMinor: 0,
-          grossMinor: 0,
-          version: 1,
-        });
-        await appendAudit(tx, tenantId, 'document.created', actorId, id);
+      await tx.insert(documents).values({
+        tenantId,
+        id,
+        kind,
+        templateId: null,
+        blankInvoiceRequestId: requestId,
+        eventId: input.eventId,
+        contactId: input.contactId,
+        number: null,
+        state: 'draft',
+        issuedAt: now(),
+        finalizedAt: null,
+        subject: kind === 'offer' ? 'Angebot' : 'Rechnung',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+        snapshotHash: null,
+        pdfHash: null,
+        netMinor: 0,
+        taxMinor: 0,
+        grossMinor: 0,
+        version: 1,
       });
-      return (await readOne(db, id))!;
+      await appendAudit(tx, tenantId, 'document.created', actorId, id);
+      return (await readOne(tx, id))!;
+    });
+  }
+
+  return {
+    createBlankOffer(actorId: string, input: BlankOfferInput) {
+      return createBlankDraft(actorId, input, 'offer');
+    },
+    createBlankInvoice(actorId: string, input: BlankInvoiceInput) {
+      return createBlankDraft(actorId, input, 'invoice', input.requestId);
     },
     async get(id: string) {
       return readOne(db, id);
@@ -3460,6 +3505,38 @@ export function registerDocumentRoutes(
           .code(201)
           .send(
             await repo.createBlankOffer(
+              request.authSession!.userId,
+              request.body,
+            ),
+          );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Body: BlankInvoiceInput }>(
+    '/api/v1/documents/blank-invoice',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['eventId', 'contactId', 'requestId'],
+          properties: {
+            eventId: { type: 'string', format: 'uuid' },
+            contactId: { type: 'string', format: 'uuid' },
+            requestId: { type: 'string', format: 'uuid' },
+          },
+        },
+        response: { 201: row },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createBlankInvoice(
               request.authSession!.userId,
               request.body,
             ),

@@ -487,15 +487,32 @@ bleibt bearbeitbar und finalisiert mit eigener Nummer im
 Rechnungsnummernkreis. Genau eine Rechnung je Auftragsbestätigung (Dublette
 wird mit 409 abgewiesen, ohne Nummernverbrauch); die Quelle bleibt als
 „Aus Auftragsbestätigung AB-…“ sichtbar. Für zurückgezogene Aufträge
-entsteht keine Rechnung; die bestehende Blanko-Sperre bleibt unverändert
-(ohne Quelle oder Vorlage gibt es keine Rechnung). Finalisierte Belege werden
-nie ersetzt – Korrekturen erfolgen später durch eigene Folgedokumente.
+entsteht keine Rechnung aus der Bestätigung. Finalisierte Belege werden
+durch eigene Korrekturbelege berichtigt.
 
 **Ehrliche Grenze:** Anzahlungs-, Schluss- und Korrekturrechnungen sowie
 Zahlungsverrechnung fehlen noch (eigene Folgeslices); „final“ bedeutet hier
 „eingefroren“, nicht „rechtlich vollständig“ – Pflichtangaben nach § 14 UStG
 (Leistungsdatum, Steuernummer, Zahlungsziel, Bankverbindung) sind noch nicht
 ausgestattet. Es wird keine Rechts- oder Steuerbehauptung aufgestellt.
+
+### Eigenständige reguläre Rechnung (DOC-BLANK-INVOICE-01, RG-01)
+
+`POST /api/v1/documents/blank-invoice` nimmt `eventId`, `contactId` und eine
+vom Client erzeugte `requestId` als UUIDs entgegen. Die Route verlangt eine
+Admin-Sitzung und CSRF-Schutz. Für neue Entwürfe müssen das Event aktiv und
+beide Referenzen im aktuellen Mandanten vorhanden sein. Migration 0055
+erlaubt reguläre Rechnungen mit vollständigem Kontext ohne Vorlage und
+Quellbeleg. Schlussrechnungen, Korrekturen und Anzahlungen ohne Vorlage
+setzen weiterhin ihren jeweiligen Quellbeleg voraus.
+
+Der POST liefert HTTP 201 mit dem leeren Rechnungsentwurf. Eine Wiederholung
+mit derselben `requestId` und denselben Referenzen liefert den aktuellen
+Stand desselben Dokuments, auch nach Finalisierung. Andere Referenzen mit
+demselben Schlüssel im Mandanten ergeben HTTP 409 (`conflict`). Für einen
+neuen beabsichtigten Entwurf wird ein neuer Schlüssel verwendet. Der
+Rechnungsnummernkreis beginnt für den Entwurf erst mit erfolgreicher
+Finalisierung nach Bearbeitung und Speicherung mindestens einer Position.
 
 ### Zahlungseingänge (BKP019.d, RG-09)
 
