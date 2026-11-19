@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **DOC-PRINT-01 — `feat: align offer print layout`**: Angebotsvorschau und neu erzeugte PDFs an die vom Nutzer bereitgestellte Bookitup-Vorlage angleichen: kompakte Typografie, lesbares Positionsraster ohne Rabattspalte und konfigurierbare Geschäftsfußzeile. Nichtnull-Rabatte und exakte Summen bleiben sichtbar; vorhandene finale PDFs bleiben unverändert. Abnahme mit fiktiven Daten: Vorschau und PDF, Rabatt/kein Rabatt, mehrseitige Dokumente, Speicherung/Leerwerte und Zugriffsschutz prüfen. Separate Infotext-Positionen, Nettoauswahl und vollständige Bookitup-Rabattbedienung folgen später.
+
 - [x] **DOC-PRODUCT-01.2 — `style: align document position actions`**: Im Dokumenteditor die bestehende Entfernen-Aktion auf breiten Positionszeilen neben den Eingabefeldern ausrichten; auf schmalen Ansichten bleibt sie darunter. Bedienung, Tastaturreihenfolge und mindestens 44 px Touchfläche erhalten. Abnahme: bestehende Chromiumprüfung mit synthetischen Daten für breite und schmale Ansichten in beiden Themes, ohne Überlauf oder Überlappung.
 
 - [x] **CI-DOC-UX-04 — `test: follow separate document editor`**: Den bestehenden Browserablauf für Angebotsentwürfe auf die eigene Editoransicht umstellen und alle fachlichen Prüfungen erhalten. Abnahme: Chromium-Ablauf mit synthetischen Daten läuft ohne Zugriff auf den ausgeblendeten Listenbereich.

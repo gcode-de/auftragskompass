@@ -836,7 +836,8 @@ a.workspace-title:hover {
   min-width: 0;
 }
 .document-layout-fields input:not([type='checkbox']),
-.document-layout-fields select {
+.document-layout-fields select,
+.document-layout-fields textarea {
   width: 100%;
   min-height: 2.75rem;
   padding: 0.55rem 0.65rem;

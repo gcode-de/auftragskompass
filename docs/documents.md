@@ -247,7 +247,16 @@ als Beleg für ein fehlendes Layout. Vorhandene Home-/Dateien-/Suchnavigation
 berücksichtigt den registrierten Änderungszustand; dies ist keine Behauptung,
 dass sämtliche historischen Navigationswege der gesamten App bereits schützen.
 
-Die Vorschau verwendet die aktuellen, auch ungespeicherten neun Layoutfelder.
+Die Vorschau verwendet die aktuellen, auch ungespeicherten Layoutfelder.
+„Geschäftsfußzeile“ enthält drei optionale Klartextspalten. Jede Spalte hat
+Platz für bis zu vier Zeilen mit je 48 Zeichen. Die PDF-Geschäftsfußzeile
+erscheint auf jeder Seite. Aktivierte Seitenzahlen stehen darunter mittig.
+Die optionalen API-Felder heißen `footerLeft`, `footerCenter` und `footerRight`.
+Wird eines beim Speichern ausgelassen, bleibt sein bisheriger Inhalt erhalten.
+Ein leerer Wert leert die Spalte. Migration `0056_document_footer.sql` legt
+bei bestehenden Layouts leere Werte an. Neue PDFs und ihre Vorschauen zeigen
+tatsächliche Rabatte an der jeweiligen Position. Bereits finale PDFs werden
+weiterhin aus dem gespeicherten Artefakt ausgeliefert.
 `POST /api/v1/document-layout/preview` akzeptiert keine Versions-/Tenant-/Logo-
 Schlüssel aus dem Request. Die API prüft aktive Mandantenberechtigung und nutzt
 nur den eigenen gespeicherten Logoverweis. Empfänger, Leistungen und Nummer

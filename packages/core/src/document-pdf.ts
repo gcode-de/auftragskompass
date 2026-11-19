@@ -56,11 +56,46 @@ export function chromiumPdfRenderer(options: ChromiumOptions): PdfRenderer {
     try {
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: 'load', timeout });
+      // The native Chromium template repeats the escaped HTML footer in the
+      // page margin. Its counters stay below every column, including wrapped text.
+      const footer = await page.evaluate(() => {
+        const element = document.querySelector('footer.document-footer');
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        return {
+          html: element.outerHTML,
+          fontFamily: style.fontFamily,
+          color: style.color,
+          showPageNumbers: element.getAttribute('data-page-numbers') === 'true',
+        };
+      });
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
         preferCSSPageSize: false,
-        margin: { top: '18mm', right: '16mm', bottom: '18mm', left: '16mm' },
+        margin: {
+          top: '18mm',
+          right: '20mm',
+          bottom: footer ? '50mm' : '18mm',
+          left: '20mm',
+        },
+        ...(footer
+          ? {
+              displayHeaderFooter: true,
+              headerTemplate: '<div></div>',
+              footerTemplate: `<style>
+                #footer { padding: 0 !important; }
+                .print-footer { width: 100%; margin: 0 20mm 3mm; color: ${footer.color}; font-family: ${footer.fontFamily}; font-size: 8pt; line-height: 1.1; }
+                .document-footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2mm; overflow-wrap: anywhere; }
+                .document-footer div:nth-child(2), .page-count { text-align: center; }
+                .page-count { margin-top: 2mm; }
+                </style>
+                <div class="print-footer">
+                  ${footer.html}
+                  ${footer.showPageNumbers ? '<div class="page-count">Seite <span class="pageNumber"></span> von <span class="totalPages"></span></div>' : ''}
+                </div>`,
+            }
+          : {}),
       });
       return Buffer.from(pdf);
     } finally {

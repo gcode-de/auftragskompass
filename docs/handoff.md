@@ -1,5 +1,15 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-PRINT-01: Angebotslayout und Geschäftsfuß
+
+Vorschau und neue PDFs verwenden kompakte Typografie und ein Positionsraster
+ohne Rabattspalte; nichtnull Rabatte stehen bei der jeweiligen Position.
+Drei optionale Geschäftsfußspalten sind im Dokumentlayout einstellbar und
+erscheinen auf jeder PDF-Seite. Finalisierte PDFs bleiben unverändert. Die
+Referenz stammt aus den vom Nutzer bereitgestellten PDFs; Geschäftsangaben
+bleiben außerhalb von Git. Separate Positions-Infotexte, Nettoauswahl und
+erweitertes Rabatthandling sind noch offen. CI und Auslieferung prüfen.
+
 ## DOC-PRODUCT-01.2: Positionsaktion
 
 Bei breiter Positionsliste steht die bestehende Entfernen-Aktion neben den

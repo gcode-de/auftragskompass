@@ -101,6 +101,64 @@ test('a 404 shows explicit unsaved setup defaults and creates only after Save', 
   ).toHaveLength(2);
 });
 
+test('the footer draft validates each column and can be previewed and saved', async () => {
+  const calls = api((_url, options) => {
+    if (options?.method === 'POST')
+      return new Response('%PDF-1.4 fictional preview', {
+        headers: { 'content-type': 'application/pdf' },
+      });
+    if (options?.method === 'PUT')
+      return Response.json({
+        ...saved,
+        ...JSON.parse(String(options.body)),
+        version: 4,
+      });
+    return Response.json({ ...saved, footerRight: 'Fictional account' });
+  });
+  vi.stubGlobal('URL', {
+    createObjectURL: vi.fn(() => 'blob:footer'),
+    revokeObjectURL: vi.fn(),
+  });
+  render(<DocumentLayoutPanel csrfToken="fictional-csrf" active />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Dokumentlayout bearbeiten' }),
+  );
+  fireEvent.click(screen.getByText('Geschäftsfußzeile'));
+  expect(
+    screen.getByLabelText<HTMLTextAreaElement>('Rechte Spalte').value,
+  ).toBe('Fictional account');
+  fireEvent.change(screen.getByLabelText('Linke Spalte'), {
+    target: { value: 'a'.repeat(49) },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dokumentlayout speichern' }),
+  );
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Vorschau erstellen' }));
+  expect(calls.filter((call) => call.options?.method)).toHaveLength(0);
+  const footerLeft = 'Fictional Studio\nFictional Town';
+  fireEvent.change(screen.getByLabelText('Linke Spalte'), {
+    target: { value: footerLeft },
+  });
+  fireEvent.change(screen.getByLabelText('Rechte Spalte'), {
+    target: { value: '' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Vorschau erstellen' }));
+  await screen.findByText('PDF-Vorschau erstellt.');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dokumentlayout speichern' }),
+  );
+  await screen.findByText('Gespeichert.');
+  expect(
+    calls
+      .filter((call) => call.options?.method)
+      .map((call) => JSON.parse(String(call.options?.body))),
+  ).toEqual([
+    expect.objectContaining({ footerLeft, footerRight: '' }),
+    expect.objectContaining({ footerLeft, footerRight: '', version: 3 }),
+  ]);
+});
+
 test('a saved layout is summarized, then updated with its server version and no reload', async () => {
   const calls = api((_url, options) =>
     options?.method === 'PUT'

@@ -176,10 +176,16 @@ describe('renderDocumentHtml', () => {
     );
     expect(html).not.toMatch(/undefined|NaN/);
     expect(html).toContain('199,00');
+    expect(html).toContain(
+      '<th>Pos.</th><th>Beschreibung</th><th>Einzelpreis</th><th>Menge</th><th>Preis</th>',
+    );
+    expect(html).not.toContain('Rabatt');
+    expect(html).toContain('font-size: 16pt');
+    expect(html).toContain('font-size: 9pt');
     expect(html).toContain('167,23');
     expect(html).toContain('31,77');
     expect(html).toContain('Umsatzsteuer 19 %');
-    expect(html).toContain('@bottom-right');
+    expect(html).toContain('@bottom-center');
     expect(html).toContain('counter(page)');
     expect(html).toContain('counter(pages)');
     expect(html).not.toContain('Seite 1');
@@ -234,7 +240,7 @@ describe('renderDocumentHtml', () => {
     expect(html).not.toContain('@page');
     expect(html).not.toContain('Seite 1');
   });
-  test('lists one tax row per rate and shows the discount column value', () => {
+  test('lists one tax row per rate and keeps the discount with its position', () => {
     const html = renderDocumentHtml({
       ...base,
       lines: [
@@ -251,8 +257,27 @@ describe('renderDocumentHtml', () => {
     });
     expect(html).toContain('Umsatzsteuer 7 %');
     expect(html).toContain('Umsatzsteuer 19 %');
-    expect(html).toContain('<td>5 %</td>');
-    expect(html).toContain('<td>95,00</td>');
+    expect(html).toContain('Rabatt 5 %');
+    expect(html).not.toContain('<th>Rabatt</th>');
+    expect(html).toContain('<td>50,00 €</td><td>2 Stunde</td><td>95,00 €</td>');
+  });
+  test('escapes footer text in HTML and passes through the page-number setting', () => {
+    const html = renderDocumentHtml({
+      ...base,
+      layout: {
+        ...layout,
+        showPageNumbers: false,
+        footerLeft: 'Example & Fictional\nFictional Town',
+        footerCenter: '',
+        footerRight: '</style><script>bad</script>"\\',
+      },
+    });
+    expect(html).toContain('data-page-numbers="false"');
+    expect(html).toContain('<div></div>');
+    expect(html).toContain('Example &amp; Fictional<br>Fictional Town');
+    expect(html).toContain('&lt;/style&gt;&lt;script&gt;bad&lt;/script&gt;');
+    expect(html).not.toContain('</style><script>');
+    expect(html).not.toContain('counter(page)');
   });
   test('refuses to render when a referenced placeholder has no value', () => {
     expect(() =>
