@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **DOC-TEXT-01 — `feat: add editable document information rows`**: Infotextzeilen in Dokumententwürfen anlegen, bearbeiten und speichern; Reihenfolge in Vorschau, PDF und Folgebelegen erhalten. Ohne Preise, Steuergruppen oder Positionsnummer; alte Leistungszeilen bleiben kompatibel. Nur Infotext reicht nicht zum Finalisieren. Abnahme mit synthetischen Daten einschließlich gemischter Zeilen, escaped Text, Summen und bestehender finaler PDFs. Vorlagen folgen separat.
+
 - [x] **DOC-PRINT-02 — `fix: keep position heading on one line`**: Im PDF-Positionsraster die Überschrift „Pos.“ ohne Umbruch darstellen. Mit und ohne Positionsnummern, langen Preisen und mehrseitigem synthetischem Chromium-PDF prüfen; Dokumentwerte und bestehende finale PDFs bleiben erhalten.
 
 - [x] **DOC-PRINT-01 — `feat: align offer print layout`**: Angebotsvorschau und neu erzeugte PDFs an die vom Nutzer bereitgestellte Bookitup-Vorlage angleichen: kompakte Typografie, lesbares Positionsraster ohne Rabattspalte und konfigurierbare Geschäftsfußzeile. Nichtnull-Rabatte und exakte Summen bleiben sichtbar; vorhandene finale PDFs bleiben unverändert. Abnahme mit fiktiven Daten: Vorschau und PDF, Rabatt/kein Rabatt, mehrseitige Dokumente, Speicherung/Leerwerte und Zugriffsschutz prüfen. Separate Infotext-Positionen, Nettoauswahl und vollständige Bookitup-Rabattbedienung folgen später.

@@ -396,7 +396,7 @@ test('without a template an offer is created blank, empty stays calm, and the fi
   expect(fieldValue('Gültigkeit in Tagen')).toBe('14');
   expect(
     screen.getByText(
-      'Noch keine Positionen. Fügen Sie eine freie Position hinzu oder wählen Sie ein Produkt aus dem Katalog.',
+      'Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt oder einen Infotext hinzu.',
     ),
   ).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
@@ -430,7 +430,7 @@ test('without a template an offer is created blank, empty stays calm, and the fi
     screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   await screen.findByText(
-    'Noch keine Positionen. Fügen Sie eine freie Position hinzu oder wählen Sie ein Produkt aus dem Katalog.',
+    'Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt oder einen Infotext hinzu.',
   );
 
   fireEvent.click(
@@ -626,6 +626,154 @@ test('a malformed successful blank-create response is treated as uncertain and i
   fireEvent.click(screen.getByRole('button', { name: 'Entwurf anlegen' }));
   expect(await screen.findByText(/Angebotsstatus ist unklar/)).toBeTruthy();
   expect(screen.queryByLabelText('Betreff')).toBeNull();
+});
+
+test('information text saves in document order without item fields or position numbers', async () => {
+  const { calls } = setup({
+    finalize: () => Response.json({ error: 'empty_lines' }, { status: 422 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByRole('group', { name: 'Position 1' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Infotext hinzufügen' }));
+  const info = screen.getByRole('group', { name: 'Infotext' });
+  const input = within(info).getByRole('textbox', { name: 'Text' });
+  const save = screen.getByRole('button', { name: 'Änderungen speichern' });
+  expect(document.activeElement).toBe(input);
+  expect(within(info).queryByLabelText('Menge')).toBeNull();
+  expect(
+    within(info).queryByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toBeNull();
+  expect(save).toHaveProperty('disabled', true);
+
+  const description = 'Fiktiver Hinweis <b>im Klartext</b>\nZweite Zeile';
+  fireEvent.change(input, { target: { value: description } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Freie Position hinzufügen' }),
+  );
+  const second = screen.getByRole('group', { name: 'Position 2' });
+  fireEvent.change(within(second).getByLabelText('Beschreibung'), {
+    target: { value: 'Fiktiver Aufbau' },
+  });
+  expect(
+    info.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+
+  fireEvent.click(save);
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    lines: [
+      { description: line.description },
+      { kind: 'info', description },
+      { description: 'Fiktiver Aufbau' },
+    ],
+  });
+  const submitted = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: unknown[];
+  };
+  expect(submitted.lines[1]).toEqual({ kind: 'info', description });
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const reloaded = await screen.findByRole('group', { name: 'Infotext' });
+  const reloadedText = within(reloaded).getByRole('textbox', { name: 'Text' });
+  expect(reloadedText).toHaveProperty('value', description);
+  fireEvent.change(reloadedText, { target: { value: ' ' } });
+  expect(
+    screen.getByRole('button', { name: 'Änderungen speichern' }),
+  ).toHaveProperty('disabled', true);
+  fireEvent.change(reloadedText, { target: { value: 'Geänderter Hinweis' } });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Infotext hinzufügen' }));
+  const addedInfo = screen.getAllByRole('group', { name: 'Infotext' })[1]!;
+  fireEvent.click(
+    within(addedInfo).getByRole('button', { name: 'Infotext entfernen' }),
+  );
+  expect(screen.getAllByRole('group', { name: 'Infotext' })).toEqual([
+    reloaded,
+  ]);
+  expect(screen.getByRole('group', { name: 'Position 2' })).toBeTruthy();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Position 1 entfernen' }));
+  expect(document.activeElement).toBe(
+    within(reloaded).getByRole('textbox', { name: 'Text' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(
+    calls.filter((call) => call.method === 'PUT').at(-1)?.body,
+  ).toMatchObject({
+    lines: [{ kind: 'info', description: 'Geänderter Hinweis' }],
+  });
+  expect(screen.getByRole('link', { name: 'Vorschau öffnen' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
+  ).toHaveProperty('disabled', true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  const listFinalize = screen.getByRole('button', {
+    name: 'Angebot Entwurf finalisieren',
+  });
+  expect(listFinalize).toHaveProperty('disabled', false);
+  fireEvent.click(listFinalize);
+  await screen.findByText(
+    'Zum Finalisieren ist mindestens eine Position erforderlich.',
+  );
+  expect(calls.some((call) => call.url.endsWith('/finalize'))).toBe(true);
+});
+
+test('a draft exceeding the UTF-8 request limit stays editable and can be shortened', async () => {
+  const longText = '€'.repeat(4000);
+  const { calls } = setup({
+    detailGet: () =>
+      Response.json({
+        ...detail(),
+        lines: [
+          line,
+          ...Array.from({ length: 90 }, (_, index) => ({
+            id: `info-${index}`,
+            position: index + 1,
+            kind: 'info',
+            description: longText,
+          })),
+        ],
+      }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const firstEdit = await screen.findByLabelText('Betreff');
+  fireEvent.change(firstEdit, {
+    target: { value: 'Fiktiver Entwurf mit langen Texten' },
+  });
+  const save = screen.getByRole('button', { name: 'Änderungen speichern' });
+  fireEvent.click(save);
+  await screen.findByText(
+    'Der Entwurf ist zu groß. Bitte kürzen Sie die Texte und speichern Sie erneut.',
+  );
+  expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(0);
+  expect(firstEdit).toHaveProperty(
+    'value',
+    'Fiktiver Entwurf mit langen Texten',
+  );
+  const notes = screen.getAllByRole('textbox', { name: /^Text$/ });
+  expect(notes[0]).toHaveProperty('value', longText);
+  for (const note of notes.slice(0, 4)) {
+    fireEvent.change(note, { target: { value: 'Gekürzter Hinweis' } });
+  }
+  fireEvent.click(save);
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
 });
 
 test('existing and free positions save exactly, removal/addition persist, and row totals refresh without a detail refetch', async () => {

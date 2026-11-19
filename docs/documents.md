@@ -84,6 +84,17 @@ blind zu wiederholen. Ein Retry mit alter Version kann keine zweite Änderung
 auslösen. Betreff und Texte erlauben dieselben Platzhalter wie Vorlagen;
 unbekannte Platzhalter sind ungültiger Inhalt.
 
+Seit DOC-TEXT-01 kann `lines` neben unveränderten Leistungspositionen auch
+Infotexte der Form `{ "kind": "info", "description": "…" }` enthalten.
+Der Text ist nicht leer, höchstens 4000 Zeichen lang und enthält kein Nullzeichen.
+Reihenfolge und Zeilenumbrüche bleiben in Vorschau, PDF und Folgebelegen erhalten;
+Infotexte erhalten weder Positionsnummer noch Preis oder Steuer und zählen nicht
+zu Summen. Ein reiner Infotextentwurf kann gespeichert und angesehen, aber nicht
+finalisiert werden. Die Anfrage ist auf 1 MiB begrenzt; der Editor meldet zu große
+Entwürfe vor dem Speichern. Vorlagen unterstützen Infotextzeilen noch nicht.
+Migration `0057_document_information_rows` ergänzt den Zeilentyp und prüft die
+zugehörigen Felder; bestehende Leistungszeilen bleiben unverändert.
+
 Migration `0034_document_draft_content` ergänzt nullable Inhaltsfelder mit
 Längen-/Gültigkeitsprüfung. Bereits bestehende Dokumente werden nicht mit
 vermeintlich historischen Texten nachbefüllt. Bei älteren Entwürfen erklärt der

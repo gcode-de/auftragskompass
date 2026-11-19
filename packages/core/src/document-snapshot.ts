@@ -108,7 +108,9 @@ export function buildDocumentSnapshot(input: SnapshotInput): DocumentSnapshot {
       throw new DocumentSnapshotError('missing_reference');
     throw error;
   }
-  const totals = documentTotals(input.lines),
+  const totals = documentTotals(
+      input.lines.filter((line) => line.kind !== 'info'),
+    ),
     bytes = Buffer.from(html, 'utf8');
   return {
     html,

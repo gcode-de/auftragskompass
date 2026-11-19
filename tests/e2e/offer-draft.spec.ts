@@ -1091,7 +1091,7 @@ async function offerDraftScenario(browser: Browser) {
     await expect(editor.getByLabel('Gültigkeit in Tagen')).toHaveValue('14');
     await expect(
       editor.getByText(
-        'Noch keine Positionen. Fügen Sie eine freie Position hinzu oder wählen Sie ein Produkt aus dem Katalog.',
+        'Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt oder einen Infotext hinzu.',
       ),
     ).toBeVisible();
     await expect(
@@ -1163,6 +1163,14 @@ async function offerDraftScenario(browser: Browser) {
       ).rows[0]!.count,
     ).toBe('0');
 
+    const note = 'Fictional information <b>as text</b>\nSecond line';
+    const addInfo = editor.getByRole('button', { name: 'Infotext hinzufügen' });
+    await addInfo.focus();
+    await page.keyboard.press('Enter');
+    const infoRow = editor.getByRole('group', { name: 'Infotext' });
+    const infoInput = infoRow.getByRole('textbox', { name: 'Text' });
+    await expect(infoInput).toBeFocused();
+    await infoInput.fill(note);
     await editor
       .getByRole('button', { name: 'Freie Position hinzufügen' })
       .click();
@@ -1187,6 +1195,32 @@ async function offerDraftScenario(browser: Browser) {
       .fill('119.00');
     await blankPosition.getByLabel('Steuer in Prozent').fill('19');
     await blankPosition.getByLabel('Rabatt in Prozent').fill('0');
+    for (const [theme, width] of [
+      ['light', 1280],
+      ['dark', 320],
+    ] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+        await page.getByRole('button', { name: /modus aktivieren/ }).click();
+      const infoBox = (await infoRow.boundingBox())!;
+      const textBox = (await infoInput.boundingBox())!;
+      expect(textBox.x + textBox.width).toBeLessThanOrEqual(
+        infoBox.x + infoBox.width,
+      );
+      expect((await addInfo.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+      await infoRow.screenshot({
+        path: test.info().outputPath(`offer-information-${theme}-${width}.png`),
+      });
+    }
+    if (
+      (await page.locator('html').getAttribute('data-theme')) !==
+      blankOriginalTheme
+    )
+      await page.getByRole('button', { name: /modus aktivieren/ }).click();
+    await page.setViewportSize({ width: 1280, height: 900 });
     await editor.getByRole('button', { name: 'Änderungen speichern' }).click();
     await expect(editor.getByRole('status')).toContainText(
       'Änderungen gespeichert.',
@@ -1249,6 +1283,16 @@ async function offerDraftScenario(browser: Browser) {
       {
         position: 0,
         product_id: null,
+        description: note,
+        quantity: null,
+        unit: null,
+        unit_price_minor: null,
+        tax_basis_points: null,
+        discount_basis_points: null,
+      },
+      {
+        position: 1,
+        product_id: null,
         description: 'Fictional standalone service',
         quantity: 1,
         unit: 'Stück',
@@ -1290,6 +1334,7 @@ async function offerDraftScenario(browser: Browser) {
         .getByRole('group', { name: 'Position 1' })
         .getByLabel('Beschreibung'),
     ).toHaveValue('Fictional standalone service');
+    await expect(infoInput).toHaveValue(note);
     let blankPreviewBytes: Buffer | undefined;
     await context.route(
       '**/api/v1/documents/' + blankCreated.id + '/preview',
@@ -1317,6 +1362,13 @@ async function offerDraftScenario(browser: Browser) {
     expect(renderedHtml[1]).toContain('Fictional standalone offer');
     expect(renderedHtml[1]).toContain('Fictional standalone introduction');
     expect(renderedHtml[1]).toContain('Fictional standalone conclusion');
+    expect(renderedHtml[1]).toContain(
+      'Fictional information &lt;b&gt;as text&lt;/b&gt;',
+    );
+    expect(renderedHtml[1]).toContain('Second line');
+    expect(renderedHtml[1]!.indexOf('Fictional information')).toBeLessThan(
+      renderedHtml[1]!.indexOf('Fictional standalone service'),
+    );
     expect(renderedHtml[1]).toContain('Fictional standalone service');
     expect(storedArtifactCount).toBe(0);
     expect(productWrites).toEqual([]);
