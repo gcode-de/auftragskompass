@@ -1,8 +1,12 @@
+# Projektübergabe AuftragsKompass
+
+## DOC-TEXT-01: Infotextzeilen
+
+Dokumententwürfe unterstützen eigenständige Infotextzeilen ohne Preis, Steuer oder Positionsnummer. Sie bleiben beim Speichern und bei Folgebelegen erhalten; reine Infotextentwürfe können nicht finalisiert werden. Vorlagenunterstützung und die gewünschte nachträgliche Bearbeitung über nachvollziehbare Folgefassungen bleiben offen; finale Originale müssen erhalten bleiben. Aktuellen CI- und Deploymentstand stets prüfen.
+
 ## DOC-PRINT-02: Positionsüberschrift
 
-Die PDF-Tabelle hält „Pos.“ und Positionsnummern auf einer Zeile. Der Chromium-Test prüft die Druckbreite mit und ohne Nummerierung sowie lange Beträge. Der tatsächliche CI- und Deploymentstand ist anhand von GitHub und Updater zu prüfen.
-
-# Projektübergabe AuftragsKompass
+Die PDF-Tabelle hält „Pos.“ und Positionsnummern auf einer Zeile. Der Chromium-Test prüft die Druckbreite mit und ohne Nummerierung sowie lange Beträge. Main 20cde60 wurde nach grüner CI auf drei gesunde Container ausgeliefert; der Checkpoint ist auf Host, Container und Betreiberrechner verifiziert. Der automatische Update-Timer war deaktiviert; der vorhandene Updater wurde einmal manuell gestartet.
 
 ## DOC-PRINT-01: Angebotslayout und Geschäftsfuß
 

@@ -86,6 +86,33 @@ describe('buildDocumentSnapshot', () => {
       grossMinor: 19900,
     });
   });
+  test('prints escaped information between service rows without numbering or tax', () => {
+    const base = input(),
+      item = base.lines[0]!,
+      note = { kind: 'info', description: '<Hinweis>\n& Zusatz' } as const,
+      mixed = buildDocumentSnapshot({ ...base, lines: [item, note, item] }),
+      noteOnly = buildDocumentSnapshot({ ...base, lines: [note] });
+    expect(mixed.html).toMatch(
+      /<td>1<\/td>.*Fictional box[\s\S]*&lt;Hinweis&gt;<br>&amp; Zusatz[\s\S]*<td>2<\/td>.*Fictional box/,
+    );
+    expect(mixed.html).not.toContain('Umsatzsteuer 0 %');
+    expect(mixed.html.match(/Umsatzsteuer 19 %/g)).toHaveLength(1);
+    expect(mixed).toMatchObject({
+      netMinor: 33446,
+      taxMinor: 6354,
+      grossMinor: 39800,
+    });
+    expect(noteOnly.html).toContain('&lt;Hinweis&gt;<br>&amp; Zusatz');
+    expect(noteOnly.html).not.toContain('Umsatzsteuer');
+    expect(noteOnly.grossMinor).toBe(0);
+    expect(
+      buildDocumentSnapshot({
+        ...base,
+        layout: { ...base.layout, showPositionNumbers: false },
+        lines: [note],
+      }).html,
+    ).toContain('<td colspan="4">&lt;Hinweis&gt;');
+  });
   test('changes the hash when a single character of content changes', () => {
     const base = buildDocumentSnapshot(input()),
       changed = buildDocumentSnapshot({

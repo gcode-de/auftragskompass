@@ -65,6 +65,7 @@ import { StorageError, type StorageAdapter } from './storage.js';
 import type {
   DocumentDepositReference,
   DocumentInvoiceDates,
+  DocumentInfoLine,
 } from './document-layouts.js';
 import {
   openMinorOf,
@@ -109,12 +110,14 @@ export class DocumentError extends Error {
   }
 }
 
-export type DocumentLineDraft = TotalsLine & {
+type DocumentServiceLineDraft = TotalsLine & {
+  kind?: never;
   productId?: string | null;
   description: string;
   unit: string;
   discountBasisPoints: number;
 };
+export type DocumentLineDraft = DocumentServiceLineDraft | DocumentInfoLine;
 export type DocumentDraftInput = {
   templateId: string;
   eventId?: string | null;
@@ -453,31 +456,20 @@ export type DocumentDependencies = {
   now?: () => Date;
 };
 
-type DocumentLineDraftRow = {
-  id: string;
-  position: number;
-  productId: string | null;
-  description: string;
-  quantity: number;
-  unit: string;
-  unitPriceMinor: number;
-  taxBasisPoints: number;
-  discountBasisPoints: number;
-};
-
-const lineColumns = {
-  id: documentLines.id,
-  position: documentLines.position,
-  productId: documentLines.productId,
-  description: documentLines.description,
-  quantity: documentLines.quantity,
-  unit: documentLines.unit,
-  unitPriceMinor: documentLines.unitPriceMinor,
-  taxBasisPoints: documentLines.taxBasisPoints,
-  discountBasisPoints: documentLines.discountBasisPoints,
-};
+const maxInformationLength = 4000;
 
 function assertLine(line: DocumentLineDraft, index: number): void {
+  if (index > 999) throw new DocumentError('invalid_line');
+  if (line.kind === 'info') {
+    if (
+      typeof line.description !== 'string' ||
+      !line.description.trim() ||
+      line.description.includes('\0') ||
+      line.description.length > maxInformationLength
+    )
+      throw new DocumentError('invalid_line');
+    return;
+  }
   if (
     typeof line.description !== 'string' ||
     !line.description.trim() ||
@@ -499,7 +491,6 @@ function assertLine(line: DocumentLineDraft, index: number): void {
     line.discountBasisPoints > 10000
   )
     throw new DocumentError('invalid_line');
-  if (index > 999) throw new DocumentError('invalid_line');
 }
 
 function recipientOf(contact: {
@@ -743,22 +734,79 @@ export function documentRepository(
   const { blankInvoiceRequestId, ...documentReadColumns } =
     getTableColumns(documents);
 
+  async function readLines(connection: Connection, documentId: string) {
+    const rows = await database(connection)
+      .select()
+      .from(documentLines)
+      .where(
+        and(
+          eq(documentLines.tenantId, tenantId),
+          eq(documentLines.documentId, documentId),
+        ),
+      )
+      .orderBy(asc(documentLines.position));
+    return rows.map((row) => {
+      const { id, position, description } = row;
+      if (row.isInformation)
+        return { id, position, description, kind: 'info' as const };
+      // The database requires each financial field on a service row.
+      return {
+        id,
+        position,
+        description,
+        productId: row.productId,
+        quantity: row.quantity!,
+        unit: row.unit!,
+        unitPriceMinor: row.unitPriceMinor!,
+        taxBasisPoints: row.taxBasisPoints!,
+        discountBasisPoints: row.discountBasisPoints!,
+      };
+    });
+  }
+
+  async function insertLines(
+    connection: Connection,
+    documentId: string,
+    lines: readonly DocumentLineDraft[],
+  ) {
+    await database(connection)
+      .insert(documentLines)
+      .values(
+        lines.map((line, position) => ({
+          tenantId,
+          documentId,
+          id: randomUUID(),
+          position,
+          description: line.description.trim(),
+          ...(line.kind === 'info'
+            ? {
+                isInformation: true,
+                productId: null,
+                quantity: null,
+                unit: null,
+                unitPriceMinor: null,
+                taxBasisPoints: null,
+                discountBasisPoints: null,
+              }
+            : {
+                productId: line.productId ?? null,
+                quantity: line.quantity,
+                unit: line.unit.trim(),
+                unitPriceMinor: line.unitPriceMinor,
+                taxBasisPoints: line.taxBasisPoints,
+                discountBasisPoints: line.discountBasisPoints,
+              }),
+        })),
+      );
+  }
+
   async function readOne(connection: Connection, id: string) {
     const [document] = await database(connection)
       .select(documentReadColumns)
       .from(documents)
       .where(and(scope, eq(documents.id, id)));
     if (!document) return null;
-    const lines = await database(connection)
-      .select(lineColumns)
-      .from(documentLines)
-      .where(
-        and(
-          eq(documentLines.tenantId, tenantId),
-          eq(documentLines.documentId, id),
-        ),
-      )
-      .orderBy(asc(documentLines.position));
+    const lines = await readLines(connection, id);
     // RG-07: the three date columns are read as reviewed SQL - `schema.ts` stays
     // unchanged for every other row contract, and `date` travels as text so no
     // driver can turn a tenant-local day into a guessing instant.
@@ -1232,9 +1280,9 @@ export function documentRepository(
             and(eq(events.tenantId, tenantId), eq(events.id, document.eventId)),
           )
       : [];
-    const lines: DocumentLineDraftRow[] = document.lines;
+    const { lines } = document;
     if (!lines.length) throw new DocumentError('empty_lines');
-    const totals = documentTotals(lines),
+    const totals = documentTotals(lines.filter((line) => line.kind !== 'info')),
       recipient = recipientOf(contact),
       values: Partial<Record<TemplatePlaceholder, string>> = {
         contact: contact.name,
@@ -2002,7 +2050,7 @@ export function documentRepository(
           throw new DocumentError('invalid_kind');
         await assertReference(tx, 'event', input.eventId);
         await assertReference(tx, 'contact', input.contactId);
-        const source = input.lines
+        const source: DocumentLineDraft[] = input.lines
           ? input.lines
           : (
               await tx
@@ -2026,7 +2074,9 @@ export function documentRepository(
             }));
         if (!source.length) throw new DocumentError('empty_lines');
         source.forEach(assertLine);
-        const totals = documentTotals(source),
+        const totals = documentTotals(
+            source.filter((line) => line.kind !== 'info'),
+          ),
           at = now();
         await tx.insert(documents).values({
           tenantId,
@@ -2050,21 +2100,7 @@ export function documentRepository(
           grossMinor: totals.grossMinor,
           version: 1,
         });
-        await tx.insert(documentLines).values(
-          source.map((line, position) => ({
-            tenantId,
-            documentId: id,
-            id: randomUUID(),
-            position,
-            productId: line.productId ?? null,
-            description: line.description.trim(),
-            quantity: line.quantity,
-            unit: line.unit.trim(),
-            unitPriceMinor: line.unitPriceMinor,
-            taxBasisPoints: line.taxBasisPoints,
-            discountBasisPoints: line.discountBasisPoints,
-          })),
-        );
+        await insertLines(tx, id, source);
         await appendAudit(tx, tenantId, 'document.created', actorId, id);
       });
       return (await readOne(db, id))!;
@@ -2112,20 +2148,13 @@ export function documentRepository(
             offer.validityDays === null
           )
             throw new DocumentError('missing_reference');
-          const lines = await tx
-            .select(lineColumns)
-            .from(documentLines)
-            .where(
-              and(
-                eq(documentLines.tenantId, tenantId),
-                eq(documentLines.documentId, offerId),
-              ),
-            )
-            .orderBy(asc(documentLines.position));
+          const lines = await readLines(tx, offerId);
           if (!lines.length) throw new DocumentError('empty_lines');
           // Sums are recomputed from the copied gross prices, so they cannot
           // drift from the positions that are actually printed.
-          const totals = documentTotals(lines),
+          const totals = documentTotals(
+              lines.filter((line) => line.kind !== 'info'),
+            ),
             at = now();
           await tx.insert(documents).values({
             tenantId,
@@ -2160,23 +2189,7 @@ export function documentRepository(
           await tx.execute(sql`UPDATE documents
                                   SET source_document_id = ${offerId}::uuid
                                 WHERE tenant_id = ${tenantId} AND id = ${id}`);
-          await tx.insert(documentLines).values(
-            lines.map((line, position) => ({
-              tenantId,
-              documentId: id,
-              id: randomUUID(),
-              position,
-              productId: line.productId,
-              description: line.description,
-              quantity: line.quantity,
-              unit: line.unit,
-              // Verbatim: the gross price and both basis-point rates, never a
-              // conversion and never a second rounding.
-              unitPriceMinor: line.unitPriceMinor,
-              taxBasisPoints: line.taxBasisPoints,
-              discountBasisPoints: line.discountBasisPoints,
-            })),
-          );
+          await insertLines(tx, id, lines);
           await appendAudit(tx, tenantId, 'document.created', actorId, id);
         });
       } catch (error) {
@@ -2258,20 +2271,13 @@ export function documentRepository(
             confirmation.validityDays === null
           )
             throw new DocumentError('missing_reference');
-          const lines = await tx
-            .select(lineColumns)
-            .from(documentLines)
-            .where(
-              and(
-                eq(documentLines.tenantId, tenantId),
-                eq(documentLines.documentId, confirmationId),
-              ),
-            )
-            .orderBy(asc(documentLines.position));
+          const lines = await readLines(tx, confirmationId);
           if (!lines.length) throw new DocumentError('empty_lines');
           // Sums are recomputed from the copied gross prices, so they cannot
           // drift from the positions that are actually printed.
-          const totals = documentTotals(lines),
+          const totals = documentTotals(
+              lines.filter((line) => line.kind !== 'info'),
+            ),
             at = now();
           // The blank-document rule demands the source at insert time, so the
           // row is written as one reviewed-SQL insert instead of an insert plus
@@ -2291,23 +2297,7 @@ export function documentRepository(
               ${confirmation.outroText}, ${confirmation.validityDays},
               NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
               ${totals.grossMinor}, 1, ${confirmationId}::uuid)`);
-          await tx.insert(documentLines).values(
-            lines.map((line, position) => ({
-              tenantId,
-              documentId: id,
-              id: randomUUID(),
-              position,
-              productId: line.productId,
-              description: line.description,
-              quantity: line.quantity,
-              unit: line.unit,
-              // Verbatim: the gross price and both basis-point rates, never a
-              // conversion and never a second rounding.
-              unitPriceMinor: line.unitPriceMinor,
-              taxBasisPoints: line.taxBasisPoints,
-              discountBasisPoints: line.discountBasisPoints,
-            })),
-          );
+          await insertLines(tx, id, lines);
           await appendAudit(tx, tenantId, 'document.created', actorId, id);
         });
       } catch (error) {
@@ -2387,20 +2377,13 @@ export function documentRepository(
           confirmation.validityDays === null
         )
           throw new DocumentError('missing_reference');
-        const lines = await tx
-          .select(lineColumns)
-          .from(documentLines)
-          .where(
-            and(
-              eq(documentLines.tenantId, tenantId),
-              eq(documentLines.documentId, confirmationId),
-            ),
-          )
-          .orderBy(asc(documentLines.position));
+        const lines = await readLines(tx, confirmationId);
         if (!lines.length) throw new DocumentError('empty_lines');
         // Sums are recomputed from the copied gross prices, so they cannot drift
         // from the positions that are actually printed.
-        const totals = documentTotals(lines),
+        const totals = documentTotals(
+            lines.filter((line) => line.kind !== 'info'),
+          ),
           at = now();
         // The blank-document rule demands the source at insert time, so the row
         // is written as one reviewed-SQL insert instead of an insert plus a later
@@ -2418,23 +2401,7 @@ export function documentRepository(
             ${confirmation.outroText}, ${confirmation.validityDays},
             NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
             ${totals.grossMinor}, 1, ${confirmationId}::uuid)`);
-        await tx.insert(documentLines).values(
-          lines.map((line, position) => ({
-            tenantId,
-            documentId: id,
-            id: randomUUID(),
-            position,
-            productId: line.productId,
-            description: line.description,
-            quantity: line.quantity,
-            unit: line.unit,
-            // Verbatim: the gross price and both basis-point rates, never a
-            // conversion and never a second rounding.
-            unitPriceMinor: line.unitPriceMinor,
-            taxBasisPoints: line.taxBasisPoints,
-            discountBasisPoints: line.discountBasisPoints,
-          })),
-        );
+        await insertLines(tx, id, lines);
         await appendAudit(tx, tenantId, 'document.created', actorId, id);
       });
       return (await readOne(db, id))!;
@@ -2503,21 +2470,14 @@ export function documentRepository(
             confirmation.validityDays === null
           )
             throw new DocumentError('missing_reference');
-          const lines = await tx
-            .select(lineColumns)
-            .from(documentLines)
-            .where(
-              and(
-                eq(documentLines.tenantId, tenantId),
-                eq(documentLines.documentId, confirmationId),
-              ),
-            )
-            .orderBy(asc(documentLines.position));
+          const lines = await readLines(tx, confirmationId);
           if (!lines.length) throw new DocumentError('empty_lines');
           // Sums are recomputed from the copied gross prices, so the printed gross
           // is the order's own amount - the deduction is printed separately and
           // never bends a position.
-          const totals = documentTotals(lines),
+          const totals = documentTotals(
+              lines.filter((line) => line.kind !== 'info'),
+            ),
             at = now();
           await tx.execute(sql`INSERT INTO documents
               (tenant_id, id, kind, template_id, event_id, contact_id, number,
@@ -2532,21 +2492,7 @@ export function documentRepository(
               ${confirmation.outroText}, ${confirmation.validityDays},
               NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
               ${totals.grossMinor}, 1, ${confirmationId}::uuid, 'final')`);
-          await tx.insert(documentLines).values(
-            lines.map((line, position) => ({
-              tenantId,
-              documentId: id,
-              id: randomUUID(),
-              position,
-              productId: line.productId,
-              description: line.description,
-              quantity: line.quantity,
-              unit: line.unit,
-              unitPriceMinor: line.unitPriceMinor,
-              taxBasisPoints: line.taxBasisPoints,
-              discountBasisPoints: line.discountBasisPoints,
-            })),
-          );
+          await insertLines(tx, id, lines);
           await appendAudit(tx, tenantId, 'document.created', actorId, id);
         });
       } catch (error) {
@@ -2616,28 +2562,20 @@ export function documentRepository(
             source.validityDays === null
           )
             throw new DocumentError('missing_reference');
-          const positions =
-            lines ??
-            (await tx
-              .select(lineColumns)
-              .from(documentLines)
-              .where(
-                and(
-                  eq(documentLines.tenantId, tenantId),
-                  eq(documentLines.documentId, sourceId),
-                ),
-              )
-              .orderBy(asc(documentLines.position)));
+          const positions = lines ?? (await readLines(tx, sourceId));
           if (!positions.length) throw new DocumentError('empty_lines');
           positions.forEach(assertLine);
           // Only positions an operator typed need a product check; a copied
           // position already passed it on its own document.
           if (lines)
             for (const line of positions)
-              await assertReference(tx, 'product', line.productId);
+              if (line.kind !== 'info')
+                await assertReference(tx, 'product', line.productId);
           // Sums are recomputed from the magnitudes that are actually printed, so
           // they cannot drift from the positions - and never become negative.
-          const totals = documentTotals(positions),
+          const totals = documentTotals(
+              positions.filter((line) => line.kind !== 'info'),
+            ),
             at = now();
           // The blank-document rule demands the source at insert time, so the row
           // is written as one reviewed-SQL insert. `schema.ts` stays unchanged for
@@ -2655,23 +2593,7 @@ export function documentRepository(
               ${source.outroText}, ${source.validityDays},
               NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
               ${totals.grossMinor}, 1, ${sourceId}::uuid, ${direction})`);
-          await tx.insert(documentLines).values(
-            positions.map((line, position) => ({
-              tenantId,
-              documentId: id,
-              id: randomUUID(),
-              position,
-              productId: line.productId ?? null,
-              description: line.description.trim(),
-              quantity: line.quantity,
-              unit: line.unit.trim(),
-              // Verbatim: the gross price and both basis-point rates, never a
-              // conversion, never a negation, never a second rounding.
-              unitPriceMinor: line.unitPriceMinor,
-              taxBasisPoints: line.taxBasisPoints,
-              discountBasisPoints: line.discountBasisPoints,
-            })),
-          );
+          await insertLines(tx, id, positions);
           await appendAudit(tx, tenantId, 'document.created', actorId, id);
         });
       } catch (error) {
@@ -2785,9 +2707,12 @@ export function documentRepository(
           if (!content.lines.length) throw new DocumentError('empty_lines');
           content.lines.forEach(assertLine);
           for (const line of content.lines)
-            await assertReference(tx, 'product', line.productId);
+            if (line.kind !== 'info')
+              await assertReference(tx, 'product', line.productId);
           try {
-            totals = documentTotals(content.lines);
+            totals = documentTotals(
+              content.lines.filter((line) => line.kind !== 'info'),
+            );
           } catch (error) {
             if (error instanceof DocumentTotalsError)
               throw new DocumentError('invalid_line');
@@ -2801,21 +2726,7 @@ export function documentRepository(
                 eq(documentLines.documentId, id),
               ),
             );
-          await tx.insert(documentLines).values(
-            content.lines.map((line, position) => ({
-              tenantId,
-              documentId: id,
-              id: randomUUID(),
-              position,
-              productId: line.productId ?? null,
-              description: line.description.trim(),
-              quantity: line.quantity,
-              unit: line.unit.trim(),
-              unitPriceMinor: line.unitPriceMinor,
-              taxBasisPoints: line.taxBasisPoints,
-              discountBasisPoints: line.discountBasisPoints,
-            })),
-          );
+          await insertLines(tx, id, content.lines);
         }
         await tx
           .update(documents)
@@ -2902,6 +2813,10 @@ export function documentRepository(
         } catch {
           throw new DocumentError('invalid_state');
         }
+        const completeDocument = await readOne(tx, id);
+        if (!completeDocument) throw new DocumentError('not_found');
+        if (!completeDocument.lines.some((line) => line.kind !== 'info'))
+          throw new DocumentError('empty_lines');
         // BKP019.c2: a credit note is bounded by what is still open on its
         // source. The check runs under the tenant lock and only here, so a draft
         // stays editable and two partial credits can coexist.
@@ -2916,10 +2831,6 @@ export function documentRepository(
           await assertSettlementWithinOrder(tx, document);
         const at = now();
         try {
-          const completeDocument = await readOne(tx, id);
-          if (!completeDocument) throw new DocumentError('not_found');
-          if (!completeDocument.lines.length)
-            throw new DocumentError('empty_lines');
           const [template] = document.templateId
             ? await tx
                 .select({ id: documentTemplates.id })
@@ -3135,36 +3046,49 @@ export function registerDocumentRoutes(
   dependencies: DocumentDependencies,
 ) {
   const repo = documentRepository(pool, tenantId, dependencies);
+  const serviceFields = {
+    productId: {
+      anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
+    },
+    quantity: { type: 'integer', minimum: 1, maximum: 100000 },
+    unit: { type: 'string', minLength: 1, maxLength: 40, pattern: '\\S' },
+    unitPriceMinor: {
+      type: 'integer',
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+    },
+    taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+    discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+  };
+  const infoKind = { type: 'string', const: 'info' };
   const line = {
     type: 'object',
     additionalProperties: false,
-    required: [
-      'description',
-      'quantity',
-      'unit',
-      'unitPriceMinor',
-      'taxBasisPoints',
-      'discountBasisPoints',
-    ],
+    required: ['description'],
     properties: {
-      productId: {
-        anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
-      },
+      kind: infoKind,
       description: {
         type: 'string',
         minLength: 1,
-        maxLength: 300,
+        maxLength: maxInformationLength,
         pattern: '\\S',
       },
-      quantity: { type: 'integer', minimum: 1, maximum: 100000 },
-      unit: { type: 'string', minLength: 1, maxLength: 40, pattern: '\\S' },
-      unitPriceMinor: {
-        type: 'integer',
-        minimum: 0,
-        maximum: Number.MAX_SAFE_INTEGER,
+      ...serviceFields,
+    },
+    if: { required: ['kind'] },
+    then: {
+      properties: {
+        description: { type: 'string', pattern: '^[^\\u0000]*$' },
+        ...Object.fromEntries(
+          Object.keys(serviceFields).map((field) => [field, false]),
+        ),
       },
-      taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
-      discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+    },
+    else: {
+      required: Object.keys(serviceFields).filter(
+        (field) => field !== 'productId',
+      ),
+      properties: { description: { type: 'string', maxLength: 300 } },
     },
   };
   const nullableUuid = {
@@ -3385,30 +3309,45 @@ export function registerDocumentRoutes(
       lines: {
         type: 'array',
         items: {
-          type: 'object',
-          additionalProperties: false,
-          required: [
-            'id',
-            'position',
-            'productId',
-            'description',
-            'quantity',
-            'unit',
-            'unitPriceMinor',
-            'taxBasisPoints',
-            'discountBasisPoints',
+          oneOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['id', 'position', 'kind', 'description'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                position: { type: 'integer' },
+                kind: infoKind,
+                description: { type: 'string' },
+              },
+            },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'id',
+                'position',
+                'productId',
+                'description',
+                'quantity',
+                'unit',
+                'unitPriceMinor',
+                'taxBasisPoints',
+                'discountBasisPoints',
+              ],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                position: { type: 'integer' },
+                productId: nullableUuid,
+                description: { type: 'string' },
+                quantity: { type: 'integer' },
+                unit: { type: 'string' },
+                unitPriceMinor: { type: 'integer' },
+                taxBasisPoints: { type: 'integer' },
+                discountBasisPoints: { type: 'integer' },
+              },
+            },
           ],
-          properties: {
-            id: { type: 'string', format: 'uuid' },
-            position: { type: 'integer' },
-            productId: nullableUuid,
-            description: { type: 'string' },
-            quantity: { type: 'integer' },
-            unit: { type: 'string' },
-            unitPriceMinor: { type: 'integer' },
-            taxBasisPoints: { type: 'integer' },
-            discountBasisPoints: { type: 'integer' },
-          },
         },
       },
     },

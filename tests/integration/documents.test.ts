@@ -384,15 +384,7 @@ test('a blank offer starts without a template or positions and cannot be saved o
       introText: '',
       outroText: '',
       validityDays: 14,
-      lines: saved.lines.map((line) => ({
-        productId: line.productId,
-        description: line.description,
-        quantity: line.quantity,
-        unit: line.unit,
-        unitPriceMinor: line.unitPriceMinor,
-        taxBasisPoints: line.taxBasisPoints,
-        discountBasisPoints: line.discountBasisPoints,
-      })),
+      lines: saved.lines,
     }),
   ).rejects.toMatchObject({ reason: 'invalid_state' });
   await expect(
@@ -1298,6 +1290,7 @@ test('the document API requires auth and enforces the final state', async () => 
         outroText: 'Gültig für {{total}}',
         validityDays: 21,
         lines: [
+          { kind: 'info', description: '<API note>' },
           {
             productId: null,
             description: 'API edited line',
@@ -1316,8 +1309,38 @@ test('the document API requires auth and enforces the final state', async () => 
       subject: 'Eigenes Angebot für {{contact}}',
       validityDays: 21,
       grossMinor: 5000,
-      lines: [{ position: 0, description: 'API edited line', quantity: 2 }],
+      lines: [
+        { position: 0, kind: 'info', description: '<API note>' },
+        { position: 1, description: 'API edited line', quantity: 2 },
+      ],
     });
+    expect(saved.json().lines[0]).toEqual({
+      id: expect.any(String),
+      position: 0,
+      kind: 'info',
+      description: '<API note>',
+    });
+    expect(saved.json().lines[1]).not.toHaveProperty('kind');
+    for (const invalid of [
+      { description: 'Hinweis', unitPriceMinor: 1500 },
+      { description: 'Fictional\0note' },
+    ]) {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/v1/documents/' + id + '/draft',
+        cookies,
+        headers,
+        payload: {
+          version: 2,
+          subject: 'Synthetisches Angebot',
+          introText: '',
+          outroText: '',
+          validityDays: 21,
+          lines: [{ kind: 'info', ...invalid }],
+        },
+      });
+      expect(response.statusCode).toBe(400);
+    }
     expect(
       (
         await app.inject({
@@ -4597,6 +4620,113 @@ test('the confirmation copies every position, price, tax and discount of the off
   expect(confirmation.grossMinor).toBe(
     confirmation.netMinor + confirmation.taxMinor,
   );
+});
+
+test('information rows survive draft saving, rendering and follow-up documents', async () => {
+  const context = await confirmationContext(randomUUID()),
+    { repo, actor } = context,
+    draft = await confirmationDraft(context),
+    info = {
+      kind: 'info',
+      description: '<Fictional> detail\nSecond line',
+    } as const,
+    content = { ...confirmationTexts, version: draft.version };
+  for (const description of ['  ', 'x'.repeat(4001), 'Fictional\0note'])
+    await expect(
+      repo.updateDraftContent(actor, draft.id, {
+        ...content,
+        lines: [{ ...info, description }],
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_line' });
+  const infoOnly = await repo.updateDraftContent(actor, draft.id, {
+    ...content,
+    lines: [{ ...info, description: `  ${info.description}  ` }],
+  });
+  expect(infoOnly).toMatchObject({ grossMinor: 0, netMinor: 0, taxMinor: 0 });
+  expect(infoOnly.lines).toEqual([
+    { ...info, id: expect.any(String), position: 0 },
+  ]);
+  expect(await repo.get(draft.id)).toMatchObject({ lines: infoOnly.lines });
+  await expect(repo.preview(draft.id)).resolves.toBeDefined();
+  await expect(
+    repo.finalize(actor, draft.id, infoOnly.version),
+  ).rejects.toMatchObject({
+    reason: 'empty_lines',
+  });
+  await expect(
+    pool.query(
+      'UPDATE document_lines SET unit_price_minor=1 WHERE tenant_id=$1 AND document_id=$2',
+      [context.scope, draft.id],
+    ),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'document_lines_kind_values',
+  });
+  const mixed = await repo.updateDraftContent(actor, draft.id, {
+    ...content,
+    version: infoOnly.version,
+    lines: [confirmationLines[0]!, info, confirmationLines[1]!],
+  });
+  expect(mixed.grossMinor).toBe(draft.grossMinor);
+  const preview = await repo.preview(draft.id);
+  expect(preview?.bytes.toString()).toMatch(/^%PDF/);
+  expect(context.run.rendered.at(-1)).toContain(
+    '&lt;Fictional&gt; detail<br>Second line',
+  );
+  const finalized = await repo.finalize(actor, draft.id, mixed.version),
+    sent = await repo.changeOfferStatus(actor, draft.id, {
+      status: 'sent',
+      version: finalized.version,
+    }),
+    accepted = await repo.changeOfferStatus(actor, draft.id, {
+      status: 'accepted',
+      version: sent.version,
+      channel: 'email',
+    }),
+    confirmation = await repo.createOrderConfirmation(
+      actor,
+      draft.id,
+      accepted.version,
+    );
+  expect(context.run.rendered.at(-1)).toContain(
+    '&lt;Fictional&gt; detail<br>Second line',
+  );
+  expect((await repo.pdf(finalized.id)).bytes.toString()).toMatch(/^%PDF/);
+  expect(confirmation.grossMinor).toBe(draft.grossMinor);
+  expect(confirmation.lines).toEqual(
+    mixed.lines.map((line) => ({ ...line, id: expect.any(String) })),
+  );
+  await documentNumberRepository(pool, context.scope).save(
+    actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const order = await repo.finalize(
+    actor,
+    confirmation.id,
+    confirmation.version,
+  );
+  const advanced = await repo.createDepositInvoice(
+    actor,
+    order.id,
+    order.version,
+  );
+  expect(advanced.lines[1]).toMatchObject(info);
+  const invoice = await repo.createInvoice(actor, order.id, order.version);
+  expect(invoice.lines[1]).toMatchObject(info);
+  await documentNumberRepository(pool, context.scope).save(actor, 'invoice', {
+    pattern: 'RE-{YYYY}-{SEQ}',
+    minLength: 4,
+    nextValue: 1,
+  });
+  const issued = await repo.finalize(actor, invoice.id, invoice.version);
+  const correction = await repo.createCorrection(
+    actor,
+    issued.id,
+    issued.version,
+    'credit',
+  );
+  expect(correction.lines[1]).toMatchObject(info);
 });
 
 test('the confirmation needs a final offer the customer accepted', async () => {
@@ -8212,6 +8342,23 @@ test('only finalized advances of this order are settled', async () => {
     depositPaidMinor: 0,
     openMinor: 69000,
   });
+});
+
+test('an information-only final invoice needs a service before checking advances', async () => {
+  const order = await overDepositedOrder(randomUUID(), [100000, 80000]),
+    draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    infoOnly = await order.repo.updateDraftContent(order.actor, draft.id, {
+      ...confirmationTexts,
+      version: draft.version,
+      lines: [{ kind: 'info', description: 'Fictional settlement note' }],
+    });
+  await expect(
+    order.repo.finalize(order.actor, draft.id, infoOnly.version),
+  ).rejects.toMatchObject({ reason: 'empty_lines' });
 });
 
 test('later advance changes never rewrite a finalized final invoice', async () => {

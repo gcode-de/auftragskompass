@@ -2503,13 +2503,21 @@ summary {
   min-width: 0;
   margin-block: 0.35rem 0.65rem;
 }
-.offer-draft-position-fields label {
+.offer-draft-position-fields label,
+.offer-draft-info-field {
   display: grid;
   align-content: end;
   gap: 0.3rem;
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.offer-draft-info-field {
+  margin-block: 0.35rem 0.65rem;
+}
+.offer-draft-info-field textarea {
+  resize: vertical;
+}
+.offer-draft-info-field textarea,
 .offer-draft-position-fields input {
   box-sizing: border-box;
   width: 100%;
@@ -2548,7 +2556,8 @@ summary {
     align-items: end;
     column-gap: 0.65rem;
   }
-  .offer-draft-position-fields {
+  .offer-draft-position-fields,
+  .offer-draft-info-field {
     margin-bottom: 0;
   }
 }

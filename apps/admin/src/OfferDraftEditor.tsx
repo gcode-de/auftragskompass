@@ -24,7 +24,8 @@ type DraftValues = {
   // same invoice family, and part of the same dirty comparison.
   bankAccount: string;
 };
-type DraftLine = {
+type DraftItem = {
+  kind?: never;
   id: string;
   position: number;
   productId: string | null;
@@ -35,7 +36,17 @@ type DraftLine = {
   taxBasisPoints: number;
   discountBasisPoints: number;
 };
-type DraftLineValues = {
+type DraftInfo = {
+  kind: 'info';
+  id: string;
+  position: number;
+  description: string;
+};
+type DraftLine = DraftItem | DraftInfo;
+const infoTextLimit = 4000;
+
+type DraftItemValues = {
+  kind?: never;
   key: string;
   productId: string | null;
   description: string;
@@ -45,6 +56,8 @@ type DraftLineValues = {
   tax: string;
   discount: string;
 };
+type DraftLineValues =
+  DraftItemValues | { kind: 'info'; key: string; description: string };
 type DraftDetail = {
   id: string;
   templateId: string | null;
@@ -103,7 +116,7 @@ type Props = {
       | 'paymentTermDays'
       | 'dueDate'
       | 'bankAccount'
-    >,
+    > & { hasPricedLines: boolean },
   ) => void;
 };
 
@@ -172,22 +185,25 @@ function isDetail(value: unknown): value is DraftDetail {
         line &&
         typeof line.id === 'string' &&
         Number.isInteger(line.position) &&
-        (line.productId === null || typeof line.productId === 'string') &&
         typeof line.description === 'string' &&
-        line.description.length <= 300 &&
-        typeof line.unit === 'string' &&
-        line.unit.length <= 40 &&
-        Number.isInteger(line.quantity) &&
-        line.quantity >= 1 &&
-        line.quantity <= 100000 &&
-        Number.isSafeInteger(line.unitPriceMinor) &&
-        line.unitPriceMinor >= 0 &&
-        Number.isInteger(line.taxBasisPoints) &&
-        line.taxBasisPoints >= 0 &&
-        line.taxBasisPoints <= 10000 &&
-        Number.isInteger(line.discountBasisPoints) &&
-        line.discountBasisPoints >= 0 &&
-        line.discountBasisPoints <= 10000,
+        (line.kind === 'info'
+          ? !invalidInfoText(line.description)
+          : line.kind === undefined &&
+            (line.productId === null || typeof line.productId === 'string') &&
+            line.description.length <= 300 &&
+            typeof line.unit === 'string' &&
+            line.unit.length <= 40 &&
+            Number.isInteger(line.quantity) &&
+            line.quantity >= 1 &&
+            line.quantity <= 100000 &&
+            Number.isSafeInteger(line.unitPriceMinor) &&
+            line.unitPriceMinor >= 0 &&
+            Number.isInteger(line.taxBasisPoints) &&
+            line.taxBasisPoints >= 0 &&
+            line.taxBasisPoints <= 10000 &&
+            Number.isInteger(line.discountBasisPoints) &&
+            line.discountBasisPoints >= 0 &&
+            line.discountBasisPoints <= 10000),
     ) &&
     (allNull || savedContent)
   );
@@ -210,19 +226,33 @@ function hasSavedContent(detail: DraftDetail): detail is DraftDetail & {
 }
 
 function lineValuesOf(lines: DraftLine[], previous: DraftLineValues[] = []) {
-  return lines.map((line, index) => ({
-    key: previous[index]?.key ?? `saved-${line.id}`,
-    productId: line.productId,
-    description: line.description,
-    quantity: String(line.quantity),
-    unit: line.unit,
-    unitPrice: formatHundredths(line.unitPriceMinor),
-    tax: formatHundredths(line.taxBasisPoints),
-    discount: formatHundredths(line.discountBasisPoints),
-  }));
+  return lines.map((line, index): DraftLineValues => {
+    const key = previous[index]?.key ?? `saved-${line.id}`;
+    if (line.kind === 'info') {
+      return { key, kind: 'info', description: line.description };
+    }
+    return {
+      key,
+      productId: line.productId,
+      description: line.description,
+      quantity: String(line.quantity),
+      unit: line.unit,
+      unitPrice: formatHundredths(line.unitPriceMinor),
+      tax: formatHundredths(line.taxBasisPoints),
+      discount: formatHundredths(line.discountBasisPoints),
+    };
+  });
+}
+
+function invalidInfoText(description: string) {
+  return !description.trim() || description.length > infoTextLimit;
 }
 
 function lineDraft(line: DraftLineValues) {
+  if (line.kind === 'info') {
+    if (invalidInfoText(line.description)) throw new Error('info');
+    return { kind: line.kind, description: line.description };
+  }
   if (!line.description.trim() || line.description.length > 300)
     throw new Error('description');
   if (!line.unit.trim() || line.unit.length > 40) throw new Error('unit');
@@ -336,7 +366,9 @@ export function OfferDraftEditor({
     busyRef = useRef(false),
     dirtyRef = useRef(false),
     subjectInput = useRef<HTMLInputElement | null>(null),
-    lineInputRefs = useRef(new Map<string, HTMLInputElement>()),
+    lineInputRefs = useRef(
+      new Map<string, HTMLInputElement | HTMLTextAreaElement>(),
+    ),
     pendingLineFocus = useRef(''),
     callbacks = useRef({
       onDirtyChange,
@@ -390,6 +422,7 @@ export function OfferDraftEditor({
         }
       }),
     isBlocked = conflict || uncertain;
+  const hasPricedLines = lineValues.some((line) => line.kind !== 'info');
 
   const loadDraft = useCallback(
     async (focusEditor = false) => {
@@ -458,6 +491,7 @@ export function OfferDraftEditor({
           netMinor: loaded.netMinor,
           taxMinor: loaded.taxMinor,
           grossMinor: loaded.grossMinor,
+          hasPricedLines: loaded.lines.some((line) => line.kind !== 'info'),
           // RG-07: the row shows the saved invoice dates without a reload.
           serviceDate: loaded.serviceDate ?? null,
           paymentTermDays: loaded.paymentTermDays ?? null,
@@ -532,20 +566,28 @@ export function OfferDraftEditor({
     setValues((current) => (current ? { ...current, [key]: value } : current));
   }
 
-  function changeLine<K extends keyof DraftLineValues>(
+  function changeLine<K extends keyof DraftItemValues>(
     key: string,
     field: K,
-    value: DraftLineValues[K],
+    value: DraftItemValues[K],
   ) {
     if (finalizing) return;
     setLineValues((current) =>
       current.map((line) =>
-        line.key === key ? { ...line, [field]: value } : line,
+        line.key === key && field in line ? { ...line, [field]: value } : line,
       ),
     );
   }
 
-  function addLine() {
+  function registerLineInput(
+    key: string,
+    element: HTMLInputElement | HTMLTextAreaElement | null,
+  ) {
+    if (element) lineInputRefs.current.set(key, element);
+    else lineInputRefs.current.delete(key);
+  }
+
+  function addLine(kind?: 'info') {
     if (lineValues.length >= 1000 || busyRef.current || finalizing || isBlocked)
       return;
     lineSequence.current += 1;
@@ -553,16 +595,18 @@ export function OfferDraftEditor({
     pendingLineFocus.current = key;
     setLineValues((current) => [
       ...current,
-      {
-        key,
-        productId: null,
-        description: '',
-        quantity: '1',
-        unit: 'Stück',
-        unitPrice: '0.00',
-        tax: '19.00',
-        discount: '0.00',
-      },
+      kind === 'info'
+        ? { key, kind, description: '' }
+        : {
+            key,
+            productId: null,
+            description: '',
+            quantity: '1',
+            unit: 'Stück',
+            unitPrice: '0.00',
+            tax: '19.00',
+            discount: '0.00',
+          },
     ]);
   }
 
@@ -710,33 +754,40 @@ export function OfferDraftEditor({
     setMessage('');
     setError(false);
     try {
-      const submittedLines = lineValues.map(lineDraft);
+      const body = JSON.stringify({
+        version: detail.version,
+        subject: values.subject,
+        introText: values.introText,
+        outroText: values.outroText,
+        validityDays: days,
+        // RG-07: only an invoice family body carries the two dates, so the
+        // offer and the confirmation keep exactly the body they always sent.
+        ...(showsDates
+          ? {
+              serviceDate: serviceDay || null,
+              paymentTermDays: paymentTerm === '' ? null : Number(paymentTerm),
+              // RG-07b: a blank field clears the account, an omitted one keeps
+              // it - the editor always names the field it shows.
+              bankAccount: bankAccountText.trim() ? bankAccountText : null,
+            }
+          : {}),
+        lines: lineValues.map(lineDraft),
+      });
+      // The draft endpoint uses Fastify's default 1 MiB request-body limit.
+      if (new TextEncoder().encode(body).byteLength > 1024 * 1024) {
+        setError(true);
+        setMessage(
+          'Der Entwurf ist zu groß. Bitte kürzen Sie die Texte und speichern Sie erneut.',
+        );
+        return;
+      }
       const reply = await fetch('/api/v1/documents/' + documentId + '/draft', {
         method: 'PUT',
         headers: {
           'content-type': 'application/json',
           'x-csrf-token': csrfToken,
         },
-        body: JSON.stringify({
-          version: detail.version,
-          subject: values.subject,
-          introText: values.introText,
-          outroText: values.outroText,
-          validityDays: days,
-          // RG-07: only an invoice family body carries the two dates, so the
-          // offer and the confirmation keep exactly the body they always sent.
-          ...(showsDates
-            ? {
-                serviceDate: serviceDay || null,
-                paymentTermDays:
-                  paymentTerm === '' ? null : Number(paymentTerm),
-                // RG-07b: a blank field clears the account, an omitted one keeps
-                // it - the editor always names the field it shows.
-                bankAccount: bankAccountText.trim() ? bankAccountText : null,
-              }
-            : {}),
-          lines: submittedLines,
-        }),
+        body,
       });
       if (!reply.ok) {
         const result = (await reply.json().catch(() => ({}))) as {
@@ -782,6 +833,7 @@ export function OfferDraftEditor({
         netMinor: saved.netMinor,
         taxMinor: saved.taxMinor,
         grossMinor: saved.grossMinor,
+        hasPricedLines: saved.lines.some((line) => line.kind !== 'info'),
         // RG-07: the row shows the saved invoice dates without a reload.
         serviceDate: saved.serviceDate ?? null,
         paymentTermDays: saved.paymentTermDays ?? null,
@@ -809,6 +861,7 @@ export function OfferDraftEditor({
     close();
   }
 
+  let itemNumber = 0;
   return (
     <section
       className="offer-draft-editor"
@@ -939,154 +992,201 @@ export function OfferDraftEditor({
               <h6 id={'offer-positions-' + documentId}>Positionen</h6>
               <p>Änderungen werden beim Speichern neu berechnet.</p>
               <div className="offer-draft-position-list">
-                {lineValues.map((line, index) => (
-                  <fieldset
-                    className="offer-draft-position"
-                    disabled={busy || loading}
-                    key={line.key}
-                  >
-                    <legend>Position {index + 1}</legend>
-                    <div className="offer-draft-position-fields">
-                      <label className="offer-draft-position-wide-field">
-                        Beschreibung
-                        <input
-                          ref={(element) => {
-                            if (element)
-                              lineInputRefs.current.set(line.key, element);
-                            else lineInputRefs.current.delete(line.key);
-                          }}
-                          value={line.description}
-                          maxLength={300}
-                          required
-                          aria-invalid={
-                            !line.description.trim() ||
-                            line.description.length > 300
-                          }
-                          onChange={(event) =>
-                            changeLine(
-                              line.key,
-                              'description',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Menge
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={line.quantity}
-                          required
-                          aria-invalid={
-                            !/^\d+$/.test(line.quantity) ||
-                            Number(line.quantity) < 1 ||
-                            Number(line.quantity) > 100000
-                          }
-                          onChange={(event) =>
-                            changeLine(line.key, 'quantity', event.target.value)
-                          }
-                        />
-                      </label>
-                      <label>
-                        Einheit
-                        <input
-                          value={line.unit}
-                          maxLength={40}
-                          required
-                          aria-invalid={
-                            !line.unit.trim() || line.unit.length > 40
-                          }
-                          onChange={(event) =>
-                            changeLine(line.key, 'unit', event.target.value)
-                          }
-                        />
-                      </label>
-                      <label className="offer-draft-position-wide-field">
-                        Einzelpreis (Brutto) in Euro
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={line.unitPrice}
-                          required
-                          aria-invalid={decimalInvalid(line.unitPrice)}
-                          onChange={(event) =>
-                            changeLine(
-                              line.key,
-                              'unitPrice',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Steuer in Prozent
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={line.tax}
-                          required
-                          aria-invalid={percentInvalid(line.tax)}
-                          onChange={(event) =>
-                            changeLine(line.key, 'tax', event.target.value)
-                          }
-                        />
-                      </label>
-                      <label>
-                        Rabatt in Prozent
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={line.discount}
-                          required
-                          aria-invalid={percentInvalid(line.discount)}
-                          onChange={(event) =>
-                            changeLine(line.key, 'discount', event.target.value)
-                          }
-                        />
-                      </label>
-                    </div>
-                    <button
-                      type="button"
-                      className="tertiary-action"
-                      disabled={lineValues.length <= 1 || busy || loading}
-                      onClick={() => removeLine(line.key)}
+                {lineValues.map((line) => {
+                  const title =
+                    line.kind === 'info'
+                      ? 'Infotext'
+                      : `Position ${++itemNumber}`;
+                  return (
+                    <fieldset
+                      className="offer-draft-position"
+                      disabled={busy || loading}
+                      key={line.key}
                     >
-                      Position {index + 1} entfernen
-                    </button>
-                  </fieldset>
-                ))}
+                      <legend>{title}</legend>
+                      {line.kind === 'info' ? (
+                        <label className="offer-draft-info-field">
+                          Text
+                          <textarea
+                            ref={(element) =>
+                              registerLineInput(line.key, element)
+                            }
+                            value={line.description}
+                            maxLength={infoTextLimit}
+                            rows={3}
+                            required
+                            aria-invalid={invalidInfoText(line.description)}
+                            onChange={(event) =>
+                              changeLine(
+                                line.key,
+                                'description',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </label>
+                      ) : (
+                        <div className="offer-draft-position-fields">
+                          <label className="offer-draft-position-wide-field">
+                            Beschreibung
+                            <input
+                              ref={(element) =>
+                                registerLineInput(line.key, element)
+                              }
+                              value={line.description}
+                              maxLength={300}
+                              required
+                              aria-invalid={
+                                !line.description.trim() ||
+                                line.description.length > 300
+                              }
+                              onChange={(event) =>
+                                changeLine(
+                                  line.key,
+                                  'description',
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Menge
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={line.quantity}
+                              required
+                              aria-invalid={
+                                !/^\d+$/.test(line.quantity) ||
+                                Number(line.quantity) < 1 ||
+                                Number(line.quantity) > 100000
+                              }
+                              onChange={(event) =>
+                                changeLine(
+                                  line.key,
+                                  'quantity',
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Einheit
+                            <input
+                              value={line.unit}
+                              maxLength={40}
+                              required
+                              aria-invalid={
+                                !line.unit.trim() || line.unit.length > 40
+                              }
+                              onChange={(event) =>
+                                changeLine(line.key, 'unit', event.target.value)
+                              }
+                            />
+                          </label>
+                          <label className="offer-draft-position-wide-field">
+                            Einzelpreis (Brutto) in Euro
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={line.unitPrice}
+                              required
+                              aria-invalid={decimalInvalid(line.unitPrice)}
+                              onChange={(event) =>
+                                changeLine(
+                                  line.key,
+                                  'unitPrice',
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Steuer in Prozent
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={line.tax}
+                              required
+                              aria-invalid={percentInvalid(line.tax)}
+                              onChange={(event) =>
+                                changeLine(line.key, 'tax', event.target.value)
+                              }
+                            />
+                          </label>
+                          <label>
+                            Rabatt in Prozent
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={line.discount}
+                              required
+                              aria-invalid={percentInvalid(line.discount)}
+                              onChange={(event) =>
+                                changeLine(
+                                  line.key,
+                                  'discount',
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        className="tertiary-action"
+                        disabled={lineValues.length <= 1 || busy || loading}
+                        onClick={() => removeLine(line.key)}
+                      >
+                        {title} entfernen
+                      </button>
+                    </fieldset>
+                  );
+                })}
               </div>
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={
-                  lineValues.length >= 1000 || busy || loading || isBlocked
-                }
-                onClick={addLine}
-              >
-                Freie Position hinzufügen
-              </button>
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={
-                  busy ||
-                  loading ||
-                  (isBlocked && !productPickerOpen) ||
-                  (lineValues.length >= 1000 && !productPickerOpen)
-                }
-                aria-expanded={productPickerOpen}
-                onClick={() =>
-                  productPickerOpen
-                    ? setProductPickerOpen(false)
-                    : openProductPicker()
-                }
-              >
-                {productPickerOpen
-                  ? 'Katalogauswahl schließen'
-                  : 'Produkt hinzufügen'}
-              </button>
+              <div className="document-actions">
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    lineValues.length >= 1000 || busy || loading || isBlocked
+                  }
+                  onClick={() => addLine()}
+                >
+                  Freie Position hinzufügen
+                </button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    busy ||
+                    loading ||
+                    (isBlocked && !productPickerOpen) ||
+                    (lineValues.length >= 1000 && !productPickerOpen)
+                  }
+                  aria-expanded={productPickerOpen}
+                  onClick={() =>
+                    productPickerOpen
+                      ? setProductPickerOpen(false)
+                      : openProductPicker()
+                  }
+                >
+                  {productPickerOpen
+                    ? 'Katalogauswahl schließen'
+                    : 'Produkt hinzufügen'}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    lineValues.length >= 1000 || busy || loading || isBlocked
+                  }
+                  onClick={() => addLine('info')}
+                >
+                  Infotext hinzufügen
+                </button>
+              </div>
               {productPickerOpen && (
                 <div className="offer-draft-catalog">
                   {catalogState === 'loading' && (
@@ -1154,15 +1254,23 @@ export function OfferDraftEditor({
               )}
               {lineValues.length === 0 && (
                 <p className="document-hint" role="status">
-                  Noch keine Positionen. Fügen Sie eine freie Position hinzu
-                  oder wählen Sie ein Produkt aus dem Katalog.
+                  Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt
+                  oder einen Infotext hinzu.
                 </p>
               )}
               {lineValues.length > 0 && !validLines && (
                 <p role="alert">
-                  Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis,
-                  Steuer und Rabatt. Mindestens eine gültige Position ist
-                  erforderlich.
+                  {lineValues.some(
+                    (line) =>
+                      line.kind === 'info' && invalidInfoText(line.description),
+                  )
+                    ? 'Geben Sie für jeden Infotext einen Text ein.'
+                    : 'Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis, Steuer und Rabatt.'}
+                </p>
+              )}
+              {lineValues.length > 0 && !hasPricedLines && (
+                <p className="document-hint">
+                  Zum Finalisieren ist mindestens eine Position erforderlich.
                 </p>
               )}
               <p className="offer-draft-total">
@@ -1211,7 +1319,7 @@ export function OfferDraftEditor({
                   {!finalizing && (
                     <span className="document-hint">
                       {!validLines
-                        ? 'Fügen Sie zuerst mindestens eine gültige Position hinzu.'
+                        ? 'Fügen Sie zuerst eine Zeile hinzu oder prüfen Sie Ihre Eingaben.'
                         : isBlocked
                           ? 'Bitte zuerst den aktuellen Serverstand laden.'
                           : loading

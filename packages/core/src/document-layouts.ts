@@ -202,10 +202,15 @@ function percent(basisPoints: number): string {
   return rest ? `${whole},${String(rest).padStart(2, '0')}` : String(whole);
 }
 
-export type DocumentLineInput = TotalsLine & {
-  description: string;
-  unit: string;
-};
+export type DocumentInfoLine = { kind: 'info'; description: string };
+
+export type DocumentLineInput =
+  | (TotalsLine & {
+      kind?: never;
+      description: string;
+      unit: string;
+    })
+  | DocumentInfoLine;
 export type DocumentRenderInput = {
   layout: DocumentLayoutInput;
   documentNumber: string;
@@ -226,7 +231,8 @@ export type DocumentRenderInput = {
 // timezone, and prices formatted by hand rather than by Intl currency.
 export function renderDocumentHtml(input: DocumentRenderInput): string {
   const { layout } = input,
-    totals = documentTotals(input.lines),
+    serviceLines = input.lines.filter((line) => line.kind !== 'info'),
+    totals = documentTotals(serviceLines),
     // BKP019.c2: a credit note prints the signed sum of the same magnitudes it
     // stores - the negation happens here, never in `document-totals` and never
     // in the row. Positive amounts stay positive for a debit.
@@ -235,19 +241,23 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
     // gross magnitude; nothing here is signed and nothing is deducted twice.
     settlement = layout.depositReference,
     sign = reference?.direction === 'credit' ? -1 : 1,
-    printed = (minor: number) => sign * minor,
-    rows = input.lines.map((line, index) => {
-      const computed = totals.lines[index]!,
-        cells = [
-          ...(layout.showPositionNumbers ? [String(index + 1)] : []),
-          escapeHtml(line.description) +
-            (line.discountBasisPoints
-              ? `<br><span class="position-discount">Rabatt ${percent(line.discountBasisPoints)} %</span>`
-              : ''),
-          `${formatMinorUnits(line.unitPriceMinor)} €`,
-          `${line.quantity} ${escapeHtml(line.unit)}`,
-          `${formatMinorUnits(computed.grossMinor)} €`,
-        ];
+    printed = (minor: number) => sign * minor;
+  let position = 0;
+  const rows = input.lines.map((line) => {
+      if (line.kind === 'info')
+        return `    <tr class="position-info"><td colspan="${layout.showPositionNumbers ? 5 : 4}">${lines(line.description)}</td></tr>`;
+      const computed = totals.lines[position]!;
+      position += 1;
+      const cells = [
+        ...(layout.showPositionNumbers ? [String(position)] : []),
+        escapeHtml(line.description) +
+          (line.discountBasisPoints
+            ? `<br><span class="position-discount">Rabatt ${percent(line.discountBasisPoints)} %</span>`
+            : ''),
+        `${formatMinorUnits(line.unitPriceMinor)} €`,
+        `${line.quantity} ${escapeHtml(line.unit)}`,
+        `${formatMinorUnits(computed.grossMinor)} €`,
+      ];
       return `    <tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`;
     }),
     head = [
@@ -270,6 +280,15 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
         : `      <tr><td>Umsatzsteuer ${percent(
             totals.taxGroups[0]?.taxBasisPoints ?? 0,
           )} %</td><td>${formatMinorUnits(printed(totals.taxMinor))} €</td></tr>`;
+  const mainTotals =
+    serviceLines.length > 0 || input.lines.length === 0
+      ? `    <table class="totals totals-main">
+      <tr><td>Netto</td><td>${formatMinorUnits(printed(totals.netMinor))} €</td></tr>
+${taxRows}
+      <tr><td>Brutto</td><td>${formatMinorUnits(printed(totals.grossMinor))} €</td></tr>
+    </table>
+`
+      : '';
   const footer = [
       layout.footerLeft,
       layout.footerCenter,
@@ -315,7 +334,7 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       .totals td { white-space: nowrap; }
       .positions td:nth-last-child(3), .positions td:nth-last-child(2),
       .positions td:last-child { width: 17%; }
-      .position-discount { font-size: 8pt; }
+${input.lines.length > serviceLines.length ? `      .positions .position-info td { width: auto; text-align: left; white-space: normal; }\n` : ''}      .position-discount { font-size: 8pt; }
       .totals { margin-top: 3mm; margin-left: auto; width: auto; min-width: 60mm; font-size: 9pt; }
       .totals tr:last-child { background: #eeeeee; font-weight: bold; }
       .totals-main { width: 100%; }
@@ -384,16 +403,11 @@ ${
 ${rows.join('\n')}
       </tbody>
     </table>
-    <table class="totals totals-main">
-      <tr><td>Netto</td><td>${formatMinorUnits(printed(totals.netMinor))} €</td></tr>
-${taxRows}
-      <tr><td>Brutto</td><td>${formatMinorUnits(printed(totals.grossMinor))} €</td></tr>
-    </table>
-${
-  settlement
-    ? `    <p>Schlussrechnung zu ${escapeHtml(settlement.number)} vom ${escapeHtml(
-        settlement.date,
-      )}</p>
+${mainTotals}${
+    settlement
+      ? `    <p>Schlussrechnung zu ${escapeHtml(settlement.number)} vom ${escapeHtml(
+          settlement.date,
+        )}</p>
     <table class="totals">
       <tr><td>Anzahlungen gesamt</td><td>${formatMinorUnits(
         settlement.appliedMinor,
@@ -405,8 +419,8 @@ ${
         settlement.payableMinor,
       )} €</td></tr>
     </table>\n`
-    : ''
-}${
+      : ''
+  }${
     reference
       ? `    <table class="totals">
       <tr><td>Rechnungsbetrag</td><td>${formatMinorUnits(reference.sourceGrossMinor)} €</td></tr>

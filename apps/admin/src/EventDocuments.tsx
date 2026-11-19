@@ -25,6 +25,7 @@ type DocumentRow = {
   taxMinor: number;
   grossMinor: number;
   version: number;
+  hasPricedLines?: boolean;
   // BKP019.0: the business axis of an offer, only present with include=offer.
   offerStatus?: OfferStatus | null;
   validUntil?: string | null;
@@ -843,7 +844,9 @@ export function EventDocuments({
                   ? 'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.'
                   : result.error === 'deposits_exceed_order'
                     ? 'Die Anzahlungen übersteigen den Auftrag. Bitte zuerst die Anzahlungen per Korrektur reduzieren.'
-                    : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
+                    : result.error === 'empty_lines'
+                      ? 'Zum Finalisieren ist mindestens eine Position erforderlich.'
+                      : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
         );
         if (result.error === 'conflict') setEditorId('');
         // Refresh a possibly stale row, but keep the explanatory message.
@@ -1668,7 +1671,12 @@ export function EventDocuments({
       <button
         type="button"
         className="secondary-action"
-        disabled={busy !== '' || editorBusy || editorDirty}
+        disabled={
+          busy !== '' ||
+          editorBusy ||
+          editorDirty ||
+          (entry.id === editorId && entry.hasPricedLines === false)
+        }
         aria-label={
           kindName(entry) + ' ' + (entry.number ?? 'Entwurf') + ' finalisieren'
         }

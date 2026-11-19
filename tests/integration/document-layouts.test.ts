@@ -1247,6 +1247,8 @@ test('document template preview uses fixed fictional data and does not write bus
     });
     expect(emptyPreview.statusCode).toBe(200);
     expect(rendered[2]).toContain('<tbody>\n\n      </tbody>');
+    expect(rendered[2]).toContain('<td>Netto</td><td>0,00 €</td>');
+    expect(rendered[2]).toContain('<td>Umsatzsteuer 0 %</td><td>0,00 €</td>');
     expect(rendered[2]).toContain('<td>Brutto</td><td>0,00 €</td>');
 
     const maximumExactPreview = await app.inject({
