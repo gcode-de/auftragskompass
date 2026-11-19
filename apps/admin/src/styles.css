@@ -2541,6 +2541,16 @@ summary {
     justify-self: end;
   }
 }
+@container draft-positions (min-width: 60rem) {
+  .offer-draft-position {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    column-gap: 0.65rem;
+  }
+  .offer-draft-position-fields {
+    margin-bottom: 0;
+  }
+}
 .offer-draft-total {
   font-weight: 650;
   font-variant-numeric: tabular-nums;

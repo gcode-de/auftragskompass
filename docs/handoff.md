@@ -1,5 +1,11 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-PRODUCT-01.2: Positionsaktion
+
+Bei breiter Positionsliste steht die bestehende Entfernen-Aktion neben den
+Eingaben, sonst darunter. Die genaue Anordnung der Aktion in Bookitup ist
+nicht belegt. CI und tatsächliche Auslieferung am Commit prüfen.
+
 ## DOC-UX-04.1: kompakter Dokumentkopf
 
 Der gemeinsame Entwurfseditor hält den Dokumenttitel und „Schließen“ auch
