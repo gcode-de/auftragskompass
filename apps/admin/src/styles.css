@@ -2476,11 +2476,14 @@ summary {
   color: var(--muted);
 }
 .offer-draft-position-list {
+  container: draft-positions / inline-size;
   display: grid;
   gap: 0.75rem;
   margin-block: 0.75rem;
 }
 .offer-draft-position {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   min-width: 0;
   padding: 0.45rem 0.5rem 0.65rem;
   border: 1px solid var(--border);
@@ -2491,22 +2494,49 @@ summary {
 }
 .offer-draft-position-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.65rem;
   min-width: 0;
   margin-block: 0.35rem 0.65rem;
 }
 .offer-draft-position-fields label {
   display: grid;
-  align-content: start;
+  align-content: end;
   gap: 0.3rem;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .offer-draft-position-fields input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   font-variant-numeric: tabular-nums;
+}
+@container draft-positions (min-width: 14rem) {
+  .offer-draft-position-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .offer-draft-position-wide-field {
+    grid-column: 1 / -1;
+  }
+}
+@container draft-positions (min-width: 32rem) {
+  .offer-draft-position-fields {
+    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  }
+  .offer-draft-position-wide-field {
+    grid-column: auto;
+  }
+}
+@container draft-positions (min-width: 49rem) {
+  .offer-draft-position-fields {
+    grid-template-columns:
+      minmax(0, 2.5fr) minmax(0, 0.8fr) minmax(0, 1fr)
+      minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  }
+  .offer-draft-position > .tertiary-action {
+    justify-self: end;
+  }
 }
 .offer-draft-total {
   font-weight: 650;

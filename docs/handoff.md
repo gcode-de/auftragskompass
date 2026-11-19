@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-PRODUCT-01.1: Positionsraster
+
+Die vorhandenen Positionsfelder stehen bei ausreichend breiter Editorfläche in einer Zeile und brechen bei weniger Platz geordnet um. Eine lesende Desktop-Beobachtung des Bookitup-Rechnungseditors zeigte kompakte Positionszeilen. Ein separates Produktnamenfeld, Positionssummen und die genaue mobile Bookitup-Anordnung sind damit nicht umgesetzt. CI und Auslieferung am tatsächlichen Commit prüfen.
+
 ## UI-01.2: Dokumentübersicht
 
 Die Dokumentübersicht zeigt auf breiten Ansichten eine flache Filterspalte und Tabelle ohne umschließende Karten. Mobil bleibt die Tabelle seitlich scrollbar und der Bereich ist per Tastatur erreichbar. Weiterhin ist die mobile Referenz nicht vollständig nachgebildet. CI und tatsächliche Auslieferung am Commit prüfen.

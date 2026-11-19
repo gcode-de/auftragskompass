@@ -946,7 +946,7 @@ export function OfferDraftEditor({
                   >
                     <legend>Position {index + 1}</legend>
                     <div className="offer-draft-position-fields">
-                      <label>
+                      <label className="offer-draft-position-wide-field">
                         Beschreibung
                         <input
                           ref={(element) => {
@@ -1001,7 +1001,7 @@ export function OfferDraftEditor({
                           }
                         />
                       </label>
-                      <label>
+                      <label className="offer-draft-position-wide-field">
                         Einzelpreis (Brutto) in Euro
                         <input
                           type="text"
