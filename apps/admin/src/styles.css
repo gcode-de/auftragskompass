@@ -3370,6 +3370,41 @@ summary {
     overflow-wrap: normal;
   }
 }
+/* The standalone document index is a flat workspace. The library keeps its own frame. */
+.workspace-page > .documents-workspace {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.documents-workspace .files-subtitle:first-child {
+  margin-bottom: 0.5rem;
+}
+.documents-workspace .files-table-shell {
+  border: 0;
+  border-radius: 0;
+}
+.documents-workspace .files-table :is(th, td) {
+  vertical-align: middle;
+}
+.documents-workspace .files-table tbody th {
+  background: transparent;
+}
+@media (min-width: 1280px) {
+  .documents-workspace .files-layout {
+    column-gap: 1.5rem;
+  }
+  .documents-workspace .files-layout > .files-context {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .documents-workspace .files-context > .files-filter-form {
+    margin: 0;
+  }
+}
 .files-pager {
   display: flex;
   gap: 0.5rem;
@@ -3486,5 +3521,8 @@ summary {
 @media (max-width: 900px) {
   .files-table {
     min-width: 32rem;
+  }
+  .documents-workspace .files-table tbody th {
+    min-width: 8rem;
   }
 }

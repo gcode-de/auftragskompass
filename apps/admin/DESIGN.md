@@ -374,3 +374,16 @@ Bei der Ressourcenzuweisung stehen Belegungsprüfung und die unverbindliche Vorm
 Die Angebotsanlage in Event-Dateien ist ein natives, zunächst geschlossenes Disclosure; die Vorlagenwahl und das Anlegen erscheinen nach bewusstem Öffnen. Nach dem Schließen eines neu angelegten Blankoentwurfs kehrt der Fokus zum Disclosure zurück.
 
 Geschäftsdokumente stehen im Dateienbereich des Events vor der Dateibibliothek; beide bleiben erreichbar.
+
+
+### Globale Dokumentliste (UI-01.2)
+
+Die Dokumentroute liegt direkt auf `canvas`. Ab 1280 px stehen die Filter
+links neben der Tabelle und beginnen auf Höhe ihres Kopfes. Nur die
+Eingabefelder erhalten ihre eigene Feldfläche. Der Tabellenkopf nutzt
+`table-surface`, Zeilen laufen mit einem unteren `border` über die Breite.
+Unterhalb des Breakpoints öffnet der Filterknopf den vorhandenen Dialog.
+Breite Tabellen scrollen innerhalb ihres Listenbereichs. Die Dokumenttabelle
+ist als Region benannt und mit sichtbarem Fokus per Tab erreichbar. Die
+Pfeiltasten scrollen den Bereich horizontal. Auf Mobilbreite
+erhält die Dokumentspalte mindestens 8rem für Titel und Belegnummer.

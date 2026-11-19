@@ -424,6 +424,8 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   SQL-/UI-Review; dabei gefundener Formular-Remount behoben. Screenshot geprüft.
   CI/Images und tatsächlicher Rollout werden getrennt verifiziert.
 
+- [x] **UI-01.2 — `style: flatten the document list and filter column`**: Die globale Dokumentliste gemäß der beobachteten Anordnung B36 als flache Arbeitsfläche mit rahmenloser Desktop-Filterspalte und ruhiger Tabelle mit Zeilentrennern darstellen. Prüfung am synthetischen Beispiel: Hell und Dunkel auf Desktop und Mobil, kein Seitenüberlauf, Filterdialog per Tastatur und Rückkehr zum Auslöser, benannter Tabellenbereich mit sichtbarem Fokus und horizontalem Scrollen per Pfeiltaste, Dateibibliothek auf eigener Route. Lokale Abnahme: Chromium bei 320, 390, 768, 1280 und 1440 px in beiden Themes, vier axe-Prüfungen ohne Verstöße und 30 Komponententests erfolgreich. Bilder bei 390 und 1440 px mit synthetischem Beleg geprüft.
+
 - [x] **UI-01.1 — `test: isolate document layout audits from login journeys`**:
   die hinzugefügten Dokumentfilter-Browserprüfungen als eigenständig budgetierten
   Ablauf prüfen, bestehende Auth-/Sicherheitsassertionen erhalten, keine bloße
