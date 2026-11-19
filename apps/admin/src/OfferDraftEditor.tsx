@@ -820,10 +820,11 @@ export function OfferDraftEditor({
         <button
           type="button"
           className="tertiary-action"
+          aria-label="Bearbeitung schließen"
           disabled={busy}
           onClick={close}
         >
-          Bearbeitung schließen
+          Schließen
         </button>
       </div>
       <p role={error ? 'alert' : 'status'}>{message}</p>

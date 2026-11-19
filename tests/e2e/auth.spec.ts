@@ -1388,19 +1388,40 @@ async function signInScenario(
     // confirmation opens the same editor an offer draft uses, under its own name.
     const editedIntro =
       'Fiktive Einleitung der Bestätigung, vor der Finalisierung korrigiert.';
-    await orders
-      .getByRole('button', {
-        name: 'Auftragsbestätigung Entwurf bearbeiten',
-      })
-      .click();
+    const openConfirmation = orders.getByRole('button', {
+      name: 'Auftragsbestätigung Entwurf bearbeiten',
+    });
+    await openConfirmation.click();
     const confirmationEditor = page.getByRole('region', {
       name: 'Auftragsbestätigung bearbeiten',
     });
-    await expect(
-      confirmationEditor.getByRole('heading', {
-        name: 'Auftragsbestätigung bearbeiten',
-      }),
-    ).toBeVisible();
+    const confirmationTitle = confirmationEditor.getByRole('heading', {
+      name: 'Auftragsbestätigung bearbeiten',
+    });
+    await expect(confirmationTitle).toBeVisible();
+    const previousViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 320, height: 844 });
+    const closeConfirmation = confirmationEditor.getByRole('button', {
+      name: 'Bearbeitung schließen',
+    });
+    const titleBox = (await confirmationTitle.boundingBox())!;
+    const closeBox = (await closeConfirmation.boundingBox())!;
+    expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(closeBox.x);
+    expect(titleBox.y).toBeLessThan(closeBox.y + closeBox.height);
+    expect(closeBox.y).toBeLessThan(titleBox.y + titleBox.height);
+    expect(
+      await confirmationTitle.evaluate(
+        (title) => title.scrollWidth <= title.clientWidth,
+      ),
+    ).toBe(true);
+    await confirmationEditor.locator('.offer-draft-editor-heading').screenshot({
+      path: test.info().outputPath('order-confirmation-heading-320.png'),
+    });
+    await closeConfirmation.press('Enter');
+    await expect(confirmationEditor).toBeHidden();
+    await expect(openConfirmation).toBeFocused();
+    await page.setViewportSize(previousViewport);
+    await openConfirmation.click();
     // The offer heading of the shared editor never labels a confirmation.
     await expect(
       confirmationEditor.getByRole('heading', { name: 'Angebot bearbeiten' }),

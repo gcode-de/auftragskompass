@@ -389,6 +389,13 @@ Pfeiltasten scrollen den Bereich horizontal. Auf Mobilbreite
 erhält die Dokumentspalte mindestens 8rem für Titel und Belegnummer.
 
 
+### Kopf im Dokumenteditor (DOC-UX-04.1)
+
+Der Dokumentkopf hält den Titel links und „Schließen“ rechts in einer
+Rasterzeile. Lange Titel können umbrechen. Eine dünne Trennlinie verwendet
+den Rahmenfarbwert des aktiven Themes. Die Schaltfläche ist mindestens 44 px
+hoch und trägt den zugänglichen Namen „Bearbeitung schließen“.
+
 ### Positionsfelder im Dokumenteditor (DOC-PRODUCT-01.1)
 
 Die Feldgruppe nutzt die verfügbare Breite der Positionsliste. Ab 49rem
