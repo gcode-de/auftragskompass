@@ -1500,9 +1500,42 @@ async function offerDraftScenario(browser: Browser) {
     await expect(invoiceEditor).toBeVisible();
     await expect(blankOffersAfterReload).toBeHidden();
     await expect(library).toBeHidden();
-    await invoiceEditor
-      .getByRole('button', { name: 'Bearbeitung schließen' })
-      .click();
+    const closeEditor = invoiceEditor.getByRole('button', {
+      name: 'Bearbeitung schließen',
+    });
+    await expect(closeEditor).toHaveText('Schließen');
+    const header = invoiceEditor.locator('.offer-draft-editor-heading');
+    const title = invoiceEditor.getByRole('heading', {
+      name: 'Rechnung bearbeiten',
+    });
+    const initialTheme = await page.locator('html').getAttribute('data-theme');
+    const toggleTheme = page.getByRole('button', { name: /modus aktivieren/ });
+    for (const theme of ['light', 'dark']) {
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+        await toggleTheme.click();
+      for (const width of [320, 390, 1440]) {
+        await page.setViewportSize({ width, height: 850 });
+        const titleBox = (await title.boundingBox())!;
+        const closeBox = (await closeEditor.boundingBox())!;
+        expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(closeBox.x);
+        expect(titleBox.y).toBeLessThan(closeBox.y + closeBox.height);
+        expect(closeBox.y).toBeLessThan(titleBox.y + titleBox.height);
+        expect(closeBox.width).toBeGreaterThanOrEqual(44);
+        expect(closeBox.height).toBeGreaterThanOrEqual(44);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width);
+        await header.screenshot({
+          path: test.info().outputPath(`invoice-heading-${theme}-${width}.png`),
+        });
+      }
+    }
+    if (
+      (await page.locator('html').getAttribute('data-theme')) !== initialTheme
+    )
+      await toggleTheme.click();
+    await page.setViewportSize({ width: 320, height: 850 });
+    await closeEditor.press('Enter');
     await expect(invoiceEditor).toBeHidden();
     await expect(blankOffersAfterReload).toBeVisible();
     await expect(library).toBeVisible();

@@ -1,5 +1,11 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-UX-04.1: kompakter Dokumentkopf
+
+Der gemeinsame Entwurfseditor hält den Dokumenttitel und „Schließen“ auch
+bei schmaler Ansicht nebeneinander. Lange Titel können umbrechen. Die mobile
+Kopfzeile des Bookitup-Rechnungseditors ist bislang nicht belegt.
+
 ## DOC-PRODUCT-01.1: Positionsraster
 
 Die vorhandenen Positionsfelder stehen bei ausreichend breiter Editorfläche in einer Zeile und brechen bei weniger Platz geordnet um. Eine lesende Desktop-Beobachtung des Bookitup-Rechnungseditors zeigte kompakte Positionszeilen. Ein separates Produktnamenfeld, Positionssummen und die genaue mobile Bookitup-Anordnung sind damit nicht umgesetzt. CI und Auslieferung am tatsächlichen Commit prüfen.

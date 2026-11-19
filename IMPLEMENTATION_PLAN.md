@@ -12,6 +12,8 @@
 
 - [x] **DOC-UX-04 — `feat: open document editor in separate view`**: Den bestehenden Entwurfseditor in der Eventakte als eigene, übersichtliche Ansicht statt innerhalb der Dokumentzeile öffnen. Zurückführung, bestehende Speicher- und Konfliktschutzregeln, Fokus sowie alle unterstützten Dokumentarten und mobile Bedienung erhalten. Abnahme: Öffnen, Rückkehr ohne Verlust, Fehler- und Dirty-Zustände sowie Desktop-/Mobilansicht prüfen. Keine Änderung der Dokumentlogik.
 
+- [x] **DOC-UX-04.1 — `style: compact the document editor header`**: Im Dokumenteditor der Eventakte bleiben der Dokumenttitel und die kurze Schließen-Aktion auch mobil nebeneinander. Der Titel darf umbrechen. Abnahme mit synthetischem Rechnungsentwurf in Chromium bei 320, 390 und 1440 px in beiden Themes: Touchfläche mindestens 44 × 44 px, kein horizontaler Überlauf, Fokusrückgabe nach Schließen per Tastatur. Zusätzlich bei 320 px den längsten Titel „Auftragsbestätigung bearbeiten“ und die Fokusrückgabe prüfen.
+
 - [x] **BKP013.2 — `style: arrange event details in reference columns`**: Die bestehende Eventübersicht auf breiten Ansichten mit Eventdaten, weiteren Details und rechts separierten Kontakt-/Ortskarten anordnen; auf schmalen Ansichten in sinnvoller Reihenfolge stapeln. Bestehende Aktionen, Entwürfe, Autosave und Bereichsnavigation unverändert erhalten. Keine Aufgabenfunktion vortäuschen.
 
 ### Betreiberauftrag 04.11.2026: Anfragebenachrichtigung
