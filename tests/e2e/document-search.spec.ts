@@ -1,8 +1,7 @@
-import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
 
-test('document search filters the list and preserves its own URL state', async ({
-  page,
-}) => {
+async function mockDocuments(page: Page) {
   const documentRequests: URL[] = [];
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
@@ -61,6 +60,13 @@ test('document search filters the list and preserves its own URL state', async (
     }),
   );
 
+  return documentRequests;
+}
+
+test('document search filters the list and preserves its own URL state', async ({
+  page,
+}) => {
+  const documentRequests = await mockDocuments(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?q=global&df_q=invoice&df_page=1#files');
   const search = page.getByRole('searchbox', {
@@ -107,3 +113,96 @@ test('document search filters the list and preserves its own URL state', async (
     contentType: 'image/png',
   });
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`document workspace stays flat and usable in ${theme} mode`, async ({
+    page,
+  }) => {
+    await mockDocuments(page);
+    await page.addInitScript(
+      (value) => localStorage.setItem('ak-theme', value),
+      theme,
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/#documents');
+
+    const documents = page.getByRole('region', {
+      name: 'Dokumente',
+      exact: true,
+    });
+    const filters = documents.getByRole('complementary', {
+      name: 'Dokumentfilter',
+    });
+    const table = documents.getByRole('table');
+    await expect(
+      table.getByRole('rowheader', { name: 'Rechnung RE-2031-0001' }),
+    ).toBeVisible();
+    await expect(filters.getByRole('searchbox')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
+    const themeSurfaces = {
+      section: documents,
+      filters,
+      table: documents.locator('.files-table-shell'),
+    };
+    for (const [name, surface] of Object.entries(themeSurfaces)) {
+      await expect
+        .soft(surface, name)
+        .toHaveCSS('background-color', 'rgba(0, 0, 0, 0)', { timeout: 750 });
+      await expect
+        .soft(surface, name)
+        .toHaveCSS('border-top-width', '0px', { timeout: 750 });
+    }
+    const filterBox = (await filters.boundingBox())!;
+    const tableBox = (await table.boundingBox())!;
+    expect(filterBox.x + filterBox.width).toBeLessThan(tableBox.x);
+    expect.soft(filterBox.y).toBeCloseTo(tableBox.y, 0);
+
+    for (const width of [1440, 1280, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(table).toBeVisible();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width);
+      if (width === 1440 || width === 390) {
+        await page.screenshot({
+          path: test.info().outputPath(`documents-${theme}-${width}.png`),
+          fullPage: true,
+        });
+        const accessibility = await new AxeBuilder({ page })
+          .include('#files')
+          .analyze();
+        expect(accessibility.violations).toEqual([]);
+      }
+    }
+
+    const trigger = documents.getByRole('button', { name: /^Filter,/ });
+    const dialog = documents.getByRole('dialog', { name: 'Dokumentfilter' });
+    await trigger.focus();
+    const scrollRegion = documents.getByRole('region', {
+      name: 'Dokumenttabelle',
+    });
+    await page.keyboard.press('Tab');
+    await expect(scrollRegion).toBeFocused();
+    await expect(scrollRegion).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('ArrowRight');
+    await expect
+      .poll(() => scrollRegion.evaluate((region) => region.scrollLeft))
+      .toBeGreaterThan(0);
+    await page.keyboard.press('Shift+Tab');
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByRole('searchbox')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/#files');
+    const files = page.getByRole('region', { name: 'Dateien', exact: true });
+    await expect(files).toHaveCSS('border-top-width', '1px');
+    await expect(
+      files.getByRole('complementary', { name: 'Dateifilter' }),
+    ).toHaveCSS('border-top-width', '1px');
+  });
+}

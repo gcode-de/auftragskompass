@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## UI-01.2: Dokumentübersicht
+
+Die Dokumentübersicht zeigt auf breiten Ansichten eine flache Filterspalte und Tabelle ohne umschließende Karten. Mobil bleibt die Tabelle seitlich scrollbar und der Bereich ist per Tastatur erreichbar. Weiterhin ist die mobile Referenz nicht vollständig nachgebildet. CI und tatsächliche Auslieferung am Commit prüfen.
+
 ## DOC-BLANK-INVOICE-02: freie Rechnung im Dokumentdialog
 
 Im Event-Dokumentdialog kann eine reguläre Rechnung ohne Auftragsbestätigung für den Hauptkontakt angelegt und in der separaten Editoransicht bearbeitet werden. Bei unklarer Antwort bleibt die Auftrags-ID im selben Browser-Tab auch nach Reload erhalten; getrennte Tabs haben eigene Auftrags-IDs. Ein beschädigter Wiederaufnahmezustand verlangt einen geprüften Listenabgleich und ausdrückliches Verwerfen mit Dublettenhinweis. CI und Auslieferung am tatsächlichen Commit prüfen.

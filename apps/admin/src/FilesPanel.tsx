@@ -614,7 +614,9 @@ export function FilesPanel({
   return (
     <section
       id="files"
-      className="files-panel"
+      className={
+        documentsOnly ? 'files-panel documents-workspace' : 'files-panel'
+      }
       aria-label={documentsOnly ? 'Dokumente' : 'Dateien'}
     >
       <p className="files-subtitle">
@@ -749,7 +751,12 @@ export function FilesPanel({
                 : 'Dateien werden geladen …'}
             </p>
           ) : rows.length ? (
-            <div className="files-table-shell">
+            <div
+              className="files-table-shell"
+              role={documentsOnly ? 'region' : undefined}
+              aria-label={documentsOnly ? 'Dokumenttabelle' : undefined}
+              tabIndex={documentsOnly ? 0 : undefined}
+            >
               <table className="files-table">
                 <caption className="sr-only">
                   Geschäftsdokumente mit Status, Art, Datum, Betrag, Fälligkeit,
