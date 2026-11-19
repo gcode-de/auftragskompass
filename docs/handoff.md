@@ -1,3 +1,7 @@
+## DOC-PRINT-02: Positionsüberschrift
+
+Die PDF-Tabelle hält „Pos.“ und Positionsnummern auf einer Zeile. Der Chromium-Test prüft die Druckbreite mit und ohne Nummerierung sowie lange Beträge. Der tatsächliche CI- und Deploymentstand ist anhand von GitHub und Updater zu prüfen.
+
 # Projektübergabe AuftragsKompass
 
 ## DOC-PRINT-01: Angebotslayout und Geschäftsfuß
