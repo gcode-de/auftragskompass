@@ -36,6 +36,9 @@ type LayoutInput = {
   fontFamily: 'system' | 'sans' | 'serif';
   showPageNumbers: boolean;
   showPositionNumbers: boolean;
+  footerLeft?: string | undefined;
+  footerCenter?: string | undefined;
+  footerRight?: string | undefined;
 };
 type LayoutRow = LayoutInput & {
   version: number;
@@ -54,6 +57,35 @@ const emptyLayout: LayoutInput = {
   showPageNumbers: true,
   showPositionNumbers: true,
 };
+
+const footerColumns = {
+  footerLeft: 'Linke Spalte',
+  footerCenter: 'Mittlere Spalte',
+  footerRight: 'Rechte Spalte',
+} as const;
+const footerFields = Object.keys(
+  footerColumns,
+) as (keyof typeof footerColumns)[];
+function isFooterText(value: string) {
+  const lines = value.split(/\r?\n/u);
+  return (
+    lines.length <= 4 &&
+    lines.every((line) => {
+      const characters = Array.from(line);
+      return (
+        characters.length <= 48 &&
+        characters.every((character) => {
+          const code = character.charCodeAt(0);
+          return code > 31 && (code < 127 || code > 159);
+        })
+      );
+    })
+  );
+}
+
+function validFooter(layout: LayoutInput) {
+  return footerFields.every((field) => isFooterText(layout[field] ?? ''));
+}
 
 function isLayoutRow(value: unknown): value is LayoutRow {
   if (!value || typeof value !== 'object') return false;
@@ -84,6 +116,13 @@ function isLayoutRow(value: unknown): value is LayoutRow {
       row.fontFamily === 'serif') &&
     typeof row.showPageNumbers === 'boolean' &&
     typeof row.showPositionNumbers === 'boolean' &&
+    footerFields.every((field) => {
+      const value = row[field];
+      return (
+        value === undefined ||
+        (typeof value === 'string' && isFooterText(value))
+      );
+    }) &&
     Number.isSafeInteger(row.version) &&
     Number(row.version) > 0 &&
     (row.logoKey === null || (hasLogo && typeof row.logoKey === 'string')) &&
@@ -105,6 +144,9 @@ function inputFrom(row: LayoutInput): LayoutInput {
     fontFamily: row.fontFamily,
     showPageNumbers: row.showPageNumbers,
     showPositionNumbers: row.showPositionNumbers,
+    footerLeft: row.footerLeft?.trim() || undefined,
+    footerCenter: row.footerCenter?.trim() || undefined,
+    footerRight: row.footerRight?.trim() || undefined,
   };
 }
 
@@ -282,14 +324,20 @@ export function DocumentLayoutPanel({
       !draft.senderName.trim()
     )
       return;
+    if (!validFooter(draft)) {
+      setError(
+        'Die Fußzeile erlaubt bis zu vier Zeilen mit je 48 Zeichen pro Spalte.',
+      );
+      return;
+    }
     setBusy(true);
     setMessage('');
     setError('');
     const submitted = { ...draft };
-    const expectedSnapshot = {
+    const expectedSnapshot = inputFrom({
       ...submitted,
       senderName: submitted.senderName.trim(),
-    };
+    });
     try {
       const creating = row === null,
         response = await fetch('/api/v1/document-layout', {
@@ -374,6 +422,12 @@ export function DocumentLayoutPanel({
       previewBusy
     )
       return;
+    if (!validFooter(draft)) {
+      setError(
+        'Die Fußzeile erlaubt bis zu vier Zeilen mit je 48 Zeichen pro Spalte.',
+      );
+      return;
+    }
     const sequence = ++previewSequence.current,
       previewInput = { ...draft };
     setPreviewBusy(true);
@@ -846,6 +900,31 @@ export function DocumentLayoutPanel({
                     />
                     Positionsnummern anzeigen
                   </label>
+                </div>
+              </fieldset>
+            </details>
+            <details className="document-layout-display">
+              <summary>Geschäftsfußzeile</summary>
+              <fieldset disabled={disabled} aria-label="Geschäftsfußzeile">
+                <p id="document-footer-help">
+                  Bis zu vier Zeilen mit je 48 Zeichen pro Spalte. Leere Spalten
+                  bleiben frei.
+                </p>
+                <div className="document-layout-fields">
+                  {footerFields.map((field) => (
+                    <label key={field}>
+                      {footerColumns[field]}
+                      <textarea
+                        rows={4}
+                        maxLength={387}
+                        aria-describedby="document-footer-help"
+                        value={draft[field] ?? ''}
+                        onChange={(event) =>
+                          update({ [field]: event.target.value })
+                        }
+                      />
+                    </label>
+                  ))}
                 </div>
               </fieldset>
             </details>

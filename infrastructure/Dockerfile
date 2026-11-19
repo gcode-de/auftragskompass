@@ -11,9 +11,9 @@ RUN AK_BUILD_REVISION="$AK_BUILD_REVISION" pnpm build
 
 FROM build AS runtime
 ENV NODE_ENV=production
-# Chromium renders document PDFs; DejaVu keeps the glyphs stable between hosts.
+# Chromium renders document PDFs with local Open Sans and DejaVu fallback.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends chromium fonts-dejavu-core \
+ && apt-get install -y --no-install-recommends chromium fonts-open-sans fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
 # Final documents live on a volume; owning the mount point here lets a fresh
 # named volume inherit the container user instead of staying root-owned.

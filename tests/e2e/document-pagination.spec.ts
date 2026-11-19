@@ -15,9 +15,29 @@ const layout = {
   showPositionNumbers: true,
 };
 
-function renderSample(linesCount: number, showPageNumbers: boolean) {
+function renderSample(
+  linesCount: number,
+  showPageNumbers: boolean,
+  withFooter = false,
+) {
   return renderDocumentHtml({
-    layout: { ...layout, showPageNumbers },
+    layout: {
+      ...layout,
+      showPageNumbers,
+      ...(withFooter
+        ? {
+            footerLeft:
+              'Fictional footer left\nSynthetic second\nSynthetic third\nSynthetic fourth',
+            footerCenter: Array<string>(4).fill('W'.repeat(48)).join('\n'),
+            footerRight: [
+              'Fictional footer right',
+              'https://example.invalid/' + 'W'.repeat(24),
+              'W'.repeat(48),
+              'W'.repeat(48),
+            ].join('\n'),
+          }
+        : {}),
+    },
     documentNumber: 'AN-2030-0001',
     issuedAt: new Date('2030-10-26T10:00:00Z'),
     timeZone: 'Europe/Berlin',
@@ -56,12 +76,11 @@ test('Chromium renders conditional native page counters in generated PDFs', asyn
     ),
   );
   expect(enabledPageRules).toHaveLength(1);
-  expect(enabledPageRules[0]).toContain('@bottom-right');
+  expect(enabledPageRules[0]).toContain('@bottom-center');
   expect(enabledPageRules[0]).toContain('counter(page)');
   expect(enabledPageRules[0]).toContain('counter(pages)');
   expect(enabledPageRules[0]).toContain('rgb(47, 111, 79)');
-  expect(enabledPageRules[0]).toContain('Helvetica Neue');
-  expect(enabledPageRules[0]).toContain('padding-right: 16mm');
+  expect(enabledPageRules[0]).toContain('Open Sans');
 
   const attachPdf = async (name: string, bytes: Buffer) => {
     const path = test.info().outputPath(name);
@@ -75,6 +94,23 @@ test('Chromium renders conditional native page counters in generated PDFs', asyn
   const onePage = await render(renderSample(1, true));
   expect(onePage.subarray(0, 5).toString('ascii')).toBe('%PDF-');
   await attachPdf('pagination-enabled-one-page.pdf', onePage);
+
+  const footerHtml = renderSample(140, true, true);
+  await page.setContent(footerHtml);
+  const footer = page.locator('.document-footer');
+  await expect(footer).toHaveAttribute('data-page-numbers', 'true');
+  await expect(footer.locator(':scope > div')).toHaveCount(3);
+  await expect(footer).toBeHidden();
+  const withFooter = await render(footerHtml);
+  expect(withFooter.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  await attachPdf('pagination-with-business-footer.pdf', withFooter);
+
+  const footerWithoutNumbers = await render(renderSample(1, false, true));
+  expect(footerWithoutNumbers.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  await attachPdf(
+    'pagination-business-footer-without-numbers.pdf',
+    footerWithoutNumbers,
+  );
 
   const disabledHtml = renderSample(140, false);
   await page.setContent(disabledHtml);

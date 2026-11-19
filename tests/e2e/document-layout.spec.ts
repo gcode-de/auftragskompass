@@ -254,7 +254,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     await layout
       .getByRole('button', { name: 'Dokumentlayout einrichten', exact: true })
       .click();
-    await page.locator('.document-layout-display > summary').click();
+    await layout.getByText('Darstellung', { exact: true }).click();
 
     await layout.getByLabel('Absendername').fill('Fictional Layout Studio');
     await layout.getByLabel('Straße').fill('Synthetic Straße 4');
@@ -274,6 +274,9 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     await layout.getByLabel('Schrift').selectOption('sans');
     await layout.getByLabel('Seitennummern anzeigen').check();
     await layout.getByLabel('Positionsnummern anzeigen').check();
+    await layout.getByText('Geschäftsfußzeile', { exact: true }).click();
+    const footerLeft = 'Fictional Studio\nExample City';
+    await layout.getByLabel('Linke Spalte').fill(footerLeft);
     await layout
       .getByRole('button', { name: 'Dokumentlayout speichern', exact: true })
       .click();
@@ -291,6 +294,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       senderStreet: 'Synthetic Straße 4',
       senderPostalCode: '12345',
       senderCity: 'Example City',
+      footerLeft,
       version: 1,
     });
     const logoButton = layout.getByRole('button', {
@@ -396,7 +400,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     await layout
       .getByRole('button', { name: 'Dokumentlayout bearbeiten', exact: true })
       .click();
-    await page.locator('.document-layout-display > summary').click();
+    await layout.getByText('Darstellung', { exact: true }).click();
     await layout.getByLabel('Ort').fill('Logo-persisted City');
     await layout
       .getByRole('button', { name: 'Dokumentlayout speichern', exact: true })
@@ -520,7 +524,9 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     await expect(
       layout.getByRole('button', { name: /Logo hinzufügen|Logo ersetzen/ }),
     ).toHaveCount(0);
-    await page.locator('.document-layout-display > summary').click();
+    await layout.getByText('Darstellung', { exact: true }).click();
+    await layout.getByText('Geschäftsfußzeile', { exact: true }).click();
+    await expect(layout.getByLabel('Linke Spalte')).toHaveValue(footerLeft);
     const widths = [320, 390, 768, 1280];
     for (const theme of ['light', 'dark'] as const) {
       const currentTheme = await page
@@ -534,6 +540,8 @@ test('document layout setup, preview, conflict recovery, and persistence work in
       }
       for (const width of widths) {
         await page.setViewportSize({ width, height: 844 });
+        await expect(layout.getByLabel('Mittlere Spalte')).toBeVisible();
+        await expect(layout.getByLabel('Rechte Spalte')).toBeVisible();
         if (width <= 900) {
           await expect(settingsSelect).toBeVisible();
           await expect(
@@ -679,6 +687,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     expect(renderedHtml).toContain(
       `data:image/jpeg;base64,${jpeg.toString('base64')}`,
     );
+    expect(renderedHtml).toContain('Fictional Studio<br>Example City');
     expect(Number(response.headers()['content-length'])).toBe(
       renderedPdfLength,
     );

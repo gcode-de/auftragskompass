@@ -223,22 +223,52 @@ test('the layout API requires auth, validates colours and reports conflicts', as
       payload: { ...layout, version: 1 },
     });
     expect(stale.statusCode).toBe(409);
+    const footer = {
+      footerLeft:
+        'Fictional Studio\nSynthetic Street\n12345 Fictional Town\nFictional contact',
+      footerCenter: 'Fictional details',
+      footerRight: 'Fictional account',
+    };
+    const invalidFooter = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/document-layout',
+      cookies,
+      headers,
+      payload: { ...layout, version: 2, footerLeft: 'a'.repeat(49) },
+    });
+    expect(invalidFooter.statusCode).toBe(400);
     const current = await app.inject({
       method: 'PUT',
       url: '/api/v1/document-layout',
       cookies,
       headers,
-      payload: { ...layout, version: 2 },
+      payload: { ...layout, ...footer, version: 2 },
     });
     expect(current.statusCode).toBe(200);
-    expect(current.json().version).toBe(3);
+    expect(current.json()).toMatchObject({ ...footer, version: 3 });
     const read = await app.inject({
       method: 'GET',
       url: '/api/v1/document-layout',
       cookies,
     });
     expect(read.statusCode).toBe(200);
-    expect(read.json().senderName).toBe('Fictional Studio');
+    expect(read.json()).toMatchObject({
+      ...footer,
+      senderName: 'Fictional Studio',
+    });
+    const cleared = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/document-layout',
+      cookies,
+      headers,
+      payload: { ...layout, version: 3, footerCenter: '' },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toMatchObject({
+      ...footer,
+      footerCenter: '',
+      version: 4,
+    });
 
     await pool.query('DELETE FROM document_layouts WHERE tenant_id=$1', [
       tenantId,
@@ -761,7 +791,11 @@ test('layout preview is authenticated, synthetic, read-only and returns a no-sto
       origin: config.origin,
       'x-csrf-token': digest('csrf:synthetic-layout'),
     },
-    input = { ...layout, senderName: 'Unsaved <Studio>' };
+    input = {
+      ...layout,
+      senderName: 'Unsaved <Studio>',
+      footerLeft: 'Example <Footer>\nFictional details',
+    };
   try {
     expect(
       (
@@ -835,6 +869,9 @@ test('layout preview is authenticated, synthetic, read-only and returns a no-sto
     expect(response.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
     expect(readCount.value).toBe(1);
     expect(rendered[0]).toContain('Unsaved &lt;Studio&gt;');
+    expect(rendered[0]).toContain(
+      'Example &lt;Footer&gt;<br>Fictional details',
+    );
     expect(rendered[0]).toContain('Beispielangebot');
     expect(rendered[0]).toContain('Beispielposition');
     expect(rendered[0]).toContain(

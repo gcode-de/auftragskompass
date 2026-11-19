@@ -76,6 +76,9 @@ export type DocumentLayoutInput = {
   fontFamily: 'system' | 'sans' | 'serif';
   showPageNumbers: boolean;
   showPositionNumbers: boolean;
+  footerLeft?: string;
+  footerCenter?: string;
+  footerRight?: string;
   /**
    * BKP019.c2: the printed reference of a correction - a print option, never a
    * stored layout field. `documents.ts` builds it per render and the snapshot
@@ -156,8 +159,8 @@ export type DocumentCorrectionReference = {
 };
 
 const fontStacks: Record<DocumentLayoutInput['fontFamily'], string> = {
-  system: 'system-ui, "Segoe UI", sans-serif',
-  sans: '"Helvetica Neue", Arial, sans-serif',
+  system: '"Open Sans", system-ui, "Segoe UI", sans-serif',
+  sans: '"Open Sans", "Helvetica Neue", Arial, sans-serif',
   serif: 'Georgia, "Times New Roman", serif',
 };
 
@@ -237,23 +240,22 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       const computed = totals.lines[index]!,
         cells = [
           ...(layout.showPositionNumbers ? [String(index + 1)] : []),
-          escapeHtml(line.description),
+          escapeHtml(line.description) +
+            (line.discountBasisPoints
+              ? `<br><span class="position-discount">Rabatt ${percent(line.discountBasisPoints)} %</span>`
+              : ''),
+          `${formatMinorUnits(line.unitPriceMinor)} €`,
           `${line.quantity} ${escapeHtml(line.unit)}`,
-          formatMinorUnits(line.unitPriceMinor),
-          line.discountBasisPoints
-            ? percent(line.discountBasisPoints) + ' %'
-            : '',
-          formatMinorUnits(computed.grossMinor),
+          `${formatMinorUnits(computed.grossMinor)} €`,
         ];
       return `    <tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`;
     }),
     head = [
       ...(layout.showPositionNumbers ? ['Pos.'] : []),
       'Beschreibung',
-      'Menge',
       'Einzelpreis',
-      'Rabatt',
-      'Gesamt',
+      'Menge',
+      'Preis',
     ],
     taxRows =
       totals.taxGroups.length > 1
@@ -268,36 +270,62 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
         : `      <tr><td>Umsatzsteuer ${percent(
             totals.taxGroups[0]?.taxBasisPoints ?? 0,
           )} %</td><td>${formatMinorUnits(printed(totals.taxMinor))} €</td></tr>`;
-  const pageNumbers = layout.showPageNumbers
-    ? `      @page {
-        @bottom-right {
+  const footer = [
+      layout.footerLeft,
+      layout.footerCenter,
+      layout.footerRight,
+    ].map((column) => (column ?? '').replace(/\r\n/g, '\n').trim()),
+    hasFooter = footer.some(Boolean),
+    pageNumbers =
+      layout.showPageNumbers && !hasFooter
+        ? `      @page {
+        @bottom-center {
           content: "Seite " counter(page) " von " counter(pages);
           color: ${layout.primaryColor};
           font-family: ${fontStacks[layout.fontFamily]};
           font-size: 8pt;
-          padding-right: 16mm;
+          vertical-align: bottom;
+          padding-bottom: 3mm;
         }
       }
 `
-    : '';
+        : '';
   return `<!doctype html>
 <html lang="de">
   <head>
     <meta charset="utf-8">
     <title>${escapeHtml(input.documentNumber)}</title>
     <style>
-      body { color: ${layout.textColor}; font-family: ${fontStacks[layout.fontFamily]}; font-size: 11pt; margin: 18mm 16mm; }
-      h1 { font-size: 15pt; margin: 6mm 0 3mm; }
+      body { color: ${layout.textColor}; font-family: ${fontStacks[layout.fontFamily]}; font-size: 10pt; margin: 18mm 20mm; }
+      h1 { font-size: 16pt; font-weight: normal; margin: 0; overflow-wrap: anywhere; }
+      .title { display: flex; align-items: baseline; justify-content: space-between; gap: 5mm; margin: 6mm 0 3mm; }
+      .title time { white-space: nowrap; }
       .sender { border-bottom: 1px solid #aaaaaa; font-size: 8pt; padding-bottom: 1mm; }
       address { font-style: normal; }
-      .meta { display: flex; justify-content: space-between; margin-bottom: 4mm; }
       table { border-collapse: collapse; width: 100%; }
       thead { background: #eeeeee; }
       th { text-align: left; }
-      td, th { padding: 1.5mm 1mm; }
-      td:last-child, th:last-child, .totals td:last-child { text-align: right; }
-      .totals { margin-top: 3mm; margin-left: auto; width: 60mm; }
+      td, th { padding: 1.5mm 1mm; vertical-align: top; }
+      .positions { font-size: 9pt; overflow-wrap: anywhere; }
+      .positions tr, .totals { break-inside: avoid; }
+      .positions td:nth-last-child(3), .positions th:nth-last-child(3),
+      td:last-child, th:last-child { text-align: right; }
+      .positions td:nth-last-child(3), .positions td:last-child,
+      .totals td { white-space: nowrap; }
+      .positions td:nth-last-child(3), .positions td:nth-last-child(2),
+      .positions td:last-child { width: 17%; }
+      .position-discount { font-size: 8pt; }
+      .totals { margin-top: 3mm; margin-left: auto; width: auto; min-width: 60mm; font-size: 9pt; }
       .totals tr:last-child { background: #eeeeee; font-weight: bold; }
+      .totals-main { width: 100%; }
+      .totals-main tr:not(:last-child) td:first-child { text-align: right; }
+      .totals-main td:last-child { width: 23%; }
+      .document-footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2mm; margin-top: 6mm; font-size: 8pt; overflow-wrap: anywhere; }
+      .document-footer div:nth-child(2) { text-align: center; }
+      @media print {
+        body { margin: 0; }
+        .document-footer { display: none; }
+      }
 ${pageNumbers}      .logo { display: block; max-height: 25mm; max-width: 50mm; width: auto; height: auto; margin-left: auto; margin-bottom: 2mm; }
     </style>
   </head>
@@ -314,10 +342,7 @@ ${
     .map(escapeHtml)
     .join(' · ')}</p>
     <address>${lines(input.recipientName + '\n' + input.recipientAddress)}</address>
-    <div class="meta">
-      <p>Nummer ${escapeHtml(input.documentNumber)}</p>
-      <p>Datum ${formatDocumentDate(input.issuedAt, input.timeZone)}</p>
-    </div>
+    <p>Nummer ${escapeHtml(input.documentNumber)}</p>
 ${
   reference
     ? `    <p>Korrektur zu ${escapeHtml(reference.number)} vom ${escapeHtml(reference.date)}</p>\n`
@@ -347,15 +372,18 @@ ${
     layout.invoiceDates?.bankAccount
       ? `    <p>Bankverbindung: ${lines(layout.invoiceDates.bankAccount)}</p>\n`
       : ''
-  }    <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
+  }    <div class="title">
+      <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
+      <time>Datum ${formatDocumentDate(input.issuedAt, input.timeZone)}</time>
+    </div>
     <p>${lines(renderTemplate(input.introText, input.values))}</p>
-    <table>
+    <table class="positions">
       <thead><tr>${head.map((cell) => `<th>${cell}</th>`).join('')}</tr></thead>
       <tbody>
 ${rows.join('\n')}
       </tbody>
     </table>
-    <table class="totals">
+    <table class="totals totals-main">
       <tr><td>Netto</td><td>${formatMinorUnits(printed(totals.netMinor))} €</td></tr>
 ${taxRows}
       <tr><td>Brutto</td><td>${formatMinorUnits(printed(totals.grossMinor))} €</td></tr>
@@ -394,7 +422,7 @@ ${
     </table>\n`
       : ''
   }    <p>${lines(renderTemplate(input.outroText, input.values))}</p>
-  </body>
+${hasFooter ? `    <footer class="document-footer" data-page-numbers="${layout.showPageNumbers}">${footer.map((column) => `<div>${lines(column)}</div>`).join('')}</footer>\n` : ''}  </body>
 </html>
 `;
 }
@@ -435,6 +463,9 @@ export function documentLayoutRepository(
           fontFamily: input.fontFamily,
           showPageNumbers: input.showPageNumbers,
           showPositionNumbers: input.showPositionNumbers,
+          footerLeft: input.footerLeft?.trim() ?? old?.footerLeft ?? '',
+          footerCenter: input.footerCenter?.trim() ?? old?.footerCenter ?? '',
+          footerRight: input.footerRight?.trim() ?? old?.footerRight ?? '',
           version: (old?.version ?? 0) + 1,
         };
         const [row] = old
@@ -649,6 +680,18 @@ export function registerDocumentLayoutRoutes(
     showPageNumbers: { type: 'boolean' },
     showPositionNumbers: { type: 'boolean' },
   };
+  const footerText = {
+      type: 'string',
+      maxLength: 198,
+      pattern:
+        '^(?:[^\\x00-\\x1f\\x7f-\\x9f]{0,48}\\r?\\n){0,3}[^\\x00-\\x1f\\x7f-\\x9f]{0,48}(?![\\s\\S])',
+    },
+    properties = {
+      ...fields,
+      footerLeft: footerText,
+      footerCenter: footerText,
+      footerRight: footerText,
+    };
   const version = { type: 'integer', minimum: 1 };
   function failure(error: unknown, reply: FastifyReply) {
     if (error instanceof AccessError)
@@ -684,7 +727,7 @@ export function registerDocumentLayoutRoutes(
           type: 'object',
           additionalProperties: false,
           required: Object.keys(fields),
-          properties: fields,
+          properties,
         },
       },
     },
@@ -706,7 +749,7 @@ export function registerDocumentLayoutRoutes(
           type: 'object',
           additionalProperties: false,
           required: [...Object.keys(fields), 'version'],
-          properties: { ...fields, version },
+          properties: { ...properties, version },
         },
       },
     },
@@ -731,7 +774,9 @@ export function registerDocumentLayoutRoutes(
           !body ||
           typeof body !== 'object' ||
           Array.isArray(body) ||
-          Object.keys(body).length !== Object.keys(fields).length ||
+          Object.keys(body).some(
+            (field) => !Object.hasOwn(properties, field),
+          ) ||
           Object.keys(fields).some((field) => !(field in body))
         )
           return reply.code(400).send({ error: 'invalid_layout' });
@@ -741,7 +786,7 @@ export function registerDocumentLayoutRoutes(
           type: 'object',
           additionalProperties: false,
           required: Object.keys(fields),
-          properties: fields,
+          properties,
         },
       },
     },

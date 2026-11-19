@@ -333,6 +333,11 @@ Feldrand und Ink, 44px Mindesthöhe, Kontrollradius 0.4rem; kein neuer Farb- ode
 Typografiestil. Die bearbeiteten PDF-Farben sind Dokumentinhalte und ändern
 nicht das Administrationstheme.
 
+Die Geschäftsfußzeile nutzt eine eigene Disclosure mit drei beschrifteten
+Mehrzeilenfeldern im selben Grid. Die Spaltenreihenfolge bleibt bei schmaler
+Ansicht von oben nach unten lesbar. Die Vorschau berücksichtigt die aktuelle
+Eingabe bereits vor dem Speichern.
+
 Ein Speichern-Primärknopf, eine sekundäre Vorschauaktion; die Vorschau benötigt
 kein vorheriges Speichern und erhält deutlich bezeichnete Öffnen-/Downloadlinks.
 Kein iframe oder zusätzliches Modal. Konflikt/unklarer Ausgang erhält Eingaben

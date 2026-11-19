@@ -2022,7 +2022,7 @@ test('a configured logo is embedded into the final html', async () => {
   });
 });
 
-test('replacing the layout logo leaves finalized PDFs unchanged and updates draft previews', async () => {
+test('changing the layout footer and logo preserves finalized PDFs and updates draft previews', async () => {
   const run = dependencies(),
     firstLogo = Buffer.concat([
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -2046,7 +2046,14 @@ test('replacing the layout logo leaves finalized PDFs unchanged and updates draf
     'data:image/png;base64,' + firstLogo.toString('base64'),
   );
 
-  await layoutRepo.saveLogo(actorId, nextLogo, 'image/png');
+  const next = await layoutRepo.saveLogo(actorId, nextLogo, 'image/png');
+  const footerRight = 'Fictional account for this layout';
+  const savedLayout = {
+    ...next,
+    fontFamily: next.fontFamily as 'system',
+    footerRight,
+  };
+  await layoutRepo.save(actorId, savedLayout, next.version);
   const unchanged = await repo.get(finalized.id);
   expect(unchanged).toMatchObject({
     state: 'final',
@@ -2068,6 +2075,14 @@ test('replacing the layout logo leaves finalized PDFs unchanged and updates draf
   );
   expect(run.rendered[1]).not.toContain(
     'data:image/png;base64,' + firstLogo.toString('base64'),
+  );
+  expect(run.rendered[0]).not.toContain(footerRight);
+  expect(run.rendered[1]).toContain(footerRight);
+  const layoutWithFooter = (await layoutRepo.get())!;
+  await layoutRepo.save(
+    actorId,
+    { ...savedLayout, footerRight: '' },
+    layoutWithFooter.version,
   );
 });
 
