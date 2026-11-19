@@ -671,13 +671,13 @@ test('non-invoice documents print neither line and keep their exact bytes', asyn
   // invoice without a term keep their exact bytes until the layout changes.
   const finalized = await s.repo.finalize(s.actor, chain.invoice.id);
   expect(chain.offer.snapshotHash).toBe(
-    '66705df65b76cd78b04ba37af975c3d271c2f216a5c3c7887ce80d580c05b1f4',
+    'df67058440339a258eab0124180c9f5879d878c8cb4a394c816786c23e829c13',
   );
   expect(chain.confirmation.snapshotHash).toBe(
-    '0e25547e722e7879a440b17ef519375d357e61cf7afbd40ef6a8c85f2410c59f',
+    '3728a0139314904f52f3e180ebde9a670cfa01800b1fb01b45de1e2a0ffc9e46',
   );
   expect(finalized.snapshotHash).toBe(
-    'b73fb076de840966bf20642b175a5382644c8895a300c8521854334b54d9bc62',
+    '392faa4f46991f6f7d9458a3a776c107e9bedba66169c9a20f58df7cb2edb8a4',
   );
   const invoiceHtml = s.rendered.at(-1)!;
   expect(invoiceHtml).not.toContain('Leistungsdatum');
@@ -1057,13 +1057,13 @@ test('documents without a bank account keep their exact bytes', async () => {
   // The DOC-PRINT-01 golden hashes also cover documents without an account;
   // account-free output remains stable unless the layout changes deliberately.
   expect(chain.offer.snapshotHash).toBe(
-    '66705df65b76cd78b04ba37af975c3d271c2f216a5c3c7887ce80d580c05b1f4',
+    'df67058440339a258eab0124180c9f5879d878c8cb4a394c816786c23e829c13',
   );
   expect(chain.confirmation.snapshotHash).toBe(
-    '0e25547e722e7879a440b17ef519375d357e61cf7afbd40ef6a8c85f2410c59f',
+    '3728a0139314904f52f3e180ebde9a670cfa01800b1fb01b45de1e2a0ffc9e46',
   );
   expect(finalized.snapshotHash).toBe(
-    'b73fb076de840966bf20642b175a5382644c8895a300c8521854334b54d9bc62',
+    '392faa4f46991f6f7d9458a3a776c107e9bedba66169c9a20f58df7cb2edb8a4',
   );
   for (const html of s.rendered) expect(html).not.toContain('Bankverbindung');
 });

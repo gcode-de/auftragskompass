@@ -310,6 +310,7 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       .positions tr, .totals { break-inside: avoid; }
       .positions td:nth-last-child(3), .positions th:nth-last-child(3),
       td:last-child, th:last-child { text-align: right; }
+      .positions th:nth-last-child(5), .positions td:nth-last-child(5),
       .positions td:nth-last-child(3), .positions td:last-child,
       .totals td { white-space: nowrap; }
       .positions td:nth-last-child(3), .positions td:nth-last-child(2),
