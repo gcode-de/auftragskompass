@@ -421,6 +421,57 @@ async function offerDraftScenario(browser: Browser) {
     await expect(position2.getByLabel('Beschreibung')).toHaveValue(
       'Fictional delivery',
     );
+    // A narrow editor can be embedded in a wide viewport.
+    const fields = position1.getByRole('textbox');
+    const positionList = positions.locator('.offer-draft-position-list');
+    for (const [width, maxWidth] of [
+      [1440, ''],
+      [1440, '22rem'],
+      [390, ''],
+      [320, ''],
+    ] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await positionList.evaluate((list, value) => {
+        list.style.maxWidth = value;
+      }, maxWidth);
+      await position1.evaluate((position) =>
+        window.scrollBy(0, position.getBoundingClientRect().top - 120),
+      );
+      await position1.screenshot({
+        path: test
+          .info()
+          .outputPath(
+            `document-position-${maxWidth ? 'narrow-container' : width}.png`,
+          ),
+      });
+      const boxes = await fields.evaluateAll((inputs) =>
+        inputs.map((input) => {
+          const { x, y, height } = input.getBoundingClientRect();
+          const label = input.parentElement!;
+          const fits = label.scrollWidth <= label.clientWidth + 1;
+          return { x, y, height, fits };
+        }),
+      );
+      expect(boxes).toHaveLength(6);
+      expect(boxes.every((box) => box.height >= 44 && box.fits)).toBe(true);
+      if (width === 1440 && !maxWidth) {
+        expect.soft(boxes.every((box) => box.y === boxes[0]!.y)).toBe(true);
+        expect
+          .soft(
+            boxes.every((box, index) => !index || box.x > boxes[index - 1]!.x),
+          )
+          .toBe(true);
+      } else {
+        expect.soft(boxes.at(-1)!.y).toBeGreaterThan(boxes[0]!.y);
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await fields.first().focus();
+    for (const field of (await fields.all()).slice(1)) {
+      await page.keyboard.press('Tab');
+      await expect(field).toBeFocused();
+    }
+
     await editor.getByLabel('Betreff').fill('Fictional saved subject');
     await editor.getByLabel('Einleitung').fill('Fictional saved introduction');
     await editor.getByLabel('Schlusstext').fill('Fictional saved conclusion');
