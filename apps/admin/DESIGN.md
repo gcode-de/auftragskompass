@@ -406,4 +406,6 @@ Felder in einer Zeile. Ab 14rem paaren sich Menge und Einheit sowie Steuer
 und Rabatt. Beschreibung und Preis nutzen dabei je eine ganze Zeile.
 Darunter stapeln sich die Felder. Labels können umbrechen, Eingaben
 behalten mindestens 44px Höhe und die Tab-Reihenfolge folgt dem Formular.
-Die Entfernen-Aktion bleibt unter den Eingaben.
+Die Entfernen-Aktion bleibt unter den Eingaben; ab 60rem Positionslistenbreite
+steht sie rechts daneben und richtet sich an deren Unterkante aus. Die
+Tastaturreihenfolge und die mindestens 44px große Trefferfläche bleiben erhalten.

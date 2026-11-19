@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **DOC-PRODUCT-01.2 — `style: align document position actions`**: Im Dokumenteditor die bestehende Entfernen-Aktion auf breiten Positionszeilen neben den Eingabefeldern ausrichten; auf schmalen Ansichten bleibt sie darunter. Bedienung, Tastaturreihenfolge und mindestens 44 px Touchfläche erhalten. Abnahme: bestehende Chromiumprüfung mit synthetischen Daten für breite und schmale Ansichten in beiden Themes, ohne Überlauf oder Überlappung.
+
 - [x] **CI-DOC-UX-04 — `test: follow separate document editor`**: Den bestehenden Browserablauf für Angebotsentwürfe auf die eigene Editoransicht umstellen und alle fachlichen Prüfungen erhalten. Abnahme: Chromium-Ablauf mit synthetischen Daten läuft ohne Zugriff auf den ausgeblendeten Listenbereich.
 
 - [x] **DOC-UX-04 — `feat: open document editor in separate view`**: Den bestehenden Entwurfseditor in der Eventakte als eigene, übersichtliche Ansicht statt innerhalb der Dokumentzeile öffnen. Zurückführung, bestehende Speicher- und Konfliktschutzregeln, Fokus sowie alle unterstützten Dokumentarten und mobile Bedienung erhalten. Abnahme: Öffnen, Rückkehr ohne Verlust, Fehler- und Dirty-Zustände sowie Desktop-/Mobilansicht prüfen. Keine Änderung der Dokumentlogik.

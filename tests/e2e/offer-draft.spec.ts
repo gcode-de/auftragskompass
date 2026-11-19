@@ -423,54 +423,87 @@ async function offerDraftScenario(browser: Browser) {
     );
     // A narrow editor can be embedded in a wide viewport.
     const fields = position1.getByRole('textbox');
+    const removePosition = position1.getByRole('button', {
+      name: 'Position 1 entfernen',
+    });
     const positionList = positions.locator('.offer-draft-position-list');
-    for (const [width, maxWidth] of [
-      [1440, ''],
-      [1440, '22rem'],
-      [390, ''],
-      [320, ''],
-    ] as const) {
-      await page.setViewportSize({ width, height: 900 });
-      await positionList.evaluate((list, value) => {
-        list.style.maxWidth = value;
-      }, maxWidth);
-      await position1.evaluate((position) =>
-        window.scrollBy(0, position.getBoundingClientRect().top - 120),
-      );
-      await position1.screenshot({
-        path: test
-          .info()
-          .outputPath(
-            `document-position-${maxWidth ? 'narrow-container' : width}.png`,
-          ),
-      });
-      const boxes = await fields.evaluateAll((inputs) =>
-        inputs.map((input) => {
-          const { x, y, height } = input.getBoundingClientRect();
-          const label = input.parentElement!;
-          const fits = label.scrollWidth <= label.clientWidth + 1;
-          return { x, y, height, fits };
-        }),
-      );
-      expect(boxes).toHaveLength(6);
-      expect(boxes.every((box) => box.height >= 44 && box.fits)).toBe(true);
-      if (width === 1440 && !maxWidth) {
-        expect.soft(boxes.every((box) => box.y === boxes[0]!.y)).toBe(true);
-        expect
-          .soft(
-            boxes.every((box, index) => !index || box.x > boxes[index - 1]!.x),
-          )
-          .toBe(true);
-      } else {
-        expect.soft(boxes.at(-1)!.y).toBeGreaterThan(boxes[0]!.y);
+    const pageTheme = page.locator('html');
+    const positionOriginalTheme = await pageTheme.getAttribute('data-theme');
+    const positionThemeToggle = page.getByRole('button', {
+      name: /modus aktivieren/,
+    });
+    for (const theme of ['light', 'dark'] as const) {
+      if ((await pageTheme.getAttribute('data-theme')) !== theme)
+        await positionThemeToggle.click();
+      await expect(pageTheme).toHaveAttribute('data-theme', theme);
+      for (const [width, maxWidth] of [
+        [1440, ''],
+        [1440, '22rem'],
+        [390, ''],
+        [320, ''],
+      ] as const) {
+        await page.setViewportSize({ width, height: 900 });
+        await positionList.evaluate((list, value) => {
+          list.style.maxWidth = value;
+        }, maxWidth);
+        await position1.evaluate((position) =>
+          window.scrollBy(0, position.getBoundingClientRect().top - 120),
+        );
+        await position1.screenshot({
+          path: test
+            .info()
+            .outputPath(
+              `document-position-${theme}-${maxWidth ? 'narrow-container' : width}.png`,
+            ),
+        });
+        const boxes = await fields.evaluateAll((inputs) =>
+          inputs.map((input) => {
+            const { x, y, height, right, bottom } =
+              input.getBoundingClientRect();
+            const label = input.parentElement!;
+            const fits = label.scrollWidth <= label.clientWidth + 1;
+            return { x, y, height, right, bottom, fits };
+          }),
+        );
+        expect(boxes).toHaveLength(6);
+        expect(boxes.every((box) => box.height >= 44 && box.fits)).toBe(true);
+        const removeBox = (await removePosition.boundingBox())!;
+        const groupBox = (await position1.boundingBox())!;
+        expect(removeBox.width).toBeGreaterThanOrEqual(44);
+        expect(removeBox.height).toBeGreaterThanOrEqual(44);
+        expect(removeBox.x + removeBox.width).toBeLessThanOrEqual(
+          groupBox.x + groupBox.width,
+        );
+        const lastField = boxes.at(-1)!;
+        if (width === 1440 && !maxWidth) {
+          expect.soft(removeBox.x).toBeGreaterThanOrEqual(lastField.right);
+          expect
+            .soft(removeBox.y + removeBox.height)
+            .toBeCloseTo(lastField.bottom);
+          expect.soft(boxes.every((box) => box.y === boxes[0]!.y)).toBe(true);
+          expect
+            .soft(
+              boxes.every(
+                (box, index) => !index || box.x > boxes[index - 1]!.x,
+              ),
+            )
+            .toBe(true);
+        } else {
+          expect.soft(lastField.y).toBeGreaterThan(boxes[0]!.y);
+          expect.soft(removeBox.y).toBeGreaterThanOrEqual(lastField.bottom);
+        }
       }
     }
+    if ((await pageTheme.getAttribute('data-theme')) !== positionOriginalTheme)
+      await positionThemeToggle.click();
     await page.setViewportSize({ width: 1280, height: 720 });
     await fields.first().focus();
     for (const field of (await fields.all()).slice(1)) {
       await page.keyboard.press('Tab');
       await expect(field).toBeFocused();
     }
+    await page.keyboard.press('Tab');
+    await expect(removePosition).toBeFocused();
 
     await editor.getByLabel('Betreff').fill('Fictional saved subject');
     await editor.getByLabel('Einleitung').fill('Fictional saved introduction');
