@@ -42,10 +42,8 @@ Abschnitt beschreibt den aktuellen Stand.
   vorhandenen B-Beobachtungen (B15/B36) und privaten Sicherungen. Für weitere
   Referenzdetails bei Bedarf nach Freigabe/Hilfe fragen. Keine echten
   Kundenaktionen.
-- **Aktiver Slice:** DOC-PRODUCT-01.3 Brutto/Netto-Preisgrundlage pro Position
-  (additive Migration, exakte Minor-Unit-Arithmetik, Produkt-/Vorlagen-/Folge-
-  übertragung, finale Dokumente unverändert). Coding-Subagent: DeepSeek V4.1
-  Flash; MiMo besitzt Plan/Docs, Review und Integration.
+- **Erledigt 20.11.2026 – DOC-PRODUCT-01.3 (Brutto/Netto):** Kern (Migration 0061, exakte Minor-Unit-Arithmetik beide Grundlagen, Kopierpfade/Snapshot/Vorlagen) und UI (Select „Preisbasis“ je Position, unkonvertierte Produktübernahme, dynamisches Preisfeld-Label; product-price.ts entfernt) sind über PR #27 (`151ef23`) und #28 (`b90e8cf`) nach grüner CI (Quality+Browser; ein Runner-`ERR_NETWORK_CHANGED`-Flake per gezieltem Re-Run verifiziert) nach `main` gemergt. Abnahme siehe Implementierungsplan (RED/GREEN, Coverage 1792/1792, E2E 15/15 + auth 3/3). Main-CI zu `151ef23` inkl. Images grün; die automatische Auslieferung durch den alleinigen Updater ist vorgesehen, aber von hier nicht verifizierbar (Host 192.168.68.201 unerreichbar) – kein neuer Live-Stand behauptet. Lokal umgebungsabhängig scheitert weiterhin `test:ops`/`test_run_backup` (phase 'dump'), auf unverändertem main identisch reproduziert.
+- **Aktiver Slice:** DOC-PRODUCT-01.4 Positionsrabatt in Euro oder Prozent (Festbetrag oder Prozent je Position, exakte Minor-Unit-Arithmetik auf der gespeicherten Preisgrundlage, revisionssicher, Folgebelege/Vorlagen übertragen). Coding-Subagent: DeepSeek V4.1 Flash; MiMo besitzt Plan/Docs, Review und Integration.
 - **Betrieb:** der letzte verifizierte Live-Stand ist laut GOAL-Momentaufnahme
   `b47f5aa` (drei Container gesund, Backup-Prüfsummen identisch) – vor jeder
   Live-Aussage erneut prüfen; neue Slices erst nach grüner CI und geprüftem
