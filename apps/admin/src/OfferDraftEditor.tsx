@@ -369,6 +369,10 @@ export function OfferDraftEditor({
     [selectedProductId, setSelectedProductId] = useState(''),
     [catalogError, setCatalogError] = useState(false),
     [catalogMessage, setCatalogMessage] = useState(''),
+    [dropTarget, setDropTarget] = useState(''),
+    [moveAnnouncement, setMoveAnnouncement] = useState(''),
+    draggedLine = useRef(''),
+    pendingMoveFocus = useRef<HTMLButtonElement | null>(null),
     request = useRef(0),
     lineSequence = useRef(0),
     catalogRequest = useRef<Promise<void> | null>(null),
@@ -546,6 +550,10 @@ export function OfferDraftEditor({
     setFocusInitialEditor(false);
   }, [focusInitialEditor, values]);
   useEffect(() => {
+    if (pendingMoveFocus.current) {
+      pendingMoveFocus.current.focus();
+      pendingMoveFocus.current = null;
+    }
     if (!pendingLineFocus.current) return;
     const input = lineInputRefs.current.get(pendingLineFocus.current);
     if (input) {
@@ -738,6 +746,35 @@ export function OfferDraftEditor({
       pendingLineFocus.current = next?.key ?? '';
       return remaining;
     });
+  }
+
+  function moveLine(
+    key: string,
+    destination: number,
+    control?: HTMLButtonElement,
+  ) {
+    if (busyRef.current || busy || loading || isBlocked) return;
+    const source = lineValues.findIndex((line) => line.key === key);
+    if (
+      source < 0 ||
+      destination < 0 ||
+      destination >= lineValues.length ||
+      source === destination
+    )
+      return;
+    const next = [...lineValues];
+    const [moved] = next.splice(source, 1);
+    next.splice(destination, 0, moved!);
+    pendingMoveFocus.current = control ?? null;
+    setLineValues(next);
+    setMoveAnnouncement(
+      `Zeile von Stelle ${source + 1} an Stelle ${destination + 1} verschoben.`,
+    );
+  }
+
+  function clearDrag() {
+    draggedLine.current = '';
+    setDropTarget('');
   }
 
   async function reload() {
@@ -1010,19 +1047,89 @@ export function OfferDraftEditor({
             >
               <h6 id={'offer-positions-' + documentId}>Positionen</h6>
               <p>Änderungen werden beim Speichern neu berechnet.</p>
+              <div className="sr-only" aria-live="polite">
+                {moveAnnouncement}
+              </div>
               <div className="offer-draft-position-list">
-                {lineValues.map((line) => {
+                {lineValues.map((line, index) => {
                   const title =
                     line.kind === 'info'
                       ? 'Infotext'
                       : `Position ${++itemNumber}`;
+                  const canReorder =
+                    lineValues.length > 1 && !busy && !loading && !isBlocked;
                   return (
                     <fieldset
                       className="offer-draft-position"
+                      data-drop-target={dropTarget === line.key || undefined}
+                      onDragOver={(event) => {
+                        if (
+                          !canReorder ||
+                          !draggedLine.current ||
+                          draggedLine.current === line.key
+                        )
+                          return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        setDropTarget(line.key);
+                      }}
+                      onDragLeave={(event) => {
+                        if (
+                          !event.currentTarget.contains(
+                            event.relatedTarget as Node | null,
+                          )
+                        )
+                          setDropTarget((current) =>
+                            current === line.key ? '' : current,
+                          );
+                      }}
+                      onDrop={(event) => {
+                        if (!draggedLine.current) return;
+                        event.preventDefault();
+                        moveLine(draggedLine.current, index);
+                        clearDrag();
+                      }}
                       disabled={busy || loading}
                       key={line.key}
                     >
-                      <legend>{title}</legend>
+                      <legend>
+                        {lineValues.length > 1 && (
+                          <span
+                            className="offer-draft-position-grip"
+                            aria-hidden="true"
+                            title="Zum Verschieben ziehen"
+                            draggable={canReorder}
+                            onDragStart={(event) => {
+                              if (!canReorder || busyRef.current) {
+                                event.preventDefault();
+                                return;
+                              }
+                              event.dataTransfer.effectAllowed = 'move';
+                              event.dataTransfer.setData(
+                                'application/x-auftragskompass-draft-row',
+                                line.key,
+                              );
+                              draggedLine.current = line.key;
+                            }}
+                            onDragEnd={clearDrag}
+                          >
+                            <svg
+                              viewBox="0 0 16 16"
+                              width="16"
+                              height="16"
+                              fill="currentColor"
+                            >
+                              <circle cx="6" cy="4" r="1" />
+                              <circle cx="10" cy="4" r="1" />
+                              <circle cx="6" cy="8" r="1" />
+                              <circle cx="10" cy="8" r="1" />
+                              <circle cx="6" cy="12" r="1" />
+                              <circle cx="10" cy="12" r="1" />
+                            </svg>
+                          </span>
+                        )}
+                        {title}
+                      </legend>
                       {line.kind === 'info' ? (
                         <label className="offer-draft-info-field">
                           Text
@@ -1152,14 +1259,62 @@ export function OfferDraftEditor({
                           </label>
                         </div>
                       )}
-                      <button
-                        type="button"
-                        className="tertiary-action"
-                        disabled={lineValues.length <= 1 || busy || loading}
-                        onClick={() => removeLine(line.key)}
-                      >
-                        {title} entfernen
-                      </button>
+                      <div className="offer-draft-position-actions">
+                        {lineValues.length > 1 &&
+                          ([-1, 1] as const).map((direction) => {
+                            const destination = index + direction;
+                            const label = `${title} nach ${direction === -1 ? 'oben' : 'unten'} verschieben`;
+                            return (
+                              <button
+                                key={direction}
+                                type="button"
+                                className="tertiary-action offer-draft-move"
+                                aria-label={label}
+                                title={label}
+                                disabled={!canReorder}
+                                aria-disabled={
+                                  destination < 0 ||
+                                  destination >= lineValues.length
+                                }
+                                onClick={(event) =>
+                                  moveLine(
+                                    line.key,
+                                    destination,
+                                    event.currentTarget,
+                                  )
+                                }
+                              >
+                                <svg
+                                  aria-hidden="true"
+                                  viewBox="0 0 16 16"
+                                  width="16"
+                                  height="16"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path
+                                    d={
+                                      direction === -1
+                                        ? 'M4 9l4-4 4 4'
+                                        : 'M4 7l4 4 4-4'
+                                    }
+                                  />
+                                </svg>
+                              </button>
+                            );
+                          })}
+                        <button
+                          type="button"
+                          className="tertiary-action"
+                          disabled={lineValues.length <= 1 || busy || loading}
+                          onClick={() => removeLine(line.key)}
+                        >
+                          {title} entfernen
+                        </button>
+                      </div>
                       {line.kind !== 'info' && (
                         <label className="offer-draft-info-field offer-draft-item-info">
                           Infotext (optional)

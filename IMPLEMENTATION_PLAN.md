@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **DOC-ORDER-01 — `feat: reorder document positions`**: Positionen im Dokumententwurf per Drag-and-drop und zugänglichen Aktionen für Tastatur und Mobilgeräte sortieren. Zugehörige Infotexte bleiben an der Position; Änderungen werden nach Speichern und Neuladen in Vorschau und PDF in derselben Reihenfolge ausgegeben. Bestehende freie Textzeilen, Eingaben, Summen und Versionierung erhalten. Abnahme mit synthetischen Daten auf Desktop und Mobil.
+
 - [x] **DOC-TEXT-02 — `feat: attach product information to document positions`**: Produktbeschreibungen beim Einfügen als bearbeitbaren Infotext derselben Position übernehmen, analog Bookitup. Der Text wird mit der Position gespeichert, gelöscht und in Folgebelege kopiert und erscheint unter dem Positionsnamen im PDF. Bestehende freie Textzeilen und finale PDFs erhalten; Preise und Summen unverändert. Abnahme mit synthetischen Daten, mehreren Produkten, Speichern, Neuladen und Folgebelegen.
 
 - [x] **DOC-REV-01 — `feat: revise finalized offers`**: Abgeschlossene, versandte oder angenommene Angebote über einen verknüpften neuen Entwurf bearbeiten. Vorgänger-PDF, Nummer, Annahme und bestehende Folgebelege bleiben erhalten; die neue Fassung erhält erst bei Finalisierung eine eigene Nummer. Abnahme mit synthetischen Daten: Herkunft und Reihenfolge, sichere wiederholte Anlage, Mandantenschutz und unveränderte Originalbytes. Rechnungen werden separat behandelt.

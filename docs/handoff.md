@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-ORDER-01: Positionsreihenfolge
+
+Im Dokumenteditor lassen sich Positionen per Maus ziehen sowie mit Schaltflächen per Tastatur und Touch verschieben. Infotext bleibt bei seiner Position. Stand von lokalem Qualitätstest, GitHub und Auslieferung vor Fortsetzung prüfen; finanzielle Änderungen wie optionale Positionen und Rabatte sind noch offen.
+
 ## DOC-TEXT-02: Produktbeschreibungen im Dokument
 
 Der Dokumenteditor übernimmt Produktbeschreibungen beim Einfügen als bearbeitbaren Infotext derselben Position. Bestehende freie Textzeilen und finale PDFs bleiben erhalten. Vor Nutzung CI- und Deploymentstand prüfen.

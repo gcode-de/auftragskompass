@@ -729,6 +729,166 @@ test('existing standalone information text remains editable', async () => {
   expect(calls.some((call) => call.url.endsWith('/finalize'))).toBe(true);
 });
 
+test('reordering keeps unsaved fields and attached text with the moved position', async () => {
+  const first = { ...line, infoText: 'Fiktiver Pakettext' };
+  const note = {
+    kind: 'info' as const,
+    id: 'info-1',
+    position: 1,
+    description: 'Fiktiver Hinweis',
+  };
+  const last = {
+    ...line,
+    id: 'line-2',
+    position: 2,
+    description: 'Fiktiver Aufbau',
+  };
+  const { calls } = setup({
+    initial: { ...detail(), lines: [first, note, last] },
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+
+  const firstPosition = await screen.findByRole('group', {
+    name: 'Position 1',
+  });
+  const firstInput = within(firstPosition).getByLabelText('Beschreibung');
+  const earlier = within(firstPosition).getByRole('button', {
+    name: /nach oben verschieben/,
+  });
+  const later = within(firstPosition).getByRole('button', {
+    name: /nach unten verschieben/,
+  });
+  const save = screen.getByRole('button', { name: 'Änderungen speichern' });
+  expect(earlier.getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(earlier);
+  expect(save).toHaveProperty('disabled', true);
+  fireEvent.change(firstInput, {
+    target: { value: 'Fiktives bearbeitetes Paket' },
+  });
+  fireEvent.click(later);
+  fireEvent.click(later);
+  expect(document.activeElement).toBe(later);
+  expect(later.getAttribute('aria-disabled')).toBe('true');
+  expect(
+    within(screen.getByRole('group', { name: 'Position 2' })).getByLabelText(
+      'Beschreibung',
+    ),
+  ).toBe(firstInput);
+  expect(firstInput).toHaveProperty('value', 'Fiktives bearbeitetes Paket');
+  expect(
+    within(firstPosition).getByLabelText('Infotext (optional)'),
+  ).toHaveProperty('value', 'Fiktiver Pakettext');
+  expect(save).toHaveProperty('disabled', false);
+
+  fireEvent.click(save);
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    version: 1,
+    lines: [
+      { kind: 'info', description: note.description },
+      { description: last.description },
+      {
+        description: 'Fiktives bearbeitetes Paket',
+        infoText: 'Fiktiver Pakettext',
+      },
+    ],
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  expect(
+    within(
+      await screen.findByRole('group', { name: 'Position 2' }),
+    ).getByLabelText('Beschreibung'),
+  ).toHaveProperty('value', 'Fiktives bearbeitetes Paket');
+});
+
+test('only an active position drag can reorder a draft and saving disables dragging', async () => {
+  let releaseSave: (value: Response) => void = () => {};
+  const pendingSave = new Promise<Response>((resolve) => {
+    releaseSave = resolve;
+  });
+  const next = {
+    ...line,
+    id: 'line-2',
+    position: 1,
+    description: 'Fiktiver Aufbau',
+  };
+  const { calls } = setup({
+    initial: { ...detail(), lines: [line, next] },
+    put: () => pendingSave,
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const first = await screen.findByRole('group', { name: 'Position 1' });
+  const second = screen.getByRole('group', { name: 'Position 2' });
+  const grip = first.querySelector<HTMLElement>('[draggable]')!;
+  const transfer = { setData: vi.fn(), dropEffect: 'none' };
+  const drag = { dataTransfer: transfer };
+  const save = screen.getByRole('button', { name: 'Änderungen speichern' });
+
+  fireEvent.dragOver(second, drag);
+  fireEvent.drop(second, drag);
+  expect(second.hasAttribute('data-drop-target')).toBe(false);
+  expect(save).toHaveProperty('disabled', true);
+
+  fireEvent.dragStart(grip, drag);
+  expect(transfer.setData).toHaveBeenCalled();
+  fireEvent.dragOver(first, drag);
+  expect(first.hasAttribute('data-drop-target')).toBe(false);
+  fireEvent.dragOver(second, drag);
+  expect(second.hasAttribute('data-drop-target')).toBe(true);
+  fireEvent.dragLeave(second);
+  expect(second.hasAttribute('data-drop-target')).toBe(false);
+  fireEvent.dragOver(second, drag);
+  fireEvent.dragEnd(grip, drag);
+  expect(second.hasAttribute('data-drop-target')).toBe(false);
+  expect(save).toHaveProperty('disabled', true);
+
+  fireEvent.dragStart(grip, drag);
+  fireEvent.dragOver(second, drag);
+  fireEvent.drop(second, drag);
+  expect(second.hasAttribute('data-drop-target')).toBe(false);
+  expect(
+    within(screen.getByRole('group', { name: 'Position 1' })).getByLabelText(
+      'Beschreibung',
+    ),
+  ).toHaveProperty('value', next.description);
+  fireEvent.click(save);
+  expect(
+    within(first).getByRole('button', { name: /nach oben verschieben/ }),
+  ).toHaveProperty('disabled', true);
+  expect(grip.draggable).toBe(false);
+  transfer.setData.mockClear();
+  fireEvent.dragStart(grip, drag);
+  expect(transfer.setData).not.toHaveBeenCalled();
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    lines: [
+      { description: next.description },
+      { description: line.description },
+    ],
+  });
+  releaseSave(
+    Response.json({
+      ...detail(),
+      version: 2,
+      lines: [
+        { ...next, position: 0 },
+        { ...line, position: 1 },
+      ],
+    }),
+  );
+  await screen.findByText('Änderungen gespeichert.');
+});
+
 test('a draft exceeding the UTF-8 request limit stays editable and can be shortened', async () => {
   const longText = '€'.repeat(4000);
   const { calls } = setup({
