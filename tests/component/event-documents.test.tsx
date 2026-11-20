@@ -3853,6 +3853,27 @@ test('a fully credited invoice warns before a second credit', async () => {
   );
 });
 
+test('a refused settlement explains what can be checked in the draft', async () => {
+  const { calls } = setup({
+    documents: [finalizedConfirmation, finalInvoiceDraft],
+    finalize: () =>
+      Response.json({ error: 'deposits_exceed_order' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  fireEvent.click(
+    within(invoices).getByRole('button', { name: /Entwurf finalisieren/ }),
+  );
+  expect(
+    await screen.findByText(
+      'Die Anzahlungen übersteigen den Auftrags- oder Rechnungsbetrag. Bitte Rechnungspositionen prüfen oder die Anzahlungen per Korrektur reduzieren.',
+    ),
+  ).toBeTruthy();
+  expect(calls.filter((call) => call.url.endsWith('/finalize'))).toHaveLength(
+    1,
+  );
+});
+
 test('a refused credit is explained instead of retried', async () => {
   const { calls } = setup({
     documents: [invoiceFinal],

@@ -94,6 +94,45 @@ describe('exact document totals', () => {
     });
   });
 
+  test('calculates optional line amounts without totaling their discounts or taxes', () => {
+    const service = {
+      quantity: 1,
+      unitPriceMinor: 11900,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    };
+    const optional = {
+      ...service,
+      quantity: 2,
+      unitPriceMinor: 10000,
+      taxBasisPoints: 700,
+      discountBasisPoints: 2000,
+      optional: true,
+    };
+    expect(documentTotals([service, optional])).toEqual({
+      lines: [
+        { grossMinor: 11900, netMinor: 10000, taxMinor: 1900 },
+        { grossMinor: 16000, netMinor: 14953, taxMinor: 1047 },
+      ],
+      taxGroups: [
+        {
+          taxBasisPoints: 1900,
+          grossMinor: 11900,
+          netMinor: 10000,
+          taxMinor: 1900,
+        },
+      ],
+      grossMinor: 11900,
+      netMinor: 10000,
+      taxMinor: 1900,
+    });
+    expectOverflow(() =>
+      documentTotals([
+        { ...optional, unitPriceMinor: Number.MAX_SAFE_INTEGER },
+      ]),
+    );
+  });
+
   test('rejects unsafe tax-group and document sums', () => {
     const line = {
       quantity: 1,

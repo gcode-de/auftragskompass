@@ -2551,7 +2551,8 @@ summary {
 .offer-draft-info-field {
   margin-block: 0.35rem 0.65rem;
 }
-.offer-draft-item-info {
+.offer-draft-item-info,
+.offer-draft-position-option {
   grid-column: 1 / -1;
 }
 .offer-draft-info-field textarea {

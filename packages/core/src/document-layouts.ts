@@ -233,6 +233,7 @@ export type DocumentRenderInput = {
 export function renderDocumentHtml(input: DocumentRenderInput): string {
   const { layout } = input,
     serviceLines = input.lines.filter((line) => line.kind !== 'info'),
+    hasOptional = serviceLines.some((line) => line.optional),
     totals = documentTotals(serviceLines),
     // BKP019.c2: a credit note prints the signed sum of the same magnitudes it
     // stores - the negation happens here, never in `document-totals` and never
@@ -251,7 +252,8 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       position += 1;
       const cells = [
         ...(layout.showPositionNumbers ? [String(position)] : []),
-        escapeHtml(line.description) +
+        (line.optional ? 'Optional: ' : '') +
+          escapeHtml(line.description) +
           (line.infoText
             ? `<br><span class="position-info-text">${lines(line.infoText)}</span>`
             : '') +
@@ -272,22 +274,21 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       'Preis',
     ],
     taxRows =
-      totals.taxGroups.length > 1
-        ? totals.taxGroups
-            .map(
-              (group) =>
-                `      <tr><td>Umsatzsteuer ${percent(
-                  group.taxBasisPoints,
-                )} %</td><td>${formatMinorUnits(printed(group.taxMinor))} €</td></tr>`,
-            )
-            .join('\n')
-        : `      <tr><td>Umsatzsteuer ${percent(
-            totals.taxGroups[0]?.taxBasisPoints ?? 0,
-          )} %</td><td>${formatMinorUnits(printed(totals.taxMinor))} €</td></tr>`;
+      totals.taxGroups
+        .map(
+          (group) =>
+            `      <tr><td>Umsatzsteuer ${percent(
+              group.taxBasisPoints,
+            )} %</td><td>${formatMinorUnits(printed(group.taxMinor))} €</td></tr>`,
+        )
+        .join('\n') ||
+      (hasOptional
+        ? ''
+        : '      <tr><td>Umsatzsteuer 0 %</td><td>0,00 €</td></tr>');
   const mainTotals =
     serviceLines.length > 0 || input.lines.length === 0
       ? `    <table class="totals totals-main">
-      <tr><td>Netto</td><td>${formatMinorUnits(printed(totals.netMinor))} €</td></tr>
+${hasOptional ? '      <caption class="totals-note">Optionale Positionen sind nicht in der Gesamtsumme berücksichtigt.</caption>\n' : ''}      <tr><td>Netto</td><td>${formatMinorUnits(printed(totals.netMinor))} €</td></tr>
 ${taxRows}
       <tr><td>Brutto</td><td>${formatMinorUnits(printed(totals.grossMinor))} €</td></tr>
     </table>
@@ -342,7 +343,7 @@ ${input.lines.length > serviceLines.length ? `      .positions .position-info td
       .totals { margin-top: 3mm; margin-left: auto; width: auto; min-width: 60mm; font-size: 9pt; }
       .totals tr:last-child { background: #eeeeee; font-weight: bold; }
       .totals-main { width: 100%; }
-      .totals-main tr:not(:last-child) td:first-child { text-align: right; }
+${hasOptional ? '      .totals-note { caption-side: bottom; text-align: left; padding-top: 1.5mm; }\n' : ''}      .totals-main tr:not(:last-child) td:first-child { text-align: right; }
       .totals-main td:last-child { width: 23%; }
       .document-footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2mm; margin-top: 6mm; font-size: 8pt; overflow-wrap: anywhere; }
       .document-footer div:nth-child(2) { text-align: center; }

@@ -434,7 +434,13 @@ async function offerDraftScenario(browser: Browser) {
       'Fictional delivery',
     );
     // A narrow editor can be embedded in a wide viewport.
-    const fields = position1.locator('input');
+    const fields = position1.locator('.offer-draft-position-fields input');
+    const positionOptional = position1.getByRole('checkbox', {
+      name: 'Optionale Position',
+    });
+    const optionLabel = position1.locator('label').filter({
+      has: page.getByRole('checkbox', { name: 'Optionale Position' }),
+    });
     const itemInfo = position1.getByLabel('Infotext (optional)');
     const removePosition = position1.getByRole('button', {
       name: 'Position 1 entfernen',
@@ -480,6 +486,9 @@ async function offerDraftScenario(browser: Browser) {
         );
         expect(boxes).toHaveLength(6);
         expect(boxes.every((box) => box.height >= 44 && box.fits)).toBe(true);
+        expect(
+          (await optionLabel.boundingBox())!.height,
+        ).toBeGreaterThanOrEqual(44);
         const removeBox = (await removePosition.boundingBox())!;
         const groupBox = (await position1.boundingBox())!;
         const infoBox = (await itemInfo.boundingBox())!;
@@ -528,6 +537,8 @@ async function offerDraftScenario(browser: Browser) {
     }
     await page.keyboard.press('Tab');
     await expect(removePosition).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(positionOptional).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(itemInfo).toBeFocused();
 
@@ -638,6 +649,8 @@ async function offerDraftScenario(browser: Browser) {
       .getByLabel('Infotext (optional)')
       .fill('Fictional edited product information\nSecond line');
 
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await netPosition.scrollIntoViewIfNeeded();
     await grossPosition
       .locator('.offer-draft-position-grip')
       .dragTo(netPosition.getByLabel('Beschreibung'));
@@ -1273,6 +1286,10 @@ async function offerDraftScenario(browser: Browser) {
       name: 'Position 1',
     });
     await expect(blankPosition.getByLabel('Beschreibung')).toBeFocused();
+    const blankOptional = blankPosition.getByRole('checkbox', {
+      name: 'Optionale Position',
+    });
+    await expect(blankOptional).not.toBeChecked();
     const infoInput = blankPosition.getByLabel('Infotext (optional)');
     await expect(infoInput).toHaveValue('');
     await infoInput.fill(note);
@@ -1332,6 +1349,16 @@ async function offerDraftScenario(browser: Browser) {
     await secondBlankPosition
       .getByLabel('Beschreibung')
       .fill('Fictional extra briefing');
+    await secondBlankPosition
+      .getByLabel('Einzelpreis (Brutto) in Euro')
+      .fill('59.50');
+    const extraOptional = secondBlankPosition.getByRole('checkbox', {
+      name: 'Optionale Position',
+    });
+    await extraOptional.focus();
+    await page.keyboard.press('Space');
+    await expect(extraOptional).toBeChecked();
+
     await secondBlankPosition
       .getByRole('button', { name: /nach oben verschieben/ })
       .click();
@@ -1402,7 +1429,7 @@ async function offerDraftScenario(browser: Browser) {
         info_text: null,
         quantity: 1,
         unit: 'Stück',
-        unit_price_minor: '0',
+        unit_price_minor: '5950',
         tax_basis_points: 1900,
         discount_basis_points: 0,
       },
@@ -1454,6 +1481,12 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       secondBlankPosition.getByLabel('Infotext (optional)'),
     ).toHaveValue(note);
+    await expect(
+      blankPosition.getByRole('checkbox', { name: 'Optionale Position' }),
+    ).toBeChecked();
+    await expect(
+      secondBlankPosition.getByRole('checkbox', { name: 'Optionale Position' }),
+    ).not.toBeChecked();
     let blankPreviewBytes: Buffer | undefined;
     await context.route(
       '**/api/v1/documents/' + blankCreated.id + '/preview',
@@ -1489,6 +1522,10 @@ async function offerDraftScenario(browser: Browser) {
       renderedHtml[1]!.indexOf('Fictional standalone service'),
     );
     expect(renderedHtml[1]).toContain('Fictional standalone service');
+    expect(renderedHtml[1]).toContain('Optional: Fictional extra briefing');
+    expect(renderedHtml[1]).toContain(
+      'Optionale Positionen sind nicht in der Gesamtsumme berücksichtigt.',
+    );
     expect(storedArtifactCount).toBe(0);
     expect(productWrites).toEqual([]);
     expect(templateWrites).toEqual([]);
@@ -1562,7 +1599,10 @@ async function offerDraftScenario(browser: Browser) {
     expect(renderedHtml[2]).toContain('Fictional standalone introduction');
     expect(renderedHtml[2]).toContain('Fictional standalone conclusion');
     expect(renderedHtml[2]).toContain('Fictional standalone service');
-    expect(renderedHtml[2]).toContain('Fictional extra briefing');
+    expect(renderedHtml[2]).toContain('Optional: Fictional extra briefing');
+    expect(renderedHtml[2]).toContain(
+      'Optionale Positionen sind nicht in der Gesamtsumme berücksichtigt.',
+    );
     expect(renderedHtml[2]!.indexOf('Fictional extra briefing')).toBeLessThan(
       renderedHtml[2]!.indexOf('Fictional standalone service'),
     );
@@ -1786,6 +1826,11 @@ async function offerDraftScenario(browser: Browser) {
         .getByRole('group', { name: 'Position 2' })
         .getByLabel('Infotext (optional)'),
     ).toHaveValue(note);
+    await expect(
+      editor
+        .getByRole('group', { name: 'Position 1' })
+        .getByRole('checkbox', { name: 'Optionale Position' }),
+    ).toBeChecked();
     const originalPdf = page.getByRole('link', {
       name: `Vorgängerangebot ${blankFinalized.number} als PDF öffnen`,
     });

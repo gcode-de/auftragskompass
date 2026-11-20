@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-OPTION-01: Optionale Positionen
+
+Angebots- und Rechnungspositionen können optional markiert werden. Vorschau und PDF zeigen die Position gekennzeichnet, ihre Beträge und Steuern fließen nicht in die Gesamtsumme ein. Folgebelege übernehmen die Kennzeichnung. Bei Schlussrechnungen mit Optionen wird verhindert, dass Anzahlungen den nichtoptionalen Rechnungsbetrag übersteigen. Der ältere separate Grenzfall ohne Optionen ist im Paritäts-Backlog dokumentiert. CI und Auslieferung prüfen.
+
 ## DOC-ORDER-02: Sortieransage
 
 Wiederholte gültige Positionsverschiebungen erneuern die Screenreader-Live-Region mit den Listenplätzen; tatsächliche Sprachausgabe ist nicht geprüft. CI- und Deploymentstand vor Nutzung prüfen.

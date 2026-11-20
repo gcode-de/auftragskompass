@@ -100,9 +100,7 @@ export class DocumentError extends Error {
       | 'order_withdrawn'
       // BKP019.c2: a credit note may never exceed the corrected document's gross.
       | 'credit_exceeds_invoice'
-      // BKP019.c3.2b: the finalized advances of an order add up to more than the
-      // order claims - there is no refund path that could settle a negative
-      // "Zu zahlender Betrag".
+      // The finalized advances exceed the order or the final invoice's gross.
       | 'deposits_exceed_order'
       | 'duplicate',
   ) {
@@ -466,6 +464,7 @@ function assertLine(line: DocumentLineDraft, index: number): void {
   if (line.kind === 'info') {
     if (
       'infoText' in line ||
+      'optional' in line ||
       typeof line.description !== 'string' ||
       !line.description.trim() ||
       line.description.includes('\0') ||
@@ -478,6 +477,7 @@ function assertLine(line: DocumentLineDraft, index: number): void {
     typeof line.description !== 'string' ||
     !line.description.trim() ||
     line.description.length > 300 ||
+    (line.optional !== undefined && typeof line.optional !== 'boolean') ||
     (line.infoText !== undefined &&
       (typeof line.infoText !== 'string' ||
         line.infoText.includes('\0') ||
@@ -766,6 +766,7 @@ export function documentRepository(
         position,
         description,
         ...(row.infoText === null ? {} : { infoText: row.infoText }),
+        ...(row.isOptional ? { optional: true } : {}),
         productId: row.productId,
         quantity: row.quantity!,
         unit: row.unit!,
@@ -803,6 +804,7 @@ export function documentRepository(
             : {
                 productId: line.productId ?? null,
                 infoText: line.infoText?.trim() || null,
+                isOptional: line.optional ?? false,
                 quantity: line.quantity,
                 unit: line.unit.trim(),
                 unitPriceMinor: line.unitPriceMinor,
@@ -1179,18 +1181,11 @@ export function documentRepository(
       throw new DocumentError('credit_exceeds_invoice');
   }
 
-  // BKP019.c3.2b: the advances of an order may never be netted beyond what the
-  // order itself claims. The claim is the one every other reader uses -
-  // `gross + debits - credits` of the confirmation - so the print, the projection
-  // and the payment balance can never disagree about a "Zu zahlender Betrag" that
-  // went negative. BKP019.c3.2c reads the advances themselves the same way: the
-  // deduction is the sum of their corrected claims, so a credit note on an
-  // advance is exactly the remedy this refusal names. Rejected instead of
-  // clamped: without a refund path an overshoot needs a human decision, never an
-  // amount swallowed by the system.
+  // The corrected order claim bounds the deduction. When the invoice lists
+  // optional prices, the included invoice gross also bounds the deduction.
   async function assertSettlementWithinOrder(
     connection: Connection,
-    invoice: { id: string },
+    invoice: { id: string; grossMinor: number; lines: DocumentLineDraft[] },
   ) {
     const { role, sourceDocumentId } = await settlementOf(
       connection,
@@ -1210,7 +1205,11 @@ export function documentRepository(
         connection,
         sourceDocumentId,
       );
-    if (applied > source.grossMinor + debited - credited)
+    if (
+      applied > source.grossMinor + debited - credited ||
+      (applied > invoice.grossMinor &&
+        invoice.lines.some((line) => line.kind !== 'info' && line.optional))
+    )
       throw new DocumentError('deposits_exceed_order');
   }
 
@@ -2934,13 +2933,13 @@ export function documentRepository(
         // stays editable and two partial credits can coexist.
         if (document.kind === 'correction')
           await assertCorrectionCredit(tx, document);
-        // BKP019.c3.2b: a settlement is bounded by the claim of its order. The
+        // A settlement checks the order claim and any optional invoice prices. The
         // order of the checks is the contract - not found, version, state,
         // content, money - and this one runs after the `conflict` above and
         // before the number, the PDF and the frozen deduction exist. A refusal
         // therefore leaves the draft, its version and the number range untouched.
         if (document.kind === 'invoice')
-          await assertSettlementWithinOrder(tx, document);
+          await assertSettlementWithinOrder(tx, completeDocument);
         const at = now();
         try {
           const [template] = document.templateId
@@ -3179,6 +3178,7 @@ export function registerDocumentRoutes(
     required: ['description'],
     properties: {
       kind: infoKind,
+      optional: { enum: [true, false] },
       description: {
         type: 'string',
         minLength: 1,
@@ -3197,6 +3197,7 @@ export function registerDocumentRoutes(
       properties: {
         description: { type: 'string', pattern: '^[^\\u0000]*$' },
         infoText: false,
+        optional: false,
         ...Object.fromEntries(
           Object.keys(serviceFields).map((field) => [field, false]),
         ),
@@ -3463,6 +3464,7 @@ export function registerDocumentRoutes(
                 productId: nullableUuid,
                 description: { type: 'string' },
                 infoText: { type: 'string' },
+                optional: { type: 'boolean' },
                 quantity: { type: 'integer' },
                 unit: { type: 'string' },
                 unitPriceMinor: { type: 'integer' },

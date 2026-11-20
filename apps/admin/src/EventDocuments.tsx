@@ -967,7 +967,7 @@ export function EventDocuments({
                 : result.error === 'credit_exceeds_invoice'
                   ? 'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.'
                   : result.error === 'deposits_exceed_order'
-                    ? 'Die Anzahlungen übersteigen den Auftrag. Bitte zuerst die Anzahlungen per Korrektur reduzieren.'
+                    ? 'Die Anzahlungen übersteigen den Auftrags- oder Rechnungsbetrag. Bitte Rechnungspositionen prüfen oder die Anzahlungen per Korrektur reduzieren.'
                     : result.error === 'empty_lines'
                       ? 'Zum Finalisieren ist mindestens eine Position erforderlich.'
                       : 'Finalisieren nicht möglich: Nummernkreis und Pflichtangaben prüfen.',
