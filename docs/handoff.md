@@ -83,17 +83,22 @@ Abschnitt beschreibt den aktuellen Stand.
   Gesamtrabatt erstellen oder versenden, keine Produktionsreife behaupten.
   Einzelheiten im Implementierungsplan (DOC-PRODUCT-01.5).
 - **Erledigt 20.11.2026 – DOC-PRODUCT-01.4 (Positionsrabatt):** Kern (Migration 0062, exakter Festbetrag statt Prozent auf der gespeicherten Preisgrundlage, Druck „Rabatt <Betrag> €“) und UI („Rabattart“ Prozent/Euro je Position, null-vs-0-Semantik, Vorlagenpanel-Datenverlust behoben) sind über PR #30 (`d660a16`) und #31 (`435fe93`) nach grüner CI nach `main` gemergt. Zusätzlich die 01.3-Preview-Lücke (Vorlagen-Preview lehnte priceBasis ab) mit Regressionstest geschlossen. Abnahme siehe Implementierungsplan. Nicht verifiziert wie zuvor: tatsächliche Live-Auslieferung (Host unerreichbar).
-- **Aktiver Slice (Vorrang):** EDITOR-LAYOUT-01 ist **implementiert**
-  (PR #36, `d80e981`: Fieldset-Gruppen, umbruchendes Positions-Raster mit
-  9rem-Mindestfeldbreite, EIN Rabattfeld mit Prozent-/Euro-Select
-  [DiscountField, Werte unverfälscht], Gesamtrabatt-Gruppe; component
-  967/967, E2E 15/15 bei 320/390/768/1440 × light/dark). **Die visuelle
-  Abnahme ist offen** – der Screenshot-/Vision-Pfad ist umgebungsbedingt
-  blockiert (computer_use-Captures liefern schwarze Frames, pixelweise
-  bestätigt; vermutlich fehlende macOS-Bildschirmaufnahme-Berechtigung für
-  den cua-driver). Nach Nutzerfreigabe: Screenshots ansehen, Bookitup-
-  Abgleich, Abweichungen dokumentieren, dann Plan-Eintrag abhaken. Danach
-  DOC-PRODUCT-01.6 und die restliche Reihenfolge des Plans.
+- **EDITOR-LAYOUT-01 abgeschlossen und visuell abgenommen (21.11.2026):** Nach
+  Freigabe der Bildschirmaufnahme lief die echte Sichtprüfung (Vision-Werkzeug
+  auf Playwright-Screenshots 320/390/768/1440 + 22rem-Container, beide Themes,
+  Gesamtrabatt-Block): vollständige Labels, ein Rabattfeld mit Prozent-/Euro-
+  Umschalter, umbruchende Gruppen. Ein Befund (Beschreibungswert bei 320 px
+  beschnitten) wurde als `fix: keep position descriptions fully visible`
+  behoben und nachgeprüft. Bookitup-Abgleich: Beobachtung B37 in
+  docs/bookitup-parity/observations.md (strukturell deckungsgleich, drei
+  dokumentierte Abweichungen; direkte Gegenansicht B15/B25 nach Entsperren des
+  Rechners als kleiner Rest). Offene Restseiten: Maus/Touch-Bedienung ist über
+  die bestehenden E2E-Tastatur-/Klickpfade abgedeckt, eine eigene manuelle
+  Maus-/Touch-Runde war nicht Teil der automatisierten Prüfung.
+- **Aktiver Slice:** DOC-PRODUCT-01.6 „Position als Produkt speichern“
+  (Umsetzung läuft im Hintergrund; Mehrfachklick-/unklarer-Antwort-Schutz nach
+  BKP015.5b-Muster). Danach DOC-EVENTINFO-01 und die restliche Reihenfolge des
+  Plans.
 - **Betrieb (historisch, überholt vom SSH-geprüften Stand oben):** die
   GOAL-Momentaufnahme nannte `b47f5aa` als letzten verifizierten Live-Stand
   und eine falsche Host-IP; maßgeblich ist der Abschnitt „Betrieb (geprüft
