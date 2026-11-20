@@ -166,6 +166,9 @@ function setup(
     detailGet?: () => Response | Promise<Response>;
     products?: unknown[];
     productsGet?: () => Response | Promise<Response>;
+    productPost?: (
+      body: Record<string, unknown>,
+    ) => Response | Promise<Response>;
     blankCreate?: () => Response | Promise<Response>;
     initialLoadFail?: boolean;
     finalize?: (body: unknown) => Response | Promise<Response>;
@@ -214,6 +217,18 @@ function setup(
       return Response.json(
         options.template === null ? [] : [options.template ?? template],
       );
+    if (url === '/api/v1/products' && method === 'POST') {
+      if (options.productPost)
+        return options.productPost(body as Record<string, unknown>);
+      return Response.json(
+        {
+          ...(body as Record<string, unknown>),
+          id: 'created-product',
+          version: 1,
+        },
+        { status: 201 },
+      );
+    }
     if (url === '/api/v1/products') {
       return options.productsGet
         ? options.productsGet()
@@ -2891,4 +2906,115 @@ test('a total discount percentage above 100 % blocks the save before any request
 
   fireEvent.change(percent, { target: { value: '100' } });
   expect(save).toHaveProperty('disabled', false);
+});
+
+// DOC-PRODUCT-01.6: a position can become a product master record from the
+// row. The draft itself is never saved, remounted or remitted by that action.
+test('a position becomes a product with its exact values while the draft stays untouched', async () => {
+  const withInformation = {
+    ...line,
+    infoText: 'Fiktiver Infotext zur Position',
+  };
+  const { calls } = setup({
+    initial: { ...detail(), lines: [withInformation] },
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const first = screen.getByRole('group', { name: 'Position 1' });
+  fireEvent.click(
+    within(first).getByRole('button', {
+      name: 'Position 1 als Produkt speichern',
+    }),
+  );
+
+  await screen.findByText('Als Produkt gespeichert: Fiktives Fotobox-Paket.');
+  expect(calls.filter((call) => call.url === '/api/v1/products')).toEqual([
+    {
+      url: '/api/v1/products',
+      method: 'POST',
+      body: {
+        name: 'Fiktives Fotobox-Paket',
+        description: 'Fiktiver Infotext zur Position',
+        unit: 'Pauschale',
+        priceMinor: 24900,
+        priceBasis: 'gross',
+        taxBasisPoints: 1900,
+        state: 'active',
+        position: 0,
+      },
+    },
+  ]);
+  expect(within(first).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktives Fotobox-Paket',
+  );
+  expect(within(first).getByLabelText('Menge')).toHaveProperty('value', '1');
+  expect(within(first).getByLabelText('Infotext (optional)')).toHaveProperty(
+    'value',
+    'Fiktiver Infotext zur Position',
+  );
+  expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+  expect(screen.getByRole('link', { name: 'Vorschau öffnen' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Änderungen speichern' }),
+  ).toHaveProperty('disabled', true);
+  expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('an unclear product answer requires the stock check before another attempt', async () => {
+  let posts = 0;
+  const created = {
+    id: 'created-product',
+    version: 1,
+    name: 'Fiktives Fotobox-Paket',
+    description: '',
+    unit: 'Pauschale',
+    priceMinor: 24900,
+    priceBasis: 'gross',
+    taxBasisPoints: 1900,
+    state: 'active',
+    position: 0,
+  };
+  setup({
+    productPost: () => {
+      posts += 1;
+      return Promise.reject(new Error('network'));
+    },
+    productsGet: () => Response.json([created]),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const first = await screen.findByRole('group', { name: 'Position 1' });
+  fireEvent.click(
+    within(first).getByRole('button', {
+      name: 'Position 1 als Produkt speichern',
+    }),
+  );
+  expect(await within(first).findByRole('alert')).toHaveProperty(
+    'textContent',
+    'Ausgang unklar. Das Produkt kann angelegt worden sein. Prüfen Sie den Bestand, bevor Sie erneut anlegen.',
+  );
+  expect(
+    within(first).getByRole('button', {
+      name: 'Position 1 als Produkt speichern',
+    }),
+  ).toHaveProperty('disabled', true);
+  expect(posts).toBe(1);
+
+  fireEvent.click(
+    within(first).getByRole('button', { name: 'Bestand prüfen' }),
+  );
+  expect(
+    (await within(first).findByText(/Bereits vorhanden/)).textContent,
+  ).toContain('Fiktives Fotobox-Paket');
+  expect(posts).toBe(1);
+  expect(within(first).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktives Fotobox-Paket',
+  );
 });

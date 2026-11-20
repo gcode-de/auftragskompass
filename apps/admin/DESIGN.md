@@ -417,6 +417,20 @@ Eingaben; ab 44rem Positionslistenbreite steht sie rechts daneben und richtet
 sich an deren Unterkante aus. Die Tastaturreihenfolge und die mindestens
 44px große Trefferfläche bleiben erhalten.
 
+### Position als Produkt (DOC-PRODUCT-01.6)
+
+Jede Preisposition trägt in ihrer Aktionszeile die ruhige tertiäre Aktion
+„Position N als Produkt speichern“. Sie legt über den vorhandenen
+Produkt-POST einen Stammsatz an (Name aus der Beschreibung, Beschreibung aus
+dem Infotext, Einheit, Preis mit Preisgrundlage, Steuer; Menge und Rabatt
+sind bewusst keine Produktstammdaten). Genau ein Auftrag je Geste; während
+der Laufzeit ist die Aktion gesperrt. Unter den Knöpfe steht eine
+Statuszeile: bestätigter Erfolg, bekannte Ablehnung als `alert` oder
+unklarer Ausgang mit der eigenen Aktion „Bestand prüfen“ (nur lesender
+Abgleich; erst nach „nichts gefunden“ ist ein neuer bewusster Klick
+möglich). Wertänderungen setzen Erfolg/Fehler zurück, ein ungeklärter
+Auftrag bleibt gesperrt. Keine neue Farbe, kein Dialog, kein Remount.
+
 ### Infotext im Dokumenteditor (DOC-TEXT-02)
 
 Jede Position hat unter den Preis- und Mengenfeldern das beschriftete

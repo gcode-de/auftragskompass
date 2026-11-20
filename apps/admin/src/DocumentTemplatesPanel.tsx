@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { DiscountField } from './DiscountField.js';
+import { SavePositionAsProduct } from './SavePositionAsProduct.js';
 
 type Position = {
   id?: string;
@@ -1894,6 +1895,20 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                 >
                   Position entfernen
                 </button>
+                {/* DOC-PRODUCT-01.6: the same deliberate action as in the
+                    document editor. It only reads this row's values. */}
+                <SavePositionAsProduct
+                  label={`Position ${index + 1}`}
+                  csrfToken={csrfToken}
+                  disabled={busy}
+                  position={{
+                    description: position.description,
+                    unit: position.unit,
+                    price: position.price,
+                    priceBasis: position.priceBasis,
+                    tax: position.tax,
+                  }}
+                />
               </fieldset>
             ))}
             <button
