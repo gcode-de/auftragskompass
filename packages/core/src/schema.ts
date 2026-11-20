@@ -453,6 +453,7 @@ export const documentLines = pgTable('document_lines', {
   isInformation: boolean('is_information').notNull().default(false),
   productId: uuid('product_id'),
   description: text('description').notNull(),
+  infoText: text('info_text'),
   quantity: integer('quantity'),
   unit: text('unit'),
   unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }),

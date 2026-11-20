@@ -422,7 +422,8 @@ async function offerDraftScenario(browser: Browser) {
       'Fictional delivery',
     );
     // A narrow editor can be embedded in a wide viewport.
-    const fields = position1.getByRole('textbox');
+    const fields = position1.locator('input');
+    const itemInfo = position1.getByLabel('Infotext (optional)');
     const removePosition = position1.getByRole('button', {
       name: 'Position 1 entfernen',
     });
@@ -469,6 +470,13 @@ async function offerDraftScenario(browser: Browser) {
         expect(boxes.every((box) => box.height >= 44 && box.fits)).toBe(true);
         const removeBox = (await removePosition.boundingBox())!;
         const groupBox = (await position1.boundingBox())!;
+        const infoBox = (await itemInfo.boundingBox())!;
+        expect(infoBox.y).toBeGreaterThanOrEqual(
+          removeBox.y + removeBox.height,
+        );
+        expect(infoBox.x + infoBox.width).toBeLessThanOrEqual(
+          groupBox.x + groupBox.width,
+        );
         expect(removeBox.width).toBeGreaterThanOrEqual(44);
         expect(removeBox.height).toBeGreaterThanOrEqual(44);
         expect(removeBox.x + removeBox.width).toBeLessThanOrEqual(
@@ -504,6 +512,8 @@ async function offerDraftScenario(browser: Browser) {
     }
     await page.keyboard.press('Tab');
     await expect(removePosition).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(itemInfo).toBeFocused();
 
     await editor.getByLabel('Betreff').fill('Fictional saved subject');
     await editor.getByLabel('Einleitung').fill('Fictional saved introduction');
@@ -602,6 +612,15 @@ async function offerDraftScenario(browser: Browser) {
       grossPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
     await expect(grossPosition.getByLabel('Einheit')).toHaveValue('Pauschale');
+    await expect(netPosition.getByLabel('Infotext (optional)')).toHaveValue(
+      'Synthetic net-priced product',
+    );
+    await expect(grossPosition.getByLabel('Infotext (optional)')).toHaveValue(
+      'Synthetic gross-priced product',
+    );
+    await netPosition
+      .getByLabel('Infotext (optional)')
+      .fill('Fictional edited product information\nSecond line');
 
     await positions
       .getByRole('button', { name: 'Freie Position hinzufügen' })
@@ -625,7 +644,7 @@ async function offerDraftScenario(browser: Browser) {
     ).toHaveCount(5);
     await expect(
       positions.getByRole('group', { name: 'Infotext' }),
-    ).toHaveCount(2);
+    ).toHaveCount(0);
     await expect(
       positions.getByText('Änderungen werden beim Speichern neu berechnet.'),
     ).toBeVisible();
@@ -680,13 +699,14 @@ async function offerDraftScenario(browser: Browser) {
           position: number;
           product_id: string | null;
           description: string;
+          info_text: string | null;
           quantity: number;
           unit: string;
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
         }>(
-          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
           [tenantId, draftId],
         )
       ).rows,
@@ -695,6 +715,7 @@ async function offerDraftScenario(browser: Browser) {
         position: 0,
         product_id: null,
         description: 'Fictional edited booth during catalog load',
+        info_text: null,
         quantity: 2,
         unit: 'Stück',
         unit_price_minor: '12550',
@@ -705,6 +726,7 @@ async function offerDraftScenario(browser: Browser) {
         position: 1,
         product_id: null,
         description: 'Fictional edited delivery',
+        info_text: null,
         quantity: 3,
         unit: 'Stunde',
         unit_price_minor: '3000',
@@ -715,6 +737,7 @@ async function offerDraftScenario(browser: Browser) {
         position: 2,
         product_id: netProduct.id,
         description: 'Fictional net product',
+        info_text: 'Fictional edited product information\nSecond line',
         quantity: 1,
         unit: 'Stück',
         unit_price_minor: '11900',
@@ -723,18 +746,9 @@ async function offerDraftScenario(browser: Browser) {
       },
       {
         position: 3,
-        product_id: null,
-        description: 'Synthetic net-priced product',
-        quantity: null,
-        unit: null,
-        unit_price_minor: null,
-        tax_basis_points: null,
-        discount_basis_points: null,
-      },
-      {
-        position: 4,
         product_id: grossProduct.id,
         description: 'Fictional gross product',
+        info_text: 'Synthetic gross-priced product',
         quantity: 1,
         unit: 'Pauschale',
         unit_price_minor: '11900',
@@ -742,19 +756,10 @@ async function offerDraftScenario(browser: Browser) {
         discount_basis_points: 0,
       },
       {
-        position: 5,
-        product_id: null,
-        description: 'Synthetic gross-priced product',
-        quantity: null,
-        unit: null,
-        unit_price_minor: null,
-        tax_basis_points: null,
-        discount_basis_points: null,
-      },
-      {
-        position: 6,
+        position: 4,
         product_id: null,
         description: 'Fictional extra cable',
+        info_text: null,
         quantity: 1,
         unit: 'Stück',
         unit_price_minor: '2500',
@@ -911,6 +916,9 @@ async function offerDraftScenario(browser: Browser) {
     await expect(reopenedPosition3.getByLabel('Beschreibung')).toHaveValue(
       'Fictional net product',
     );
+    await expect(
+      reopenedPosition3.getByLabel('Infotext (optional)'),
+    ).toHaveValue('Fictional edited product information\nSecond line');
     await expect(reopenedPosition3.getByLabel('Menge')).toHaveValue('1');
     await expect(reopenedPosition3.getByLabel('Einheit')).toHaveValue('Stück');
     await expect(
@@ -1116,7 +1124,7 @@ async function offerDraftScenario(browser: Browser) {
     await expect(editor.getByLabel('Gültigkeit in Tagen')).toHaveValue('14');
     await expect(
       editor.getByText(
-        'Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt oder einen Infotext hinzu.',
+        'Noch keine Positionen. Fügen Sie eine freie Position oder ein Produkt hinzu.',
       ),
     ).toBeVisible();
     await expect(
@@ -1189,19 +1197,18 @@ async function offerDraftScenario(browser: Browser) {
     ).toBe('0');
 
     const note = 'Fictional information <b>as text</b>\nSecond line';
-    const addInfo = editor.getByRole('button', { name: 'Infotext hinzufügen' });
-    await addInfo.focus();
+    const addPosition = editor.getByRole('button', {
+      name: 'Freie Position hinzufügen',
+    });
+    await addPosition.focus();
     await page.keyboard.press('Enter');
-    const infoRow = editor.getByRole('group', { name: 'Infotext' });
-    const infoInput = infoRow.getByRole('textbox', { name: 'Text' });
-    await expect(infoInput).toBeFocused();
-    await infoInput.fill(note);
-    await editor
-      .getByRole('button', { name: 'Freie Position hinzufügen' })
-      .click();
     const blankPosition = editor.getByRole('group', {
       name: 'Position 1',
     });
+    await expect(blankPosition.getByLabel('Beschreibung')).toBeFocused();
+    const infoInput = blankPosition.getByLabel('Infotext (optional)');
+    await expect(infoInput).toHaveValue('');
+    await infoInput.fill(note);
     await editor.getByLabel('Betreff').fill('Fictional standalone offer');
     await editor
       .getByLabel('Einleitung')
@@ -1227,16 +1234,21 @@ async function offerDraftScenario(browser: Browser) {
       await page.setViewportSize({ width, height: 900 });
       if ((await page.locator('html').getAttribute('data-theme')) !== theme)
         await page.getByRole('button', { name: /modus aktivieren/ }).click();
-      const infoBox = (await infoRow.boundingBox())!;
+      const infoBox = (await blankPosition.boundingBox())!;
       const textBox = (await infoInput.boundingBox())!;
       expect(textBox.x + textBox.width).toBeLessThanOrEqual(
         infoBox.x + infoBox.width,
       );
-      expect((await addInfo.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect((await addPosition.boundingBox())!.height).toBeGreaterThanOrEqual(
+        44,
+      );
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(width + 1);
-      await infoRow.screenshot({
+      await blankPosition.evaluate((position) =>
+        window.scrollBy(0, position.getBoundingClientRect().top - 120),
+      );
+      await blankPosition.screenshot({
         path: test.info().outputPath(`offer-information-${theme}-${width}.png`),
       });
     }
@@ -1294,13 +1306,14 @@ async function offerDraftScenario(browser: Browser) {
           position: number;
           product_id: string | null;
           description: string;
+          info_text: string | null;
           quantity: number;
           unit: string;
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
         }>(
-          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
           [tenantId, blankCreated.id],
         )
       ).rows,
@@ -1308,17 +1321,8 @@ async function offerDraftScenario(browser: Browser) {
       {
         position: 0,
         product_id: null,
-        description: note,
-        quantity: null,
-        unit: null,
-        unit_price_minor: null,
-        tax_basis_points: null,
-        discount_basis_points: null,
-      },
-      {
-        position: 1,
-        product_id: null,
         description: 'Fictional standalone service',
+        info_text: note,
         quantity: 1,
         unit: 'Stück',
         unit_price_minor: '11900',
@@ -1391,7 +1395,7 @@ async function offerDraftScenario(browser: Browser) {
       'Fictional information &lt;b&gt;as text&lt;/b&gt;',
     );
     expect(renderedHtml[1]).toContain('Second line');
-    expect(renderedHtml[1]!.indexOf('Fictional information')).toBeLessThan(
+    expect(renderedHtml[1]!.indexOf('Fictional information')).toBeGreaterThan(
       renderedHtml[1]!.indexOf('Fictional standalone service'),
     );
     expect(renderedHtml[1]).toContain('Fictional standalone service');
@@ -1685,8 +1689,8 @@ async function offerDraftScenario(browser: Browser) {
     );
     await expect(
       editor
-        .getByRole('group', { name: 'Infotext' })
-        .getByRole('textbox', { name: 'Text' }),
+        .getByRole('group', { name: 'Position 1' })
+        .getByLabel('Infotext (optional)'),
     ).toHaveValue(note);
     const originalPdf = page.getByRole('link', {
       name: `Vorgängerangebot ${blankFinalized.number} als PDF öffnen`,

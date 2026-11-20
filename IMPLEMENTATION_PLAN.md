@@ -8,7 +8,7 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
-- [x] **DOC-TEXT-02 — `feat: copy product information into documents`**: Beim Hinzufügen eines Katalogprodukts dessen vorhandene Beschreibung unmittelbar danach als bearbeitbare Infotextzeile übernehmen. Leere Beschreibungen erzeugen keine Zeile; bestehende Positionen, Preise und Summen bleiben unverändert. Begrenzung auf 1000 Zeilen beachten und überlange Katalogantworten sicher behandeln. Abnahme mit synthetischen Produkten einschließlich leerer und mehrzeiliger Beschreibung, Speichern und erneutem Laden.
+- [x] **DOC-TEXT-02 — `feat: attach product information to document positions`**: Produktbeschreibungen beim Einfügen als bearbeitbaren Infotext derselben Position übernehmen, analog Bookitup. Der Text wird mit der Position gespeichert, gelöscht und in Folgebelege kopiert und erscheint unter dem Positionsnamen im PDF. Bestehende freie Textzeilen und finale PDFs erhalten; Preise und Summen unverändert. Abnahme mit synthetischen Daten, mehreren Produkten, Speichern, Neuladen und Folgebelegen.
 
 - [x] **DOC-REV-01 — `feat: revise finalized offers`**: Abgeschlossene, versandte oder angenommene Angebote über einen verknüpften neuen Entwurf bearbeiten. Vorgänger-PDF, Nummer, Annahme und bestehende Folgebelege bleiben erhalten; die neue Fassung erhält erst bei Finalisierung eine eigene Nummer. Abnahme mit synthetischen Daten: Herkunft und Reihenfolge, sichere wiederholte Anlage, Mandantenschutz und unveränderte Originalbytes. Rechnungen werden separat behandelt.
 

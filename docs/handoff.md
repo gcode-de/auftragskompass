@@ -2,7 +2,7 @@
 
 ## DOC-TEXT-02: Produktbeschreibungen im Dokument
 
-Der Dokumenteditor übernimmt beim Einfügen eines Katalogprodukts dessen nichtleere Beschreibung als nachfolgende, bearbeitbare Infotextzeile. Bestehende Dokumente werden nicht verändert; tatsächlichen GitHub- und Live-Stand prüfen.
+Der Dokumenteditor übernimmt Produktbeschreibungen beim Einfügen als bearbeitbaren Infotext derselben Position. Bestehende freie Textzeilen und finale PDFs bleiben erhalten. Vor Nutzung CI- und Deploymentstand prüfen.
 
 ## DOC-REV-01: Angebotsfassungen
 

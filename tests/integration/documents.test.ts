@@ -1294,6 +1294,7 @@ test('the document API requires auth and enforces the final state', async () => 
           {
             productId: null,
             description: 'API edited line',
+            infoText: '  Fictional detail\nSecond line  ',
             quantity: 2,
             unit: 'Stück',
             unitPriceMinor: 2500,
@@ -1311,7 +1312,12 @@ test('the document API requires auth and enforces the final state', async () => 
       grossMinor: 5000,
       lines: [
         { position: 0, kind: 'info', description: '<API note>' },
-        { position: 1, description: 'API edited line', quantity: 2 },
+        {
+          position: 1,
+          description: 'API edited line',
+          infoText: 'Fictional detail\nSecond line',
+          quantity: 2,
+        },
       ],
     });
     expect(saved.json().lines[0]).toEqual({
@@ -1323,6 +1329,7 @@ test('the document API requires auth and enforces the final state', async () => 
     expect(saved.json().lines[1]).not.toHaveProperty('kind');
     for (const invalid of [
       { description: 'Hinweis', unitPriceMinor: 1500 },
+      { description: 'Hinweis', infoText: 'Unexpected' },
       { description: 'Fictional\0note' },
     ]) {
       const response = await app.inject({
@@ -1408,7 +1415,12 @@ test('the document API requires auth and enforces the final state', async () => 
           cookies,
         })
       ).json(),
-    ).toMatchObject({ state: 'draft', version: 2, number: null });
+    ).toMatchObject({
+      state: 'draft',
+      version: 2,
+      number: null,
+      lines: saved.json().lines,
+    });
     const beforeAudit = await pool.query(
       "SELECT count(*) FROM audit_events WHERE tenant_id=$1 AND action='document.updated' AND record_id=$2",
       [tenantId, id],
@@ -1511,6 +1523,7 @@ test('the document API requires auth and enforces the final state', async () => 
           {
             productId: null,
             description: 'Must remain immutable',
+            infoText: 'Fictional replacement detail',
             quantity: 1,
             unit: 'Pauschale',
             unitPriceMinor: 1,
@@ -4684,7 +4697,28 @@ test('information rows survive draft saving, rendering and follow-up documents',
       kind: 'info',
       description: '<Fictional> detail\nSecond line',
     } as const,
+    item = {
+      ...confirmationLines[0]!,
+      infoText: '<Position detail> first line\nSecond line',
+    },
     content = { ...confirmationTexts, version: draft.version };
+  for (const infoText of [
+    42 as unknown as string,
+    'x'.repeat(4001),
+    'Fictional\0note',
+  ])
+    await expect(
+      repo.updateDraftContent(actor, draft.id, {
+        ...content,
+        lines: [{ ...item, infoText }],
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_line' });
+  await expect(
+    repo.updateDraftContent(actor, draft.id, {
+      ...content,
+      lines: [{ ...info, ...{ infoText: 'Unexpected' } }],
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_line' });
   for (const description of ['  ', 'x'.repeat(4001), 'Fictional\0note'])
     await expect(
       repo.updateDraftContent(actor, draft.id, {
@@ -4719,15 +4753,42 @@ test('information rows survive draft saving, rendering and follow-up documents',
   const mixed = await repo.updateDraftContent(actor, draft.id, {
     ...content,
     version: infoOnly.version,
-    lines: [confirmationLines[0]!, info, confirmationLines[1]!],
+    lines: [item, info, { ...confirmationLines[1]!, infoText: ' \n ' }],
   });
-  expect(mixed.grossMinor).toBe(draft.grossMinor);
+  expect(mixed.lines[0]).toMatchObject(item);
+  expect(mixed.lines[2]).not.toHaveProperty('infoText');
+  expect(await repo.get(draft.id)).toMatchObject({ lines: mixed.lines });
+  await expect(
+    pool.query(
+      'UPDATE document_lines SET info_text=$1 WHERE tenant_id=$2 AND document_id=$3 AND position=1',
+      ['Unexpected', context.scope, draft.id],
+    ),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'document_lines_info_text_check',
+  });
+  await expect(
+    repo.updateDraftContent(actor, draft.id, {
+      ...content,
+      version: infoOnly.version,
+      lines: confirmationLines,
+    }),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  expect(mixed).toMatchObject({
+    grossMinor: draft.grossMinor,
+    taxMinor: draft.taxMinor,
+    netMinor: draft.netMinor,
+  });
   const preview = await repo.preview(draft.id);
   expect(preview?.bytes.toString()).toMatch(/^%PDF/);
   expect(context.run.rendered.at(-1)).toContain(
     '&lt;Fictional&gt; detail<br>Second line',
   );
+  expect(context.run.rendered.at(-1)).toContain(
+    `<td>${item.description}<br><span class="position-info-text">&lt;Position detail&gt; first line<br>Second line</span>`,
+  );
   const finalized = await repo.finalize(actor, draft.id, mixed.version),
+    originalPdf = await repo.pdf(finalized.id),
     sent = await repo.changeOfferStatus(actor, draft.id, {
       status: 'sent',
       version: finalized.version,
@@ -4765,8 +4826,10 @@ test('information rows survive draft saving, rendering and follow-up documents',
     order.id,
     order.version,
   );
+  expect(advanced.lines[0]).toMatchObject(item);
   expect(advanced.lines[1]).toMatchObject(info);
   const invoice = await repo.createInvoice(actor, order.id, order.version);
+  expect(invoice.lines[0]).toMatchObject(item);
   expect(invoice.lines[1]).toMatchObject(info);
   await documentNumberRepository(pool, context.scope).save(actor, 'invoice', {
     pattern: 'RE-{YYYY}-{SEQ}',
@@ -4780,7 +4843,9 @@ test('information rows survive draft saving, rendering and follow-up documents',
     issued.version,
     'credit',
   );
+  expect(correction.lines[0]).toMatchObject(item);
   expect(correction.lines[1]).toMatchObject(info);
+  expect((await repo.pdf(finalized.id)).bytes).toEqual(originalPdf.bytes);
 });
 
 test('a concurrent offer revision preserves the accepted original and its follow-up', async () => {
@@ -4799,7 +4864,11 @@ test('a concurrent offer revision preserves the accepted original and its follow
     ...confirmationTexts,
     version: draft.version,
     lines: [
-      { ...confirmationLines[0]!, productId: product },
+      {
+        ...confirmationLines[0]!,
+        productId: product,
+        infoText: 'Fictional position information',
+      },
       info,
       confirmationLines[1]!,
     ],
@@ -8112,6 +8181,7 @@ const settlementLines = [
   {
     productId: null,
     description: 'Fiktives Fotobox-Paket',
+    infoText: 'Fiktive Zusatzangabe zur Position',
     quantity: 1,
     unit: 'Pauschale',
     unitPriceMinor: 169000,
@@ -8292,6 +8362,7 @@ test('the final invoice copies the order and settles its billed deposits', async
       order.confirmation.version,
     ),
     stored = await storedSettlement(order.scope, draft.id);
+  expect(draft.lines[0]).toMatchObject(settlementLines[0]!);
   // 1:1 from the confirmation: the same positions, no conversion, no second
   // rounding - and the sums are the order's own 1.690,00 EUR.
   expect(await storedLines(order.scope, draft.id)).toEqual(
