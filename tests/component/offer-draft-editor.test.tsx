@@ -114,7 +114,19 @@ const catalogProducts = [
   },
 ];
 
-function detail(values: typeof content | null = content, version = 1) {
+// DOC-PRODUCT-01.5: a draft may carry one discount for the whole document. The
+// absent case is the normal one, so the fields stay optional here.
+type TestTotalDiscount = {
+  totalDiscountKind?: 'percent' | 'amount';
+  totalDiscountValue?: number;
+  totalDiscountNote?: string | null;
+};
+
+function detail(
+  values: typeof content | null = content,
+  version = 1,
+  discount: TestTotalDiscount = {},
+) {
   return {
     ...draft,
     version,
@@ -122,6 +134,7 @@ function detail(values: typeof content | null = content, version = 1) {
     introText: values?.introText ?? null,
     outroText: values?.outroText ?? null,
     validityDays: values?.validityDays ?? null,
+    ...discount,
     lines: [line] as (
       | TestLine
       | { kind: 'info'; id: string; position: number; description: string }
@@ -1154,6 +1167,10 @@ test('existing and free positions save exactly, removal/addition persist, and ro
     expect(calls.find((call) => call.method === 'PUT')?.body).toEqual({
       version: 1,
       ...content,
+      // DOC-PRODUCT-01.5: an untouched discount names all three halves as null.
+      totalDiscountKind: null,
+      totalDiscountValue: null,
+      totalDiscountNote: null,
       lines: savedLines,
     }),
   );
@@ -1713,6 +1730,9 @@ test('saving sends all values with the loaded version, survives reload, and fina
       introText: 'Fiktive aktualisierte Einleitung',
       outroText: 'Fiktiver aktualisierter Schluss',
       validityDays: 30,
+      totalDiscountKind: null,
+      totalDiscountValue: null,
+      totalDiscountNote: null,
       lines: [
         {
           productId: null,
@@ -1964,6 +1984,9 @@ test('legacy draft values are initialized from the current template only in the 
   expect(calls.find((call) => call.method === 'PUT')?.body).toEqual({
     version: 1,
     ...content,
+    totalDiscountKind: null,
+    totalDiscountValue: null,
+    totalDiscountNote: null,
     lines: [
       {
         productId: null,
@@ -2537,4 +2560,240 @@ test('a fixed discount above the line sum stays a visible server refusal', async
     'value',
     '249,01',
   );
+});
+
+// DOC-PRODUCT-01.5: one discount for the whole document. The group names the
+// deliberate "no discount" state, keeps the two values apart and never computes
+// a second total in the browser.
+test('a draft without a total discount offers the deliberate "Kein" state and sends nulls', async () => {
+  const { calls } = setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const group = screen.getByRole('group', { name: 'Gesamtrabatt' });
+  const kind = within(group).getByLabelText('Art des Gesamtrabatts');
+  expect(kind).toHaveProperty('value', '');
+  expect(
+    within(kind).getByRole('option', { name: 'Kein Gesamtrabatt' }),
+  ).toBeTruthy();
+  expect(within(group).queryByLabelText('Gesamtrabatt in Prozent')).toBeNull();
+  expect(within(group).queryByLabelText('Gesamtrabatt in Euro')).toBeNull();
+  expect(
+    within(group).getByText(
+      'Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und Steuer bleiben unverändert.',
+    ),
+  ).toBeTruthy();
+  expect(screen.getByText(/Gespeicherter Gesamtbetrag: 249,00/)).toBeTruthy();
+
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot ohne Gesamtrabatt' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    totalDiscountKind: null,
+    totalDiscountValue: null,
+    totalDiscountNote: null,
+  });
+});
+
+test('a percent total discount sends basis points and its note, euro sends the exact minor amount', async () => {
+  const { calls } = setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const group = screen.getByRole('group', { name: 'Gesamtrabatt' });
+  fireEvent.change(within(group).getByLabelText('Art des Gesamtrabatts'), {
+    target: { value: 'percent' },
+  });
+  const percent = within(group).getByLabelText('Gesamtrabatt in Prozent');
+  // The percentage field carries basis points as percent, like a position.
+  expect(percent).toHaveProperty('value', '0.00');
+  expect(within(group).queryByLabelText('Gesamtrabatt in Euro')).toBeNull();
+  fireEvent.change(percent, { target: { value: '12,50' } });
+  fireEvent.change(
+    within(group).getByLabelText('Anmerkung zum Gesamtrabatt (optional)'),
+    { target: { value: 'Fiktive Aktion\nzweite Zeile' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    totalDiscountKind: 'percent',
+    totalDiscountValue: 1250,
+    totalDiscountNote: 'Fiktive Aktion\nzweite Zeile',
+  });
+
+  fireEvent.change(within(group).getByLabelText('Art des Gesamtrabatts'), {
+    target: { value: 'amount' },
+  });
+  expect(within(group).queryByLabelText('Gesamtrabatt in Prozent')).toBeNull();
+  const amount = within(group).getByLabelText('Gesamtrabatt in Euro');
+  // Euro mode never reinterprets the percentage as an amount.
+  expect(amount).toHaveProperty('value', '0.00');
+  fireEvent.change(amount, { target: { value: '25' } });
+  // A blank note clears it instead of sending an empty string.
+  fireEvent.change(
+    within(group).getByLabelText('Anmerkung zum Gesamtrabatt (optional)'),
+    { target: { value: '   ' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await waitFor(() =>
+    expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(2),
+  );
+  expect(calls.filter((call) => call.method === 'PUT')[1]?.body).toMatchObject({
+    totalDiscountKind: 'amount',
+    totalDiscountValue: 2500,
+    totalDiscountNote: null,
+  });
+});
+
+test('a stored total discount loads into the controls and "Kein Gesamtrabatt" clears all three', async () => {
+  const initial = detail(content, 1, {
+    totalDiscountKind: 'amount',
+    totalDiscountValue: 2500,
+    totalDiscountNote: 'Fiktiver Hinweis',
+  });
+  const { calls } = setup({ initial });
+  const view = render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const group = screen.getByRole('group', { name: 'Gesamtrabatt' });
+  expect(within(group).getByLabelText('Art des Gesamtrabatts')).toHaveProperty(
+    'value',
+    'amount',
+  );
+  expect(within(group).getByLabelText('Gesamtrabatt in Euro')).toHaveProperty(
+    'value',
+    '25.00',
+  );
+  expect(
+    within(group).getByLabelText('Anmerkung zum Gesamtrabatt (optional)'),
+  ).toHaveProperty('value', 'Fiktiver Hinweis');
+  // The discount lowers only the payable amount; the stored position sums stay.
+  expect(screen.getByText(/Gespeicherter Gesamtbetrag: 249,00/)).toBeTruthy();
+
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot mit Gesamtrabatt' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    totalDiscountKind: 'amount',
+    totalDiscountValue: 2500,
+    totalDiscountNote: 'Fiktiver Hinweis',
+  });
+
+  fireEvent.change(within(group).getByLabelText('Art des Gesamtrabatts'), {
+    target: { value: '' },
+  });
+  expect(within(group).queryByLabelText('Gesamtrabatt in Euro')).toBeNull();
+  expect(
+    within(group).queryByLabelText('Anmerkung zum Gesamtrabatt (optional)'),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await waitFor(() =>
+    expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(2),
+  );
+  expect(calls.filter((call) => call.method === 'PUT')[1]?.body).toMatchObject({
+    totalDiscountKind: null,
+    totalDiscountValue: null,
+    totalDiscountNote: null,
+  });
+
+  // Switching back never revives what "Kein Gesamtrabatt" dropped.
+  fireEvent.change(within(group).getByLabelText('Art des Gesamtrabatts'), {
+    target: { value: 'percent' },
+  });
+  expect(
+    within(group).getByLabelText('Gesamtrabatt in Prozent'),
+  ).toHaveProperty('value', '0.00');
+  expect(
+    within(group).getByLabelText('Anmerkung zum Gesamtrabatt (optional)'),
+  ).toHaveProperty('value', '');
+
+  view.unmount();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  expect(
+    within(screen.getByRole('group', { name: 'Gesamtrabatt' })).getByLabelText(
+      'Art des Gesamtrabatts',
+    ),
+  ).toHaveProperty('value', '');
+});
+
+test('a rejected total discount stays a visible hint error without losing the input', async () => {
+  const { calls } = setup({
+    put: () => Response.json({ error: 'invalid_content' }, { status: 400 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const group = screen.getByRole('group', { name: 'Gesamtrabatt' });
+  fireEvent.change(within(group).getByLabelText('Art des Gesamtrabatts'), {
+    target: { value: 'amount' },
+  });
+  fireEvent.change(within(group).getByLabelText('Gesamtrabatt in Euro'), {
+    target: { value: '249,01' },
+  });
+  fireEvent.change(
+    within(group).getByLabelText('Anmerkung zum Gesamtrabatt (optional)'),
+    { target: { value: 'Fiktiver zu hoher Abzug' } },
+  );
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot mit zu hohem Gesamtrabatt' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Gesamtrabatt',
+  );
+  expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+  expect(within(group).getByLabelText('Gesamtrabatt in Euro')).toHaveProperty(
+    'value',
+    '249,01',
+  );
+  expect(
+    within(group).getByLabelText('Anmerkung zum Gesamtrabatt (optional)'),
+  ).toHaveProperty('value', 'Fiktiver zu hoher Abzug');
+  expect(
+    within(group)
+      .getByLabelText('Gesamtrabatt in Euro')
+      .getAttribute('aria-invalid'),
+  ).toBe('true');
+});
+
+test('a total discount percentage above 100 % blocks the save before any request', async () => {
+  const { calls } = setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const group = screen.getByRole('group', { name: 'Gesamtrabatt' });
+  fireEvent.change(within(group).getByLabelText('Art des Gesamtrabatts'), {
+    target: { value: 'percent' },
+  });
+  const percent = within(group).getByLabelText('Gesamtrabatt in Prozent');
+  fireEvent.change(percent, { target: { value: '100,01' } });
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot mit zu hohem Prozentsatz' },
+  });
+  expect(percent.getAttribute('aria-invalid')).toBe('true');
+  const save = screen.getByRole('button', { name: 'Änderungen speichern' });
+  expect(save).toHaveProperty('disabled', true);
+  fireEvent.click(save);
+  expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+
+  fireEvent.change(percent, { target: { value: '100' } });
+  expect(save).toHaveProperty('disabled', false);
 });

@@ -22,6 +22,13 @@ type DraftValues = {
   // RG-07b: the printed account, free text and possibly multi-line. Field of the
   // same invoice family, and part of the same dirty comparison.
   bankAccount: string;
+  // DOC-PRODUCT-01.5: one discount for the whole document. An empty kind is the
+  // deliberate "no discount" choice; both values are kept apart so a switch
+  // never converts or reinterprets one of them.
+  totalDiscountKind: '' | 'percent' | 'amount';
+  totalDiscountPercent: string;
+  totalDiscountAmount: string;
+  totalDiscountNote: string;
 };
 type DraftItem = {
   kind?: never;
@@ -52,6 +59,9 @@ type DraftInfo = {
 };
 type DraftLine = DraftItem | DraftInfo;
 const infoTextLimit = 4000;
+// DOC-PRODUCT-01.5: the comment printed behind "Gesamtrabatt" is bounded by the
+// same number the core enforces.
+const totalDiscountNoteLimit = 500;
 
 type DraftItemValues = {
   kind?: never;
@@ -88,6 +98,13 @@ type DraftDetail = {
   dueDate?: string | null;
   // RG-07b: the free-text account, loaded and rewritten with the same payload.
   bankAccount?: string | null;
+  /**
+   * DOC-PRODUCT-01.5: the one document discount. Absent on every answer without
+   * one, so an old payload keeps exactly its old shape.
+   */
+  totalDiscountKind?: 'percent' | 'amount' | null;
+  totalDiscountValue?: number | null;
+  totalDiscountNote?: string | null;
   netMinor: number;
   taxMinor: number;
   grossMinor: number;
@@ -146,9 +163,17 @@ type DraftContentValues = {
   serviceDate?: string | null;
   paymentTermDays?: number | null;
   bankAccount?: string | null;
+  totalDiscountKind?: 'percent' | 'amount' | null;
+  totalDiscountValue?: number | null;
+  totalDiscountNote?: string | null;
 };
 
 function valuesOf(values: DraftContentValues): DraftValues {
+  const totalDiscountKind =
+    values.totalDiscountKind === 'percent' ||
+    values.totalDiscountKind === 'amount'
+      ? values.totalDiscountKind
+      : '';
   return {
     subject: values.subject,
     introText: values.introText,
@@ -161,6 +186,18 @@ function valuesOf(values: DraftContentValues): DraftValues {
         ? ''
         : String(values.paymentTermDays),
     bankAccount: values.bankAccount ?? '',
+    // DOC-PRODUCT-01.5: the stored value belongs to the stored kind alone; the
+    // other field starts neutral instead of mirroring it.
+    totalDiscountKind,
+    totalDiscountPercent:
+      totalDiscountKind === 'percent'
+        ? formatHundredths(values.totalDiscountValue ?? 0)
+        : '0.00',
+    totalDiscountAmount:
+      totalDiscountKind === 'amount'
+        ? formatHundredths(values.totalDiscountValue ?? 0)
+        : '0.00',
+    totalDiscountNote: values.totalDiscountNote ?? '',
   };
 }
 
@@ -193,6 +230,20 @@ function isDetail(value: unknown): value is DraftDetail {
     detail.taxMinor! >= 0 &&
     Number.isSafeInteger(detail.grossMinor) &&
     detail.grossMinor! >= 0 &&
+    // DOC-PRODUCT-01.5: the discount is optional and judged by the server; the
+    // editor only refuses an answer it could not show honestly.
+    (detail.totalDiscountKind === undefined ||
+      detail.totalDiscountKind === null ||
+      detail.totalDiscountKind === 'percent' ||
+      detail.totalDiscountKind === 'amount') &&
+    (detail.totalDiscountValue === undefined ||
+      detail.totalDiscountValue === null ||
+      (Number.isSafeInteger(detail.totalDiscountValue) &&
+        detail.totalDiscountValue >= 0)) &&
+    (detail.totalDiscountNote === undefined ||
+      detail.totalDiscountNote === null ||
+      (typeof detail.totalDiscountNote === 'string' &&
+        detail.totalDiscountNote.length <= totalDiscountNoteLimit)) &&
     Array.isArray(detail.lines) &&
     (detail.templateId === null || detail.lines.length >= 1) &&
     detail.lines.length <= 1000 &&
@@ -334,6 +385,50 @@ function decimalInvalid(value: string) {
   }
 }
 
+// DOC-PRODUCT-01.5: kind and value are one decision, so "Kein Gesamtrabatt"
+// names both halves and the note as null. The percentage is sent in basis points
+// like a position, the euro amount as exact minor units like a price; a blank
+// note is null, never an empty string that would print empty brackets.
+function totalDiscountDraft(values: DraftValues) {
+  if (
+    values.totalDiscountKind !== 'percent' &&
+    values.totalDiscountKind !== 'amount'
+  )
+    return {
+      totalDiscountKind: null,
+      totalDiscountValue: null,
+      totalDiscountNote: null,
+    };
+  return {
+    totalDiscountKind: values.totalDiscountKind,
+    totalDiscountValue: parseHundredths(
+      values.totalDiscountKind === 'percent'
+        ? values.totalDiscountPercent
+        : values.totalDiscountAmount,
+    ),
+    totalDiscountNote: values.totalDiscountNote.trim()
+      ? values.totalDiscountNote
+      : null,
+  };
+}
+
+function totalDiscountInvalid(values: DraftValues) {
+  if (!values.totalDiscountKind) return false;
+  const value =
+    values.totalDiscountKind === 'percent'
+      ? values.totalDiscountPercent
+      : values.totalDiscountAmount;
+  try {
+    parseHundredths(value);
+  } catch {
+    return true;
+  }
+  return (
+    (values.totalDiscountKind === 'percent' && percentInvalid(value)) ||
+    values.totalDiscountNote.length > totalDiscountNoteLimit
+  );
+}
+
 function percentInvalid(value: string) {
   try {
     return parseHundredths(value) > 10000;
@@ -406,6 +501,9 @@ export function OfferDraftEditor({
     [uncertain, setUncertain] = useState(false),
     [message, setMessage] = useState(''),
     [error, setError] = useState(false),
+    // DOC-PRODUCT-01.5: a server refusal that names the content marks the
+    // discount field, without a second alert beside the one message line.
+    [discountRejected, setDiscountRejected] = useState(false),
     [focusInitialEditor, setFocusInitialEditor] = useState(false),
     [productPickerOpen, setProductPickerOpen] = useState(false),
     [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]),
@@ -470,6 +568,18 @@ export function OfferDraftEditor({
       !showsDates ||
       !paymentTerm ||
       (/^\d{1,3}$/.test(paymentTerm) && Number(paymentTerm) <= 365);
+  // DOC-PRODUCT-01.5: the one document discount. Only the field the chosen kind
+  // drives is shown, so no hidden value can ever be sent by accident.
+  const totalDiscountKind = values?.totalDiscountKind ?? '',
+    totalDiscountValue =
+      totalDiscountKind === 'percent'
+        ? (values?.totalDiscountPercent ?? '')
+        : totalDiscountKind === 'amount'
+          ? (values?.totalDiscountAmount ?? '')
+          : '',
+    totalDiscountValueInvalid = values ? totalDiscountInvalid(values) : false,
+    validTotalDiscount = !totalDiscountValueInvalid,
+    totalDiscountNote = values?.totalDiscountNote ?? '';
   const days = Number(values?.validityDays),
     validDays = Number.isInteger(days) && days >= 1 && days <= 365,
     validLines =
@@ -514,6 +624,11 @@ export function OfferDraftEditor({
               serviceDate: loaded.serviceDate ?? null,
               paymentTermDays: loaded.paymentTermDays ?? null,
               bankAccount: loaded.bankAccount ?? null,
+              // DOC-PRODUCT-01.5: the stored discount travels with the same
+              // payload; a missing one is the deliberate "no discount".
+              totalDiscountKind: loaded.totalDiscountKind ?? null,
+              totalDiscountValue: loaded.totalDiscountValue ?? null,
+              totalDiscountNote: loaded.totalDiscountNote ?? null,
             }
           : null;
         let fromLegacy = false;
@@ -548,6 +663,7 @@ export function OfferDraftEditor({
         setLegacy(fromLegacy);
         setConflict(false);
         setUncertain(false);
+        setDiscountRejected(false);
         callbacks.current.onDirtyChange(
           fromLegacy || loaded.lines.length === 0,
         );
@@ -633,6 +749,28 @@ export function OfferDraftEditor({
   function change<K extends keyof DraftValues>(key: K, value: DraftValues[K]) {
     if (finalizing) return;
     setValues((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  // DOC-PRODUCT-01.5: "Kein Gesamtrabatt" clears the whole discount, so a later
+  // switch never revives an amount or a note the operator already dropped.
+  function changeTotalDiscountKind(next: DraftValues['totalDiscountKind']) {
+    if (finalizing) return;
+    setDiscountRejected(false);
+    setValues((current) =>
+      current
+        ? {
+            ...current,
+            totalDiscountKind: next,
+            ...(next
+              ? {}
+              : {
+                  totalDiscountPercent: '0.00',
+                  totalDiscountAmount: '0.00',
+                  totalDiscountNote: '',
+                }),
+          }
+        : current,
+    );
   }
 
   function changeLine<K extends keyof DraftItemValues>(
@@ -851,6 +989,7 @@ export function OfferDraftEditor({
       !validDays ||
       !validServiceDay ||
       !validPaymentTerm ||
+      !validTotalDiscount ||
       !validLines ||
       isBlocked
     )
@@ -860,6 +999,7 @@ export function OfferDraftEditor({
     callbacks.current.onBusyChange(true);
     setMessage('');
     setError(false);
+    setDiscountRejected(false);
     try {
       const body = JSON.stringify({
         version: detail.version,
@@ -867,6 +1007,10 @@ export function OfferDraftEditor({
         introText: values.introText,
         outroText: values.outroText,
         validityDays: days,
+        // DOC-PRODUCT-01.5: kind and value travel together, and "Kein
+        // Gesamtrabatt" names both halves as null. The editor never computes a
+        // second total - the server owns every sum.
+        ...totalDiscountDraft(values),
         // RG-07: only an invoice family body carries the two dates, so the
         // offer and the confirmation keep exactly the body they always sent.
         ...(showsDates
@@ -915,8 +1059,13 @@ export function OfferDraftEditor({
                 ? 'Speichern nicht erlaubt. Bitte Anmeldung und Berechtigung prüfen.'
                 : result.error === 'invalid_line'
                   ? 'Eine Position ist ungültig. Prüfen Sie insbesondere den Rabattbetrag: Er darf die Positionssumme nicht übersteigen.'
-                  : 'Änderungen wurden nicht gespeichert. Bitte Eingaben prüfen und erneut versuchen.',
+                  : // DOC-PRODUCT-01.5: the one document discount has its own
+                    // bound - an amount above the total is a typing mistake.
+                    result.error === 'invalid_content'
+                    ? 'Der Gesamtrabatt wurde abgelehnt. Prüfen Sie Art und Betrag: Der Abzug darf den Gesamtbetrag nicht übersteigen. Auch die Anmerkung darf keine Steuerzeichen enthalten.'
+                    : 'Änderungen wurden nicht gespeichert. Bitte Eingaben prüfen und erneut versuchen.',
           );
+          if (result.error === 'invalid_content') setDiscountRejected(true);
         }
         return;
       }
@@ -1599,6 +1748,80 @@ export function OfferDraftEditor({
                   Der Gesamtbetrag wird ohne optionale Positionen berechnet.
                 </p>
               )}
+              {/* DOC-PRODUCT-01.5: one discount for the whole document, below the
+                  positions it must not touch. The payable amount stays a server
+                  sum; this group only says what was agreed. */}
+              <fieldset
+                className="offer-draft-position offer-draft-total-discount"
+                disabled={!values || loading || busy}
+              >
+                <legend>Gesamtrabatt</legend>
+                <div className="offer-draft-fields">
+                  <label>
+                    Art des Gesamtrabatts
+                    <select
+                      value={totalDiscountKind}
+                      onChange={(event) =>
+                        changeTotalDiscountKind(
+                          event.target.value === 'percent'
+                            ? 'percent'
+                            : event.target.value === 'amount'
+                              ? 'amount'
+                              : '',
+                        )
+                      }
+                    >
+                      <option value="">Kein Gesamtrabatt</option>
+                      <option value="percent">Prozent</option>
+                      <option value="amount">Euro</option>
+                    </select>
+                  </label>
+                  {totalDiscountKind && (
+                    <>
+                      <label>
+                        {totalDiscountKind === 'percent'
+                          ? 'Gesamtrabatt in Prozent'
+                          : 'Gesamtrabatt in Euro'}
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={totalDiscountValue}
+                          required
+                          aria-invalid={
+                            totalDiscountValueInvalid || discountRejected
+                          }
+                          onChange={(event) =>
+                            change(
+                              totalDiscountKind === 'percent'
+                                ? 'totalDiscountPercent'
+                                : 'totalDiscountAmount',
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Anmerkung zum Gesamtrabatt (optional)
+                        <textarea
+                          value={totalDiscountNote}
+                          maxLength={totalDiscountNoteLimit}
+                          rows={2}
+                          aria-invalid={
+                            totalDiscountNote.length > totalDiscountNoteLimit
+                          }
+                          onChange={(event) =>
+                            change('totalDiscountNote', event.target.value)
+                          }
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+                <p className="document-hint">
+                  Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und
+                  Steuer bleiben unverändert.
+                </p>
+              </fieldset>
               <p className="offer-draft-total">
                 Gespeicherter Gesamtbetrag:{' '}
                 {exactMinorUnits(detail.grossMinor) ?? '—'} €
@@ -1624,6 +1847,7 @@ export function OfferDraftEditor({
                   !validDays ||
                   !validServiceDay ||
                   !validPaymentTerm ||
+                  !validTotalDiscount ||
                   !validLines ||
                   busy ||
                   loading ||

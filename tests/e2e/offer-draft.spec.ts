@@ -437,6 +437,25 @@ async function offerDraftScenario(browser: Browser) {
     await expect(position2.getByLabel('Beschreibung')).toHaveValue(
       'Fictional delivery',
     );
+    // DOC-PRODUCT-01.5: a draft without a discount says so explicitly, and no
+    // amount, note or second total is shown for it.
+    const totalDiscount = positions.getByRole('group', {
+      name: 'Gesamtrabatt',
+    });
+    await expect(totalDiscount.getByLabel('Art des Gesamtrabatts')).toHaveValue(
+      '',
+    );
+    await expect(
+      totalDiscount.getByRole('option', { name: 'Kein Gesamtrabatt' }),
+    ).toHaveCount(1);
+    await expect(
+      totalDiscount.getByLabel(/Gesamtrabatt in (Prozent|Euro)/),
+    ).toHaveCount(0);
+    await expect(
+      totalDiscount.getByText(
+        'Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und Steuer bleiben unverändert.',
+      ),
+    ).toBeVisible();
     // A narrow editor can be embedded in a wide viewport.
     const fields = position1.locator('.offer-draft-position-fields input');
     // Since DOC-PRODUCT-01.4 the discount mode and the euro amount follow the
@@ -754,6 +773,15 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       editor.getByText('Gespeicherter Gesamtbetrag: 195,00 €'),
     ).toBeVisible();
+    // DOC-PRODUCT-01.5: one discount for the whole document, with its comment.
+    // The stored position sums stay untouched - only the payable amount moves.
+    await totalDiscount
+      .getByLabel('Art des Gesamtrabatts')
+      .selectOption('amount');
+    await totalDiscount.getByLabel('Gesamtrabatt in Euro').fill('24,40');
+    await totalDiscount
+      .getByLabel('Anmerkung zum Gesamtrabatt (optional)')
+      .fill('Fictional total discount');
     const draftSaveRequest = page.waitForRequest(
       (request) =>
         new URL(request.url()).pathname ===
@@ -762,7 +790,16 @@ async function offerDraftScenario(browser: Browser) {
     await editor.getByRole('button', { name: 'Änderungen speichern' }).click();
     const savedDraft = (await draftSaveRequest).postDataJSON() as {
       lines: Array<Record<string, unknown>>;
+      totalDiscountKind: string | null;
+      totalDiscountValue: number | null;
+      totalDiscountNote: string | null;
     };
+    // DOC-PRODUCT-01.5: kind and value travel together, the note as typed.
+    expect(savedDraft).toMatchObject({
+      totalDiscountKind: 'amount',
+      totalDiscountValue: 2440,
+      totalDiscountNote: 'Fictional total discount',
+    });
     // DOC-PRODUCT-01.4: the percentage line names null (never 0) and the euro
     // line sends its exact minor amount.
     expect(savedDraft.lines[0]).toMatchObject({
@@ -792,8 +829,11 @@ async function offerDraftScenario(browser: Browser) {
           number: string | null;
           pdf_hash: string | null;
           snapshot_hash: string | null;
+          total_discount_kind: string | null;
+          total_discount_value: string | null;
+          total_discount_note: string | null;
         }>(
-          'SELECT subject,intro_text,outro_text,validity_days,net_minor,tax_minor,gross_minor,version,state,number,pdf_hash,snapshot_hash FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
+          'SELECT subject,intro_text,outro_text,validity_days,net_minor,tax_minor,gross_minor,version,state,number,pdf_hash,snapshot_hash,total_discount_kind,total_discount_value,total_discount_note FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
           [tenantId, draftId],
         )
       ).rows[0]!;
@@ -810,6 +850,10 @@ async function offerDraftScenario(browser: Browser) {
       number: null,
       pdf_hash: null,
       snapshot_hash: null,
+      // DOC-PRODUCT-01.5: the discount is stored beside the untouched sums.
+      total_discount_kind: 'amount',
+      total_discount_value: '2440',
+      total_discount_note: 'Fictional total discount',
     });
     expect(
       (
@@ -1065,6 +1109,23 @@ async function offerDraftScenario(browser: Browser) {
       'percent',
     );
     await expect(reopenedPosition1.getByLabel('Rabatt in Euro')).toBeDisabled();
+    // DOC-PRODUCT-01.5: the reloaded draft shows the stored discount and its
+    // comment, and its saved position sums are still the same.
+    const reopenedDiscount = reopenedPositions.getByRole('group', {
+      name: 'Gesamtrabatt',
+    });
+    await expect(
+      reopenedDiscount.getByLabel('Art des Gesamtrabatts'),
+    ).toHaveValue('amount');
+    await expect(
+      reopenedDiscount.getByLabel('Gesamtrabatt in Euro'),
+    ).toHaveValue('24.40');
+    await expect(
+      reopenedDiscount.getByLabel('Anmerkung zum Gesamtrabatt (optional)'),
+    ).toHaveValue('Fictional total discount');
+    await expect(
+      editor.getByText('Gespeicherter Gesamtbetrag: 574,40 €'),
+    ).toBeVisible();
     await expect(reopenedPosition4.getByLabel('Beschreibung')).toHaveValue(
       'Fictional net product',
     );
@@ -1155,6 +1216,14 @@ async function offerDraftScenario(browser: Browser) {
     // rate, a fixed amount prints as a euro amount.
     expect(renderedHtml[0]).toContain('Rabatt 10 %');
     expect(renderedHtml[0]).toContain('Rabatt 4,50 €');
+    // DOC-PRODUCT-01.5: the paper prints the one total discount with its comment
+    // and the reduced payable amount; the position discounts stay as they were.
+    expect(renderedHtml[0]).toContain(
+      'Gesamtrabatt (Fictional total discount)',
+    );
+    expect(renderedHtml[0]).toContain('-24,40 €');
+    expect(renderedHtml[0]).toContain('Zu zahlender Betrag');
+    expect(renderedHtml[0]).toContain('550,00 €');
     expect(storedArtifactCount).toBe(0);
     expect(productWrites).toEqual([]);
     expect(await products.list()).toEqual(productSnapshot);
@@ -1451,7 +1520,20 @@ async function offerDraftScenario(browser: Browser) {
     await secondBlankPosition
       .getByRole('button', { name: /nach oben verschieben/ })
       .click();
+    const blankSaveRequest = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname ===
+          `/api/v1/documents/${blankCreated.id}/draft` &&
+        request.method() === 'PUT',
+    );
     await editor.getByRole('button', { name: 'Änderungen speichern' }).click();
+    // DOC-PRODUCT-01.5: a draft saved without a discount names all three halves
+    // as null instead of omitting them silently.
+    expect((await blankSaveRequest).postDataJSON()).toMatchObject({
+      totalDiscountKind: null,
+      totalDiscountValue: null,
+      totalDiscountNote: null,
+    });
     await expect(editor.getByRole('status')).toContainText(
       'Änderungen gespeichert.',
     );
@@ -1472,8 +1554,11 @@ async function offerDraftScenario(browser: Browser) {
           state: string;
           pdf_hash: string | null;
           snapshot_hash: string | null;
+          total_discount_kind: string | null;
+          total_discount_value: string | null;
+          total_discount_note: string | null;
         }>(
-          'SELECT template_id,contact_id,subject,intro_text,outro_text,validity_days,net_minor,tax_minor,gross_minor,version,number,state,pdf_hash,snapshot_hash FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
+          'SELECT template_id,contact_id,subject,intro_text,outro_text,validity_days,net_minor,tax_minor,gross_minor,version,number,state,pdf_hash,snapshot_hash,total_discount_kind,total_discount_value,total_discount_note FROM documents WHERE tenant_id=$1::uuid AND id=$2::uuid',
           [tenantId, blankCreated.id],
         )
       ).rows[0],
@@ -1492,6 +1577,10 @@ async function offerDraftScenario(browser: Browser) {
       state: 'draft',
       pdf_hash: null,
       snapshot_hash: null,
+      // DOC-PRODUCT-01.5: a draft without a discount stores no discount.
+      total_discount_kind: null,
+      total_discount_value: null,
+      total_discount_note: null,
     });
     expect(
       (
@@ -1621,6 +1710,8 @@ async function offerDraftScenario(browser: Browser) {
     expect(renderedHtml[1]).toContain(
       'Optionale Positionen sind nicht in der Gesamtsumme berücksichtigt.',
     );
+    // DOC-PRODUCT-01.5: without a discount the paper prints no discount block.
+    expect(renderedHtml[1]).not.toContain('Gesamtrabatt');
     expect(storedArtifactCount).toBe(0);
     expect(productWrites).toEqual([]);
     expect(templateWrites).toEqual([]);
