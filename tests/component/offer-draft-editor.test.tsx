@@ -369,8 +369,8 @@ test('a draft opens focused with editable saved positions and previews only pers
   expect(
     (
       screen.getByLabelText('Beschreibung', {
-        selector: 'input',
-      }) as HTMLInputElement
+        selector: 'textarea',
+      }) as HTMLTextAreaElement
     ).value,
   ).toBe('Fiktives Fotobox-Paket');
   expect(

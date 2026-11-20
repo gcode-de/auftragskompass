@@ -458,11 +458,13 @@ async function offerDraftScenario(browser: Browser) {
       ),
     ).toBeVisible();
     // A narrow editor can be embedded in a wide viewport.
-    const fields = position1.locator('.offer-draft-position-fields input');
+    const fields = position1.locator(
+      '.offer-draft-position-fields input, .offer-draft-position-fields textarea',
+    );
     // Since DOC-PRODUCT-01.4 the discount mode and the euro amount follow the
     // percentage field, so the keyboard walk covers every enabled control.
     const fieldControls = position1.locator(
-      '.offer-draft-position-fields input:not([disabled]), .offer-draft-position-fields select:not([disabled])',
+      '.offer-draft-position-fields input:not([disabled]), .offer-draft-position-fields select:not([disabled]), .offer-draft-position-fields textarea:not([disabled])',
     );
     const positionOptional = position1.getByRole('checkbox', {
       name: 'Optionale Position',

@@ -1376,12 +1376,13 @@ export function OfferDraftEditor({
                         <div className="offer-draft-position-fields">
                           <label className="offer-draft-position-wide-field">
                             Beschreibung
-                            <input
+                            <textarea
                               ref={(element) =>
                                 registerLineInput(line.key, element)
                               }
                               value={line.description}
                               maxLength={300}
+                              rows={2}
                               required
                               aria-invalid={
                                 !line.description.trim() ||
