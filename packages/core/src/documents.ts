@@ -116,6 +116,12 @@ type DocumentServiceLineDraft = Omit<TotalsLine, 'priceBasis'> & {
   infoText?: string;
   unit: string;
   discountBasisPoints: number;
+  /**
+   * DOC-PRODUCT-01.4: a fixed discount in minor units on the stored basis. An
+   * omitted or null amount keeps the percentage meaning above; a stored amount
+   * replaces the percentage. The line sum bounds it in `document-totals`.
+   */
+  discountAmountMinor?: number | null;
   /** A request may omit the basis; the stored line then means gross. */
   priceBasis?: PriceBasis;
 };
@@ -469,6 +475,7 @@ function assertLine(line: DocumentLineDraft, index: number): void {
       'infoText' in line ||
       'optional' in line ||
       'priceBasis' in line ||
+      'discountAmountMinor' in line ||
       typeof line.description !== 'string' ||
       !line.description.trim() ||
       line.description.includes('\0') ||
@@ -501,6 +508,10 @@ function assertLine(line: DocumentLineDraft, index: number): void {
     !Number.isSafeInteger(line.discountBasisPoints) ||
     line.discountBasisPoints < 0 ||
     line.discountBasisPoints > 10000 ||
+    (line.discountAmountMinor !== undefined &&
+      line.discountAmountMinor !== null &&
+      (!Number.isSafeInteger(line.discountAmountMinor) ||
+        line.discountAmountMinor < 0)) ||
     (line.priceBasis !== undefined &&
       line.priceBasis !== 'gross' &&
       line.priceBasis !== 'net')
@@ -516,6 +527,19 @@ function totalsLines(lines: readonly DocumentLineDraft[]): TotalsLine[] {
     if (line.kind !== 'info')
       service.push({ ...line, priceBasis: line.priceBasis ?? 'gross' });
   return service;
+}
+
+// A line whose fixed discount exceeds its own sum is a typing mistake. The core
+// answers with one refusal, so the caller sees `invalid_line` instead of a 500
+// or, worse, a silently recalculated total.
+function totalsOf(lines: readonly DocumentLineDraft[]) {
+  try {
+    return documentTotals(totalsLines(lines));
+  } catch (error) {
+    if (error instanceof DocumentTotalsError)
+      throw new DocumentError('invalid_line');
+    throw error;
+  }
 }
 
 function recipientOf(contact: {
@@ -790,6 +814,11 @@ export function documentRepository(
         unitPriceMinor: row.unitPriceMinor!,
         taxBasisPoints: row.taxBasisPoints!,
         discountBasisPoints: row.discountBasisPoints!,
+        // Absent means percentage mode: the key only exists with a stored
+        // amount, so every older response shape stays byte-identical.
+        ...(row.discountAmountMinor === null
+          ? {}
+          : { discountAmountMinor: row.discountAmountMinor }),
         // The CHECK only admits 'gross' and 'net'.
         priceBasis: row.priceBasis as PriceBasis,
       };
@@ -819,6 +848,7 @@ export function documentRepository(
                 unitPriceMinor: null,
                 taxBasisPoints: null,
                 discountBasisPoints: null,
+                discountAmountMinor: null,
               }
             : {
                 productId: line.productId ?? null,
@@ -829,6 +859,7 @@ export function documentRepository(
                 unitPriceMinor: line.unitPriceMinor,
                 taxBasisPoints: line.taxBasisPoints,
                 discountBasisPoints: line.discountBasisPoints,
+                discountAmountMinor: line.discountAmountMinor ?? null,
                 priceBasis: line.priceBasis ?? 'gross',
               }),
         })),
@@ -2109,11 +2140,12 @@ export function documentRepository(
               unitPriceMinor: position.unitPriceMinor,
               taxBasisPoints: position.taxBasisPoints,
               discountBasisPoints: position.discountBasisPoints,
+              discountAmountMinor: position.discountAmountMinor,
               priceBasis: position.priceBasis as PriceBasis,
             }));
         if (!source.length) throw new DocumentError('empty_lines');
         source.forEach(assertLine);
-        const totals = documentTotals(totalsLines(source)),
+        const totals = totalsOf(source),
           at = now();
         await tx.insert(documents).values({
           tenantId,
@@ -2703,7 +2735,7 @@ export function documentRepository(
                 await assertReference(tx, 'product', line.productId);
           // Sums are recomputed from the magnitudes that are actually printed, so
           // they cannot drift from the positions - and never become negative.
-          const totals = documentTotals(totalsLines(positions)),
+          const totals = totalsOf(positions),
             at = now();
           // The blank-document rule demands the source at insert time, so the row
           // is written as one reviewed-SQL insert. `schema.ts` stays unchanged for
@@ -2837,13 +2869,7 @@ export function documentRepository(
           for (const line of content.lines)
             if (line.kind !== 'info')
               await assertReference(tx, 'product', line.productId);
-          try {
-            totals = documentTotals(totalsLines(content.lines));
-          } catch (error) {
-            if (error instanceof DocumentTotalsError)
-              throw new DocumentError('invalid_line');
-            throw error;
-          }
+          totals = totalsOf(content.lines);
           await tx
             .delete(documentLines)
             .where(
@@ -3185,6 +3211,16 @@ export function registerDocumentRoutes(
     },
     taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
     discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+    // DOC-PRODUCT-01.4: optional on the wire - an omitted or null amount keeps
+    // the percentage meaning. `null` is named first on purpose: AJV coerces, and
+    // a `null` tested against the integer branch would arrive as a zero amount.
+    // The line sum is only known to the domain.
+    discountAmountMinor: {
+      anyOf: [
+        { type: 'null' },
+        { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      ],
+    },
     // Optional on the wire: an omitted basis keeps the old meaning, gross.
     priceBasis: { type: 'string', enum: ['gross', 'net'] },
   };
@@ -3222,7 +3258,10 @@ export function registerDocumentRoutes(
     },
     else: {
       required: Object.keys(serviceFields).filter(
-        (field) => field !== 'productId' && field !== 'priceBasis',
+        (field) =>
+          field !== 'productId' &&
+          field !== 'priceBasis' &&
+          field !== 'discountAmountMinor',
       ),
       properties: { description: { type: 'string', maxLength: 300 } },
     },
@@ -3488,6 +3527,11 @@ export function registerDocumentRoutes(
                 unitPriceMinor: { type: 'integer' },
                 taxBasisPoints: { type: 'integer' },
                 discountBasisPoints: { type: 'integer' },
+                // Additive: a percentage line answers no key at all, so every
+                // older response body stays byte-identical.
+                discountAmountMinor: {
+                  anyOf: [{ type: 'null' }, { type: 'integer' }],
+                },
                 priceBasis: { type: 'string', enum: ['gross', 'net'] },
               },
             },

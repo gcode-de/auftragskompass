@@ -318,3 +318,203 @@ describe('net price basis', () => {
     );
   });
 });
+
+// DOC-PRODUCT-01.4: a position may carry its discount as a fixed amount on the
+// stored basis instead of a percentage. NULL keeps the old percentage meaning,
+// so the two modes are told apart by the field alone - never by a zero.
+describe('amount discount', () => {
+  const gross = {
+      quantity: 1,
+      unitPriceMinor: 10000,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+      priceBasis: 'gross' as const,
+    },
+    net = { ...gross, priceBasis: 'net' as const };
+
+  function expectInvalid(operation: () => unknown) {
+    let error: unknown;
+    try {
+      operation();
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(DocumentTotalsError);
+    expect(error).toMatchObject({ reason: 'invalid' });
+  }
+
+  test('subtracts the amount from the gross sum before the tax is extracted', () => {
+    expect(lineTotals({ ...gross, discountAmountMinor: 1000 })).toEqual({
+      grossMinor: 9000,
+      netMinor: 7563,
+      taxMinor: 1437,
+    });
+  });
+
+  test('subtracts the amount from the net sum before the tax is added', () => {
+    expect(lineTotals({ ...net, discountAmountMinor: 2000 })).toEqual({
+      grossMinor: 9520,
+      netMinor: 8000,
+      taxMinor: 1520,
+    });
+  });
+
+  test('keeps a zero amount and a full amount exact', () => {
+    expect(lineTotals({ ...gross, discountAmountMinor: 0 })).toEqual(
+      lineTotals(gross),
+    );
+    expect(lineTotals({ ...gross, discountAmountMinor: 10000 })).toEqual({
+      grossMinor: 0,
+      netMinor: 0,
+      taxMinor: 0,
+    });
+  });
+
+  test('multiplies the quantity before subtracting the amount', () => {
+    expect(
+      lineTotals({
+        ...net,
+        quantity: 3,
+        taxBasisPoints: 700,
+        discountAmountMinor: 5000,
+      }),
+    ).toEqual({ grossMinor: 26750, netMinor: 25000, taxMinor: 1750 });
+    expect(
+      lineTotals({
+        ...gross,
+        quantity: 3,
+        unitPriceMinor: 333,
+        taxBasisPoints: 700,
+        discountAmountMinor: 100,
+      }),
+    ).toEqual({ grossMinor: 899, netMinor: 840, taxMinor: 59 });
+  });
+
+  test('keeps a zero rate exact in both bases', () => {
+    expect(
+      lineTotals({ ...gross, taxBasisPoints: 0, discountAmountMinor: 2000 }),
+    ).toEqual({ grossMinor: 8000, netMinor: 8000, taxMinor: 0 });
+    expect(
+      lineTotals({ ...net, taxBasisPoints: 0, discountAmountMinor: 2000 }),
+    ).toEqual({ grossMinor: 8000, netMinor: 8000, taxMinor: 0 });
+  });
+
+  test('rejects an amount above the line sum, a negative and a fractional one', () => {
+    for (const broken of [
+      { ...gross, discountAmountMinor: 10001 },
+      { ...gross, discountAmountMinor: -1 },
+      { ...gross, discountAmountMinor: 100.5 },
+      { ...gross, discountAmountMinor: Number.NaN },
+      { ...gross, discountAmountMinor: Number.MAX_SAFE_INTEGER + 1 },
+      { ...net, quantity: 3, unitPriceMinor: 1000, discountAmountMinor: 3001 },
+    ])
+      expectInvalid(() => lineTotals(broken));
+  });
+
+  test('lets the amount win over a stored rate, never combined with it', () => {
+    // The column pair is exclusive by meaning: a stored amount means the basis
+    // points are not the discount, so they cannot shave a second time.
+    expect(
+      lineTotals({
+        ...gross,
+        discountBasisPoints: 5000,
+        discountAmountMinor: 1000,
+      }),
+    ).toEqual({ grossMinor: 9000, netMinor: 7563, taxMinor: 1437 });
+  });
+
+  test('leaves the percentage mode unchanged when the amount is absent', () => {
+    const percent = lineTotals({ ...gross, discountBasisPoints: 500 });
+    expect(
+      lineTotals({
+        ...gross,
+        discountBasisPoints: 500,
+        discountAmountMinor: null,
+      }),
+    ).toEqual(percent);
+    expect(percent).toEqual({
+      grossMinor: 9500,
+      netMinor: 7983,
+      taxMinor: 1517,
+    });
+  });
+
+  test('keeps the maximum safe amount exact with a zero discount', () => {
+    expect(
+      lineTotals({
+        quantity: 1,
+        unitPriceMinor: Number.MAX_SAFE_INTEGER,
+        taxBasisPoints: 0,
+        discountBasisPoints: 0,
+        priceBasis: 'gross',
+        discountAmountMinor: 0,
+      }),
+    ).toEqual({
+      grossMinor: Number.MAX_SAFE_INTEGER,
+      netMinor: Number.MAX_SAFE_INTEGER,
+      taxMinor: 0,
+    });
+  });
+
+  test('rejects an amount line whose sum leaves the safe range', () => {
+    expectOverflow(() =>
+      lineTotals({
+        ...gross,
+        quantity: 2,
+        unitPriceMinor: Number.MAX_SAFE_INTEGER,
+        discountAmountMinor: 0,
+      }),
+    );
+  });
+
+  test('sums mixed amount and percentage lines into exact tax groups', () => {
+    const totals = documentTotals([
+      { ...gross, discountAmountMinor: 1000 },
+      {
+        quantity: 1,
+        unitPriceMinor: 20000,
+        taxBasisPoints: 700,
+        discountBasisPoints: 1000,
+        priceBasis: 'gross',
+      },
+    ]);
+    expect(totals).toEqual({
+      lines: [
+        { grossMinor: 9000, netMinor: 7563, taxMinor: 1437 },
+        { grossMinor: 18000, netMinor: 16822, taxMinor: 1178 },
+      ],
+      taxGroups: [
+        {
+          taxBasisPoints: 700,
+          netMinor: 16822,
+          taxMinor: 1178,
+          grossMinor: 18000,
+        },
+        {
+          taxBasisPoints: 1900,
+          netMinor: 7563,
+          taxMinor: 1437,
+          grossMinor: 9000,
+        },
+      ],
+      netMinor: 24385,
+      taxMinor: 2615,
+      grossMinor: 27000,
+    });
+    expect(() => assertTotalsConsistent(totals)).not.toThrow();
+  });
+
+  test('keeps an optional amount line out of the sums but not out of its own row', () => {
+    const totals = documentTotals([
+      { ...gross, discountAmountMinor: 1000 },
+      { ...gross, optional: true, discountAmountMinor: 4000 },
+    ]);
+    expect(totals.lines[1]).toEqual({
+      grossMinor: 6000,
+      netMinor: 5042,
+      taxMinor: 958,
+    });
+    expect(totals.grossMinor).toBe(9000);
+    expect(totals.taxGroups).toHaveLength(1);
+  });
+});

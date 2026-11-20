@@ -77,6 +77,11 @@ export type TemplatePositionInput = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /**
+   * A fixed discount in minor units on the stored basis. Omitted or null keeps
+   * the percentage meaning of `discountBasisPoints`.
+   */
+  discountAmountMinor?: number | null;
   /** Omitted keeps the old meaning: the stored price is a gross amount. */
   priceBasis?: PriceBasis;
 };
@@ -132,6 +137,16 @@ export const documentTemplateFields = {
         },
         taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
         discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+        // Optional on the wire: an omitted amount keeps the percentage meaning.
+        // `null` is named first on purpose: AJV coerces, so an integer branch
+        // first would turn "clear it" into a zero amount. The line sum is only
+        // known to the domain, so it judges the upper bound.
+        discountAmountMinor: {
+          anyOf: [
+            { type: 'null' },
+            { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+          ],
+        },
         priceBasis: { type: 'string', enum: ['gross', 'net'] },
       },
     },
@@ -155,6 +170,7 @@ function documentTemplateRequestHash(input: DocumentTemplateInput): string {
       unitPriceMinor: position.unitPriceMinor,
       taxBasisPoints: position.taxBasisPoints,
       discountBasisPoints: position.discountBasisPoints,
+      discountAmountMinor: position.discountAmountMinor ?? null,
       priceBasis: position.priceBasis ?? 'gross',
     })),
   };
@@ -200,6 +216,7 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
       unitPriceMinor: row.unitPriceMinor,
       taxBasisPoints: row.taxBasisPoints,
       discountBasisPoints: row.discountBasisPoints,
+      discountAmountMinor: row.discountAmountMinor,
       // The CHECK only admits 'gross' and 'net'.
       priceBasis: row.priceBasis as PriceBasis,
     }));
@@ -330,6 +347,7 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
               unitPriceMinor: position.unitPriceMinor,
               taxBasisPoints: position.taxBasisPoints,
               discountBasisPoints: position.discountBasisPoints,
+              discountAmountMinor: position.discountAmountMinor ?? null,
               priceBasis: position.priceBasis ?? 'gross',
             })),
           );

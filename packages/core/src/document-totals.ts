@@ -14,6 +14,13 @@ export type TotalsLine = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /**
+   * A fixed discount in minor units on the stored basis (quantity x unit
+   * price). NULL or absent keeps the percentage meaning of
+   * `discountBasisPoints`; a value replaces that percentage instead of adding
+   * to it.
+   */
+  discountAmountMinor?: number | null;
   priceBasis: PriceBasis;
   optional?: boolean;
 };
@@ -54,6 +61,8 @@ function safeMinor(value: bigint): number {
 }
 
 export function lineTotals(line: TotalsLine): LineTotals {
+  const discountAmount =
+    line.discountAmountMinor === undefined ? null : line.discountAmountMinor;
   if (
     (line.priceBasis !== 'gross' && line.priceBasis !== 'net') ||
     !Number.isSafeInteger(line.quantity) ||
@@ -63,18 +72,29 @@ export function lineTotals(line: TotalsLine): LineTotals {
     !Number.isSafeInteger(line.discountBasisPoints) ||
     line.discountBasisPoints < 0 ||
     line.discountBasisPoints > 10000 ||
+    (discountAmount !== null &&
+      (!Number.isSafeInteger(discountAmount) || discountAmount < 0)) ||
     !Number.isSafeInteger(line.taxBasisPoints) ||
     line.taxBasisPoints < 0 ||
     line.taxBasisPoints > 10000
   )
     throw new DocumentTotalsError('invalid');
-  // The discounted amount of the stored basis - gross or net, as stored.
-  const basisExact = roundedRatio(
-    BigInt(line.quantity) *
-      BigInt(line.unitPriceMinor) *
-      BigInt(10000 - line.discountBasisPoints),
-    10000n,
-  );
+  // The full sum of the stored basis - gross or net, as stored.
+  const sumExact = BigInt(line.quantity) * BigInt(line.unitPriceMinor);
+  let basisExact: bigint;
+  if (discountAmount === null)
+    // The discounted amount of the stored basis, rounded from the full product.
+    basisExact = roundedRatio(
+      sumExact * BigInt(10000 - line.discountBasisPoints),
+      10000n,
+    );
+  else {
+    // A fixed amount is exact by construction and can never exceed its line:
+    // a larger one is a typing mistake, not an amount to clamp to zero.
+    if (BigInt(discountAmount) > sumExact)
+      throw new DocumentTotalsError('invalid');
+    basisExact = sumExact - BigInt(discountAmount);
+  }
   if (line.priceBasis === 'net') {
     const netMinor = safeMinor(basisExact),
       taxMinor = safeMinor(

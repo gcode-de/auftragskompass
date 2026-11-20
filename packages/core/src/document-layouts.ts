@@ -250,6 +250,15 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
         return `    <tr class="position-info"><td colspan="${layout.showPositionNumbers ? 5 : 4}">${lines(line.description)}</td></tr>`;
       const computed = totals.lines[position]!;
       position += 1;
+      // A fixed amount replaces the percentage in the same span - never both,
+      // and never a new CSS rule. NULL keeps the old percentage print.
+      const discount =
+        line.discountAmountMinor === undefined ||
+        line.discountAmountMinor === null
+          ? line.discountBasisPoints
+            ? `<br><span class="position-discount">Rabatt ${percent(line.discountBasisPoints)} %</span>`
+            : ''
+          : `<br><span class="position-discount">Rabatt ${formatMinorUnits(line.discountAmountMinor)} €</span>`;
       const cells = [
         ...(layout.showPositionNumbers ? [String(position)] : []),
         (line.optional ? 'Optional: ' : '') +
@@ -257,9 +266,7 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
           (line.infoText
             ? `<br><span class="position-info-text">${lines(line.infoText)}</span>`
             : '') +
-          (line.discountBasisPoints
-            ? `<br><span class="position-discount">Rabatt ${percent(line.discountBasisPoints)} %</span>`
-            : ''),
+          discount,
         `${formatMinorUnits(line.unitPriceMinor)} €`,
         `${line.quantity} ${escapeHtml(line.unit)}`,
         `${formatMinorUnits(computed.grossMinor)} €`,
@@ -848,6 +855,7 @@ export function registerDocumentLayoutRoutes(
           'taxBasisPoints',
           'discountBasisPoints',
         ];
+        const optionalPositionFields = ['discountAmountMinor', 'priceBasis'];
         const validPosition = (position: unknown) => {
           if (
             !position ||
@@ -859,7 +867,10 @@ export function registerDocumentLayoutRoutes(
           const keys = Object.keys(row);
           return (
             keys.every(
-              (key) => positionFields.includes(key) || key === 'productId',
+              (key) =>
+                positionFields.includes(key) ||
+                optionalPositionFields.includes(key) ||
+                key === 'productId',
             ) &&
             positionFields.every((key) => key in row) &&
             typeof row.description === 'string' &&
@@ -870,6 +881,18 @@ export function registerDocumentLayoutRoutes(
               'taxBasisPoints',
               'discountBasisPoints',
             ].every((key) => typeof row[key] === 'number') &&
+            // The amount is optional; when present it is a whole, non-negative
+            // number. The line sum is the domain's bound, not the preview's.
+            (!('discountAmountMinor' in row) ||
+              row.discountAmountMinor === null ||
+              (typeof row.discountAmountMinor === 'number' &&
+                Number.isSafeInteger(row.discountAmountMinor) &&
+                row.discountAmountMinor >= 0)) &&
+            // DOC-PRODUCT-01.3: the editor sends its stored basis; absent keeps
+            // the old meaning, gross.
+            (!('priceBasis' in row) ||
+              row.priceBasis === 'gross' ||
+              row.priceBasis === 'net') &&
             (!('productId' in row) ||
               row.productId === null ||
               typeof row.productId === 'string')
