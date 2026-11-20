@@ -22,13 +22,20 @@ Abschnitt beschreibt den aktuellen Stand.
   OpenCode (`opencode-go`, diese Sitzung); DeepSeek V4.1 Flash ist als
   Coding-Subagent über `hermes -z … -m deepseek-v4.1-flash --provider
   opencode-go` tatsächlich verfügbar (Antwort mit Marker bestätigt). Keine
-  stillschweigende Ausweichlösung.
-- **Git-/CI-Stand (20.11.2026):** `origin/main` = `b47f5aa` (Merge PR #26,
-  optionale Positionen; davor PR #23 Infotexte, #24 Sortierung, #25
-  Verschiebungsansage). Die letzten Main-CI-Läufe sind grün (Quality; Images
-  siehe Workflow). Offener PR #10 (Backlog-Prüfgrenzen) bleibt unberührt.
-  Arbeitsbranch der laufenden Slices: `codex/doc-product-gross-net` direkt von
-  aktuellem main. Der lokale Hauptcheckout liegt dort; die untracked
+  stillschweigende Ausweichlösung. Ehrlicher Hinweis: ein Delegat nannte sich
+  im Freitext abweichend („Claude (Anthropic)“), während das Runtime-Feld
+  `deepseek-v4.1-flash` meldete; hermes hat keine Fallback-Provider
+  konfiguriert (`hermes fallback`: „No fallback providers configured“,
+  `fallback_model` in der Konfiguration auskommentiert), der CLI-Aufruf nennt
+  DeepSeek V4.1 Flash – Modell-Selbstauskünfte gelten damit als unzuverlässig,
+  maßgeblich sind Aufruf und Metadaten.
+- **Git-/CI-Stand (20.11.2026, nach Tagesschluss):** `origin/main` = `435fe93`
+  (Merges #27–#31 der heutigen Dokument-Slices; alle Main-CI-Läufe inkl.
+  Images grün; ein Runner-`ERR_NETWORK_CHANGED`-Flake via gezieltem Re-Run
+  verifiziert). Offener PR #10 (Backlog-Prüfgrenzen) bleibt unberührt.
+  Arbeitsbranch der laufenden Slices: kurzlebige `codex/doc-*`-Branches direkt
+  von aktuellem main, nachweislich integrierte werden lokal/remote gelöscht. Der
+  lokale Hauptcheckout liegt auf dem jeweils aktiven Branch; die untracked
   `packages/core/core`- und Python-Cache-Verzeichnisse bleiben unangetastet,
   beide Stashes bleiben erhalten.
 - **Bookitup-Zugriffslücke (20.11.2026):** Die Hermes-Browsersitzung sieht die
@@ -42,8 +49,8 @@ Abschnitt beschreibt den aktuellen Stand.
   vorhandenen B-Beobachtungen (B15/B36) und privaten Sicherungen. Für weitere
   Referenzdetails bei Bedarf nach Freigabe/Hilfe fragen. Keine echten
   Kundenaktionen.
-- **Erledigt 20.11.2026 – DOC-PRODUCT-01.3 (Brutto/Netto):** Kern (Migration 0061, exakte Minor-Unit-Arithmetik beide Grundlagen, Kopierpfade/Snapshot/Vorlagen) und UI (Select „Preisbasis“ je Position, unkonvertierte Produktübernahme, dynamisches Preisfeld-Label; product-price.ts entfernt) sind über PR #27 (`151ef23`) und #28 (`b90e8cf`) nach grüner CI (Quality+Browser; ein Runner-`ERR_NETWORK_CHANGED`-Flake per gezieltem Re-Run verifiziert) nach `main` gemergt. Abnahme siehe Implementierungsplan (RED/GREEN, Coverage 1792/1792, E2E 15/15 + auth 3/3). Main-CI zu `151ef23` inkl. Images grün; die automatische Auslieferung durch den alleinigen Updater ist vorgesehen, aber von hier nicht verifizierbar (Host 192.168.68.201 unerreichbar) – kein neuer Live-Stand behauptet. Lokal umgebungsabhängig scheitert weiterhin `test:ops`/`test_run_backup` (phase 'dump'), auf unverändertem main identisch reproduziert.
-- **Aktiver Slice:** DOC-PRODUCT-01.4 Positionsrabatt in Euro oder Prozent (Festbetrag oder Prozent je Position, exakte Minor-Unit-Arithmetik auf der gespeicherten Preisgrundlage, revisionssicher, Folgebelege/Vorlagen übertragen). Coding-Subagent: DeepSeek V4.1 Flash; MiMo besitzt Plan/Docs, Review und Integration.
+- **Erledigt 20.11.2026 – DOC-PRODUCT-01.4 (Positionsrabatt):** Kern (Migration 0062, exakter Festbetrag statt Prozent auf der gespeicherten Preisgrundlage, Druck „Rabatt <Betrag> €“) und UI („Rabattart“ Prozent/Euro je Position, null-vs-0-Semantik, Vorlagenpanel-Datenverlust behoben) sind über PR #30 (`d660a16`) und #31 (`435fe93`) nach grüner CI nach `main` gemergt. Zusätzlich die 01.3-Preview-Lücke (Vorlagen-Preview lehnte priceBasis ab) mit Regressionstest geschlossen. Abnahme siehe Implementierungsplan. Nicht verifiziert wie zuvor: tatsächliche Live-Auslieferung (Host unerreichbar).
+- **Aktiver Slice:** DOC-PRODUCT-01.5 kommentierter Gesamtrabatt (Prozent/Euro unter den Positionen mit Anmerkung, exakte Minor-Unit-Arithmetik, Steuerausweis dokumentiert, Vorschau/PDF sichtbar, Folgebelege übertragen, revisionssicher). Coding-Subagent: DeepSeek V4.1 Flash; MiMo besitzt Plan/Docs, Review und Integration.
 - **Betrieb:** der letzte verifizierte Live-Stand ist laut GOAL-Momentaufnahme
   `b47f5aa` (drei Container gesund, Backup-Prüfsummen identisch) – vor jeder
   Live-Aussage erneut prüfen; neue Slices erst nach grüner CI und geprüftem
