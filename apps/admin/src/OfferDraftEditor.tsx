@@ -9,6 +9,7 @@ import {
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
+import { DiscountField } from './DiscountField.js';
 
 type DraftValues = {
   subject: string;
@@ -1150,99 +1151,107 @@ export function OfferDraftEditor({
       {detail && (
         <>
           <form onSubmit={(event) => void save(event)}>
-            <div className="offer-draft-fields">
-              <label>
-                Betreff
-                <input
-                  ref={subjectInput}
-                  className="offer-draft-subject"
-                  value={values?.subject ?? ''}
-                  maxLength={200}
-                  disabled={!values || loading || busy}
-                  onChange={(event) => change('subject', event.target.value)}
-                />
-              </label>
-              <label>
-                Einleitung
-                <textarea
-                  value={values?.introText ?? ''}
-                  maxLength={4000}
-                  rows={4}
-                  disabled={!values || loading || busy}
-                  onChange={(event) => change('introText', event.target.value)}
-                />
-              </label>
-              <label>
-                Gültigkeit in Tagen
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  step={1}
-                  value={values?.validityDays ?? ''}
-                  disabled={!values || loading || busy}
-                  onChange={(event) =>
-                    change('validityDays', event.target.value)
-                  }
-                />
-              </label>
-              {/* RG-07: the two invoice dates. A draft keeps the input; the due
+            {/* EDITOR-LAYOUT-01: the head fields are one named group instead of
+                a loose grid, so a narrow editor stacks them without squeezing a
+                label or a value. */}
+            <fieldset className="offer-draft-group">
+              <legend>Kopfdaten und Einleitung</legend>
+              <div className="offer-draft-fields">
+                <label>
+                  Betreff
+                  <input
+                    ref={subjectInput}
+                    className="offer-draft-subject"
+                    value={values?.subject ?? ''}
+                    maxLength={200}
+                    disabled={!values || loading || busy}
+                    onChange={(event) => change('subject', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Einleitung
+                  <textarea
+                    value={values?.introText ?? ''}
+                    maxLength={4000}
+                    rows={4}
+                    disabled={!values || loading || busy}
+                    onChange={(event) =>
+                      change('introText', event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  Gültigkeit in Tagen
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    step={1}
+                    value={values?.validityDays ?? ''}
+                    disabled={!values || loading || busy}
+                    onChange={(event) =>
+                      change('validityDays', event.target.value)
+                    }
+                  />
+                </label>
+                {/* RG-07: the two invoice dates. A draft keeps the input; the due
                   day is computed by the server when the document is finalized. */}
-              {showsDates && (
-                <>
-                  <label>
-                    Leistungsdatum (optional)
-                    <input
-                      type="date"
-                      value={values?.serviceDate ?? ''}
-                      disabled={!values || loading || busy}
-                      aria-invalid={!validServiceDay}
-                      onChange={(event) =>
-                        change('serviceDate', event.target.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    Zahlungsziel in Tagen (optional)
-                    <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      step={1}
-                      value={values?.paymentTermDays ?? ''}
-                      disabled={!values || loading || busy}
-                      aria-invalid={!validPaymentTerm}
-                      onChange={(event) =>
-                        change('paymentTermDays', event.target.value)
-                      }
-                    />
-                  </label>
-                  <p className="document-hint">
-                    Das Fälligkeitsdatum wird beim Finalisieren aus
-                    Rechnungsdatum und Zahlungsziel berechnet und danach nicht
-                    mehr geändert. 0 Tage bedeutet „sofort fällig“.
-                  </p>
-                  {/* RG-07b: the account is printed as typed and is not checked
+                {showsDates && (
+                  <>
+                    <label>
+                      Leistungsdatum (optional)
+                      <input
+                        type="date"
+                        value={values?.serviceDate ?? ''}
+                        disabled={!values || loading || busy}
+                        aria-invalid={!validServiceDay}
+                        onChange={(event) =>
+                          change('serviceDate', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      Zahlungsziel in Tagen (optional)
+                      <input
+                        type="number"
+                        min={0}
+                        max={365}
+                        step={1}
+                        value={values?.paymentTermDays ?? ''}
+                        disabled={!values || loading || busy}
+                        aria-invalid={!validPaymentTerm}
+                        onChange={(event) =>
+                          change('paymentTermDays', event.target.value)
+                        }
+                      />
+                    </label>
+                    <p className="document-hint">
+                      Das Fälligkeitsdatum wird beim Finalisieren aus
+                      Rechnungsdatum und Zahlungsziel berechnet und danach nicht
+                      mehr geändert. 0 Tage bedeutet „sofort fällig“.
+                    </p>
+                    {/* RG-07b: the account is printed as typed and is not checked
                       as a bank account - this slice can show one, not judge one. */}
-                  <label>
-                    Bankverbindung (optional)
-                    <textarea
-                      value={values?.bankAccount ?? ''}
-                      maxLength={500}
-                      rows={3}
-                      disabled={!values || loading || busy}
-                      onChange={(event) =>
-                        change('bankAccount', event.target.value)
-                      }
-                    />
-                  </label>
-                  <p className="document-hint">
-                    Die Bankverbindung wird wörtlich gedruckt, Zeilenumbrüche
-                    bleiben erhalten. Sie wird nicht als IBAN geprüft.
-                  </p>
-                </>
-              )}
-            </div>
+                    <label>
+                      Bankverbindung (optional)
+                      <textarea
+                        value={values?.bankAccount ?? ''}
+                        maxLength={500}
+                        rows={3}
+                        disabled={!values || loading || busy}
+                        onChange={(event) =>
+                          change('bankAccount', event.target.value)
+                        }
+                      />
+                    </label>
+                    <p className="document-hint">
+                      Die Bankverbindung wird wörtlich gedruckt, Zeilenumbrüche
+                      bleiben erhalten. Sie wird nicht als IBAN geprüft.
+                    </p>
+                  </>
+                )}
+              </div>
+            </fieldset>
             <section
               className="offer-draft-positions"
               aria-labelledby={'offer-positions-' + documentId}
@@ -1470,65 +1479,41 @@ export function OfferDraftEditor({
                               }
                             />
                           </label>
-                          <label>
-                            Rabatt in Prozent
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={line.discount}
-                              required
-                              disabled={line.discountMode !== 'percent'}
-                              aria-invalid={percentInvalid(line.discount)}
-                              onChange={(event) =>
-                                changeLine(
-                                  line.key,
-                                  'discount',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </label>
-                          {/* DOC-PRODUCT-01.4: the mode decides which discount
-                              the core uses. The inactive field keeps its value
-                              untouched, so switching never converts anything. */}
-                          <label>
-                            Rabattart
-                            <select
-                              value={line.discountMode}
-                              onChange={(event) =>
-                                changeLine(
-                                  line.key,
-                                  'discountMode',
-                                  event.target.value === 'amount'
-                                    ? 'amount'
-                                    : 'percent',
-                                )
-                              }
-                            >
-                              <option value="percent">Prozent</option>
-                              <option value="amount">Euro</option>
-                            </select>
-                          </label>
-                          <label>
-                            Rabatt in Euro
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={line.discountAmount}
-                              disabled={line.discountMode !== 'amount'}
-                              aria-invalid={
-                                line.discountMode === 'amount' &&
-                                decimalInvalid(line.discountAmount)
-                              }
-                              onChange={(event) =>
-                                changeLine(
-                                  line.key,
-                                  'discountAmount',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </label>
+                          {/* DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: one number
+                              field with its unit switch beside it. The mode
+                              decides which stored value the core uses and the
+                              inactive one keeps its value untouched. */}
+                          <DiscountField
+                            mode={line.discountMode}
+                            value={
+                              line.discountMode === 'percent'
+                                ? line.discount
+                                : line.discountAmount
+                            }
+                            valueLabel={
+                              line.discountMode === 'percent'
+                                ? 'Rabatt in Prozent'
+                                : 'Rabatt in Euro'
+                            }
+                            valueInvalid={
+                              line.discountMode === 'percent'
+                                ? percentInvalid(line.discount)
+                                : decimalInvalid(line.discountAmount)
+                            }
+                            required
+                            onValueChange={(value) =>
+                              changeLine(
+                                line.key,
+                                line.discountMode === 'percent'
+                                  ? 'discount'
+                                  : 'discountAmount',
+                                value,
+                              )
+                            }
+                            onModeChange={(mode) =>
+                              changeLine(line.key, 'discountMode', mode)
+                            }
+                          />
                         </div>
                       )}
                       <div className="offer-draft-position-actions">
@@ -1743,90 +1728,96 @@ export function OfferDraftEditor({
                   Zum Finalisieren ist mindestens eine Position erforderlich.
                 </p>
               )}
+            </section>
+            {/* EDITOR-LAYOUT-01: the document discount is its own named group
+                with one number field and the kind switch right beside it. The
+                payable amount stays a server sum; this group only says what
+                was agreed. */}
+            <fieldset
+              className="offer-draft-group offer-draft-total-discount"
+              disabled={!values || loading || busy}
+            >
+              <legend>Gesamtrabatt</legend>
+              <div className="discount-field">
+                <label>
+                  Art des Gesamtrabatts
+                  <select
+                    value={totalDiscountKind}
+                    onChange={(event) =>
+                      changeTotalDiscountKind(
+                        event.target.value === 'percent'
+                          ? 'percent'
+                          : event.target.value === 'amount'
+                            ? 'amount'
+                            : '',
+                      )
+                    }
+                  >
+                    <option value="">Kein Gesamtrabatt</option>
+                    <option value="percent">Prozent</option>
+                    <option value="amount">Euro</option>
+                  </select>
+                </label>
+                {totalDiscountKind && (
+                  <label>
+                    {totalDiscountKind === 'percent'
+                      ? 'Gesamtrabatt in Prozent'
+                      : 'Gesamtrabatt in Euro'}
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={totalDiscountValue}
+                      required
+                      aria-invalid={
+                        totalDiscountValueInvalid || discountRejected
+                      }
+                      onChange={(event) =>
+                        change(
+                          totalDiscountKind === 'percent'
+                            ? 'totalDiscountPercent'
+                            : 'totalDiscountAmount',
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </label>
+                )}
+              </div>
+              {totalDiscountKind && (
+                <label className="offer-draft-total-discount-note">
+                  Anmerkung zum Gesamtrabatt (optional)
+                  <textarea
+                    value={totalDiscountNote}
+                    maxLength={totalDiscountNoteLimit}
+                    rows={2}
+                    aria-invalid={
+                      totalDiscountNote.length > totalDiscountNoteLimit
+                    }
+                    onChange={(event) =>
+                      change('totalDiscountNote', event.target.value)
+                    }
+                  />
+                </label>
+              )}
+              <p className="document-hint">
+                Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und
+                Steuer bleiben unverändert.
+              </p>
+            </fieldset>
+            {/* EDITOR-LAYOUT-01: the stored sum and the hints that belong to it
+                keep their own named group, separate from the positions. */}
+            <fieldset className="offer-draft-group">
+              <legend>Summen und Hinweise</legend>
+              <p className="offer-draft-total">
+                Gespeicherter Gesamtbetrag:{' '}
+                {exactMinorUnits(detail.grossMinor) ?? '—'} €
+              </p>
               {hasOptionalLines && (
                 <p className="document-hint">
                   Der Gesamtbetrag wird ohne optionale Positionen berechnet.
                 </p>
               )}
-              {/* DOC-PRODUCT-01.5: one discount for the whole document, below the
-                  positions it must not touch. The payable amount stays a server
-                  sum; this group only says what was agreed. */}
-              <fieldset
-                className="offer-draft-position offer-draft-total-discount"
-                disabled={!values || loading || busy}
-              >
-                <legend>Gesamtrabatt</legend>
-                <div className="offer-draft-fields">
-                  <label>
-                    Art des Gesamtrabatts
-                    <select
-                      value={totalDiscountKind}
-                      onChange={(event) =>
-                        changeTotalDiscountKind(
-                          event.target.value === 'percent'
-                            ? 'percent'
-                            : event.target.value === 'amount'
-                              ? 'amount'
-                              : '',
-                        )
-                      }
-                    >
-                      <option value="">Kein Gesamtrabatt</option>
-                      <option value="percent">Prozent</option>
-                      <option value="amount">Euro</option>
-                    </select>
-                  </label>
-                  {totalDiscountKind && (
-                    <>
-                      <label>
-                        {totalDiscountKind === 'percent'
-                          ? 'Gesamtrabatt in Prozent'
-                          : 'Gesamtrabatt in Euro'}
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={totalDiscountValue}
-                          required
-                          aria-invalid={
-                            totalDiscountValueInvalid || discountRejected
-                          }
-                          onChange={(event) =>
-                            change(
-                              totalDiscountKind === 'percent'
-                                ? 'totalDiscountPercent'
-                                : 'totalDiscountAmount',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Anmerkung zum Gesamtrabatt (optional)
-                        <textarea
-                          value={totalDiscountNote}
-                          maxLength={totalDiscountNoteLimit}
-                          rows={2}
-                          aria-invalid={
-                            totalDiscountNote.length > totalDiscountNoteLimit
-                          }
-                          onChange={(event) =>
-                            change('totalDiscountNote', event.target.value)
-                          }
-                        />
-                      </label>
-                    </>
-                  )}
-                </div>
-                <p className="document-hint">
-                  Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und
-                  Steuer bleiben unverändert.
-                </p>
-              </fieldset>
-              <p className="offer-draft-total">
-                Gespeicherter Gesamtbetrag:{' '}
-                {exactMinorUnits(detail.grossMinor) ?? '—'} €
-              </p>
-            </section>
+            </fieldset>
             <label>
               Schlusstext
               <textarea

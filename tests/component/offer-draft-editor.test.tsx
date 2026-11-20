@@ -2399,9 +2399,46 @@ test('invalid catalog information does not add a partial product', async () => {
   expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
 });
 
-// DOC-PRODUCT-01.4: one discount per position. The mode decides which of the
-// two stored values reaches the core; switching never converts the other one.
-test('a position switches between percent and amount without converting either value', async () => {
+// EDITOR-LAYOUT-01: the form is read as named groups instead of one dense
+// grid, so every label keeps its room and a narrow editor can stack the fields.
+test('the editor names its field groups with legends and keeps the sum apart', async () => {
+  setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const head = screen.getByRole('group', { name: 'Kopfdaten und Einleitung' });
+  for (const label of ['Betreff', 'Einleitung', 'Gültigkeit in Tagen'])
+    expect(within(head).getByLabelText(label)).toBeTruthy();
+  const positions = screen.getByRole('region', { name: 'Positionen' });
+  expect(
+    within(positions).getByRole('group', { name: 'Position 1' }),
+  ).toBeTruthy();
+  // The document discount and the stored sum are their own groups, not part of
+  // the position list.
+  expect(
+    within(positions).queryByRole('group', { name: 'Gesamtrabatt' }),
+  ).toBeNull();
+  const totalDiscount = screen.getByRole('group', { name: 'Gesamtrabatt' });
+  expect(
+    within(totalDiscount).getByLabelText('Art des Gesamtrabatts'),
+  ).toBeTruthy();
+  const summary = screen.getByRole('group', { name: 'Summen und Hinweise' });
+  expect(
+    within(summary).getByText(/Gespeicherter Gesamtbetrag: 249,00/),
+  ).toBeTruthy();
+  // The closing text stays a labelled field of its own.
+  expect(screen.getByLabelText('Schlusstext')).toHaveProperty(
+    'value',
+    'Viele Grüße',
+  );
+});
+
+// DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: one discount per position. The mode
+// decides which of the two stored values reaches the core; the mode select
+// sits beside the one number field instead of a second, disabled field.
+test('a position keeps one discount field whose mode never converts either value', async () => {
   const { calls } = setup({
     initial: {
       ...detail(),
@@ -2415,27 +2452,33 @@ test('a position switches between percent and amount without converting either v
   const position = await screen.findByRole('group', { name: 'Position 1' });
   const mode = within(position).getByLabelText('Rabattart');
   const percent = within(position).getByLabelText('Rabatt in Prozent');
-  const amount = within(position).getByLabelText('Rabatt in Euro');
   expect(mode).toHaveProperty('value', 'percent');
   expect(percent).toHaveProperty('value', '10.00');
-  expect(percent).toHaveProperty('disabled', false);
-  expect(amount).toHaveProperty('value', '0.00');
-  expect(amount).toHaveProperty('disabled', true);
+  // Exactly one number field: no second, permanently disabled euro field.
+  expect(within(position).getAllByLabelText(/^Rabatt in /)).toHaveLength(1);
+  expect(within(position).queryByLabelText('Rabatt in Euro')).toBeNull();
 
   fireEvent.change(percent, { target: { value: '12,50' } });
   fireEvent.change(mode, { target: { value: 'amount' } });
-  expect(amount).toHaveProperty('disabled', false);
-  expect(percent).toHaveProperty('disabled', true);
+  // The surviving field renames itself to the unit it now holds.
+  expect(within(position).queryByLabelText('Rabatt in Prozent')).toBeNull();
+  expect(within(position).getAllByLabelText(/^Rabatt in /)).toHaveLength(1);
+  const amount = within(position).getByLabelText('Rabatt in Euro');
   // Neither side is derived from the other: no conversion, no reset.
-  expect(percent).toHaveProperty('value', '12,50');
   expect(amount).toHaveProperty('value', '0.00');
 
   fireEvent.change(amount, { target: { value: '7,25' } });
   fireEvent.change(mode, { target: { value: 'percent' } });
-  expect(percent).toHaveProperty('value', '12,50');
-  expect(amount).toHaveProperty('value', '7,25');
+  // The percentage typed before the euro phase was kept, not dropped.
+  expect(within(position).getByLabelText('Rabatt in Prozent')).toHaveProperty(
+    'value',
+    '12,50',
+  );
   fireEvent.change(mode, { target: { value: 'amount' } });
-  expect(amount).toHaveProperty('value', '7,25');
+  expect(within(position).getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'value',
+    '7,25',
+  );
 
   fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
   await screen.findByText('Änderungen gespeichert.');
@@ -2475,19 +2518,28 @@ test('a stored fixed discount loads in euro mode while a percentage position sen
     'value',
     '25.00',
   );
-  // The stored percentage survives beside the amount it no longer drives.
+  // The stored percentage survives beside the amount it no longer drives and
+  // appears again as soon as its own mode is chosen.
+  expect(within(fixed).queryByLabelText('Rabatt in Prozent')).toBeNull();
+  fireEvent.change(within(fixed).getByLabelText('Rabattart'), {
+    target: { value: 'percent' },
+  });
   expect(within(fixed).getByLabelText('Rabatt in Prozent')).toHaveProperty(
     'value',
     '10.00',
+  );
+  fireEvent.change(within(fixed).getByLabelText('Rabattart'), {
+    target: { value: 'amount' },
+  });
+  expect(within(fixed).getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'value',
+    '25.00',
   );
   expect(within(percentage).getByLabelText('Rabattart')).toHaveProperty(
     'value',
     'percent',
   );
-  expect(within(percentage).getByLabelText('Rabatt in Euro')).toHaveProperty(
-    'disabled',
-    true,
-  );
+  expect(within(percentage).queryByLabelText('Rabatt in Euro')).toBeNull();
 
   fireEvent.change(screen.getByLabelText('Betreff'), {
     target: { value: 'Fiktives Angebot mit Festbetrag' },
@@ -2648,6 +2700,49 @@ test('a percent total discount sends basis points and its note, euro sends the e
     totalDiscountKind: 'amount',
     totalDiscountValue: 2500,
     totalDiscountNote: null,
+  });
+});
+
+// EDITOR-LAYOUT-01: the kind and its one number field form a single block; a
+// kind switch keeps both typed values instead of resetting the other one.
+test('the total discount keeps its percentage and its amount across kind switches', async () => {
+  const { calls } = setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const group = screen.getByRole('group', { name: 'Gesamtrabatt' });
+  const kind = within(group).getByLabelText('Art des Gesamtrabatts');
+  fireEvent.change(kind, { target: { value: 'percent' } });
+  fireEvent.change(within(group).getByLabelText('Gesamtrabatt in Prozent'), {
+    target: { value: '12,50' },
+  });
+  fireEvent.change(kind, { target: { value: 'amount' } });
+  fireEvent.change(within(group).getByLabelText('Gesamtrabatt in Euro'), {
+    target: { value: '25' },
+  });
+  // One number field at a time, named by the kind beside it.
+  expect(within(group).queryByLabelText('Gesamtrabatt in Prozent')).toBeNull();
+  fireEvent.change(kind, { target: { value: 'percent' } });
+  expect(
+    within(group).getByLabelText('Gesamtrabatt in Prozent'),
+  ).toHaveProperty('value', '12,50');
+  expect(within(group).queryByLabelText('Gesamtrabatt in Euro')).toBeNull();
+  fireEvent.change(kind, { target: { value: 'amount' } });
+  expect(within(group).getByLabelText('Gesamtrabatt in Euro')).toHaveProperty(
+    'value',
+    '25',
+  );
+
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot mit Gesamtrabattart' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    totalDiscountKind: 'amount',
+    totalDiscountValue: 2500,
   });
 });
 

@@ -430,16 +430,17 @@ async function offerDraftScenario(browser: Browser) {
       '19.00',
     );
     await expect(position1.getByLabel('Rabatt in Prozent')).toHaveValue('0.00');
-    // DOC-PRODUCT-01.4: a stored line without an amount is a percentage line.
+    // DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: a stored line without an amount is a
+    // percentage line, so its single discount field carries the percentage.
     await expect(position1.getByLabel('Rabattart')).toHaveValue('percent');
-    await expect(position1.getByLabel('Rabatt in Euro')).toHaveValue('0.00');
-    await expect(position1.getByLabel('Rabatt in Euro')).toBeDisabled();
+    await expect(position1.getByLabel(/^Rabatt in /)).toHaveCount(1);
     await expect(position2.getByLabel('Beschreibung')).toHaveValue(
       'Fictional delivery',
     );
     // DOC-PRODUCT-01.5: a draft without a discount says so explicitly, and no
-    // amount, note or second total is shown for it.
-    const totalDiscount = positions.getByRole('group', {
+    // amount, note or second total is shown for it. Since EDITOR-LAYOUT-01 the
+    // document discount is its own group beside the position list.
+    const totalDiscount = editor.getByRole('group', {
       name: 'Gesamtrabatt',
     });
     await expect(totalDiscount.getByLabel('Art des Gesamtrabatts')).toHaveValue(
@@ -486,10 +487,18 @@ async function offerDraftScenario(browser: Browser) {
       for (const [width, maxWidth] of [
         [1440, ''],
         [1440, '22rem'],
+        [768, ''],
         [390, ''],
         [320, ''],
       ] as const) {
         await page.setViewportSize({ width, height: 900 });
+        // EDITOR-LAYOUT-01: the grouped form and the wrapping position fields
+        // never push the page sideways at any of these widths.
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+          ),
+        ).toBe(true);
         await positionList.evaluate((list, value) => {
           list.style.maxWidth = value;
         }, maxWidth);
@@ -505,14 +514,16 @@ async function offerDraftScenario(browser: Browser) {
         });
         const boxes = await fields.evaluateAll((inputs) =>
           inputs.map((input) => {
-            const { x, y, height, right, bottom } =
+            const { x, y, width, height, right, bottom } =
               input.getBoundingClientRect();
             const label = input.parentElement!;
             const fits = label.scrollWidth <= label.clientWidth + 1;
-            return { x, y, height, right, bottom, fits };
+            return { x, y, width, height, right, bottom, fits };
           }),
         );
-        expect(boxes).toHaveLength(7);
+        // EDITOR-LAYOUT-01: one discount number field instead of a percent and a
+        // euro field of which one was always disabled.
+        expect(boxes).toHaveLength(6);
         expect(boxes.every((box) => box.height >= 44 && box.fits)).toBe(true);
         expect(
           (await optionLabel.boundingBox())!.height,
@@ -540,15 +551,18 @@ async function offerDraftScenario(browser: Browser) {
         );
         const lastField = boxes.at(-1)!;
         if (width === 1440 && !maxWidth) {
+          // EDITOR-LAYOUT-01: the wide list wraps onto further rows instead of
+          // squeezing nine tracks into one line. Every input keeps the 9rem
+          // track minimum, so no label and no value is cut off.
           expect.soft(removeBox.x).toBeGreaterThanOrEqual(lastField.right);
           expect
             .soft(removeBox.y + removeBox.height)
             .toBeCloseTo(lastField.bottom);
-          expect.soft(boxes.every((box) => box.y === boxes[0]!.y)).toBe(true);
+          expect.soft(boxes.every((box) => box.width >= 128)).toBe(true);
           expect
             .soft(
               boxes.every(
-                (box, index) => !index || box.x > boxes[index - 1]!.x,
+                (box) => box.right <= groupBox.x + groupBox.width + 1,
               ),
             )
             .toBe(true);
@@ -602,8 +616,10 @@ async function offerDraftScenario(browser: Browser) {
     // discount, so every total below stays the same.
     await position2.getByLabel('Rabattart').selectOption('amount');
     await position2.getByLabel('Rabatt in Euro').fill('4,50');
-    await expect(position2.getByLabel('Rabatt in Prozent')).toBeDisabled();
-    await expect(position2.getByLabel('Rabatt in Prozent')).toHaveValue('5');
+    // EDITOR-LAYOUT-01: one number field, named by its unit. The percentage
+    // typed before stays in the form and returns with its own mode.
+    await expect(position2.getByLabel(/^Rabatt in /)).toHaveCount(1);
+    await expect(position2.getByLabel('Rabatt in Euro')).toHaveValue('4,50');
 
     let releaseCatalogFailure!: () => void;
     let signalCatalogRequest!: () => void;
@@ -1090,28 +1106,32 @@ async function offerDraftScenario(browser: Browser) {
     await expect(reopenedPosition2.getByLabel('Steuer in Prozent')).toHaveValue(
       '7.00',
     );
-    await expect(reopenedPosition2.getByLabel('Rabatt in Prozent')).toHaveValue(
-      '5.00',
-    );
-    // DOC-PRODUCT-01.4: the stored amount decides the mode after a reload; the
-    // untouched percentage is still there.
+    // DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: the stored amount decides the mode
+    // after a reload, so the one field shows the amount. The untouched
+    // percentage is still in the form and returns with its own mode.
     await expect(reopenedPosition2.getByLabel('Rabattart')).toHaveValue(
       'amount',
     );
     await expect(reopenedPosition2.getByLabel('Rabatt in Euro')).toHaveValue(
       '4.50',
     );
-    await expect(reopenedPosition2.getByLabel('Rabatt in Euro')).toBeEnabled();
-    await expect(
-      reopenedPosition2.getByLabel('Rabatt in Prozent'),
-    ).toBeDisabled();
+    await expect(reopenedPosition2.getByLabel(/^Rabatt in /)).toHaveCount(1);
+    await reopenedPosition2.getByLabel('Rabattart').selectOption('percent');
+    await expect(reopenedPosition2.getByLabel('Rabatt in Prozent')).toHaveValue(
+      '5.00',
+    );
+    await reopenedPosition2.getByLabel('Rabattart').selectOption('amount');
+    await expect(reopenedPosition2.getByLabel('Rabatt in Euro')).toHaveValue(
+      '4.50',
+    );
     await expect(reopenedPosition1.getByLabel('Rabattart')).toHaveValue(
       'percent',
     );
-    await expect(reopenedPosition1.getByLabel('Rabatt in Euro')).toBeDisabled();
+    await expect(reopenedPosition1.getByLabel(/^Rabatt in /)).toHaveCount(1);
     // DOC-PRODUCT-01.5: the reloaded draft shows the stored discount and its
-    // comment, and its saved position sums are still the same.
-    const reopenedDiscount = reopenedPositions.getByRole('group', {
+    // comment, and its saved position sums are still the same. Since
+    // EDITOR-LAYOUT-01 the discount is its own group outside the position list.
+    const reopenedDiscount = editor.getByRole('group', {
       name: 'Gesamtrabatt',
     });
     await expect(
@@ -1466,9 +1486,10 @@ async function offerDraftScenario(browser: Browser) {
       .fill('119.00');
     await blankPosition.getByLabel('Steuer in Prozent').fill('19');
     await blankPosition.getByLabel('Rabatt in Prozent').fill('0');
-    // A free position starts as a percentage position; its euro field is off.
+    // A free position starts as a percentage position, so its one discount
+    // field carries the percentage and no euro field exists.
     await expect(blankPosition.getByLabel('Rabattart')).toHaveValue('percent');
-    await expect(blankPosition.getByLabel('Rabatt in Euro')).toBeDisabled();
+    await expect(blankPosition.getByLabel(/^Rabatt in /)).toHaveCount(1);
     for (const [theme, width] of [
       ['light', 1280],
       ['dark', 320],

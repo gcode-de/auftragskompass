@@ -2466,6 +2466,50 @@ summary {
 .offer-draft-fields textarea {
   resize: vertical;
 }
+/* EDITOR-LAYOUT-01: a hint inside the field grid reads across the whole row
+   instead of being squeezed into a single field column. */
+.offer-draft-fields > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+/* A named group carries its heading in the legend and stays a quiet rule
+   between groups, not a card: no new surface and no new colour. */
+.offer-draft-group {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.35rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+.offer-draft-group:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.offer-draft-group > legend {
+  padding-inline: 0 0.4rem;
+}
+.offer-draft-group > .offer-draft-fields {
+  margin-block: 0.35rem 0.5rem;
+}
+/* EDITOR-LAYOUT-01: the amount and its unit switch read as one compact block.
+   They wrap onto two lines instead of narrowing each other below their value. */
+.discount-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem 0.65rem;
+  min-width: 0;
+}
+.discount-field > label {
+  flex: 0 1 8rem;
+  min-width: 0;
+}
+.discount-field > label + label {
+  flex: 1 1 9rem;
+}
 .offer-draft-positions {
   margin-block: 1.25rem;
   padding-block: 0.75rem;
@@ -2565,30 +2609,38 @@ summary {
   min-width: 0;
   font-variant-numeric: tabular-nums;
 }
+/* EDITOR-LAYOUT-01: two controls per row once the list has room; a wide field
+   keeps the whole row so its label and value are never squeezed. */
 @container draft-positions (min-width: 14rem) {
   .offer-draft-position-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .offer-draft-position-wide-field {
+  .offer-draft-position-wide-field,
+  .offer-draft-position-fields > .discount-field {
     grid-column: 1 / -1;
   }
 }
 @container draft-positions (min-width: 32rem) {
   .offer-draft-position-fields {
-    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .offer-draft-position-wide-field {
-    grid-column: auto;
+  /* Description, price and the discount pair keep two tracks; Menge/Einheit and
+     Steuer/Preisbasis share the third instead of everything shrinking. */
+  .offer-draft-position-wide-field,
+  .offer-draft-position-fields > .discount-field {
+    grid-column: span 2;
   }
 }
-@container draft-positions (min-width: 49rem) {
+/* DOC-PRODUCT-01.1 / EDITOR-LAYOUT-01: the wide row keeps every field at a
+   readable minimum of 9rem and wraps the rest onto further rows. Nine tracks in
+   one line could never hold nine readable labels at this container width. */
+@container draft-positions (min-width: 44rem) {
   .offer-draft-position-fields {
-    /* DOC-PRODUCT-01.4 adds the discount mode and the euro amount, so the wide
-       grid carries nine controls in one row. */
-    grid-template-columns:
-      minmax(0, 2.4fr) minmax(0, 0.8fr) minmax(0, 1fr)
-      minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr)
-      minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  }
+  .offer-draft-position-wide-field,
+  .offer-draft-position-fields > .discount-field {
+    grid-column: span 2;
   }
   .offer-draft-position-actions {
     justify-self: end;
