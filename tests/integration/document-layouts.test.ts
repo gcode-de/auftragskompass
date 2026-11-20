@@ -1284,6 +1284,32 @@ test('document template preview uses fixed fictional data and does not write bus
     expect(nonOfferPreview.statusCode).toBe(200);
     expect(rendered[4]).not.toContain('Gültig bis');
 
+    // DOC-PRODUCT-01.3 regression: the editor sends its stored basis with the
+    // position, so the preview must accept it and compute from it.
+    const netBasisPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-templates/preview',
+      cookies,
+      headers,
+      payload: {
+        ...input,
+        positions: [
+          {
+            ...input.positions[0]!,
+            quantity: 1,
+            unitPriceMinor: 10000,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+            priceBasis: 'net',
+          },
+        ],
+      },
+    });
+    expect(netBasisPreview.statusCode).toBe(200);
+    expect(rendered[5]).toContain('<td>Netto</td><td>100,00 €</td>');
+    expect(rendered[5]).toContain('<td>Umsatzsteuer 19 %</td><td>19,00 €</td>');
+    expect(rendered[5]).toContain('<td>Brutto</td><td>119,00 €</td>');
+
     const unknownToken = await app.inject({
       method: 'POST',
       url: '/api/v1/document-templates/preview',
@@ -1309,7 +1335,7 @@ test('document template preview uses fixed fictional data and does not write bus
       },
     });
     expect(invalidMoney.statusCode).toBe(400);
-    expect(rendered).toHaveLength(5);
+    expect(rendered).toHaveLength(6);
 
     const overflowTotal = await app.inject({
       method: 'POST',
@@ -1331,7 +1357,7 @@ test('document template preview uses fixed fictional data and does not write bus
     });
     expect(overflowTotal.statusCode).toBe(400);
     expect(overflowTotal.json()).toEqual({ error: 'invalid_template' });
-    expect(rendered).toHaveLength(5);
+    expect(rendered).toHaveLength(6);
 
     renderFailure = new Error('synthetic renderer detail');
     const failedPreview = await app.inject({
@@ -1344,7 +1370,7 @@ test('document template preview uses fixed fictional data and does not write bus
     expect(failedPreview.statusCode).toBe(500);
     expect(failedPreview.json()).toEqual({ error: 'preview_failed' });
     expect(failedPreview.body).not.toContain('synthetic renderer detail');
-    expect(rendered).toHaveLength(6);
+    expect(rendered).toHaveLength(7);
 
     expect(await businessCounts()).toEqual(countsBefore);
     expect(store.files.size).toBe(storageFilesBefore);

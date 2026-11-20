@@ -347,6 +347,51 @@ describe('renderDocumentHtml', () => {
       markup.slice(markup.indexOf('<style>'), markup.indexOf('</style>'));
     expect(styles(html)).toBe(styles(renderDocumentHtml(base)));
   });
+  test('prints an amount discount in place of the percentage, without a new style', () => {
+    const html = renderDocumentHtml({
+      ...base,
+      lines: [
+        {
+          ...line,
+          description: 'Fictional amount discount',
+          unit: 'Stück',
+          discountAmountMinor: 1234,
+        },
+      ],
+    });
+    // DOC-PRODUCT-01.4: the same span as the percentage, only the amount.
+    expect(html).toContain(
+      '<span class="position-discount">Rabatt 12,34 €</span>',
+    );
+    expect(html).not.toContain('Rabatt 0 %');
+    // The row prints the reduced price and the block the same reduced totals.
+    expect(html).toContain('<td>186,66 €</td>');
+    expect(html).toContain('<td>Brutto</td><td>186,66 €</td>');
+    const styles = (markup: string) =>
+      markup.slice(markup.indexOf('<style>'), markup.indexOf('</style>'));
+    expect(styles(html)).toBe(styles(renderDocumentHtml(base)));
+  });
+  test('keeps a percentage position byte-identical to the amount-free render', () => {
+    const percentLine = {
+        ...line,
+        taxBasisPoints: 700,
+        discountBasisPoints: 500,
+        description: 'Fictional percent',
+        unit: 'Stück',
+      },
+      withoutField = renderDocumentHtml({
+        ...base,
+        lines: [percentLine],
+      });
+    expect(withoutField).toContain('Rabatt 5 %');
+    expect(withoutField).not.toContain('Rabatt 0,00 €');
+    expect(
+      renderDocumentHtml({
+        ...base,
+        lines: [{ ...percentLine, discountAmountMinor: null }],
+      }),
+    ).toBe(withoutField);
+  });
   test('escapes footer text in HTML and passes through the page-number setting', () => {
     const html = renderDocumentHtml({
       ...base,

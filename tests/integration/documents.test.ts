@@ -10553,3 +10553,422 @@ test('rows written before the price basis migration stay gross', async () => {
     await upgrade.end();
   }
 });
+
+// DOC-PRODUCT-01.4: a position may store its discount as a fixed amount on the
+// stored basis. NULL keeps the percentage meaning, so every path below checks
+// the pair of columns, not only the totals.
+const amountDiscountPositions = [
+  {
+    productId: null,
+    description: 'Fictional amount discount',
+    quantity: 2,
+    unit: 'Stück',
+    unitPriceMinor: 10000,
+    taxBasisPoints: 1900,
+    discountBasisPoints: 0,
+    priceBasis: 'gross' as const,
+    discountAmountMinor: 1500,
+  },
+  {
+    productId: null,
+    description: 'Fictional percent discount',
+    quantity: 1,
+    unit: 'Pauschale',
+    unitPriceMinor: 20000,
+    taxBasisPoints: 700,
+    discountBasisPoints: 1000,
+    priceBasis: 'gross' as const,
+  },
+];
+const amountDiscountTotals = {
+  netMinor: 32368,
+  taxMinor: 4132,
+  grossMinor: 36500,
+};
+
+async function storedDiscountAmounts(scope: string, id: string) {
+  return (
+    await pool.query<{
+      position: number;
+      discount_basis_points: number | null;
+      discount_amount_minor: string | null;
+    }>(
+      `SELECT position, discount_basis_points, discount_amount_minor::text
+         FROM document_lines WHERE tenant_id=$1 AND document_id=$2 ORDER BY position`,
+      [scope, id],
+    )
+  ).rows.map((row) => ({
+    position: row.position,
+    discountBasisPoints: row.discount_basis_points,
+    discountAmountMinor:
+      row.discount_amount_minor === null
+        ? null
+        : Number(row.discount_amount_minor),
+  }));
+}
+
+test('a template and its draft keep an amount and a percentage discount apart', async () => {
+  const scope = randomUUID(),
+    context = await confirmationContext(scope),
+    templates = documentTemplateRepository(pool, scope),
+    saved = await templates.save(context.actor, {
+      kind: 'offer',
+      name: 'Fictional amount discount offer',
+      subject: 'Angebot',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+      state: 'active',
+      positions: amountDiscountPositions,
+    }),
+    template = await templates.get(saved.id);
+  expect(template!.positions.map((row) => row.discountAmountMinor)).toEqual([
+    1500,
+    null,
+  ]);
+  const draft = await context.repo.createDraft(context.actor, {
+    templateId: saved.id,
+    eventId: context.event,
+    contactId: context.contact,
+  });
+  expect(draft).toMatchObject(amountDiscountTotals);
+  expect(draft.lines[0]).toMatchObject({ discountAmountMinor: 1500 });
+  // An absent amount is the percentage mode - not a zero that prints an amount.
+  expect(draft.lines[1]).not.toHaveProperty('discountAmountMinor');
+  expect(await storedDiscountAmounts(scope, draft.id)).toEqual([
+    { position: 0, discountBasisPoints: 0, discountAmountMinor: 1500 },
+    { position: 1, discountBasisPoints: 1000, discountAmountMinor: null },
+  ]);
+  // Another tenant neither reads the template nor the draft, amount included.
+  const otherScope = randomUUID();
+  await bootstrapAccess(
+    pool,
+    otherScope,
+    'amount-discount-other@example.invalid',
+    'Synthetic other amount discount',
+    'Europe/Berlin',
+  );
+  expect(await documentTemplateRepository(pool, otherScope).get(saved.id)).toBe(
+    null,
+  );
+  expect(
+    await documentRepository(pool, otherScope, dependencies().deps).get(
+      draft.id,
+    ),
+  ).toBeNull();
+});
+
+test('every follow-up document copies the amount discount unchanged', async () => {
+  const scope = randomUUID(),
+    context = await confirmationContext(scope),
+    numbers = documentNumberRepository(pool, scope),
+    template = await documentTemplateRepository(pool, scope).save(
+      context.actor,
+      {
+        kind: 'offer',
+        name: 'Fictional amount discount chain',
+        subject: 'Angebot',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+        state: 'active',
+        positions: amountDiscountPositions,
+      },
+    );
+  for (const [kind, pattern] of [
+    ['order_confirmation', 'AB-{YYYY}-{SEQ}'],
+    ['invoice', 'RE-{YYYY}-{SEQ}'],
+  ] as const)
+    await numbers.save(context.actor, kind, {
+      pattern,
+      minLength: 4,
+      nextValue: 1,
+    });
+  const draft = await context.repo.createDraft(context.actor, {
+      templateId: template.id,
+      eventId: context.event,
+      contactId: context.contact,
+    }),
+    offer = await context.repo.finalize(context.actor, draft.id, draft.version),
+    revision = await context.repo.createOfferRevision(
+      context.actor,
+      offer.id,
+      offer.version,
+    );
+  expect(await storedDiscountAmounts(scope, revision.id)).toEqual(
+    await storedDiscountAmounts(scope, offer.id),
+  );
+  const sent = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+    accepted = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'accepted',
+      version: sent.version,
+      channel: 'email',
+    }),
+    confirmation = await context.repo.createOrderConfirmation(
+      context.actor,
+      accepted.id,
+      accepted.version,
+    ),
+    confirmationFinal = await context.repo.finalize(
+      context.actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+    invoice = await context.repo.createInvoice(
+      context.actor,
+      confirmationFinal.id,
+      confirmationFinal.version,
+    ),
+    deposit = await context.repo.createDepositInvoice(
+      context.actor,
+      confirmationFinal.id,
+      confirmationFinal.version,
+    ),
+    invoiceFinal = await context.repo.finalize(
+      context.actor,
+      invoice.id,
+      invoice.version,
+    ),
+    correction = await context.repo.createCorrection(
+      context.actor,
+      invoiceFinal.id,
+      invoiceFinal.version,
+      'credit',
+    ),
+    original = await storedDiscountAmounts(scope, offer.id);
+  expect(original).toEqual([
+    { position: 0, discountBasisPoints: 0, discountAmountMinor: 1500 },
+    { position: 1, discountBasisPoints: 1000, discountAmountMinor: null },
+  ]);
+  for (const copy of [confirmation, invoice, deposit, correction])
+    expect(await storedDiscountAmounts(scope, copy.id)).toEqual(original);
+  for (const copy of [confirmation, invoice, deposit])
+    expect(copy).toMatchObject(amountDiscountTotals);
+});
+
+test('the API accepts an omitted amount and refuses an impossible one', async () => {
+  const config = {
+    origin: site,
+    tenantId,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, tenantId, dependencies().deps);
+  const cookies = { '__Host-ak-session': 'synthetic-documents' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-documents'),
+    },
+    baseLine = {
+      description: 'Fictional amount API position',
+      quantity: 1,
+      unit: 'Stück',
+      unitPriceMinor: 10000,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    },
+    draft = await app.inject({
+      method: 'POST',
+      url: '/api/v1/documents',
+      cookies,
+      headers,
+      payload: { templateId, contactId, eventId },
+    }),
+    id = draft.json().id as string,
+    put = (lines: unknown[], version = 1) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/v1/documents/' + id + '/draft',
+        cookies,
+        headers,
+        payload: {
+          version,
+          subject: 'Synthetisches Angebot',
+          introText: '',
+          outroText: '',
+          validityDays: 14,
+          lines,
+        },
+      });
+  try {
+    const percent = await put([{ ...baseLine, discountBasisPoints: 1000 }]);
+    expect(percent.statusCode).toBe(200);
+    expect(percent.json().lines[0]).not.toHaveProperty('discountAmountMinor');
+    expect(percent.json()).toMatchObject({
+      netMinor: 7563,
+      taxMinor: 1437,
+      grossMinor: 9000,
+    });
+    const amount = await put(
+      [{ ...baseLine, discountAmountMinor: 1000 }],
+      percent.json().version,
+    );
+    expect(amount.statusCode).toBe(200);
+    expect(amount.json().lines[0]).toMatchObject({ discountAmountMinor: 1000 });
+    expect(amount.json()).toMatchObject({
+      netMinor: 7563,
+      taxMinor: 1437,
+      grossMinor: 9000,
+    });
+    for (const invalid of [
+      [{ ...baseLine, discountAmountMinor: -1 }],
+      [{ ...baseLine, discountAmountMinor: 100.5 }],
+      [{ kind: 'info', description: 'Hinweis', discountAmountMinor: 100 }],
+    ]) {
+      expect((await put(invalid, amount.json().version)).statusCode).toBe(400);
+    }
+    // The route cannot know the line sum, so the domain answers - and it must
+    // answer with a refusal, never with a silently clamped zero.
+    const overSum = await put(
+      [{ ...baseLine, discountAmountMinor: 10001 }],
+      amount.json().version,
+    );
+    expect(overSum.statusCode).toBe(400);
+    expect(overSum.json()).toEqual({ error: 'invalid_line' });
+    // An explicit null is the stored percentage mode, exactly like an absent key.
+    const cleared = await put(
+      [{ ...baseLine, discountAmountMinor: null }],
+      amount.json().version,
+    );
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().lines[0]).not.toHaveProperty('discountAmountMinor');
+    expect(cleared.json()).toMatchObject({
+      netMinor: 8403,
+      taxMinor: 1597,
+      grossMinor: 10000,
+    });
+    // The repository refuses the same amount even without the route schema.
+    await expect(
+      documentRepository(
+        pool,
+        tenantId,
+        dependencies().deps,
+      ).updateDraftContent(actorId, id, {
+        version: cleared.json().version,
+        subject: 'Synthetisches Angebot',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+        lines: [{ ...baseLine, discountAmountMinor: 10001 }],
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_line' });
+  } finally {
+    await app.close();
+  }
+});
+
+test('rows written before the discount amount migration stay percentage', async () => {
+  await pool.query('CREATE DATABASE synthetic_discount_amount_upgrade');
+  const url = new URL(container.getConnectionUri());
+  url.pathname = '/synthetic_discount_amount_upgrade';
+  const upgrade = new Pool({ connectionString: url.href });
+  try {
+    const directory = new URL(
+        '../../packages/core/migrations/',
+        import.meta.url,
+      ),
+      names = (await readdir(directory))
+        .filter((name) => name.endsWith('.sql'))
+        .sort(),
+      before = names.filter((name) => name < '0062');
+    expect(before.at(-1)).toBe('0061_document_price_basis.sql');
+    await migrate(
+      upgrade,
+      await Promise.all(
+        before.map(async (name) => ({
+          name,
+          sql: await readFile(new URL(name, directory), 'utf8'),
+        })),
+      ),
+    );
+    const upgradeTenant = randomUUID(),
+      template = randomUUID(),
+      document = randomUUID(),
+      line = randomUUID(),
+      position = randomUUID();
+    await upgrade.query(
+      'INSERT INTO tenants (id,name,timezone) VALUES ($1,$2,$3)',
+      [upgradeTenant, 'Synthetic discount amount upgrade', 'Europe/Berlin'],
+    );
+    await upgrade.query(
+      `INSERT INTO document_templates
+         (tenant_id,id,kind,name,subject,intro_text,outro_text,validity_days,state,version)
+       VALUES ($1,$2,'offer','Fictional legacy template','','','',14,'active',1)`,
+      [upgradeTenant, template],
+    );
+    await upgrade.query(
+      `INSERT INTO documents (tenant_id,id,kind,template_id,issued_at)
+       VALUES ($1,$2,'offer',$3,$4)`,
+      [upgradeTenant, document, template, now],
+    );
+    await upgrade.query(
+      `INSERT INTO document_lines
+         (tenant_id,document_id,id,position,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points)
+       VALUES ($1,$2,$3,0,'Fictional legacy line',1,'Stück',19900,1900,500)`,
+      [upgradeTenant, document, line],
+    );
+    await upgrade.query(
+      `INSERT INTO document_template_positions
+         (tenant_id,template_id,id,position,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points)
+       VALUES ($1,$2,$3,0,'Fictional legacy position',1,'Stück',19900,1900,500)`,
+      [upgradeTenant, template, position],
+    );
+    await migrate(upgrade);
+    const legacy = await upgrade.query<{
+      line_amount: string | null;
+      position_amount: string | null;
+    }>(
+      `SELECT (SELECT discount_amount_minor::text FROM document_lines WHERE id=$1) AS line_amount,
+              (SELECT discount_amount_minor::text FROM document_template_positions WHERE id=$2) AS position_amount`,
+      [line, position],
+    );
+    // Old rows keep their percentage meaning: the new column is NULL, not zero.
+    expect(legacy.rows[0]).toEqual({
+      line_amount: null,
+      position_amount: null,
+    });
+    await expect(
+      upgrade.query(
+        `UPDATE document_lines SET discount_amount_minor=-1 WHERE tenant_id=$1 AND id=$2`,
+        [upgradeTenant, line],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'document_lines_discount_amount_check',
+    });
+    await expect(
+      upgrade.query(
+        `UPDATE document_template_positions SET discount_amount_minor=-1
+          WHERE tenant_id=$1 AND id=$2`,
+        [upgradeTenant, position],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'document_template_positions_discount_amount_check',
+    });
+  } finally {
+    await upgrade.end();
+  }
+});

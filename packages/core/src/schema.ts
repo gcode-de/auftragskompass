@@ -370,6 +370,9 @@ export const documentTemplatePositions = pgTable(
     unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }).notNull(),
     taxBasisPoints: integer('tax_basis_points').notNull(),
     discountBasisPoints: integer('discount_basis_points').notNull().default(0),
+    // DOC-PRODUCT-01.4: NULL keeps the percentage meaning above; a value is a
+    // fixed discount in minor units on the stored basis.
+    discountAmountMinor: bigint('discount_amount_minor', { mode: 'number' }),
     priceBasis: text('price_basis').notNull().default('gross'),
   },
 );
@@ -393,6 +396,8 @@ export type DocumentTemplateCreateResponse = {
     unitPriceMinor: number;
     taxBasisPoints: number;
     discountBasisPoints: number;
+    /** Absent in receipts written before DOC-PRODUCT-01.4: percentage mode. */
+    discountAmountMinor?: number | null;
     priceBasis: string;
   }[];
 };
@@ -462,6 +467,8 @@ export const documentLines = pgTable('document_lines', {
   unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }),
   taxBasisPoints: integer('tax_basis_points'),
   discountBasisPoints: integer('discount_basis_points').default(0),
+  // DOC-PRODUCT-01.4: see `documentTemplatePositions`.
+  discountAmountMinor: bigint('discount_amount_minor', { mode: 'number' }),
   priceBasis: text('price_basis').notNull().default('gross'),
 });
 export const documentLayouts = pgTable('document_layouts', {
