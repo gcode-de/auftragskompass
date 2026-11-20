@@ -1640,6 +1640,57 @@ async function offerDraftScenario(browser: Browser) {
         )
       ).rows,
     ).toEqual([{ state: 'draft', number: null, template_id: null }]);
+    const revise = blankOffersAfterReload.getByRole('button', {
+      name: `Angebot ${blankFinalized.number} überarbeiten`,
+    });
+    let revisionCalls = 0;
+    await page.route(
+      '**/api/v1/documents/' + blankCreated.id + '/revision',
+      async (route) => {
+        const response = await route.fetch();
+        expect(response.status()).toBe(201);
+        revisionCalls++;
+        if (revisionCalls === 1) await route.abort();
+        else await route.fulfill({ response });
+      },
+    );
+    await revise.press('Enter');
+    await expect(editor.getByLabel('Betreff')).toHaveValue(
+      'Fictional standalone offer',
+    );
+    await expect(
+      editor
+        .getByRole('group', { name: 'Infotext' })
+        .getByRole('textbox', { name: 'Text' }),
+    ).toHaveValue(note);
+    const originalPdf = page.getByRole('link', {
+      name: `Vorgängerangebot ${blankFinalized.number} als PDF öffnen`,
+    });
+    await expect(originalPdf).toHaveAttribute(
+      'href',
+      `/api/v1/documents/${blankCreated.id}/pdf`,
+    );
+    for (const width of [320, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width + 1);
+      await page.screenshot({
+        path: test.info().outputPath(`offer-revision-${width}.png`),
+      });
+    }
+    await editor
+      .getByRole('button', { name: 'Bearbeitung schließen' })
+      .press('Enter');
+    await expect(revise).toBeFocused();
+    await revise.click();
+    await expect(editor.getByLabel('Betreff')).toHaveValue(
+      'Fictional standalone offer',
+    );
+    await editor.getByRole('button', { name: 'Bearbeitung schließen' }).click();
+    await expect(originalPdf).toHaveCount(1);
+    await expect(revise).toBeFocused();
+    expect(revisionCalls).toBe(2);
   } finally {
     await context.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

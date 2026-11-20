@@ -52,6 +52,12 @@ const draft = {
     offerStatus: 'accepted' as const,
     version: 4,
   },
+  revisionDraft = {
+    ...draft,
+    id: 'doc-revision',
+    predecessorDocumentId: acceptedOffer.id,
+    predecessorNumber: acceptedOffer.number,
+  },
   otherAcceptedOffer = {
     ...acceptedOffer,
     id: 'doc-accepted-2',
@@ -329,6 +335,7 @@ function setup(
     finalize?: () => Response;
     create?: (url: string) => Response;
     offerStatus?: () => Response;
+    revision?: () => Response;
     library?: () => Response;
     orderConfirmation?: () => Response;
     invoice?: () => Response;
@@ -356,6 +363,11 @@ function setup(
     // BKP019.b2: the one draft detail the editor reads, keyed by its own id.
     drafts: Record<string, Record<string, unknown>> = {
       'doc-1': { ...draft, ...offerWording, lines: [storedLine] },
+      [revisionDraft.id]: {
+        ...revisionDraft,
+        ...offerWording,
+        lines: [storedLine],
+      },
       'doc-ab-1': {
         ...confirmationDraft,
         ...confirmationWording,
@@ -430,6 +442,12 @@ function setup(
         });
         if (options.offerStatus) return options.offerStatus();
         return Response.json(sentOffer);
+      }
+      if (url.endsWith('/revision')) {
+        calls.push({ url, method, body: JSON.parse(String(init!.body)) });
+        return (
+          options.revision?.() ?? Response.json(revisionDraft, { status: 201 })
+        );
       }
       if (url.endsWith('/order-confirmation')) {
         calls.push({
@@ -579,6 +597,274 @@ async function openOfferCreate() {
   await screen.findByRole('dialog', { name: 'Angebot anlegen' });
   return summary;
 }
+
+test('only finalized, sent and accepted offers can open a revision', async () => {
+  const withUniqueId = (row: typeof finalized, id: string) => ({ ...row, id });
+  setup({
+    documents: [
+      { ...withUniqueId(finalized, 'doc-final'), number: 'AN-2030-0002' },
+      {
+        ...withUniqueId(sentOffer, 'doc-sent'),
+        offerStatus: 'sent',
+        number: 'AN-2030-0003',
+      },
+      acceptedOffer,
+      draft,
+      finalizedConfirmation,
+      {
+        ...withUniqueId(finalized, 'doc-withdrawn'),
+        offerStatus: 'withdrawn',
+        number: 'AN-2030-0004',
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 überarbeiten',
+  });
+  expect(screen.getAllByRole('button', { name: /überarbeiten$/ })).toHaveLength(
+    3,
+  );
+});
+
+test('an unclear revision refreshes and can retry with the same predecessor, preserving the accepted offer', async () => {
+  const revision = vi
+    .fn()
+    .mockImplementationOnce(() => {
+      throw new Error('Fiktive Antwort verloren');
+    })
+    .mockReturnValue(Response.json(revisionDraft, { status: 201 }));
+  const { calls } = setup({
+    documents: [acceptedOffer, confirmationDraft],
+    revision,
+  });
+  render(<EventDocuments {...props} />);
+  const action = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 überarbeiten',
+  });
+  fireEvent.click(action);
+  await screen.findByText(/Status der Überarbeitung ist unklar/);
+  expect(
+    calls.filter((call) => call.url.startsWith('/api/v1/documents?eventId=')),
+  ).toHaveLength(2);
+  fireEvent.click(action);
+  await screen.findByRole('region', { name: 'Angebot bearbeiten' });
+  const link = await screen.findByRole('link', {
+    name: 'Vorgängerangebot AN-2030-0001 als PDF öffnen',
+  });
+  expect(link.getAttribute('href')).toBe('/api/v1/documents/doc-2/pdf');
+  await screen.findByDisplayValue(offerWording.subject);
+  expect(calls.filter((call) => call.url.endsWith('/revision'))).toEqual([
+    {
+      url: '/api/v1/documents/doc-2/revision',
+      method: 'POST',
+      body: { version: 4 },
+    },
+    {
+      url: '/api/v1/documents/doc-2/revision',
+      method: 'POST',
+      body: { version: 4 },
+    },
+  ]);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Angebot AN-2030-0001 überarbeiten' }),
+  );
+  expect(screen.getByText('Angenommen')).toBeTruthy();
+  expect(
+    screen.getByRole('link', {
+      name: 'Vorgängerangebot AN-2030-0001 als PDF öffnen',
+    }),
+  ).toBeTruthy();
+  expect(screen.getByText('Auftragsbestätigungen')).toBeTruthy();
+});
+
+test('a legacy offer without stored details explains why a revision is unavailable', async () => {
+  setup({
+    documents: [finalized],
+    revision: () =>
+      Response.json({ error: 'missing_reference' }, { status: 422 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Angebot AN-2030-0001 überarbeiten',
+    }),
+  );
+  await screen.findByText(
+    'Für dieses Angebot fehlen gespeicherte Angaben, die für eine Überarbeitung nötig sind.',
+  );
+  expect(
+    screen.queryByRole('region', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  expect(
+    screen.getByRole('link', { name: 'Angebot AN-2030-0001 als PDF öffnen' }),
+  ).toBeTruthy();
+});
+
+test('a stale revision request refreshes the source without opening an editor', async () => {
+  const list = vi
+    .fn()
+    .mockReturnValueOnce(Response.json([sentOffer]))
+    .mockReturnValue(Response.json([acceptedOffer]));
+  const { calls } = setup({
+    documentsResponse: list,
+    revision: () => Response.json({ error: 'conflict' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Angebot AN-2030-0001 überarbeiten',
+    }),
+  );
+  await screen.findByText(
+    'Das Angebot wurde inzwischen geändert. Bitte den aktuellen Stand prüfen.',
+  );
+  await screen.findByText('Angenommen');
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(calls.filter((call) => call.url.endsWith('/revision'))).toEqual([
+    {
+      url: '/api/v1/documents/doc-2/revision',
+      method: 'POST',
+      body: { version: 3 },
+    },
+  ]);
+  expect(
+    screen.queryByRole('region', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+});
+
+test('a mismatched revision response is ignored and the linked draft is recovered from the list', async () => {
+  const list = vi
+    .fn()
+    .mockReturnValueOnce(Response.json([acceptedOffer]))
+    .mockReturnValue(Response.json([acceptedOffer, revisionDraft]));
+  const { calls } = setup({
+    documentsResponse: list,
+    revision: () =>
+      Response.json(
+        { ...revisionDraft, predecessorDocumentId: 'unrelated' },
+        { status: 201 },
+      ),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Angebot AN-2030-0001 überarbeiten',
+    }),
+  );
+  await screen.findByDisplayValue(offerWording.subject);
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(calls.filter((call) => call.url.endsWith('/revision'))).toHaveLength(
+    1,
+  );
+  expect(
+    screen.getByRole('link', {
+      name: 'Vorgängerangebot AN-2030-0001 als PDF öffnen',
+    }),
+  ).toBeTruthy();
+});
+
+test('a finalized revision replay stays in the list with its current offer status', async () => {
+  const finalRevision = {
+    ...revisionDraft,
+    number: 'AN-2030-0005',
+    state: 'final',
+    finalizedAt: finalized.finalizedAt,
+    version: 3,
+  };
+  setup({
+    documentsResponse: vi
+      .fn()
+      .mockReturnValueOnce(Response.json([acceptedOffer]))
+      .mockReturnValue(
+        Response.json([
+          acceptedOffer,
+          { ...finalRevision, offerStatus: 'sent' },
+        ]),
+      ),
+    revision: () => Response.json(finalRevision, { status: 201 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Angebot AN-2030-0001 überarbeiten',
+    }),
+  );
+  await screen.findByText('Die Überarbeitung wurde bereits finalisiert.');
+  expect(
+    screen.queryByRole('region', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  expect(
+    screen.getByRole('link', { name: 'Angebot AN-2030-0005 als PDF öffnen' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Angebot AN-2030-0005 annehmen' }),
+  ).toBeTruthy();
+});
+
+test.each(['ancestor', 'descendant'] as const)(
+  'an existing confirmation on the %s excludes the whole offer revision chain',
+  async (confirmationSource) => {
+    const middle = {
+        ...acceptedOffer,
+        id: 'doc-revision-middle',
+        number: 'AN-2030-0003',
+        predecessorDocumentId: acceptedOffer.id,
+      },
+      latest = {
+        ...acceptedOffer,
+        id: 'doc-revision-latest',
+        number: 'AN-2030-0004',
+        predecessorDocumentId: middle.id,
+      };
+    setup({
+      documents: [
+        latest,
+        middle,
+        acceptedOffer,
+        otherAcceptedOffer,
+        {
+          ...confirmationDraft,
+          sourceDocumentId:
+            confirmationSource === 'ancestor' ? acceptedOffer.id : latest.id,
+        },
+        {
+          ...confirmationDraft,
+          id: 'doc-ab-foreign',
+          eventId: 'different-event',
+          sourceDocumentId: otherAcceptedOffer.id,
+        },
+      ],
+    });
+    render(<EventDocuments {...props} />);
+    await screen.findByRole('link', {
+      name: 'Angebot AN-2030-0002 als PDF öffnen',
+    });
+    const offers = screen.getByRole('region', { name: 'Angebote' });
+    expect(
+      within(offers).getAllByRole('button', {
+        name: /Auftragsbestätigung erstellen$/,
+      }),
+    ).toEqual([
+      within(offers).getByRole('button', {
+        name: 'Angebot AN-2030-0002 Auftragsbestätigung erstellen',
+      }),
+    ]);
+    await openOfferCreate();
+    fireEvent.change(await screen.findByLabelText('Dokumentenart'), {
+      target: { value: 'order_confirmation' },
+    });
+    const source = (await screen.findByLabelText(
+      'Angenommenes Angebot',
+    )) as HTMLSelectElement;
+    expect(Array.from(source.options).map((option) => option.text)).toEqual([
+      'Angebot AN-2030-0002',
+    ]);
+  },
+);
 
 test('the document dialog offers confirmations only from eligible accepted offers', async () => {
   setup({
@@ -1658,7 +1944,7 @@ test('an existing confirmation is explained instead of retried', async () => {
   );
   expect(
     await screen.findByText(
-      'Für dieses Angebot gibt es bereits eine Auftragsbestätigung.',
+      'Für dieses Angebot oder eine andere Fassung gibt es bereits eine Auftragsbestätigung.',
     ),
   ).toBeTruthy();
   // Exactly one attempt: a duplicate is never posted a second time.

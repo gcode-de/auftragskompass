@@ -30,6 +30,8 @@ type DocumentRow = {
   offerStatus?: OfferStatus | null;
   validUntil?: string | null;
   offerExpired?: boolean;
+  predecessorDocumentId?: string | null;
+  predecessorNumber?: string | null;
   // BKP019.a: how and when the customer accepted; it outlives a withdrawal.
   acceptedAt?: string | null;
   acceptanceChannel?: AcceptanceChannel | null;
@@ -490,10 +492,36 @@ export function EventDocuments({
     documents
       .filter(
         (entry) =>
-          entry.kind === 'order_confirmation' && entry.sourceDocumentId,
+          entry.kind === 'order_confirmation' &&
+          entry.eventId === eventId &&
+          entry.sourceDocumentId,
       )
       .map((entry) => entry.sourceDocumentId!),
   );
+  const eventOfferIds = new Set(
+    documents
+      .filter((entry) => entry.kind === 'offer' && entry.eventId === eventId)
+      .map((entry) => entry.id),
+  );
+  const predecessorByOffer = new Map<string, string>();
+  const successorByOffer = new Map<string, string>();
+  for (const { id, predecessorDocumentId } of documents) {
+    if (
+      predecessorDocumentId &&
+      eventOfferIds.has(id) &&
+      eventOfferIds.has(predecessorDocumentId)
+    ) {
+      predecessorByOffer.set(id, predecessorDocumentId);
+      successorByOffer.set(predecessorDocumentId, id);
+    }
+  }
+  // The iterator visits IDs added during traversal and the set breaks cycles.
+  for (const id of existingConfirmationSources) {
+    const predecessor = predecessorByOffer.get(id);
+    const successor = successorByOffer.get(id);
+    if (predecessor) existingConfirmationSources.add(predecessor);
+    if (successor) existingConfirmationSources.add(successor);
+  }
   const confirmationSources = documents.filter(
     (entry) =>
       entry.kind === 'offer' &&
@@ -817,6 +845,102 @@ export function EventDocuments({
       else await createDepositInvoice(source.id, source.version);
     }
   }
+  async function reviseOffer(source: DocumentRow) {
+    if (mutating.current || recordRemoving || editorBusy || editorDirty) return;
+    mutating.current = true;
+    setBusy(source.id);
+    setMessage('');
+    try {
+      let revision: DocumentRow | undefined;
+      try {
+        const reply = await fetch(
+          '/api/v1/documents/' + source.id + '/revision',
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-csrf-token': csrfToken,
+            },
+            body: JSON.stringify({ version: source.version }),
+          },
+        );
+        if (
+          !reply.ok &&
+          reply.status < 500 &&
+          ![408, 429].includes(reply.status)
+        ) {
+          const result = (await reply.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          setMessage(
+            reply.status === 409
+              ? 'Das Angebot wurde inzwischen geändert. Bitte den aktuellen Stand prüfen.'
+              : result?.error === 'missing_reference'
+                ? 'Für dieses Angebot fehlen gespeicherte Angaben, die für eine Überarbeitung nötig sind.'
+                : 'Das Angebot konnte nicht überarbeitet werden. Bitte Status und Anmeldung prüfen.',
+          );
+          await load().catch(() => setReloadWarning(true));
+          return;
+        }
+        if (!reply.ok) throw new Error('revision-unconfirmed');
+        const created = (await reply.json()) as DocumentRow;
+        if (
+          typeof created?.id !== 'string' ||
+          !created.id ||
+          created.id === source.id ||
+          created.kind !== 'offer' ||
+          created.eventId !== eventId ||
+          created.contactId !== source.contactId ||
+          created.predecessorDocumentId !== source.id ||
+          created.predecessorNumber !== source.number ||
+          (created.state !== 'draft' && created.state !== 'final') ||
+          !Number.isSafeInteger(created.version) ||
+          created.version < 1 ||
+          !Number.isSafeInteger(created.grossMinor) ||
+          created.grossMinor < 0 ||
+          !Number.isFinite(Date.parse(created.issuedAt))
+        )
+          throw new Error('revision-unconfirmed');
+        const refreshed =
+          created.state === 'final' &&
+          (await load({ requiredDocumentId: created.id }).catch(() => {
+            setReloadWarning(true);
+            return undefined;
+          }));
+        if (!refreshed)
+          setDocuments((current) => [
+            { ...current.find((row) => row.id === created.id), ...created },
+            ...current.filter((row) => row.id !== created.id),
+          ]);
+        revision = created;
+      } catch {
+        // A lost reply can have committed. The list identifies the direct
+        // successor, and repeating this endpoint returns the same successor.
+        const rows = await load().catch(() => undefined);
+        revision = rows?.find(
+          (row) =>
+            row.kind === 'offer' &&
+            row.eventId === eventId &&
+            row.predecessorDocumentId === source.id,
+        );
+      }
+      if (!revision) {
+        setMessage(
+          'Der Status der Überarbeitung ist unklar. Bitte am selben Angebot erneut auf „Überarbeiten“ klicken.',
+        );
+      } else if (revision.state === 'draft') {
+        setMessage('Überarbeitung als Entwurf geöffnet.');
+        editorTrigger.current = 'revise-document-' + source.id;
+        setEditorId(revision.id);
+      } else {
+        setMessage('Die Überarbeitung wurde bereits finalisiert.');
+      }
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
+
   async function finalize(id: string, version: number) {
     if (mutating.current || editorBusy || editorDirty) return;
     mutating.current = true;
@@ -955,7 +1079,7 @@ export function EventDocuments({
         const result = (await reply.json()) as { error: string };
         setMessage(
           result.error === 'duplicate'
-            ? 'Für dieses Angebot gibt es bereits eine Auftragsbestätigung.'
+            ? 'Für dieses Angebot oder eine andere Fassung gibt es bereits eine Auftragsbestätigung.'
             : result.error === 'offer_not_accepted'
               ? 'Nur ein angenommenes Angebot lässt sich bestätigen. Bitte Liste aktualisieren.'
               : result.error === 'conflict' || result.error === 'invalid_state'
@@ -1686,6 +1810,25 @@ export function EventDocuments({
       </button>
     );
   }
+  function revisionOrigin(entry: DocumentRow) {
+    if (!entry.predecessorDocumentId || !entry.predecessorNumber) return null;
+    return (
+      <p className="document-meta">
+        Überarbeitung von{' '}
+        <a
+          href={'/api/v1/documents/' + entry.predecessorDocumentId + '/pdf'}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={
+            'Vorgängerangebot ' + entry.predecessorNumber + ' als PDF öffnen'
+          }
+        >
+          {entry.predecessorNumber}
+        </a>
+      </p>
+    );
+  }
+
   function rows(entries: DocumentRow[]) {
     return (
       <ul className="document-list">
@@ -1753,6 +1896,7 @@ export function EventDocuments({
                   )}
                 </p>
               )}
+            {revisionOrigin(entry)}
             {/* RG-07: the two dates of an invoice family document. The due day
                 only exists once it is final - a draft names the agreed term and
                 leaves the day to the finalization. Both are shown only when
@@ -2045,6 +2189,21 @@ export function EventDocuments({
                 entry.kind === 'offer' &&
                 entry.offerStatus !== 'withdrawn' && (
                   <>
+                    <button
+                      id={'revise-document-' + entry.id}
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== '' || recordRemoving}
+                      aria-label={
+                        kindName(entry) +
+                        ' ' +
+                        (entry.number ?? '') +
+                        ' überarbeiten'
+                      }
+                      onClick={() => void reviseOffer(entry)}
+                    >
+                      Überarbeiten
+                    </button>
                     {(entry.offerStatus ?? null) === null && (
                       <button
                         type="button"
@@ -2613,6 +2772,7 @@ export function EventDocuments({
       <div className="event-document-editor" ref={editorWorkspace}>
         {message && <p role="status">{message}</p>}
         {reloadWarning && <div className="reload-warning">{reloadNotice}</div>}
+        {revisionOrigin(editorEntry)}
         <OfferDraftEditor
           documentId={editorEntry.id}
           csrfToken={csrfToken}
