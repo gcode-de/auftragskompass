@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-REV-01: Angebotsfassungen
+
+Auf Branch `codex/revise-offer` entsteht die Überarbeitung finalisierter Angebote als verknüpfter neuer Entwurf. Original-PDF und Annahme bleiben erhalten; pro Fassungsfolge darf nur eine Auftragsbestätigung entstehen. Lokal und im Review geprüft; tatsächlichen GitHub- und Deploymentstand vor Nutzung erneut prüfen. Für Rechnungen bleibt der Berichtigungsweg mit dem Betreiber zu klären.
+
 ## DOC-TEXT-01: Infotextzeilen
 
 Dokumententwürfe unterstützen eigenständige Infotextzeilen ohne Preis, Steuer oder Positionsnummer. Sie bleiben beim Speichern und bei Folgebelegen erhalten; reine Infotextentwürfe können nicht finalisiert werden. Vorlagenunterstützung und die gewünschte nachträgliche Bearbeitung über nachvollziehbare Folgefassungen bleiben offen; finale Originale müssen erhalten bleiben. Aktuellen CI- und Deploymentstand stets prüfen.

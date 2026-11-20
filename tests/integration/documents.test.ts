@@ -2314,6 +2314,7 @@ const acceptanceKeys = [
 // BKP019.b: a confirmation names the offer it was copied from. The two keys
 // belong to the projection only; the unpaged list keeps its old shape.
 const confirmationKeys = ['sourceDocumentId', 'sourceNumber'];
+const revisionKeys = ['predecessorDocumentId', 'predecessorNumber'];
 // BKP019.c2: the correction axis. `correctionDirection` is this row's own
 // direction, `correctionState` and `remainingCredit` are derived for a finalized
 // source document and NULL for every other row. Three keys, deliberately pinned
@@ -3623,6 +3624,7 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
         'offerExpired',
         ...acceptanceKeys,
         ...confirmationKeys,
+        ...revisionKeys,
         ...correctionKeys,
         ...paymentKeys,
         ...settlementKeys,
@@ -3649,6 +3651,57 @@ test('the offer status route keeps auth, CSRF, projection and error contracts', 
       cookies,
     });
     expect(Object.keys(meta.json()[0]).sort()).toEqual(metadataKeys);
+    const revisionUrl = '/api/v1/documents/' + offer.id + '/revision';
+    const postRevision = (payload: object) =>
+      app.inject({
+        method: 'POST',
+        url: revisionUrl,
+        cookies,
+        headers,
+        payload,
+      });
+    expect(
+      (await app.inject({ method: 'POST', url: revisionUrl, payload: {} }))
+        .statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: revisionUrl,
+          cookies,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect((await postRevision({})).statusCode).toBe(400);
+    expect((await postRevision({ version: offer.version })).json()).toEqual({
+      error: 'conflict',
+    });
+    const revision = await postRevision({ version: offer.version + 1 });
+    expect(revision.statusCode).toBe(201);
+    expect(revision.json()).toMatchObject({
+      predecessorDocumentId: offer.id,
+      predecessorNumber: single.json().number,
+      state: 'draft',
+      number: null,
+    });
+    expect((await postRevision({ version: offer.version })).json()).toEqual(
+      revision.json(),
+    );
+    const withRevision = await app.inject({
+      url: '/api/v1/documents?include=offer',
+      cookies,
+    });
+    expect(
+      withRevision
+        .json()
+        .find((row: { id: string }) => row.id === revision.json().id),
+    ).toMatchObject({
+      predecessorDocumentId: offer.id,
+      predecessorNumber: single.json().number,
+      sourceDocumentId: null,
+    });
     // `state` stays the content axis: `sent` is still not a state value.
     expect(
       (await app.inject({ url: '/api/v1/documents?state=sent', cookies }))
@@ -4391,6 +4444,7 @@ test('the offer status route accepts the acceptance details and refuses bad ones
         'acceptanceFileState',
         'sourceDocumentId',
         'sourceNumber',
+        ...revisionKeys,
         ...correctionKeys,
         ...paymentKeys,
         ...settlementKeys,
@@ -4727,6 +4781,233 @@ test('information rows survive draft saving, rendering and follow-up documents',
     'credit',
   );
   expect(correction.lines[1]).toMatchObject(info);
+});
+
+test('a concurrent offer revision preserves the accepted original and its follow-up', async () => {
+  const context = await confirmationContext(randomUUID()),
+    { repo, actor, scope } = context,
+    draft = await confirmationDraft(context),
+    product = randomUUID(),
+    info = { kind: 'info', description: 'Fictional scope note' } as const;
+  await pool.query(
+    `INSERT INTO products (tenant_id,id,name,description,unit,price_minor,price_basis,
+         tax_basis_points,state,position,version)
+       VALUES ($1,$2,'Fictional archived product','','Stück',24900,'gross',1900,'archived',1,1)`,
+    [scope, product],
+  );
+  const saved = await repo.updateDraftContent(actor, draft.id, {
+    ...confirmationTexts,
+    version: draft.version,
+    lines: [
+      { ...confirmationLines[0]!, productId: product },
+      info,
+      confirmationLines[1]!,
+    ],
+  });
+  await expect(
+    repo.createOfferRevision(actor, saved.id, saved.version),
+  ).rejects.toMatchObject({
+    reason: 'invalid_state',
+  });
+  const original = await repo.finalize(actor, saved.id, saved.version),
+    pdf = await repo.pdf(original.id),
+    sent = await repo.changeOfferStatus(actor, original.id, {
+      version: original.version,
+      status: 'sent',
+    }),
+    accepted = await repo.changeOfferStatus(actor, original.id, {
+      version: sent.version,
+      status: 'accepted',
+      channel: 'email',
+      note: 'Fictional acceptance',
+    }),
+    followUp = await repo.createOrderConfirmation(
+      actor,
+      original.id,
+      accepted.version,
+    );
+  await expect(
+    repo.createOfferRevision(actor, original.id, original.version),
+  ).rejects.toMatchObject({
+    reason: 'conflict',
+  });
+  await expect(
+    repo.createOfferRevision(actor, followUp.id, followUp.version),
+  ).rejects.toMatchObject({
+    reason: 'invalid_kind',
+  });
+  await expect(
+    documentRepository(
+      pool,
+      otherTenantId,
+      context.run.deps,
+    ).createOfferRevision(otherActorId, original.id, accepted.version),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  const [revision, replay] = await Promise.all([
+    repo.createOfferRevision(actor, original.id, accepted.version),
+    repo.createOfferRevision(actor, original.id, accepted.version),
+  ]);
+  expect(replay.id).toBe(revision.id);
+  expect(revision).toMatchObject({
+    ...confirmationTexts,
+    kind: 'offer',
+    state: 'draft',
+    number: null,
+    finalizedAt: null,
+    snapshotHash: null,
+    pdfHash: null,
+    grossMinor: original.grossMinor,
+    predecessorDocumentId: original.id,
+    predecessorNumber: original.number,
+    eventId: context.event,
+    contactId: context.contact,
+    templateId: context.templateId,
+    version: 1,
+  });
+  expect(revision.lines).toEqual(
+    saved.lines.map((line) => ({ ...line, id: expect.any(String) })),
+  );
+  expect(revision.lines[0]!.id).not.toBe(saved.lines[0]!.id);
+  expect(
+    (await repo.list({ eventId: context.event, include: 'offer' })).find(
+      (row) => row.id === revision.id,
+    ),
+  ).toMatchObject({
+    sourceDocumentId: null,
+    predecessorDocumentId: original.id,
+    predecessorNumber: original.number,
+    offerStatus: null,
+    acceptedAt: null,
+    validUntil: null,
+  });
+  const edited = await repo.updateDraftContent(actor, revision.id, {
+    ...confirmationTexts,
+    subject: 'Fictional revised offer for {{contact}}',
+    lines: revision.lines,
+    version: revision.version,
+  });
+  const issued = await repo.finalize(actor, edited.id, edited.version);
+  expect(issued.number).toBe('AN-2030-0002');
+  expect(
+    await repo.createOfferRevision(actor, original.id, original.version),
+  ).toMatchObject({
+    id: issued.id,
+    state: 'final',
+  });
+  const next = await repo.createOfferRevision(actor, issued.id, issued.version);
+  expect(next).toMatchObject({
+    predecessorDocumentId: issued.id,
+    predecessorNumber: issued.number,
+    state: 'draft',
+  });
+  await expect(
+    pool.query(
+      'UPDATE documents SET predecessor_document_id=$1 WHERE tenant_id=$2 AND id=$3',
+      [original.id, scope, next.id],
+    ),
+  ).rejects.toMatchObject({
+    code: '23505',
+    constraint: 'documents_revision_predecessor_unique',
+  });
+  await expect(
+    pool.query(
+      'UPDATE documents SET predecessor_document_id=$1 WHERE tenant_id=$2 AND id=$3',
+      [next.id, scope, next.id],
+    ),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'documents_revision_offer_check',
+  });
+  const foreignDraft = await documentRepository(
+    pool,
+    otherTenantId,
+    context.run.deps,
+  ).createDraft(otherActorId, { templateId: otherTemplateId });
+  await expect(
+    pool.query(
+      'UPDATE documents SET predecessor_document_id=$1 WHERE tenant_id=$2 AND id=$3',
+      [foreignDraft.id, scope, next.id],
+    ),
+  ).rejects.toMatchObject({
+    code: '23503',
+    constraint: 'documents_revision_predecessor_fk',
+  });
+  const nextIssued = await repo.finalize(actor, next.id, next.version),
+    nextWithdrawn = await repo.changeOfferStatus(actor, next.id, {
+      version: nextIssued.version,
+      status: 'withdrawn',
+    });
+  await expect(
+    repo.createOfferRevision(actor, next.id, nextWithdrawn.version),
+  ).rejects.toMatchObject({
+    reason: 'invalid_state',
+  });
+  const sentRevision = await repo.changeOfferStatus(actor, issued.id, {
+      version: issued.version,
+      status: 'sent',
+    }),
+    acceptedRevision = await repo.changeOfferStatus(actor, issued.id, {
+      version: sentRevision.version,
+      status: 'accepted',
+      channel: 'email',
+    });
+  await expect(
+    repo.createOrderConfirmation(actor, issued.id, acceptedRevision.version),
+  ).rejects.toMatchObject({
+    reason: 'duplicate',
+  });
+  expect(await repo.pdf(original.id)).toEqual(pdf);
+  expect(await repo.get(original.id)).toMatchObject({
+    subject: confirmationTexts.subject,
+    number: original.number,
+    snapshotHash: original.snapshotHash,
+    pdfHash: original.pdfHash,
+    version: accepted.version,
+  });
+  expect(await repo.get(followUp.id)).toEqual(followUp);
+  expect(
+    (await repo.list({ eventId: context.event, include: 'offer' })).find(
+      (row) => row.id === original.id,
+    ),
+  ).toMatchObject({
+    offerStatus: 'accepted',
+    acceptanceChannel: 'email',
+    acceptanceNote: 'Fictional acceptance',
+  });
+});
+
+test('concurrent confirmations of two accepted revisions create only one order', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    { repo, actor } = offer,
+    revision = await repo.createOfferRevision(
+      actor,
+      offer.offerId,
+      offer.version,
+    ),
+    issued = await repo.finalize(actor, revision.id, revision.version),
+    sent = await repo.changeOfferStatus(actor, issued.id, {
+      version: issued.version,
+      status: 'sent',
+    }),
+    accepted = await repo.changeOfferStatus(actor, issued.id, {
+      version: sent.version,
+      status: 'accepted',
+      channel: 'email',
+    });
+  const results = await Promise.allSettled([
+    repo.createOrderConfirmation(actor, issued.id, accepted.version),
+    repo.createOrderConfirmation(actor, offer.offerId, offer.version),
+  ]);
+  expect(results).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ status: 'fulfilled' }),
+      {
+        status: 'rejected',
+        reason: expect.objectContaining({ reason: 'duplicate' }),
+      },
+    ]),
+  );
+  expect(await confirmationCount(offer.scope)).toBe(1);
 });
 
 test('the confirmation needs a final offer the customer accepted', async () => {
@@ -5347,6 +5628,7 @@ test('the offer projection names the source of a confirmation', async () => {
       ...acceptanceKeys,
       'sourceDocumentId',
       'sourceNumber',
+      ...revisionKeys,
       ...correctionKeys,
       ...paymentKeys,
       ...settlementKeys,
@@ -6059,6 +6341,7 @@ test('the offer projection names the source of an invoice', async () => {
       'offerExpired',
       ...acceptanceKeys,
       ...confirmationKeys,
+      ...revisionKeys,
       ...correctionKeys,
       ...paymentKeys,
       ...settlementKeys,

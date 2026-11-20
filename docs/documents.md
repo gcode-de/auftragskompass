@@ -62,6 +62,17 @@ unplausible Erfolgsantwort sperrt das direkte erneute Anlegen im UI. Zuerst
 „Angebote aktualisieren“ und den Bestand prüfen; ein Browserneustart ersetzt
 keine serverseitige Wiederholungsgarantie.
 
+### Angebotsfassungen (DOC-REV-01)
+
+`POST /api/v1/documents/:id/revision` erzeugt für ein finalisiertes, nicht
+zurückgezogenes Angebot einen verknüpften Entwurf und benötigt die aktuelle
+`version`. Wiederholungen liefern dieselbe Folgefassung. Eine neue Nummer wird
+erst beim Finalisieren vergeben; die ursprüngliche Fassung, ihr PDF, ihre
+Annahme und bestehende Folgebelege bleiben unverändert. Aus einer Fassungsfolge
+ist höchstens eine Auftragsbestätigung möglich. Sehr alte Angebote ohne
+gespeicherte Textinhalte können nicht überarbeitet werden. Migration
+`0058_offer_revisions` speichert die mandantengebundene Vorgängerbeziehung.
+
 ### Eigene Entwurfstexte (BKP016.1)
 
 Neue Dokumententwürfe kopieren Betreff, Einleitungs-/Schlusstext und

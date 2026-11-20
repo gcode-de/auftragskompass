@@ -412,6 +412,8 @@ export type DocumentOfferRow = DocumentListRow & {
   // row, including the offer itself.
   sourceDocumentId: string | null;
   sourceNumber: string | null;
+  predecessorDocumentId: string | null;
+  predecessorNumber: string | null;
   // BKP019.c2: the direction of a correction (NULL for every other kind) and the
   // state of the document it corrects. Both are projection-only: nothing here is
   // stored on the row, and `state` of a corrected invoice never moves.
@@ -731,8 +733,11 @@ export function documentRepository(
     now = dependencies.now ?? (() => new Date()),
     scope = eq(documents.tenantId, tenantId);
 
-  const { blankInvoiceRequestId, ...documentReadColumns } =
-    getTableColumns(documents);
+  const {
+    blankInvoiceRequestId,
+    predecessorDocumentId,
+    ...documentReadColumns
+  } = getTableColumns(documents);
 
   async function readLines(connection: Connection, documentId: string) {
     const rows = await database(connection)
@@ -1698,6 +1703,12 @@ export function documentRepository(
                WHERE s.tenant_id = documents.tenant_id
                  AND s.id = documents.source_document_id
             )`.as('source_number'),
+            predecessorDocumentId,
+            predecessorNumber: sql<string | null>`(
+              SELECT p.number FROM documents p
+               WHERE p.tenant_id = documents.tenant_id
+                 AND p.id = documents.predecessor_document_id
+            )`.as('predecessor_number'),
             // BKP019.c2: the direction of this correction, and - for a source -
             // the sum of its finalized credit notes. Both are read in the same
             // query; the state and the remaining credit are derived below.
@@ -2105,6 +2116,75 @@ export function documentRepository(
       });
       return (await readOne(db, id))!;
     },
+    async createOfferRevision(
+      actorId: string,
+      offerId: string,
+      expectedVersion: number,
+    ) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [offer] = await tx
+          .select()
+          .from(documents)
+          .where(and(scope, eq(documents.id, offerId)))
+          .for('update');
+        if (!offer) throw new DocumentError('not_found');
+        if (offer.kind !== 'offer') throw new DocumentError('invalid_kind');
+        const [existing] = await tx
+          .select({ id: documents.id })
+          .from(documents)
+          .where(and(scope, eq(predecessorDocumentId, offerId)));
+        // A retry opens the same revision even if the source status has moved.
+        let id = existing?.id;
+        if (!id) {
+          if (offer.state !== 'final') throw new DocumentError('invalid_state');
+          if (offer.version !== expectedVersion)
+            throw new DocumentError('conflict');
+          const { offerStatus } = await offerStateOf(tx, offerId);
+          if (offerStatus === 'withdrawn')
+            throw new DocumentError('invalid_state');
+          if (
+            !offer.contactId ||
+            offer.subject === null ||
+            offer.introText === null ||
+            offer.outroText === null ||
+            offer.validityDays === null
+          )
+            throw new DocumentError('missing_reference');
+          await assertReference(tx, 'event', offer.eventId);
+          const lines = await readLines(tx, offerId);
+          const services = lines.filter((line) => line.kind !== 'info');
+          if (!services.length) throw new DocumentError('empty_lines');
+          const totals = documentTotals(services);
+          id = randomUUID();
+          await tx.insert(documents).values({
+            tenantId,
+            id,
+            kind: 'offer',
+            templateId: offer.templateId,
+            eventId: offer.eventId,
+            contactId: offer.contactId,
+            predecessorDocumentId: offer.id,
+            issuedAt: now(),
+            subject: offer.subject,
+            introText: offer.introText,
+            outroText: offer.outroText,
+            validityDays: offer.validityDays,
+            netMinor: totals.netMinor,
+            taxMinor: totals.taxMinor,
+            grossMinor: totals.grossMinor,
+          });
+          await insertLines(tx, id, lines);
+          await appendAudit(tx, tenantId, 'document.created', actorId, id);
+        }
+        return {
+          ...(await readOne(tx, id))!,
+          predecessorDocumentId: offer.id,
+          predecessorNumber: offer.number,
+        };
+      });
+    },
     // BKP019.b: an accepted offer becomes a confirmation draft without a single
     // retyped position. The copy is its own document with its own number range;
     // the offer keeps its number, its bytes and its status untouched.
@@ -2150,6 +2230,30 @@ export function documentRepository(
             throw new DocumentError('missing_reference');
           const lines = await readLines(tx, offerId);
           if (!lines.length) throw new DocumentError('empty_lines');
+          // All revisions share one order. The tenant lock covers both
+          // directions of the chain and concurrent confirmation attempts.
+          const priorConfirmation = await tx.execute(sql`
+            WITH RECURSIVE predecessors AS (
+              SELECT id, predecessor_document_id FROM documents
+               WHERE tenant_id = ${tenantId} AND id = ${offerId}
+              UNION
+              SELECT d.id, d.predecessor_document_id FROM documents d
+                JOIN predecessors p ON p.predecessor_document_id = d.id
+               WHERE d.tenant_id = ${tenantId}
+            ), revisions AS (
+              SELECT id FROM predecessors
+              UNION
+              SELECT d.id FROM documents d
+                JOIN revisions r ON d.predecessor_document_id = r.id
+               WHERE d.tenant_id = ${tenantId}
+            )
+            SELECT 1 FROM documents d
+              JOIN revisions r ON r.id = d.source_document_id
+             WHERE d.tenant_id = ${tenantId} AND d.kind = 'order_confirmation'
+             LIMIT 1
+          `);
+          if (priorConfirmation.rows.length)
+            throw new DocumentError('duplicate');
           // Sums are recomputed from the copied gross prices, so they cannot
           // drift from the positions that are actually printed.
           const totals = documentTotals(
@@ -3137,6 +3241,10 @@ export function registerDocumentRoutes(
     sourceDocumentId: nullableUuid,
     sourceNumber: nullableText,
   };
+  const predecessorFields = {
+    predecessorDocumentId: nullableUuid,
+    predecessorNumber: nullableText,
+  };
   // BKP019.c2: the correction axis belongs to the opt-in projection only. The
   // offer-status routes keep exactly their own shape, like every older route:
   // `offerRow` does not grow, `offerListRow` does.
@@ -3683,6 +3791,7 @@ export function registerDocumentRoutes(
     required: [
       ...listRow.required,
       ...Object.keys(offerFields),
+      ...Object.keys(predecessorFields),
       ...Object.keys(correctionFields),
       ...Object.keys(paymentFields),
       ...Object.keys(settlementFields),
@@ -3692,6 +3801,7 @@ export function registerDocumentRoutes(
     properties: {
       ...listRow.properties,
       ...offerFields,
+      ...predecessorFields,
       ...correctionFields,
       ...paymentFields,
       ...settlementFields,
@@ -3773,6 +3883,42 @@ export function registerDocumentRoutes(
     async (request, reply) => {
       try {
         return await repo.list(listFiltersOf(request.query));
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/documents/:id/revision',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version: { type: 'integer', minimum: 1 } },
+        },
+        response: {
+          201: {
+            ...row,
+            required: [...row.required, ...Object.keys(predecessorFields)],
+            properties: { ...row.properties, ...predecessorFields },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return reply
+          .code(201)
+          .send(
+            await repo.createOfferRevision(
+              request.authSession!.userId,
+              request.params.id,
+              request.body.version,
+            ),
+          );
       } catch (error) {
         return failure(error, reply);
       }
