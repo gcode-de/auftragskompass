@@ -7,6 +7,12 @@ const grossProductId = '33333333-3333-4333-8333-333333333333';
 const overflowProductId = '44444444-4444-4444-8444-444444444444';
 const duplicateTemplateId = '66666666-6666-4666-8666-666666666666';
 
+// DOC-PRODUCT-01.6: every template position now also offers "Als Produkt
+// speichern", whose accessible name contains the word "Produkt". The product
+// field of a position stays the only select that the label reaches.
+const productSelect = (scope: Locator) =>
+  scope.getByLabel('Produkt').and(scope.locator('select'));
+
 const originalTemplate = {
   id: templateId,
   version: 1,
@@ -1136,7 +1142,7 @@ test('template adopts net product prices with their stored basis unchanged and k
     await stubTemplateApis(page);
   const firstPosition = await openTemplateEditor(page);
 
-  await firstPosition.getByLabel('Produkt').selectOption(netProductId);
+  await productSelect(firstPosition).selectOption(netProductId);
   // DOC-PRODUCT-01.3: the catalog price is copied with its basis, never
   // converted, and the price field names that basis.
   const netPrice = firstPosition.getByLabel('Einzelpreis (Netto) in Euro');
@@ -1154,7 +1160,7 @@ test('template adopts net product prices with their stored basis unchanged and k
 
   await page.getByRole('button', { name: 'Position hinzufügen' }).click();
   const secondPosition = page.getByRole('group', { name: 'Position 2' });
-  await secondPosition.getByLabel('Produkt').selectOption(grossProductId);
+  await productSelect(secondPosition).selectOption(grossProductId);
   await expect(
     secondPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
   ).toHaveValue('119.00');
@@ -1182,7 +1188,7 @@ test('template adopts net product prices with their stored basis unchanged and k
   // largest synthetic net price is adopted verbatim, so nothing can fail here.
   await page.getByRole('button', { name: 'Position hinzufügen' }).click();
   const overflowPosition = page.getByRole('group', { name: 'Position 4' });
-  await overflowPosition.getByLabel('Produkt').selectOption(overflowProductId);
+  await productSelect(overflowPosition).selectOption(overflowProductId);
   await expect(
     overflowPosition.getByLabel('Einzelpreis (Netto) in Euro'),
   ).toHaveValue('90071992547409.91');
@@ -1619,10 +1625,10 @@ test('empty product catalog keeps a free template position editable and saveable
 }) => {
   const { writes, unexpectedApiWrites } = await stubTemplateApis(page, []);
   const position = await openTemplateEditor(page);
-  await expect(position.getByLabel('Produkt').locator('option')).toHaveCount(1);
-  await expect(
-    position.getByLabel('Produkt').locator('option').first(),
-  ).toHaveText('Freie Position');
+  await expect(productSelect(position).locator('option')).toHaveCount(1);
+  await expect(productSelect(position).locator('option').first()).toHaveText(
+    'Freie Position',
+  );
   await position.getByLabel('Beschreibung').fill('Fiktive freie Position');
   await position.getByLabel('Einzelpreis (Brutto) in Euro').fill('12.34');
   await page.getByRole('button', { name: 'Vorlage speichern' }).click();

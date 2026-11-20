@@ -2577,6 +2577,21 @@ summary {
   color: var(--disabled-ink);
   cursor: not-allowed;
 }
+/* DOC-PRODUCT-01.6: the product action of one row keeps its own status line.
+   The line sits under the buttons and never widens the row. */
+.offer-draft-position-product {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  min-width: 0;
+}
+.offer-draft-position-product p {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: 60ch;
+  overflow-wrap: anywhere;
+}
 .offer-draft-position-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

@@ -83,6 +83,9 @@ function setup(
     body,
   ) => Response.json(savedBody(body)),
   readList?: () => Response | Promise<Response>,
+  productReply?: (
+    body: Record<string, unknown>,
+  ) => Response | Promise<Response>,
 ) {
   let currentRows: unknown[] = [template];
   const writes: {
@@ -92,7 +95,22 @@ function setup(
     headers: HeadersInit | undefined;
   }[] = [];
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
-    if (url === '/api/v1/products') return Response.json(products);
+    if (url === '/api/v1/products' && !options) return Response.json(products);
+    if (url === '/api/v1/products' && options) {
+      const body = JSON.parse(String(options.body)) as Record<string, unknown>;
+      writes.push({
+        url,
+        method: String(options.method),
+        body,
+        headers: options.headers,
+      });
+      return productReply
+        ? productReply(body)
+        : Response.json(
+            { ...body, id: 'fictional-created-product', version: 1 },
+            { status: 201 },
+          );
+    }
     if (!options) return readList ? readList() : Response.json(currentRows);
     const body = JSON.parse(String(options.body)) as Record<string, unknown>;
     writes.push({
@@ -3284,4 +3302,54 @@ test('a stored template amount loads in euro mode and percentage mode sends null
     discountBasisPoints: 500,
     discountAmountMinor: null,
   });
+});
+
+// DOC-PRODUCT-01.6: the template editor rows offer the same deliberate action.
+// Creating the product must not write the template or change its positions.
+test('a template position becomes a product without writing the template', async () => {
+  const writes = setup(undefined, undefined, (body) =>
+    Response.json(
+      { ...body, id: 'fictional-created-product', version: 1 },
+      {
+        status: 201,
+      },
+    ),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Position 1 als Produkt speichern' }),
+  );
+
+  await screen.findByText('Als Produkt gespeichert: Fictional box.');
+  expect(writes).toEqual([
+    {
+      url: '/api/v1/products',
+      method: 'POST',
+      body: {
+        name: 'Fictional box',
+        description: '',
+        unit: 'Stück',
+        priceMinor: 19900,
+        priceBasis: 'gross',
+        taxBasisPoints: 1900,
+        state: 'active',
+        position: 0,
+      },
+      headers: {
+        'content-type': 'application/json',
+        'x-csrf-token': 'fictional-csrf',
+      },
+    },
+  ]);
+  expect(
+    (screen.getByLabelText('Beschreibung') as HTMLInputElement).value,
+  ).toBe('Fictional box');
+  expect(
+    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('199.00');
 });

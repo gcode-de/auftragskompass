@@ -10,6 +10,7 @@ import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
 import { DiscountField } from './DiscountField.js';
+import { SavePositionAsProduct } from './SavePositionAsProduct.js';
 
 type DraftValues = {
   subject: string;
@@ -1572,6 +1573,24 @@ export function OfferDraftEditor({
                         >
                           {title} entfernen
                         </button>
+                        {/* DOC-PRODUCT-01.6: the deliberate product action of
+                            this row. It reads the row's values and never writes
+                            them back, so the position stays exactly as typed. */}
+                        {line.kind !== 'info' && (
+                          <SavePositionAsProduct
+                            label={title}
+                            csrfToken={csrfToken}
+                            disabled={busy || loading || isBlocked}
+                            position={{
+                              description: line.description,
+                              infoText: line.infoText,
+                              unit: line.unit,
+                              price: line.unitPrice,
+                              priceBasis: line.priceBasis,
+                              tax: line.tax,
+                            }}
+                          />
+                        )}
                       </div>
                       {line.kind !== 'info' && (
                         <label className="offer-draft-position-option">

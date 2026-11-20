@@ -588,6 +588,13 @@ async function offerDraftScenario(browser: Browser) {
     }
     await page.keyboard.press('Tab');
     await expect(removePosition).toBeFocused();
+    // DOC-PRODUCT-01.6: the product action of the row is its own tab stop.
+    await page.keyboard.press('Tab');
+    await expect(
+      position1.getByRole('button', {
+        name: 'Position 1 als Produkt speichern',
+      }),
+    ).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(positionOptional).toBeFocused();
     await page.keyboard.press('Tab');
@@ -2068,6 +2075,177 @@ async function offerDraftScenario(browser: Browser) {
     await expect(originalPdf).toHaveCount(1);
     await expect(revise).toBeFocused();
     expect(revisionCalls).toBe(2);
+
+    // DOC-PRODUCT-01.6: a position becomes a real product master record. An
+    // unclear answer is never repeated blindly: the product list is read and
+    // shown first, and only a missing product unlocks another attempt.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await revise.click();
+    await expect(editor.getByLabel('Betreff')).toHaveValue(
+      'Fictional standalone offer',
+    );
+    const productPosition = editor.getByRole('group', { name: 'Position 1' });
+    await productPosition
+      .getByLabel('Beschreibung')
+      .fill('Fictional reconciled booth product');
+    await productPosition.getByLabel('Menge').fill('2');
+    await productPosition.getByLabel('Einheit').fill('Pauschale');
+    await productPosition
+      .getByLabel('Einzelpreis (Brutto) in Euro')
+      .fill('119.00');
+    await productPosition.getByLabel('Steuer in Prozent').fill('19');
+    await productPosition.getByLabel('Rabatt in Prozent').fill('10');
+    await productPosition
+      .getByLabel('Infotext (optional)')
+      .fill('Fictional product description from the position');
+    let productInterception: 'lose' | 'drop' | 'pass' = 'lose';
+    await context.route('**/api/v1/products', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      if (productInterception === 'lose') {
+        productInterception = 'pass';
+        await route.fetch();
+        await route.abort();
+        return;
+      }
+      if (productInterception === 'drop') {
+        productInterception = 'pass';
+        await route.abort();
+        return;
+      }
+      await route.continue();
+    });
+    const saveProduct = productPosition.getByRole('button', {
+      name: 'Position 1 als Produkt speichern',
+    });
+    await saveProduct.click();
+    await expect(productPosition.getByRole('alert')).toContainText(
+      'Ausgang unklar.',
+    );
+    await expect(saveProduct).toBeDisabled();
+    await expect(
+      productPosition.getByRole('button', { name: 'Bestand prüfen' }),
+    ).toBeVisible();
+    const reconciledProduct = (await products.list()).filter(
+      (row) => row.name === 'Fictional reconciled booth product',
+    );
+    expect(reconciledProduct).toHaveLength(1);
+    expect(reconciledProduct[0]).toMatchObject({
+      unit: 'Pauschale',
+      priceMinor: 11900,
+      priceBasis: 'gross',
+      taxBasisPoints: 1900,
+      state: 'active',
+    });
+    await productPosition
+      .getByRole('button', { name: 'Bestand prüfen' })
+      .click();
+    await expect(
+      productPosition.getByText(
+        /Bereits vorhanden: Fictional reconciled booth product/,
+      ),
+    ).toBeVisible();
+    // The found product does not unlock a second, identical creation.
+    await expect(saveProduct).toBeDisabled();
+    expect(
+      (await products.list()).filter(
+        (row) => row.name === 'Fictional reconciled booth product',
+      ),
+    ).toHaveLength(1);
+    await expect(productPosition.getByLabel('Menge')).toHaveValue('2');
+    await expect(productPosition.getByLabel('Rabatt in Prozent')).toHaveValue(
+      '10',
+    );
+    await expect(productPosition.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional reconciled booth product',
+    );
+
+    // A dropped request never reached the server; after the explicit check the
+    // row may create the product again.
+    const positionGroups = editor.getByRole('group', {
+      name: /^Position \d+$/,
+    });
+    const positionCount = await positionGroups.count();
+    await editor
+      .getByRole('button', { name: 'Freie Position hinzufügen' })
+      .click();
+    await expect(positionGroups).toHaveCount(positionCount + 1);
+    const recreatedPosition = positionGroups.nth(positionCount);
+    await recreatedPosition
+      .getByLabel('Beschreibung')
+      .fill('Fictional recreated position product');
+    await recreatedPosition.getByLabel('Einheit').fill('Stück');
+    await recreatedPosition
+      .getByLabel('Einzelpreis (Brutto) in Euro')
+      .fill('95.00');
+    await recreatedPosition.getByLabel('Steuer in Prozent').fill('7');
+    productInterception = 'drop';
+    await recreatedPosition
+      .getByRole('button', { name: /als Produkt speichern$/ })
+      .click();
+    await expect(recreatedPosition.getByRole('alert')).toContainText(
+      'Ausgang unklar.',
+    );
+    expect(
+      (await products.list()).filter(
+        (row) => row.name === 'Fictional recreated position product',
+      ),
+    ).toHaveLength(0);
+    await recreatedPosition
+      .getByRole('button', { name: 'Bestand prüfen' })
+      .click();
+    await expect(
+      recreatedPosition.getByText(
+        'Kein identisches Produkt gefunden. Die Anlage kann erneut gestartet werden.',
+      ),
+    ).toBeVisible();
+    await recreatedPosition
+      .getByRole('button', { name: /als Produkt speichern$/ })
+      .click();
+    await expect(
+      recreatedPosition.getByText(
+        'Als Produkt gespeichert: Fictional recreated position product.',
+      ),
+    ).toBeVisible();
+    const recreatedProduct = (await products.list()).filter(
+      (row) => row.name === 'Fictional recreated position product',
+    );
+    expect(recreatedProduct).toHaveLength(1);
+    expect(recreatedProduct[0]).toMatchObject({
+      unit: 'Stück',
+      priceMinor: 9500,
+      priceBasis: 'gross',
+      taxBasisPoints: 700,
+      state: 'active',
+    });
+    expect(productWrites).toEqual([
+      'POST /api/v1/products',
+      'POST /api/v1/products',
+      'POST /api/v1/products',
+    ]);
+    await context.unroute('**/api/v1/products');
+    page.once('dialog', (dialog) => void dialog.accept());
+    await editor.getByRole('button', { name: 'Bearbeitung schließen' }).click();
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Einstellungen', exact: true })
+      .click();
+    await page
+      .getByRole('navigation', { name: 'Einstellungen', exact: true })
+      .getByRole('link', { name: 'Produkte', exact: true })
+      .click();
+    // The products panel loads its list once when the workspace mounts; its own
+    // refresh action reads the stock the two new rows were written to.
+    await page.getByRole('button', { name: 'Produkte aktualisieren' }).click();
+    const reconciledRow = page
+      .locator('.product-row')
+      .filter({ hasText: 'Fictional reconciled booth product' });
+    await expect(reconciledRow).toBeVisible();
+    await expect(reconciledRow).toContainText('119,00 € Brutto');
+    await expect(
+      page
+        .locator('.product-row')
+        .filter({ hasText: 'Fictional recreated position product' }),
+    ).toContainText('95,00 € Brutto');
   } finally {
     await context.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
