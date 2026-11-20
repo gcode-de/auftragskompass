@@ -147,6 +147,42 @@ describe('buildDocumentSnapshot', () => {
       }),
     ).toThrow(DocumentSnapshotError);
   });
+  // DOC-PRODUCT-01.5: the snapshot computes the one payable amount the paper
+  // prints, from the same gross the totals block shows.
+  test('prints a total discount and answers the payable amount beside the sums', () => {
+    const plain = buildDocumentSnapshot(input()),
+      discounted = buildDocumentSnapshot({
+        ...input(),
+        totalDiscount: { kind: 'percent', value: 1000, note: 'Treuerabatt' },
+      });
+    expect(plain).toMatchObject({
+      netMinor: 16723,
+      taxMinor: 3177,
+      grossMinor: 19900,
+    });
+    expect(plain.html).not.toContain('Gesamtrabatt');
+    expect(plain.payableMinor).toBeUndefined();
+    expect(discounted).toMatchObject({
+      // The stored position sums do not move; only the payable amount does.
+      netMinor: 16723,
+      taxMinor: 3177,
+      grossMinor: 19900,
+      payableMinor: 17910,
+    });
+    expect(discounted.html).toContain('Gesamtrabatt (Treuerabatt)');
+    expect(discounted.html).toContain(
+      '<tr><td>Zu zahlender Betrag</td><td>179,10 €</td></tr>',
+    );
+    expect(discounted.hash).not.toBe(plain.hash);
+  });
+  test('refuses a total discount above the gross instead of printing a zero', () => {
+    expect(() =>
+      buildDocumentSnapshot({
+        ...input(),
+        totalDiscount: { kind: 'amount', value: 19901 },
+      }),
+    ).toThrow(DocumentSnapshotError);
+  });
 });
 
 test('passes an unexpected failure through instead of hiding it', () => {

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Temporal } from '@js-temporal/polyfill';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import { documents, tenants } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
@@ -155,6 +155,22 @@ function noteOf(value: unknown): string | null {
 type ReviewedSql = {
   execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
 };
+
+// DOC-PRODUCT-01.5: what a document actually claims - its stored gross minus its
+// one comment-level discount. Written exactly once, because the payment balance,
+// the document lists and the credit guards must never derive two claims. The
+// arithmetic mirrors `applyTotalDiscount` in `document-totals.ts`: `numeric`
+// keeps the product exact and `round()` rounds half away from zero, exactly like
+// `roundedRatio`. The alias is one of the fixed identifiers below, never input.
+export function payableMinorSql(alias: 'documents' | 'c' | 'd'): SQL {
+  const column = (name: string) => sql.raw(`${alias}.${name}`);
+  return sql`(${column('gross_minor')} - CASE ${column('total_discount_kind')}
+    WHEN 'percent' THEN round(${column(
+      'gross_minor',
+    )}::numeric * ${column('total_discount_value')} / 10000)::bigint
+    WHEN 'amount' THEN ${column('total_discount_value')}
+    ELSE 0::bigint END)`;
+}
 // `document_payments` is deliberately not mirrored in `schema.ts`: like the
 // correction link of BKP019.c2, the reviewed SQL below is the one place the new
 // table and its CHECKs are named, and no other row contract changes with it.
@@ -171,14 +187,15 @@ export async function paymentBalance(
 ): Promise<PaymentBalance> {
   const result = (await reviewed(connection).execute(sql`
     SELECT d.gross_minor::text AS gross,
+           (${payableMinorSql('d')})::text AS payable,
            coalesce(d.deposit_applied_minor, 0)::text AS applied,
-           (SELECT coalesce(sum(c.gross_minor), 0)::text FROM documents c
+           (SELECT coalesce(sum(${payableMinorSql('c')}), 0)::text FROM documents c
              WHERE c.tenant_id = d.tenant_id
                AND c.source_document_id = d.id
                AND c.kind = 'correction'
                AND c.state = 'final'
                AND c.correction_direction = 'credit') AS credited,
-           (SELECT coalesce(sum(c.gross_minor), 0)::text FROM documents c
+           (SELECT coalesce(sum(${payableMinorSql('c')}), 0)::text FROM documents c
              WHERE c.tenant_id = d.tenant_id
                AND c.source_document_id = d.id
                AND c.kind = 'correction'
@@ -191,6 +208,7 @@ export async function paymentBalance(
      WHERE d.tenant_id = ${tenantId} AND d.id = ${documentId}::uuid`)) as {
     rows: {
       gross: string;
+      payable: string;
       applied: string;
       credited: string;
       debited: string;
@@ -207,8 +225,14 @@ export async function paymentBalance(
     // order, so its own claim is the printed "Zu zahlender Betrag". The
     // deduction is part of `claimMinor` - deliberately not a seventh field, so
     // the balance shape of BKP019.d stays exactly what it was.
+    // DOC-PRODUCT-01.5: the claim starts from the discounted payable, never from
+    // the stored position gross - the discount belongs to the customer as much
+    // as to the paper. `grossMinor` still answers the stored gross.
     claimMinor =
-      grossMinor + debitedMinor - creditedMinor - Number(row.applied || 0);
+      Number(row.payable) +
+      debitedMinor -
+      creditedMinor -
+      Number(row.applied || 0);
   return {
     grossMinor,
     creditedMinor,

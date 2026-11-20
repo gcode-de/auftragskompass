@@ -1,4 +1,9 @@
-import { DocumentTotalsError, documentTotals } from './document-totals.js';
+import {
+  applyTotalDiscount,
+  DocumentTotalsError,
+  documentTotals,
+  type TotalDiscount,
+} from './document-totals.js';
 import { Temporal } from '@js-temporal/polyfill';
 import {
   DocumentLayoutError,
@@ -58,6 +63,11 @@ export type SnapshotInput = {
   lines: readonly DocumentLineInput[];
   values: Parameters<typeof renderDocumentHtml>[0]['values'];
   logoDataUri?: string;
+  /**
+   * DOC-PRODUCT-01.5: the stored comment-level discount. Omitted keeps the
+   * document byte-identical to one written before this slice.
+   */
+  totalDiscount?: TotalDiscount & { note?: string | null };
 };
 
 export type DocumentSnapshot = {
@@ -67,6 +77,11 @@ export type DocumentSnapshot = {
   taxMinor: number;
   grossMinor: number;
   byteLength: number;
+  /**
+   * DOC-PRODUCT-01.5: the discounted amount the paper asks for. Absent for a
+   * document without a discount, so its old shape stays exactly as it was.
+   */
+  payableMinor?: number;
 };
 
 // Everything a printed document needs, fixed at one instant: the same input
@@ -77,28 +92,59 @@ export function buildDocumentSnapshot(input: SnapshotInput): DocumentSnapshot {
   if (!input.documentNumber.trim())
     throw new DocumentSnapshotError('missing_reference');
   if (!input.lines.length) throw new DocumentSnapshotError('empty_lines');
-  let html: string;
   try {
     assertTemplateText(
       input.template.subject,
       input.template.introText,
       input.template.outroText,
     );
-    html = renderDocumentHtml({
-      layout: input.layout,
-      documentNumber: input.documentNumber,
-      issuedAt: input.issuedAt,
-      ...(input.validUntil ? { validUntil: input.validUntil } : {}),
-      timeZone: input.timeZone,
-      recipientName: input.recipientName,
-      recipientAddress: input.recipientAddress,
-      subject: input.template.subject,
-      introText: input.template.introText,
-      outroText: input.template.outroText,
-      lines: input.lines,
-      values: input.values,
-      ...(input.logoDataUri ? { logoDataUri: input.logoDataUri } : {}),
-    });
+    const totals = documentTotals(
+        input.lines.filter((line) => line.kind !== 'info'),
+      ),
+      // DOC-PRODUCT-01.5: one discount for the whole document, resolved here so
+      // the block and the returned payable amount are the same arithmetic. The
+      // stored net/tax/gross stay the position sums.
+      discount = applyTotalDiscount(totals, input.totalDiscount ?? null),
+      html = renderDocumentHtml({
+        layout: {
+          ...input.layout,
+          ...(input.totalDiscount
+            ? {
+                totalDiscount: {
+                  kind: input.totalDiscount.kind,
+                  value: input.totalDiscount.value,
+                  ...(input.totalDiscount.note
+                    ? { note: input.totalDiscount.note }
+                    : {}),
+                  discountMinor: discount.discountMinor,
+                  payableMinor: discount.payableMinor,
+                },
+              }
+            : {}),
+        },
+        documentNumber: input.documentNumber,
+        issuedAt: input.issuedAt,
+        ...(input.validUntil ? { validUntil: input.validUntil } : {}),
+        timeZone: input.timeZone,
+        recipientName: input.recipientName,
+        recipientAddress: input.recipientAddress,
+        subject: input.template.subject,
+        introText: input.template.introText,
+        outroText: input.template.outroText,
+        lines: input.lines,
+        values: input.values,
+        ...(input.logoDataUri ? { logoDataUri: input.logoDataUri } : {}),
+      }),
+      bytes = Buffer.from(html, 'utf8');
+    return {
+      html,
+      hash: contentHash(bytes),
+      netMinor: totals.netMinor,
+      taxMinor: totals.taxMinor,
+      grossMinor: totals.grossMinor,
+      byteLength: bytes.byteLength,
+      ...(input.totalDiscount ? { payableMinor: discount.payableMinor } : {}),
+    };
   } catch (error) {
     if (
       error instanceof DocumentTemplateError ||
@@ -108,16 +154,4 @@ export function buildDocumentSnapshot(input: SnapshotInput): DocumentSnapshot {
       throw new DocumentSnapshotError('missing_reference');
     throw error;
   }
-  const totals = documentTotals(
-      input.lines.filter((line) => line.kind !== 'info'),
-    ),
-    bytes = Buffer.from(html, 'utf8');
-  return {
-    html,
-    hash: contentHash(bytes),
-    netMinor: totals.netMinor,
-    taxMinor: totals.taxMinor,
-    grossMinor: totals.grossMinor,
-    byteLength: bytes.byteLength,
-  };
 }

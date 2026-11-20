@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  applyTotalDiscount,
   assertTotalsConsistent,
   DocumentTotalsError,
   documentTotals,
@@ -516,5 +517,184 @@ describe('amount discount', () => {
     });
     expect(totals.grossMinor).toBe(9000);
     expect(totals.taxGroups).toHaveLength(1);
+  });
+});
+
+// DOC-PRODUCT-01.5: one discount for the whole document. It never touches the
+// position sums, the tax groups or the stored net/tax/gross - it only turns the
+// gross into the amount the document asks for.
+describe('total document discount', () => {
+  const totals = documentTotals([
+    {
+      quantity: 1,
+      unitPriceMinor: 10000,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+      priceBasis: 'gross',
+      discountAmountMinor: 1000,
+    },
+    {
+      quantity: 2,
+      unitPriceMinor: 5000,
+      taxBasisPoints: 700,
+      discountBasisPoints: 1000,
+      priceBasis: 'gross',
+    },
+    {
+      quantity: 1,
+      unitPriceMinor: 4000,
+      taxBasisPoints: 700,
+      discountBasisPoints: 0,
+      priceBasis: 'gross',
+      optional: true,
+    },
+  ]);
+
+  function expectInvalid(operation: () => unknown) {
+    let error: unknown;
+    try {
+      operation();
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(DocumentTotalsError);
+    expect(error).toMatchObject({ reason: 'invalid' });
+  }
+
+  test('keeps the position sums and the tax groups exactly as they were', () => {
+    // 9000 at 19 % and 9000 at 7 %; the optional 4000 stays outside the sums.
+    expect(totals).toMatchObject({
+      netMinor: 7563 + 8411,
+      taxMinor: 1437 + 589,
+      grossMinor: 18000,
+      taxGroups: [
+        {
+          taxBasisPoints: 700,
+          netMinor: 8411,
+          taxMinor: 589,
+          grossMinor: 9000,
+        },
+        {
+          taxBasisPoints: 1900,
+          netMinor: 7563,
+          taxMinor: 1437,
+          grossMinor: 9000,
+        },
+      ],
+    });
+    expect(totals.lines[2]).toEqual({
+      grossMinor: 4000,
+      netMinor: 3738,
+      taxMinor: 262,
+    });
+  });
+
+  test('subtracts a rate from the gross without redistributing the tax', () => {
+    expect(
+      applyTotalDiscount(totals, { kind: 'percent', value: 1000 }),
+    ).toEqual({ discountMinor: 1800, payableMinor: 16200 });
+    // The rate applies to the whole document, never to one position.
+    expect(
+      applyTotalDiscount(totals, { kind: 'percent', value: 10000 }),
+    ).toEqual({ discountMinor: 18000, payableMinor: 0 });
+  });
+
+  test('subtracts a fixed amount and keeps a zero and a full one exact', () => {
+    expect(applyTotalDiscount(totals, { kind: 'amount', value: 2500 })).toEqual(
+      { discountMinor: 2500, payableMinor: 15500 },
+    );
+    expect(applyTotalDiscount(totals, { kind: 'amount', value: 0 })).toEqual({
+      discountMinor: 0,
+      payableMinor: 18000,
+    });
+    expect(
+      applyTotalDiscount(totals, { kind: 'amount', value: 18000 }),
+    ).toEqual({ discountMinor: 18000, payableMinor: 0 });
+  });
+
+  test('rounds a rate half a cent up from the full integer product', () => {
+    expect(
+      applyTotalDiscount({ grossMinor: 999 }, { kind: 'percent', value: 5000 }),
+    ).toEqual({ discountMinor: 500, payableMinor: 499 });
+    expect(
+      applyTotalDiscount(
+        { grossMinor: 3335 },
+        { kind: 'percent', value: 1000 },
+      ),
+    ).toEqual({ discountMinor: 334, payableMinor: 3001 });
+    expect(
+      applyTotalDiscount(
+        { grossMinor: 3333 },
+        { kind: 'percent', value: 1000 },
+      ),
+    ).toEqual({ discountMinor: 333, payableMinor: 3000 });
+  });
+
+  test('answers no discount for an absent one instead of inventing a zero row', () => {
+    expect(applyTotalDiscount(totals, null)).toEqual({
+      discountMinor: 0,
+      payableMinor: 18000,
+    });
+    expect(applyTotalDiscount({ grossMinor: 0 }, undefined)).toEqual({
+      discountMinor: 0,
+      payableMinor: 0,
+    });
+  });
+
+  test('rejects a deduction above the gross instead of clamping it', () => {
+    expectInvalid(() =>
+      applyTotalDiscount({ grossMinor: 1000 }, { kind: 'amount', value: 1001 }),
+    );
+    expectInvalid(() =>
+      applyTotalDiscount(
+        { grossMinor: 1000 },
+        { kind: 'percent', value: 10001 },
+      ),
+    );
+  });
+
+  test('rejects a negative, fractional, unsafe or unknown discount', () => {
+    for (const broken of [
+      { kind: 'amount' as const, value: -1 },
+      { kind: 'amount' as const, value: 100.5 },
+      { kind: 'amount' as const, value: Number.NaN },
+      { kind: 'amount' as const, value: Number.MAX_SAFE_INTEGER + 1 },
+      { kind: 'percent' as const, value: 1.5 },
+      { kind: 'rate' as unknown as 'percent', value: 100 },
+    ])
+      expectInvalid(() => applyTotalDiscount({ grossMinor: 1000 }, broken));
+  });
+
+  test('keeps the maximum safe gross exact with zero and with a full amount', () => {
+    expect(
+      applyTotalDiscount(
+        { grossMinor: Number.MAX_SAFE_INTEGER },
+        { kind: 'amount', value: 0 },
+      ),
+    ).toEqual({
+      discountMinor: 0,
+      payableMinor: Number.MAX_SAFE_INTEGER,
+    });
+    expect(
+      applyTotalDiscount({ grossMinor: 0 }, { kind: 'amount', value: 0 }),
+    ).toEqual({ discountMinor: 0, payableMinor: 0 });
+    expect(
+      applyTotalDiscount(
+        { grossMinor: Number.MAX_SAFE_INTEGER - 1 },
+        { kind: 'amount', value: Number.MAX_SAFE_INTEGER - 1 },
+      ),
+    ).toEqual({
+      discountMinor: Number.MAX_SAFE_INTEGER - 1,
+      payableMinor: 0,
+    });
+  });
+
+  test('rejects a gross outside the safe range rather than computing it', () => {
+    expectInvalid(() =>
+      applyTotalDiscount(
+        { grossMinor: Number.MAX_SAFE_INTEGER + 1 },
+        { kind: 'amount', value: 0 },
+      ),
+    );
   });
 });

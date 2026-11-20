@@ -38,11 +38,13 @@ import {
   type TemplatePlaceholder,
 } from './document-templates.js';
 import {
+  applyTotalDiscount,
   documentTotals,
   DocumentTotalsError,
   formatDocumentDate,
   formatMinorUnits,
   type PriceBasis,
+  type TotalDiscount,
   type TotalsLine,
 } from './document-totals.js';
 import {
@@ -72,6 +74,7 @@ import {
   openMinorOf,
   orderPaidMinorOf,
   paidMinorOf,
+  payableMinorSql,
   paymentState,
   paymentStates,
   type PaymentState,
@@ -157,6 +160,22 @@ export type DocumentDraftContent = {
    * as a bank account - this slice prints what an operator wrote.
    */
   bankAccount?: string | null;
+  /**
+   * DOC-PRODUCT-01.5: one discount for the whole document, as a rate in basis
+   * points (`percent`) or a fixed amount in minor units (`amount`). Kind and
+   * value are one decision: `undefined` on both leaves a stored discount
+   * untouched, `null` on both clears it, and a lone half is a mistake. The
+   * discount lowers only the amount the document asks for - never a position,
+   * a stored sum or a tax group.
+   */
+  totalDiscountKind?: TotalDiscountKind | null;
+  totalDiscountValue?: number | null;
+  /**
+   * The note printed in parentheses behind "Gesamtrabatt". `undefined` keeps the
+   * stored one, `null` (or a blank text) clears it. Trimmed, bounded and free of
+   * control characters except a real line break.
+   */
+  totalDiscountNote?: string | null;
   lines?: DocumentLineDraft[];
 };
 export type DocumentFilters = {
@@ -240,6 +259,13 @@ export const acceptanceNoteMaxLength = 2000;
 // RG-07b: the printed account is bounded like every other typed text; the same
 // bound is repeated by the CHECK in 0048 and by the route's `maxLength`.
 export const bankAccountMaxLength = 500;
+// DOC-PRODUCT-01.5: a comment-level discount is either a rate or a fixed amount.
+// The closed set is repeated by the CHECK in 0063.
+export type TotalDiscountKind = 'percent' | 'amount';
+export const totalDiscountKinds = ['percent', 'amount'] as const;
+// The same documented bound as the printed account: a note is a remark, not a
+// paragraph. Repeated by the CHECK in 0063 and by the route's `maxLength`.
+export const totalDiscountNoteMaxLength = 500;
 export type OfferStatusChange = {
   status: OfferStatus;
   version: number;
@@ -321,10 +347,12 @@ export function invoiceOverdue(
 // payment/lateness filters. Anything that changes the claim (credits, debits,
 // settled advances, payments) changes this region and nothing else.
 // `claim` = gross + debits - credits - settled advances, `paid` = recorded money.
+// DOC-PRODUCT-01.5: that gross is the *discounted* payable of the row, never the
+// stored position sum - one comment-level discount lowers what is owed.
 const claimMinorSql = sql`(
-  documents.gross_minor
+  ${payableMinorSql('documents')}
   + (
-    SELECT coalesce(sum(c.gross_minor), 0) FROM documents c
+    SELECT coalesce(sum(${payableMinorSql('c')}), 0) FROM documents c
      WHERE c.tenant_id = documents.tenant_id
        AND c.source_document_id = documents.id
        AND c.kind = 'correction'
@@ -332,7 +360,7 @@ const claimMinorSql = sql`(
        AND c.correction_direction = 'debit'
   )
   - (
-    SELECT coalesce(sum(c.gross_minor), 0) FROM documents c
+    SELECT coalesce(sum(${payableMinorSql('c')}), 0) FROM documents c
      WHERE c.tenant_id = documents.tenant_id
        AND c.source_document_id = documents.id
        AND c.kind = 'correction'
@@ -717,6 +745,96 @@ function bankAccountOf(value: unknown): string | null {
 function printedDay(day: string): string {
   return day.split('-').reverse().join('.');
 }
+// DOC-PRODUCT-01.5: the stored discount of one row, as the domain type. An
+// absent kind means "no discount" - never a zero that could be mistaken for one.
+// The column arrives as plain text, so the closed set is narrowed here; the
+// CHECK of 0063 is what makes every stored value one of the two kinds.
+function totalDiscountOfDocument(document: {
+  totalDiscountKind?: string | null;
+  totalDiscountValue?: number | null;
+  totalDiscountNote?: string | null;
+}): (TotalDiscount & { note?: string }) | null {
+  const kind = document.totalDiscountKind;
+  if (kind !== 'percent' && kind !== 'amount') return null;
+  return {
+    kind,
+    value: document.totalDiscountValue ?? 0,
+    ...(document.totalDiscountNote ? { note: document.totalDiscountNote } : {}),
+  };
+}
+// The discount is bounded by the gross it deducts from: a deduction above the
+// sum is a typing mistake, never a clamped zero. Every amount stays integral.
+function payableMinorOf(
+  grossMinor: number,
+  discount: TotalDiscount | null,
+): number {
+  try {
+    return applyTotalDiscount({ grossMinor }, discount).payableMinor;
+  } catch (error) {
+    if (error instanceof DocumentTotalsError)
+      throw new DocumentError('invalid_content');
+    throw error;
+  }
+}
+// A note is text an operator typed: trimmed, bounded, no control characters but
+// the real line break the printer understands. A blank text clears it, exactly
+// like the printed account.
+function totalDiscountNoteOf(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new DocumentError('invalid_content');
+  // Every line-ending style becomes the one the printer understands.
+  const trimmed = value.replace(/\r\n?/g, '\n').trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.length > totalDiscountNoteMaxLength ||
+    [...trimmed].some((character) => {
+      const code = character.codePointAt(0)!;
+      return code !== 0x0a && (code < 0x20 || (code >= 0x7f && code <= 0x9f));
+    })
+  )
+    throw new DocumentError('invalid_content');
+  return trimmed;
+}
+type TotalDiscountWrite = {
+  kind: TotalDiscountKind;
+  value: number;
+  /** `undefined` keeps the stored note, `null` clears it. */
+  note: string | null | undefined;
+} | null;
+// Kind and value are one decision, so a lone half is refused instead of guessed:
+// a missing pair means "no discount", an explicit null clears both halves.
+function totalDiscountOf(
+  content: DocumentDraftContent,
+): TotalDiscountWrite | undefined {
+  const {
+    totalDiscountKind: kind,
+    totalDiscountValue: value,
+    totalDiscountNote: note,
+  } = content;
+  if (kind === undefined && value === undefined && note === undefined)
+    return undefined;
+  if (kind === null || kind === undefined) {
+    if (value !== null && value !== undefined)
+      throw new DocumentError('invalid_content');
+    if (note !== null && note !== undefined)
+      throw new DocumentError('invalid_content');
+    return null;
+  }
+  if (
+    !(totalDiscountKinds as readonly string[]).includes(kind) ||
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    (kind === 'percent' && value > 10000)
+  )
+    throw new DocumentError('invalid_content');
+  return {
+    kind: kind as TotalDiscountKind,
+    value,
+    note: totalDiscountNoteOf(note),
+  };
+}
 // The route schema already rejects malformed values; this keeps the repository
 // honest for direct callers and names the one rule JSON Schema cannot express.
 export function assertDocumentFilters(filters: DocumentFilters): void {
@@ -894,8 +1012,23 @@ export function documentRepository(
       }[];
     };
     const dateRow = dates.rows[0];
+    // DOC-PRODUCT-01.5: the three columns are stamped together only when a
+    // discount exists; a document without one keeps exactly its old keys.
+    const {
+      totalDiscountKind: discountKind,
+      totalDiscountValue: discountValue,
+      totalDiscountNote: discountNote,
+      ...documentFields
+    } = document;
     return {
-      ...document,
+      ...documentFields,
+      ...(discountKind === null
+        ? {}
+        : {
+            totalDiscountKind: discountKind as TotalDiscountKind,
+            totalDiscountValue: discountValue,
+            totalDiscountNote: discountNote,
+          }),
       serviceDate: dateRow?.service_date ?? null,
       paymentTermDays:
         dateRow?.payment_term_days === null ||
@@ -1010,9 +1143,9 @@ export function documentRepository(
       execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
     };
     const result = (await executor.execute(sql`
-      SELECT coalesce(sum(documents.gross_minor) FILTER (
+      SELECT coalesce(sum(${payableMinorSql('documents')}) FILTER (
                WHERE documents.correction_direction = 'credit'), 0)::text AS credited,
-             coalesce(sum(documents.gross_minor) FILTER (
+             coalesce(sum(${payableMinorSql('documents')}) FILTER (
                WHERE documents.correction_direction = 'debit'), 0)::text AS debited
         FROM documents
        WHERE documents.tenant_id = ${tenantId}
@@ -1063,6 +1196,24 @@ export function documentRepository(
     };
   }
 
+  // DOC-PRODUCT-01.5: the discounted payable of one stored row, read through the
+  // same SQL expression the claim uses - never a second arithmetic and never a
+  // second rounding rule.
+  async function payableMinorOfRow(connection: Connection, documentId: string) {
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const result = (await executor.execute(sql`
+      SELECT (${payableMinorSql('documents')})::text AS payable
+        FROM documents
+       WHERE tenant_id = ${tenantId} AND id = ${documentId}::uuid`)) as {
+      rows: { payable: string }[];
+    };
+    const row = result.rows[0];
+    if (!row) throw new DocumentError('not_found');
+    return Number(row.payable);
+  }
+
   // What the advances of one order are worth: the *corrected* claim of every
   // *finalized* deposit invoice of this tenant - `gross + debits - credits` per
   // advance, the same rule `correctionSums` gives every other claim - and the
@@ -1080,14 +1231,14 @@ export function documentRepository(
       execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
     };
     const result = (await executor.execute(sql`
-      SELECT coalesce(sum(d.gross_minor
-               + coalesce((SELECT sum(c.gross_minor) FROM documents c
+      SELECT coalesce(sum(${payableMinorSql('d')}
+               + coalesce((SELECT sum(${payableMinorSql('c')}) FROM documents c
                             WHERE c.tenant_id = d.tenant_id
                               AND c.source_document_id = d.id
                               AND c.kind = 'correction'
                               AND c.state = 'final'
                               AND c.correction_direction = 'debit'), 0)
-               - coalesce((SELECT sum(c.gross_minor) FROM documents c
+               - coalesce((SELECT sum(${payableMinorSql('c')}) FROM documents c
                             WHERE c.tenant_id = d.tenant_id
                               AND c.source_document_id = d.id
                               AND c.kind = 'correction'
@@ -1119,10 +1270,12 @@ export function documentRepository(
   // Everything a final invoice prints about the advances it settles. The frozen
   // deduction wins as soon as it exists, so a later advance can never change what
   // was printed; only "davon geleistet" is read live and stays a display value.
+  // DOC-PRODUCT-01.5: the gross it starts from is the *discounted* payable, so
+  // "Zu zahlender Betrag" is the claim of the payment balance to the cent.
   async function depositPrints(
     connection: Connection,
     document: NonNullable<Awaited<ReturnType<typeof readOne>>>,
-    printedGrossMinor: number,
+    printedPayableMinor: number,
     timeZone: string,
   ): Promise<DocumentDepositReference | undefined> {
     if (document.kind !== 'invoice') return undefined;
@@ -1143,16 +1296,19 @@ export function documentRepository(
       date: formatDocumentDate(source.issuedAt, timeZone),
       appliedMinor: deduction,
       paidMinor: sums.paid,
-      payableMinor: printedGrossMinor - deduction,
+      payableMinor: printedPayableMinor - deduction,
     };
   }
 
   // Everything a correction prints about its source. All amounts stay magnitudes;
   // the direction decides the sign in the layout, not in the row.
+  // DOC-PRODUCT-01.5: every amount here is the discounted payable - the same
+  // numbers the claim uses - so a correction of a discounted invoice cannot
+  // print a bigger credit than the customer still owes.
   async function correctionPrints(
     connection: Connection,
     documentId: string,
-    correctionGrossMinor: number,
+    correctionPayableMinor: number,
     timeZone: string,
   ) {
     const { direction, sourceDocumentId } = await correctionOf(
@@ -1162,11 +1318,7 @@ export function documentRepository(
     if (!direction || !sourceDocumentId)
       throw new DocumentError('missing_reference');
     const [source] = await database(connection)
-      .select({
-        number: documents.number,
-        issuedAt: documents.issuedAt,
-        grossMinor: documents.grossMinor,
-      })
+      .select({ number: documents.number, issuedAt: documents.issuedAt })
       .from(documents)
       .where(and(scope, eq(documents.id, sourceDocumentId)));
     if (!source?.number) throw new DocumentError('missing_reference');
@@ -1175,15 +1327,21 @@ export function documentRepository(
         sourceDocumentId,
         documentId,
       ),
+      sourcePayableMinor = await payableMinorOfRow(
+        connection,
+        sourceDocumentId,
+      ),
       signed =
-        direction === 'credit' ? -correctionGrossMinor : correctionGrossMinor;
+        direction === 'credit'
+          ? -correctionPayableMinor
+          : correctionPayableMinor;
     return {
       number: source.number,
       date: formatDocumentDate(source.issuedAt, timeZone),
       direction,
-      sourceGrossMinor: source.grossMinor,
-      correctionGrossMinor,
-      correctedGrossMinor: source.grossMinor + debited - credited + signed,
+      sourcePayableMinor,
+      correctionPayableMinor,
+      correctedPayableMinor: sourcePayableMinor + debited - credited + signed,
     };
   }
 
@@ -1208,10 +1366,12 @@ export function documentRepository(
     if (direction !== 'credit') return;
     if (!sourceDocumentId) throw new DocumentError('missing_reference');
     const [source] = await database(connection)
-      .select({ grossMinor: documents.grossMinor, kind: documents.kind })
+      .select({ kind: documents.kind })
       .from(documents)
       .where(and(scope, eq(documents.id, sourceDocumentId)));
     if (!source) throw new DocumentError('missing_reference');
+    // DOC-PRODUCT-01.5: both bounds are the *discounted* claim - what a credit
+    // note may still reach is what the paper actually asks for.
     const { credited, debited } = await correctionSums(
         connection,
         sourceDocumentId,
@@ -1224,19 +1384,26 @@ export function documentRepository(
       settled =
         source.kind === 'invoice'
           ? ((await settlementOf(connection, sourceDocumentId)).applied ?? 0)
-          : 0;
-    if (
-      credited + paid + correction.grossMinor >
-      source.grossMinor - settled + debited
-    )
+          : 0,
+      correctionPayable = await payableMinorOfRow(connection, correction.id),
+      sourcePayable = await payableMinorOfRow(connection, sourceDocumentId);
+    if (credited + paid + correctionPayable > sourcePayable - settled + debited)
       throw new DocumentError('credit_exceeds_invoice');
   }
 
   // The corrected order claim bounds the deduction. When the invoice lists
   // optional prices, the included invoice gross also bounds the deduction.
+  // DOC-PRODUCT-01.5: both bounds are the discounted payable, because that is
+  // what the order and the invoice actually ask for.
   async function assertSettlementWithinOrder(
     connection: Connection,
-    invoice: { id: string; grossMinor: number; lines: DocumentLineDraft[] },
+    invoice: {
+      id: string;
+      grossMinor: number;
+      lines: DocumentLineDraft[];
+      totalDiscountKind?: TotalDiscountKind | null;
+      totalDiscountValue?: number | null;
+    },
   ) {
     const { role, sourceDocumentId } = await settlementOf(
       connection,
@@ -1245,7 +1412,7 @@ export function documentRepository(
     // A standard invoice settles nothing, so it owns no such bound.
     if (role !== 'final' || !sourceDocumentId) return;
     const [source] = await database(connection)
-      .select({ grossMinor: documents.grossMinor })
+      .select({ id: documents.id })
       .from(documents)
       .where(and(scope, eq(documents.id, sourceDocumentId)));
     // The same answer the snapshot gives one step later: without its source a
@@ -1255,10 +1422,15 @@ export function documentRepository(
       { credited, debited } = await correctionSums(
         connection,
         sourceDocumentId,
+      ),
+      sourcePayable = await payableMinorOfRow(connection, sourceDocumentId),
+      invoicePayable = payableMinorOf(
+        invoice.grossMinor,
+        totalDiscountOfDocument(invoice),
       );
     if (
-      applied > source.grossMinor + debited - credited ||
-      (applied > invoice.grossMinor &&
+      applied > sourcePayable + debited - credited ||
+      (applied > invoicePayable &&
         invoice.lines.some((line) => line.kind !== 'info' && line.optional))
     )
       throw new DocumentError('deposits_exceed_order');
@@ -1346,6 +1518,13 @@ export function documentRepository(
     const { lines } = document;
     if (!lines.length) throw new DocumentError('empty_lines');
     const totals = documentTotals(lines.filter((line) => line.kind !== 'info')),
+      // DOC-PRODUCT-01.5: the one stored discount of this document and the amount
+      // it asks for. Both blocks that print a final payable line start from this
+      // number, and the snapshot resolves the same arithmetic for its own line -
+      // so paper and claim cannot drift. A document without a discount answers
+      // exactly its stored gross and not a byte more.
+      totalDiscount = totalDiscountOfDocument(document),
+      payableMinor = payableMinorOf(totals.grossMinor, totalDiscount),
       recipient = recipientOf(contact),
       values: Partial<Record<TemplatePlaceholder, string>> = {
         contact: contact.name,
@@ -1455,7 +1634,7 @@ export function documentRepository(
         ? await correctionPrints(
             connection,
             document.id,
-            totals.grossMinor,
+            payableMinor,
             tenant.timezone,
           )
         : undefined;
@@ -1465,7 +1644,7 @@ export function documentRepository(
     const depositReference = await depositPrints(
       connection,
       document,
-      totals.grossMinor,
+      payableMinor,
       tenant.timezone,
     );
     const snapshot = buildDocumentSnapshot({
@@ -1494,6 +1673,9 @@ export function documentRepository(
       recipientAddress: recipient.address,
       lines,
       values,
+      // DOC-PRODUCT-01.5: the stored discount travels as one print option, so a
+      // document without one keeps byte-identical HTML.
+      ...(totalDiscount ? { totalDiscount } : {}),
       ...(formattedValidUntil
         ? { validUntil: formattedValidUntil.join('.') }
         : {}),
@@ -2343,6 +2525,11 @@ export function documentRepository(
             taxMinor: totals.taxMinor,
             grossMinor: totals.grossMinor,
             version: 1,
+            // DOC-PRODUCT-01.5: the order carries the discount the customer was
+            // offered - it is the same agreement, copied, never recalculated.
+            totalDiscountKind: offer.totalDiscountKind,
+            totalDiscountValue: offer.totalDiscountValue,
+            totalDiscountNote: offer.totalDiscountNote,
           });
           // `schema.ts` stays unchanged on purpose - every other row contract is
           // keyed to it - so the one new column is written by reviewed SQL in the
@@ -2450,7 +2637,8 @@ export function documentRepository(
               (tenant_id, id, kind, template_id, event_id, contact_id, number,
                state, issued_at, finalized_at, subject, intro_text, outro_text,
                validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
-               gross_minor, version, source_document_id)
+               gross_minor, version, source_document_id,
+               total_discount_kind, total_discount_value, total_discount_note)
             VALUES (
               ${tenantId}, ${id}::uuid, 'invoice', NULL,
               ${confirmation.eventId}::uuid, ${confirmation.contactId}::uuid,
@@ -2458,7 +2646,10 @@ export function documentRepository(
               ${'Rechnung für {{contact}}'}, ${confirmation.introText},
               ${confirmation.outroText}, ${confirmation.validityDays},
               NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
-              ${totals.grossMinor}, 1, ${confirmationId}::uuid)`);
+              ${totals.grossMinor}, 1, ${confirmationId}::uuid,
+              ${confirmation.totalDiscountKind},
+              ${confirmation.totalDiscountValue},
+              ${confirmation.totalDiscountNote})`);
           await insertLines(tx, id, lines);
           await appendAudit(tx, tenantId, 'document.created', actorId, id);
         });
@@ -2554,7 +2745,8 @@ export function documentRepository(
             (tenant_id, id, kind, template_id, event_id, contact_id, number,
              state, issued_at, finalized_at, subject, intro_text, outro_text,
              validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
-             gross_minor, version, source_document_id)
+             gross_minor, version, source_document_id,
+             total_discount_kind, total_discount_value, total_discount_note)
           VALUES (
             ${tenantId}, ${id}::uuid, 'deposit_invoice', NULL,
             ${confirmation.eventId}::uuid, ${confirmation.contactId}::uuid,
@@ -2562,7 +2754,10 @@ export function documentRepository(
             ${'Anzahlungsrechnung für {{contact}}'}, ${confirmation.introText},
             ${confirmation.outroText}, ${confirmation.validityDays},
             NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
-            ${totals.grossMinor}, 1, ${confirmationId}::uuid)`);
+            ${totals.grossMinor}, 1, ${confirmationId}::uuid,
+            ${confirmation.totalDiscountKind},
+            ${confirmation.totalDiscountValue},
+            ${confirmation.totalDiscountNote})`);
         await insertLines(tx, id, lines);
         await appendAudit(tx, tenantId, 'document.created', actorId, id);
       });
@@ -2645,7 +2840,8 @@ export function documentRepository(
               (tenant_id, id, kind, template_id, event_id, contact_id, number,
                state, issued_at, finalized_at, subject, intro_text, outro_text,
                validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
-               gross_minor, version, source_document_id, invoice_role)
+               gross_minor, version, source_document_id, invoice_role,
+               total_discount_kind, total_discount_value, total_discount_note)
             VALUES (
               ${tenantId}, ${id}::uuid, 'invoice', NULL,
               ${confirmation.eventId}::uuid, ${confirmation.contactId}::uuid,
@@ -2653,7 +2849,10 @@ export function documentRepository(
               ${'Rechnung für {{contact}}'}, ${confirmation.introText},
               ${confirmation.outroText}, ${confirmation.validityDays},
               NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
-              ${totals.grossMinor}, 1, ${confirmationId}::uuid, 'final')`);
+              ${totals.grossMinor}, 1, ${confirmationId}::uuid, 'final',
+              ${confirmation.totalDiscountKind},
+              ${confirmation.totalDiscountValue},
+              ${confirmation.totalDiscountNote})`);
           await insertLines(tx, id, lines);
           await appendAudit(tx, tenantId, 'document.created', actorId, id);
         });
@@ -2744,7 +2943,8 @@ export function documentRepository(
               (tenant_id, id, kind, template_id, event_id, contact_id, number,
                state, issued_at, finalized_at, subject, intro_text, outro_text,
                validity_days, snapshot_hash, pdf_hash, net_minor, tax_minor,
-               gross_minor, version, source_document_id, correction_direction)
+               gross_minor, version, source_document_id, correction_direction,
+               total_discount_kind, total_discount_value, total_discount_note)
             VALUES (
               ${tenantId}, ${id}::uuid, 'correction', NULL,
               ${source.eventId}::uuid, ${source.contactId}::uuid,
@@ -2752,7 +2952,9 @@ export function documentRepository(
               ${'Rechnungskorrektur für {{contact}}'}, ${source.introText},
               ${source.outroText}, ${source.validityDays},
               NULL, NULL, ${totals.netMinor}, ${totals.taxMinor},
-              ${totals.grossMinor}, 1, ${sourceId}::uuid, ${direction})`);
+              ${totals.grossMinor}, 1, ${sourceId}::uuid, ${direction},
+              ${source.totalDiscountKind}, ${source.totalDiscountValue},
+              ${source.totalDiscountNote})`);
           await insertLines(tx, id, positions);
           await appendAudit(tx, tenantId, 'document.created', actorId, id);
         });
@@ -2782,6 +2984,9 @@ export function documentRepository(
         content.validityDays > 365
       )
         throw new DocumentError('invalid_content');
+      // DOC-PRODUCT-01.5: kind and value are one decision, so a lone half is
+      // refused before a transaction is opened and nothing is written.
+      const totalDiscount = totalDiscountOf(content);
       try {
         assertTemplateText(
           content.subject,
@@ -2880,6 +3085,21 @@ export function documentRepository(
             );
           await insertLines(tx, id, content.lines);
         }
+        // DOC-PRODUCT-01.5: the deduction is bounded by the sums this write
+        // leaves behind - the new lines when they were sent, the stored ones
+        // otherwise. The stored discount is re-checked too, so shrinking the
+        // positions below an existing amount can never leave an unpayable row.
+        // An amount above the sum is a typing mistake, never a clamped zero, and
+        // the refusal rolls the whole write back.
+        const effectiveDiscount =
+          totalDiscount === undefined
+            ? totalDiscountOfDocument(document)
+            : totalDiscount;
+        if (effectiveDiscount)
+          payableMinorOf(
+            totals?.grossMinor ?? document.grossMinor,
+            effectiveDiscount,
+          );
         await tx
           .update(documents)
           .set({
@@ -2906,7 +3126,8 @@ export function documentRepository(
         if (
           serviceDate !== undefined ||
           paymentTermDays !== undefined ||
-          bankAccount !== undefined
+          bankAccount !== undefined ||
+          totalDiscount !== undefined
         ) {
           const assignments = [
             ...(serviceDate !== undefined
@@ -2918,6 +3139,24 @@ export function documentRepository(
             ...(bankAccount !== undefined
               ? [sql`bank_account = ${bankAccount}::text`]
               : []),
+            // DOC-PRODUCT-01.5: `undefined` keeps a stored discount, an explicit
+            // null clears all three columns together. The note follows the pair,
+            // so a cleared discount can never leave a dangling remark behind.
+            ...(totalDiscount === null
+              ? [
+                  sql`total_discount_kind = NULL, total_discount_value = NULL, total_discount_note = NULL`,
+                ]
+              : totalDiscount
+                ? [
+                    sql`total_discount_kind = ${totalDiscount.kind}::text`,
+                    sql`total_discount_value = ${totalDiscount.value}::bigint`,
+                    ...(totalDiscount.note === undefined
+                      ? []
+                      : [
+                          sql`total_discount_note = ${totalDiscount.note}::text`,
+                        ]),
+                  ]
+                : []),
           ];
           await tx.execute(
             sql`UPDATE documents SET ${sql.join(assignments, sql`, `)}
@@ -3485,6 +3724,24 @@ export function registerDocumentRoutes(
           { type: 'null' },
         ],
       },
+      // DOC-PRODUCT-01.5: the one document discount, additive and optional. A
+      // document without one omits all three keys, so every older answer shape
+      // stays byte-identical.
+      totalDiscountKind: {
+        anyOf: [
+          { type: 'string', enum: [...totalDiscountKinds] },
+          { type: 'null' },
+        ],
+      },
+      totalDiscountValue: {
+        anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+      },
+      totalDiscountNote: {
+        anyOf: [
+          { type: 'string', maxLength: totalDiscountNoteMaxLength },
+          { type: 'null' },
+        ],
+      },
       lines: {
         type: 'array',
         items: {
@@ -3717,6 +3974,25 @@ export function registerDocumentRoutes(
               anyOf: [
                 { type: 'null' },
                 { type: 'string', maxLength: bankAccountMaxLength },
+              ],
+            },
+            // DOC-PRODUCT-01.5: the two halves of the one document discount are
+            // optional and judged by the domain - a lone half, a rate above 100 %
+            // or an amount above the sum answers with one stable error. `null`
+            // first for the same reason as above: clearing must not become zero.
+            totalDiscountKind: {
+              anyOf: [
+                { type: 'null' },
+                { type: 'string', enum: [...totalDiscountKinds] },
+              ],
+            },
+            totalDiscountValue: {
+              anyOf: [{ type: 'null' }, { type: 'integer' }],
+            },
+            totalDiscountNote: {
+              anyOf: [
+                { type: 'null' },
+                { type: 'string', maxLength: totalDiscountNoteMaxLength },
               ],
             },
             lines: { type: 'array', minItems: 1, maxItems: 1000, items: line },
