@@ -430,15 +430,19 @@ async function offerDraftScenario(browser: Browser) {
       '19.00',
     );
     await expect(position1.getByLabel('Rabatt in Prozent')).toHaveValue('0.00');
+    // DOC-PRODUCT-01.4: a stored line without an amount is a percentage line.
+    await expect(position1.getByLabel('Rabattart')).toHaveValue('percent');
+    await expect(position1.getByLabel('Rabatt in Euro')).toHaveValue('0.00');
+    await expect(position1.getByLabel('Rabatt in Euro')).toBeDisabled();
     await expect(position2.getByLabel('Beschreibung')).toHaveValue(
       'Fictional delivery',
     );
     // A narrow editor can be embedded in a wide viewport.
     const fields = position1.locator('.offer-draft-position-fields input');
-    // Since DOC-PRODUCT-01.3 the basis select sits between the price and the tax
-    // field, so the keyboard walk covers every control in the field grid.
+    // Since DOC-PRODUCT-01.4 the discount mode and the euro amount follow the
+    // percentage field, so the keyboard walk covers every enabled control.
     const fieldControls = position1.locator(
-      '.offer-draft-position-fields input, .offer-draft-position-fields select',
+      '.offer-draft-position-fields input:not([disabled]), .offer-draft-position-fields select:not([disabled])',
     );
     const positionOptional = position1.getByRole('checkbox', {
       name: 'Optionale Position',
@@ -489,7 +493,7 @@ async function offerDraftScenario(browser: Browser) {
             return { x, y, height, right, bottom, fits };
           }),
         );
-        expect(boxes).toHaveLength(6);
+        expect(boxes).toHaveLength(7);
         expect(boxes.every((box) => box.height >= 44 && box.fits)).toBe(true);
         expect(
           (await optionLabel.boundingBox())!.height,
@@ -497,6 +501,13 @@ async function offerDraftScenario(browser: Browser) {
         const removeBox = (await removePosition.boundingBox())!;
         const groupBox = (await position1.boundingBox())!;
         const infoBox = (await itemInfo.boundingBox())!;
+        const modeBox = (await position1
+          .getByLabel('Rabattart')
+          .boundingBox())!;
+        expect(modeBox.height).toBeGreaterThanOrEqual(44);
+        expect(modeBox.x + modeBox.width).toBeLessThanOrEqual(
+          groupBox.x + groupBox.width,
+        );
         expect(infoBox.y).toBeGreaterThanOrEqual(
           removeBox.y + removeBox.height,
         );
@@ -567,6 +578,13 @@ async function offerDraftScenario(browser: Browser) {
     await position2.getByLabel('Einzelpreis (Brutto) in Euro').fill('30.00');
     await position2.getByLabel('Steuer in Prozent').fill('7');
     await position2.getByLabel('Rabatt in Prozent').fill('5');
+    // DOC-PRODUCT-01.4: position 2 keeps its percentage but takes a fixed
+    // amount instead. 4,50 € minus 90,00 € line sum equals the stored 5 %
+    // discount, so every total below stays the same.
+    await position2.getByLabel('Rabattart').selectOption('amount');
+    await position2.getByLabel('Rabatt in Euro').fill('4,50');
+    await expect(position2.getByLabel('Rabatt in Prozent')).toBeDisabled();
+    await expect(position2.getByLabel('Rabatt in Prozent')).toHaveValue('5');
 
     let releaseCatalogFailure!: () => void;
     let signalCatalogRequest!: () => void;
@@ -736,7 +754,25 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       editor.getByText('Gespeicherter Gesamtbetrag: 195,00 €'),
     ).toBeVisible();
+    const draftSaveRequest = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname ===
+          `/api/v1/documents/${draftId}/draft` && request.method() === 'PUT',
+    );
     await editor.getByRole('button', { name: 'Änderungen speichern' }).click();
+    const savedDraft = (await draftSaveRequest).postDataJSON() as {
+      lines: Array<Record<string, unknown>>;
+    };
+    // DOC-PRODUCT-01.4: the percentage line names null (never 0) and the euro
+    // line sends its exact minor amount.
+    expect(savedDraft.lines[0]).toMatchObject({
+      discountBasisPoints: 1000,
+      discountAmountMinor: null,
+    });
+    expect(savedDraft.lines[1]).toMatchObject({
+      discountBasisPoints: 500,
+      discountAmountMinor: 450,
+    });
     await expect(editor.getByRole('status')).toContainText(
       'Änderungen gespeichert.',
     );
@@ -787,9 +823,10 @@ async function offerDraftScenario(browser: Browser) {
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
+          discount_amount_minor: string | null;
           price_basis: string;
         }>(
-          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,price_basis FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,discount_amount_minor,price_basis FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
           [tenantId, draftId],
         )
       ).rows,
@@ -804,6 +841,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '12550',
         tax_basis_points: 1900,
         discount_basis_points: 1000,
+        discount_amount_minor: null,
         price_basis: 'gross',
       },
       {
@@ -816,6 +854,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '3000',
         tax_basis_points: 700,
         discount_basis_points: 500,
+        discount_amount_minor: '450',
         price_basis: 'gross',
       },
       {
@@ -828,6 +867,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '11900',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        discount_amount_minor: null,
         price_basis: 'gross',
       },
       {
@@ -840,6 +880,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '10000',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        discount_amount_minor: null,
         price_basis: 'net',
       },
       {
@@ -852,6 +893,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '2500',
         tax_basis_points: 0,
         discount_basis_points: 0,
+        discount_amount_minor: null,
         price_basis: 'gross',
       },
     ]);
@@ -883,9 +925,10 @@ async function offerDraftScenario(browser: Browser) {
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
+          discount_amount_minor: string | null;
           price_basis: string;
         }>(
-          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,price_basis FROM document_template_positions WHERE tenant_id=$1::uuid AND template_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,discount_amount_minor,price_basis FROM document_template_positions WHERE tenant_id=$1::uuid AND template_id=$2::uuid ORDER BY position',
           [tenantId, template.id],
         )
       ).rows,
@@ -899,6 +942,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '10000',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        discount_amount_minor: null,
         price_basis: 'gross',
       },
       {
@@ -910,6 +954,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '5000',
         tax_basis_points: 700,
         discount_basis_points: 500,
+        discount_amount_minor: null,
         price_basis: 'gross',
       },
     ]);
@@ -1004,6 +1049,22 @@ async function offerDraftScenario(browser: Browser) {
     await expect(reopenedPosition2.getByLabel('Rabatt in Prozent')).toHaveValue(
       '5.00',
     );
+    // DOC-PRODUCT-01.4: the stored amount decides the mode after a reload; the
+    // untouched percentage is still there.
+    await expect(reopenedPosition2.getByLabel('Rabattart')).toHaveValue(
+      'amount',
+    );
+    await expect(reopenedPosition2.getByLabel('Rabatt in Euro')).toHaveValue(
+      '4.50',
+    );
+    await expect(reopenedPosition2.getByLabel('Rabatt in Euro')).toBeEnabled();
+    await expect(
+      reopenedPosition2.getByLabel('Rabatt in Prozent'),
+    ).toBeDisabled();
+    await expect(reopenedPosition1.getByLabel('Rabattart')).toHaveValue(
+      'percent',
+    );
+    await expect(reopenedPosition1.getByLabel('Rabatt in Euro')).toBeDisabled();
     await expect(reopenedPosition4.getByLabel('Beschreibung')).toHaveValue(
       'Fictional net product',
     );
@@ -1090,6 +1151,10 @@ async function offerDraftScenario(browser: Browser) {
       renderedHtml[0]!.indexOf('Fictional net product'),
     );
     expect(renderedHtml[0]).toContain('Fictional edited product information');
+    // The printed discount follows the stored mode: a percentage rate stays a
+    // rate, a fixed amount prints as a euro amount.
+    expect(renderedHtml[0]).toContain('Rabatt 10 %');
+    expect(renderedHtml[0]).toContain('Rabatt 4,50 €');
     expect(storedArtifactCount).toBe(0);
     expect(productWrites).toEqual([]);
     expect(await products.list()).toEqual(productSnapshot);
@@ -1332,6 +1397,9 @@ async function offerDraftScenario(browser: Browser) {
       .fill('119.00');
     await blankPosition.getByLabel('Steuer in Prozent').fill('19');
     await blankPosition.getByLabel('Rabatt in Prozent').fill('0');
+    // A free position starts as a percentage position; its euro field is off.
+    await expect(blankPosition.getByLabel('Rabattart')).toHaveValue('percent');
+    await expect(blankPosition.getByLabel('Rabatt in Euro')).toBeDisabled();
     for (const [theme, width] of [
       ['light', 1280],
       ['dark', 320],
@@ -1437,9 +1505,10 @@ async function offerDraftScenario(browser: Browser) {
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
+          discount_amount_minor: string | null;
           price_basis: string;
         }>(
-          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,price_basis FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,discount_amount_minor,price_basis FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
           [tenantId, blankCreated.id],
         )
       ).rows,
@@ -1454,6 +1523,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '5950',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        discount_amount_minor: null,
         price_basis: 'gross',
       },
       {
@@ -1466,6 +1536,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '11900',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        discount_amount_minor: null,
         price_basis: 'gross',
       },
     ]);
