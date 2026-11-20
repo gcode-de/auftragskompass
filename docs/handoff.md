@@ -83,12 +83,16 @@ Abschnitt beschreibt den aktuellen Stand.
   Gesamtrabatt erstellen oder versenden, keine Produktionsreife behaupten.
   Einzelheiten im Implementierungsplan (DOC-PRODUCT-01.5).
 - **Erledigt 20.11.2026 – DOC-PRODUCT-01.4 (Positionsrabatt):** Kern (Migration 0062, exakter Festbetrag statt Prozent auf der gespeicherten Preisgrundlage, Druck „Rabatt <Betrag> €“) und UI („Rabattart“ Prozent/Euro je Position, null-vs-0-Semantik, Vorlagenpanel-Datenverlust behoben) sind über PR #30 (`d660a16`) und #31 (`435fe93`) nach grüner CI nach `main` gemergt. Zusätzlich die 01.3-Preview-Lücke (Vorlagen-Preview lehnte priceBasis ab) mit Regressionstest geschlossen. Abnahme siehe Implementierungsplan. Nicht verifiziert wie zuvor: tatsächliche Live-Auslieferung (Host unerreichbar).
-- **Aktiver Slice (Vorrang):** EDITOR-LAYOUT-01 ruhiges responsives
-  Dokumenteditor-Formular (Gruppen, vollständige Labels/Werte, Umbrechen statt
-  Quetschen; je EIN Zahlenfeld für Positions- und Gesamtrabatt mit
-  Prozent-/Euro-Umschalter, Werte/Berechnung erhalten). Abnahme mit echten
-  Chromium-Screenshots (synthetische Daten), die per Vision-Tool angesehen
-  werden, plus Bookitup-Abgleich aus privaten Referenz-PDFs. Danach
+- **Aktiver Slice (Vorrang):** EDITOR-LAYOUT-01 ist **implementiert**
+  (PR #36, `d80e981`: Fieldset-Gruppen, umbruchendes Positions-Raster mit
+  9rem-Mindestfeldbreite, EIN Rabattfeld mit Prozent-/Euro-Select
+  [DiscountField, Werte unverfälscht], Gesamtrabatt-Gruppe; component
+  967/967, E2E 15/15 bei 320/390/768/1440 × light/dark). **Die visuelle
+  Abnahme ist offen** – der Screenshot-/Vision-Pfad ist umgebungsbedingt
+  blockiert (computer_use-Captures liefern schwarze Frames, pixelweise
+  bestätigt; vermutlich fehlende macOS-Bildschirmaufnahme-Berechtigung für
+  den cua-driver). Nach Nutzerfreigabe: Screenshots ansehen, Bookitup-
+  Abgleich, Abweichungen dokumentieren, dann Plan-Eintrag abhaken. Danach
   DOC-PRODUCT-01.6 und die restliche Reihenfolge des Plans.
 - **Betrieb (historisch, überholt vom SSH-geprüften Stand oben):** die
   GOAL-Momentaufnahme nannte `b47f5aa` als letzten verifizierten Live-Stand
