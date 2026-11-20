@@ -1308,6 +1308,7 @@ test('templates load with their positions, save exact minor units and archive wi
       unitPriceMinor: 19900,
       taxBasisPoints: 1900,
       discountBasisPoints: 500,
+      discountAmountMinor: null,
       priceBasis: 'gross',
     },
   ]);
@@ -1905,6 +1906,7 @@ test('archive carries the stored archived product reference and exact version', 
       unitPriceMinor: 19900,
       taxBasisPoints: 1900,
       discountBasisPoints: 0,
+      discountAmountMinor: null,
       priceBasis: 'gross',
     },
   ]);
@@ -2612,6 +2614,7 @@ test('template preview renders the unsaved form snapshot without saving or clear
         unitPriceMinor: 25000,
         taxBasisPoints: 1900,
         discountBasisPoints: 0,
+        discountAmountMinor: null,
         priceBasis: 'gross',
       },
     ],
@@ -3192,4 +3195,84 @@ test('the offered placeholders match the server list', () => {
     expect(offer.meaning.length).toBeGreaterThan(0);
     expect(offer.description.length).toBeGreaterThan(offer.meaning.length);
   }
+});
+
+// DOC-PRODUCT-01.4: a template position carries the same discount mode as a
+// document position. Switching never converts the other value.
+test('a template position switches between percent and amount without converting either value', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  const fixture = screen.getByRole('group', { name: 'Position 1' });
+  const mode = within(fixture).getByLabelText('Rabattart');
+  const percent = within(fixture).getByLabelText('Rabatt in Prozent');
+  const amount = within(fixture).getByLabelText('Rabatt in Euro');
+  expect(mode).toHaveProperty('value', 'percent');
+  expect(amount).toHaveProperty('value', '0,00');
+  expect(amount).toHaveProperty('disabled', true);
+
+  fireEvent.change(percent, { target: { value: '5,00' } });
+  fireEvent.change(mode, { target: { value: 'amount' } });
+  expect(percent).toHaveProperty('value', '5,00');
+  fireEvent.change(amount, { target: { value: '10,00' } });
+  fireEvent.change(mode, { target: { value: 'percent' } });
+  expect(amount).toHaveProperty('value', '10,00');
+  fireEvent.change(mode, { target: { value: 'amount' } });
+  expect(amount).toHaveProperty('value', '10,00');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Vorlage speichern' }));
+  await screen.findByText('Gespeichert.', { exact: true });
+  expect(writes[0]!.body).toMatchObject({
+    positions: [
+      {
+        discountBasisPoints: 500,
+        discountAmountMinor: 1000,
+        priceBasis: 'gross',
+      },
+    ],
+  });
+});
+
+test('a stored template amount loads in euro mode and percentage mode sends null', async () => {
+  const fixed = {
+    ...position,
+    discountBasisPoints: 500,
+    discountAmountMinor: 2500,
+  };
+  let rows: unknown[] = [{ ...template, positions: [fixed] }];
+  const writes = setup(
+    (body) => {
+      const saved = savedBody(body);
+      rows = [saved];
+      return Response.json(saved);
+    },
+    () => Response.json(rows),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  const mode = screen.getByLabelText('Rabattart');
+  expect(mode).toHaveProperty('value', 'amount');
+  expect(screen.getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'value',
+    '25.00',
+  );
+  expect(screen.getByLabelText('Rabatt in Prozent')).toHaveProperty(
+    'value',
+    '5.00',
+  );
+
+  fireEvent.change(mode, { target: { value: 'percent' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Vorlage speichern' }));
+  await screen.findByText('Gespeichert.', { exact: true });
+  const sent = writes[0]!.body.positions as Array<Record<string, unknown>>;
+  expect(sent[0]).toMatchObject({
+    discountBasisPoints: 500,
+    discountAmountMinor: null,
+  });
 });

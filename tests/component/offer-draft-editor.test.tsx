@@ -31,6 +31,8 @@ type TestLine = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /** DOC-PRODUCT-01.4: absent or null means the percentage is the discount. */
+  discountAmountMinor?: number | null;
   optional?: boolean;
   priceBasis?: 'gross' | 'net';
 };
@@ -1066,6 +1068,7 @@ test('existing and free positions save exactly, removal/addition persist, and ro
         unitPriceMinor: 123456,
         taxBasisPoints: 770,
         discountBasisPoints: 1250,
+        discountAmountMinor: null,
         priceBasis: 'gross',
       },
       {
@@ -1076,6 +1079,7 @@ test('existing and free positions save exactly, removal/addition persist, and ro
         unitPriceMinor: 2500,
         taxBasisPoints: 1900,
         discountBasisPoints: 0,
+        discountAmountMinor: null,
         priceBasis: 'gross',
       },
     ];
@@ -1718,6 +1722,7 @@ test('saving sends all values with the loaded version, survives reload, and fina
           unitPriceMinor: line.unitPriceMinor,
           taxBasisPoints: line.taxBasisPoints,
           discountBasisPoints: line.discountBasisPoints,
+          discountAmountMinor: null,
           priceBasis: 'gross',
         },
       ],
@@ -1968,6 +1973,7 @@ test('legacy draft values are initialized from the current template only in the 
         unitPriceMinor: line.unitPriceMinor,
         taxBasisPoints: line.taxBasisPoints,
         discountBasisPoints: line.discountBasisPoints,
+        discountAmountMinor: null,
         priceBasis: 'gross',
       },
     ],
@@ -2368,4 +2374,167 @@ test('invalid catalog information does not add a partial product', async () => {
     'Der Infotext des Produkts ist zu lang',
   );
   expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
+});
+
+// DOC-PRODUCT-01.4: one discount per position. The mode decides which of the
+// two stored values reaches the core; switching never converts the other one.
+test('a position switches between percent and amount without converting either value', async () => {
+  const { calls } = setup({
+    initial: {
+      ...detail(),
+      lines: [{ ...line, discountBasisPoints: 1000 }],
+    },
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  const mode = within(position).getByLabelText('Rabattart');
+  const percent = within(position).getByLabelText('Rabatt in Prozent');
+  const amount = within(position).getByLabelText('Rabatt in Euro');
+  expect(mode).toHaveProperty('value', 'percent');
+  expect(percent).toHaveProperty('value', '10.00');
+  expect(percent).toHaveProperty('disabled', false);
+  expect(amount).toHaveProperty('value', '0.00');
+  expect(amount).toHaveProperty('disabled', true);
+
+  fireEvent.change(percent, { target: { value: '12,50' } });
+  fireEvent.change(mode, { target: { value: 'amount' } });
+  expect(amount).toHaveProperty('disabled', false);
+  expect(percent).toHaveProperty('disabled', true);
+  // Neither side is derived from the other: no conversion, no reset.
+  expect(percent).toHaveProperty('value', '12,50');
+  expect(amount).toHaveProperty('value', '0.00');
+
+  fireEvent.change(amount, { target: { value: '7,25' } });
+  fireEvent.change(mode, { target: { value: 'percent' } });
+  expect(percent).toHaveProperty('value', '12,50');
+  expect(amount).toHaveProperty('value', '7,25');
+  fireEvent.change(mode, { target: { value: 'amount' } });
+  expect(amount).toHaveProperty('value', '7,25');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    lines: [{ discountBasisPoints: 1250, discountAmountMinor: 725 }],
+  });
+});
+
+test('a stored fixed discount loads in euro mode while a percentage position sends a null amount', async () => {
+  const amountLine = {
+    ...line,
+    discountBasisPoints: 1000,
+    discountAmountMinor: 2500,
+  };
+  const percentLine = {
+    ...line,
+    id: 'line-2',
+    position: 1,
+    description: 'Fiktive Prozentposition',
+    discountBasisPoints: 500,
+  };
+  const { calls } = setup({
+    initial: { ...detail(), lines: [amountLine, percentLine] },
+  });
+  const view = render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const fixed = screen.getByRole('group', { name: 'Position 1' });
+  const percentage = screen.getByRole('group', { name: 'Position 2' });
+  expect(within(fixed).getByLabelText('Rabattart')).toHaveProperty(
+    'value',
+    'amount',
+  );
+  expect(within(fixed).getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'value',
+    '25.00',
+  );
+  // The stored percentage survives beside the amount it no longer drives.
+  expect(within(fixed).getByLabelText('Rabatt in Prozent')).toHaveProperty(
+    'value',
+    '10.00',
+  );
+  expect(within(percentage).getByLabelText('Rabattart')).toHaveProperty(
+    'value',
+    'percent',
+  );
+  expect(within(percentage).getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'disabled',
+    true,
+  );
+
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot mit Festbetrag' },
+  });
+  fireEvent.change(within(percentage).getByLabelText('Rabatt in Prozent'), {
+    target: { value: '0' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const saved = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: Array<Record<string, unknown>>;
+  };
+  expect(saved.lines[0]).toMatchObject({
+    discountBasisPoints: 1000,
+    discountAmountMinor: 2500,
+  });
+  // A percentage mode always names null, so a zero rate never prints "Rabatt
+  // 0,00 €".
+  expect(saved.lines[1]).toMatchObject({
+    discountBasisPoints: 0,
+    discountAmountMinor: null,
+  });
+  expect(Object.keys(saved.lines[1]!)).toContain('discountAmountMinor');
+
+  view.unmount();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const reloaded = await screen.findByRole('group', { name: 'Position 1' });
+  expect(within(reloaded).getByLabelText('Rabattart')).toHaveProperty(
+    'value',
+    'amount',
+  );
+  expect(within(reloaded).getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'value',
+    '25.00',
+  );
+  expect(
+    within(
+      await screen.findByRole('group', { name: 'Position 2' }),
+    ).getByLabelText('Rabattart'),
+  ).toHaveProperty('value', 'percent');
+});
+
+test('a fixed discount above the line sum stays a visible server refusal', async () => {
+  const { calls } = setup({
+    put: () => Response.json({ error: 'invalid_line' }, { status: 400 }),
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  fireEvent.change(within(position).getByLabelText('Rabattart'), {
+    target: { value: 'amount' },
+  });
+  fireEvent.change(within(position).getByLabelText('Rabatt in Euro'), {
+    target: { value: '249,01' },
+  });
+  fireEvent.change(screen.getByLabelText('Betreff'), {
+    target: { value: 'Fiktives Angebot mit zu hohem Rabatt' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Rabattbetrag',
+  );
+  expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+  expect(within(position).getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'value',
+    '249,01',
+  );
 });

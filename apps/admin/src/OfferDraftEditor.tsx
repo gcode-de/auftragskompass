@@ -36,6 +36,11 @@ type DraftItem = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /**
+   * DOC-PRODUCT-01.4: a stored fixed discount. Absent or null keeps the
+   * percentage meaning of `discountBasisPoints`.
+   */
+  discountAmountMinor?: number | null;
   /** An older payload omits it; a stored line without a basis is gross. */
   priceBasis?: 'gross' | 'net';
 };
@@ -60,6 +65,10 @@ type DraftItemValues = {
   unitPrice: string;
   tax: string;
   discount: string;
+  // DOC-PRODUCT-01.4: one discount per line. The mode decides which value the
+  // core uses; both values are kept so a switch never converts or resets one.
+  discountMode: 'percent' | 'amount';
+  discountAmount: string;
   priceBasis: 'gross' | 'net';
 };
 type DraftLineValues =
@@ -216,6 +225,10 @@ function isDetail(value: unknown): value is DraftDetail {
             Number.isInteger(line.discountBasisPoints) &&
             line.discountBasisPoints >= 0 &&
             line.discountBasisPoints <= 10000 &&
+            (line.discountAmountMinor === undefined ||
+              line.discountAmountMinor === null ||
+              (Number.isSafeInteger(line.discountAmountMinor) &&
+                line.discountAmountMinor >= 0)) &&
             (line.priceBasis === undefined ||
               line.priceBasis === 'gross' ||
               line.priceBasis === 'net')),
@@ -257,6 +270,14 @@ function lineValuesOf(lines: DraftLine[], previous: DraftLineValues[] = []) {
       unitPrice: formatHundredths(line.unitPriceMinor),
       tax: formatHundredths(line.taxBasisPoints),
       discount: formatHundredths(line.discountBasisPoints),
+      // A stored amount is euro mode; an absent or null one keeps percentage
+      // mode. The untouched value starts neutral instead of mirroring the rate.
+      discountMode:
+        typeof line.discountAmountMinor === 'number' ? 'amount' : 'percent',
+      discountAmount:
+        typeof line.discountAmountMinor === 'number'
+          ? formatHundredths(line.discountAmountMinor)
+          : '0.00',
       priceBasis: line.priceBasis === 'net' ? 'net' : 'gross',
     };
   });
@@ -294,6 +315,12 @@ function lineDraft(line: DraftLineValues) {
     unitPriceMinor,
     taxBasisPoints,
     discountBasisPoints,
+    // DOC-PRODUCT-01.4: percentage mode names null, never 0 - a zero amount
+    // would print "Rabatt 0,00 €". Euro mode sends the exact minor amount.
+    discountAmountMinor:
+      line.discountMode === 'amount'
+        ? parseHundredths(line.discountAmount)
+        : null,
     priceBasis: line.priceBasis,
   };
 }
@@ -647,6 +674,8 @@ export function OfferDraftEditor({
         unitPrice: '0.00',
         tax: '19.00',
         discount: '0.00',
+        discountMode: 'percent',
+        discountAmount: '0.00',
         priceBasis: 'gross',
         optional: false,
       },
@@ -747,6 +776,8 @@ export function OfferDraftEditor({
         priceBasis: product.priceBasis === 'net' ? 'net' : 'gross',
         tax: formatHundredths(product.taxBasisPoints),
         discount: '0.00',
+        discountMode: 'percent',
+        discountAmount: '0.00',
         optional: false,
       },
     ]);
@@ -882,7 +913,9 @@ export function OfferDraftEditor({
               ? 'Der Entwurf ist nicht mehr bearbeitbar. Bitte neu laden.'
               : result.error === 'forbidden'
                 ? 'Speichern nicht erlaubt. Bitte Anmeldung und Berechtigung prüfen.'
-                : 'Änderungen wurden nicht gespeichert. Bitte Eingaben prüfen und erneut versuchen.',
+                : result.error === 'invalid_line'
+                  ? 'Eine Position ist ungültig. Prüfen Sie insbesondere den Rabattbetrag: Er darf die Positionssumme nicht übersteigen.'
+                  : 'Änderungen wurden nicht gespeichert. Bitte Eingaben prüfen und erneut versuchen.',
           );
         }
         return;
@@ -1067,6 +1100,11 @@ export function OfferDraftEditor({
             >
               <h6 id={'offer-positions-' + documentId}>Positionen</h6>
               <p>Änderungen werden beim Speichern neu berechnet.</p>
+              <p className="document-hint">
+                Je Position gilt eine Rabattart: Prozent oder Euro. Ein
+                Euro-Betrag ersetzt den Prozentsatz, der Prozentwert bleibt
+                dabei unverändert gespeichert.
+              </p>
               <div className="sr-only" aria-live="polite">
                 {/* Renew the live-region content even when the spoken text repeats. */}
                 {moveAnnouncement.text && (
@@ -1290,11 +1328,53 @@ export function OfferDraftEditor({
                               inputMode="decimal"
                               value={line.discount}
                               required
+                              disabled={line.discountMode !== 'percent'}
                               aria-invalid={percentInvalid(line.discount)}
                               onChange={(event) =>
                                 changeLine(
                                   line.key,
                                   'discount',
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                          {/* DOC-PRODUCT-01.4: the mode decides which discount
+                              the core uses. The inactive field keeps its value
+                              untouched, so switching never converts anything. */}
+                          <label>
+                            Rabattart
+                            <select
+                              value={line.discountMode}
+                              onChange={(event) =>
+                                changeLine(
+                                  line.key,
+                                  'discountMode',
+                                  event.target.value === 'amount'
+                                    ? 'amount'
+                                    : 'percent',
+                                )
+                              }
+                            >
+                              <option value="percent">Prozent</option>
+                              <option value="amount">Euro</option>
+                            </select>
+                          </label>
+                          <label>
+                            Rabatt in Euro
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={line.discountAmount}
+                              disabled={line.discountMode !== 'amount'}
+                              aria-invalid={
+                                line.discountMode === 'amount' &&
+                                decimalInvalid(line.discountAmount)
+                              }
+                              onChange={(event) =>
+                                changeLine(
+                                  line.key,
+                                  'discountAmount',
                                   event.target.value,
                                 )
                               }

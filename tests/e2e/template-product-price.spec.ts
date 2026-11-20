@@ -1146,6 +1146,11 @@ test('template adopts net product prices with their stored basis unchanged and k
     .getByLabel('Beschreibung')
     .fill('Fiktiver eigener Pakettext');
   await netPrice.fill('100.00');
+  // DOC-PRODUCT-01.4: a template position stores either a rate or a fixed
+  // amount; the euro amount is what the editor sends.
+  await firstPosition.getByLabel('Rabattart').selectOption('amount');
+  await firstPosition.getByLabel('Rabatt in Euro').fill('10,00');
+  await expect(firstPosition.getByLabel('Rabatt in Prozent')).toBeDisabled();
 
   await page.getByRole('button', { name: 'Position hinzufügen' }).click();
   const secondPosition = page.getByRole('group', { name: 'Position 2' });
@@ -1227,6 +1232,8 @@ test('template adopts net product prices with their stored basis unchanged and k
             unitPriceMinor: 10000,
             priceBasis: 'net',
             taxBasisPoints: 1900,
+            discountBasisPoints: 0,
+            discountAmountMinor: 1000,
           }),
           expect.objectContaining({
             productId: grossProductId,
@@ -1293,6 +1300,11 @@ test('template content preview uses only the unsaved synthetic draft and preserv
   await firstPosition.getByLabel('Einheit').fill('Stück');
   await firstPosition.getByLabel('Einzelpreis (Brutto) in Euro').fill('123.45');
   await firstPosition.getByLabel('Rabatt in Prozent').fill('5.00');
+  // DOC-PRODUCT-01.4: an untouched position is a percentage position, so the
+  // preview names a null amount instead of a zero amount.
+  await expect(firstPosition.getByLabel('Rabattart')).toHaveValue('percent');
+  await expect(firstPosition.getByLabel('Rabatt in Euro')).toBeDisabled();
+  await expect(firstPosition.getByLabel('Rabatt in Euro')).toHaveValue('0,00');
 
   await page.getByRole('button', { name: 'Position hinzufügen' }).click();
   const secondPosition = page.getByRole('group', { name: 'Position 2' });
@@ -1359,6 +1371,7 @@ test('template content preview uses only the unsaved synthetic draft and preserv
         unitPriceMinor: 12345,
         taxBasisPoints: 1900,
         discountBasisPoints: 500,
+        discountAmountMinor: null,
         priceBasis: 'gross',
       },
       {
@@ -1369,6 +1382,7 @@ test('template content preview uses only the unsaved synthetic draft and preserv
         unitPriceMinor: 5000,
         taxBasisPoints: 700,
         discountBasisPoints: 0,
+        discountAmountMinor: null,
         priceBasis: 'gross',
       },
     ],

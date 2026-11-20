@@ -2583,9 +2583,12 @@ summary {
 }
 @container draft-positions (min-width: 49rem) {
   .offer-draft-position-fields {
+    /* DOC-PRODUCT-01.4 adds the discount mode and the euro amount, so the wide
+       grid carries nine controls in one row. */
     grid-template-columns:
-      minmax(0, 2.5fr) minmax(0, 0.8fr) minmax(0, 1fr)
-      minmax(0, 1.5fr) minmax(0, 0.9fr) repeat(2, minmax(0, 1fr));
+      minmax(0, 2.4fr) minmax(0, 0.8fr) minmax(0, 1fr)
+      minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr)
+      minmax(0, 1fr) minmax(0, 1fr);
   }
   .offer-draft-position-actions {
     justify-self: end;

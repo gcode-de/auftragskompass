@@ -11,6 +11,8 @@ type Position = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /** DOC-PRODUCT-01.4: absent or null keeps the percentage meaning. */
+  discountAmountMinor?: number | null;
   /** Omitted by an older payload; a stored price without a basis is gross. */
   priceBasis?: string;
 };
@@ -68,6 +70,10 @@ type DraftPosition = {
   priceBasis: 'gross' | 'net';
   tax: string;
   discount: string;
+  // DOC-PRODUCT-01.4: one discount per position; both values stay untouched so
+  // a mode switch never converts or resets one.
+  discountMode: 'percent' | 'amount';
+  discountAmount: string;
 };
 const kinds: [string, string][] = [
   ['offer', 'Angebot'],
@@ -120,6 +126,8 @@ const emptyPosition = (): DraftPosition => ({
   priceBasis: 'gross',
   tax: '19,00',
   discount: '0,00',
+  discountMode: 'percent',
+  discountAmount: '0,00',
 });
 const storedPriceBasis = (position: Position): 'gross' | 'net' =>
   position.priceBasis === 'net' ? 'net' : 'gross';
@@ -134,6 +142,12 @@ const toDraft = (position: Position): DraftPosition => ({
   priceBasis: storedPriceBasis(position),
   tax: formatHundredths(position.taxBasisPoints),
   discount: formatHundredths(position.discountBasisPoints),
+  discountMode:
+    typeof position.discountAmountMinor === 'number' ? 'amount' : 'percent',
+  discountAmount:
+    typeof position.discountAmountMinor === 'number'
+      ? formatHundredths(position.discountAmountMinor)
+      : '0,00',
 });
 
 function isTemplate(value: unknown): value is Template {
@@ -174,6 +188,10 @@ function isTemplate(value: unknown): value is Template {
         Number.isSafeInteger(line.discountBasisPoints) &&
         Number(line.discountBasisPoints) >= 0 &&
         Number(line.discountBasisPoints) <= 10000 &&
+        (line.discountAmountMinor === undefined ||
+          line.discountAmountMinor === null ||
+          (Number.isSafeInteger(line.discountAmountMinor) &&
+            Number(line.discountAmountMinor) >= 0)) &&
         (line.priceBasis === undefined ||
           line.priceBasis === 'gross' ||
           line.priceBasis === 'net')
@@ -203,6 +221,8 @@ function sameTemplateContent(actual: Template, expected: Template) {
         position.unitPriceMinor === original.unitPriceMinor &&
         position.taxBasisPoints === original.taxBasisPoints &&
         position.discountBasisPoints === original.discountBasisPoints &&
+        (position.discountAmountMinor ?? null) ===
+          (original.discountAmountMinor ?? null) &&
         storedPriceBasis(position) === storedPriceBasis(original)
       );
     })
@@ -241,6 +261,8 @@ function matchesTemplateWrite(
         position.unitPriceMinor === sent.unitPriceMinor &&
         position.taxBasisPoints === sent.taxBasisPoints &&
         position.discountBasisPoints === sent.discountBasisPoints &&
+        (position.discountAmountMinor ?? null) ===
+          (sent.discountAmountMinor ?? null) &&
         storedPriceBasis(position) === storedPriceBasis(sent)
       );
     })
@@ -946,6 +968,13 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           unitPriceMinor: parseHundredths(position.price),
           taxBasisPoints: parseHundredths(position.tax),
           discountBasisPoints: parseHundredths(position.discount),
+          // DOC-PRODUCT-01.4: percentage mode names null, never 0 - a zero
+          // amount would print "Rabatt 0,00 €". Euro mode sends the exact minor
+          // amount.
+          discountAmountMinor:
+            position.discountMode === 'amount'
+              ? parseHundredths(position.discountAmount)
+              : null,
           priceBasis: position.priceBasis,
         })),
     };
@@ -1438,6 +1467,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             unitPriceMinor: position.unitPriceMinor,
             taxBasisPoints: position.taxBasisPoints,
             discountBasisPoints: position.discountBasisPoints,
+            discountAmountMinor: position.discountAmountMinor ?? null,
             priceBasis: storedPriceBasis(position),
           })),
           version: row.version,
@@ -1828,8 +1858,39 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                   <input
                     inputMode="decimal"
                     value={position.discount}
+                    disabled={position.discountMode !== 'percent'}
                     onChange={(event) =>
                       updatePosition(index, { discount: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Rabattart
+                  <select
+                    value={position.discountMode}
+                    onChange={(event) =>
+                      updatePosition(index, {
+                        discountMode:
+                          event.target.value === 'amount'
+                            ? 'amount'
+                            : 'percent',
+                      })
+                    }
+                  >
+                    <option value="percent">Prozent</option>
+                    <option value="amount">Euro</option>
+                  </select>
+                </label>
+                <label>
+                  Rabatt in Euro
+                  <input
+                    inputMode="decimal"
+                    value={position.discountAmount}
+                    disabled={position.discountMode !== 'amount'}
+                    onChange={(event) =>
+                      updatePosition(index, {
+                        discountAmount: event.target.value,
+                      })
                     }
                   />
                 </label>
