@@ -1,4 +1,10 @@
-import { expect, test, type Browser, type Route } from '@playwright/test';
+import {
+  chromium,
+  expect,
+  test,
+  type Browser,
+  type Route,
+} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
@@ -39,6 +45,7 @@ import {
   documentLayoutRepository,
   registerDocumentLayoutRoutes,
 } from '../../packages/core/src/document-layouts.js';
+import { chromiumPdfRenderer } from '../../packages/core/src/document-pdf.js';
 import { registerDocumentRoutes } from '../../packages/core/src/documents.js';
 import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
 
@@ -206,10 +213,15 @@ async function offerDraftScenario(browser: Browser) {
     registerEventRoutes(app, pool, tenantId);
     registerDocumentTemplateRoutes(app, pool, tenantId);
     registerDocumentNumberRoutes(app, pool, tenantId);
+    const renderPdf = chromiumPdfRenderer({
+      executablePath: chromium.executablePath(),
+      timeoutMs: 30000,
+    });
     const renderSynthetic = async (html: string) => {
+      const bytes = await renderPdf(html);
       renderCount++;
       renderedHtml.push(html);
-      return Buffer.from('%PDF-1.4 synthetic offer preview');
+      return bytes;
     };
     registerDocumentLayoutRoutes(app, pool, tenantId, storage, renderSynthetic);
     registerDocumentRoutes(app, pool, tenantId, {
@@ -510,6 +522,10 @@ async function offerDraftScenario(browser: Browser) {
       await page.keyboard.press('Tab');
       await expect(field).toBeFocused();
     }
+    for (const name of [/nach oben verschieben/, /nach unten verschieben/]) {
+      await page.keyboard.press('Tab');
+      await expect(position1.getByRole('button', { name })).toBeFocused();
+    }
     await page.keyboard.press('Tab');
     await expect(removePosition).toBeFocused();
     await page.keyboard.press('Tab');
@@ -621,6 +637,51 @@ async function offerDraftScenario(browser: Browser) {
     await netPosition
       .getByLabel('Infotext (optional)')
       .fill('Fictional edited product information\nSecond line');
+
+    await grossPosition
+      .locator('.offer-draft-position-grip')
+      .dragTo(netPosition.getByLabel('Beschreibung'));
+    await expect(netPosition.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional gross product',
+    );
+    await page.setViewportSize({ width: 320, height: 844 });
+    const earlier = grossPosition.getByRole('button', {
+      name: /nach oben verschieben/,
+    });
+    const later = netPosition.getByRole('button', {
+      name: /nach unten verschieben/,
+    });
+    const moveTarget = await earlier.boundingBox();
+    expect(moveTarget?.width).toBeGreaterThanOrEqual(44);
+    expect(moveTarget?.height).toBeGreaterThanOrEqual(44);
+    await earlier.press('Enter');
+    await expect(netPosition.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional net product',
+    );
+    await expect(
+      netPosition.getByRole('button', { name: /nach oben verschieben/ }),
+    ).toBeFocused();
+    const touch = await context.newCDPSession(page);
+    await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await expect(
+      netPosition.locator('.offer-draft-position-grip'),
+    ).toBeHidden();
+    await later.scrollIntoViewIfNeeded();
+    const { x, y, width, height } = (await later.boundingBox())!;
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: x + width / 2, y: y + height / 2 }],
+    });
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+    await touch.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await touch.detach();
+    await expect(netPosition.getByLabel('Beschreibung')).toHaveValue(
+      'Fictional gross product',
+    );
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     await positions
       .getByRole('button', { name: 'Freie Position hinzufügen' })
@@ -735,22 +796,22 @@ async function offerDraftScenario(browser: Browser) {
       },
       {
         position: 2,
-        product_id: netProduct.id,
-        description: 'Fictional net product',
-        info_text: 'Fictional edited product information\nSecond line',
+        product_id: grossProduct.id,
+        description: 'Fictional gross product',
+        info_text: 'Synthetic gross-priced product',
         quantity: 1,
-        unit: 'Stück',
+        unit: 'Pauschale',
         unit_price_minor: '11900',
         tax_basis_points: 1900,
         discount_basis_points: 0,
       },
       {
         position: 3,
-        product_id: grossProduct.id,
-        description: 'Fictional gross product',
-        info_text: 'Synthetic gross-priced product',
+        product_id: netProduct.id,
+        description: 'Fictional net product',
+        info_text: 'Fictional edited product information\nSecond line',
         quantity: 1,
-        unit: 'Pauschale',
+        unit: 'Stück',
         unit_price_minor: '11900',
         tax_basis_points: 1900,
         discount_basis_points: 0,
@@ -913,26 +974,26 @@ async function offerDraftScenario(browser: Browser) {
     await expect(reopenedPosition2.getByLabel('Rabatt in Prozent')).toHaveValue(
       '5.00',
     );
-    await expect(reopenedPosition3.getByLabel('Beschreibung')).toHaveValue(
+    await expect(reopenedPosition4.getByLabel('Beschreibung')).toHaveValue(
       'Fictional net product',
     );
     await expect(
-      reopenedPosition3.getByLabel('Infotext (optional)'),
+      reopenedPosition4.getByLabel('Infotext (optional)'),
     ).toHaveValue('Fictional edited product information\nSecond line');
-    await expect(reopenedPosition3.getByLabel('Menge')).toHaveValue('1');
-    await expect(reopenedPosition3.getByLabel('Einheit')).toHaveValue('Stück');
+    await expect(reopenedPosition4.getByLabel('Menge')).toHaveValue('1');
+    await expect(reopenedPosition4.getByLabel('Einheit')).toHaveValue('Stück');
     await expect(
-      reopenedPosition3.getByLabel('Einzelpreis (Brutto) in Euro'),
+      reopenedPosition4.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
-    await expect(reopenedPosition4.getByLabel('Beschreibung')).toHaveValue(
+    await expect(reopenedPosition3.getByLabel('Beschreibung')).toHaveValue(
       'Fictional gross product',
     );
-    await expect(reopenedPosition4.getByLabel('Menge')).toHaveValue('1');
-    await expect(reopenedPosition4.getByLabel('Einheit')).toHaveValue(
+    await expect(reopenedPosition3.getByLabel('Menge')).toHaveValue('1');
+    await expect(reopenedPosition3.getByLabel('Einheit')).toHaveValue(
       'Pauschale',
     );
     await expect(
-      reopenedPosition4.getByLabel('Einzelpreis (Brutto) in Euro'),
+      reopenedPosition3.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
     await expect(reopenedPosition5.getByLabel('Beschreibung')).toHaveValue(
       'Fictional extra cable',
@@ -989,6 +1050,12 @@ async function offerDraftScenario(browser: Browser) {
     expect(preview.headers()['content-type']).toContain('application/pdf');
     expect(previewBytes?.subarray(0, 5).toString()).toBe('%PDF-');
     await expect.poll(() => renderCount).toBe(1);
+    expect(renderedHtml[0]).toContain('Fictional gross product');
+    expect(renderedHtml[0]).toContain('Fictional net product');
+    expect(renderedHtml[0]!.indexOf('Fictional gross product')).toBeLessThan(
+      renderedHtml[0]!.indexOf('Fictional net product'),
+    );
+    expect(renderedHtml[0]).toContain('Fictional edited product information');
     expect(storedArtifactCount).toBe(0);
     expect(productWrites).toEqual([]);
     expect(await products.list()).toEqual(productSnapshot);
@@ -1258,6 +1325,16 @@ async function offerDraftScenario(browser: Browser) {
     )
       await page.getByRole('button', { name: /modus aktivieren/ }).click();
     await page.setViewportSize({ width: 1280, height: 900 });
+    await addPosition.click();
+    const secondBlankPosition = editor.getByRole('group', {
+      name: 'Position 2',
+    });
+    await secondBlankPosition
+      .getByLabel('Beschreibung')
+      .fill('Fictional extra briefing');
+    await secondBlankPosition
+      .getByRole('button', { name: /nach oben verschieben/ })
+      .click();
     await editor.getByRole('button', { name: 'Änderungen speichern' }).click();
     await expect(editor.getByRole('status')).toContainText(
       'Änderungen gespeichert.',
@@ -1321,6 +1398,17 @@ async function offerDraftScenario(browser: Browser) {
       {
         position: 0,
         product_id: null,
+        description: 'Fictional extra briefing',
+        info_text: null,
+        quantity: 1,
+        unit: 'Stück',
+        unit_price_minor: '0',
+        tax_basis_points: 1900,
+        discount_basis_points: 0,
+      },
+      {
+        position: 1,
+        product_id: null,
         description: 'Fictional standalone service',
         info_text: note,
         quantity: 1,
@@ -1360,10 +1448,12 @@ async function offerDraftScenario(browser: Browser) {
     );
     await expect(
       editor
-        .getByRole('group', { name: 'Position 1' })
+        .getByRole('group', { name: 'Position 2' })
         .getByLabel('Beschreibung'),
     ).toHaveValue('Fictional standalone service');
-    await expect(infoInput).toHaveValue(note);
+    await expect(
+      secondBlankPosition.getByLabel('Infotext (optional)'),
+    ).toHaveValue(note);
     let blankPreviewBytes: Buffer | undefined;
     await context.route(
       '**/api/v1/documents/' + blankCreated.id + '/preview',
@@ -1472,6 +1562,10 @@ async function offerDraftScenario(browser: Browser) {
     expect(renderedHtml[2]).toContain('Fictional standalone introduction');
     expect(renderedHtml[2]).toContain('Fictional standalone conclusion');
     expect(renderedHtml[2]).toContain('Fictional standalone service');
+    expect(renderedHtml[2]).toContain('Fictional extra briefing');
+    expect(renderedHtml[2]!.indexOf('Fictional extra briefing')).toBeLessThan(
+      renderedHtml[2]!.indexOf('Fictional standalone service'),
+    );
     expect(storedArtifactCount).toBe(1);
     expect(storedArtifacts.size).toBe(1);
     expect(await products.list()).toEqual(productSnapshot);
@@ -1689,7 +1783,7 @@ async function offerDraftScenario(browser: Browser) {
     );
     await expect(
       editor
-        .getByRole('group', { name: 'Position 1' })
+        .getByRole('group', { name: 'Position 2' })
         .getByLabel('Infotext (optional)'),
     ).toHaveValue(note);
     const originalPdf = page.getByRole('link', {

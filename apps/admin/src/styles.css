@@ -2496,6 +2496,43 @@ summary {
   padding-inline: 0.25rem;
   font-weight: 600;
 }
+.offer-draft-position[data-drop-target] {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.offer-draft-position-grip {
+  display: none;
+}
+@media (any-pointer: fine) {
+  .offer-draft-position-grip {
+    display: inline-grid;
+    width: 1.5rem;
+    min-height: 1.5rem;
+    place-items: center;
+    vertical-align: middle;
+    color: var(--quiet-ink);
+  }
+  .offer-draft-position-grip[draggable='true'] {
+    cursor: grab;
+  }
+}
+.offer-draft-position-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.offer-draft-position-actions .offer-draft-move {
+  display: inline-grid;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  place-items: center;
+  scroll-margin-block: 5rem;
+}
+.offer-draft-move[aria-disabled='true'] {
+  color: var(--disabled-ink);
+  cursor: not-allowed;
+}
 .offer-draft-position-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2549,7 +2586,7 @@ summary {
       minmax(0, 2.5fr) minmax(0, 0.8fr) minmax(0, 1fr)
       minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
   }
-  .offer-draft-position > .tertiary-action {
+  .offer-draft-position-actions {
     justify-self: end;
   }
 }

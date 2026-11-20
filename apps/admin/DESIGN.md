@@ -424,3 +424,14 @@ und folgt in der Tab-Reihenfolge auf „Position entfernen“. Beim Löschen
 der Position entfällt ihr Infotext mit ihr. Ältere eigenständige
 Infotextzeilen behalten ihr Feld „Text“ und ihre vorhandene Position im
 Beleg. Die Finalisierung erfordert mindestens eine Leistungsposition.
+
+### Positionsreihenfolge im Dokumenteditor (DOC-ORDER-01)
+
+Der Griff an der Feldgruppenüberschrift verschiebt die ganze Zeile per
+Maus. Die zulässige Zielzeile erhält den vorhandenen Fokusfarbwert.
+Zwei beschriftete Pfeilaktionen mit je 44px Trefferfläche erlauben die
+gleiche Sortierung per Tastatur und auf Touchgeräten. Der Fokus bleibt
+beim gewählten Pfeil der verschobenen Zeile, auch an einer Listenbegrenzung.
+Der Editor meldet die neue Zeilenstelle für assistive Technik. Zugehöriger
+Infotext wandert mit der Position. Eigenständige Textzeilen sind ebenfalls
+verschiebbar. Speichern übernimmt die Reihenfolge.
