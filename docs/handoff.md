@@ -49,12 +49,51 @@ Abschnitt beschreibt den aktuellen Stand.
   vorhandenen B-Beobachtungen (B15/B36) und privaten Sicherungen. Für weitere
   Referenzdetails bei Bedarf nach Freigabe/Hilfe fragen. Keine echten
   Kundenaktionen.
+- **Betrieb (geprüft 20.11.2026, Host korrigiert auf 192.168.68.211 = pve1,
+  per SSH erreichbar):** ak-test-api/worker/admin laufen gesund auf exakt
+  `68376eeb203a8dfbfdb470ffca0183c459e7f893` (= `68376ee`, PR-#33-Merge),
+  Gateway `2527d01b2205de25b09d720e0c315c8c0b327fbe` gesund,
+  ak-test-database gesund; `ak-test-update.timer` ist aktiv, der alleinige
+  Updater und hat zuletzt erfolgreich aktualisiert („updated“), keine
+  parallelen manuellen Updates. Main-CI durchgehend grün (zuletzt
+  44818306120). Offen: der Checkpoint-Dreifachvergleich (CT/Host/
+  Betreiberkopie) für die heutigen Revisionen ist von hier nicht belegt –
+  die Dump-Pfade stehen in der privaten Betreiberübergabe; lokal existiert
+  keine Betreiberkopie für die heutigen Stande (nur delivery-2026-10-25).
+  Frühere Notizen mit 192.168.68.201 sind überholt (falsche IP).
+- **Browsermöglichkeiten (geprüft 20.11.2026):** Die Hermes-Browsersitzung ist
+  ein isolierter eigener Chromium und sieht die angemeldeten Chrome-Tabs des
+  Nutzers nicht. `hermes browser` bietet nur `close-profile` (kopiert das
+  ECHTE Profil, dafür muss der Browser des Nutzers geschlossen werden –
+  destruktiv, und durch die Nutzeranweisung „keine Profile/Cookies/Passwörter
+  kopieren“ ausdrücklich ausgeschlossen) sowie `export-signins`. Einen
+  gezielten Attach-Zugriff auf offene Referenz-Tabs gibt es in der verfügbaren
+  Werkzeugfläche nicht (Chrome ohne CDP-Debug-Port ist nicht anbindbar; keine
+  Debug-Freigabe/kein Chrome-Neustart ohne ausdrückliche Freigabe). **Grenze
+  dokumentiert:** Referenzvergleich nur über die vorhandenen privaten
+  Bookitup-Screenshots/PDFs; die eigene App läuft in isoliertem
+  Chromium/Playwright mit synthetischen Daten, Screenshot-Abnahme erfolgt per
+  Vision-Tool (DOM/axe allein gelten nicht als visuelle Abnahme).
+- **STEUER-BLOCKER Gesamtrabatt (20.11.2026):** Die Semantik „mindert nur den
+  Zahlbetrag, Netto/Steuer unverändert“ ist für echte Preisnachlässe
+  zweifelhaft (§ 14 Abs. 4 Nr. 7/8 UStG: Entgelt/Entgeltminderung und Steuer-
+  betrag auf das Entgelt; § 17 Abs. 1: Berichtigung bei geänderter
+  Bemessungsgrundlage; Zurechnung auf gemischte Steuersätze ungeklärt).
+  Bis zur Klärung (BMF/Steuerberatung): KEINE echten Rechnungen mit
+  Gesamtrabatt erstellen oder versenden, keine Produktionsreife behaupten.
+  Einzelheiten im Implementierungsplan (DOC-PRODUCT-01.5).
 - **Erledigt 20.11.2026 – DOC-PRODUCT-01.4 (Positionsrabatt):** Kern (Migration 0062, exakter Festbetrag statt Prozent auf der gespeicherten Preisgrundlage, Druck „Rabatt <Betrag> €“) und UI („Rabattart“ Prozent/Euro je Position, null-vs-0-Semantik, Vorlagenpanel-Datenverlust behoben) sind über PR #30 (`d660a16`) und #31 (`435fe93`) nach grüner CI nach `main` gemergt. Zusätzlich die 01.3-Preview-Lücke (Vorlagen-Preview lehnte priceBasis ab) mit Regressionstest geschlossen. Abnahme siehe Implementierungsplan. Nicht verifiziert wie zuvor: tatsächliche Live-Auslieferung (Host unerreichbar).
-- **Aktiver Slice:** DOC-PRODUCT-01.5 kommentierter Gesamtrabatt (Prozent/Euro unter den Positionen mit Anmerkung, exakte Minor-Unit-Arithmetik, Steuerausweis dokumentiert, Vorschau/PDF sichtbar, Folgebelege übertragen, revisionssicher). Coding-Subagent: DeepSeek V4.1 Flash; MiMo besitzt Plan/Docs, Review und Integration.
-- **Betrieb:** der letzte verifizierte Live-Stand ist laut GOAL-Momentaufnahme
-  `b47f5aa` (drei Container gesund, Backup-Prüfsummen identisch) – vor jeder
-  Live-Aussage erneut prüfen; neue Slices erst nach grüner CI und geprüftem
-  Updater-Checkpoint als live bezeichnen.
+- **Aktiver Slice (Vorrang):** EDITOR-LAYOUT-01 ruhiges responsives
+  Dokumenteditor-Formular (Gruppen, vollständige Labels/Werte, Umbrechen statt
+  Quetschen; je EIN Zahlenfeld für Positions- und Gesamtrabatt mit
+  Prozent-/Euro-Umschalter, Werte/Berechnung erhalten). Abnahme mit echten
+  Chromium-Screenshots (synthetische Daten), die per Vision-Tool angesehen
+  werden, plus Bookitup-Abgleich aus privaten Referenz-PDFs. Danach
+  DOC-PRODUCT-01.6 und die restliche Reihenfolge des Plans.
+- **Betrieb (historisch, überholt vom SSH-geprüften Stand oben):** die
+  GOAL-Momentaufnahme nannte `b47f5aa` als letzten verifizierten Live-Stand
+  und eine falsche Host-IP; maßgeblich ist der Abschnitt „Betrieb (geprüft
+  20.11.2026 …)“.
 
 ## DOC-OPTION-01: Optionale Positionen
 
