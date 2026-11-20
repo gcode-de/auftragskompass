@@ -1,5 +1,56 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 20.11.2026 (laufende Hermes-Sitzung)
+
+Die folgenden datierten Abschnitte sind historische Momentaufnahmen; dieser
+Abschnitt beschreibt den aktuellen Stand.
+
+- **Nutzauftrag 20.11.2026 (GOAL + Ergänzung):** verbindliche Reihenfolge der
+  offenen Arbeiten ist jetzt im [Implementierungsplan](../IMPLEMENTATION_PLAN.md)
+  unter „Priorisierte Dokumentarbeiten“ nummeriert festgelegt: zuerst
+  DOC-PRODUCT-01.3 (Brutto/Netto), .4 (Positions-Rabatt Euro/Prozent), .5
+  (kommentierter Gesamtrabatt), .6 (Position als Produkt speichern) und
+  DOC-EVENTINFO-01 (Eventbezeichnung/Ort/Datum im Dokument); danach
+  Dokumentfunktionalität vervollständigen (DOC-CREATE-02-Rest und
+  **DOC-DEPOSIT-FIX-01**: Schlussrechnung ohne optionale Positionen kann nach
+  Auftragskorrektur trotz zu hoher Anzahlungen einen negativen Zahlbetrag
+  ergeben – vor produktiver Nutzung fachlich korrekt, rückwärtsverträglich und
+  mit Tests für bestehende Korrekturpfade lösen); danach E-Mail-Versand/
+  Anfragebenachrichtigung; erst danach weitere Bookitup-Parität und
+  Designsystem.
+- **Modellverfügbarkeit geprüft (20.11.2026):** MiMo V2.6 Pro koordiniert über
+  OpenCode (`opencode-go`, diese Sitzung); DeepSeek V4.1 Flash ist als
+  Coding-Subagent über `hermes -z … -m deepseek-v4.1-flash --provider
+  opencode-go` tatsächlich verfügbar (Antwort mit Marker bestätigt). Keine
+  stillschweigende Ausweichlösung.
+- **Git-/CI-Stand (20.11.2026):** `origin/main` = `b47f5aa` (Merge PR #26,
+  optionale Positionen; davor PR #23 Infotexte, #24 Sortierung, #25
+  Verschiebungsansage). Die letzten Main-CI-Läufe sind grün (Quality; Images
+  siehe Workflow). Offener PR #10 (Backlog-Prüfgrenzen) bleibt unberührt.
+  Arbeitsbranch der laufenden Slices: `codex/doc-product-gross-net` direkt von
+  aktuellem main. Der lokale Hauptcheckout liegt dort; die untracked
+  `packages/core/core`- und Python-Cache-Verzeichnisse bleiben unangetastet,
+  beide Stashes bleiben erhalten.
+- **Bookitup-Zugriffslücke (20.11.2026):** Die Hermes-Browsersitzung sieht die
+  angemeldeten Chrome-Tabs des Nutzers nicht (eigener Browser, nur
+  about:blank/Bookitup-Loginwand). Gemäß Nutzeranweisung wurden **keine
+  gespeicherten Logins automatisch ausprobiert oder umgangen**; es gilt die
+  manuelle Beobachtung des Nutzers (Produktzeile mit Infotext/Optional-Checkbox,
+  Brutto/Netto oben, je Position Prozent-/Euro-Rabatt und Menü „als Produkt
+  speichern“/„nach unten schieben“, unter den Positionen Gesamtrabatt
+  Prozent/Euro mit Anmerkung – manuelle Beobachtung, KEIN REA-Beleg) plus die
+  vorhandenen B-Beobachtungen (B15/B36) und privaten Sicherungen. Für weitere
+  Referenzdetails bei Bedarf nach Freigabe/Hilfe fragen. Keine echten
+  Kundenaktionen.
+- **Aktiver Slice:** DOC-PRODUCT-01.3 Brutto/Netto-Preisgrundlage pro Position
+  (additive Migration, exakte Minor-Unit-Arithmetik, Produkt-/Vorlagen-/Folge-
+  übertragung, finale Dokumente unverändert). Coding-Subagent: DeepSeek V4.1
+  Flash; MiMo besitzt Plan/Docs, Review und Integration.
+- **Betrieb:** der letzte verifizierte Live-Stand ist laut GOAL-Momentaufnahme
+  `b47f5aa` (drei Container gesund, Backup-Prüfsummen identisch) – vor jeder
+  Live-Aussage erneut prüfen; neue Slices erst nach grüner CI und geprüftem
+  Updater-Checkpoint als live bezeichnen.
+
 ## DOC-OPTION-01: Optionale Positionen
 
 Angebots- und Rechnungspositionen können optional markiert werden. Vorschau und PDF zeigen die Position gekennzeichnet, ihre Beträge und Steuern fließen nicht in die Gesamtsumme ein. Folgebelege übernehmen die Kennzeichnung. Bei Schlussrechnungen mit Optionen wird verhindert, dass Anzahlungen den nichtoptionalen Rechnungsbetrag übersteigen. Der ältere separate Grenzfall ohne Optionen ist im Paritäts-Backlog dokumentiert. CI und Auslieferung prüfen.
