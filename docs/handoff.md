@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-ORDER-02: Sortieransage
+
+Wiederholte gültige Positionsverschiebungen erneuern die Screenreader-Live-Region mit den Listenplätzen; tatsächliche Sprachausgabe ist nicht geprüft. CI- und Deploymentstand vor Nutzung prüfen.
+
 ## DOC-ORDER-01: Positionsreihenfolge
 
 Im Dokumenteditor lassen sich Positionen per Maus ziehen sowie mit Schaltflächen per Tastatur und Touch verschieben. Infotext bleibt bei seiner Position. Stand von lokalem Qualitätstest, GitHub und Auslieferung vor Fortsetzung prüfen; finanzielle Änderungen wie optionale Positionen und Rabatte sind noch offen.

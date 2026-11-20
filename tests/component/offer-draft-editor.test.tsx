@@ -809,6 +809,41 @@ test('reordering keeps unsaved fields and attached text with the moved position'
   ).toHaveProperty('value', 'Fiktives bearbeitetes Paket');
 });
 
+test('consecutive moves between the same slots renew the polite announcement', async () => {
+  setup({
+    initial: {
+      ...detail(),
+      lines: [
+        line,
+        { ...line, id: 'line-2', position: 1, description: 'Fiktiver Aufbau' },
+      ],
+    },
+  });
+  const { container } = render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByRole('group', { name: 'Position 1' });
+  const liveRegion = container.querySelector('[aria-live="polite"]')!;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Position 1 nach oben verschieben' }),
+  );
+  expect(liveRegion.textContent).toBe('');
+
+  const moveFirstRowDown = () =>
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Position 1 nach unten verschieben' }),
+    );
+  moveFirstRowDown();
+  const firstAnnouncement = liveRegion.firstChild;
+  const expected = 'Zeile von Stelle 1 an Stelle 2 verschoben.';
+  expect(firstAnnouncement?.textContent).toBe(expected);
+
+  moveFirstRowDown();
+  expect(liveRegion.textContent).toBe(expected);
+  expect(liveRegion.firstChild).not.toBe(firstAnnouncement);
+});
+
 test('only an active position drag can reorder a draft and saving disables dragging', async () => {
   let releaseSave: (value: Response) => void = () => {};
   const pendingSave = new Promise<Response>((resolve) => {

@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **DOC-ORDER-02 — `fix: announce repeated position moves`**: Beim Sortieren jede Bewegung auch bei wiederholtem identischem Ausgangs- und Zielplatz für Screenreader ankündigen. Bestehende Maus-, Tastatur- und Touchbedienung sowie Speicherverhalten erhalten.
+
 - [x] **DOC-ORDER-01 — `feat: reorder document positions`**: Positionen im Dokumententwurf per Drag-and-drop und zugänglichen Aktionen für Tastatur und Mobilgeräte sortieren. Zugehörige Infotexte bleiben an der Position; Änderungen werden nach Speichern und Neuladen in Vorschau und PDF in derselben Reihenfolge ausgegeben. Bestehende freie Textzeilen, Eingaben, Summen und Versionierung erhalten. Abnahme mit synthetischen Daten auf Desktop und Mobil.
 
 - [x] **DOC-TEXT-02 — `feat: attach product information to document positions`**: Produktbeschreibungen beim Einfügen als bearbeitbaren Infotext derselben Position übernehmen, analog Bookitup. Der Text wird mit der Position gespeichert, gelöscht und in Folgebelege kopiert und erscheint unter dem Positionsnamen im PDF. Bestehende freie Textzeilen und finale PDFs erhalten; Preise und Summen unverändert. Abnahme mit synthetischen Daten, mehreren Produkten, Speichern, Neuladen und Folgebelegen.
