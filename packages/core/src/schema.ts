@@ -370,6 +370,7 @@ export const documentTemplatePositions = pgTable(
     unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }).notNull(),
     taxBasisPoints: integer('tax_basis_points').notNull(),
     discountBasisPoints: integer('discount_basis_points').notNull().default(0),
+    priceBasis: text('price_basis').notNull().default('gross'),
   },
 );
 export type DocumentTemplateCreateResponse = {
@@ -392,6 +393,7 @@ export type DocumentTemplateCreateResponse = {
     unitPriceMinor: number;
     taxBasisPoints: number;
     discountBasisPoints: number;
+    priceBasis: string;
   }[];
 };
 export const documentTemplateCreateOperations = pgTable(
@@ -460,6 +462,7 @@ export const documentLines = pgTable('document_lines', {
   unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }),
   taxBasisPoints: integer('tax_basis_points'),
   discountBasisPoints: integer('discount_basis_points').default(0),
+  priceBasis: text('price_basis').notNull().default('gross'),
 });
 export const documentLayouts = pgTable('document_layouts', {
   tenantId: uuid('tenant_id').primaryKey(),

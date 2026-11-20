@@ -42,6 +42,7 @@ import {
   DocumentTotalsError,
   formatDocumentDate,
   formatMinorUnits,
+  type PriceBasis,
   type TotalsLine,
 } from './document-totals.js';
 import {
@@ -108,13 +109,15 @@ export class DocumentError extends Error {
   }
 }
 
-type DocumentServiceLineDraft = TotalsLine & {
+type DocumentServiceLineDraft = Omit<TotalsLine, 'priceBasis'> & {
   kind?: never;
   productId?: string | null;
   description: string;
   infoText?: string;
   unit: string;
   discountBasisPoints: number;
+  /** A request may omit the basis; the stored line then means gross. */
+  priceBasis?: PriceBasis;
 };
 export type DocumentLineDraft = DocumentServiceLineDraft | DocumentInfoLine;
 export type DocumentDraftInput = {
@@ -465,6 +468,7 @@ function assertLine(line: DocumentLineDraft, index: number): void {
     if (
       'infoText' in line ||
       'optional' in line ||
+      'priceBasis' in line ||
       typeof line.description !== 'string' ||
       !line.description.trim() ||
       line.description.includes('\0') ||
@@ -496,9 +500,22 @@ function assertLine(line: DocumentLineDraft, index: number): void {
     line.taxBasisPoints > 10000 ||
     !Number.isSafeInteger(line.discountBasisPoints) ||
     line.discountBasisPoints < 0 ||
-    line.discountBasisPoints > 10000
+    line.discountBasisPoints > 10000 ||
+    (line.priceBasis !== undefined &&
+      line.priceBasis !== 'gross' &&
+      line.priceBasis !== 'net')
   )
     throw new DocumentError('invalid_line');
+}
+
+// The stored basis is the only one a line knows; a draft that omits it keeps
+// the old meaning: gross.
+function totalsLines(lines: readonly DocumentLineDraft[]): TotalsLine[] {
+  const service: TotalsLine[] = [];
+  for (const line of lines)
+    if (line.kind !== 'info')
+      service.push({ ...line, priceBasis: line.priceBasis ?? 'gross' });
+  return service;
 }
 
 function recipientOf(contact: {
@@ -773,6 +790,8 @@ export function documentRepository(
         unitPriceMinor: row.unitPriceMinor!,
         taxBasisPoints: row.taxBasisPoints!,
         discountBasisPoints: row.discountBasisPoints!,
+        // The CHECK only admits 'gross' and 'net'.
+        priceBasis: row.priceBasis as PriceBasis,
       };
     });
   }
@@ -810,6 +829,7 @@ export function documentRepository(
                 unitPriceMinor: line.unitPriceMinor,
                 taxBasisPoints: line.taxBasisPoints,
                 discountBasisPoints: line.discountBasisPoints,
+                priceBasis: line.priceBasis ?? 'gross',
               }),
         })),
       );
@@ -2089,12 +2109,11 @@ export function documentRepository(
               unitPriceMinor: position.unitPriceMinor,
               taxBasisPoints: position.taxBasisPoints,
               discountBasisPoints: position.discountBasisPoints,
+              priceBasis: position.priceBasis as PriceBasis,
             }));
         if (!source.length) throw new DocumentError('empty_lines');
         source.forEach(assertLine);
-        const totals = documentTotals(
-            source.filter((line) => line.kind !== 'info'),
-          ),
+        const totals = documentTotals(totalsLines(source)),
           at = now();
         await tx.insert(documents).values({
           tenantId,
@@ -2684,9 +2703,7 @@ export function documentRepository(
                 await assertReference(tx, 'product', line.productId);
           // Sums are recomputed from the magnitudes that are actually printed, so
           // they cannot drift from the positions - and never become negative.
-          const totals = documentTotals(
-              positions.filter((line) => line.kind !== 'info'),
-            ),
+          const totals = documentTotals(totalsLines(positions)),
             at = now();
           // The blank-document rule demands the source at insert time, so the row
           // is written as one reviewed-SQL insert. `schema.ts` stays unchanged for
@@ -2821,9 +2838,7 @@ export function documentRepository(
             if (line.kind !== 'info')
               await assertReference(tx, 'product', line.productId);
           try {
-            totals = documentTotals(
-              content.lines.filter((line) => line.kind !== 'info'),
-            );
+            totals = documentTotals(totalsLines(content.lines));
           } catch (error) {
             if (error instanceof DocumentTotalsError)
               throw new DocumentError('invalid_line');
@@ -3170,6 +3185,8 @@ export function registerDocumentRoutes(
     },
     taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
     discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+    // Optional on the wire: an omitted basis keeps the old meaning, gross.
+    priceBasis: { type: 'string', enum: ['gross', 'net'] },
   };
   const infoKind = { type: 'string', const: 'info' };
   const line = {
@@ -3205,7 +3222,7 @@ export function registerDocumentRoutes(
     },
     else: {
       required: Object.keys(serviceFields).filter(
-        (field) => field !== 'productId',
+        (field) => field !== 'productId' && field !== 'priceBasis',
       ),
       properties: { description: { type: 'string', maxLength: 300 } },
     },
@@ -3457,6 +3474,7 @@ export function registerDocumentRoutes(
                 'unitPriceMinor',
                 'taxBasisPoints',
                 'discountBasisPoints',
+                'priceBasis',
               ],
               properties: {
                 id: { type: 'string', format: 'uuid' },
@@ -3470,6 +3488,7 @@ export function registerDocumentRoutes(
                 unitPriceMinor: { type: 'integer' },
                 taxBasisPoints: { type: 'integer' },
                 discountBasisPoints: { type: 'integer' },
+                priceBasis: { type: 'string', enum: ['gross', 'net'] },
               },
             },
           ],

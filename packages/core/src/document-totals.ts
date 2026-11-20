@@ -4,13 +4,17 @@ export class DocumentTotalsError extends Error {
   }
 }
 
-// Every position price is a gross amount in minor units, so a discount reduces
-// the gross and the tax is extracted from it. All arithmetic stays integral.
+// Every position price is a gross or a net amount in minor units. A gross price
+// carries the tax inside it, so a discount reduces the gross and the tax is
+// extracted; a net price gets the tax added on top. All arithmetic stays
+// integral.
+export type PriceBasis = 'gross' | 'net';
 export type TotalsLine = {
   quantity: number;
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  priceBasis: PriceBasis;
   optional?: boolean;
 };
 export type LineTotals = {
@@ -51,6 +55,7 @@ function safeMinor(value: bigint): number {
 
 export function lineTotals(line: TotalsLine): LineTotals {
   if (
+    (line.priceBasis !== 'gross' && line.priceBasis !== 'net') ||
     !Number.isSafeInteger(line.quantity) ||
     line.quantity < 1 ||
     !Number.isSafeInteger(line.unitPriceMinor) ||
@@ -63,16 +68,25 @@ export function lineTotals(line: TotalsLine): LineTotals {
     line.taxBasisPoints > 10000
   )
     throw new DocumentTotalsError('invalid');
-  const grossExact = roundedRatio(
+  // The discounted amount of the stored basis - gross or net, as stored.
+  const basisExact = roundedRatio(
     BigInt(line.quantity) *
       BigInt(line.unitPriceMinor) *
       BigInt(10000 - line.discountBasisPoints),
     10000n,
   );
-  const grossMinor = safeMinor(grossExact);
-  const netMinor = safeMinor(
-    roundedRatio(grossExact * 10000n, BigInt(10000 + line.taxBasisPoints)),
-  );
+  if (line.priceBasis === 'net') {
+    const netMinor = safeMinor(basisExact),
+      taxMinor = safeMinor(
+        roundedRatio(basisExact * BigInt(line.taxBasisPoints), 10000n),
+      ),
+      grossMinor = safeMinor(basisExact + BigInt(taxMinor));
+    return { grossMinor, netMinor, taxMinor };
+  }
+  const grossMinor = safeMinor(basisExact),
+    netMinor = safeMinor(
+      roundedRatio(basisExact * 10000n, BigInt(10000 + line.taxBasisPoints)),
+    );
   return { grossMinor, netMinor, taxMinor: grossMinor - netMinor };
 }
 

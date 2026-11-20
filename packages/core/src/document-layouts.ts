@@ -561,6 +561,7 @@ export function documentLayoutRepository(
             unitPriceMinor: 10000,
             taxBasisPoints: 1900,
             discountBasisPoints: 0,
+            priceBasis: 'gross',
           },
         ],
         values: {},
@@ -589,7 +590,12 @@ export function documentLayoutRepository(
         assertTemplateText(input.subject, input.introText, input.outroText);
         const issuedAt = new Date('2030-10-26T10:00:00.000Z'),
           timeZone = 'Europe/Berlin',
-          totals = documentTotals(input.positions),
+          // An omitted basis keeps the old meaning, gross.
+          positions = input.positions.map((position) => ({
+            ...position,
+            priceBasis: position.priceBasis ?? ('gross' as const),
+          })),
+          totals = documentTotals(positions),
           values: Partial<Record<TemplatePlaceholder, string>> = {
             contact: 'Alex Beispiel',
             event: 'Fiktives Sommerfest',
@@ -624,7 +630,7 @@ export function documentLayoutRepository(
             subject: input.subject,
             introText: input.introText,
             outroText: input.outroText,
-            lines: input.positions,
+            lines: positions,
             values,
           }),
           render,

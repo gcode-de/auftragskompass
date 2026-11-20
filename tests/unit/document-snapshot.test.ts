@@ -38,6 +38,7 @@ const input = (): SnapshotInput => ({
       unitPriceMinor: 19900,
       taxBasisPoints: 1900,
       discountBasisPoints: 0,
+      priceBasis: 'gross' as const,
     },
   ],
   values: { contact: 'Fictional Customer', date: '27.10.2030' },

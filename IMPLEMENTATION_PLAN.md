@@ -1,10 +1,48 @@
 # AuftragsKompass – commitgenauer Implementierungsplan
 
-**Status:** geprüfter Bauplan; C001–C026 und vorgezogen C076 implementiert; übrige C027–C085 offen. Die CI prüft jeden Push.
+**Status (20.11.2026):** geprüfter Bauplan; C001–C026 und vorgezogen C076 implementiert; übrige C027–C085 offen. **Aktiv ist die priorisierte Dokumentreihe unten (DOC-PRODUCT-01.1 begonnen).** Die CI prüft jeden Push.
 **Produktgrundlage:** `Lastenheft_Fotobox-Verwaltung_MVP.md`
 **Arbeitsweise:** Jeder nummerierte Eintrag ist ein eigenständiger, grüner Commit mit Tests und wird unmittelbar nach Fertigstellung gepusht.
 
 **Neue Session:** Zuerst die [Projektübergabe mit Funktionsstand und Skill-Vorgaben](docs/handoff.md) lesen und den tatsächlichen Repository-/Betriebsstand verifizieren.
+
+## Priorisierte Dokumentarbeiten (Nutzauftrag 20.11.2026, verbindliche Reihenfolge)
+
+Zuerst die fünf Positions-/Preis-Slices (1–5), danach Dokumentfunktionalität
+vervollständigen (6, inkl. des zwingenden Schlussrechnungs-/Anzahlungs-
+Grenzfalls), danach E-Mail-Versand/Anfragebenachrichtigung (7), erst danach
+weitere Bookitup-Parität und Designsystem (8). Genau ein Slice aktiv; jeder
+Slice wird geprüft, gepusht und nach grüner CI ausgeliefert, bevor der nächste
+beginnt.
+
+**Referenz (manuelle Beobachtung des Nutzers, 20.11.2026, KEIN REA-Beleg):**
+Bookitup-Produktzeile mit zugehörigem Infotext und Optional-Checkbox; oben
+Brutto/Netto; je Position Prozent-/Euro-Rabatt und Menü mit „als Produkt
+speichern“/„nach unten schieben“; unter den Positionen Gesamtrabatt
+Prozent/Euro und Anmerkung. Zuvor belegt (B15/B36): Positionen mit Menge,
+Einheit, Einzelpreis, Steuer, Rabatt % oder €, Gesamt, Beschreibung.
+Zugriffslücke: die Hermes-Browsersitzung sieht die angemeldeten Chrome-Tabs
+des Nutzers nicht; keine gespeicherten Logins automatisch ausprobieren oder
+umgehen – vorhandene Beobachtungen/Sicherungen verwenden, bei Bedarf nach
+Freigabe fragen. Keine echten Kundenaktionen.
+
+- [ ] **DOC-PRODUCT-01.3 — Brutto/Netto-Preisgrundlage pro Position** *(AKTIV, laufend)*: Jede Dokumentposition trägt eine ausdrückliche Preisgrundlage Brutto oder Netto (additive Migration; vorhandene Zeilen bleiben bedeutungsgleich Brutto). Exakte Minor-Unit-Arithmetik: Netto-Basis rechnet Rabatt auf Netto und Steuer darauf (Brutto = Netto + Steuer), Brutto-Basis behält die heutige Formel (Rabatt auf Brutto, Steuer extrahiert). Produktübernahme übernimmt die Produkt-Preisgrundlage; Vorlagen- und Folgebelege tragen die Grundlage mit; Produktstamm und finale Dokumente/PDFs bleiben unverändert. Menge multipliziert korrekt; optionale Positionen bleiben sichtbar markiert und aus Netto/Steuer/Brutto ausgeschlossen (gegen Live-Stand prüfen). Abnahme: Unit-/Integrationstests beide Grundlagen inkl. 0/19 % Steuer, Rundungsgrenzen und Rabattwechselwirkung; Editor mit wählbarer Grundlage und korrekten Summen (Desktop/Mobil, Hell/Dunkel); Speichern/Neuladen/Folgebelege; Mandanten-/Versionsschutz; bestehende finale PDFs unverändert. Coding-Subagent: DeepSeek V4.1 Flash; MiMo plant, reviewt und liefert Docs/Integration.
+
+- [ ] **DOC-PRODUCT-01.4 — Positionsrabatt in Euro oder Prozent**: Je Position Festbetrag (Minor Units) oder Prozent wählbar; exakte Berechnung (Festbetrag auf die Positionsgrundlage, Prozent wie heute), validierte Grenzen, revisionssichere Speicherung und Übertragung in Folgebelege. Abnahme: Testmatrix Festbetrag/Prozent/0/Maximum/ungültig, Wechsel Prozent↔Euro ohne Wertverfälschung, Summen- und Steuerexaktheit, Mobilansicht, Produktstamm und finale Dokumente unverändert.
+
+- [ ] **DOC-PRODUCT-01.5 — kommentierter Gesamtrabatt**: Unter den Positionen ein Gesamtrabatt in Prozent oder Euro mit freier Anmerkung; wirkt mit exakter Minor-Unit-Arithmetik auf die Dokumentsumme, Steuerausweis dokumentiert (keine erfundene Steuerlogik); in Vorschau/PDF sichtbar, in Folgebelege übertragen, revisionssicher gespeichert. Abnahme: Berechnungs- und Rundungstests, Anmerkung leer/lang/escaped, Kombination mit Positions-Rabatten und optionalen Positionen, Mobilansicht, Mandanten-/Versionsschutz.
+
+- [ ] **DOC-PRODUCT-01.6 — Position als Produkt speichern**: Positions-Menü (wie beobachtet) mit „Als Produkt speichern“ legt aus der Position einen Produktstammsatz an (Name, Einheit, Preis/Grundlage, Steuer). Sicherer Umgang mit Mehrfachklick und unklarer Netzwerkantwort: genau eine Anlage je Geste, kein blindes Wiederholen, Sperre bis ausdrücklicher Abgleich, bestehende POST-/Idempotenzverträge nutzen. Abnahme: Doppelklick, Retry, unklare Antwort, 409/400-Fälle, exakte Wertübernahme, Produktliste danach korrekt, kein Einfluss auf finale Dokumente.
+
+- [ ] **DOC-EVENTINFO-01 — Eventbezeichnung, Ort und Datum im Dokument**: Dokumente enthalten bekannte Eventbezeichnung, Ort und Datum passend zur beobachteten Bookitup-Vorlage; fehlende Angaben bleiben ausgelassen statt erfunden. Bestehende Platzhalter ({{event}}/{{location}}/{{date}}) und Drucklayout erhalten. Abnahme mit synthetischen Events mit/ohne Ort/Datum in Vorschau/PDF und Folgebelegen; finale Dokumente unverändert.
+
+- [ ] **DOC-CREATE-02-Rest — Schlussrechnung und Korrektur im Dialog**: Für Schlussrechnung und Korrektur zulässige Quellbelege und Versionen im Event-Dokumentdialog auswählbar machen; bestehende Status-, Mandanten-, CSRF-, Nummern- und Unveränderlichkeitsschutzregeln erhalten (Fortführung des offenen DOC-CREATE-02).
+
+- [ ] **DOC-DEPOSIT-FIX-01 — Schlussrechnungs-/Anzahlungs-Grenzfall**: Eine Schlussrechnung ohne optionale Positionen kann nach Auftragskorrektur trotz zu hoher Anzahlungen einen negativen Zahlbetrag ergeben; fachlich korrekt und rückwärtsverträglich in eigenem Slice lösen und Tests für bestehende Korrekturpfade ergänzen. Vor produktiver Nutzung zwingend.
+
+- [ ] **MAIL-01ff — E-Mail-Versand/Anfragebenachrichtigung** (GOAL-Priorität 3): Dokumente bewusst ausgewählt als Anhang an Kunden/Buchhaltung senden, Website-Anfragebenachrichtigung per E-Mail neben Telegram; vorhandene SMTP-/IMAP-/Outbox-/Retry-Bausteine und Konfiguration zuerst prüfen, ausschließlich synthetische Tests/Mocks, kein echter Versand ohne gesonderte Nutzeranweisung; formatierter Editor nur bei konkretem Nutzen und geprüfter Toolkit-Bewertung.
+
+- [ ] **PARITY-REST — weitere Bookitup-Parität und Designsystem** (GOAL-Priorität 4): kleine belegte Paritätsslices in UI/UX/Logik; Designsystem aus bestehenden Tokens/Komponenten konsolidieren, mobil/Desktop und Hell/Dunkel prüfen; kein dekorativer Redesign-Großumbau, keine neue Abstraktion ohne Bedarf.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
@@ -76,7 +114,7 @@
 
 - [x] **DOC-PRODUCT-01.1 — `style: align existing document position fields`**: Im Dokumenteditor Beschreibung, Menge, Einheit, Brutto-Einzelpreis, Steuer und Rabatt mit sichtbaren Labels auf breiten Editorflächen in einer Zeile ausrichten. Auf schmalen Editorflächen nach verfügbarer Breite ohne Überlauf umbrechen. Abnahme: Desktop, schmaler Desktop-Container und Mobilbreiten im synthetischen Browserablauf, gleichbleibende Tastaturreihenfolge und gespeicherte Werte. Lokale Abnahme: Chromium mit PostgreSQL, 1440 px, simulierter 22rem-Container und 390/320 px, sichtbare Labels, 44px Eingabehöhe, Tab-Reihenfolge und gespeicherte Werte geprüft. 35 Komponententests grün.
 
-- [ ] **DOC-PRODUCT-01 — Produktoptionen in Dokumenten**: Produkt-/Positionsdarstellung und die fehlenden belegten Optionen Brutto/Netto und Rabatt in Euro oder Prozent mit exakter Minor-Unit-Arithmetik, revisionssicherer Speicherung und Mobilansicht ausarbeiten; Produktstamm und bestehende finale Dokumente bleiben unverändert. Keine Ressourcenverknüpfung vortäuschen, bevor Datenmodell und Konfliktregeln vorhanden sind.
+- [ ] **DOC-PRODUCT-01 — Produktoptionen in Dokumenten**: Produkt-/Positionsdarstellung und die fehlenden belegten Optionen Brutto/Netto und Rabatt in Euro oder Prozent mit exakter Minor-Unit-Arithmetik, revisionssicherer Speicherung und Mobilansicht ausarbeiten; Produktstamm und bestehende finale Dokumente bleiben unverändert. Keine Ressourcenverknüpfung vortäuschen, bevor Datenmodell und Konfliktregeln vorhanden sind. **Aufgeteilt gemäß priorisierter Dokumentreihe (20.11.2026): DOC-PRODUCT-01.3 (Brutto/Netto), .4 (Positions-Rabatt Euro/Prozent), .5 (kommentierter Gesamtrabatt), .6 (Position als Produkt speichern); DOC-PRODUCT-01.1/.2 sind abgeschlossene Stil-Unter-Slices.**
 
 - [x] **DOC-UX-02 — `style: prioritize event documents before library files`**: Geschäftsdokumente in der Event-Dateiansicht vor Bibliotheksdateien anzeigen; Verknüpfen, Lade-/Fehlerzustände und Navigation erhalten.
 
