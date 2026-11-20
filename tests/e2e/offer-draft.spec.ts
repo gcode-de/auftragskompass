@@ -620,7 +620,12 @@ async function offerDraftScenario(browser: Browser) {
     await position6
       .getByRole('button', { name: 'Position 6 entfernen' })
       .click();
-    await expect(positions.getByRole('group')).toHaveCount(5);
+    await expect(
+      positions.getByRole('group', { name: /^Position / }),
+    ).toHaveCount(5);
+    await expect(
+      positions.getByRole('group', { name: 'Infotext' }),
+    ).toHaveCount(2);
     await expect(
       positions.getByText('Änderungen werden beim Speichern neu berechnet.'),
     ).toBeVisible();
@@ -718,6 +723,16 @@ async function offerDraftScenario(browser: Browser) {
       },
       {
         position: 3,
+        product_id: null,
+        description: 'Synthetic net-priced product',
+        quantity: null,
+        unit: null,
+        unit_price_minor: null,
+        tax_basis_points: null,
+        discount_basis_points: null,
+      },
+      {
+        position: 4,
         product_id: grossProduct.id,
         description: 'Fictional gross product',
         quantity: 1,
@@ -727,7 +742,17 @@ async function offerDraftScenario(browser: Browser) {
         discount_basis_points: 0,
       },
       {
-        position: 4,
+        position: 5,
+        product_id: null,
+        description: 'Synthetic gross-priced product',
+        quantity: null,
+        unit: null,
+        unit_price_minor: null,
+        tax_basis_points: null,
+        discount_basis_points: null,
+      },
+      {
+        position: 6,
         product_id: null,
         description: 'Fictional extra cable',
         quantity: 1,

@@ -88,6 +88,7 @@ type DraftTemplate = {
 type CatalogProduct = {
   id: string;
   name: string;
+  description?: string;
   unit: string;
   priceMinor: number;
   priceBasis: string;
@@ -626,6 +627,8 @@ export function OfferDraftEditor({
             product &&
             typeof product.id === 'string' &&
             typeof product.name === 'string' &&
+            (product.description === undefined ||
+              typeof product.description === 'string') &&
             typeof product.unit === 'string' &&
             typeof product.priceBasis === 'string' &&
             typeof product.state === 'string' &&
@@ -676,6 +679,17 @@ export function OfferDraftEditor({
       (entry) => entry.id === selectedProductId,
     );
     if (!product) return;
+    const information = product.description?.trim() ?? '';
+    if (
+      (information && invalidInfoText(information)) ||
+      lineValues.length + (information ? 2 : 1) > 1000
+    ) {
+      setCatalogError(true);
+      setCatalogMessage(
+        'Produkt und Infotext können nicht hinzugefügt werden. Bitte Text und Anzahl der Positionen prüfen.',
+      );
+      return;
+    }
     try {
       const grossMinor = grossProductPrice(
         product.priceMinor,
@@ -697,6 +711,15 @@ export function OfferDraftEditor({
           tax: formatHundredths(product.taxBasisPoints),
           discount: '0.00',
         },
+        ...(information
+          ? [
+              {
+                key: `info-${key}`,
+                kind: 'info' as const,
+                description: information,
+              },
+            ]
+          : []),
       ]);
       setSelectedProductId('');
       setCatalogError(false);

@@ -1844,3 +1844,60 @@ test('an uncertain save result offers reload and prevents blind resubmission', a
   expect(fieldValue('Betreff')).toBe('Fiktives Angebot');
   expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
 });
+
+test('catalog product description becomes an editable information row and is saved', async () => {
+  const { calls } = setup({
+    products: [
+      {
+        ...catalogProducts[0]!,
+        description: 'Fiktiver Text\nmit zweiter Zeile',
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const picker = await screen.findByLabelText('Produkt aus Katalog');
+  fireEvent.change(picker, { target: { value: 'product-net' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+  );
+  const info = await screen.findByRole('group', { name: 'Infotext' });
+  expect(within(info).getByLabelText('Text')).toHaveProperty(
+    'value',
+    'Fiktiver Text\nmit zweiter Zeile',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const body = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: Array<Record<string, unknown>>;
+  };
+  expect(body.lines[2]).toEqual({
+    kind: 'info',
+    description: 'Fiktiver Text\nmit zweiter Zeile',
+  });
+});
+
+test('invalid catalog information does not add a partial product', async () => {
+  setup({
+    products: [{ ...catalogProducts[0]!, description: 'x'.repeat(4001) }],
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const picker = await screen.findByLabelText('Produkt aus Katalog');
+  fireEvent.change(picker, { target: { value: 'product-net' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+  );
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Produkt und Infotext können nicht hinzugefügt werden',
+  );
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
+});
