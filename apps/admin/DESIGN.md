@@ -415,12 +415,12 @@ Die Entfernen-Aktion bleibt unter den Eingaben; ab 60rem Positionslistenbreite
 steht sie rechts daneben und richtet sich an deren Unterkante aus. Die
 Tastaturreihenfolge und die mindestens 44px große Trefferfläche bleiben erhalten.
 
-### Infotext im Dokumenteditor (DOC-TEXT-01)
+### Infotext im Dokumenteditor (DOC-TEXT-02)
 
-„Infotext hinzufügen“ ergänzt die Aktionen für freie Positionen und
-Katalogprodukte. Das Feld „Text“ nimmt mehrere Zeilen auf und erhält beim
-Anlegen den Fokus. Infotexte stehen in derselben Reihenfolge wie im Beleg
-zwischen den Positionen. Nur Leistungspositionen werden nummeriert. Die
-Aktionsgruppe bricht auf schmalen Ansichten um. Ein gespeicherter Entwurf
-mit ausschließlich Infotext bleibt in der Vorschau verfügbar. Die
-Finalisierung erfordert mindestens eine Leistungsposition.
+Jede Position hat unter den Preis- und Mengenfeldern das beschriftete
+Mehrzeilenfeld „Infotext (optional)“. Bei Katalogprodukten übernimmt es
+die Produktbeschreibung. Das Feld belegt die verfügbare Positionsbreite
+und folgt in der Tab-Reihenfolge auf „Position entfernen“. Beim Löschen
+der Position entfällt ihr Infotext mit ihr. Ältere eigenständige
+Infotextzeilen behalten ihr Feld „Text“ und ihre vorhandene Position im
+Beleg. Die Finalisierung erfordert mindestens eine Leistungsposition.

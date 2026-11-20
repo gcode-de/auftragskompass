@@ -117,7 +117,10 @@ function detail(values: typeof content | null = content, version = 1) {
     introText: values?.introText ?? null,
     outroText: values?.outroText ?? null,
     validityDays: values?.validityDays ?? null,
-    lines: [line],
+    lines: [line] as (
+      | TestLine
+      | { kind: 'info'; id: string; position: number; description: string }
+    )[],
   };
 }
 function blankDetail() {
@@ -396,7 +399,7 @@ test('without a template an offer is created blank, empty stays calm, and the fi
   expect(fieldValue('Gültigkeit in Tagen')).toBe('14');
   expect(
     screen.getByText(
-      'Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt oder einen Infotext hinzu.',
+      'Noch keine Positionen. Fügen Sie eine freie Position oder ein Produkt hinzu.',
     ),
   ).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
@@ -430,7 +433,7 @@ test('without a template an offer is created blank, empty stays calm, and the fi
     screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   await screen.findByText(
-    'Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt oder einen Infotext hinzu.',
+    'Noch keine Positionen. Fügen Sie eine freie Position oder ein Produkt hinzu.',
   );
 
   fireEvent.click(
@@ -628,8 +631,13 @@ test('a malformed successful blank-create response is treated as uncertain and i
   expect(screen.queryByLabelText('Betreff')).toBeNull();
 });
 
-test('information text saves in document order without item fields or position numbers', async () => {
+test('existing standalone information text remains editable', async () => {
+  const description = 'Fiktiver Hinweis <b>im Klartext</b>\nZweite Zeile';
   const { calls } = setup({
+    initial: {
+      ...detail(),
+      lines: [line, { kind: 'info', id: 'info-1', position: 1, description }],
+    },
     finalize: () => Response.json({ error: 'empty_lines' }, { status: 422 }),
   });
   render(<EventDocuments {...props} />);
@@ -638,19 +646,19 @@ test('information text saves in document order without item fields or position n
   );
   await screen.findByRole('group', { name: 'Position 1' });
 
-  fireEvent.click(screen.getByRole('button', { name: 'Infotext hinzufügen' }));
+  expect(
+    screen.queryByRole('button', { name: 'Infotext hinzufügen' }),
+  ).toBeNull();
   const info = screen.getByRole('group', { name: 'Infotext' });
   const input = within(info).getByRole('textbox', { name: 'Text' });
   const save = screen.getByRole('button', { name: 'Änderungen speichern' });
-  expect(document.activeElement).toBe(input);
+  expect(input).toHaveProperty('value', description);
   expect(within(info).queryByLabelText('Menge')).toBeNull();
   expect(
     within(info).queryByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toBeNull();
   expect(save).toHaveProperty('disabled', true);
 
-  const description = 'Fiktiver Hinweis <b>im Klartext</b>\nZweite Zeile';
-  fireEvent.change(input, { target: { value: description } });
   fireEvent.click(
     screen.getByRole('button', { name: 'Freie Position hinzufügen' }),
   );
@@ -690,16 +698,6 @@ test('information text saves in document order without item fields or position n
     screen.getByRole('button', { name: 'Änderungen speichern' }),
   ).toHaveProperty('disabled', true);
   fireEvent.change(reloadedText, { target: { value: 'Geänderter Hinweis' } });
-
-  fireEvent.click(screen.getByRole('button', { name: 'Infotext hinzufügen' }));
-  const addedInfo = screen.getAllByRole('group', { name: 'Infotext' })[1]!;
-  fireEvent.click(
-    within(addedInfo).getByRole('button', { name: 'Infotext entfernen' }),
-  );
-  expect(screen.getAllByRole('group', { name: 'Infotext' })).toEqual([
-    reloaded,
-  ]);
-  expect(screen.getByRole('group', { name: 'Position 2' })).toBeTruthy();
 
   fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
   fireEvent.click(screen.getByRole('button', { name: 'Position 1 entfernen' }));
@@ -1064,6 +1062,9 @@ test('gross catalog price is copied unchanged and overflowing net product is rej
   expect(
     within(grossLine).getByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toHaveProperty('value', '123.45');
+  expect(
+    within(grossLine).getByLabelText('Infotext (optional)'),
+  ).toHaveProperty('value', '');
 
   fireEvent.change(picker, { target: { value: 'product-overflow' } });
   fireEvent.click(
@@ -1843,4 +1844,108 @@ test('an uncertain save result offers reload and prevents blind resubmission', a
   await screen.findByLabelText('Betreff');
   expect(fieldValue('Betreff')).toBe('Fiktives Angebot');
   expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+});
+
+test('catalog information belongs to the position through saving, reloading and removal', async () => {
+  const { calls } = setup({
+    products: [
+      {
+        ...catalogProducts[0]!,
+        description: 'Fiktiver Text\nmit zweiter Zeile',
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const picker = await screen.findByLabelText('Produkt aus Katalog');
+  fireEvent.change(picker, { target: { value: 'product-net' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 2' });
+  const info = within(position).getByLabelText('Infotext (optional)');
+  expect(info).toHaveProperty('value', 'Fiktiver Text\nmit zweiter Zeile');
+  expect(screen.queryByRole('group', { name: 'Infotext' })).toBeNull();
+  fireEvent.change(info, {
+    target: { value: 'Bearbeiteter Text\nZweite Zeile' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const body = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: Array<Record<string, unknown>>;
+  };
+  expect(body.lines).toHaveLength(2);
+  expect(body.lines[0]).not.toHaveProperty('infoText');
+  expect(body.lines[1]).toMatchObject({
+    productId: 'product-net',
+    infoText: 'Bearbeiteter Text\nZweite Zeile',
+  });
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const reloadedPosition = await screen.findByRole('group', {
+    name: 'Position 2',
+  });
+  expect(
+    within(reloadedPosition).getByLabelText('Infotext (optional)'),
+  ).toHaveProperty('value', 'Bearbeiteter Text\nZweite Zeile');
+  fireEvent.change(
+    within(reloadedPosition).getByLabelText('Infotext (optional)'),
+    {
+      target: { value: '' },
+    },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const cleared = calls.filter((call) => call.method === 'PUT').at(-1)
+    ?.body as typeof body;
+  expect(cleared.lines[1]).not.toHaveProperty('infoText');
+
+  fireEvent.change(
+    within(reloadedPosition).getByLabelText('Infotext (optional)'),
+    {
+      target: { value: 'Fiktiver Text zum Entfernen' },
+    },
+  );
+  fireEvent.click(
+    within(reloadedPosition).getByRole('button', {
+      name: 'Position 2 entfernen',
+    }),
+  );
+  expect(screen.queryByRole('group', { name: 'Position 2' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const removed = calls.filter((call) => call.method === 'PUT').at(-1)
+    ?.body as typeof body;
+  expect(removed.lines).toHaveLength(1);
+  expect(removed.lines[0]).not.toHaveProperty('infoText');
+});
+
+test('invalid catalog information does not add a partial product', async () => {
+  setup({
+    products: [{ ...catalogProducts[0]!, description: 'x'.repeat(4001) }],
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const picker = await screen.findByLabelText('Produkt aus Katalog');
+  fireEvent.change(picker, { target: { value: 'product-net' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+  );
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Der Infotext des Produkts ist zu lang',
+  );
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
 });

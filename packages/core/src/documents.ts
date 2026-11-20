@@ -114,6 +114,7 @@ type DocumentServiceLineDraft = TotalsLine & {
   kind?: never;
   productId?: string | null;
   description: string;
+  infoText?: string;
   unit: string;
   discountBasisPoints: number;
 };
@@ -464,6 +465,7 @@ function assertLine(line: DocumentLineDraft, index: number): void {
   if (index > 999) throw new DocumentError('invalid_line');
   if (line.kind === 'info') {
     if (
+      'infoText' in line ||
       typeof line.description !== 'string' ||
       !line.description.trim() ||
       line.description.includes('\0') ||
@@ -476,6 +478,10 @@ function assertLine(line: DocumentLineDraft, index: number): void {
     typeof line.description !== 'string' ||
     !line.description.trim() ||
     line.description.length > 300 ||
+    (line.infoText !== undefined &&
+      (typeof line.infoText !== 'string' ||
+        line.infoText.includes('\0') ||
+        line.infoText.length > maxInformationLength)) ||
     typeof line.unit !== 'string' ||
     !line.unit.trim() ||
     line.unit.length > 40 ||
@@ -759,6 +765,7 @@ export function documentRepository(
         id,
         position,
         description,
+        ...(row.infoText === null ? {} : { infoText: row.infoText }),
         productId: row.productId,
         quantity: row.quantity!,
         unit: row.unit!,
@@ -795,6 +802,7 @@ export function documentRepository(
               }
             : {
                 productId: line.productId ?? null,
+                infoText: line.infoText?.trim() || null,
                 quantity: line.quantity,
                 unit: line.unit.trim(),
                 unitPriceMinor: line.unitPriceMinor,
@@ -3177,12 +3185,18 @@ export function registerDocumentRoutes(
         maxLength: maxInformationLength,
         pattern: '\\S',
       },
+      infoText: {
+        type: 'string',
+        maxLength: maxInformationLength,
+        pattern: '^[^\\u0000]*$',
+      },
       ...serviceFields,
     },
     if: { required: ['kind'] },
     then: {
       properties: {
         description: { type: 'string', pattern: '^[^\\u0000]*$' },
+        infoText: false,
         ...Object.fromEntries(
           Object.keys(serviceFields).map((field) => [field, false]),
         ),
@@ -3448,6 +3462,7 @@ export function registerDocumentRoutes(
                 position: { type: 'integer' },
                 productId: nullableUuid,
                 description: { type: 'string' },
+                infoText: { type: 'string' },
                 quantity: { type: 'integer' },
                 unit: { type: 'string' },
                 unitPriceMinor: { type: 'integer' },

@@ -190,6 +190,26 @@ describe('renderDocumentHtml', () => {
     expect(html).toContain('counter(pages)');
     expect(html).not.toContain('Seite 1');
   });
+  test('renders multiline position info with its service and preserves tax and numbering', () => {
+    const html = renderDocumentHtml({
+      ...base,
+      lines: [
+        {
+          ...line,
+          description: 'First service',
+          unit: 'Stück',
+          infoText: '<detail>\r\n& follow-up',
+        },
+        { ...line, description: 'Second service', unit: 'Stück' },
+      ],
+    });
+    expect(html).toContain(
+      '<tr><td>1</td><td>First service<br><span class="position-info-text">&lt;detail&gt;<br>&amp; follow-up</span></td><td>199,00 €</td>',
+    );
+    expect(html).toContain('<tr><td>2</td><td>Second service</td>');
+    expect(html).toContain('398,00 €');
+    expect(html).toContain('63,54 €');
+  });
   test('embeds a logo as a data uri only when one is configured', () => {
     expect(renderDocumentHtml(base)).not.toContain('class="logo"');
     const html = renderDocumentHtml({

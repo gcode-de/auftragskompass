@@ -102,9 +102,16 @@ Reihenfolge und Zeilenumbrüche bleiben in Vorschau, PDF und Folgebelegen erhalt
 Infotexte erhalten weder Positionsnummer noch Preis oder Steuer und zählen nicht
 zu Summen. Ein reiner Infotextentwurf kann gespeichert und angesehen, aber nicht
 finalisiert werden. Die Anfrage ist auf 1 MiB begrenzt; der Editor meldet zu große
-Entwürfe vor dem Speichern. Vorlagen unterstützen Infotextzeilen noch nicht.
+Entwürfe vor dem Speichern. Vorhandene freie Infotextzeilen bleiben lesbar und bearbeitbar; neue Infotexte werden an Positionen gepflegt. Vorlagen unterstützen diese Infotexte noch nicht.
 Migration `0057_document_information_rows` ergänzt den Zeilentyp und prüft die
 zugehörigen Felder; bestehende Leistungszeilen bleiben unverändert.
+
+Seit DOC-TEXT-02 kann eine Leistungsposition optional `infoText` (bis 4000
+Zeichen) enthalten. Der Text gehört zur Position und erscheint im PDF unter
+ihrem Namen. Katalogbeschreibungen werden beim Einfügen kopiert und können im
+Entwurf bearbeitet werden; Folgebelege übernehmen sie. Beim Löschen der Position
+entfällt auch ihr Text. Migration `0059_document_position_info_text` ergänzt das
+Feld; bestehende freie Textzeilen und finale PDFs bleiben unverändert.
 
 Migration `0034_document_draft_content` ergänzt nullable Inhaltsfelder mit
 Längen-/Gültigkeitsprüfung. Bereits bestehende Dokumente werden nicht mit

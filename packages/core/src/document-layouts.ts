@@ -208,6 +208,7 @@ export type DocumentLineInput =
   | (TotalsLine & {
       kind?: never;
       description: string;
+      infoText?: string;
       unit: string;
     })
   | DocumentInfoLine;
@@ -251,6 +252,9 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
       const cells = [
         ...(layout.showPositionNumbers ? [String(position)] : []),
         escapeHtml(line.description) +
+          (line.infoText
+            ? `<br><span class="position-info-text">${lines(line.infoText)}</span>`
+            : '') +
           (line.discountBasisPoints
             ? `<br><span class="position-discount">Rabatt ${percent(line.discountBasisPoints)} %</span>`
             : ''),

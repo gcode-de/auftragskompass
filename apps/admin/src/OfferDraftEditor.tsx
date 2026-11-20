@@ -30,6 +30,7 @@ type DraftItem = {
   position: number;
   productId: string | null;
   description: string;
+  infoText?: string;
   quantity: number;
   unit: string;
   unitPriceMinor: number;
@@ -50,6 +51,7 @@ type DraftItemValues = {
   key: string;
   productId: string | null;
   description: string;
+  infoText: string;
   quantity: string;
   unit: string;
   unitPrice: string;
@@ -88,6 +90,7 @@ type DraftTemplate = {
 type CatalogProduct = {
   id: string;
   name: string;
+  description?: string;
   unit: string;
   priceMinor: number;
   priceBasis: string;
@@ -191,6 +194,9 @@ function isDetail(value: unknown): value is DraftDetail {
           : line.kind === undefined &&
             (line.productId === null || typeof line.productId === 'string') &&
             line.description.length <= 300 &&
+            (line.infoText === undefined ||
+              (typeof line.infoText === 'string' &&
+                line.infoText.length <= infoTextLimit)) &&
             typeof line.unit === 'string' &&
             line.unit.length <= 40 &&
             Number.isInteger(line.quantity) &&
@@ -235,6 +241,7 @@ function lineValuesOf(lines: DraftLine[], previous: DraftLineValues[] = []) {
       key,
       productId: line.productId,
       description: line.description,
+      infoText: line.infoText ?? '',
       quantity: String(line.quantity),
       unit: line.unit,
       unitPrice: formatHundredths(line.unitPriceMinor),
@@ -255,6 +262,7 @@ function lineDraft(line: DraftLineValues) {
   }
   if (!line.description.trim() || line.description.length > 300)
     throw new Error('description');
+  if (line.infoText.length > infoTextLimit) throw new Error('info');
   if (!line.unit.trim() || line.unit.length > 40) throw new Error('unit');
   if (!/^\d+$/.test(line.quantity)) throw new Error('quantity');
   const quantity = Number(line.quantity);
@@ -268,6 +276,7 @@ function lineDraft(line: DraftLineValues) {
   return {
     productId: line.productId,
     description: line.description,
+    ...(line.infoText.trim() ? { infoText: line.infoText } : {}),
     quantity,
     unit: line.unit,
     unitPriceMinor,
@@ -587,7 +596,7 @@ export function OfferDraftEditor({
     else lineInputRefs.current.delete(key);
   }
 
-  function addLine(kind?: 'info') {
+  function addLine() {
     if (lineValues.length >= 1000 || busyRef.current || finalizing || isBlocked)
       return;
     lineSequence.current += 1;
@@ -595,18 +604,17 @@ export function OfferDraftEditor({
     pendingLineFocus.current = key;
     setLineValues((current) => [
       ...current,
-      kind === 'info'
-        ? { key, kind, description: '' }
-        : {
-            key,
-            productId: null,
-            description: '',
-            quantity: '1',
-            unit: 'Stück',
-            unitPrice: '0.00',
-            tax: '19.00',
-            discount: '0.00',
-          },
+      {
+        key,
+        productId: null,
+        description: '',
+        infoText: '',
+        quantity: '1',
+        unit: 'Stück',
+        unitPrice: '0.00',
+        tax: '19.00',
+        discount: '0.00',
+      },
     ]);
   }
 
@@ -626,6 +634,8 @@ export function OfferDraftEditor({
             product &&
             typeof product.id === 'string' &&
             typeof product.name === 'string' &&
+            (product.description === undefined ||
+              typeof product.description === 'string') &&
             typeof product.unit === 'string' &&
             typeof product.priceBasis === 'string' &&
             typeof product.state === 'string' &&
@@ -676,6 +686,14 @@ export function OfferDraftEditor({
       (entry) => entry.id === selectedProductId,
     );
     if (!product) return;
+    const information = product.description?.trim() ?? '';
+    if (information.length > infoTextLimit) {
+      setCatalogError(true);
+      setCatalogMessage(
+        'Der Infotext des Produkts ist zu lang. Kürzen Sie die Beschreibung im Katalog auf höchstens 4.000 Zeichen.',
+      );
+      return;
+    }
     try {
       const grossMinor = grossProductPrice(
         product.priceMinor,
@@ -691,6 +709,7 @@ export function OfferDraftEditor({
           key,
           productId: product.id,
           description: product.name,
+          infoText: information,
           quantity: '1',
           unit: product.unit,
           unitPrice: formatHundredths(grossMinor),
@@ -1141,6 +1160,24 @@ export function OfferDraftEditor({
                       >
                         {title} entfernen
                       </button>
+                      {line.kind !== 'info' && (
+                        <label className="offer-draft-info-field offer-draft-item-info">
+                          Infotext (optional)
+                          <textarea
+                            value={line.infoText}
+                            maxLength={infoTextLimit}
+                            rows={3}
+                            aria-invalid={line.infoText.length > infoTextLimit}
+                            onChange={(event) =>
+                              changeLine(
+                                line.key,
+                                'infoText',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </label>
+                      )}
                     </fieldset>
                   );
                 })}
@@ -1175,16 +1212,6 @@ export function OfferDraftEditor({
                   {productPickerOpen
                     ? 'Katalogauswahl schließen'
                     : 'Produkt hinzufügen'}
-                </button>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={
-                    lineValues.length >= 1000 || busy || loading || isBlocked
-                  }
-                  onClick={() => addLine('info')}
-                >
-                  Infotext hinzufügen
                 </button>
               </div>
               {productPickerOpen && (
@@ -1254,8 +1281,8 @@ export function OfferDraftEditor({
               )}
               {lineValues.length === 0 && (
                 <p className="document-hint" role="status">
-                  Noch keine Zeilen. Fügen Sie eine freie Position, ein Produkt
-                  oder einen Infotext hinzu.
+                  Noch keine Positionen. Fügen Sie eine freie Position oder ein
+                  Produkt hinzu.
                 </p>
               )}
               {lineValues.length > 0 && !validLines && (
@@ -1265,7 +1292,7 @@ export function OfferDraftEditor({
                       line.kind === 'info' && invalidInfoText(line.description),
                   )
                     ? 'Geben Sie für jeden Infotext einen Text ein.'
-                    : 'Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis, Steuer und Rabatt.'}
+                    : 'Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis, Steuer, Rabatt und Infotext.'}
                 </p>
               )}
               {lineValues.length > 0 && !hasPricedLines && (

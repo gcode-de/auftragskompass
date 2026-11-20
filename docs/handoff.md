@@ -1,5 +1,9 @@
 # Projektübergabe AuftragsKompass
 
+## DOC-TEXT-02: Produktbeschreibungen im Dokument
+
+Der Dokumenteditor übernimmt Produktbeschreibungen beim Einfügen als bearbeitbaren Infotext derselben Position. Bestehende freie Textzeilen und finale PDFs bleiben erhalten. Vor Nutzung CI- und Deploymentstand prüfen.
+
 ## DOC-REV-01: Angebotsfassungen
 
 Auf Branch `codex/revise-offer` entsteht die Überarbeitung finalisierter Angebote als verknüpfter neuer Entwurf. Original-PDF und Annahme bleiben erhalten; pro Fassungsfolge darf nur eine Auftragsbestätigung entstehen. Lokal und im Review geprüft; tatsächlichen GitHub- und Deploymentstand vor Nutzung erneut prüfen. Für Rechnungen bleibt der Berichtigungsweg mit dem Betreiber zu klären.
