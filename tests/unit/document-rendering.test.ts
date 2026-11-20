@@ -18,6 +18,7 @@ const line = {
   unitPriceMinor: 19900,
   taxBasisPoints: 1900,
   discountBasisPoints: 0,
+  priceBasis: 'gross' as const,
 };
 describe('lineTotals', () => {
   test('extracts the tax from a gross price without drifting a cent', () => {
@@ -39,6 +40,7 @@ describe('lineTotals', () => {
         unitPriceMinor: 333,
         taxBasisPoints: 700,
         discountBasisPoints: 0,
+        priceBasis: 'gross' as const,
       }),
     ).toEqual({ grossMinor: 999, netMinor: 934, taxMinor: 65 });
   });
@@ -49,6 +51,7 @@ describe('lineTotals', () => {
         unitPriceMinor: 5000,
         taxBasisPoints: 0,
         discountBasisPoints: 0,
+        priceBasis: 'gross' as const,
       }),
     ).toEqual({ grossMinor: 5000, netMinor: 5000, taxMinor: 0 });
     expect(lineTotals({ ...line, discountBasisPoints: 10000 })).toEqual({
@@ -79,18 +82,21 @@ describe('documentTotals', () => {
         unitPriceMinor: 19900,
         taxBasisPoints: 1900,
         discountBasisPoints: 0,
+        priceBasis: 'gross' as const,
       },
       {
         quantity: 2,
         unitPriceMinor: 5000,
         taxBasisPoints: 700,
         discountBasisPoints: 0,
+        priceBasis: 'gross' as const,
       },
       {
         quantity: 1,
         unitPriceMinor: 1000,
         taxBasisPoints: 1900,
         discountBasisPoints: 0,
+        priceBasis: 'gross' as const,
       },
     ]);
     expect(totals.taxGroups.map((group) => group.taxBasisPoints)).toEqual([
@@ -218,6 +224,7 @@ describe('renderDocumentHtml', () => {
       unit: 'Stück',
       taxBasisPoints: 700,
       discountBasisPoints: 5000,
+      priceBasis: 'gross' as const,
       optional: true,
     };
     const note =
@@ -304,6 +311,7 @@ describe('renderDocumentHtml', () => {
           unitPriceMinor: 5000,
           taxBasisPoints: 700,
           discountBasisPoints: 500,
+          priceBasis: 'gross' as const,
           description: 'Fictional extra',
           unit: 'Stunde',
         },
@@ -314,6 +322,30 @@ describe('renderDocumentHtml', () => {
     expect(html).toContain('Rabatt 5 %');
     expect(html).not.toContain('<th>Rabatt</th>');
     expect(html).toContain('<td>50,00 €</td><td>2 Stunde</td><td>95,00 €</td>');
+  });
+  test('prints a net position with its stored price in the unchanged layout', () => {
+    const html = renderDocumentHtml({
+      ...base,
+      lines: [
+        {
+          ...line,
+          priceBasis: 'net',
+          description: 'Fictional net service',
+          unit: 'Stück',
+        },
+      ],
+    });
+    // The printed unit price is the stored net, the row and the block stay gross.
+    expect(html).toContain(
+      '<td>199,00 €</td><td>1 Stück</td><td>236,81 €</td>',
+    );
+    expect(html).toContain('<td>Netto</td><td>199,00 €</td>');
+    expect(html).toContain('<td>Umsatzsteuer 19 %</td><td>37,81 €</td>');
+    expect(html).toContain('<td>Brutto</td><td>236,81 €</td>');
+    // A net position adds no CSS rule: the style block stays byte-identical.
+    const styles = (markup: string) =>
+      markup.slice(markup.indexOf('<style>'), markup.indexOf('</style>'));
+    expect(styles(html)).toBe(styles(renderDocumentHtml(base)));
   });
   test('escapes footer text in HTML and passes through the page-number setting', () => {
     const html = renderDocumentHtml({

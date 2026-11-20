@@ -10,6 +10,7 @@ import {
 } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
+import type { PriceBasis } from './document-totals.js';
 
 export const documentKinds = [
   'offer',
@@ -76,6 +77,8 @@ export type TemplatePositionInput = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /** Omitted keeps the old meaning: the stored price is a gross amount. */
+  priceBasis?: PriceBasis;
 };
 export type DocumentTemplateInput = {
   kind: DocumentKind;
@@ -129,6 +132,7 @@ export const documentTemplateFields = {
         },
         taxBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
         discountBasisPoints: { type: 'integer', minimum: 0, maximum: 10000 },
+        priceBasis: { type: 'string', enum: ['gross', 'net'] },
       },
     },
   },
@@ -151,6 +155,7 @@ function documentTemplateRequestHash(input: DocumentTemplateInput): string {
       unitPriceMinor: position.unitPriceMinor,
       taxBasisPoints: position.taxBasisPoints,
       discountBasisPoints: position.discountBasisPoints,
+      priceBasis: position.priceBasis ?? 'gross',
     })),
   };
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
@@ -195,6 +200,8 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
       unitPriceMinor: row.unitPriceMinor,
       taxBasisPoints: row.taxBasisPoints,
       discountBasisPoints: row.discountBasisPoints,
+      // The CHECK only admits 'gross' and 'net'.
+      priceBasis: row.priceBasis as PriceBasis,
     }));
   }
   // Read through the same connection: reading the pool inside the write
@@ -323,6 +330,7 @@ export function documentTemplateRepository(pool: Pool, tenantId: string) {
               unitPriceMinor: position.unitPriceMinor,
               taxBasisPoints: position.taxBasisPoints,
               discountBasisPoints: position.discountBasisPoints,
+              priceBasis: position.priceBasis ?? 'gross',
             })),
           );
         await appendAudit(

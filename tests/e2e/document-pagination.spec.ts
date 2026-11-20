@@ -57,6 +57,7 @@ function renderSample(
       unitPriceMinor: longPosition ? Number.MAX_SAFE_INTEGER : 10000,
       taxBasisPoints: 1900,
       discountBasisPoints: 0,
+      priceBasis: 'gross' as const,
     })),
     values: {},
   });

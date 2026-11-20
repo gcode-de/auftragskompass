@@ -4651,7 +4651,7 @@ async function storedLines(scope: string, id: string) {
   return (
     await pool.query<Record<string, unknown>>(
       `SELECT position, product_id, description, quantity, unit, unit_price_minor,
-              tax_basis_points, discount_basis_points
+              tax_basis_points, discount_basis_points, price_basis
          FROM document_lines WHERE tenant_id=$1 AND document_id=$2 ORDER BY position`,
       [scope, id],
     )
@@ -10210,4 +10210,346 @@ test('document copy actions refuse tombstoned event references', async () => {
   expect(retained.map((row) => row.id)).toEqual(
     expect.arrayContaining([invoice.id, deposit.id]),
   );
+});
+
+// DOC-PRODUCT-01.3: a position remembers whether its stored price is gross or
+// net. Every path below starts from a real template and a real finalized chain,
+// because a copied basis would otherwise only be asserted against itself.
+const mixedBasisPositions = [
+  {
+    productId: null,
+    description: 'Fictional net workshop',
+    quantity: 2,
+    unit: 'Stück',
+    unitPriceMinor: 24900,
+    taxBasisPoints: 1900,
+    discountBasisPoints: 500,
+    priceBasis: 'net' as const,
+  },
+  {
+    productId: null,
+    description: 'Fictional gross delivery',
+    quantity: 1,
+    unit: 'Pauschale',
+    unitPriceMinor: 5000,
+    taxBasisPoints: 700,
+    discountBasisPoints: 0,
+    priceBasis: 'gross' as const,
+  },
+];
+const mixedBasisTotals = { netMinor: 51983, taxMinor: 9316, grossMinor: 61299 };
+
+test('a template and its draft keep a net and a gross position apart', async () => {
+  const scope = randomUUID(),
+    context = await confirmationContext(scope),
+    templates = documentTemplateRepository(pool, scope),
+    saved = await templates.save(context.actor, {
+      kind: 'offer',
+      name: 'Fictional mixed basis offer',
+      subject: 'Angebot',
+      introText: '',
+      outroText: '',
+      validityDays: 14,
+      state: 'active',
+      positions: mixedBasisPositions,
+    }),
+    template = await templates.get(saved.id);
+  expect(template!.positions.map((row) => row.priceBasis)).toEqual([
+    'net',
+    'gross',
+  ]);
+  const draft = await context.repo.createDraft(context.actor, {
+    templateId: saved.id,
+    eventId: context.event,
+    contactId: context.contact,
+  });
+  expect(draft.lines).toMatchObject([
+    { description: 'Fictional net workshop', priceBasis: 'net' },
+    { description: 'Fictional gross delivery', priceBasis: 'gross' },
+  ]);
+  expect(draft).toMatchObject(mixedBasisTotals);
+  // Another tenant neither reads the template nor the draft, basis included.
+  const otherScope = randomUUID();
+  await bootstrapAccess(
+    pool,
+    otherScope,
+    'mixed-basis-other@example.invalid',
+    'Synthetic other mixed basis',
+    'Europe/Berlin',
+  );
+  expect(await documentTemplateRepository(pool, otherScope).get(saved.id)).toBe(
+    null,
+  );
+  expect(
+    await documentRepository(pool, otherScope, dependencies().deps).get(
+      draft.id,
+    ),
+  ).toBeNull();
+});
+
+test('the confirmation and the invoice copy the price basis of every position', async () => {
+  const scope = randomUUID(),
+    context = await confirmationContext(scope),
+    template = await documentTemplateRepository(pool, scope).save(
+      context.actor,
+      {
+        kind: 'offer',
+        name: 'Fictional mixed basis chain',
+        subject: 'Angebot',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+        state: 'active',
+        positions: mixedBasisPositions,
+      },
+    ),
+    draft = await context.repo.createDraft(context.actor, {
+      templateId: template.id,
+      eventId: context.event,
+      contactId: context.contact,
+    }),
+    offer = await context.repo.finalize(context.actor, draft.id, draft.version),
+    sent = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'sent',
+      version: offer.version,
+    }),
+    accepted = await context.repo.changeOfferStatus(context.actor, offer.id, {
+      status: 'accepted',
+      version: sent.version,
+      channel: 'email',
+    }),
+    confirmation = await context.repo.createOrderConfirmation(
+      context.actor,
+      accepted.id,
+      accepted.version,
+    );
+  expect(await storedLines(scope, confirmation.id)).toEqual(
+    await storedLines(scope, offer.id),
+  );
+  expect(confirmation.lines).toMatchObject([
+    { priceBasis: 'net' },
+    { priceBasis: 'gross' },
+  ]);
+  await documentNumberRepository(pool, scope).save(
+    context.actor,
+    'order_confirmation',
+    { pattern: 'AB-{YYYY}-{SEQ}', minLength: 4, nextValue: 1 },
+  );
+  const confirmationFinal = await context.repo.finalize(
+      context.actor,
+      confirmation.id,
+      confirmation.version,
+    ),
+    invoice = await context.repo.createInvoice(
+      context.actor,
+      confirmationFinal.id,
+      confirmationFinal.version,
+    ),
+    deposit = await context.repo.createDepositInvoice(
+      context.actor,
+      confirmationFinal.id,
+      confirmationFinal.version,
+    );
+  for (const copy of [invoice, deposit]) {
+    expect(await storedLines(scope, copy.id)).toEqual(
+      await storedLines(scope, confirmationFinal.id),
+    );
+    expect(copy).toMatchObject(mixedBasisTotals);
+  }
+});
+
+test('the API accepts an omitted basis as gross and refuses an unknown one', async () => {
+  const config = {
+    origin: site,
+    tenantId,
+    clientId: 'synthetic',
+    clientSecret: 'synthetic',
+  };
+  const app = createHealthServer(
+    loadRuntimeConfig(
+      {
+        AK_DB_HOST: 'synthetic',
+        AK_DB_NAME: 'synthetic',
+        AK_DB_USER: 'synthetic',
+        AK_DB_PASSWORD_FILE: 'synthetic',
+        AK_LOG_LEVEL: 'silent',
+      },
+      () => 'synthetic-long-secret',
+    ),
+    { database: async () => true, worker: async () => true },
+  );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, tenantId, dependencies().deps);
+  const cookies = { '__Host-ak-session': 'synthetic-documents' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-documents'),
+    },
+    baseLine = {
+      description: 'Fictional API position',
+      quantity: 1,
+      unit: 'Stück',
+      unitPriceMinor: 10000,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+    },
+    draft = await app.inject({
+      method: 'POST',
+      url: '/api/v1/documents',
+      cookies,
+      headers,
+      payload: { templateId, contactId, eventId },
+    }),
+    id = draft.json().id as string,
+    put = (lines: unknown[], version = 1) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/v1/documents/' + id + '/draft',
+        cookies,
+        headers,
+        payload: {
+          version,
+          subject: 'Synthetisches Angebot',
+          introText: '',
+          outroText: '',
+          validityDays: 14,
+          lines,
+        },
+      });
+  try {
+    const net = await put([{ ...baseLine, priceBasis: 'net' }]);
+    expect(net.statusCode).toBe(200);
+    expect(net.json().lines[0]).toMatchObject({ priceBasis: 'net' });
+    expect(net.json()).toMatchObject({ netMinor: 10000, grossMinor: 11900 });
+    const omitted = await put([baseLine], net.json().version);
+    expect(omitted.statusCode).toBe(200);
+    expect(omitted.json().lines[0]).toMatchObject({ priceBasis: 'gross' });
+    expect(omitted.json()).toMatchObject({ netMinor: 8403, grossMinor: 10000 });
+    for (const invalid of [
+      [{ ...baseLine, priceBasis: 'netto' }],
+      [{ ...baseLine, priceBasis: null }],
+      [{ kind: 'info', description: 'Hinweis', priceBasis: 'gross' }],
+    ]) {
+      expect((await put(invalid, omitted.json().version)).statusCode).toBe(400);
+    }
+    // The repository refuses the same value even without the route schema.
+    await expect(
+      documentRepository(
+        pool,
+        tenantId,
+        dependencies().deps,
+      ).updateDraftContent(actorId, id, {
+        version: omitted.json().version,
+        subject: 'Synthetisches Angebot',
+        introText: '',
+        outroText: '',
+        validityDays: 14,
+        lines: [
+          {
+            ...baseLine,
+            priceBasis: 'netto' as unknown as 'net',
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_line' });
+  } finally {
+    await app.close();
+  }
+});
+
+test('rows written before the price basis migration stay gross', async () => {
+  await pool.query('CREATE DATABASE synthetic_price_basis_upgrade');
+  const url = new URL(container.getConnectionUri());
+  url.pathname = '/synthetic_price_basis_upgrade';
+  const upgrade = new Pool({ connectionString: url.href });
+  try {
+    const directory = new URL(
+        '../../packages/core/migrations/',
+        import.meta.url,
+      ),
+      names = (await readdir(directory))
+        .filter((name) => name.endsWith('.sql'))
+        .sort(),
+      before = names.filter((name) => name < '0061');
+    expect(before.at(-1)).toBe('0060_document_optional_positions.sql');
+    await migrate(
+      upgrade,
+      await Promise.all(
+        before.map(async (name) => ({
+          name,
+          sql: await readFile(new URL(name, directory), 'utf8'),
+        })),
+      ),
+    );
+    const upgradeTenant = randomUUID(),
+      template = randomUUID(),
+      document = randomUUID(),
+      line = randomUUID(),
+      position = randomUUID();
+    await upgrade.query(
+      'INSERT INTO tenants (id,name,timezone) VALUES ($1,$2,$3)',
+      [upgradeTenant, 'Synthetic price basis upgrade', 'Europe/Berlin'],
+    );
+    await upgrade.query(
+      `INSERT INTO document_templates
+         (tenant_id,id,kind,name,subject,intro_text,outro_text,validity_days,state,version)
+       VALUES ($1,$2,'offer','Fictional legacy template','','','',14,'active',1)`,
+      [upgradeTenant, template],
+    );
+    await upgrade.query(
+      `INSERT INTO documents (tenant_id,id,kind,template_id,issued_at)
+       VALUES ($1,$2,'offer',$3,$4)`,
+      [upgradeTenant, document, template, now],
+    );
+    await upgrade.query(
+      `INSERT INTO document_lines
+         (tenant_id,document_id,id,position,description,quantity,unit,unit_price_minor,tax_basis_points)
+       VALUES ($1,$2,$3,0,'Fictional legacy line',1,'Stück',19900,1900)`,
+      [upgradeTenant, document, line],
+    );
+    await upgrade.query(
+      `INSERT INTO document_template_positions
+         (tenant_id,template_id,id,position,description,quantity,unit,unit_price_minor,tax_basis_points)
+       VALUES ($1,$2,$3,0,'Fictional legacy position',1,'Stück',19900,1900)`,
+      [upgradeTenant, template, position],
+    );
+    await migrate(upgrade);
+    const legacy = await upgrade.query<{
+      line_basis: string;
+      position_basis: string;
+    }>(
+      `SELECT (SELECT price_basis FROM document_lines WHERE id=$1) AS line_basis,
+              (SELECT price_basis FROM document_template_positions WHERE id=$2) AS position_basis`,
+      [line, position],
+    );
+    expect(legacy.rows[0]).toEqual({
+      line_basis: 'gross',
+      position_basis: 'gross',
+    });
+    // The default stays, and the named CHECK admits only the two bases.
+    const fresh = await upgrade.query<{ price_basis: string }>(
+      `INSERT INTO document_lines
+         (tenant_id,document_id,id,position,description,quantity,unit,unit_price_minor,tax_basis_points)
+       VALUES ($1,$2,$3,1,'Fictional fresh line',1,'Stück',11900,1900)
+       RETURNING price_basis`,
+      [upgradeTenant, document, randomUUID()],
+    );
+    expect(fresh.rows[0]!.price_basis).toBe('gross');
+    await expect(
+      upgrade.query(
+        `UPDATE document_lines SET price_basis='netto' WHERE tenant_id=$1 AND id=$2`,
+        [upgradeTenant, line],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'document_lines_price_basis_check',
+    });
+  } finally {
+    await upgrade.end();
+  }
 });
