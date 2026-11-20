@@ -174,3 +174,37 @@ AuftragsKompass, kein beobachtetes Detail der Referenz. Such-/Archivfilter aus
 dem bisherigen Plan sind Zusatzanforderungen, keine hier belegte Referenzparität.
 Aktionsmenü getrennt planen, damit bestehende Tastatur-/Archiv-/Speicherverträge
 nicht in einen kleinen Darstellungsslice hineingezogen werden.
+
+## B37 — Visuelle Abnahme EDITOR-LAYOUT-01 und Sichtvergleich (21.11.2026)
+
+**Methode:** Playwright-Screenshots der Editor-Matrix (Position bei 320/390/768/
+1440 px und 22rem-Container, beide Themes, dazu der Gesamtrabatt-Block) wurden
+mit einem Bild-/Vision-Werkzeug (computer_use-Capture, `auxiliary.vision`)
+tatsächlich angesehen – DOM- und axe-Prüfungen galten bewusst nicht als
+visuelle Abnahme. Erst nach erteilter macOS-Bildschirmaufnahme-Berechtigung
+möglich; zuvor lieferten Captures schwarze Frames (pixelweise belegt).
+Screenshots enthalten ausschließlich synthetische Daten.
+
+**Befund eigene Oberfläche:** Bei 320/390 px stapeln die Positionsgruppen ihre
+Felder, bei 768/1440 px stehen sie in umbruchenden Zeilen; alle Beschriftungen
+sind vollständig lesbar (u. a. „Einzelpreis (Brutto) in Euro“, „Preisbasis“,
+„Steuer in Prozent“, „Rabattart“ + „Rabatt in Prozent“ als EIN Feld mit
+Einheitenumschalter). Der Gesamtrabatt-Block zeigt Art (Kein/Prozent/Euro),
+EIN Wertfeld und „Anmerkung zum Gesamtrabatt (optional)“. Beide Themes
+rendern gleich strukturiert. **Ein Abweichungsbefund:** der Beschreibungswert
+stand in einem einzeiligen Feld und war bei 320 px horizontal beschnitten –
+korrigiert zu einem zweizeiligen Textfeld (vollständige Werte).
+
+**Vergleich mit den Bookitup-Referenzen** (B15/B17/B25, nur privat; reale
+Kundendaten werden hier nicht übernommen): strukturell deckungsgleich sind
+Brutto/Netto je Position, Prozent-/Euro-Rabatt je Position, Infotext und
+Optional-Checkbox an der Zeile sowie Gesamtrabatt mit Prozent/Euro und
+Anmerkung unter den Positionen. Dokumentierte Abweichungen: (1) Bookitup führt
+ein Positions-Menü („als Produkt speichern“, „nach unten schieben“) – Speichern
+als Produkt ist DOC-PRODUCT-01.6 (in Arbeit), AuftragsKompass nutzt eigene
+Auf-/Ab-Knöpfe (gleiche Wirkung, andere Form); (2) Bookitup zeigt
+Brutto/Netto als Schalter oben an der Zeile, AuftragsKompass als „Preisbasis“-
+Select neben dem Preis (gleiche Semantik, andere Stelle); (3) die direkte
+Gegenansicht der Bilder B15/B25 steht nach Entsperren des Rechners noch aus –
+verwendet wurden die dokumentierten AX-Beobachtungen dieser Screenshots und die
+manuelle Nutzerbeschreibung (kein REA-Beleg).
