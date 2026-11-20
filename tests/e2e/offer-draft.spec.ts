@@ -435,6 +435,11 @@ async function offerDraftScenario(browser: Browser) {
     );
     // A narrow editor can be embedded in a wide viewport.
     const fields = position1.locator('.offer-draft-position-fields input');
+    // Since DOC-PRODUCT-01.3 the basis select sits between the price and the tax
+    // field, so the keyboard walk covers every control in the field grid.
+    const fieldControls = position1.locator(
+      '.offer-draft-position-fields input, .offer-draft-position-fields select',
+    );
     const positionOptional = position1.getByRole('checkbox', {
       name: 'Optionale Position',
     });
@@ -527,7 +532,7 @@ async function offerDraftScenario(browser: Browser) {
       await positionThemeToggle.click();
     await page.setViewportSize({ width: 1280, height: 720 });
     await fields.first().focus();
-    for (const field of (await fields.all()).slice(1)) {
+    for (const field of (await fieldControls.all()).slice(1)) {
       await page.keyboard.press('Tab');
       await expect(field).toBeFocused();
     }
@@ -617,9 +622,11 @@ async function offerDraftScenario(browser: Browser) {
     await expect(netPosition.getByLabel('Beschreibung')).toBeFocused();
     await expect(netPosition.getByLabel('Menge')).toHaveValue('1');
     await expect(netPosition.getByLabel('Einheit')).toHaveValue('Stück');
+    // The catalog price is copied with its basis, not converted to gross.
     await expect(
-      netPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
-    ).toHaveValue('119.00');
+      netPosition.getByLabel('Einzelpreis (Netto) in Euro'),
+    ).toHaveValue('100.00');
+    await expect(netPosition.getByLabel('Preisbasis')).toHaveValue('net');
     await expect(netPosition.getByLabel('Steuer in Prozent')).toHaveValue(
       '19.00',
     );
@@ -638,6 +645,7 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       grossPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
+    await expect(grossPosition.getByLabel('Preisbasis')).toHaveValue('gross');
     await expect(grossPosition.getByLabel('Einheit')).toHaveValue('Pauschale');
     await expect(netPosition.getByLabel('Infotext (optional)')).toHaveValue(
       'Synthetic net-priced product',
@@ -779,8 +787,9 @@ async function offerDraftScenario(browser: Browser) {
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
+          price_basis: string;
         }>(
-          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,price_basis FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
           [tenantId, draftId],
         )
       ).rows,
@@ -795,6 +804,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '12550',
         tax_basis_points: 1900,
         discount_basis_points: 1000,
+        price_basis: 'gross',
       },
       {
         position: 1,
@@ -806,6 +816,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '3000',
         tax_basis_points: 700,
         discount_basis_points: 500,
+        price_basis: 'gross',
       },
       {
         position: 2,
@@ -817,6 +828,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '11900',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        price_basis: 'gross',
       },
       {
         position: 3,
@@ -825,9 +837,10 @@ async function offerDraftScenario(browser: Browser) {
         info_text: 'Fictional edited product information\nSecond line',
         quantity: 1,
         unit: 'Stück',
-        unit_price_minor: '11900',
+        unit_price_minor: '10000',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        price_basis: 'net',
       },
       {
         position: 4,
@@ -839,6 +852,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '2500',
         tax_basis_points: 0,
         discount_basis_points: 0,
+        price_basis: 'gross',
       },
     ]);
     await expect(
@@ -869,8 +883,9 @@ async function offerDraftScenario(browser: Browser) {
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
+          price_basis: string;
         }>(
-          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_template_positions WHERE tenant_id=$1::uuid AND template_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,price_basis FROM document_template_positions WHERE tenant_id=$1::uuid AND template_id=$2::uuid ORDER BY position',
           [tenantId, template.id],
         )
       ).rows,
@@ -884,6 +899,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '10000',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        price_basis: 'gross',
       },
       {
         position: 1,
@@ -894,6 +910,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '5000',
         tax_basis_points: 700,
         discount_basis_points: 500,
+        price_basis: 'gross',
       },
     ]);
 
@@ -996,8 +1013,9 @@ async function offerDraftScenario(browser: Browser) {
     await expect(reopenedPosition4.getByLabel('Menge')).toHaveValue('1');
     await expect(reopenedPosition4.getByLabel('Einheit')).toHaveValue('Stück');
     await expect(
-      reopenedPosition4.getByLabel('Einzelpreis (Brutto) in Euro'),
-    ).toHaveValue('119.00');
+      reopenedPosition4.getByLabel('Einzelpreis (Netto) in Euro'),
+    ).toHaveValue('100.00');
+    await expect(reopenedPosition4.getByLabel('Preisbasis')).toHaveValue('net');
     await expect(reopenedPosition3.getByLabel('Beschreibung')).toHaveValue(
       'Fictional gross product',
     );
@@ -1008,6 +1026,9 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       reopenedPosition3.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
+    await expect(reopenedPosition3.getByLabel('Preisbasis')).toHaveValue(
+      'gross',
+    );
     await expect(reopenedPosition5.getByLabel('Beschreibung')).toHaveValue(
       'Fictional extra cable',
     );
@@ -1416,8 +1437,9 @@ async function offerDraftScenario(browser: Browser) {
           unit_price_minor: string;
           tax_basis_points: number;
           discount_basis_points: number;
+          price_basis: string;
         }>(
-          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
+          'SELECT position,product_id,description,info_text,quantity,unit,unit_price_minor,tax_basis_points,discount_basis_points,price_basis FROM document_lines WHERE tenant_id=$1::uuid AND document_id=$2::uuid ORDER BY position',
           [tenantId, blankCreated.id],
         )
       ).rows,
@@ -1432,6 +1454,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '5950',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        price_basis: 'gross',
       },
       {
         position: 1,
@@ -1443,6 +1466,7 @@ async function offerDraftScenario(browser: Browser) {
         unit_price_minor: '11900',
         tax_basis_points: 1900,
         discount_basis_points: 0,
+        price_basis: 'gross',
       },
     ]);
     expect(await templates.list()).toEqual(templatesBeforeBlankOffer);

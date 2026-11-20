@@ -2585,7 +2585,7 @@ summary {
   .offer-draft-position-fields {
     grid-template-columns:
       minmax(0, 2.5fr) minmax(0, 0.8fr) minmax(0, 1fr)
-      minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+      minmax(0, 1.5fr) minmax(0, 0.9fr) repeat(2, minmax(0, 1fr));
   }
   .offer-draft-position-actions {
     justify-self: end;

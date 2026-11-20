@@ -30,6 +30,12 @@ const position = {
   taxBasisPoints: 1900,
   discountBasisPoints: 0,
 };
+const netPosition = {
+  ...position,
+  id: 'fictional-net-position',
+  unitPriceMinor: 10000,
+  priceBasis: 'net' as const,
+};
 const template = {
   id: 'fictional-template',
   version: 1,
@@ -1302,6 +1308,7 @@ test('templates load with their positions, save exact minor units and archive wi
       unitPriceMinor: 19900,
       taxBasisPoints: 1900,
       discountBasisPoints: 500,
+      priceBasis: 'gross',
     },
   ]);
   writes.length = 0;
@@ -1898,6 +1905,7 @@ test('archive carries the stored archived product reference and exact version', 
       unitPriceMinor: 19900,
       taxBasisPoints: 1900,
       discountBasisPoints: 0,
+      priceBasis: 'gross',
     },
   ]);
 });
@@ -1947,7 +1955,7 @@ test('an unknown placeholder is reported instead of being saved silently', async
   );
   expect(await screen.findByText(/Unbekannter Platzhalter/)).toBeTruthy();
 });
-test('choosing a net product fills its gross price, unit and tax into the position', async () => {
+test('choosing a net product copies its net price, basis, unit and tax into the position', async () => {
   setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
@@ -1963,8 +1971,10 @@ test('choosing a net product fills its gross price, unit and tax into the positi
   expect(
     (descriptions[descriptions.length - 1] as HTMLInputElement).value,
   ).toBe('Fictional product');
-  const prices = screen.getAllByLabelText('Einzelpreis (Brutto) in Euro');
-  expect((prices[prices.length - 1] as HTMLInputElement).value).toBe('119.00');
+  const prices = screen.getAllByLabelText('Einzelpreis (Netto) in Euro');
+  expect((prices[prices.length - 1] as HTMLInputElement).value).toBe('100.00');
+  const bases = screen.getAllByLabelText('Preisbasis');
+  expect((bases[bases.length - 1] as HTMLSelectElement).value).toBe('net');
 });
 
 test('gross product prices stay unchanged, archived choices stay hidden, and free selection preserves edits', async () => {
@@ -1975,6 +1985,10 @@ test('gross product prices stay unchanged, archived choices stay hidden, and fre
     screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
   );
   const productSelect = screen.getByLabelText('Produkt');
+  // A stored position without the field means gross.
+  expect((screen.getByLabelText('Preisbasis') as HTMLSelectElement).value).toBe(
+    'gross',
+  );
   expect(
     screen.queryByRole('option', { name: 'Fictional archived product' }),
   ).toBeNull();
@@ -1999,7 +2013,7 @@ test('gross product prices stay unchanged, archived choices stay hidden, and fre
   ).toBe('135.79');
 });
 
-test('a net product conversion saves the gross minor-unit price', async () => {
+test('a copied net product is saved with its net price and basis', async () => {
   const writes = setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
@@ -2009,6 +2023,10 @@ test('a net product conversion saves the gross minor-unit price', async () => {
   fireEvent.change(screen.getByLabelText('Produkt'), {
     target: { value: product.id },
   });
+  expect(
+    (screen.getByLabelText('Einzelpreis (Netto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('100.00');
   fireEvent.submit(
     screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
   );
@@ -2017,12 +2035,48 @@ test('a net product conversion saves the gross minor-unit price', async () => {
     (writes[0]!.body.positions as Array<Record<string, unknown>>)[0],
   ).toMatchObject({
     productId: product.id,
-    unitPriceMinor: 11900,
+    unitPriceMinor: 10000,
     taxBasisPoints: 1900,
+    priceBasis: 'net',
   });
 });
 
-test('overflowing net product conversion preserves the previous position and explains recovery', async () => {
+test('a position keeps its stored net basis and saves a switched basis without conversion', async () => {
+  let savedRow: unknown = null;
+  const writes = setup(
+    (body) => Response.json((savedRow = savedBody(body))),
+    () =>
+      Response.json([savedRow ?? { ...template, positions: [netPosition] }]),
+  );
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  expect((screen.getByLabelText('Preisbasis') as HTMLSelectElement).value).toBe(
+    'net',
+  );
+  expect(
+    (screen.getByLabelText('Einzelpreis (Netto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('100.00');
+  fireEvent.change(screen.getByLabelText('Preisbasis'), {
+    target: { value: 'gross' },
+  });
+  expect(
+    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+      .value,
+  ).toBe('100.00');
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  await screen.findByText('Gespeichert.');
+  expect(
+    (writes[0]!.body.positions as Array<Record<string, unknown>>)[0],
+  ).toMatchObject({ unitPriceMinor: 10000, priceBasis: 'gross' });
+});
+
+test('an oversized net product is copied without conversion and keeps its basis', async () => {
   setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
@@ -2047,44 +2101,53 @@ test('overflowing net product conversion preserves the previous position and exp
   fireEvent.change(screen.getByLabelText('Rabatt in Prozent'), {
     target: { value: '5.00' },
   });
+  // The net product is a direct copy: no gross conversion can overflow, and
+  // the stored amount stays exactly what the catalog says.
   fireEvent.change(screen.getByLabelText('Produkt'), {
     target: { value: overflowProduct.id },
   });
   expect((screen.getByLabelText('Produkt') as HTMLSelectElement).value).toBe(
-    '',
+    overflowProduct.id,
   );
   expect(
     (screen.getByLabelText('Beschreibung') as HTMLInputElement).value,
-  ).toBe('Fictional custom position');
+  ).toBe('Fictional oversized net product');
   expect(
-    (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
+    (screen.getByLabelText('Einzelpreis (Netto) in Euro') as HTMLInputElement)
       .value,
-  ).toBe('222.22');
+  ).toBe('90071992547409.91');
+  expect((screen.getByLabelText('Preisbasis') as HTMLSelectElement).value).toBe(
+    'net',
+  );
   expect((screen.getByLabelText('Menge') as HTMLInputElement).value).toBe('7');
   expect((screen.getByLabelText('Einheit') as HTMLInputElement).value).toBe(
-    'Paket',
+    'Stück',
   );
   expect(
     (screen.getByLabelText('Steuersatz in Prozent') as HTMLInputElement).value,
-  ).toBe('8.00');
+  ).toBe('0.01');
   expect(
     (screen.getByLabelText('Rabatt in Prozent') as HTMLInputElement).value,
   ).toBe('5.00');
-  expect((await screen.findByRole('alert')).textContent).toMatch(
-    /sicheren Bruttobetrag/,
-  );
+  expect(screen.queryByRole('alert')).toBeNull();
 });
-test('opening another template draft clears the previous product conversion error', async () => {
+test('opening another template draft clears the previous save error', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
   setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
   fireEvent.click(
     screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
   );
-  fireEvent.change(screen.getByLabelText('Produkt'), {
-    target: { value: overflowProduct.id },
+  fireEvent.change(screen.getByLabelText('Einzelpreis (Brutto) in Euro'), {
+    target: { value: '1,234' },
   });
-  expect(await screen.findByRole('alert')).toBeTruthy();
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'höchstens zwei Nachkommastellen',
+  );
   fireEvent.click(getDuplicateButton('Fictional offer'));
   expect(screen.queryByRole('alert')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
@@ -2549,6 +2612,7 @@ test('template preview renders the unsaved form snapshot without saving or clear
         unitPriceMinor: 25000,
         taxBasisPoints: 1900,
         discountBasisPoints: 0,
+        priceBasis: 'gross',
       },
     ],
   });

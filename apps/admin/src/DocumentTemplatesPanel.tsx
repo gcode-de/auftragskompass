@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
-import { grossProductPrice } from './product-price.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
 type Position = {
@@ -12,6 +11,8 @@ type Position = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /** Omitted by an older payload; a stored price without a basis is gross. */
+  priceBasis?: string;
 };
 type Template = {
   id: string;
@@ -64,6 +65,7 @@ type DraftPosition = {
   quantity: string;
   unit: string;
   price: string;
+  priceBasis: 'gross' | 'net';
   tax: string;
   discount: string;
 };
@@ -115,15 +117,21 @@ const emptyPosition = (): DraftPosition => ({
   quantity: '1',
   unit: 'Stück',
   price: '0,00',
+  priceBasis: 'gross',
   tax: '19,00',
   discount: '0,00',
 });
+const storedPriceBasis = (position: Position): 'gross' | 'net' =>
+  position.priceBasis === 'net' ? 'net' : 'gross';
+const priceLabel = (priceBasis: string) =>
+  `Einzelpreis (${priceBasis === 'net' ? 'Netto' : 'Brutto'}) in Euro`;
 const toDraft = (position: Position): DraftPosition => ({
   productId: position.productId ?? '',
   description: position.description,
   quantity: String(position.quantity),
   unit: position.unit,
   price: formatHundredths(position.unitPriceMinor),
+  priceBasis: storedPriceBasis(position),
   tax: formatHundredths(position.taxBasisPoints),
   discount: formatHundredths(position.discountBasisPoints),
 });
@@ -165,7 +173,10 @@ function isTemplate(value: unknown): value is Template {
         Number(line.taxBasisPoints) <= 10000 &&
         Number.isSafeInteger(line.discountBasisPoints) &&
         Number(line.discountBasisPoints) >= 0 &&
-        Number(line.discountBasisPoints) <= 10000
+        Number(line.discountBasisPoints) <= 10000 &&
+        (line.priceBasis === undefined ||
+          line.priceBasis === 'gross' ||
+          line.priceBasis === 'net')
       );
     })
   );
@@ -191,7 +202,8 @@ function sameTemplateContent(actual: Template, expected: Template) {
         position.unit === original.unit &&
         position.unitPriceMinor === original.unitPriceMinor &&
         position.taxBasisPoints === original.taxBasisPoints &&
-        position.discountBasisPoints === original.discountBasisPoints
+        position.discountBasisPoints === original.discountBasisPoints &&
+        storedPriceBasis(position) === storedPriceBasis(original)
       );
     })
   );
@@ -228,7 +240,8 @@ function matchesTemplateWrite(
         position.unit === sent.unit.trim() &&
         position.unitPriceMinor === sent.unitPriceMinor &&
         position.taxBasisPoints === sent.taxBasisPoints &&
-        position.discountBasisPoints === sent.discountBasisPoints
+        position.discountBasisPoints === sent.discountBasisPoints &&
+        storedPriceBasis(position) === storedPriceBasis(sent)
       );
     })
   );
@@ -933,6 +946,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           unitPriceMinor: parseHundredths(position.price),
           taxBasisPoints: parseHundredths(position.tax),
           discountBasisPoints: parseHundredths(position.discount),
+          priceBasis: position.priceBasis,
         })),
     };
   }
@@ -1035,27 +1049,18 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setConversionError(false);
       return;
     }
-    try {
-      const grossPrice = grossProductPrice(
-        product.priceMinor,
-        product.priceBasis,
-        product.taxBasisPoints,
-      );
-      updatePosition(index, {
-        productId,
-        description: product.name,
-        unit: product.unit,
-        price: formatHundredths(grossPrice),
-        tax: formatHundredths(product.taxBasisPoints),
-      });
-      setMessage('');
-      setConversionError(false);
-    } catch {
-      setMessage(
-        'Produktpreis konnte nicht in den sicheren Bruttobetrag umgerechnet werden. Die Position blieb unverändert. Bitte Produktpreis und Steuersatz prüfen oder Brutto-Einzelpreis manuell eintragen.',
-      );
-      setConversionError(true);
-    }
+    // The catalog says what the price means, so the position stores both the
+    // amount and its basis unchanged. No client-side gross conversion.
+    updatePosition(index, {
+      productId,
+      description: product.name,
+      unit: product.unit,
+      price: formatHundredths(product.priceMinor),
+      priceBasis: product.priceBasis === 'net' ? 'net' : 'gross',
+      tax: formatHundredths(product.taxBasisPoints),
+    });
+    setMessage('');
+    setConversionError(false);
   }
   async function save(form: HTMLFormElement, retryCreate = false) {
     if (
@@ -1433,6 +1438,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             unitPriceMinor: position.unitPriceMinor,
             taxBasisPoints: position.taxBasisPoints,
             discountBasisPoints: position.discountBasisPoints,
+            priceBasis: storedPriceBasis(position),
           })),
           version: row.version,
         }),
@@ -1783,7 +1789,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                   />
                 </label>
                 <label>
-                  Einzelpreis (Brutto) in Euro
+                  {priceLabel(position.priceBasis)}
                   <input
                     inputMode="decimal"
                     value={position.price}
@@ -1791,6 +1797,21 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                       updatePosition(index, { price: event.target.value })
                     }
                   />
+                </label>
+                <label>
+                  Preisbasis
+                  <select
+                    value={position.priceBasis}
+                    onChange={(event) =>
+                      updatePosition(index, {
+                        priceBasis:
+                          event.target.value === 'net' ? 'net' : 'gross',
+                      })
+                    }
+                  >
+                    <option value="gross">Brutto</option>
+                    <option value="net">Netto</option>
+                  </select>
                 </label>
                 <label>
                   Steuersatz in Prozent
