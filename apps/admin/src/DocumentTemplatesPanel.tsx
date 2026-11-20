@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
+import { DiscountField } from './DiscountField.js';
 
 type Position = {
   id?: string;
@@ -1853,47 +1854,33 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                     }
                   />
                 </label>
-                <label>
-                  Rabatt in Prozent
-                  <input
-                    inputMode="decimal"
-                    value={position.discount}
-                    disabled={position.discountMode !== 'percent'}
-                    onChange={(event) =>
-                      updatePosition(index, { discount: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Rabattart
-                  <select
-                    value={position.discountMode}
-                    onChange={(event) =>
-                      updatePosition(index, {
-                        discountMode:
-                          event.target.value === 'amount'
-                            ? 'amount'
-                            : 'percent',
-                      })
-                    }
-                  >
-                    <option value="percent">Prozent</option>
-                    <option value="amount">Euro</option>
-                  </select>
-                </label>
-                <label>
-                  Rabatt in Euro
-                  <input
-                    inputMode="decimal"
-                    value={position.discountAmount}
-                    disabled={position.discountMode !== 'amount'}
-                    onChange={(event) =>
-                      updatePosition(index, {
-                        discountAmount: event.target.value,
-                      })
-                    }
-                  />
-                </label>
+                {/* DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: one number field with
+                    its unit switch beside it; the other stored value keeps its
+                    place in the form and is never converted. */}
+                <DiscountField
+                  mode={position.discountMode}
+                  value={
+                    position.discountMode === 'percent'
+                      ? position.discount
+                      : position.discountAmount
+                  }
+                  valueLabel={
+                    position.discountMode === 'percent'
+                      ? 'Rabatt in Prozent'
+                      : 'Rabatt in Euro'
+                  }
+                  onValueChange={(value) =>
+                    updatePosition(
+                      index,
+                      position.discountMode === 'percent'
+                        ? { discount: value }
+                        : { discountAmount: value },
+                    )
+                  }
+                  onModeChange={(mode) =>
+                    updatePosition(index, { discountMode: mode })
+                  }
+                />
                 <button
                   type="button"
                   className="secondary-action"

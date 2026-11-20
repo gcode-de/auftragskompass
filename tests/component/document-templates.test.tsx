@@ -3197,9 +3197,10 @@ test('the offered placeholders match the server list', () => {
   }
 });
 
-// DOC-PRODUCT-01.4: a template position carries the same discount mode as a
-// document position. Switching never converts the other value.
-test('a template position switches between percent and amount without converting either value', async () => {
+// DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: a template position carries the same
+// single discount field with its compact mode select; the other value stays in
+// the form and is never converted.
+test('a template position keeps one discount field whose mode never converts either value', async () => {
   const writes = setup();
   render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
   await screen.findAllByText(/Fictional offer/);
@@ -3209,19 +3210,26 @@ test('a template position switches between percent and amount without converting
   const fixture = screen.getByRole('group', { name: 'Position 1' });
   const mode = within(fixture).getByLabelText('Rabattart');
   const percent = within(fixture).getByLabelText('Rabatt in Prozent');
-  const amount = within(fixture).getByLabelText('Rabatt in Euro');
   expect(mode).toHaveProperty('value', 'percent');
-  expect(amount).toHaveProperty('value', '0,00');
-  expect(amount).toHaveProperty('disabled', true);
+  // One number field per discount instead of a second, disabled euro field.
+  expect(within(fixture).getAllByLabelText(/^Rabatt in /)).toHaveLength(1);
+  expect(within(fixture).queryByLabelText('Rabatt in Euro')).toBeNull();
 
   fireEvent.change(percent, { target: { value: '5,00' } });
   fireEvent.change(mode, { target: { value: 'amount' } });
-  expect(percent).toHaveProperty('value', '5,00');
+  const amount = within(fixture).getByLabelText('Rabatt in Euro');
   fireEvent.change(amount, { target: { value: '10,00' } });
   fireEvent.change(mode, { target: { value: 'percent' } });
-  expect(amount).toHaveProperty('value', '10,00');
+  // The percentage typed before the euro phase survived it.
+  expect(within(fixture).getByLabelText('Rabatt in Prozent')).toHaveProperty(
+    'value',
+    '5,00',
+  );
   fireEvent.change(mode, { target: { value: 'amount' } });
-  expect(amount).toHaveProperty('value', '10,00');
+  expect(within(fixture).getByLabelText('Rabatt in Euro')).toHaveProperty(
+    'value',
+    '10,00',
+  );
 
   fireEvent.click(screen.getByRole('button', { name: 'Vorlage speichern' }));
   await screen.findByText('Gespeichert.', { exact: true });
@@ -3262,12 +3270,13 @@ test('a stored template amount loads in euro mode and percentage mode sends null
     'value',
     '25.00',
   );
+  // The stored percentage is kept and appears again with its own mode.
+  expect(screen.queryByLabelText('Rabatt in Prozent')).toBeNull();
+  fireEvent.change(mode, { target: { value: 'percent' } });
   expect(screen.getByLabelText('Rabatt in Prozent')).toHaveProperty(
     'value',
     '5.00',
   );
-
-  fireEvent.change(mode, { target: { value: 'percent' } });
   fireEvent.click(screen.getByRole('button', { name: 'Vorlage speichern' }));
   await screen.findByText('Gespeichert.', { exact: true });
   const sent = writes[0]!.body.positions as Array<Record<string, unknown>>;
