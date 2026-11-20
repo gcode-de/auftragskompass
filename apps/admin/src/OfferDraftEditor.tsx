@@ -370,7 +370,10 @@ export function OfferDraftEditor({
     [catalogError, setCatalogError] = useState(false),
     [catalogMessage, setCatalogMessage] = useState(''),
     [dropTarget, setDropTarget] = useState(''),
-    [moveAnnouncement, setMoveAnnouncement] = useState(''),
+    [moveAnnouncement, setMoveAnnouncement] = useState({
+      sequence: 0,
+      text: '',
+    }),
     draggedLine = useRef(''),
     pendingMoveFocus = useRef<HTMLButtonElement | null>(null),
     request = useRef(0),
@@ -767,9 +770,10 @@ export function OfferDraftEditor({
     next.splice(destination, 0, moved!);
     pendingMoveFocus.current = control ?? null;
     setLineValues(next);
-    setMoveAnnouncement(
-      `Zeile von Stelle ${source + 1} an Stelle ${destination + 1} verschoben.`,
-    );
+    setMoveAnnouncement(({ sequence }) => ({
+      sequence: sequence + 1,
+      text: `Zeile von Stelle ${source + 1} an Stelle ${destination + 1} verschoben.`,
+    }));
   }
 
   function clearDrag() {
@@ -1048,7 +1052,12 @@ export function OfferDraftEditor({
               <h6 id={'offer-positions-' + documentId}>Positionen</h6>
               <p>Änderungen werden beim Speichern neu berechnet.</p>
               <div className="sr-only" aria-live="polite">
-                {moveAnnouncement}
+                {/* Renew the live-region content even when the spoken text repeats. */}
+                {moveAnnouncement.text && (
+                  <span key={moveAnnouncement.sequence}>
+                    {moveAnnouncement.text}
+                  </span>
+                )}
               </div>
               <div className="offer-draft-position-list">
                 {lineValues.map((line, index) => {
