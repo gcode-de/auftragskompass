@@ -95,10 +95,16 @@ Abschnitt beschreibt den aktuellen Stand.
   Rechners als kleiner Rest). Offene Restseiten: Maus/Touch-Bedienung ist über
   die bestehenden E2E-Tastatur-/Klickpfade abgedeckt, eine eigene manuelle
   Maus-/Touch-Runde war nicht Teil der automatisierten Prüfung.
-- **Aktiver Slice:** DOC-PRODUCT-01.6 „Position als Produkt speichern“
-  (Umsetzung läuft im Hintergrund; Mehrfachklick-/unklarer-Antwort-Schutz nach
-  BKP015.5b-Muster). Danach DOC-EVENTINFO-01 und die restliche Reihenfolge des
-  Plans.
+- **Erledigt 21.11.2026 – DOC-PRODUCT-01.6 (Position als Produkt):** Zeilenaktion
+  „Als Produkt speichern“ in Dokument- und Vorlageneditor (PR #39, `73e922c`,
+  CI grün) mit BKP015.5b-Schutz: genau ein POST je Geste, unklarer Ausgang nur
+  über lesenden Bestandsabgleich, nach Fund gesperrt. Abnahme siehe Plan
+  (component 988/988, E2E 15/15).
+- **Aktiver Slice:** DOC-EVENTINFO-01 „Eventbezeichnung, Ort und Datum im
+  Dokument“ (passend zur beobachteten Bookitup-Vorlage; fehlende Angaben
+  auslassen statt erfinden). Danach Dokumentrest inkl. DOC-CREATE-02-Rest und
+  DOC-DEPOSIT-FIX-01 (Schlussrechnungs-/Anzahlungs-Grenzfall, vor
+  Produktivnutzung zwingend), danach E-Mail, dann Parität/Design.
 - **Betrieb (historisch, überholt vom SSH-geprüften Stand oben):** die
   GOAL-Momentaufnahme nannte `b47f5aa` als letzten verifizierten Live-Stand
   und eine falsche Host-IP; maßgeblich ist der Abschnitt „Betrieb (geprüft
