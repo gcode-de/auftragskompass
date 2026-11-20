@@ -8,6 +8,8 @@
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
+- [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.
+
 - [x] **DOC-ORDER-02 — `fix: announce repeated position moves`**: Beim Sortieren jede Bewegung auch bei wiederholtem identischem Ausgangs- und Zielplatz für Screenreader ankündigen. Bestehende Maus-, Tastatur- und Touchbedienung sowie Speicherverhalten erhalten.
 
 - [x] **DOC-ORDER-01 — `feat: reorder document positions`**: Positionen im Dokumententwurf per Drag-and-drop und zugänglichen Aktionen für Tastatur und Mobilgeräte sortieren. Zugehörige Infotexte bleiben an der Position; Änderungen werden nach Speichern und Neuladen in Vorschau und PDF in derselben Reihenfolge ausgegeben. Bestehende freie Textzeilen, Eingaben, Summen und Versionierung erhalten. Abnahme mit synthetischen Daten auf Desktop und Mobil.

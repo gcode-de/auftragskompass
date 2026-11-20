@@ -62,6 +62,19 @@ unplausible Erfolgsantwort sperrt das direkte erneute Anlegen im UI. Zuerst
 „Angebote aktualisieren“ und den Bestand prüfen; ein Browserneustart ersetzt
 keine serverseitige Wiederholungsgarantie.
 
+### Optionale Positionen (DOC-OPTION-01)
+
+Leistungspositionen können `optional: true` tragen; ohne Angabe gelten sie als
+regulär. Ihr Einzelbetrag bleibt sichtbar, die Position wird mit „Optional:“
+gekennzeichnet und nicht in Netto, Steuergruppen oder Brutto eingerechnet. Ein
+Hinweis unter der Summe erklärt dies. Der Status bleibt beim Kopieren in
+Folgebelege und Angebotsfassungen erhalten. Ein Beleg mit ausschließlich
+optionalen Positionen kann wie andere Nullbetragsbelege finalisiert werden.
+Bei Schlussrechnungen mit Optionen dürfen verrechnete Anzahlungen weder den
+korrigierten Auftrag noch den nichtoptionalen Rechnungsbetrag übersteigen.
+Bestehende finale PDFs bleiben unverändert. Migration
+`0060_document_optional_positions` ergänzt den Status.
+
 ### Angebotsfassungen (DOC-REV-01)
 
 `POST /api/v1/documents/:id/revision` erzeugt für ein finalisiertes, nicht

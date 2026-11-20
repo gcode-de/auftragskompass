@@ -210,6 +210,40 @@ describe('renderDocumentHtml', () => {
     expect(html).toContain('398,00 €');
     expect(html).toContain('63,54 €');
   });
+  test('marks optional prices and excludes them from the printed tax and totals', () => {
+    const optional = {
+      ...line,
+      description: '<Fictional extra>',
+      infoText: 'Second service detail',
+      unit: 'Stück',
+      taxBasisPoints: 700,
+      discountBasisPoints: 5000,
+      optional: true,
+    };
+    const note =
+      'Optionale Positionen sind nicht in der Gesamtsumme berücksichtigt.';
+    const html = renderDocumentHtml({
+      ...base,
+      lines: [...base.lines, optional],
+    });
+    expect(html).toContain('<td>Optional: &lt;Fictional extra&gt;');
+    expect(html).toContain('Second service detail');
+    expect(html).toContain('Rabatt 50 %');
+    expect(html).toContain('<td>99,50 €</td>');
+    expect(html).toContain(
+      '<caption class="totals-note">' + note + '</caption>',
+    );
+    expect(html).toContain('<td>Brutto</td><td>199,00 €</td>');
+    expect(html).toContain('<td>Netto</td><td>167,23 €</td>');
+    expect(html).toContain('<td>Umsatzsteuer 19 %</td><td>31,77 €</td>');
+    expect(html).not.toContain('Umsatzsteuer 7 %');
+    expect(renderDocumentHtml(base)).not.toContain(note);
+
+    const preview = renderDocumentHtml({ ...base, lines: [optional] });
+    expect(preview).toContain(note);
+    expect(preview).toContain('<td>Brutto</td><td>0,00 €</td>');
+    expect(preview).not.toContain('Umsatzsteuer');
+  });
   test('embeds a logo as a data uri only when one is configured', () => {
     expect(renderDocumentHtml(base)).not.toContain('class="logo"');
     const html = renderDocumentHtml({

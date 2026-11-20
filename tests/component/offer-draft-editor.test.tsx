@@ -25,11 +25,13 @@ type TestLine = {
   position: number;
   productId: string | null;
   description: string;
+  infoText?: string;
   quantity: number;
   unit: string;
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  optional?: boolean;
 };
 
 const draft = {
@@ -727,6 +729,78 @@ test('existing standalone information text remains editable', async () => {
     'Zum Finalisieren ist mindestens eine Position erforderlich.',
   );
   expect(calls.some((call) => call.url.endsWith('/finalize'))).toBe(true);
+});
+
+test.each([
+  ['offer', 'Angebot'],
+  ['invoice', 'Rechnung'],
+])('saves and reloads optional positions in a %s draft', async (kind, name) => {
+  const { calls } = setup({
+    documents: [{ ...draft, kind }],
+    initial: {
+      ...detail(),
+      lines: [
+        { ...line, productId: 'product-net', infoText: 'Fiktive Zugabe' },
+        { kind: 'info', id: 'info-1', position: 1, description: 'Hinweis' },
+      ],
+    },
+  });
+  render(<EventDocuments {...props} />);
+  const edit = await screen.findByRole('button', {
+    name: `${name} Entwurf bearbeiten`,
+  });
+  fireEvent.click(edit);
+  const checkbox = await screen.findByRole('checkbox', {
+    name: 'Optionale Position',
+  });
+  expect(checkbox).toHaveProperty('checked', false);
+  expect(
+    within(screen.getByRole('group', { name: 'Infotext' })).queryByRole(
+      'checkbox',
+    ),
+  ).toBeNull();
+
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  expect(calls.find((call) => call.method === 'PUT')?.body).toMatchObject({
+    lines: [
+      { optional: true, productId: 'product-net', infoText: 'Fiktive Zugabe' },
+      { kind: 'info', description: 'Hinweis' },
+    ],
+  });
+  expect(screen.getByRole('link', { name: 'Vorschau öffnen' })).toBeTruthy();
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', {
+        name: `${name} Entwurf finalisieren`,
+      }),
+    ).toHaveProperty('disabled', false),
+  );
+  expect(
+    screen.getByText(
+      'Der Gesamtbetrag wird ohne optionale Positionen berechnet.',
+    ),
+  ).toBeTruthy();
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: `${name} Entwurf bearbeiten` }),
+  );
+  const reloaded = await screen.findByRole('checkbox', {
+    name: 'Optionale Position',
+  });
+  expect(reloaded).toHaveProperty('checked', true);
+  fireEvent.click(reloaded);
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const submitted = calls.filter((call) => call.method === 'PUT').at(-1)
+    ?.body as {
+    lines: object[];
+  };
+  expect(submitted.lines[0]).not.toHaveProperty('optional');
 });
 
 test('reordering keeps unsaved fields and attached text with the moved position', async () => {

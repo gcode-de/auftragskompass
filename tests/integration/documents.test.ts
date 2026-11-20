@@ -18,6 +18,7 @@ import {
   documentRepository,
   registerDocumentRoutes,
   type DocumentDependencies,
+  type DocumentLineDraft,
   type DocumentMetadataRow,
   type DocumentOfferRow,
 } from '../../packages/core/src/documents.js';
@@ -1294,12 +1295,22 @@ test('the document API requires auth and enforces the final state', async () => 
           {
             productId: null,
             description: 'API edited line',
+            optional: false,
             infoText: '  Fictional detail\nSecond line  ',
             quantity: 2,
             unit: 'Stück',
             unitPriceMinor: 2500,
             taxBasisPoints: 0,
             discountBasisPoints: 0,
+          },
+          {
+            description: 'Fictional optional line',
+            optional: true,
+            quantity: 1,
+            unit: 'Stück',
+            unitPriceMinor: 10000,
+            taxBasisPoints: 1900,
+            discountBasisPoints: 1000,
           },
         ],
       },
@@ -1318,6 +1329,7 @@ test('the document API requires auth and enforces the final state', async () => 
           infoText: 'Fictional detail\nSecond line',
           quantity: 2,
         },
+        { position: 2, description: 'Fictional optional line', optional: true },
       ],
     });
     expect(saved.json().lines[0]).toEqual({
@@ -1327,10 +1339,21 @@ test('the document API requires auth and enforces the final state', async () => 
       description: '<API note>',
     });
     expect(saved.json().lines[1]).not.toHaveProperty('kind');
-    for (const invalid of [
+    expect(saved.json().lines[1]).not.toHaveProperty('optional');
+    const invalidInformation = [
       { description: 'Hinweis', unitPriceMinor: 1500 },
       { description: 'Hinweis', infoText: 'Unexpected' },
+      { description: 'Hinweis', optional: false },
       { description: 'Fictional\0note' },
+    ];
+    for (const invalid of [
+      ...invalidInformation.map((row) => ({ kind: 'info', ...row })),
+      {
+        ...saved.json().lines[1],
+        id: undefined,
+        position: undefined,
+        optional: 'true',
+      },
     ]) {
       const response = await app.inject({
         method: 'PUT',
@@ -1343,7 +1366,7 @@ test('the document API requires auth and enforces the final state', async () => 
           introText: '',
           outroText: '',
           validityDays: 21,
-          lines: [{ kind: 'info', ...invalid }],
+          lines: [invalid],
         },
       });
       expect(response.statusCode).toBe(400);
@@ -1505,6 +1528,7 @@ test('the document API requires auth and enforces the final state', async () => 
     expect(read.statusCode).toBe(200);
     expect(read.json().number).toMatch(/^AN-\d{4}-\d{4}$/);
     expect(read.json().subject).toBe('Eigenes Angebot für {{contact}}');
+    expect(read.json().lines[2]).toMatchObject({ optional: true });
     expect(run.rendered.at(-1)).toContain(
       'Eigenes Angebot für Fictional Customer',
     );
@@ -4701,7 +4725,14 @@ test('information rows survive draft saving, rendering and follow-up documents',
       ...confirmationLines[0]!,
       infoText: '<Position detail> first line\nSecond line',
     },
+    optionalItem = { ...item, optional: true },
     content = { ...confirmationTexts, version: draft.version };
+  await expect(
+    repo.updateDraftContent(actor, draft.id, {
+      ...content,
+      lines: [{ ...item, optional: 'true' as unknown as boolean }],
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_line' });
   for (const infoText of [
     42 as unknown as string,
     'x'.repeat(4001),
@@ -4726,6 +4757,12 @@ test('information rows survive draft saving, rendering and follow-up documents',
         lines: [{ ...info, description }],
       }),
     ).rejects.toMatchObject({ reason: 'invalid_line' });
+  await expect(
+    repo.updateDraftContent(actor, draft.id, {
+      ...content,
+      lines: [{ ...info, ...{ optional: false } }],
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_line' });
   const infoOnly = await repo.updateDraftContent(actor, draft.id, {
     ...content,
     lines: [{ ...info, description: `  ${info.description}  ` }],
@@ -4750,13 +4787,39 @@ test('information rows survive draft saving, rendering and follow-up documents',
     code: '23514',
     constraint: 'document_lines_kind_values',
   });
-  const mixed = await repo.updateDraftContent(actor, draft.id, {
+  await expect(
+    pool.query(
+      'UPDATE document_lines SET is_optional=true WHERE tenant_id=$1 AND document_id=$2',
+      [context.scope, draft.id],
+    ),
+  ).rejects.toMatchObject({
+    code: '23514',
+    constraint: 'document_lines_optional_service_check',
+  });
+  const optionalOnly = await repo.updateDraftContent(actor, draft.id, {
     ...content,
     version: infoOnly.version,
-    lines: [item, info, { ...confirmationLines[1]!, infoText: ' \n ' }],
+    lines: [optionalItem, info],
+  });
+  expect(optionalOnly).toMatchObject({
+    grossMinor: 0,
+    netMinor: 0,
+    taxMinor: 0,
+  });
+  expect((await repo.preview(draft.id))?.bytes.toString()).toMatch(/^%PDF/);
+  const mixed = await repo.updateDraftContent(actor, draft.id, {
+    ...content,
+    version: optionalOnly.version,
+    lines: [
+      item,
+      info,
+      { ...confirmationLines[1]!, infoText: ' \n ' },
+      optionalItem,
+    ],
   });
   expect(mixed.lines[0]).toMatchObject(item);
   expect(mixed.lines[2]).not.toHaveProperty('infoText');
+  expect(mixed.lines[3]).toMatchObject(optionalItem);
   expect(await repo.get(draft.id)).toMatchObject({ lines: mixed.lines });
   await expect(
     pool.query(
@@ -4828,15 +4891,24 @@ test('information rows survive draft saving, rendering and follow-up documents',
   );
   expect(advanced.lines[0]).toMatchObject(item);
   expect(advanced.lines[1]).toMatchObject(info);
+  expect(advanced.lines[3]).toMatchObject(optionalItem);
+  expect(advanced.grossMinor).toBe(draft.grossMinor);
   const invoice = await repo.createInvoice(actor, order.id, order.version);
   expect(invoice.lines[0]).toMatchObject(item);
   expect(invoice.lines[1]).toMatchObject(info);
+  expect(invoice.lines[3]).toMatchObject(optionalItem);
+  expect(invoice.grossMinor).toBe(draft.grossMinor);
   await documentNumberRepository(pool, context.scope).save(actor, 'invoice', {
     pattern: 'RE-{YYYY}-{SEQ}',
     minLength: 4,
     nextValue: 1,
   });
   const issued = await repo.finalize(actor, invoice.id, invoice.version);
+  expect(issued).toMatchObject({
+    grossMinor: draft.grossMinor,
+    netMinor: draft.netMinor,
+    taxMinor: draft.taxMinor,
+  });
   const correction = await repo.createCorrection(
     actor,
     issued.id,
@@ -4845,7 +4917,31 @@ test('information rows survive draft saving, rendering and follow-up documents',
   );
   expect(correction.lines[0]).toMatchObject(item);
   expect(correction.lines[1]).toMatchObject(info);
+  expect(correction.lines[3]).toMatchObject(optionalItem);
+  expect(correction.grossMinor).toBe(draft.grossMinor);
   expect((await repo.pdf(finalized.id)).bytes).toEqual(originalPdf.bytes);
+});
+
+test('an offer with only optional positions can be finalized at zero', async () => {
+  const context = await confirmationContext(randomUUID()),
+    { repo, actor } = context,
+    draft = await confirmationDraft(context),
+    saved = await repo.updateDraftContent(actor, draft.id, {
+      ...confirmationTexts,
+      version: draft.version,
+      lines: [{ ...confirmationLines[0]!, optional: true }],
+    });
+  const finalized = await repo.finalize(actor, draft.id, saved.version);
+  expect(finalized).toMatchObject({
+    state: 'final',
+    grossMinor: 0,
+    taxMinor: 0,
+    netMinor: 0,
+    lines: [{ optional: true }],
+  });
+  expect(context.run.rendered.at(-1)).toContain(
+    'Optional: Fictional photo box',
+  );
 });
 
 test('a concurrent offer revision preserves the accepted original and its follow-up', async () => {
@@ -4867,6 +4963,7 @@ test('a concurrent offer revision preserves the accepted original and its follow
       {
         ...confirmationLines[0]!,
         productId: product,
+        optional: true,
         infoText: 'Fictional position information',
       },
       info,
@@ -7479,7 +7576,10 @@ test('a credit never exceeds the invoice gross', async () => {
     order.invoice.id,
     order.invoice.version,
     'credit',
-    correctionLine(30000),
+    [
+      correctionLine(30000)[0]!,
+      { ...correctionLine(999999)[0]!, optional: true },
+    ],
   );
   expect(
     (await order.repo.finalize(order.actor, first.id, first.version)).number,
@@ -8190,7 +8290,10 @@ const settlementLines = [
   },
 ];
 
-async function settlementOrder(scope: string) {
+async function settlementOrder(
+  scope: string,
+  lines: DocumentLineDraft[] = settlementLines,
+) {
   const context = await confirmationContext(scope),
     draft = await context.repo.createDraft(context.actor, {
       templateId: context.templateId,
@@ -8200,7 +8303,7 @@ async function settlementOrder(scope: string) {
     edited = await context.repo.updateDraftContent(context.actor, draft.id, {
       version: draft.version,
       ...confirmationTexts,
-      lines: settlementLines,
+      lines,
     }),
     offer = await context.repo.finalize(
       context.actor,
@@ -8844,6 +8947,43 @@ test('a settlement above the order is refused and leaves the draft untouched', a
     order.repo.finalize(order.actor, draft.id, draft.version),
   ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
   expect(await finalInvoiceCount(order.scope)).toBe(1);
+});
+
+test('an optional invoice line cannot raise the settlement limit', async () => {
+  const lines = confirmationLines.map((line) => ({
+    ...line,
+    quantity: 1,
+    unitPriceMinor: 10000,
+    discountBasisPoints: 0,
+  }));
+  const order = await settlementOrder(randomUUID(), lines);
+  await settlementRanges(order);
+  await finalizedDeposit(order, 15000);
+  const draft = await order.repo.createFinalInvoice(
+    order.actor,
+    order.confirmation.id,
+    order.confirmation.version,
+  );
+  const edited = await order.repo.updateDraftContent(order.actor, draft.id, {
+    ...confirmationTexts,
+    version: draft.version,
+    lines: [
+      { kind: 'info', description: 'Fictional settlement note' },
+      lines[0]!,
+      { ...lines[1]!, optional: true },
+    ],
+  });
+  expect(order.confirmation.grossMinor).toBe(20000);
+  expect(edited.grossMinor).toBe(10000);
+  await expect(
+    order.repo.finalize(order.actor, draft.id, edited.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  expect(await invoiceSequence(order.scope)).toBe(1);
+  expect(await storedSettlement(order.scope, draft.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    deposit_applied_minor: null,
+  });
 });
 
 test('a settlement exactly at the claim is allowed, one cent above is not', async () => {

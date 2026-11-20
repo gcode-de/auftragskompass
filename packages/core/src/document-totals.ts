@@ -11,6 +11,7 @@ export type TotalsLine = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  optional?: boolean;
 };
 export type LineTotals = {
   grossMinor: number;
@@ -90,6 +91,7 @@ export function documentTotals(lines: readonly TotalsLine[]): DocumentTotals {
     taxMinor = 0n,
     grossMinor = 0n;
   lines.forEach((line, index) => {
+    if (line.optional) return;
     const totals = computed[index]!,
       group = groups.get(line.taxBasisPoints) ?? {
         taxBasisPoints: line.taxBasisPoints,

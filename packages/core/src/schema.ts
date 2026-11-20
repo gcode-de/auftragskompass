@@ -451,6 +451,7 @@ export const documentLines = pgTable('document_lines', {
   id: uuid('id').notNull(),
   position: integer('position').notNull(),
   isInformation: boolean('is_information').notNull().default(false),
+  isOptional: boolean('is_optional').notNull().default(false),
   productId: uuid('product_id'),
   description: text('description').notNull(),
   infoText: text('info_text'),

@@ -28,3 +28,5 @@ Stand: 17.11.2026. UI und Bedienung zuerst. Die Einträge sind Kandidaten für e
 ## Evidenz und Arbeitsregel
 
 Das ursprüngliche Audit beruht auf lesendem Chrome-DOM/AX/Screenshots und AK-Quellcode, nicht auf REA-Runtime-Evidence. Speicher-, Versand- und andere Schreibsemantik der Referenz sowie Teile ihrer mobilen Bedienung bleiben unbekannt. Keine privaten Rohbilder oder Kundendaten in Repository, Tests oder Berichte übernehmen. Quellen: [Paritäts-Einstieg und Beweisgrenzen](README.md), [Beobachtungen](observations.md), [BKP030](tasks-completion.md). Vor jeder Implementierung genau einen konkreten Slice samt Abnahme im [Implementierungsplan](../../IMPLEMENTATION_PLAN.md) aktivieren.
+
+**Schlussrechnung nach Auftragskorrektur:** Bei Belegen ohne optionale Positionen kann die bestehende Regel eine Anzahlung bis zur korrigierten Auftragssumme akzeptieren, auch wenn der unveränderte Schlussrechnungsentwurf darunter liegt. Den Zahlbetrag und den bisherigen Korrekturablauf in einem eigenen, gezielt getesteten Slice prüfen; keine stillschweigende Anpassung bestehender finaler Belege.

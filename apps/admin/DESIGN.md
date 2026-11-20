@@ -435,3 +435,5 @@ beim gewählten Pfeil der verschobenen Zeile, auch an einer Listenbegrenzung.
 Der Editor meldet die neue Zeilenstelle für assistive Technik. Zugehöriger
 Infotext wandert mit der Position. Eigenständige Textzeilen sind ebenfalls
 verschiebbar. Speichern übernimmt die Reihenfolge.
+
+Optionale Positionen (DOC-OPTION-01): Positionsgruppen zeigen unter den Preisfeldern die native Checkbox „Optionale Position“ mit mindestens 44 px Trefferfläche. Ihr Zustand wird zusammen mit der Position gespeichert und verschoben. Die Summe zeigt den gespeicherten Serverwert.

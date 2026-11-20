@@ -31,6 +31,7 @@ type DraftItem = {
   productId: string | null;
   description: string;
   infoText?: string;
+  optional?: boolean;
   quantity: number;
   unit: string;
   unitPriceMinor: number;
@@ -52,6 +53,7 @@ type DraftItemValues = {
   productId: string | null;
   description: string;
   infoText: string;
+  optional: boolean;
   quantity: string;
   unit: string;
   unitPrice: string;
@@ -194,6 +196,8 @@ function isDetail(value: unknown): value is DraftDetail {
           : line.kind === undefined &&
             (line.productId === null || typeof line.productId === 'string') &&
             line.description.length <= 300 &&
+            (line.optional === undefined ||
+              typeof line.optional === 'boolean') &&
             (line.infoText === undefined ||
               (typeof line.infoText === 'string' &&
                 line.infoText.length <= infoTextLimit)) &&
@@ -242,6 +246,7 @@ function lineValuesOf(lines: DraftLine[], previous: DraftLineValues[] = []) {
       productId: line.productId,
       description: line.description,
       infoText: line.infoText ?? '',
+      optional: line.optional ?? false,
       quantity: String(line.quantity),
       unit: line.unit,
       unitPrice: formatHundredths(line.unitPriceMinor),
@@ -277,6 +282,7 @@ function lineDraft(line: DraftLineValues) {
     productId: line.productId,
     description: line.description,
     ...(line.infoText.trim() ? { infoText: line.infoText } : {}),
+    ...(line.optional ? { optional: true } : {}),
     quantity,
     unit: line.unit,
     unitPriceMinor,
@@ -438,7 +444,10 @@ export function OfferDraftEditor({
         }
       }),
     isBlocked = conflict || uncertain;
-  const hasPricedLines = lineValues.some((line) => line.kind !== 'info');
+  const hasPricedLines = lineValues.some((line) => line.kind !== 'info'),
+    hasOptionalLines = lineValues.some(
+      (line) => line.kind !== 'info' && line.optional,
+    );
 
   const loadDraft = useCallback(
     async (focusEditor = false) => {
@@ -625,6 +634,7 @@ export function OfferDraftEditor({
         unitPrice: '0.00',
         tax: '19.00',
         discount: '0.00',
+        optional: false,
       },
     ]);
   }
@@ -726,6 +736,7 @@ export function OfferDraftEditor({
           unitPrice: formatHundredths(grossMinor),
           tax: formatHundredths(product.taxBasisPoints),
           discount: '0.00',
+          optional: false,
         },
       ]);
       setSelectedProductId('');
@@ -1325,6 +1336,22 @@ export function OfferDraftEditor({
                         </button>
                       </div>
                       {line.kind !== 'info' && (
+                        <label className="offer-draft-position-option">
+                          <input
+                            type="checkbox"
+                            checked={line.optional}
+                            onChange={(event) =>
+                              changeLine(
+                                line.key,
+                                'optional',
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          Optionale Position
+                        </label>
+                      )}
+                      {line.kind !== 'info' && (
                         <label className="offer-draft-info-field offer-draft-item-info">
                           Infotext (optional)
                           <textarea
@@ -1462,6 +1489,11 @@ export function OfferDraftEditor({
               {lineValues.length > 0 && !hasPricedLines && (
                 <p className="document-hint">
                   Zum Finalisieren ist mindestens eine Position erforderlich.
+                </p>
+              )}
+              {hasOptionalLines && (
+                <p className="document-hint">
+                  Der Gesamtbetrag wird ohne optionale Positionen berechnet.
                 </p>
               )}
               <p className="offer-draft-total">
