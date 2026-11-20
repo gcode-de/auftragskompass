@@ -98,6 +98,12 @@ export type DocumentLayoutInput = {
    * store it and no document without a value changes a byte.
    */
   invoiceDates?: DocumentInvoiceDates;
+  /**
+   * DOC-PRODUCT-01.5: the comment-level discount of this document - a print
+   * option like the three above, built by `document-snapshot` from the stored
+   * kind/value/note. A document without one keeps byte-identical HTML.
+   */
+  totalDiscount?: DocumentTotalDiscount;
 };
 
 /**
@@ -118,6 +124,23 @@ export type DocumentInvoiceDates = {
    * keeps byte-identical HTML.
    */
   bankAccount?: string;
+};
+
+/**
+ * DOC-PRODUCT-01.5: what the paper says about a comment-level discount. The
+ * deduction and the payable amount are resolved once by `document-snapshot`, so
+ * the print cannot disagree with the claim of the stored document.
+ */
+export type DocumentTotalDiscount = {
+  kind: 'percent' | 'amount';
+  /** Basis points for `percent`, minor units for `amount` - as entered. */
+  value: number;
+  /** Free text an operator typed; escaped and line-broken at render time. */
+  note?: string;
+  /** The resolved deduction in minor units. */
+  discountMinor: number;
+  /** `gross - discountMinor`: the amount the document asks for. */
+  payableMinor: number;
 };
 
 /**
@@ -142,7 +165,8 @@ export type DocumentDepositReference = {
 /**
  * What a correction prints about the document it corrects. Every amount is a
  * magnitude in minor units, exactly like the stored ones; the direction is what
- * turns them into a credit or a follow-up charge.
+ * turns them into a credit or a follow-up charge. DOC-PRODUCT-01.5: the amounts
+ * are already the discounted payable sums - the same numbers the claim uses.
  */
 export type DocumentCorrectionReference = {
   /** Number of the corrected document, e.g. `RE-2030-0001`. */
@@ -150,12 +174,12 @@ export type DocumentCorrectionReference = {
   /** Its issue date, already formatted the way the PDF prints dates. */
   date: string;
   direction: 'credit' | 'debit';
-  /** The corrected document's gross. */
-  sourceGrossMinor: number;
-  /** This correction's own gross. */
-  correctionGrossMinor: number;
+  /** What the corrected document asks for, discount included. */
+  sourcePayableMinor: number;
+  /** This correction's own payable amount. */
+  correctionPayableMinor: number;
   /** What stays open after this correction. */
-  correctedGrossMinor: number;
+  correctedPayableMinor: number;
 };
 
 const fontStacks: Record<DocumentLayoutInput['fontFamily'], string> = {
@@ -301,6 +325,30 @@ ${taxRows}
     </table>
 `
       : '';
+  // DOC-PRODUCT-01.5: a discount for the whole document prints below the sum
+  // block, never inside it - the position sums and the tax rows stay exactly as
+  // they are. No new CSS rule: the block reuses the existing `.totals` table.
+  // The amount carries the sign of the document, like every printed magnitude,
+  // and the one final payable line belongs to the settlement or correction block
+  // when one exists, so the paper never shows two contradicting totals.
+  const discountBlock = layout.totalDiscount
+    ? `    <table class="totals">
+      <tr><td>Gesamtrabatt${
+        layout.totalDiscount.note
+          ? ` (${lines(layout.totalDiscount.note)})`
+          : ''
+      }</td><td>${formatMinorUnits(
+        -printed(layout.totalDiscount.discountMinor),
+      )} €</td></tr>
+${
+  settlement || reference
+    ? ''
+    : `      <tr><td>Zu zahlender Betrag</td><td>${formatMinorUnits(
+        printed(layout.totalDiscount.payableMinor),
+      )} €</td></tr>\n`
+}    </table>
+`
+    : '';
   const footer = [
       layout.footerLeft,
       layout.footerCenter,
@@ -415,7 +463,7 @@ ${
 ${rows.join('\n')}
       </tbody>
     </table>
-${mainTotals}${
+${mainTotals}${discountBlock}${
     settlement
       ? `    <p>Schlussrechnung zu ${escapeHtml(settlement.number)} vom ${escapeHtml(
           settlement.date,
@@ -435,16 +483,16 @@ ${mainTotals}${
   }${
     reference
       ? `    <table class="totals">
-      <tr><td>Rechnungsbetrag</td><td>${formatMinorUnits(reference.sourceGrossMinor)} €</td></tr>
+      <tr><td>Rechnungsbetrag</td><td>${formatMinorUnits(reference.sourcePayableMinor)} €</td></tr>
       <tr><td>${
         reference.direction === 'credit'
           ? 'Offene Gutschrift'
           : 'Nachberechnung'
       }</td><td>${formatMinorUnits(
-        printed(reference.correctionGrossMinor),
+        printed(reference.correctionPayableMinor),
       )} €</td></tr>
       <tr><td>Korrigierter Betrag</td><td>${formatMinorUnits(
-        reference.correctedGrossMinor,
+        reference.correctedPayableMinor,
       )} €</td></tr>
     </table>\n`
       : ''

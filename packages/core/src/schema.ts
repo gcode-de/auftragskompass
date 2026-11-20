@@ -450,6 +450,12 @@ export const documents = pgTable('documents', {
   netMinor: bigint('net_minor', { mode: 'number' }).notNull().default(0),
   taxMinor: bigint('tax_minor', { mode: 'number' }).notNull().default(0),
   grossMinor: bigint('gross_minor', { mode: 'number' }).notNull().default(0),
+  // DOC-PRODUCT-01.5: one discount for the whole document, never a position.
+  // NULL/NULL keeps the old meaning of every older row and no stored sum moves;
+  // the note is trimmed, bounded and free of control characters except `\n`.
+  totalDiscountKind: text('total_discount_kind'),
+  totalDiscountValue: bigint('total_discount_value', { mode: 'number' }),
+  totalDiscountNote: text('total_discount_note'),
   version: integer('version').notNull().default(1),
 });
 export const documentLines = pgTable('document_lines', {

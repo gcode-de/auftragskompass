@@ -176,6 +176,49 @@ export function assertTotalsConsistent(totals: DocumentTotals): void {
     throw new DocumentTotalsError('invalid');
 }
 
+// DOC-PRODUCT-01.5: one discount for the whole document. It is deliberately not
+// a line: the position sums, the tax groups and the stored net/tax/gross stay
+// exactly what the positions say, and only the amount the document asks for
+// shrinks. No tax is redistributed or recalculated - that would invent a tax
+// rule nobody agreed on. A rate is basis points (1000 = 10 %), an amount is
+// minor units, and neither is ever clamped: a deduction above the gross is a
+// typing mistake, exactly like a discount above its line.
+export type TotalDiscount =
+  { kind: 'percent'; value: number } | { kind: 'amount'; value: number };
+export type TotalDiscountResult = {
+  /** The resolved deduction in minor units. */
+  discountMinor: number;
+  /** `gross - discount`: what the document asks the customer to pay. */
+  payableMinor: number;
+};
+
+export function applyTotalDiscount(
+  totals: Pick<DocumentTotals, 'grossMinor'>,
+  discount: TotalDiscount | null | undefined,
+): TotalDiscountResult {
+  const grossMinor = safe(totals.grossMinor);
+  if (discount === null || discount === undefined)
+    return { discountMinor: 0, payableMinor: grossMinor };
+  if (
+    (discount.kind !== 'percent' && discount.kind !== 'amount') ||
+    !Number.isSafeInteger(discount.value) ||
+    discount.value < 0 ||
+    (discount.kind === 'percent' && discount.value > 10000)
+  )
+    throw new DocumentTotalsError('invalid');
+  const discountMinor =
+      discount.kind === 'percent'
+        ? Number(
+            roundedRatio(BigInt(grossMinor) * BigInt(discount.value), 10000n),
+          )
+        : discount.value,
+    payableMinor = grossMinor - discountMinor;
+  // A rate can never exceed the gross (10000 is the whole document), so only a
+  // typed amount can overshoot - and it is refused, never clamped to zero.
+  if (payableMinor < 0) throw new DocumentTotalsError('invalid');
+  return { discountMinor, payableMinor };
+}
+
 // Deliberately not Intl: a document must render identically everywhere.
 export function formatMinorUnits(minor: number): string {
   if (!Number.isSafeInteger(minor)) throw new DocumentTotalsError('invalid');

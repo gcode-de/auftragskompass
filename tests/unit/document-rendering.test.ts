@@ -415,4 +415,101 @@ describe('renderDocumentHtml', () => {
       renderDocumentHtml({ ...base, values: { contact: 'Fictional' } }),
     ).toThrow();
   });
+  // DOC-PRODUCT-01.5: the comment-level discount prints below the sum block.
+  // Without one, not a single byte moves - not one CSS rule either.
+  describe('total document discount', () => {
+    const discounted = {
+      ...base,
+      layout: {
+        ...layout,
+        totalDiscount: {
+          kind: 'amount' as const,
+          value: 1900,
+          discountMinor: 1900,
+          payableMinor: 18000,
+        },
+      },
+    };
+    const styles = (markup: string) =>
+      markup.slice(markup.indexOf('<style>'), markup.indexOf('</style>'));
+
+    test('prints the discount and the payable amount under the sum block', () => {
+      const html = renderDocumentHtml(discounted);
+      expect(html).toContain(
+        '      <tr><td>Gesamtrabatt</td><td>-19,00 €</td></tr>',
+      );
+      expect(html).toContain(
+        '      <tr><td>Zu zahlender Betrag</td><td>180,00 €</td></tr>',
+      );
+      // The position sums stay exactly where they were.
+      expect(html).toContain('<td>Netto</td><td>167,23 €</td>');
+      expect(html).toContain('<td>Brutto</td><td>199,00 €</td>');
+      expect(styles(html)).toBe(styles(renderDocumentHtml(base)));
+    });
+
+    test('keeps a document without a discount byte-identical', () => {
+      expect(renderDocumentHtml({ ...base })).toBe(renderDocumentHtml(base));
+      expect(renderDocumentHtml(base)).not.toContain('Gesamtrabatt');
+      expect(renderDocumentHtml(base)).not.toContain('Zu zahlender Betrag');
+    });
+
+    test('escapes a multi-line note and breaks it like the printed account', () => {
+      const html = renderDocumentHtml({
+        ...discounted,
+        layout: {
+          ...discounted.layout,
+          totalDiscount: {
+            ...discounted.layout.totalDiscount,
+            note: '<Treuerabatt>\nZeile & zwei',
+          },
+        },
+      });
+      expect(html).toContain(
+        '<tr><td>Gesamtrabatt (&lt;Treuerabatt&gt;<br>Zeile &amp; zwei)</td><td>-19,00 €</td></tr>',
+      );
+      expect(html).not.toContain('<Treuerabatt>');
+    });
+
+    test('leaves the final payable line to a settlement or correction block', () => {
+      const settled = renderDocumentHtml({
+        ...discounted,
+        layout: {
+          ...discounted.layout,
+          depositReference: {
+            number: 'AB-2030-0001',
+            date: '26.10.2030',
+            appliedMinor: 5000,
+            paidMinor: 0,
+            payableMinor: 13000,
+          },
+        },
+      });
+      expect(settled).toContain(
+        '<tr><td>Gesamtrabatt</td><td>-19,00 €</td></tr>',
+      );
+      // One authoritative payable line, not two contradicting ones.
+      expect(settled.match(/Zu zahlender Betrag/g)).toHaveLength(1);
+      expect(settled).toContain(
+        '<tr><td>Zu zahlender Betrag</td><td>130,00 €</td></tr>',
+      );
+      const corrected = renderDocumentHtml({
+        ...discounted,
+        layout: {
+          ...discounted.layout,
+          correctionReference: {
+            number: 'RE-2030-0001',
+            date: '26.10.2030',
+            direction: 'credit',
+            sourcePayableMinor: 19900,
+            correctionPayableMinor: 18000,
+            correctedPayableMinor: 1900,
+          },
+        },
+      });
+      expect(corrected).toContain(
+        '<tr><td>Gesamtrabatt</td><td>19,00 €</td></tr>',
+      );
+      expect(corrected).not.toContain('Zu zahlender Betrag');
+    });
+  });
 });
