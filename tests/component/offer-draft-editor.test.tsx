@@ -32,6 +32,7 @@ type TestLine = {
   taxBasisPoints: number;
   discountBasisPoints: number;
   optional?: boolean;
+  priceBasis?: 'gross' | 'net';
 };
 
 const draft = {
@@ -1065,6 +1066,7 @@ test('existing and free positions save exactly, removal/addition persist, and ro
         unitPriceMinor: 123456,
         taxBasisPoints: 770,
         discountBasisPoints: 1250,
+        priceBasis: 'gross',
       },
       {
         productId: null,
@@ -1074,6 +1076,7 @@ test('existing and free positions save exactly, removal/addition persist, and ro
         unitPriceMinor: 2500,
         taxBasisPoints: 1900,
         discountBasisPoints: 0,
+        priceBasis: 'gross',
       },
     ];
   const { calls } = setup({
@@ -1180,7 +1183,7 @@ test('existing and free positions save exactly, removal/addition persist, and ro
   ).toHaveProperty('value', 'Fiktiver Aufbau');
 });
 
-test('the catalog loads on demand and explicitly appends a persisted net-price snapshot', async () => {
+test('the catalog loads on demand and explicitly appends a persisted net product with its price basis', async () => {
   const archivedReference = 'product-archived';
   const { calls } = setup({
     initial: {
@@ -1248,8 +1251,12 @@ test('the catalog loads on demand and explicitly appends a persisted net-price s
     'Paket',
   );
   expect(
-    within(added).getByLabelText('Einzelpreis (Brutto) in Euro'),
-  ).toHaveProperty('value', '119.00');
+    within(added).getByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+  expect(within(added).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'net',
+  );
   expect(within(added).getByLabelText('Steuer in Prozent')).toHaveProperty(
     'value',
     '19.00',
@@ -1281,9 +1288,10 @@ test('the catalog loads on demand and explicitly appends a persisted net-price s
     description: 'Fiktives Nettoprodukt',
     quantity: 1,
     unit: 'Paket',
-    unitPriceMinor: 11900,
+    unitPriceMinor: 10000,
     taxBasisPoints: 1900,
     discountBasisPoints: 0,
+    priceBasis: 'net',
   });
 
   view.unmount();
@@ -1297,11 +1305,15 @@ test('the catalog loads on demand and explicitly appends a persisted net-price s
     'Fiktives Nettoprodukt',
   );
   expect(
-    within(reloaded).getByLabelText('Einzelpreis (Brutto) in Euro'),
-  ).toHaveProperty('value', '119.00');
+    within(reloaded).getByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+  expect(within(reloaded).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'net',
+  );
 });
 
-test('gross catalog price is copied unchanged and overflowing net product is rejected without changing positions', async () => {
+test('gross and net catalog prices are copied unchanged with their basis', async () => {
   setup({
     products: [
       ...catalogProducts,
@@ -1331,22 +1343,159 @@ test('gross catalog price is copied unchanged and overflowing net product is rej
   expect(
     within(grossLine).getByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toHaveProperty('value', '123.45');
+  expect(within(grossLine).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'gross',
+  );
   expect(
     within(grossLine).getByLabelText('Infotext (optional)'),
   ).toHaveProperty('value', '');
 
+  // The net price is not converted: it stays the stored net amount and keeps
+  // its basis, even at the largest safe minor unit.
   fireEvent.change(picker, { target: { value: 'product-overflow' } });
   fireEvent.click(
     screen.getByRole('button', { name: 'Als Position hinzufügen' }),
   );
-  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(2);
-  expect(within(grossLine).getByLabelText('Beschreibung')).toHaveProperty(
+  const netLine = await screen.findByRole('group', { name: 'Position 3' });
+  expect(
+    within(netLine).getByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toHaveProperty('value', '90071992547409.91');
+  expect(within(netLine).getByLabelText('Preisbasis')).toHaveProperty(
     'value',
-    'Fiktives Bruttoprodukt',
+    'net',
   );
-  expect((await screen.findByRole('alert')).textContent).toMatch(
-    /Überlauf|Bruttobetrag/,
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(3);
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('a stored net price basis loads, stays unconverted and saves the chosen basis', async () => {
+  const { calls } = setup({
+    initial: {
+      ...detail(),
+      lines: [{ ...line, unitPriceMinor: 10000, priceBasis: 'net' as const }],
+    },
+  });
+  const view = render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
+  await screen.findByLabelText('Betreff');
+  const position = screen.getByRole('group', { name: 'Position 1' });
+  expect(within(position).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'net',
+  );
+  expect(
+    within(position).getByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+
+  // Switching the basis renames the price field only; the stored amount is
+  // never converted on the client.
+  fireEvent.change(within(position).getByLabelText('Preisbasis'), {
+    target: { value: 'gross' },
+  });
+  expect(
+    within(position).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+  expect(
+    within(position).queryByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const savedBody = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: Array<Record<string, unknown>>;
+  };
+  expect(savedBody.lines[0]).toMatchObject({
+    unitPriceMinor: 10000,
+    priceBasis: 'gross',
+  });
+  expect(within(position).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'gross',
+  );
+
+  view.unmount();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const reloaded = await screen.findByRole('group', { name: 'Position 1' });
+  expect(within(reloaded).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'gross',
+  );
+  expect(
+    within(reloaded).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+});
+
+test('mixed gross and net positions show and send their basis while the server total stays authoritative', async () => {
+  const netLine = {
+      ...line,
+      id: 'line-2',
+      position: 1,
+      description: 'Fiktives Nettopaket',
+      unit: 'Pauschale',
+      unitPriceMinor: 10000,
+      priceBasis: 'net' as const,
+    },
+    mixed = {
+      ...detail(),
+      netMinor: 30924,
+      taxMinor: 5876,
+      grossMinor: 36800,
+      lines: [line, netLine],
+    };
+  const { calls } = setup({
+    initial: mixed as ReturnType<typeof detail>,
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const gross = screen.getByRole('group', { name: 'Position 1' }),
+    net = screen.getByRole('group', { name: 'Position 2' });
+  expect(within(gross).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'gross',
+  );
+  expect(within(net).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'net',
+  );
+  expect(
+    within(gross).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '249.00');
+  expect(
+    within(net).getByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+  const total = () =>
+    screen.getByText(/Gespeicherter Gesamtbetrag/).textContent;
+  expect(total()).toContain('368,00');
+
+  // Doubling the quantity is arithmetic only the core owns; the shown total
+  // stays the confirmed server amount until the next save response.
+  fireEvent.change(within(net).getByLabelText('Menge'), {
+    target: { value: '2' },
+  });
+  expect(total()).toContain('368,00');
+  expect(screen.queryByRole('link', { name: 'Vorschau öffnen' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const savedBody = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: Array<Record<string, unknown>>;
+  };
+  expect(savedBody.lines.map((entry) => entry.priceBasis)).toEqual([
+    'gross',
+    'net',
+  ]);
+  expect(savedBody.lines[1]).toMatchObject({
+    quantity: 2,
+    unitPriceMinor: 10000,
+  });
+  expect(total()).toContain('368,00');
 });
 
 test('catalog failure can be retried and an empty active catalog has a clear state', async () => {
@@ -1569,6 +1718,7 @@ test('saving sends all values with the loaded version, survives reload, and fina
           unitPriceMinor: line.unitPriceMinor,
           taxBasisPoints: line.taxBasisPoints,
           discountBasisPoints: line.discountBasisPoints,
+          priceBasis: 'gross',
         },
       ],
     }),
@@ -1818,6 +1968,7 @@ test('legacy draft values are initialized from the current template only in the 
         unitPriceMinor: line.unitPriceMinor,
         taxBasisPoints: line.taxBasisPoints,
         discountBasisPoints: line.discountBasisPoints,
+        priceBasis: 'gross',
       },
     ],
   });

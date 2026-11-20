@@ -894,6 +894,7 @@ test('templates start as a list and open a focused on-demand editor with safe ca
   await expect(
     duplicatePosition.getByLabel('Einzelpreis (Brutto) in Euro'),
   ).toHaveValue('88.88');
+  await expect(duplicatePosition.getByLabel('Preisbasis')).toHaveValue('gross');
   await subject.fill('Fiktive Kopie mit eigenem Betreff');
   await page.getByRole('button', { name: 'Vorlage speichern' }).click();
   await expect(page.getByText('Gespeichert.', { exact: true })).toBeVisible();
@@ -916,6 +917,7 @@ test('templates start as a list and open a focused on-demand editor with safe ca
             unitPriceMinor: 8888,
             taxBasisPoints: 1900,
             discountBasisPoints: 0,
+            priceBasis: 'gross',
           },
         ],
       },
@@ -1126,7 +1128,7 @@ test('lost template-create response blocks mutations and safely retries the same
   expect(api.unexpectedApiWrites).toEqual([]);
 });
 
-test('template copies net product prices as gross, keeps overrides and guards overflow in Chromium', async ({
+test('template adopts net product prices with their stored basis unchanged and keeps overrides in Chromium', async ({
   page,
 }) => {
   test.setTimeout(120000);
@@ -1135,18 +1137,23 @@ test('template copies net product prices as gross, keeps overrides and guards ov
   const firstPosition = await openTemplateEditor(page);
 
   await firstPosition.getByLabel('Produkt').selectOption(netProductId);
-  const priceLabel = 'Einzelpreis (Brutto) in Euro';
-  const price = firstPosition.getByLabel(priceLabel);
-  await expect(price).toHaveValue('119.00');
+  // DOC-PRODUCT-01.3: the catalog price is copied with its basis, never
+  // converted, and the price field names that basis.
+  const netPrice = firstPosition.getByLabel('Einzelpreis (Netto) in Euro');
+  await expect(netPrice).toHaveValue('100.00');
+  await expect(firstPosition.getByLabel('Preisbasis')).toHaveValue('net');
   await firstPosition
     .getByLabel('Beschreibung')
     .fill('Fiktiver eigener Pakettext');
-  await price.fill('119.00');
+  await netPrice.fill('100.00');
 
   await page.getByRole('button', { name: 'Position hinzufügen' }).click();
   const secondPosition = page.getByRole('group', { name: 'Position 2' });
   await secondPosition.getByLabel('Produkt').selectOption(grossProductId);
-  await expect(secondPosition.getByLabel(priceLabel)).toHaveValue('119.00');
+  await expect(
+    secondPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
+  ).toHaveValue('119.00');
+  await expect(secondPosition.getByLabel('Preisbasis')).toHaveValue('gross');
 
   await page.getByRole('button', { name: 'Position hinzufügen' }).click();
   const thirdPosition = page.getByRole('group', { name: 'Position 3' });
@@ -1154,21 +1161,32 @@ test('template copies net product prices as gross, keeps overrides and guards ov
     .getByLabel('Beschreibung')
     .fill('Fiktive vorherige Beschreibung');
   await thirdPosition.getByLabel('Einheit').fill('Pauschale');
-  await thirdPosition.getByLabel(priceLabel).fill('88.88');
+  await thirdPosition.getByLabel('Einzelpreis (Brutto) in Euro').fill('88.88');
   await thirdPosition.getByLabel('Steuersatz in Prozent').fill('7.00');
-  await thirdPosition.getByLabel('Produkt').selectOption(overflowProductId);
-  await expect(page.getByRole('alert')).toContainText(
-    'Produktpreis konnte nicht in den sicheren Bruttobetrag umgerechnet werden. Die Position blieb unverändert.',
-  );
-  await expect(thirdPosition.getByLabel('Produkt')).toHaveValue('');
-  await expect(thirdPosition.getByLabel('Beschreibung')).toHaveValue(
-    'Fiktive vorherige Beschreibung',
-  );
-  await expect(thirdPosition.getByLabel('Einheit')).toHaveValue('Pauschale');
-  await expect(thirdPosition.getByLabel(priceLabel)).toHaveValue('88.88');
-  await expect(thirdPosition.getByLabel('Steuersatz in Prozent')).toHaveValue(
-    '7.00',
-  );
+  // A basis change renames the field; it must never convert the amount.
+  await thirdPosition.getByLabel('Preisbasis').selectOption('net');
+  await expect(
+    thirdPosition.getByLabel('Einzelpreis (Netto) in Euro'),
+  ).toHaveValue('88.88');
+  await thirdPosition.getByLabel('Preisbasis').selectOption('gross');
+  await expect(
+    thirdPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
+  ).toHaveValue('88.88');
+
+  // The removed gross conversion took its overflow error with it: even the
+  // largest synthetic net price is adopted verbatim, so nothing can fail here.
+  await page.getByRole('button', { name: 'Position hinzufügen' }).click();
+  const overflowPosition = page.getByRole('group', { name: 'Position 4' });
+  await overflowPosition.getByLabel('Produkt').selectOption(overflowProductId);
+  await expect(
+    overflowPosition.getByLabel('Einzelpreis (Netto) in Euro'),
+  ).toHaveValue('90071992547409.91');
+  await expect(overflowPosition.getByLabel('Preisbasis')).toHaveValue('net');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await overflowPosition
+    .getByRole('button', { name: 'Position entfernen' })
+    .click();
+  await expect(page.getByRole('group', { name: 'Position 4' })).toHaveCount(0);
 
   for (const theme of ['light', 'dark'] as const) {
     const toggle = page.getByRole('button', { name: /modus aktivieren/i });
@@ -1206,12 +1224,14 @@ test('template copies net product prices as gross, keeps overrides and guards ov
           expect.objectContaining({
             productId: netProductId,
             description: 'Fiktiver eigener Pakettext',
-            unitPriceMinor: 11900,
+            unitPriceMinor: 10000,
+            priceBasis: 'net',
             taxBasisPoints: 1900,
           }),
           expect.objectContaining({
             productId: grossProductId,
             unitPriceMinor: 11900,
+            priceBasis: 'gross',
             taxBasisPoints: 1900,
           }),
           expect.objectContaining({
@@ -1219,6 +1239,7 @@ test('template copies net product prices as gross, keeps overrides and guards ov
             description: 'Fiktive vorherige Beschreibung',
             unit: 'Pauschale',
             unitPriceMinor: 8888,
+            priceBasis: 'gross',
             taxBasisPoints: 700,
           }),
         ],
@@ -1338,6 +1359,7 @@ test('template content preview uses only the unsaved synthetic draft and preserv
         unitPriceMinor: 12345,
         taxBasisPoints: 1900,
         discountBasisPoints: 500,
+        priceBasis: 'gross',
       },
       {
         productId: null,
@@ -1347,6 +1369,7 @@ test('template content preview uses only the unsaved synthetic draft and preserv
         unitPriceMinor: 5000,
         taxBasisPoints: 700,
         discountBasisPoints: 0,
+        priceBasis: 'gross',
       },
     ],
   });
@@ -1604,6 +1627,7 @@ test('empty product catalog keeps a free template position editable and saveable
             unitPriceMinor: 1234,
             taxBasisPoints: 1900,
             discountBasisPoints: 0,
+            priceBasis: 'gross',
           },
         ],
       },

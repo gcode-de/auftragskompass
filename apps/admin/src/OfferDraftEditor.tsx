@@ -9,7 +9,6 @@ import {
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
-import { grossProductPrice } from './product-price.js';
 
 type DraftValues = {
   subject: string;
@@ -37,6 +36,8 @@ type DraftItem = {
   unitPriceMinor: number;
   taxBasisPoints: number;
   discountBasisPoints: number;
+  /** An older payload omits it; a stored line without a basis is gross. */
+  priceBasis?: 'gross' | 'net';
 };
 type DraftInfo = {
   kind: 'info';
@@ -59,6 +60,7 @@ type DraftItemValues = {
   unitPrice: string;
   tax: string;
   discount: string;
+  priceBasis: 'gross' | 'net';
 };
 type DraftLineValues =
   DraftItemValues | { kind: 'info'; key: string; description: string };
@@ -213,7 +215,10 @@ function isDetail(value: unknown): value is DraftDetail {
             line.taxBasisPoints <= 10000 &&
             Number.isInteger(line.discountBasisPoints) &&
             line.discountBasisPoints >= 0 &&
-            line.discountBasisPoints <= 10000),
+            line.discountBasisPoints <= 10000 &&
+            (line.priceBasis === undefined ||
+              line.priceBasis === 'gross' ||
+              line.priceBasis === 'net')),
     ) &&
     (allNull || savedContent)
   );
@@ -252,6 +257,7 @@ function lineValuesOf(lines: DraftLine[], previous: DraftLineValues[] = []) {
       unitPrice: formatHundredths(line.unitPriceMinor),
       tax: formatHundredths(line.taxBasisPoints),
       discount: formatHundredths(line.discountBasisPoints),
+      priceBasis: line.priceBasis === 'net' ? 'net' : 'gross',
     };
   });
 }
@@ -288,6 +294,7 @@ function lineDraft(line: DraftLineValues) {
     unitPriceMinor,
     taxBasisPoints,
     discountBasisPoints,
+    priceBasis: line.priceBasis,
   };
 }
 
@@ -306,6 +313,12 @@ function percentInvalid(value: string) {
   } catch {
     return true;
   }
+}
+
+// The price field names the basis it stores. Switching the basis only renames
+// the field; the amount moves unconverted and the core does the arithmetic.
+function priceLabel(priceBasis: 'gross' | 'net') {
+  return `Einzelpreis (${priceBasis === 'net' ? 'Netto' : 'Brutto'}) in Euro`;
 }
 
 // BKP019.b2: the same editor edits an offer, an order confirmation and an
@@ -634,6 +647,7 @@ export function OfferDraftEditor({
         unitPrice: '0.00',
         tax: '19.00',
         discount: '0.00',
+        priceBasis: 'gross',
         optional: false,
       },
     ]);
@@ -715,39 +729,30 @@ export function OfferDraftEditor({
       );
       return;
     }
-    try {
-      const grossMinor = grossProductPrice(
-        product.priceMinor,
-        product.priceBasis,
-        product.taxBasisPoints,
-      );
-      lineSequence.current += 1;
-      const key = `catalog-${lineSequence.current}`;
-      pendingLineFocus.current = key;
-      setLineValues((current) => [
-        ...current,
-        {
-          key,
-          productId: product.id,
-          description: product.name,
-          infoText: information,
-          quantity: '1',
-          unit: product.unit,
-          unitPrice: formatHundredths(grossMinor),
-          tax: formatHundredths(product.taxBasisPoints),
-          discount: '0.00',
-          optional: false,
-        },
-      ]);
-      setSelectedProductId('');
-      setCatalogError(false);
-      setCatalogMessage('');
-    } catch {
-      setCatalogError(true);
-      setCatalogMessage(
-        'Der Produktpreis kann nicht in einen sicheren Bruttobetrag umgerechnet werden. Die Positionen blieben unverändert. Produktpreis und Steuersatz prüfen.',
-      );
-    }
+    lineSequence.current += 1;
+    const key = `catalog-${lineSequence.current}`;
+    pendingLineFocus.current = key;
+    setLineValues((current) => [
+      ...current,
+      {
+        key,
+        productId: product.id,
+        description: product.name,
+        infoText: information,
+        quantity: '1',
+        unit: product.unit,
+        // The catalog price is copied with its basis; the core converts and
+        // rounds, the editor never does.
+        unitPrice: formatHundredths(product.priceMinor),
+        priceBasis: product.priceBasis === 'net' ? 'net' : 'gross',
+        tax: formatHundredths(product.taxBasisPoints),
+        discount: '0.00',
+        optional: false,
+      },
+    ]);
+    setSelectedProductId('');
+    setCatalogError(false);
+    setCatalogMessage('');
   }
 
   function removeLine(key: string) {
@@ -1231,7 +1236,7 @@ export function OfferDraftEditor({
                             />
                           </label>
                           <label className="offer-draft-position-wide-field">
-                            Einzelpreis (Brutto) in Euro
+                            {priceLabel(line.priceBasis)}
                             <input
                               type="text"
                               inputMode="decimal"
@@ -1246,6 +1251,24 @@ export function OfferDraftEditor({
                                 )
                               }
                             />
+                          </label>
+                          <label>
+                            Preisbasis
+                            <select
+                              value={line.priceBasis}
+                              onChange={(event) =>
+                                changeLine(
+                                  line.key,
+                                  'priceBasis',
+                                  event.target.value === 'net'
+                                    ? 'net'
+                                    : 'gross',
+                                )
+                              }
+                            >
+                              <option value="gross">Brutto</option>
+                              <option value="net">Netto</option>
+                            </select>
                           </label>
                           <label>
                             Steuer in Prozent
@@ -1483,7 +1506,7 @@ export function OfferDraftEditor({
                       line.kind === 'info' && invalidInfoText(line.description),
                   )
                     ? 'Geben Sie für jeden Infotext einen Text ein.'
-                    : 'Prüfen Sie Beschreibung, Menge, Einheit, Brutto-Einzelpreis, Steuer, Rabatt und Infotext.'}
+                    : 'Prüfen Sie Beschreibung, Menge, Einheit, Einzelpreis, Preisbasis, Steuer, Rabatt und Infotext.'}
                 </p>
               )}
               {lineValues.length > 0 && !hasPricedLines && (
