@@ -1391,8 +1391,13 @@ export function documentRepository(
       throw new DocumentError('credit_exceeds_invoice');
   }
 
-  // The corrected order claim bounds the deduction. When the invoice lists
-  // optional prices, the included invoice gross also bounds the deduction.
+  // Two bounds, both on the deduction: the corrected order claim and the
+  // invoice's own payable. The second is unconditional - an invoice may ask for
+  // less than its order (a raised claim from a debit note, an edited draft, a
+  // total discount), and a deduction above that payable would print a negative
+  // "Zu zahlender Betrag" and freeze a negative claim into the payment balance.
+  // Optional prices are no special case: they only change the invoice payable,
+  // because the prices of unchosen options never enter it.
   // DOC-PRODUCT-01.5: both bounds are the discounted payable, because that is
   // what the order and the invoice actually ask for.
   async function assertSettlementWithinOrder(
@@ -1400,7 +1405,6 @@ export function documentRepository(
     invoice: {
       id: string;
       grossMinor: number;
-      lines: DocumentLineDraft[];
       totalDiscountKind?: TotalDiscountKind | null;
       totalDiscountValue?: number | null;
     },
@@ -1430,8 +1434,7 @@ export function documentRepository(
       );
     if (
       applied > sourcePayable + debited - credited ||
-      (applied > invoicePayable &&
-        invoice.lines.some((line) => line.kind !== 'info' && line.optional))
+      applied > invoicePayable
     )
       throw new DocumentError('deposits_exceed_order');
   }
