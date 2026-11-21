@@ -235,6 +235,7 @@ async function offerDraftScenario(browser: Browser) {
     const contact = await contactRepository(pool, tenantId).save(actorId, {
       kind: 'private',
       name: 'Fictional Offer Recipient',
+      firstName: '',
       contactPerson: '',
       street: 'Fictional Way 1',
       postalCode: '00000',

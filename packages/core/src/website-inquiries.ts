@@ -189,6 +189,9 @@ export async function receiveWebsiteInquiry(
         contactId = (await repo.save(actorId, {
           kind: 'private',
           name,
+          // MAIL-EDITOR-01a: the form's own structured first name, never
+          // split back out of `name`.
+          firstName: fields.firstName.trim(),
           contactPerson: '',
           street: '',
           postalCode: '',

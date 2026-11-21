@@ -9,6 +9,7 @@ export type ContactRecord = {
   id: string;
   kind: string;
   name: string;
+  firstName: string;
   contactPerson: string;
   street: string;
   postalCode: string;
@@ -134,6 +135,14 @@ export function ContactDetails({
         </h2>
       </header>
       <dl>
+        {/* MAIL-EDITOR-01a: the stored first name only; an empty one is an
+        omitted optional row, never a name guessed from the full name. */}
+        {!!contact.firstName && (
+          <Fragment>
+            <dt>Vorname</dt>
+            <dd>{contact.firstName}</dd>
+          </Fragment>
+        )}
         {showPerson && (
           <Fragment>
             <dt>Ansprechpartner</dt>

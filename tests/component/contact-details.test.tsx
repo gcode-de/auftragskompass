@@ -27,6 +27,7 @@ const company = {
   version: 2,
   kind: 'company',
   name: 'Synthetic Company',
+  firstName: '',
   contactPerson: 'Fictional Contact',
   street: 'Synthetic Street 1',
   postalCode: '00000',
@@ -42,6 +43,7 @@ const person = {
   version: 3,
   kind: 'private',
   name: 'Fictional Person',
+  firstName: '',
   contactPerson: '',
   street: '',
   postalCode: '',
@@ -161,6 +163,26 @@ test('a company names its contact person while a private contact keeps that row 
   expect(personRecord.querySelector('dl dt')?.textContent).not.toBe(
     'Ansprechpartner',
   );
+});
+
+test('the record shows the stored first name as its own row and omits an empty one', async () => {
+  mount('#contacts', [
+    { ...person, id: 'named-person', name: 'Named Person', firstName: 'Erika' },
+    person,
+  ]);
+  await screen.findByText('Named Person');
+  const named = await openRecord('Named Person');
+  const labels = Array.from(named.querySelectorAll('dl dt')).map(
+    (cell) => cell.textContent,
+  );
+  expect(labels).toContain('Vorname');
+  expect(within(named).getByText('Erika')).toBeTruthy();
+  await closeRecord();
+  // An empty first name is an omitted optional row, never a guessed one.
+  const plain = await openRecord('Fictional Person');
+  expect(
+    Array.from(plain.querySelectorAll('dl dt')).map((cell) => cell.textContent),
+  ).not.toContain('Vorname');
 });
 
 test('the address shows only stored parts and says so honestly when nothing is stored', async () => {

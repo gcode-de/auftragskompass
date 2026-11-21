@@ -17,6 +17,7 @@ const contact = {
   version: 1,
   kind: 'private',
   name: 'Synthetic',
+  firstName: '',
   contactPerson: '',
   street: '',
   postalCode: '',

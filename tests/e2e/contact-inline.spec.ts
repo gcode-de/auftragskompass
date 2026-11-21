@@ -9,6 +9,7 @@ test('contact field Escape cancels and blur saves normalized values', async ({
     version: 1,
     kind: 'private',
     name: 'Synthetic Person',
+    firstName: '',
     contactPerson: '',
     street: '',
     postalCode: '',

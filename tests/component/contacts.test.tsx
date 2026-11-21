@@ -22,6 +22,7 @@ const row = {
   version: 1,
   kind: 'company',
   name: 'Synthetic Company',
+  firstName: '',
   contactPerson: 'Fictional',
   street: 'Synthetic Street 1',
   postalCode: '00000',
@@ -37,6 +38,7 @@ const person = {
   version: 3,
   kind: 'private',
   name: 'Fictional Person',
+  firstName: '',
   contactPerson: '',
   street: '',
   postalCode: '',
@@ -177,6 +179,7 @@ test('creates private and company contacts with the existing fields and country 
     body: {
       kind: 'private',
       name: 'Fictional Private',
+      firstName: '',
       contactPerson: '',
       street: '',
       postalCode: '',
@@ -206,6 +209,31 @@ test('creates private and company contacts with the existing fields and country 
     email: 'company@example.invalid',
   });
   expect(mutations[1]!.body.version).toBeUndefined();
+});
+test('the dialog edits the separate contact first name as its own field', async () => {
+  const mutations: Record<string, unknown>[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options) {
+        mutations.push(JSON.parse(String(options.body)));
+        return Response.json({ ...row, firstName: 'Erika', version: 2 });
+      }
+      return Response.json([row]);
+    }),
+  );
+  render(<ContactPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic Company');
+  const dialog = await openEdit('Synthetic Company');
+  const firstName = within(dialog).getByLabelText(
+    'Vorname',
+  ) as HTMLInputElement;
+  // The empty stored value is shown honestly and never guessed from the name.
+  expect(firstName.value).toBe('');
+  fireEvent.change(firstName, { target: { value: ' Erika ' } });
+  submitSave(dialog);
+  await screen.findByText('Kontakt gespeichert.');
+  expect(mutations[0]).toMatchObject({ firstName: 'Erika' });
 });
 test('edits a contact with its version and never reuses stale values when switching targets', async () => {
   const mutations: {

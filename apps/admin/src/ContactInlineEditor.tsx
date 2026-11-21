@@ -5,6 +5,7 @@ import type { Contact } from './ContactDialog.js';
 type Input = Omit<Contact, 'id' | 'version'>;
 const fields = [
   ['name', 'Name / Firma', 200],
+  ['firstName', 'Vorname', 200],
   ['contactPerson', 'Ansprechpartner', 200],
   ['street', 'Straße und Hausnummer', 200],
   ['postalCode', 'Postleitzahl', 20],
