@@ -3477,7 +3477,11 @@ test('resource date save across months keeps the open record mounted until confi
   render(<EventPanel csrfToken="csrf" />);
   fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
   const record = await screen.findByRole('region', { name: 'Event-Details' });
-  fireEvent.click(within(record).getByRole('button', { name: 'Ressourcen' }));
+  // The record region exists while it is still loading; wait for the
+  // navigation instead of racing it (intermittent CI failure 21.11.2026).
+  fireEvent.click(
+    await within(record).findByRole('button', { name: 'Ressourcen' }),
+  );
   const resources = await screen.findByRole('region', {
     name: 'Ressourcenzuweisung',
   });
@@ -3718,7 +3722,11 @@ test('confirmed resource booking refreshes the open card projection without clos
   render(<EventPanel csrfToken="csrf" />);
   fireEvent.click(await screen.findByRole('link', { name: /Synthetic event/ }));
   const record = await screen.findByRole('region', { name: 'Event-Details' });
-  fireEvent.click(within(record).getByRole('button', { name: 'Ressourcen' }));
+  // The record region exists while it is still loading; wait for the
+  // navigation instead of racing it (intermittent CI failure 21.11.2026).
+  fireEvent.click(
+    await within(record).findByRole('button', { name: 'Ressourcen' }),
+  );
   const group = await screen.findByRole('region', {
     name: 'Ressourcenzuweisung',
   });
@@ -3801,7 +3809,11 @@ test.each(['failure', 'missing', 'older', 'malformed', 'missing-version'])(
       await screen.findByRole('link', { name: /Synthetic event/ }),
     );
     const record = await screen.findByRole('region', { name: 'Event-Details' });
-    fireEvent.click(within(record).getByRole('button', { name: 'Ressourcen' }));
+    // The record region exists while it is still loading; wait for the
+    // navigation instead of racing it (intermittent CI failure 21.11.2026).
+    fireEvent.click(
+      await within(record).findByRole('button', { name: 'Ressourcen' }),
+    );
     const group = await screen.findByRole('region', {
       name: 'Ressourcenzuweisung',
     });
