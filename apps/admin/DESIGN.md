@@ -417,6 +417,17 @@ Eingaben; ab 44rem Positionslistenbreite steht sie rechts daneben und richtet
 sich an deren Unterkante aus. Die Tastaturreihenfolge und die mindestens
 44px große Trefferfläche bleiben erhalten.
 
+### Positionsaktionen (EDITOR-ACTIONS-01)
+
+Die Aktionen jeder Dokumentposition liegen als kompakte Icon-Gruppe in der
+Positions-Kopfzeile neben „Position N“: aufwärts, abwärts, entfernen und
+„Als Produkt speichern“ (tier-quiet-icon, je 44 px, sichtbarer Fokus,
+zugängliche Namen „Position N …“). Entfernen fragt vorher bewusst nach
+(„Position N entfernen?“, Abbrechen/Entfernen; Abbruch behält die Position
+und stellt den Fokus auf die Entfernen-Aktion zurück). Die Statuszeile der
+Produktanlage bleibt als eigenes Feld im Zeilenkopf sichtbar. Die Feldreihe
+darunter folgt unverändert EDITOR-LAYOUT-01.
+
 ### Position als Produkt (DOC-PRODUCT-01.6)
 
 Jede Preisposition trägt in ihrer Aktionszeile die ruhige tertiäre Aktion

@@ -476,6 +476,11 @@ async function offerDraftScenario(browser: Browser) {
     const removePosition = position1.getByRole('button', {
       name: 'Position 1 entfernen',
     });
+    // EDITOR-ACTIONS-01: all four row actions form one named icon group in the
+    // position header.
+    const positionActions = position1.getByRole('group', {
+      name: 'Aktionen dieser Zeile',
+    });
     const positionList = positions.locator('.offer-draft-position-list');
     const pageTheme = page.locator('html');
     const positionOriginalTheme = await pageTheme.getAttribute('data-theme');
@@ -552,14 +557,27 @@ async function offerDraftScenario(browser: Browser) {
           groupBox.x + groupBox.width,
         );
         const lastField = boxes.at(-1)!;
+        // EDITOR-ACTIONS-01: the icon group sits in the row header above the
+        // fields; it never claims a field track of its own.
+        await expect(positionActions.getByRole('button')).toHaveCount(4);
+        const actionBoxes = await positionActions
+          .getByRole('button')
+          .evaluateAll((buttons) =>
+            buttons.map((button) => {
+              const { width, height } = button.getBoundingClientRect();
+              return { width, height };
+            }),
+          );
+        expect(
+          actionBoxes.every((box) => box.width >= 44 && box.height >= 44),
+        ).toBe(true);
+        expect
+          .soft(removeBox.y + removeBox.height)
+          .toBeLessThanOrEqual(boxes[0]!.y);
         if (width === 1440 && !maxWidth) {
           // EDITOR-LAYOUT-01: the wide list wraps onto further rows instead of
           // squeezing nine tracks into one line. Every input keeps the 9rem
           // track minimum, so no label and no value is cut off.
-          expect.soft(removeBox.x).toBeGreaterThanOrEqual(lastField.right);
-          expect
-            .soft(removeBox.y + removeBox.height)
-            .toBeCloseTo(lastField.bottom);
           expect.soft(boxes.every((box) => box.width >= 128)).toBe(true);
           expect
             .soft(
@@ -570,31 +588,31 @@ async function offerDraftScenario(browser: Browser) {
             .toBe(true);
         } else {
           expect.soft(lastField.y).toBeGreaterThan(boxes[0]!.y);
-          expect.soft(removeBox.y).toBeGreaterThanOrEqual(lastField.bottom);
         }
       }
     }
     if ((await pageTheme.getAttribute('data-theme')) !== positionOriginalTheme)
       await positionThemeToggle.click();
     await page.setViewportSize({ width: 1280, height: 720 });
-    await fields.first().focus();
-    for (const field of (await fieldControls.all()).slice(1)) {
-      await page.keyboard.press('Tab');
-      await expect(field).toBeFocused();
-    }
-    for (const name of [/nach oben verschieben/, /nach unten verschieben/]) {
+    // EDITOR-ACTIONS-01: the four row actions are the first Tab stops of the
+    // position, in their visible order; the fields follow them.
+    await position1
+      .getByRole('button', { name: 'Position 1 nach oben verschieben' })
+      .focus();
+    for (const name of [
+      /nach unten verschieben/,
+      /Position 1 entfernen/,
+      /als Produkt speichern$/,
+    ]) {
       await page.keyboard.press('Tab');
       await expect(position1.getByRole('button', { name })).toBeFocused();
     }
     await page.keyboard.press('Tab');
-    await expect(removePosition).toBeFocused();
-    // DOC-PRODUCT-01.6: the product action of the row is its own tab stop.
-    await page.keyboard.press('Tab');
-    await expect(
-      position1.getByRole('button', {
-        name: 'Position 1 als Produkt speichern',
-      }),
-    ).toBeFocused();
+    await expect(fields.first()).toBeFocused();
+    for (const field of (await fieldControls.all()).slice(1)) {
+      await page.keyboard.press('Tab');
+      await expect(field).toBeFocused();
+    }
     await page.keyboard.press('Tab');
     await expect(positionOptional).toBeFocused();
     await page.keyboard.press('Tab');
@@ -780,8 +798,27 @@ async function offerDraftScenario(browser: Browser) {
       .getByRole('button', { name: 'Freie Position hinzufügen' })
       .click();
     const position6 = positions.getByRole('group', { name: 'Position 6' });
-    await position6
-      .getByRole('button', { name: 'Position 6 entfernen' })
+    // EDITOR-ACTIONS-01: removing a filled row asks first. Cancelling keeps the
+    // row and the focus on its own action; only the confirmation removes it.
+    const removeSixth = position6.getByRole('button', {
+      name: 'Position 6 entfernen',
+    });
+    await removeSixth.click();
+    const removeDialog = editor.getByRole('dialog', {
+      name: 'Position 6 entfernen?',
+    });
+    await expect(removeDialog).toBeVisible();
+    await expect(position6).toBeVisible();
+    await removeDialog.getByRole('button', { name: 'Abbrechen' }).click();
+    await expect(removeDialog).toBeHidden();
+    await expect(
+      positions.getByRole('group', { name: /^Position / }),
+    ).toHaveCount(6);
+    await expect(removeSixth).toBeFocused();
+    await removeSixth.click();
+    await editor
+      .getByRole('dialog', { name: 'Position 6 entfernen?' })
+      .getByRole('button', { name: 'Entfernen' })
       .click();
     await expect(
       positions.getByRole('group', { name: /^Position / }),

@@ -302,28 +302,49 @@ export function SavePositionAsProduct({
     mayCheck = status.phase === 'unknown' || status.phase === 'found',
     alert = status.phase === 'rejected' || status.phase === 'unknown';
   return (
-    <div className="offer-draft-position-product">
+    <>
+      {/* EDITOR-ACTIONS-01: the row action is a compact icon of the position
+          header; its accessible name still names the row and the intent. */}
       <button
         type="button"
-        className="tertiary-action"
+        className="icon-action tier-quiet-icon"
         aria-label={`${label} als Produkt speichern`}
         title="Produktstamm aus dieser Position anlegen"
         disabled={disabled || createLocked}
         onClick={() => void create()}
       >
-        Als Produkt speichern
-      </button>
-      {mayCheck && (
-        <button
-          type="button"
-          className="tertiary-action"
-          disabled={disabled || busy}
-          onClick={() => void checkInventory()}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          Bestand prüfen
-        </button>
+          <path d="M20.5 7.5 12 3 3.5 7.5v9L12 21l8.5-4.5Z" />
+          <path d="m3.5 7.5 8.5 4.5 8.5-4.5" />
+          <path d="M12 12v9" />
+        </svg>
+      </button>
+      {/* The status line stays in the row, under the icon group. */}
+      {(mayCheck || status.text) && (
+        <div className="offer-draft-position-product">
+          {mayCheck && (
+            <button
+              type="button"
+              className="tertiary-action"
+              disabled={disabled || busy}
+              onClick={() => void checkInventory()}
+            >
+              Bestand prüfen
+            </button>
+          )}
+          {status.text && (
+            <p role={alert ? 'alert' : 'status'}>{status.text}</p>
+          )}
+        </div>
       )}
-      {status.text && <p role={alert ? 'alert' : 'status'}>{status.text}</p>}
-    </div>
+    </>
   );
 }
