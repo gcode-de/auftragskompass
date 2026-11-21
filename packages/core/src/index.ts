@@ -195,6 +195,10 @@ export {
   type MailAttachmentSummary,
   type MailDocumentSendInput,
   type MailDocumentSendResult,
+  // MAIL-EDITOR-01: the read-only twin of a document send.
+  type MailDocumentPreviewInput,
+  type MailDocumentPreview,
+  type MailRepositoryOptions,
   maxMailAttachmentBytes,
 } from './mail.js';
 

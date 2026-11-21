@@ -159,6 +159,8 @@ try {
     registerMailRoutes(app, pool, auth.tenantId, {
       store: documentStore,
       key: telegramKey,
+      // MAIL-EDITOR-01: the admin origin resolves {{documentLink}}.
+      origin: auth.origin,
     });
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
