@@ -104,13 +104,17 @@ Abschnitt beschreibt den aktuellen Stand.
   in …“ im Drucklayout (PR #41, `658d58c`, CI grün); fehlende Teile entfallen,
   ohne Eventwerte bytegleich. Gold-Pin-Anpassung aussagenerhalten und belegt
   (Details im Plan).
-- **Aktiver Slice:** DOC-DEPOSIT-FIX-01 „Schlussrechnungs-/Anzahlungs-
-  Grenzfall“ (eine Schlussrechnung ohne optionale Positionen kann nach
-  Auftragskorrektur trotz zu hoher Anzahlungen einen negativen Zahlbetrag
-  ergeben; fachlich korrekt und rückwärtsverträglich lösen, Tests für
-  bestehende Korrekturpfade ergänzen – vor produktiver Nutzung zwingend).
-  Danach DOC-CREATE-02-Rest (Schlussrechnung/Korrektur im Dialog), danach
-  E-Mail, dann Parität/Design.
+- **Erledigt 21.11.2026 – DOC-DEPOSIT-FIX-01 (Schlussrechnungs-Grenzfall):**
+  Gemessene Reproduktion des dokumentierten Falls (Lastschrift kaschierte
+  Überverrechnung, gedruckt „−110,00 €“) und rückwärtsverträgliche Korrektur:
+  der Zahlbetrag der Schlussrechnung ist eine unbedingte zweite Obergrenze der
+  Verrechnung (PR #43). Eine bewusst geänderte Alt-Erwartung (Lastschrift-
+  „Heilung“) wurde im PR zur Abnahme gestellt und angenommen; docs/documents.md
+  korrigiert. Ausgestellte Belege sind garantiert nie negativ; Details im Plan.
+- **Aktiver Slice:** DOC-CREATE-02-Rest „Schlussrechnung und Korrektur im
+  Dialog“ (zulässige Quellbelege/Versionen im Event-Dokumentdialog auswählbar
+  machen, bestehende Schutzregeln erhalten). Danach E-Mail-Versand/
+  Anfragebenachrichtigung, dann weitere Parität und Designsystem.
 - **Betrieb (historisch, überholt vom SSH-geprüften Stand oben):** die
   GOAL-Momentaufnahme nannte `b47f5aa` als letzten verifizierten Live-Stand
   und eine falsche Host-IP; maßgeblich ist der Abschnitt „Betrieb (geprüft

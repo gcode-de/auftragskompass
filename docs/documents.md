@@ -655,14 +655,27 @@ behauptet.
 Rechnerisch gilt für die Schlussrechnung:
 `offener Saldo = Brutto − Σ korrigierte Anzahlungsansprüche + Σ
 Lastschriften − Σ Gutschriften − Σ Zahlungen`. Zahlungen auf die
-Schlussrechnung sind nur bis zu diesem reduzierten Anspruch möglich;
-übersteigen die Anzahlungen den Auftragswert, wird die Finalisierung
-abgelehnt – ein negativer „Zu zahlender Betrag“ entsteht nie, und der
-Hinweis „Anzahlungen per Korrektur reduzieren“ ist tatsächlich wirksam. Der eingefrorene Betrag ändert sich durch spätere
+Schlussrechnung sind nur bis zu diesem reduzierten Anspruch möglich. Der
+Verrechnungsbetrag hat seit DOC-DEPOSIT-FIX-01 **zwei unbedingte
+Obergrenzen**: den korrigierten Auftragsanspruch (Brutto der Bestätigung +
+Lastschriften − Gutschriften) **und den eigenen Zahlbetrag der
+Schlussrechnung** (inkl. Gesamtrabatt). Überschreitet eine Anzahlungssumme
+eine der beiden Grenzen, wird die Finalisierung mit `deposits_exceed_order`
+abgelehnt – ein negativer „Zu zahlender Betrag“ entsteht nie (auch nicht
+nach Auftragskorrektur oder Kürzung des Entwurfs; zuvor konnte eine
+Lastschrift auf die Bestätigung die Überverrechnung kaschieren, behoben
+21.11.2026). Der Hinweis „Anzahlungen per Korrektur reduzieren“ ist
+tatsächlich wirksam; eine Lastschrift auf den Auftrag allein legitimiert
+keine Überverrechnung mehr – entweder stellt die Schlussrechnung den
+korrigierten Betrag in Rechnung oder die Anzahlung wird per Gutschrift
+reduziert. Der eingefrorene Betrag ändert sich durch spätere
 Zahlungen, Gutschriften oder Anzahlungskorrekturen **nie**; dafür sind
 eigene Korrekturbelege vorgesehen. „Geleistete“ Anzahlungen werden
 ausgewiesen, aber nicht zusätzlich abgezogen – sonst entstünde eine
-Doppelforderung.
+Doppelforderung. **Ehrliche Grenze:** die Vorschau eines noch nicht
+finalisierten Entwurfs kann weiterhin einen negativen Betrag zeigen; ein
+solcher Entwurf ist nicht mehr finalisierbar. Garantiert nie negativ sind
+ausgestellte Belege.
 
 ## Dokumentvorlagen verwalten (BKP015.4)
 
