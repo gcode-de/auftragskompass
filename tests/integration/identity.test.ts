@@ -65,7 +65,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   ]);
   // DOC-RG04-01: the newest migration adds one optional, NULL-able column to the
   // layout, so every stored layout keeps printing exactly as it did.
-  expect(applied.at(-1)!.name).toBe('0065_document_layout_tax_number.sql');
+  // DOC-ACCEPT-FIX-01 (0066) then only widens the audit action list, so no
+  // column and no existing action changes meaning.
+  expect(applied.at(-1)!.name).toBe('0066_acceptance_correction_audit.sql');
   expect(
     (
       await pool.query<{ column_name: string; is_nullable: string }>(
@@ -74,6 +76,16 @@ test('migrations serialize, restart safely and detect changed history', async ()
       )
     ).rows,
   ).toEqual([{ column_name: 'tax_number', is_nullable: 'YES' }]);
+  // DOC-ACCEPT-FIX-01: the corrective action is part of the closed list, and the
+  // actions this slice builds on keep their meaning next to it.
+  const auditActionCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='audit_events'::regclass AND conname='audit_events_action_check'",
+    )
+  ).rows[0]!.def;
+  expect(auditActionCheck).toContain('document.acceptance_corrected');
+  expect(auditActionCheck).toContain('document.accepted');
+  expect(auditActionCheck).toContain('product.deleted');
   const fileLinkForeignKeys = (
     await pool.query<{ def: string }>(
       "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='event_library_files'::regclass AND contype='f'",

@@ -41,7 +41,10 @@ export type AuditAction =
   | 'document_layout.updated'
   | 'document.created'
   | 'document.updated'
-  | 'document.finalized';
+  | 'document.finalized'
+  // DOC-ACCEPT-FIX-01: correcting a stored acceptance is an explicit act of its
+  // own, so it is never mistaken for a second acceptance (`document.accepted`).
+  | 'document.acceptance_corrected';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

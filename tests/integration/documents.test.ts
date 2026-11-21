@@ -17,6 +17,7 @@ import { documentNumberRepository } from '../../packages/core/src/document-numbe
 import {
   documentRepository,
   registerDocumentRoutes,
+  type AcceptanceCorrection,
   type DocumentDependencies,
   type DocumentLineDraft,
   type DocumentMetadataRow,
@@ -4358,6 +4359,267 @@ test('a withdrawal keeps the acceptance readable', async () => {
   });
 });
 
+// DOC-ACCEPT-FIX-01: a stored acceptance is corrected only by an explicit,
+// versioned act - never by repeating the acceptance with different details,
+// which stays a 409. The document itself (number, bytes, sums) never moves.
+test('a correction replaces the whole acceptance record and audits it once', async () => {
+  const scope = randomUUID(),
+    offer = await sentFinalOffer(scope),
+    originalFile = await seedLibraryFile(scope, offer.actor, {
+      name: 'synthetic-phone-note.pdf',
+    }),
+    correctedFile = await seedLibraryFile(scope, offer.actor, {
+      name: 'synthetic-signed-scanned.pdf',
+    }),
+    accepted = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'accepted',
+      version: offer.version,
+      channel: 'phone',
+      acceptedAt: '2030-10-26T08:30:00Z',
+      note: 'Telefonische Zusage.',
+      attachmentFileId: originalFile,
+    }),
+    paperBefore = await offer.repo.pdf(offer.id),
+    rowBefore = await offerState(scope, offer.id),
+    corrected = await offer.repo.acceptanceCorrection(offer.actor, offer.id, {
+      version: accepted.version,
+      channel: 'pdf',
+      acceptedAt: '2030-10-26T09:15:00Z',
+      note: '  Unterschriebene Fassung liegt vor.  ',
+      attachmentFileId: correctedFile,
+    });
+  expect(corrected).toMatchObject({
+    offerStatus: 'accepted',
+    acceptanceChannel: 'pdf',
+    acceptanceNote: 'Unterschriebene Fassung liegt vor.',
+    acceptanceFileId: correctedFile,
+    acceptanceFileName: 'synthetic-signed-scanned.pdf',
+    acceptanceFileState: 'available',
+    version: accepted.version + 1,
+  });
+  expect((corrected.acceptedAt as Date).toISOString()).toBe(
+    '2030-10-26T09:15:00.000Z',
+  );
+  const stored = await acceptanceState(scope, offer.id);
+  expect(stored).toMatchObject({
+    acceptance_channel: 'pdf',
+    acceptance_note: 'Unterschriebene Fassung liegt vor.',
+    acceptance_file_id: correctedFile,
+    offer_status: 'accepted',
+    version: accepted.version + 1,
+  });
+  // The record is replaced as one decision: no old value survives beside it.
+  expect(stored.acceptance_file_id).not.toBe(originalFile);
+  // A correction is data, never a status change or a new print.
+  expect(stored.status_changed_at!.toISOString()).toBe(
+    '2030-10-26T10:00:00.000Z',
+  );
+  const rowAfter = await offerState(scope, offer.id);
+  expect(rowAfter).toMatchObject({
+    state: rowBefore.state,
+    number: rowBefore.number,
+    snapshot_hash: rowBefore.snapshot_hash,
+    pdf_hash: rowBefore.pdf_hash,
+    gross_minor: rowBefore.gross_minor,
+  });
+  const paperAfter = await offer.repo.pdf(offer.id);
+  expect(paperAfter.bytes.equals(paperBefore.bytes)).toBe(true);
+  expect(paperAfter.number).toBe(offer.number);
+  expect(await offerAudit(scope, offer.id)).toEqual([
+    'document.acceptance_corrected',
+    'document.accepted',
+    'document.created',
+    'document.finalized',
+    'document.sent',
+  ]);
+  // The established contract is untouched: the identical record is still a
+  // no-op and the old details are still a conflict - neither writes an audit.
+  const again = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'accepted',
+    version: accepted.version + 1,
+    channel: 'pdf',
+    acceptedAt: '2030-10-26T09:15:00Z',
+    note: 'Unterschriebene Fassung liegt vor.',
+    attachmentFileId: correctedFile,
+  });
+  expect(again).toMatchObject({
+    acceptanceChannel: 'pdf',
+    acceptanceNote: 'Unterschriebene Fassung liegt vor.',
+    version: accepted.version + 1,
+  });
+  await expect(
+    offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'accepted',
+      version: accepted.version + 1,
+      channel: 'phone',
+      acceptedAt: '2030-10-26T08:30:00Z',
+      note: 'Telefonische Zusage.',
+      attachmentFileId: originalFile,
+    }),
+  ).rejects.toMatchObject({ reason: 'acceptance_conflict' });
+  expect(await offerAudit(scope, offer.id)).toHaveLength(5);
+});
+
+test('a correction enforces exactly the field rules of the first acceptance', async () => {
+  const scope = randomUUID(),
+    offer = await sentFinalOffer(scope),
+    archived = await seedLibraryFile(scope, offer.actor, {
+      state: 'archived',
+      name: 'synthetic-archived-correction.pdf',
+    }),
+    foreign = await foreignTenantFile(),
+    accepted = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'accepted',
+      version: offer.version,
+      channel: 'email',
+      note: 'Erste Erfassung.',
+    }),
+    before = await acceptanceState(scope, offer.id),
+    attempt = (payload: Partial<AcceptanceCorrection>) =>
+      offer.repo.acceptanceCorrection(offer.actor, offer.id, {
+        version: accepted.version,
+        channel: 'other',
+        ...payload,
+      });
+  const refused: [Partial<AcceptanceCorrection>, string][] = [
+    [{ channel: '' }, 'invalid_channel'],
+    [{ channel: 'fax' }, 'invalid_channel'],
+    [{ acceptedAt: '2030-10-26T10:00:01Z' }, 'invalid_time'],
+    [{ acceptedAt: 'not-a-time' }, 'invalid_time'],
+    [{ acceptedAt: '2030-02-30T10:00' }, 'invalid_time'],
+    [{ note: 'x'.repeat(2001) }, 'invalid_note'],
+    [{ note: 'Annahme\u0001mit Steuerzeichen' }, 'invalid_note'],
+    [{ attachmentFileId: archived }, 'invalid_attachment'],
+    [{ attachmentFileId: foreign.fileId }, 'not_found'],
+    [{ attachmentFileId: randomUUID() }, 'not_found'],
+  ];
+  for (const [payload, reason] of refused)
+    await expect(
+      attempt(payload),
+      JSON.stringify(payload),
+    ).rejects.toMatchObject({ reason });
+  expect(await acceptanceState(scope, offer.id)).toEqual(before);
+  expect(await offerAudit(scope, offer.id)).toHaveLength(4);
+});
+
+test('a correction needs an existing acceptance, a final offer and the current version', async () => {
+  const scope = randomUUID(),
+    offer = await sentFinalOffer(scope);
+  // There is nothing to correct before the customer said yes.
+  await expect(
+    offer.repo.acceptanceCorrection(offer.actor, offer.id, {
+      version: offer.version,
+      channel: 'email',
+    }),
+  ).rejects.toMatchObject({ reason: 'offer_not_accepted' });
+  const draft = await documentRepository(
+    pool,
+    scope,
+    dependencies().deps,
+  ).createDraft(offer.actor, {
+    templateId: (await documentTemplateRepository(pool, scope).list())[0]!.id,
+    lines: [
+      {
+        description: 'Fictional correction draft line',
+        quantity: 1,
+        unit: 'Stück',
+        unitPriceMinor: 1000,
+        taxBasisPoints: 1900,
+        discountBasisPoints: 0,
+      },
+    ],
+  });
+  await expect(
+    offer.repo.acceptanceCorrection(offer.actor, draft.id, {
+      version: draft.version,
+      channel: 'email',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_kind' });
+  await expect(
+    offer.repo.acceptanceCorrection(offer.actor, randomUUID(), {
+      version: 1,
+      channel: 'email',
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  const accepted = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+    status: 'accepted',
+    version: offer.version,
+    channel: 'email',
+  });
+  await expect(
+    offer.repo.acceptanceCorrection(offer.actor, offer.id, {
+      version: accepted.version - 1,
+      channel: 'phone',
+    }),
+  ).rejects.toMatchObject({ reason: 'conflict' });
+  // Another tenant's administrator cannot reach this record at all.
+  const foreign = await foreignTenantFile(),
+    otherActor = (await accessRepository(pool, foreign.scope).list())[0]!
+      .userId!;
+  await expect(
+    documentRepository(
+      pool,
+      foreign.scope,
+      dependencies().deps,
+    ).acceptanceCorrection(otherActor, offer.id, {
+      version: accepted.version,
+      channel: 'phone',
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
+  expect(await acceptanceState(scope, offer.id)).toMatchObject({
+    acceptance_channel: 'email',
+    version: accepted.version,
+  });
+});
+
+test('a correction never touches a withdrawal and can clear note and attachment', async () => {
+  const scope = randomUUID(),
+    offer = await sentFinalOffer(scope),
+    accepted = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'accepted',
+      version: offer.version,
+      channel: 'phone',
+      acceptedAt: '2030-10-26T08:30:00Z',
+      note: 'Telefonische Zusage.',
+    }),
+    withdrawn = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'withdrawn',
+      version: accepted.version,
+    }),
+    corrected = await offer.repo.acceptanceCorrection(offer.actor, offer.id, {
+      version: withdrawn.version,
+      channel: 'other',
+    });
+  // The withdrawal is a state fact; correcting the record does not reopen it.
+  expect(corrected).toMatchObject({
+    offerStatus: 'withdrawn',
+    acceptanceChannel: 'other',
+    acceptanceNote: null,
+    acceptanceFileId: null,
+    acceptanceFileName: null,
+    version: withdrawn.version + 1,
+  });
+  // Omitted instant keeps the documented default: the transaction clock.
+  expect((corrected.acceptedAt as Date).toISOString()).toBe(
+    '2030-10-26T10:00:00.000Z',
+  );
+  const stored = await acceptanceState(scope, offer.id);
+  expect(stored).toMatchObject({
+    offer_status: 'withdrawn',
+    acceptance_channel: 'other',
+    acceptance_note: null,
+    acceptance_file_id: null,
+  });
+  expect(await offerAudit(scope, offer.id)).toEqual([
+    'document.acceptance_corrected',
+    'document.accepted',
+    'document.created',
+    'document.finalized',
+    'document.sent',
+    'document.withdrawn',
+  ]);
+});
+
 test('the database refuses an acceptance outside a final offer', async () => {
   const scope = randomUUID(),
     offer = await sentFinalOffer(scope),
@@ -4625,6 +4887,163 @@ test('the offer status route accepts the acceptance details and refuses bad ones
       acceptanceNote: 'Zusage am Telefon.',
       acceptanceFileId: fileId,
     });
+  } finally {
+    await app.close();
+  }
+});
+
+// DOC-ACCEPT-FIX-01: the correction is its own route with the same auth, CSRF,
+// version guard and error contract as every other document write. The repeat
+// path of `offer-status` keeps refusing a divergent record.
+test('the acceptance correction route keeps auth, CSRF, version and errors', async () => {
+  const scope = randomUUID(),
+    offer = await sentFinalOffer(scope),
+    unsent = await sentFinalOffer(scope);
+  await accessRepository(pool, scope).issueSession(
+    {
+      subject: 'seed-' + scope,
+      email: (await accessRepository(pool, scope).list())[0]!.email,
+    },
+    digest('synthetic-acceptance-correction'),
+  );
+  const accepted = await offer.repo.changeOfferStatus(offer.actor, offer.id, {
+      status: 'accepted',
+      version: offer.version,
+      channel: 'phone',
+      acceptedAt: '2030-10-26T08:30:00Z',
+      note: 'Zusage am Telefon.',
+    }),
+    config = {
+      origin: site,
+      tenantId: scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentRoutes(app, pool, scope, offer.run.deps);
+  const url = '/api/v1/documents/' + offer.id + '/acceptance-correction',
+    cookies = { '__Host-ak-session': 'synthetic-acceptance-correction' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-acceptance-correction'),
+    },
+    post = (payload: Record<string, unknown>, secured = true) =>
+      app.inject({
+        method: 'POST',
+        url,
+        cookies,
+        ...(secured ? { headers } : {}),
+        payload,
+      });
+  try {
+    expect(
+      (await post({ version: accepted.version, channel: 'pdf' }, false))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          payload: { version: accepted.version, channel: 'pdf' },
+        })
+      ).statusCode,
+    ).toBe(401);
+    // The schema owns the shape, the domain owns the values.
+    for (const payload of [
+      { channel: 'pdf' },
+      { version: accepted.version },
+      { version: 0, channel: 'pdf' },
+      {
+        version: accepted.version,
+        channel: 'pdf',
+        attachmentFileId: 'not-a-uuid',
+      },
+    ])
+      expect((await post(payload)).statusCode, JSON.stringify(payload)).toBe(
+        400,
+      );
+    const invalidChannel = await post({
+      version: accepted.version,
+      channel: 'fax',
+    });
+    expect(invalidChannel.statusCode).toBe(400);
+    expect(invalidChannel.json()).toEqual({ error: 'invalid_channel' });
+    const notAnAcceptance = await app.inject({
+      method: 'POST',
+      url: '/api/v1/documents/' + unsent.id + '/acceptance-correction',
+      cookies,
+      headers,
+      payload: { version: unsent.version, channel: 'email' },
+    });
+    expect(notAnAcceptance.statusCode).toBe(409);
+    expect(notAnAcceptance.json()).toEqual({ error: 'offer_not_accepted' });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/documents/' + randomUUID() + '/acceptance-correction',
+          cookies,
+          headers,
+          payload: { version: 1, channel: 'email' },
+        })
+      ).statusCode,
+    ).toBe(404);
+    // A stale version is a conflict before any detail is judged.
+    const stale = await post({
+      version: accepted.version - 1,
+      channel: 'pdf',
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toEqual({ error: 'conflict' });
+
+    const corrected = await post({
+      version: accepted.version,
+      channel: 'pdf',
+      acceptedAt: '2030-10-26T09:15:00Z',
+      note: 'Unterschriebene Fassung liegt vor.',
+    });
+    expect(corrected.statusCode).toBe(200);
+    expect(corrected.json()).toMatchObject({
+      offerStatus: 'accepted',
+      acceptanceChannel: 'pdf',
+      acceptanceNote: 'Unterschriebene Fassung liegt vor.',
+      version: accepted.version + 1,
+    });
+    expect(corrected.json().acceptedAt).toBe('2030-10-26T09:15:00.000Z');
+    // The old repeat contract is untouched: the previous details are a 409.
+    const divergent = await app.inject({
+      method: 'POST',
+      url: '/api/v1/documents/' + offer.id + '/offer-status',
+      cookies,
+      headers,
+      payload: {
+        status: 'accepted',
+        version: accepted.version + 1,
+        channel: 'phone',
+        acceptedAt: '2030-10-26T08:30:00Z',
+      },
+    });
+    expect(divergent.statusCode).toBe(409);
+    expect(divergent.json()).toEqual({ error: 'acceptance_conflict' });
   } finally {
     await app.close();
   }

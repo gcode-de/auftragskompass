@@ -64,6 +64,17 @@ const draft = {
     number: 'AN-2030-0002',
     version: 9,
   },
+  // DOC-ACCEPT-FIX-01: the same offer with the acceptance BKP019.a records. The
+  // instant is UTC; the form reads it in the tenant zone.
+  recordedAcceptance = {
+    ...acceptedOffer,
+    acceptedAt: '2030-10-26T08:30:00Z',
+    acceptanceChannel: 'phone' as const,
+    acceptanceNote: 'Zusage am Telefon.',
+    acceptanceFileId: 'file-1',
+    acceptanceFileName: 'synthetic-signed-offer.pdf',
+    acceptanceFileState: 'available' as const,
+  },
   confirmationDraft = {
     id: 'doc-ab-1',
     kind: 'order_confirmation',
@@ -335,6 +346,8 @@ function setup(
     finalize?: () => Response;
     create?: (url: string) => Response;
     offerStatus?: () => Response;
+    // DOC-ACCEPT-FIX-01: the answer to an explicit acceptance correction.
+    acceptanceCorrection?: () => Response;
     revision?: () => Response;
     library?: () => Response;
     orderConfirmation?: () => Response;
@@ -442,6 +455,46 @@ function setup(
         });
         if (options.offerStatus) return options.offerStatus();
         return Response.json(sentOffer);
+      }
+      // DOC-ACCEPT-FIX-01: the correction replaces the stored record of exactly
+      // one row; the following list read answers the corrected values.
+      if (url.endsWith('/acceptance-correction')) {
+        const body = JSON.parse(String(init!.body)) as {
+          version: number;
+          channel: string;
+          acceptedAt?: string;
+          note?: string;
+          attachmentFileId?: string;
+        };
+        calls.push({
+          url,
+          method,
+          body,
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.acceptanceCorrection) return options.acceptanceCorrection();
+        const id = url.split('/').at(-2)!;
+        state.documents = state.documents.map((entry) => {
+          const row = entry as typeof recordedAcceptance;
+          if (row.id !== id) return entry;
+          return {
+            ...row,
+            version: body.version + 1,
+            acceptanceChannel: body.channel,
+            ...(body.acceptedAt
+              ? { acceptedAt: body.acceptedAt + ':00.000Z' }
+              : {}),
+            acceptanceNote: body.note ?? null,
+            acceptanceFileId: body.attachmentFileId ?? null,
+            acceptanceFileName: body.attachmentFileId
+              ? 'synthetic-signed-offer.pdf'
+              : null,
+            acceptanceFileState: body.attachmentFileId ? 'available' : null,
+          };
+        });
+        return Response.json(
+          state.documents.find((entry) => (entry as { id: string }).id === id),
+        );
       }
       if (url.endsWith('/revision')) {
         calls.push({ url, method, body: JSON.parse(String(init!.body)) });
@@ -1803,6 +1856,186 @@ test('an archived attachment stays readable without a dead link', async () => {
   expect(
     within(row).queryByRole('link', { name: /synthetic-archived-offer\.pdf/ }),
   ).toBeNull();
+});
+
+// DOC-ACCEPT-FIX-01: a stored acceptance is corrected by an explicit act next
+// to the readable record - never by re-accepting with different details.
+test('a stored acceptance offers a quiet correction, an unaccepted offer does not', async () => {
+  setup({
+    documents: [
+      recordedAcceptance,
+      { ...sentOffer, id: 'doc-sent', number: 'AN-2030-0002' },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const action = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 Annahmedaten korrigieren',
+  });
+  expect(action).toBeTruthy();
+  const acceptedRow = action.closest('li') as HTMLElement;
+  // The readable record stays: the action sits beside it, not instead of it.
+  expect(within(acceptedRow).getByText(/Angenommen am/)).toBeTruthy();
+  const sentRow = (
+    await screen.findByRole('button', { name: 'Angebot AN-2030-0002 annehmen' })
+  ).closest('li') as HTMLElement;
+  expect(
+    within(sentRow).queryByRole('button', { name: /Annahmedaten korrigieren/ }),
+  ).toBeNull();
+});
+
+test('the correction form is prefilled and replaces the record with its version', async () => {
+  const { calls } = setup({ documents: [recordedAcceptance] });
+  render(<EventDocuments {...props} />);
+  const action = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 Annahmedaten korrigieren',
+  });
+  fireEvent.click(action);
+  const row = action.closest('li') as HTMLElement;
+  // 08:30 UTC is 10:30 in the tenant zone: the prefill uses that wall clock.
+  expect((within(row).getByLabelText('Kanal') as HTMLSelectElement).value).toBe(
+    'phone',
+  );
+  expect(
+    (within(row).getByLabelText('Zeitpunkt (optional)') as HTMLInputElement)
+      .value,
+  ).toBe('2030-10-26T10:30');
+  expect(
+    (within(row).getByLabelText('Notiz (optional)') as HTMLTextAreaElement)
+      .value,
+  ).toBe('Zusage am Telefon.');
+  await waitFor(() =>
+    expect(
+      within(row).getByRole('option', { name: 'synthetic-signed-offer.pdf' }),
+    ).toBeTruthy(),
+  );
+  expect(
+    (within(row).getByLabelText('Anhang (optional)') as HTMLSelectElement)
+      .value,
+  ).toBe('file-1');
+  fireEvent.change(within(row).getByLabelText('Notiz (optional)'), {
+    target: { value: '  Unterschrift liegt vor.  ' },
+  });
+  fireEvent.submit(
+    within(row).getByRole('form', { name: 'Annahmedaten korrigieren' }),
+  );
+  expect(await screen.findByText('Annahmedaten korrigiert.')).toBeTruthy();
+  expect(
+    calls.find((call) => call.url.endsWith('/acceptance-correction')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-2/acceptance-correction',
+    method: 'POST',
+    body: {
+      version: 4,
+      channel: 'phone',
+      acceptedAt: '2030-10-26T10:30',
+      note: 'Unterschrift liegt vor.',
+      attachmentFileId: 'file-1',
+    },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  // Success closes the form and shows the reloaded record.
+  expect(
+    within(row).queryByRole('form', { name: 'Annahmedaten korrigieren' }),
+  ).toBeNull();
+  expect(await within(row).findByText(/Unterschrift liegt vor\./)).toBeTruthy();
+});
+
+test('a refused correction keeps the form and never repeats the write', async () => {
+  const { calls } = setup({
+    documents: [recordedAcceptance],
+    acceptanceCorrection: () =>
+      Response.json({ error: 'conflict' }, { status: 409 }),
+  });
+  render(<EventDocuments {...props} />);
+  const action = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 Annahmedaten korrigieren',
+  });
+  fireEvent.click(action);
+  const row = action.closest('li') as HTMLElement;
+  fireEvent.change(within(row).getByLabelText('Notiz (optional)'), {
+    target: { value: 'Neue Notiz.' },
+  });
+  fireEvent.submit(
+    within(row).getByRole('form', { name: 'Annahmedaten korrigieren' }),
+  );
+  expect(
+    await screen.findByText(
+      'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.',
+    ),
+  ).toBeTruthy();
+  expect(
+    calls.filter((call) => call.url.endsWith('/acceptance-correction')),
+  ).toHaveLength(1);
+  // The typed correction stays in the open form; nothing is re-sent by itself.
+  expect(
+    within(row).getByRole('form', { name: 'Annahmedaten korrigieren' }),
+  ).toBeTruthy();
+  expect(
+    (within(row).getByLabelText('Notiz (optional)') as HTMLTextAreaElement)
+      .value,
+  ).toBe('Neue Notiz.');
+});
+
+test('cancelling the correction keeps the record and restores focus', async () => {
+  for (const cancel of ['button', 'escape'] as const) {
+    const { calls } = setup({ documents: [recordedAcceptance] });
+    const view = render(<EventDocuments {...props} />);
+    const action = await screen.findByRole('button', {
+      name: 'Angebot AN-2030-0001 Annahmedaten korrigieren',
+    });
+    fireEvent.click(action);
+    const row = action.closest('li') as HTMLElement;
+    const form = within(row).getByRole('form', {
+      name: 'Annahmedaten korrigieren',
+    });
+    if (cancel === 'escape') fireEvent.keyDown(form, { key: 'Escape' });
+    else
+      fireEvent.click(within(row).getByRole('button', { name: 'Abbrechen' }));
+    expect(
+      within(row).queryByRole('form', { name: 'Annahmedaten korrigieren' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(action);
+    expect(within(row).getByText(/Zusage am Telefon\./)).toBeTruthy();
+    expect(
+      calls.some((call) => call.url.endsWith('/acceptance-correction')),
+    ).toBe(false);
+    view.unmount();
+    cleanup();
+  }
+});
+
+test('a correction of a record whose attachment is archived names it honestly', async () => {
+  setup({
+    documents: [
+      {
+        ...recordedAcceptance,
+        acceptanceFileId: 'file-2',
+        acceptanceFileName: 'synthetic-archived-offer.pdf',
+        acceptanceFileState: 'archived' as const,
+      },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  const action = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 Annahmedaten korrigieren',
+  });
+  fireEvent.click(action);
+  const row = action.closest('li') as HTMLElement;
+  await waitFor(() =>
+    expect(
+      within(row).getByRole('option', { name: 'synthetic-signed-offer.pdf' }),
+    ).toBeTruthy(),
+  );
+  // The stored file stays visible as the stored value instead of silently
+  // becoming "no attachment"; the server still refuses it if it stays chosen.
+  expect(
+    (within(row).getByLabelText('Anhang (optional)') as HTMLSelectElement)
+      .value,
+  ).toBe('file-2');
+  expect(
+    (within(row).getByLabelText('Anhang (optional)') as HTMLSelectElement)
+      .selectedOptions[0]!.text,
+  ).toBe('Bisheriger Anhang (nicht auswählbar)');
 });
 
 // BKP019.b: an accepted offer can be confirmed without retyping a position. The
