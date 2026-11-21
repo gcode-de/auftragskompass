@@ -123,10 +123,13 @@ Abschnitt beschreibt den aktuellen Stand.
 - **Offene Sichtprüfungen (warten auf Entsperren des Rechners):** Akkordion
   (EDITOR-MOBILE-01), Produkt-Modal (EDITOR-PICKER-01), direkte
   Gegenansicht der Bookitup-Bilder B15/B25. Danach Plan-Einträge abschließen.
-- **Aktiver Slice:** Dokumentrest (GOAL-Priorität 2): offene Dokumentabläufe
-  vervollständigen; danach E-Mail-Versand/Anfragebenachrichtigung, dann
-  Parität/Designsystem. **Von Ihnen offen:** Steuer-Klarstellung
-  Gesamtrabatt (Blocker).
+- **Aktiver Slice:** DOC-RG04-01 (Pflichtangaben: Steuernummer/USt-IdNr auf
+  Rechnungen – letzte offene Lastenheft-MUSS-Lücke RG-04; Ist-Stand geprüft:
+  nur dieses Feld fehlt, Empfänger-/Absenderanschrift und Steuerzeilen
+  bestehen). Danach Annahme-Korrekturpfad, dann E-Mail-Versand/
+  Anfragebenachrichtigung, dann Parität/Designsystem. **Von Ihnen offen:**
+  Steuer-Klarstellung Gesamtrabatt (Blocker) und Entsperren für die
+  Sichtprüfungen.
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
