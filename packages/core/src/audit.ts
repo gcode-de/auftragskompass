@@ -52,7 +52,9 @@ export type AuditAction =
   // MAIL-021-B: an accepted message and the deliberate repetition of an unclear
   // attempt are separate, traceable events.
   | 'mail.sent'
-  | 'mail.send_retry';
+  | 'mail.send_retry'
+  // MAIL-DOC-01: the deliberate order that carries a finalized document.
+  | 'mail.document_send_scheduled';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

@@ -6,7 +6,10 @@ import { database, type Connection } from './database.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 import { encryptTelegramToken, decryptTelegramToken } from './telegram.js';
+import { readDocumentPdf } from './document-artifacts.js';
+import type { StorageAdapter } from './storage.js';
 import type {
+  MailSendAttachment,
   MailSendContent,
   MailSendEnvelope,
   MailSendFailureCode,
@@ -63,6 +66,8 @@ export type MailErrorReason =
   | 'encryption_unavailable'
   | 'not_sendable'
   | 'not_retryable'
+  | 'not_final'
+  | 'attachment_unavailable'
   | 'idempotency_conflict';
 export class MailError extends Error {
   constructor(readonly reason: MailErrorReason) {
@@ -176,12 +181,41 @@ export type ClaimedMailOutboxJob = {
   messageId: string;
   attempts: number;
 };
+/**
+ * MAIL-DOC-01: the reference of an attachment, never its bytes. `pdfHash` names
+ * the frozen artefact of the finalized document; the worker reads it again from
+ * the same store the PDF route uses.
+ */
+export type MailAttachmentSummary = {
+  documentId: string;
+  filename: string;
+  mediaType: 'application/pdf';
+  sizeBytes: number;
+};
+export type MailDocumentSendInput = {
+  documentId: string;
+  /** Client-generated once per gesture: same id, same order. */
+  requestId: string;
+  to: string;
+  bodyText?: string | null;
+  accountId?: string | null;
+};
+export type MailDocumentSendResult = {
+  job: MailOutboxRow;
+  messageId: string;
+  attachment: MailAttachmentSummary;
+  created: boolean;
+};
+/** The storage limit is the same one an artefact may have on disk. */
+export const maxMailAttachmentBytes = 10 * 1024 * 1024;
 /** MAIL-021-B: the outbox needs an adapter factory and the key, nothing else. */
 export type MailOutboxConfig = {
   /** Builds one adapter per account; absent means no provider is configured. */
   createSender?: (account: MailSenderAccount) => MailSender;
   /** Key for the sealed account secret, same envelope as the Telegram token. */
   key?: Uint8Array | null;
+  /** MAIL-DOC-01: content-addressed store the attachment bytes come from. */
+  store?: StorageAdapter | null;
 };
 export type MailOutboxFailure =
   | { type: 'database'; stage: 'claim' | 'finalize' }
@@ -272,6 +306,13 @@ function idempotencyKeyOf(value: unknown): string {
   if (!trimmed || trimmed.length > 200)
     throw new MailError('idempotency_conflict');
   return trimmed;
+}
+// The stored file name is ours: one fixed prefix, the document number reduced to
+// characters that cannot break a MIME header, one extension. No operator input
+// ever becomes a name or a path here.
+function attachmentFileName(number: string): string {
+  const base = `Dokument-${number}`.replace(/[^A-Za-z0-9._-]/g, '_');
+  return base.slice(0, 120) + '.pdf';
 }
 
 const messageColumns = sql`m.id::text AS id, m.account_id::text AS account_id,
@@ -374,8 +415,10 @@ export function mailRepository(
   pool: Pool,
   tenantId: string,
   encryptionKey: Uint8Array | null,
+  options: { store?: StorageAdapter | null } = {},
 ) {
-  const db = database(pool);
+  const db = database(pool),
+    store = options.store ?? null;
 
   // Reads are tenant-bound by this closure; routes add the membership check.
   async function requireMember(actorId: string) {
@@ -393,6 +436,64 @@ export function mailRepository(
       rows: OutboxQueryRow[];
     };
     return result.rows[0] ? toOutbox(result.rows[0]) : null;
+  }
+
+  // One mail account takes the order. An explicit choice must be an enabled
+  // account of this tenant; without one the first enabled account is used, and
+  // when none exists the order is refused instead of inventing a sender.
+  async function usableAccount(
+    connection: Connection,
+    accountId: string | null | undefined,
+  ): Promise<string> {
+    const result = (await reviewed(connection).execute(
+      accountId
+        ? sql`SELECT id::text AS id FROM mail_accounts
+               WHERE tenant_id=${tenantId} AND id=${accountId}::uuid
+                 AND enabled`
+        : sql`SELECT id::text AS id FROM mail_accounts
+               WHERE tenant_id=${tenantId} AND enabled
+               ORDER BY name, id LIMIT 1`,
+    )) as { rows: { id: string }[] };
+    const row = result.rows[0];
+    if (!row) throw new MailError('invalid_account');
+    return row.id;
+  }
+
+  // The reference of a scheduled document send: the order plus the stored
+  // attachment row. The bytes are deliberately not part of this answer.
+  async function documentSendOf(
+    connection: Connection,
+    job: MailOutboxRow,
+    created: boolean,
+  ): Promise<MailDocumentSendResult> {
+    const result = (await reviewed(connection).execute(sql`
+      SELECT a.document_id::text AS document_id, a.filename, a.media_type,
+             a.size_bytes
+        FROM mail_attachments a
+       WHERE a.tenant_id=${tenantId} AND a.message_id=${job.messageId}::uuid
+       ORDER BY a.filename LIMIT 1`)) as {
+      rows: {
+        document_id: string;
+        filename: string;
+        media_type: 'application/pdf';
+        size_bytes: string;
+      }[];
+    };
+    const attachment = result.rows[0];
+    // A job of this route without its reference is a broken row, not something
+    // to answer with a made-up attachment.
+    if (!attachment) throw new Error('mail attachment reference missing');
+    return {
+      job,
+      messageId: job.messageId,
+      attachment: {
+        documentId: attachment.document_id,
+        filename: attachment.filename,
+        mediaType: attachment.media_type,
+        sizeBytes: Number(attachment.size_bytes),
+      },
+      created,
+    };
   }
 
   return {
@@ -671,6 +772,123 @@ export function mailRepository(
       });
     },
 
+    // MAIL-DOC-01: a document send is one explicit gesture: a client request id
+    // is the idempotency key, so the same gesture can never become a second
+    // order - also after an unclear answer. The attachment references the frozen
+    // artefact of a finalized, tenant-owned document; the bytes are read once
+    // here to prove they exist and to record their size, and again for every
+    // attempt. Nothing is rendered, copied into the database or taken from a
+    // user-provided path.
+    async scheduleDocumentSend(
+      actorId: string,
+      input: MailDocumentSendInput,
+    ): Promise<MailDocumentSendResult> {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const requestId = idempotencyKeyOf(input.requestId),
+          key = `document-send:${input.documentId}:${requestId}`;
+        // A replay answers the very same order, even if the document was
+        // withdrawn in between: the job already exists and is not re-decided.
+        const existing = (await reviewed(tx).execute(sql`
+          SELECT ${outboxColumns} FROM mail_outbox o
+           WHERE o.tenant_id=${tenantId} AND o.idempotency_key=${key}`)) as {
+          rows: OutboxQueryRow[];
+        };
+        if (existing.rows[0])
+          return await documentSendOf(tx, toOutbox(existing.rows[0]), false);
+
+        const to = mailAddressList(input.to),
+          text = bodyText(input.bodyText ?? '', 20000, 'invalid_body');
+        if (!to) throw new MailError('invalid_recipients');
+        const found = await tx.execute<{
+          number: string | null;
+          state: 'draft' | 'final' | 'withdrawn';
+          pdf_hash: string | null;
+          contact_id: string | null;
+          event_id: string | null;
+        }>(
+          sql`SELECT number, state, pdf_hash, contact_id::text AS contact_id,
+                     event_id::text AS event_id
+                FROM documents
+               WHERE tenant_id=${tenantId} AND id=${input.documentId}::uuid`,
+        );
+        const document = found.rows[0];
+        // Another tenant's row is missing, never forbidden: no leak.
+        if (!document) throw new MailError('not_found');
+        // Only the frozen artefact of a final row may travel. A draft has none,
+        // a withdrawn document is no longer a valid document to hand out.
+        if (
+          document.state !== 'final' ||
+          !document.number ||
+          !document.pdf_hash
+        )
+          throw new MailError('not_final');
+        if (!store) throw new MailError('attachment_unavailable');
+        let bytes: Buffer;
+        try {
+          bytes = await readDocumentPdf(store, document.pdf_hash);
+        } catch {
+          throw new MailError('attachment_unavailable');
+        }
+        if (!bytes.byteLength || bytes.byteLength > maxMailAttachmentBytes)
+          throw new MailError('attachment_unavailable');
+
+        const account = await usableAccount(tx, input.accountId),
+          messageId = randomUUID(),
+          filename = attachmentFileName(document.number),
+          subject = `Dokument ${document.number}`.slice(0, 998),
+          body =
+            text ||
+            `Anbei erhalten Sie das Dokument ${document.number} als PDF.`;
+        const inserted = (await reviewed(tx).execute(sql`
+          INSERT INTO mail_messages AS m
+            (tenant_id,id,account_id,direction,folder,subject,body_text,
+             to_addresses,contact_id,event_id)
+          VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
+                  ${subject},${body},${to},${document.contact_id}::uuid,
+                  ${document.event_id}::uuid)
+          RETURNING ${messageColumns}`)) as { rows: MessageQueryRow[] };
+        await reviewed(tx).execute(sql`
+          INSERT INTO mail_attachments
+            (tenant_id,message_id,document_id,pdf_hash,filename,media_type,size_bytes)
+          VALUES (${tenantId},${messageId}::uuid,${input.documentId}::uuid,
+                  ${document.pdf_hash},${filename},'application/pdf',
+                  ${bytes.byteLength})`);
+        const job = (await reviewed(tx).execute(sql`
+          INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
+          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
+          ON CONFLICT (tenant_id,idempotency_key) DO NOTHING
+          RETURNING ${outboxColumns}`)) as { rows: OutboxQueryRow[] };
+        // The tenant lock serialises this path; a conflict can only mean a
+        // request id that already belongs to another message. Rolling back
+        // removes the message and attachment again.
+        if (!job.rows[0]) throw new MailError('idempotency_conflict');
+        await tx.execute(
+          sql`UPDATE mail_messages SET send_state='scheduled', updated_at=now()
+               WHERE tenant_id=${tenantId} AND id=${messageId}::uuid`,
+        );
+        await appendAudit(
+          tx,
+          tenantId,
+          'mail.document_send_scheduled',
+          actorId,
+          job.rows[0].id,
+        );
+        return {
+          job: toOutbox(job.rows[0]),
+          messageId: inserted.rows[0]!.id,
+          attachment: {
+            documentId: input.documentId,
+            filename,
+            mediaType: 'application/pdf',
+            sizeBytes: bytes.byteLength,
+          },
+          created: true,
+        };
+      });
+    },
+
     // MAIL-021-B: the only way out of `uncertain`. A terminal unclear outcome is
     // never restarted by the loop, so an operator must decide it - and that
     // decision is audited on its own. The same job goes back to `pending`; no
@@ -802,10 +1020,18 @@ function addressesOf(value: string): string[] {
     : [];
 }
 
+type AttemptAttachmentRow = {
+  document_id: string;
+  pdf_hash: string;
+  filename: string;
+  media_type: string;
+};
+
 async function prepareMailAttempt(
   client: PoolClient,
   job: ClaimedMailOutboxJob,
   key: Uint8Array | null,
+  store: StorageAdapter | null,
 ): Promise<MailAttempt> {
   const { rows } = await client.query<AttemptRow>(
     `SELECT m.subject, m.body_text, m.body_html, m.from_address, m.to_addresses,
@@ -842,6 +1068,32 @@ async function prepareMailAttempt(
     to = addressesOf(row.to_addresses);
   if (!from) return { problem: 'provider_missing' };
   if (!to.length) return { problem: 'internal' };
+  // MAIL-DOC-01: an attachment is a reference to one frozen artefact. The bytes
+  // are read here, once per attempt, from the content-addressed store - never
+  // from a path, never from a second rendering of the document.
+  const references = await client.query<AttemptAttachmentRow>(
+    `SELECT document_id::text, pdf_hash, filename, media_type
+       FROM mail_attachments
+      WHERE tenant_id=$1 AND message_id=$2
+      ORDER BY filename`,
+    [job.tenantId, job.messageId],
+  );
+  const attachments: MailSendAttachment[] = [];
+  if (references.rows.length && !store)
+    return { problem: 'attachment_unavailable' };
+  for (const reference of references.rows) {
+    try {
+      attachments.push({
+        filename: reference.filename,
+        content: await readDocumentPdf(store!, reference.pdf_hash),
+        contentType: reference.media_type,
+      });
+    } catch {
+      // A referenced document that cannot be read is a definite non-delivery:
+      // the mail must not go out without the document it announces.
+      return { problem: 'attachment_unavailable' };
+    }
+  }
   return {
     account: {
       host: row.smtp_host,
@@ -860,6 +1112,7 @@ async function prepareMailAttempt(
       text: row.body_text,
       html: row.body_html,
       messageId: row.message_id,
+      ...(attachments.length ? { attachments } : {}),
     },
   };
 }
@@ -981,7 +1234,7 @@ export async function runMailOutboxPass(
       if (failure) reportError(failure);
       return true;
     };
-    const { createSender, key } = config;
+    const { createSender, key, store } = config;
     // Without an adapter nothing can leave the machine: the job says so.
     if (!createSender)
       return conclude(
@@ -992,7 +1245,12 @@ export async function runMailOutboxPass(
       );
     let attempt: MailAttempt;
     try {
-      attempt = await prepareMailAttempt(client, claimed, key ?? null);
+      attempt = await prepareMailAttempt(
+        client,
+        claimed,
+        key ?? null,
+        store ?? null,
+      );
     } catch {
       // The attempt never began. The job keeps its lease and is retried after
       // it expires, exactly like a crashed worker.
@@ -1148,13 +1406,37 @@ const detailSchema = {
     outbox: { anyOf: [outboxSchema, { type: 'null' }] },
   },
 } as const;
+// MAIL-DOC-01: the answer names the frozen artefact by its document and file
+// name - never its bytes, its hash or any content of the document.
+const attachmentSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['documentId', 'filename', 'mediaType', 'sizeBytes'],
+  properties: {
+    documentId: { type: 'string', format: 'uuid' },
+    filename: { type: 'string' },
+    mediaType: { type: 'string', const: 'application/pdf' },
+    sizeBytes: { type: 'integer', minimum: 1 },
+  },
+} as const;
+const documentSendSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['messageId', 'job', 'attachment'],
+  properties: {
+    messageId: { type: 'string', format: 'uuid' },
+    job: outboxSchema,
+    attachment: attachmentSchema,
+  },
+} as const;
 
 export function registerMailRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
+  options: { store?: StorageAdapter | null } = {},
 ) {
-  const repo = mailRepository(pool, tenantId, null),
+  const repo = mailRepository(pool, tenantId, null, options),
     params = {
       type: 'object',
       required: ['id'],
@@ -1172,9 +1454,13 @@ export function registerMailRoutes(
         return reply.code(404).send({ error: 'not_found' });
       // The target exists but cannot be sent from its current state.
       if (
-        ['not_sendable', 'not_retryable', 'idempotency_conflict'].includes(
-          error.reason,
-        )
+        [
+          'not_sendable',
+          'not_retryable',
+          'not_final',
+          'attachment_unavailable',
+          'idempotency_conflict',
+        ].includes(error.reason)
       )
         return reply.code(409).send({ error: error.reason });
       return reply.code(400).send({ error: error.reason });
@@ -1262,6 +1548,44 @@ export function registerMailRoutes(
           request.authSession!.userId,
           request.params.id,
         );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // MAIL-DOC-01: the only route that carries a document. It schedules the same
+  // durable order as every other send and answers the same job for the same
+  // request id, so an unclear answer can be repeated without a second mail.
+  app.post<{ Body: MailDocumentSendInput }>(
+    '/api/v1/mail/document-send',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['documentId', 'requestId', 'to'],
+          properties: {
+            documentId: { type: 'string', format: 'uuid' },
+            requestId: { type: 'string', minLength: 1, maxLength: 200 },
+            to: { type: 'string', minLength: 3, maxLength: 4000 },
+            bodyText: { type: 'string', maxLength: 20000 },
+            accountId: { type: 'string', format: 'uuid' },
+          },
+        },
+        response: { 200: documentSendSchema, 201: documentSendSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const result = await repo.scheduleDocumentSend(
+          request.authSession!.userId,
+          request.body,
+        );
+        return reply.code(result.created ? 201 : 200).send({
+          messageId: result.messageId,
+          job: result.job,
+          attachment: result.attachment,
+        });
       } catch (error) {
         return failure(error, reply);
       }

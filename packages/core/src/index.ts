@@ -189,6 +189,11 @@ export {
   type ClaimedMailOutboxJob,
   type MailOutboxConfig,
   type MailOutboxFailure,
+  // MAIL-DOC-01: the reference of a document attachment, never its bytes.
+  type MailAttachmentSummary,
+  type MailDocumentSendInput,
+  type MailDocumentSendResult,
+  maxMailAttachmentBytes,
 } from './mail.js';
 
 // MAIL-021-B: the provider boundary of the outbox.
@@ -198,6 +203,7 @@ export {
   type MailSender,
   type MailSenderAccount,
   type MailSendEnvelope,
+  type MailSendAttachment,
   type MailSendContent,
   type MailSendFailureCode,
   type MailSendResult,

@@ -1323,6 +1323,13 @@ export function EventDetails({
                   (contact) => contact.id === data.event.primaryContactId,
                 )?.name ?? null
               }
+              // MAIL-DOC-01: the same stored contact that names the event also
+              // prefills the recipient; without an address the field stays empty.
+              contactEmail={
+                data.contacts.find(
+                  (contact) => contact.id === data.event.primaryContactId,
+                )?.email ?? null
+              }
               timeZone={data.event.timeZone}
               csrfToken={csrfToken}
               onEditingChange={setEditingDocument}

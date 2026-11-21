@@ -5,7 +5,11 @@ import {
 } from '@testcontainers/postgresql';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { localStorageAdapter } from '../../packages/core/src/storage.js';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
@@ -47,7 +51,19 @@ let container: StartedPostgreSqlContainer,
   otherAccountId: string,
   contactId: string,
   eventId: string,
-  otherContactId: string;
+  otherContactId: string,
+  // MAIL-DOC-01: one synthetic finalized invoice with a content-addressed PDF
+  // artefact, its draft and withdrawn siblings, and a finalized row of the
+  // other tenant. No real document, no real customer, no real PDF.
+  mailStore: ReturnType<typeof localStorageAdapter>,
+  mailStoreRoot: string,
+  syntheticPdf: Buffer,
+  pdfHash: string,
+  finalDocumentId: string,
+  draftDocumentId: string,
+  withdrawnDocumentId: string,
+  foreignFinalDocumentId: string,
+  missingArtifactDocumentId: string;
 
 async function seedContact(tenant: string) {
   const id = randomUUID();
@@ -66,6 +82,54 @@ async function seedEvent(tenant: string) {
     `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html)
      VALUES ($1,$2,'Fictional mail event','inquiry','manual','Europe/Berlin','','')`,
     [tenant, id],
+  );
+  return id;
+}
+async function seedTemplate(tenant: string) {
+  const id = randomUUID();
+  await pool.query(
+    `INSERT INTO document_templates
+       (tenant_id,id,kind,name,subject,intro_text,outro_text,validity_days,state,version)
+     VALUES ($1,$2,'invoice','Fictional invoice template','Ihr Beleg','','',14,'active',1)`,
+    [tenant, id],
+  );
+  return id;
+}
+// A final row needs a number, the frozen snapshot hash and the PDF hash; a
+// draft must carry none of them. The row is only a projection - the mail slice
+// reads the artefact through the same content-addressed store as the PDF route.
+async function seedDocument(input: {
+  tenant: string;
+  templateId: string;
+  kind: 'invoice' | 'offer';
+  state: 'draft' | 'final' | 'withdrawn';
+  number: string | null;
+  pdfHash: string | null;
+  contactId?: string | null;
+  eventId?: string | null;
+}) {
+  const id = randomUUID(),
+    final = input.state === 'final';
+  await pool.query(
+    `INSERT INTO documents
+       (tenant_id,id,kind,template_id,event_id,contact_id,number,state,issued_at,
+        finalized_at,snapshot_hash,pdf_hash,net_minor,tax_minor,gross_minor,version)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),
+             CASE WHEN $9 THEN now() ELSE NULL END,
+             CASE WHEN $9 THEN $10 ELSE NULL END,$11,10000,1900,11900,1)`,
+    [
+      input.tenant,
+      id,
+      input.kind,
+      input.templateId,
+      input.eventId ?? null,
+      input.contactId ?? null,
+      input.number,
+      input.state,
+      final,
+      'a'.repeat(64),
+      input.pdfHash,
+    ],
   );
   return id;
 }
@@ -114,6 +178,74 @@ beforeAll(async () => {
   contactId = await seedContact(tenantId);
   otherContactId = await seedContact(otherTenantId);
   eventId = await seedEvent(tenantId);
+  const otherEventId = await seedEvent(otherTenantId);
+
+  // MAIL-DOC-01: a synthetic PDF artefact, hash-addressed exactly like a real
+  // final document. The bytes are the fixture the mail attachment must carry
+  // unchanged; nothing is re-rendered for the mail.
+  mailStoreRoot = mkdtempSync(join(tmpdir(), 'ak-mail-documents-'));
+  mailStore = localStorageAdapter({ root: mailStoreRoot });
+  syntheticPdf = Buffer.from(
+    '%PDF-1.4\n% fictional synthetic document for the mail fixture\n' +
+      '1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<<>>\n%%EOF\n',
+    'latin1',
+  );
+  pdfHash = createHash('sha256').update(syntheticPdf).digest('hex');
+  await mailStore.put(pdfHash + '.pdf', syntheticPdf);
+  const templateId = await seedTemplate(tenantId),
+    otherTemplateId = await seedTemplate(otherTenantId);
+  finalDocumentId = await seedDocument({
+    tenant: tenantId,
+    templateId,
+    kind: 'invoice',
+    state: 'final',
+    number: 'RE-2030-0001',
+    pdfHash,
+    contactId,
+    eventId,
+  });
+  draftDocumentId = await seedDocument({
+    tenant: tenantId,
+    templateId,
+    kind: 'invoice',
+    state: 'draft',
+    number: null,
+    pdfHash: null,
+    contactId,
+    eventId,
+  });
+  withdrawnDocumentId = await seedDocument({
+    tenant: tenantId,
+    templateId,
+    kind: 'offer',
+    state: 'withdrawn',
+    number: 'AN-2030-0009',
+    pdfHash: null,
+    contactId,
+    eventId,
+  });
+  // Final, but its artefact was never stored: an attachment must not be
+  // invented from the row.
+  missingArtifactDocumentId = await seedDocument({
+    tenant: tenantId,
+    templateId,
+    kind: 'invoice',
+    state: 'final',
+    number: 'RE-2030-0002',
+    pdfHash: 'b'.repeat(64),
+    contactId,
+    eventId,
+  });
+  foreignFinalDocumentId = await seedDocument({
+    tenant: otherTenantId,
+    templateId: otherTemplateId,
+    kind: 'invoice',
+    state: 'final',
+    number: 'RE-2099-0001',
+    pdfHash,
+    contactId: otherContactId,
+    eventId: otherEventId,
+  });
 
   accountId = (
     await mailRepository(pool, tenantId, encryptionKey).saveAccount(actorId, {
@@ -142,13 +274,14 @@ beforeAll(async () => {
 
   app = Fastify();
   await registerAuth(app, pool, config);
-  registerMailRoutes(app, pool, tenantId);
+  registerMailRoutes(app, pool, tenantId, { store: mailStore });
 }, 120000);
 
 afterAll(async () => {
   await app?.close();
   await pool?.end();
   await container?.stop();
+  if (mailStoreRoot) rmSync(mailStoreRoot, { recursive: true, force: true });
 });
 
 function draft(overrides: Record<string, unknown> = {}) {
@@ -1225,4 +1358,438 @@ test('parallel workers and a restarted worker never send the same job twice', as
       )
     ).rows[0],
   ).toMatchObject({ state: 'sent', attempts: 2 });
+});
+
+// MAIL-DOC-01: a deliberately chosen, already finalized document travels as an
+// attachment. The row keeps the frozen artefact hash, the outbox is the same
+// durable order as every other send, and the bytes are read again from the
+// content-addressed store for the single attempt. No real document exists.
+const documentRequest = {
+  requestId: 'fictional-document-request-1',
+  to: 'synthetic.contact@example.invalid',
+  bodyText: 'Anbei das fiktive Dokument.',
+};
+
+test('schedules exactly one document mail with the frozen PDF as its attachment', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+  });
+  const first = await repo.scheduleDocumentSend(actorId, {
+    ...documentRequest,
+    documentId: finalDocumentId,
+  });
+  expect(first.created).toBe(true);
+  expect(first.attachment).toEqual({
+    documentId: finalDocumentId,
+    filename: 'Dokument-RE-2030-0001.pdf',
+    mediaType: 'application/pdf',
+    sizeBytes: syntheticPdf.byteLength,
+  });
+  expect(first.job).toMatchObject({
+    messageId: first.messageId,
+    state: 'pending',
+    attempts: 0,
+  });
+
+  // The mail itself is a normal outgoing draft that the outbox marked as
+  // scheduled; the document link is carried over, nothing is invented.
+  const detail = await repo.get(first.messageId);
+  expect(detail).toMatchObject({
+    direction: 'out',
+    folder: 'drafts',
+    sendState: 'scheduled',
+    contactId,
+    eventId,
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Anbei das fiktive Dokument.',
+  });
+  expect(detail.subject).toContain('RE-2030-0001');
+
+  // The attachment row references the artefact by hash and records its size;
+  // the bytes themselves stay in the store.
+  const attachment = (
+    await pool.query(
+      `SELECT document_id::text, pdf_hash, filename, media_type, size_bytes
+         FROM mail_attachments WHERE tenant_id=$1 AND message_id=$2`,
+      [tenantId, first.messageId],
+    )
+  ).rows[0]!;
+  expect(attachment).toMatchObject({
+    document_id: finalDocumentId,
+    pdf_hash: pdfHash,
+    filename: 'Dokument-RE-2030-0001.pdf',
+    media_type: 'application/pdf',
+  });
+  expect(Number(attachment.size_bytes)).toBe(syntheticPdf.byteLength);
+
+  // One gesture, one order: the same request answers the very same job.
+  const repeat = await repo.scheduleDocumentSend(actorId, {
+    ...documentRequest,
+    documentId: finalDocumentId,
+  });
+  expect(repeat.created).toBe(false);
+  expect(repeat.job.id).toBe(first.job.id);
+  expect(repeat.messageId).toBe(first.messageId);
+  expect(
+    (
+      await pool.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM mail_outbox WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, first.messageId],
+      )
+    ).rows[0]!.count,
+  ).toBe(1);
+  expect(
+    (
+      await pool.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM mail_attachments WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, first.messageId],
+      )
+    ).rows[0]!.count,
+  ).toBe(1);
+
+  const audits = await pool.query<{ action: string; record_id: string }>(
+    "SELECT action,record_id::text FROM audit_events WHERE tenant_id=$1 AND action='mail.document_send_scheduled'",
+    [tenantId],
+  );
+  expect(
+    audits.rows.filter((row) => row.record_id === first.job.id),
+  ).toHaveLength(1);
+});
+
+test('refuses every document that is not a finalized row of this tenant', async () => {
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+  });
+  const send = (documentId: string, overrides = {}) =>
+    repo.scheduleDocumentSend(actorId, {
+      ...documentRequest,
+      documentId,
+      ...overrides,
+    });
+  await expect(send(draftDocumentId)).rejects.toMatchObject({
+    reason: 'not_final',
+  });
+  await expect(send(withdrawnDocumentId)).rejects.toMatchObject({
+    reason: 'not_final',
+  });
+  // Another tenant's final document is missing here, never forbidden: no leak.
+  await expect(send(foreignFinalDocumentId)).rejects.toMatchObject({
+    reason: 'not_found',
+  });
+  await expect(send(randomUUID())).rejects.toMatchObject({
+    reason: 'not_found',
+  });
+  // A final row without a stored artefact never becomes an empty attachment.
+  await expect(send(missingArtifactDocumentId)).rejects.toMatchObject({
+    reason: 'attachment_unavailable',
+  });
+  // The same without any storage adapter configured: fail closed.
+  await expect(
+    mailRepository(pool, tenantId, encryptionKey).scheduleDocumentSend(
+      actorId,
+      {
+        ...documentRequest,
+        requestId: 'fictional-document-request-no-store-adapter',
+        documentId: finalDocumentId,
+      },
+    ),
+  ).rejects.toMatchObject({ reason: 'attachment_unavailable' });
+  // Recipients, body and request key are validated like every other mail; each
+  // case is its own gesture, so each carries its own request id.
+  await expect(
+    send(finalDocumentId, {
+      requestId: 'fictional-doc-invalid-recipient',
+      to: 'not-an-address',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_recipients' });
+  await expect(
+    send(finalDocumentId, {
+      requestId: 'fictional-doc-empty-recipient',
+      to: '',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_recipients' });
+  await expect(
+    send(finalDocumentId, {
+      requestId: 'fictional-doc-bad-body',
+      bodyText: 'control \u0000 byte',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_body' });
+  await expect(send(finalDocumentId, { requestId: '' })).rejects.toMatchObject({
+    reason: 'idempotency_conflict',
+  });
+  // Nothing of the refusals created an order.
+  expect(
+    (
+      await pool.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM mail_outbox WHERE tenant_id=$1',
+        [tenantId],
+      )
+    ).rows[0]!.count,
+  ).toBe(1);
+  // The database itself refuses an attachment that names a non-final document,
+  // so no second code path can bypass the rule.
+  const message = (
+    await pool.query<{ id: string }>(
+      'SELECT id::text AS id FROM mail_messages WHERE tenant_id=$1 ORDER BY created_at LIMIT 1',
+      [tenantId],
+    )
+  ).rows[0]!;
+  await expect(
+    pool.query(
+      `INSERT INTO mail_attachments
+         (tenant_id,message_id,document_id,pdf_hash,filename,media_type,size_bytes)
+       VALUES ($1,$2,$3,$4,'Dokument-Entwurf.pdf','application/pdf',1)`,
+      [tenantId, message.id, draftDocumentId, pdfHash],
+    ),
+  ).rejects.toThrow(/not final/);
+});
+
+test('the worker sends the stored PDF bytes unchanged and audits the delivery', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+  });
+  const { job, messageId } = await repo.scheduleDocumentSend(actorId, {
+    ...documentRequest,
+    requestId: 'fictional-document-request-bytes',
+    documentId: finalDocumentId,
+  });
+  const { calls, createSender } = stubSender('sent');
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+      store: mailStore,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(1);
+  const attachments = calls[0]!.content.attachments ?? [];
+  expect(attachments).toHaveLength(1);
+  const [attachment] = attachments;
+  expect(attachment!.filename).toBe('Dokument-RE-2030-0001.pdf');
+  expect(attachment!.contentType).toBe('application/pdf');
+  // Byte for byte the artefact that was frozen at finalization: the mail path
+  // never renders a second PDF.
+  expect(Buffer.compare(attachment!.content, syntheticPdf)).toBe(0);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,sent_at FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({ state: 'sent' });
+  expect((await repo.get(messageId)).sendState).toBe('sent');
+});
+
+test('a missing store or artefact fails the attempt without inventing a mail', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+  });
+  const { job } = await repo.scheduleDocumentSend(actorId, {
+    ...documentRequest,
+    requestId: 'fictional-document-request-no-store',
+    documentId: finalDocumentId,
+  });
+  const { calls, createSender } = stubSender('sent');
+  // The job was ordered with a store, but this worker has none: the attachment
+  // cannot be read, so nothing leaves the machine.
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(0);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,last_error_code FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({
+    state: 'failed',
+    last_error_code: 'attachment_unavailable',
+  });
+  // The artefact is referenced by a stored hash: a file that disappeared is a
+  // definite failure, not a reason to send the mail without its document.
+  await mailStore.remove(pdfHash + '.pdf');
+  await pool.query(
+    "UPDATE mail_outbox SET next_attempt_at=now()-interval '1 second' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, job.id],
+  );
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+      store: mailStore,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(0);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,last_error_code FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({
+    state: 'failed',
+    last_error_code: 'attachment_unavailable',
+  });
+  await mailStore.put(pdfHash + '.pdf', syntheticPdf);
+});
+
+test('an unclear document delivery stays terminal until an operator decides', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+  });
+  const { job } = await repo.scheduleDocumentSend(actorId, {
+    ...documentRequest,
+    requestId: 'fictional-document-request-uncertain',
+    documentId: finalDocumentId,
+  });
+  const { calls, createSender } = stubSender('uncertain');
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+      store: mailStore,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(1);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,attempts,last_error_code FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({
+    state: 'uncertain',
+    attempts: 1,
+    last_error_code: 'provider_uncertain',
+  });
+  // The loop never re-sends an unclear outcome: no second claim, no second mail.
+  await pool.query(
+    "UPDATE mail_outbox SET next_attempt_at=now()-interval '1 second' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, job.id],
+  );
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+      store: mailStore,
+    }),
+  ).toBe(false);
+  expect(calls).toHaveLength(1);
+});
+
+test('the document send route needs a session and CSRF and replays the same order', async () => {
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/mail/document-send',
+        payload: { documentId: finalDocumentId },
+      })
+    ).statusCode,
+  ).toBe(401);
+  const { headers, csrf } = await signedIn();
+  const payload = {
+    documentId: finalDocumentId,
+    requestId: 'fictional-route-document-request',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Anbei das fiktive Dokument.',
+  };
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/mail/document-send',
+        headers,
+        payload,
+      })
+    ).statusCode,
+  ).toBe(403);
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send',
+    headers: { ...headers, ...csrf },
+    payload,
+  });
+  expect(created.statusCode).toBe(201);
+  expect(created.json()).toMatchObject({
+    messageId: expect.any(String),
+    job: { state: 'pending', idempotencyKey: expect.any(String) },
+    attachment: {
+      documentId: finalDocumentId,
+      filename: 'Dokument-RE-2030-0001.pdf',
+      mediaType: 'application/pdf',
+      sizeBytes: syntheticPdf.byteLength,
+    },
+  });
+  // The answer carries the reference, never the artefact or its text.
+  expect(created.body).not.toContain('%PDF');
+  expect(created.body).not.toContain('synthetic document for the mail fixture');
+  expect(created.body).not.toContain('Katalog');
+
+  const replay = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send',
+    headers: { ...headers, ...csrf },
+    payload,
+  });
+  expect(replay.statusCode).toBe(200);
+  expect(replay.json().job.id).toBe(created.json().job.id);
+
+  // A draft is a conflict, an unknown document is missing, a bad recipient is
+  // a rejected request - each with a redacted category only.
+  const refused = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send',
+    headers: { ...headers, ...csrf },
+    payload: { ...payload, documentId: draftDocumentId },
+  });
+  expect(refused.statusCode).toBe(409);
+  expect(refused.json()).toEqual({ error: 'not_final' });
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/mail/document-send',
+        headers: { ...headers, ...csrf },
+        payload: { ...payload, documentId: randomUUID() },
+      })
+    ).statusCode,
+  ).toBe(404);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/mail/document-send',
+        headers: { ...headers, ...csrf },
+        // A new gesture: only then is the recipient validated again.
+        payload: {
+          ...payload,
+          requestId: 'fictional-route-invalid',
+          to: 'synthetic.invalid',
+        },
+      })
+    ).statusCode,
+  ).toBe(400);
+  // A foreign tenant's final document is not addressable from here.
+  const foreign = await mailRepository(pool, otherTenantId, encryptionKey, {
+    store: mailStore,
+  });
+  await expect(
+    foreign.scheduleDocumentSend(otherActorId, {
+      ...documentRequest,
+      documentId: finalDocumentId,
+    }),
+  ).rejects.toMatchObject({ reason: 'not_found' });
 });

@@ -19,11 +19,22 @@ export type MailSendEnvelope = {
   cc: string[];
   bcc: string[];
 };
+/**
+ * MAIL-DOC-01: one attachment as bytes. The adapter only forwards what it was
+ * handed - it never opens a path, so no operator input can become a file name
+ * or a location on disk. The bytes come from the storage adapter.
+ */
+export type MailSendAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+};
 export type MailSendContent = {
   subject: string;
   text: string;
   html: string | null;
   messageId: string | null;
+  attachments?: readonly MailSendAttachment[];
 };
 /** Redacted diagnosis only. Each code names one operator action, nothing else. */
 export type MailSendFailureCode =
@@ -32,6 +43,7 @@ export type MailSendFailureCode =
   | 'provider_rejected'
   | 'provider_timeout'
   | 'provider_tls_required'
+  | 'attachment_unavailable'
   | 'internal';
 export type MailSendResult =
   'sent' | 'uncertain' | { failed: MailSendFailureCode };
@@ -174,6 +186,17 @@ export function smtpMailSender(options: SmtpSenderOptions): MailSender {
           ...(content.messageId === null
             ? {}
             : { messageId: content.messageId }),
+          // Only the bytes and the name we were handed: no path, no stream that
+          // could read something else after the decision was made.
+          ...(content.attachments?.length
+            ? {
+                attachments: content.attachments.map((attachment) => ({
+                  filename: attachment.filename,
+                  content: attachment.content,
+                  contentType: attachment.contentType,
+                })),
+              }
+            : {}),
         });
         return 'sent';
       } catch (error) {

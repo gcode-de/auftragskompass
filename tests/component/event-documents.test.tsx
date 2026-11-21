@@ -361,6 +361,8 @@ function setup(
     // BKP019.d: the payments of a document, and the answer to a recorded one.
     payments?: () => Response | Promise<Response>;
     recordPayment?: () => Response;
+    // MAIL-DOC-01: the answer to "Per E-Mail senden".
+    mailSend?: (body: unknown) => Response | Promise<Response>;
   } = {},
 ) {
   const calls: {
@@ -588,6 +590,39 @@ function setup(
         }
         if (options.recordPayment) return options.recordPayment();
         return Response.json(paymentRows[0]!, { status: 201 });
+      }
+      if (url === '/api/v1/mail/document-send') {
+        const body = JSON.parse(String(init!.body));
+        calls.push({
+          url,
+          method,
+          body,
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.mailSend) return await options.mailSend(body);
+        return Response.json(
+          {
+            messageId: 'mail-document-1',
+            job: {
+              id: 'job-document-1',
+              messageId: 'mail-document-1',
+              idempotencyKey: 'document-send:doc-2:fictional',
+              state: 'pending',
+              attempts: 0,
+              nextAttemptAt: '2030-10-26T10:00:00.000Z',
+              lastErrorCode: null,
+              createdAt: '2030-10-26T10:00:00.000Z',
+              sentAt: null,
+            },
+            attachment: {
+              documentId: 'doc-2',
+              filename: 'Dokument-AN-2030-0001.pdf',
+              mediaType: 'application/pdf',
+              sizeBytes: 128,
+            },
+          },
+          { status: 201 },
+        );
       }
       if (url.endsWith('/finalize')) {
         calls.push({ url, method });
@@ -5446,4 +5481,165 @@ test('a refused overpayment is explained and never retried', async () => {
     ),
   ).toHaveLength(1);
   expect(screen.queryByText('Zahlung erfasst.')).toBeNull();
+});
+
+// MAIL-DOC-01: exactly one deliberately chosen, finalized document can be sent
+// as an attachment. The dialog carries a recipient, an optional cover text and
+// nothing else - no attachment picker, no library file, no second order.
+function openMailSend(trigger: HTMLElement) {
+  fireEvent.click(trigger);
+  return screen.findByRole('dialog', { name: 'Dokument per E-Mail senden' });
+}
+
+test('only a finalized document offers the mail action', async () => {
+  setup({
+    documents: [
+      draft,
+      finalized,
+      { ...draft, id: 'doc-withdrawn', state: 'withdrawn' as const },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  expect(
+    await screen.findByRole('button', {
+      name: 'Angebot AN-2030-0001 per E-Mail senden',
+    }),
+  ).toBeTruthy();
+  expect(
+    screen.getAllByRole('button', { name: /per E-Mail senden$/ }),
+  ).toHaveLength(1);
+});
+
+test('the mail dialog prefills the contact address and keeps it correctable', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const recipient = within(dialog).getByLabelText(
+    /Empfänger/,
+  ) as HTMLInputElement;
+  expect(recipient.value).toBe('synthetic.contact@example.invalid');
+  // A free correction is allowed; the server validates it again.
+  fireEvent.change(recipient, {
+    target: { value: 'synthetic.other@example.invalid' },
+  });
+  fireEvent.change(within(dialog).getByLabelText(/Begleittext/), {
+    target: { value: 'Anbei das fiktive Dokument.' },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
+  const requests = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(requests).toHaveLength(1);
+  expect(requests[0]!.body).toMatchObject({
+    documentId: finalized.id,
+    to: 'synthetic.other@example.invalid',
+    bodyText: 'Anbei das fiktive Dokument.',
+  });
+  expect(typeof (requests[0]!.body as { requestId: string }).requestId).toBe(
+    'string',
+  );
+});
+
+test('a contact without an e-mail leaves the field empty instead of inventing one', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(<EventDocuments {...props} contactEmail={null} />);
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const recipient = within(dialog).getByLabelText(
+    /Empfänger/,
+  ) as HTMLInputElement;
+  expect(recipient.value).toBe('');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await waitFor(() =>
+    expect(
+      within(dialog).getByText('Bitte eine Empfängeradresse eingeben.'),
+    ).toBeTruthy(),
+  );
+  expect(
+    calls.filter((call) => call.url === '/api/v1/mail/document-send'),
+  ).toHaveLength(0);
+});
+
+test('Escape and Abbrechen close the mail dialog without an order and return focus', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  await openMailSend(trigger);
+  fireEvent.keyDown(window, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await openMailSend(trigger);
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  expect(
+    calls.filter((call) => call.url === '/api/v1/mail/document-send'),
+  ).toHaveLength(0);
+});
+
+test('a double click sends one order, and an unclear outcome blocks until the list is read again', async () => {
+  let fail = true;
+  const { calls } = setup({
+    documents: [finalized],
+    mailSend: () => {
+      if (fail) throw new Error('Fiktive Antwort verloren');
+      return Response.json({ messageId: 'mail-document-1' }, { status: 200 });
+    },
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const send = within(dialog).getByRole('button', { name: 'Senden' });
+  fireEvent.click(send);
+  fireEvent.click(send);
+  // The page-level status and the dialog alert both carry the wording, so the
+  // assertion is scoped to the open dialog.
+  await waitFor(() =>
+    expect(within(dialog).getByText(/Ausgang ist unklar/)).toBeTruthy(),
+  );
+  const requests = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(requests).toHaveLength(1);
+  const requestId = (requests[0]!.body as { requestId: string }).requestId;
+  // The unclear answer locks the gesture: no second POST until the list is read.
+  expect(send).toHaveProperty('disabled', true);
+  fail = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
+  await waitFor(() => expect(send).toHaveProperty('disabled', false));
+  fireEvent.click(send);
+  await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
+  const repeated = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(repeated).toHaveLength(2);
+  // The same request id: a repetition can only ever reach the same order.
+  expect((repeated[1]!.body as { requestId: string }).requestId).toBe(
+    requestId,
+  );
 });
