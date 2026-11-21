@@ -108,8 +108,12 @@ Abschnitt beschreibt den aktuellen Stand.
   Icon-Gruppe in der Kopfzeile mit Entfernen-Bestätigung (PR #47, `fff7c49`,
   CI grün; Sichtprüfung 1440 px bestätigt, Details im Plan). Produkt-Icon
   liest sich als Zahnrad – als visueller Feinschliff notiert.
-- **Aktiver Slice:** PRODUCTS-DELETE-01 (Produkt löschen mit Bestätigung,
-  Referenzschutz). Danach EDITOR-MOBILE-01, EDITOR-PICKER-01.
+- **Erledigt 21.11.2026 – PRODUCTS-DELETE-01:** Produkt-Löschung mit
+  Bestätigung und Referenzschutz (PR #49, `b19466f`, CI grün); 409
+  `product_in_use` mit Archivierungshinweis statt stiller Löschung, Audit
+  ehrlich als `product.deleted` (Migration 0064). Details im Plan.
+- **Aktiver Slice:** EDITOR-MOBILE-01 (Akkordion für die Preisfelder mobil).
+  Danach EDITOR-PICKER-01 (Produkt-Modal mit Suche/Mehrfachauswahl).
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
