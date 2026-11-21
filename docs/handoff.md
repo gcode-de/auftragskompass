@@ -21,6 +21,12 @@
   Zeilen / 90,73 % Zweige, Changed-Code-Coverage gegen `origin/main`:
   133/157 Zeilen (84,7 %) / 128/146 Zweige (87,7 %). Details und ehrliche
   Grenzen im Plan-Eintrag MAIL-ACCOUNT-01.
+- **Aktiver Slice:** MAIL-EDITOR-01 (GOAL B, formatierter Dokument-Mail-Editor
+  mit Platzhaltern) – Plan mit konkreten Abnahmekriterien im Implementierungs-
+  plan aktiviert (Platzhaltersyntax `{{contact}}` … `{{documentLink}}` aus
+  docs/documents.md verbindlich, Editorbibliothek-Bewertung vor Coding,
+  serverseitiges Sanitizing über den vorhandenen `sanitize-html`-Pfad).
+  Danach MAIL-TPL-01 (GOAL C).
 - **Bestandskorrektur MAIL-DOC-01 (21.11.2026):** Der Slice ist seit PR #68
   (`0ad9324`, gemergt 08:28) auf main; Plan-Checkbox und ältere „Aktiver
   Slice“-Zeilen waren veraltet und sind anhand von Code und Tests korrigiert
