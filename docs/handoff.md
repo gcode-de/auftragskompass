@@ -143,6 +143,28 @@ Abschnitt beschreibt den aktuellen Stand.
   (PR #64, `e8d0e1f`, CI grün) mit echtem TLS-Fixture und Leak-Beweis
   (0 Auth-Versuche ohne STARTTLS); Passwort nie unverschlüsselt. Details im
   Plan.
+- **VORFALL/PROZESSREGEL 21.11.2026 (Vorrang erledigt):** Der
+  Annahme-Korrektur-Knopf (DOC-ACCEPT-FIX-01, PR #58) verursachte einen
+  ernsten axe-Verstoß `label-content-name-mismatch` (sichtbarer Text „Angaben
+  korrigieren“ nicht im zugänglichen Namen „… Annahmedaten korrigieren“) –
+  main war von #58 bis #68 im Browser-Job rot. **Ursache des Merge-Fehlers:**
+  mein Gate zählte nur bestandene Checks (`grep -c pass`) statt auf
+  fehlgeschlagene/pausierte zu prüfen; zusätzlich lief #58 ohne eigenen
+  E2E-Lauf. **Verbindliche Regel:** Merge NUR wenn JEDE Check-Zeile `pass`
+  zeigt (kein `fail`/`pending`; `images: skipping` auf PR-Läufen ist zulässig)
+  – Befehl: `gh pr checks <n> | grep -qE 'fail|pending'` muss leer bleiben;
+  UI-/Browser-Slices laufen vor dem Merge im vollen lokalen E2E;
+  Branch-Protection wird NICHT geschwächt. **Behoben** durch
+  `fix: match the acceptance action label with its accessible name` (PR #69,
+  `0251b9f`): sichtbarer Text heißt jetzt „Annahmedaten korrigieren“ und ist
+  im Namen enthalten; Component-Assertion sichert die Regel ab; auth.spec
+  lokal 3/3 und CI-seitig in beiden Szenarien grün; ein Runner-Flake in
+  event-library-files („browser has been closed“) war im gezielten Re-Run
+  verschwunden. **Main danach nachweislich grün:** Lauf 44887774766 =
+  quality + browser + images erfolgreich. **Betrieb geprüft:** ak-test-
+  api/worker/admin laufen auf `0251b9f`, gesund; ak-test-update.timer ist der
+  alleinige Updater, letzter Lauf regulär beendet (kein Hängen von podman
+  beobachtbar).
 - **Erledigt 21.11.2026 – MAIL-NOTIFY-01:** Anfrage-Benachrichtigung per
   E-Mail neben Telegram (PR #66, `8e8c086`, CI grün); genau ein Mail-Auftrag
   je Eingang, Telegram unverändert, Details im Plan.
