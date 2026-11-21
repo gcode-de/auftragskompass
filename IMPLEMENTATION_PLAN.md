@@ -2633,3 +2633,5 @@ Dieser Stand ersetzt noch nicht bookitup vollständig, ist aber bereits als verl
 - Der konfigurierte Remote ist `https://github.com/gcode-de/auftragskompass.git`; Sichtbarkeit und Repository-Einstellungen werden nicht beiläufig geändert.
 
 - [x] **BACKLOG-01 — `docs: prioritize observed parity gaps`**: Belegte und noch zu verifizierende UI-, Funktions- und Betriebsbefunde mit Quellen und Evidenzgrenzen sammeln; UI-Angleichung vor späteren Fehlerbehebungen priorisieren.
+
+- [x] **BACKLOG-02 — `docs: record local verification limitations`**: Beobachtete Last- und Zeitgrenzen im Backlog festhalten, ohne eine Ursache als bewiesen auszugeben oder Testregeln abzuschwächen.
