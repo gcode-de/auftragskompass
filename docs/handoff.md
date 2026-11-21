@@ -18,8 +18,9 @@
   53 Tests: 52 grün + Zählvertrag document-layout 13→14 gezielt nachgeprüft
   grün; Impeccable-Detektor `[]`, Dateibild-Vision 1280/320 ohne Befund;
   format/lint/typecheck/docs/workspace/build grün, globale Coverage 95,90 %
-  Zeilen / 90,73 % Zweige. Details und ehrliche Grenzen im Plan-Eintrag
-  MAIL-ACCOUNT-01 (Changed-Code-Coverage-Zahlen im Nachtrag unten).
+  Zeilen / 90,73 % Zweige, Changed-Code-Coverage gegen `origin/main`:
+  133/157 Zeilen (84,7 %) / 128/146 Zweige (87,7 %). Details und ehrliche
+  Grenzen im Plan-Eintrag MAIL-ACCOUNT-01.
 - **Bestandskorrektur MAIL-DOC-01 (21.11.2026):** Der Slice ist seit PR #68
   (`0ad9324`, gemergt 08:28) auf main; Plan-Checkbox und ältere „Aktiver
   Slice“-Zeilen waren veraltet und sind anhand von Code und Tests korrigiert
