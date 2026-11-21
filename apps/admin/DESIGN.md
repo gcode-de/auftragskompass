@@ -431,6 +431,21 @@ Abgleich; erst nach „nichts gefunden“ ist ein neuer bewusster Klick
 möglich). Wertänderungen setzen Erfolg/Fehler zurück, ein ungeklärter
 Auftrag bleibt gesperrt. Keine neue Farbe, kein Dialog, kein Remount.
 
+### Dokumentanlage-Dialog (DOC-UX-03, DOC-CREATE-02)
+
+Alle Erstellungswege eines Dokuments laufen über genau einen Auswahldialog in
+der Event-Dokumentansicht: Angebot (Vorlage/Blanko), Auftragsbestätigung,
+Anzahlungsrechnung, Rechnung, Schlussrechnung und Rechnungskorrektur
+(Richtung Gutschrift/Lastschrift) sowie die Blankorechnung. Jeder Weg zeigt
+nur zulässige, finalisierte Quellen dieses Events; ausgeschlossene Zwecke
+(„bereits vorhanden“, „zurückgezogen“) werden knapp benannt statt versteckt.
+Die Zeilenaktion öffnet vorausgewählten Dialog; Abbruch/Escape löst keinen
+Request aus und gibt den Fokus zurück. Genau ein Auftrag je Geste; eine
+unklare Antwort sperrt jede weitere Anlage bis zum ausdrücklichen
+Listenabgleich. Die früheren Inline-Wege (Inline-Bestätigung, Inline-
+Korrekturformular) sind im Dialog aufgegangen. Keine erfundene
+Dubletten-Heuristik – die Server-Guards werden erklärend übernommen.
+
 ### Infotext im Dokumenteditor (DOC-TEXT-02)
 
 Jede Position hat unter den Preis- und Mengenfeldern das beschriftete
