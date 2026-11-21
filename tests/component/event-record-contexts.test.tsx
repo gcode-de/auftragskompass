@@ -262,9 +262,9 @@ test('the files area labels every document by its actual kind', async () => {
   expect(within(invoices).queryByText('AN-2030-0007')).toBeNull();
 });
 
-test('the record offers no mail area while there is no mail function', async () => {
+test('the record offers no mail area beside the documented send action', async () => {
   mockRecord();
-  const { panel } = await open();
+  const { panel, area, tab } = await open();
   const navigation = within(panel).getByRole('navigation', {
     name: 'Bereiche des Events',
   });
@@ -273,13 +273,27 @@ test('the record offers no mail area while there is no mail function', async () 
       .getAllByRole('button')
       .map((button) => button.textContent),
   ).toEqual(['Details', 'Ressourcen', 'Dateien', 'Notizen', 'Logbuch']);
-  expect(within(panel).queryAllByRole('button', { name: /e-?mail/i })).toEqual(
-    [],
-  );
+  // MAIL-DOC-01 (PR #68) ships the row action "Per E-Mail senden" on
+  // finalized documents. That action is not a mail area. The former
+  // whole-panel text check raced the document fetch (the rows render after
+  // open() returns and flipped the check run to run), so wait for the settled
+  // record and pin every mail affordance to exactly the documented action.
+  fireEvent.click(tab('Dateien'));
+  const files = area('Dateien');
+  await within(files).findByRole('region', { name: 'Angebote' });
+  await within(files).findByText('AN-2030-0007');
+  const mailButtons = within(panel).queryAllByRole('button', {
+    name: /e-?mail/i,
+  });
+  expect(mailButtons.length).toBeGreaterThan(0);
+  for (const button of mailButtons)
+    expect(button.getAttribute('aria-label')).toMatch(/per e-mail senden$/i);
   expect(within(panel).queryAllByRole('link', { name: /e-?mail/i })).toEqual(
     [],
   );
-  expect(panel.textContent).not.toMatch(/\bE-Mails?\b/i);
+  expect(within(panel).queryAllByRole('region', { name: /e-?mail/i })).toEqual(
+    [],
+  );
 });
 
 test('a dirty status or resource draft survives every work area switch', async () => {
