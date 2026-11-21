@@ -100,11 +100,17 @@ Abschnitt beschreibt den aktuellen Stand.
   CI grün) mit BKP015.5b-Schutz: genau ein POST je Geste, unklarer Ausgang nur
   über lesenden Bestandsabgleich, nach Fund gesperrt. Abnahme siehe Plan
   (component 988/988, E2E 15/15).
-- **Aktiver Slice:** DOC-EVENTINFO-01 „Eventbezeichnung, Ort und Datum im
-  Dokument“ (passend zur beobachteten Bookitup-Vorlage; fehlende Angaben
-  auslassen statt erfinden). Danach Dokumentrest inkl. DOC-CREATE-02-Rest und
-  DOC-DEPOSIT-FIX-01 (Schlussrechnungs-/Anzahlungs-Grenzfall, vor
-  Produktivnutzung zwingend), danach E-Mail, dann Parität/Design.
+- **Erledigt 21.11.2026 – DOC-EVENTINFO-01:** Eventzeile „für das Event … am …
+  in …“ im Drucklayout (PR #41, `658d58c`, CI grün); fehlende Teile entfallen,
+  ohne Eventwerte bytegleich. Gold-Pin-Anpassung aussagenerhalten und belegt
+  (Details im Plan).
+- **Aktiver Slice:** DOC-DEPOSIT-FIX-01 „Schlussrechnungs-/Anzahlungs-
+  Grenzfall“ (eine Schlussrechnung ohne optionale Positionen kann nach
+  Auftragskorrektur trotz zu hoher Anzahlungen einen negativen Zahlbetrag
+  ergeben; fachlich korrekt und rückwärtsverträglich lösen, Tests für
+  bestehende Korrekturpfade ergänzen – vor produktiver Nutzung zwingend).
+  Danach DOC-CREATE-02-Rest (Schlussrechnung/Korrektur im Dialog), danach
+  E-Mail, dann Parität/Design.
 - **Betrieb (historisch, überholt vom SSH-geprüften Stand oben):** die
   GOAL-Momentaufnahme nannte `b47f5aa` als letzten verifizierten Live-Stand
   und eine falsche Host-IP; maßgeblich ist der Abschnitt „Betrieb (geprüft
