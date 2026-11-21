@@ -3,7 +3,11 @@ import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, asc, eq } from 'drizzle-orm';
-import { products } from './schema.js';
+import {
+  documentLines,
+  documentTemplatePositions,
+  products,
+} from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 import { csv } from './contacts.js';
@@ -18,6 +22,16 @@ export type ProductInput = {
   position: number;
 };
 class ProductError extends Error {}
+// A foreign-key rejection while deleting a product can only mean that a
+// document line or a template position still points at it: the delete is not
+// safe. Both drizzle's wrapper and the driver error are inspected so the
+// caller always receives the documented `product_in_use` answer.
+function isForeignKeyViolation(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: string }).code;
+  const cause = (error as { cause?: { code?: string } }).cause?.code;
+  return code === '23503' || cause === '23503';
+}
 export function productRepository(pool: Pool, tenantId: string) {
   const db = drizzle(pool),
     scope = eq(products.tenantId, tenantId);
@@ -72,6 +86,55 @@ export function productRepository(pool: Pool, tenantId: string) {
           row!.id,
         );
         return row!;
+      });
+    },
+    /**
+     * Deletes an unused catalogue product. A product that a draft, a final
+     * document or a template still refers to is never deleted and never
+     * silently detached: the caller receives `product_in_use` and archiving
+     * stays the way to retire it.
+     */
+    async remove(actorId: string, id: string, version: number) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [row] = await tx
+          .select({ id: products.id, version: products.version })
+          .from(products)
+          .where(and(scope, eq(products.id, id)));
+        if (!row) throw new ProductError('not_found');
+        if (row.version !== version) throw new ProductError('conflict');
+        const [line] = await tx
+          .select({ id: documentLines.id })
+          .from(documentLines)
+          .where(
+            and(
+              eq(documentLines.tenantId, tenantId),
+              eq(documentLines.productId, id),
+            ),
+          )
+          .limit(1);
+        const [position] = await tx
+          .select({ id: documentTemplatePositions.id })
+          .from(documentTemplatePositions)
+          .where(
+            and(
+              eq(documentTemplatePositions.tenantId, tenantId),
+              eq(documentTemplatePositions.productId, id),
+            ),
+          )
+          .limit(1);
+        if (line || position) throw new ProductError('product_in_use');
+        try {
+          await tx.delete(products).where(and(scope, eq(products.id, id)));
+        } catch (error) {
+          if (isForeignKeyViolation(error))
+            throw new ProductError('product_in_use');
+          throw error;
+        }
+        // PRODUCTS-DELETE-01: the removal has its own audit action (migration
+        // 0064 extends the 0052 list additively).
+        await appendAudit(tx, tenantId, 'product.deleted', actorId, id);
       });
     },
   };
@@ -198,6 +261,38 @@ export function registerProductRoutes(
           request.params.id,
           request.body.version,
         );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // The confirmation lives in the UI; the version keeps the deletion from
+  // removing a product that was edited after the row was read.
+  app.delete<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/products/:id',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await repo.remove(
+          request.authSession!.userId,
+          request.params.id,
+          request.body.version,
+        );
+        return reply.code(204).send();
       } catch (error) {
         return failure(error, reply);
       }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
+import { PositionRemoveDialog } from './PositionRemoveDialog.js';
 
 type Product = {
   id: string;
@@ -53,6 +54,20 @@ const archiveMissingMessage =
   'Produkt nicht mehr vorhanden. Bitte Produkte aktualisieren.';
 const archiveUnclearMessage =
   'Archivierungsstand unklar. Bitte Produkte neu laden, bevor du erneut archivierst.';
+const deletingMessage = 'Produkt wird gelöscht …';
+const deletedMessage = 'Produkt gelöscht.';
+const deleteInUseMessage =
+  'Produkt wird in Dokumenten oder Vorlagen verwendet. Statt löschen archivieren.';
+const deleteMissingMessage =
+  'Produkt nicht mehr vorhanden. Bitte Produkte aktualisieren.';
+const deleteConflictMessage =
+  'Inzwischen geändert. Produkte aktualisieren und erneut löschen.';
+const deleteFailureMessage =
+  'Löschen fehlgeschlagen. Produkt und Berechtigung prüfen.';
+const deleteUnclearMessage =
+  'Löschung unklar. Bitte Produkte neu laden, bevor du erneut löschst.';
+const deleteReloadFailureMessage =
+  'Produkt gelöscht, die Liste konnte nicht aktualisiert werden.';
 // Every message in this set is a failure the user must act on; the rest are
 // progress or confirmation and stay a polite status line.
 const errorMessages = new Set([
@@ -62,6 +77,12 @@ const errorMessages = new Set([
   archiveFailureMessage,
   archiveMissingMessage,
   archiveUnclearMessage,
+  deleteInUseMessage,
+  deleteMissingMessage,
+  deleteConflictMessage,
+  deleteFailureMessage,
+  deleteUnclearMessage,
+  deleteReloadFailureMessage,
 ]);
 // decimal.ts owns the exact hundredths conversion. These two patterns only
 // split its single rejection so the field can name its own problem; the
@@ -133,6 +154,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
   const sequence = useRef(0);
   const saving = useRef(false);
   const archiveInFlight = useRef(false);
+  const deleteInFlight = useRef(false);
   const dialog = useRef<HTMLDivElement>(null);
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const createTrigger = useRef<HTMLButtonElement>(null);
@@ -155,6 +177,8 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
     [loadFailed, setLoadFailed] = useState(false),
     [reloadFailed, setReloadFailed] = useState(false),
     [locked, setLocked] = useState(false),
+    [deleteLocked, setDeleteLocked] = useState(false),
+    [confirming, setConfirming] = useState<Product | null>(null),
     [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const dirty = open && JSON.stringify(values) !== JSON.stringify(baseline);
   const messageIsError = errorMessages.has(message);
@@ -179,6 +203,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
         setRows(next);
         setReloadFailed(false);
         setLocked(false);
+        setDeleteLocked(false);
         setMessage((text) => (errorMessages.has(text) ? '' : text));
       }
     } catch (error) {
@@ -496,6 +521,96 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
       setMessage(loadFailureMessage);
     }
   }
+  function askDelete(row: Product) {
+    if (
+      confirming ||
+      open ||
+      busy ||
+      deleteInFlight.current ||
+      deleteLocked ||
+      locked
+    )
+      return;
+    // The confirmation owns the focus question; its trigger keeps the focus
+    // after every outcome, or the create action when the row is gone.
+    focusActionToggle(row.id);
+    rememberTrigger();
+    setOpenActionsId(null);
+    setMessage('');
+    setConfirming(row);
+  }
+  function cancelDelete() {
+    if (deleteInFlight.current) return;
+    setConfirming(null);
+    restoreFocus();
+  }
+  async function removeProduct() {
+    const row = confirming;
+    if (!row || deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setBusy(true);
+    setMessage(deletingMessage);
+    let reopen = false;
+    try {
+      const response = await fetch('/api/v1/products/' + row.id, {
+        method: 'DELETE',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ version: row.version }),
+      });
+      setConfirming(null);
+      if (!response.ok) {
+        const result = (await response
+          .json()
+          .catch(() => ({ error: 'unknown' }))) as { error?: string };
+        reopen = response.status !== 404;
+        setMessage(
+          result.error === 'product_in_use'
+            ? deleteInUseMessage
+            : result.error === 'conflict'
+              ? deleteConflictMessage
+              : response.status === 404
+                ? deleteMissingMessage
+                : deleteFailureMessage,
+        );
+        if (response.status === 404) {
+          // The product is already gone; one list read makes the catalogue
+          // match again without repeating the deletion.
+          try {
+            await refresh();
+          } catch {
+            setMessage(deleteMissingMessage);
+          }
+        }
+        return;
+      }
+      // The deletion is confirmed. Report it first; a failing reload is a
+      // refresh problem, not a reason to send the DELETE again.
+      setRows((current) => current.filter((entry) => entry.id !== row.id));
+      setMessage(deletedMessage);
+      try {
+        await refresh();
+      } catch {
+        setMessage(deleteReloadFailureMessage);
+      }
+    } catch {
+      // No response at all: the deletion may or may not have reached the
+      // server. Keep the row, do not repeat the request, and require a fresh
+      // list read before another deletion.
+      setConfirming(null);
+      setDeleteLocked(true);
+      setMessage(deleteUnclearMessage);
+    } finally {
+      deleteInFlight.current = false;
+      setBusy(false);
+      // A failed deletion reopens the row actions, so archiving (for a used
+      // product) or a retry after reloading is one step away.
+      if (reopen) setOpenActionsId(row.id);
+      setTimeout(restoreFocus, 0);
+    }
+  }
   async function retryReload() {
     try {
       await refresh();
@@ -706,6 +821,15 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               >
                 Archivieren
               </button>
+              <button
+                className="tertiary-action"
+                type="button"
+                disabled={busy || deleteLocked || locked}
+                aria-label={`Produkt löschen: ${row.name}`}
+                onClick={() => askDelete(row)}
+              >
+                Löschen
+              </button>
             </span>
           </li>
         ))}
@@ -723,9 +847,13 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
             Produkte erneut laden
           </button>
         </div>
-      ) : locked && !open ? (
+      ) : (locked || deleteLocked) && !open ? (
         <div className="reload-warning">
-          <p role="status">{unknownOutcomeMessage}</p>
+          <p role="status">
+            {deleteLocked
+              ? 'Produkte neu laden, um den Löschstand abzugleichen.'
+              : unknownOutcomeMessage}
+          </p>
           <button
             type="button"
             className="tertiary-action"
@@ -923,6 +1051,17 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
             </form>
           </div>
         </div>
+      )}
+      {confirming && (
+        <PositionRemoveDialog
+          position={confirming.name}
+          heading="Produkt löschen?"
+          confirmLabel="Löschen"
+          busy={busy}
+          message={`„${confirming.name}“ wird dauerhaft aus dem Produktkatalog entfernt. Verwendete Produkte lassen sich stattdessen archivieren.`}
+          onConfirm={() => void removeProduct()}
+          onCancel={cancelDelete}
+        />
       )}
     </section>
   );
