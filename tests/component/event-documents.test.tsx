@@ -2422,6 +2422,67 @@ test('invoice picker excludes invoiced, withdrawn, draft and foreign-event confi
   ]);
 });
 
+// DOC-CREATE-02-Rest: the final invoice picker uses the same exclusion rules as
+// the standard invoice - exactly one invoice per confirmation, no withdrawn
+// order, no draft and no foreign event.
+test('the final invoice picker excludes invoiced, withdrawn, draft and foreign-event confirmations', async () => {
+  const available = {
+    ...finalizedConfirmation,
+    id: 'available',
+    number: 'AB-2',
+    version: 5,
+  };
+  const { calls } = setup({
+    documents: [
+      finalizedConfirmation,
+      invoiceDraft,
+      {
+        ...invoiceDraft,
+        id: 'final-invoice',
+        sourceDocumentId: 'final-invoiced',
+        invoiceRole: 'final',
+      },
+      { ...finalizedConfirmation, id: 'final-invoiced' },
+      available,
+      confirmationDraft,
+      { ...acceptedOffer, id: 'withdrawn', offerStatus: 'withdrawn' },
+      {
+        ...finalizedConfirmation,
+        id: 'withdrawn-confirmation',
+        sourceDocumentId: 'withdrawn',
+      },
+      { ...finalizedConfirmation, id: 'foreign', eventId: 'event-2' },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  await openOfferCreate();
+  fireEvent.change(screen.getByLabelText('Dokumentenart'), {
+    target: { value: 'final_invoice' },
+  });
+  const dialog = screen.getByRole('dialog', {
+    name: 'Schlussrechnung anlegen',
+  });
+  const source = within(dialog).getByLabelText(
+    'Auftragsbestätigung',
+  ) as HTMLSelectElement;
+  expect(Array.from(source.options).map((option) => option.value)).toEqual([
+    'available',
+  ]);
+  // The chosen version is the listed one, never the version of another row.
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Schlussrechnung anlegen' }),
+  );
+  expect(
+    await screen.findByText('Schlussrechnung als Entwurf angelegt.'),
+  ).toBeTruthy();
+  expect(
+    calls.find((call) => call.url.endsWith('/final-invoice')),
+  ).toMatchObject({
+    url: '/api/v1/documents/available/final-invoice',
+    body: { version: 5 },
+  });
+});
+
 test('creating the invoice asks once and posts the confirmation version', async () => {
   const { calls } = setup({ documents: [finalizedConfirmation] });
   render(<EventDocuments {...props} />);
@@ -3326,20 +3387,17 @@ test('a deposit draft opens the shared editor under its own heading', async () =
 });
 
 // BKP019.c3.2: the final invoice is a third explicit step on the same finalized
-// confirmation. It writes nothing before the operator confirms it, and it never
-// reuses the standard invoice answer.
-test('only a finalized confirmation offers the final invoice action', async () => {
+// confirmation. DOC-CREATE-02-Rest: the row action opens the shared creation
+// dialog, which names the copied positions and the netting that is frozen at
+// finalization - nothing is written before the operator confirms it there.
+test('only a finalized confirmation without an invoice offers the final invoice step', async () => {
   const { calls } = setup({ documents: [finalizedConfirmation] });
   render(<EventDocuments {...props} />);
   const orders = await screen.findByRole('region', {
     name: 'Auftragsbestätigungen',
   });
   const row = within(orders).getByRole('listitem');
-  expect(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
-    }),
-  ).toBeTruthy();
+  expect(row.querySelector('form')).toBeNull();
   // The standard invoice step is still there: the two are alternatives, not
   // replacements - the database allows exactly one of them per confirmation.
   expect(
@@ -3347,33 +3405,57 @@ test('only a finalized confirmation offers the final invoice action', async () =
       name: 'Auftragsbestätigung AB-2030-0001 Rechnung erstellen',
     }),
   ).toBeTruthy();
-  expect(row.querySelector('form')).toBeNull();
   expect(calls.some((call) => call.url.endsWith('/final-invoice'))).toBe(false);
   fireEvent.click(
     within(row).getByRole('button', {
       name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
     }),
   );
-  // The step asks once; the confirming button is the only write.
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Schlussrechnung anlegen',
+  });
+  // The row action preselects its own confirmation; the version is the listed
+  // row's version and is never typed in the dialog.
   expect(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
-    }),
+    (within(dialog).getByLabelText('Auftragsbestätigung') as HTMLSelectElement)
+      .value,
+  ).toBe(finalizedConfirmation.id);
+  expect(
+    within(dialog).getByText(/Positionen werden in den Entwurf kopiert/),
+  ).toBeTruthy();
+  expect(
+    within(dialog).getByText(/beim Finalisieren brutto verrechnet/),
+  ).toBeTruthy();
+  expect(
+    within(dialog).getByText(/als Standardrechnung oder als Schlussrechnung/),
   ).toBeTruthy();
   expect(calls.some((call) => call.url.endsWith('/final-invoice'))).toBe(false);
-  fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
-    }),
-  );
+  // One gesture writes once, even when the button is clicked twice.
+  const submit = within(dialog).getByRole('button', {
+    name: 'Schlussrechnung anlegen',
+  });
+  fireEvent.click(submit);
+  fireEvent.click(submit);
   expect(
     await screen.findByText('Schlussrechnung als Entwurf angelegt.'),
   ).toBeTruthy();
-  const write = calls.find((call) => call.url.endsWith('/final-invoice'))!;
-  expect(write.method).toBe('POST');
-  expect(write.body).toEqual({ version: finalizedConfirmation.version });
-  expect(write.headers!['x-csrf-token']).toBe('fictional-csrf');
-  // The new row is listed as a final invoice, not as a standard one.
+  expect(
+    calls.filter((call) => call.url.endsWith('/final-invoice')),
+  ).toHaveLength(1);
+  expect(
+    calls.find((call) => call.url.endsWith('/final-invoice')),
+  ).toMatchObject({
+    url: '/api/v1/documents/doc-ab-1/final-invoice',
+    method: 'POST',
+    body: { version: finalizedConfirmation.version },
+    headers: { 'x-csrf-token': 'fictional-csrf' },
+  });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  // The one-invoice rule removes the row action after the write, so focus falls
+  // back to the creation surface instead of a button that no longer exists.
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Dokument anlegen' }),
+  );
   const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
   const created = within(invoices).getByRole('listitem');
   expect(within(created).getByText('Schlussrechnung')).toBeTruthy();
@@ -3417,6 +3499,27 @@ test('a confirmation that already carries an invoice offers no second one', asyn
       name: 'Auftragsbestätigung AB-2030-0001 Anzahlung erstellen',
     }),
   ).toBeTruthy();
+  // DOC-CREATE-02-Rest: the dialog names the missing source instead of offering
+  // a submit that can only end in the one-invoice refusal.
+  fireEvent.click(screen.getByRole('button', { name: 'Dokument anlegen' }));
+  fireEvent.change(await screen.findByLabelText('Dokumentenart'), {
+    target: { value: 'final_invoice' },
+  });
+  const dialog = screen.getByRole('dialog', {
+    name: 'Schlussrechnung anlegen',
+  });
+  expect(
+    within(dialog).getByText(
+      'Keine geeignete Auftragsbestätigung ohne Rechnung vorhanden',
+    ),
+  ).toBeTruthy();
+  expect(
+    (
+      within(dialog).getByRole('button', {
+        name: 'Schlussrechnung anlegen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
 });
 
 test('the final invoice step warns when the advances exceed the order', async () => {
@@ -3454,9 +3557,12 @@ test('the final invoice step warns when the advances exceed the order', async ()
       name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
     }),
   );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Schlussrechnung anlegen',
+  });
   expect(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
+    within(dialog).getByRole('button', {
+      name: 'Schlussrechnung anlegen',
     }),
   ).toBeTruthy();
   expect(within(row).getByText(/übersteigen den Auftrag/)).toBeTruthy();
@@ -3626,8 +3732,8 @@ test('the final invoice row names its role, its source and the settled advances'
 });
 
 // BKP019.c3.2: every rejection of the new step has its own wording, an unclear
-// answer is never listed, and the confirmation step can be cancelled without a
-// write.
+// answer blocks the next creation until the list is read again, and Escape
+// closes the dialog without a write.
 test('a rejected, unclear or cancelled final invoice never writes twice', async () => {
   for (const [error, message] of [
     [
@@ -3657,17 +3763,19 @@ test('a rejected, unclear or cancelled final invoice never writes twice', async 
         name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
       }),
     );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Schlussrechnung anlegen',
+    });
     fireEvent.click(
-      within(row).getByRole('button', {
-        name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
-      }),
+      within(dialog).getByRole('button', { name: 'Schlussrechnung anlegen' }),
     );
     expect(await screen.findByText(message)).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
     cleanup();
   }
-  // An answer that does not describe a draft of this event is unclear.
-  setup({
+  // An answer that does not describe a draft of this event is unclear. It stays
+  // a blocked dialog: a second create is only possible after the list was read.
+  const unclear = setup({
     documents: [finalizedConfirmation],
     finalInvoice: () =>
       Response.json(
@@ -3685,19 +3793,36 @@ test('a rejected, unclear or cancelled final invoice never writes twice', async 
       name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
     }),
   );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Schlussrechnung anlegen',
+  });
   fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
-    }),
+    within(dialog).getByRole('button', { name: 'Schlussrechnung anlegen' }),
   );
   expect(
-    await screen.findByText(
+    await within(dialog).findByText(
       'Schlussrechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
     ),
   ).toBeTruthy();
+  const fieldset = within(dialog)
+    .getByLabelText('Dokumentenart')
+    .closest('fieldset') as HTMLFieldSetElement;
+  expect(fieldset.disabled).toBe(true);
+  expect(
+    unclear.calls.filter((call) => call.url.endsWith('/final-invoice')),
+  ).toHaveLength(1);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dateien aktualisieren' }),
+  );
+  expect(
+    await within(dialog).findByText(
+      /Liste aktualisiert. Bitte prüfen Sie vorhandene Rechnungen/,
+    ),
+  ).toBeTruthy();
+  expect(fieldset.disabled).toBe(false);
   expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
   cleanup();
-  // Cancelling returns to the plain row and writes nothing.
+  // Escape returns to the plain row and writes nothing.
   const { calls } = setup({ documents: [finalizedConfirmation] });
   render(<EventDocuments {...props} />);
   const ordersAgain = await screen.findByRole('region', {
@@ -3709,16 +3834,14 @@ test('a rejected, unclear or cancelled final invoice never writes twice', async 
       name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
     }),
   );
-  fireEvent.click(
-    within(rowAgain).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung abbrechen',
-    }),
-  );
-  expect(
+  await screen.findByRole('dialog', { name: 'Schlussrechnung anlegen' });
+  fireEvent.keyDown(window, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(document.activeElement).toBe(
     within(rowAgain).getByRole('button', {
       name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
     }),
-  ).toBeTruthy();
+  );
   expect(calls.some((call) => call.url.endsWith('/final-invoice'))).toBe(false);
 });
 
@@ -3737,10 +3860,11 @@ test('a duplicate final invoice is explained and never listed twice', async () =
       name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung erstellen',
     }),
   );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Schlussrechnung anlegen',
+  });
   fireEvent.click(
-    within(row).getByRole('button', {
-      name: 'Auftragsbestätigung AB-2030-0001 Schlussrechnung anlegen',
-    }),
+    within(dialog).getByRole('button', { name: 'Schlussrechnung anlegen' }),
   );
   expect(
     await screen.findByText(
@@ -3751,8 +3875,10 @@ test('a duplicate final invoice is explained and never listed twice', async () =
 });
 
 // BKP019.c2: a finalized invoice is corrected by its own follow-up document. The
-// step asks once, names the direction, and never touches the invoice itself.
-test('only a finalized invoice offers the correction action', async () => {
+// row action opens the shared creation dialog, which asks once for the direction
+// and never touches the invoice itself. DOC-CREATE-02-Rest: a finalized order
+// confirmation is a correctable claim too, through the same dialog.
+test('only a finalized claim offers the correction action', async () => {
   setup({ documents: [invoiceFinal] });
   render(<EventDocuments {...props} />);
   const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
@@ -3765,7 +3891,20 @@ test('only a finalized invoice offers the correction action', async () => {
   // Nothing writes before the operator opens and confirms the step.
   expect(row.querySelector('form')).toBeNull();
   cleanup();
-  for (const entry of [invoiceDraft, finalizedConfirmation, finalized]) {
+  // A finalized confirmation is corrected the same way, in the same dialog.
+  setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  expect(
+    within(within(orders).getByRole('listitem')).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 korrigieren',
+    }),
+  ).toBeTruthy();
+  cleanup();
+  // A draft, a finalized offer and a draft confirmation are no sources at all.
+  for (const entry of [invoiceDraft, confirmationDraft, finalized]) {
     setup({ documents: [entry] });
     const other = render(<EventDocuments {...props} />);
     await screen.findByText(/Angelegt am|Finalisiert am/);
@@ -3775,7 +3914,7 @@ test('only a finalized invoice offers the correction action', async () => {
   }
 });
 
-test('the correction form asks for a direction and shows the remaining credit', async () => {
+test('the correction dialog asks for a source and a direction', async () => {
   const { calls } = setup({ documents: [invoiceFinal] });
   render(<EventDocuments {...props} />);
   const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
@@ -3788,32 +3927,50 @@ test('the correction form asks for a direction and shows the remaining credit', 
       name: 'Rechnung RE-2030-0001 korrigieren',
     }),
   );
-  const form = within(row).getByRole('form', {
+  const dialog = await screen.findByRole('dialog', {
     name: 'Rechnungskorrektur anlegen',
   });
-  const direction = within(form).getByLabelText(
+  // The row action preselects its own claim; the version comes from the row.
+  expect(
+    (within(dialog).getByLabelText('Quellbeleg') as HTMLSelectElement).value,
+  ).toBe(invoiceFinal.id);
+  const direction = within(dialog).getByLabelText(
     'Richtung',
   ) as HTMLSelectElement;
   // The default direction is the credit note; the operator can switch it.
   expect(direction.value).toBe('credit');
   expect(
-    within(form).getByText('Gutschrift (mindert den Betrag)'),
+    within(dialog).getByText('Gutschrift (mindert den Betrag)'),
+  ).toBeTruthy();
+  expect(
+    within(dialog).getByText('Lastschrift (erhöht den Betrag)'),
   ).toBeTruthy();
   expect(calls.some((call) => call.url.endsWith('/correction'))).toBe(false);
   fireEvent.change(direction, { target: { value: 'debit' } });
-  fireEvent.click(
-    within(form).getByRole('button', { name: 'Korrektur anlegen' }),
-  );
+  const submit = within(dialog).getByRole('button', {
+    name: 'Korrektur anlegen',
+  });
+  fireEvent.click(submit);
+  fireEvent.click(submit);
   expect(
     await screen.findByText('Rechnungskorrektur als Entwurf angelegt.'),
   ).toBeTruthy();
-  // Exactly the two facts the server cannot guess are sent.
+  // Exactly the two facts the server cannot guess are sent, once.
+  expect(calls.filter((call) => call.url.endsWith('/correction'))).toHaveLength(
+    1,
+  );
   expect(calls.find((call) => call.url.endsWith('/correction'))).toMatchObject({
     url: '/api/v1/documents/doc-re-1/correction',
     method: 'POST',
     body: { version: 2, direction: 'debit' },
     headers: { 'x-csrf-token': 'fictional-csrf' },
   });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(document.activeElement).toBe(
+    within(row).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  );
   const corrections = await screen.findByRole('region', {
     name: 'Rechnungskorrekturen',
   });
@@ -3825,6 +3982,155 @@ test('the correction form asks for a direction and shows the remaining credit', 
       .getByRole('link', { name: 'Beleg RE-2030-0001 als PDF öffnen' })
       .getAttribute('href'),
   ).toBe('/api/v1/documents/doc-re-1/pdf');
+});
+
+// DOC-CREATE-02-Rest: a finalized order confirmation is a correction source of
+// its own. The dialog offers exactly that claim, never the offer behind it, and
+// posts its listed version with the chosen direction.
+test('a finalized confirmation is a correction source of its own', async () => {
+  const { calls } = setup({ documents: [finalizedConfirmation] });
+  render(<EventDocuments {...props} />);
+  const orders = await screen.findByRole('region', {
+    name: 'Auftragsbestätigungen',
+  });
+  fireEvent.click(
+    within(orders).getByRole('button', {
+      name: 'Auftragsbestätigung AB-2030-0001 korrigieren',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Rechnungskorrektur anlegen',
+  });
+  const source = within(dialog).getByLabelText(
+    'Quellbeleg',
+  ) as HTMLSelectElement;
+  expect(source.value).toBe(finalizedConfirmation.id);
+  expect(Array.from(source.options).map((option) => option.value)).toEqual([
+    finalizedConfirmation.id,
+  ]);
+  expect(
+    within(dialog).getByText(/als Lastschrift erhöht sie ihn/),
+  ).toBeTruthy();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Korrektur anlegen' }),
+  );
+  expect(
+    await screen.findByText('Rechnungskorrektur als Entwurf angelegt.'),
+  ).toBeTruthy();
+  expect(calls.filter((call) => call.url.endsWith('/correction'))).toHaveLength(
+    1,
+  );
+  expect(calls.find((call) => call.url.endsWith('/correction'))).toMatchObject({
+    url: '/api/v1/documents/doc-ab-1/correction',
+    method: 'POST',
+    body: { version: finalizedConfirmation.version, direction: 'credit' },
+  });
+});
+
+test('the correction picker offers only finalized claims of this event', async () => {
+  setup({
+    documents: [
+      finalizedConfirmation,
+      invoiceFinal,
+      depositFinal,
+      invoiceDraft,
+      confirmationDraft,
+      finalized,
+      { ...invoiceFinal, id: 'foreign', eventId: 'event-2' },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  await openOfferCreate();
+  fireEvent.change(screen.getByLabelText('Dokumentenart'), {
+    target: { value: 'correction' },
+  });
+  const dialog = screen.getByRole('dialog', {
+    name: 'Rechnungskorrektur anlegen',
+  });
+  const source = within(dialog).getByLabelText(
+    'Quellbeleg',
+  ) as HTMLSelectElement;
+  // The three finalized claims of this event, in list order. A draft, an offer
+  // and a foreign event are never correctable sources.
+  expect(Array.from(source.options).map((option) => option.text)).toEqual([
+    'Auftragsbestätigung AB-2030-0001',
+    'Rechnung RE-2030-0001',
+    'Anzahlungsrechnung AZ-2030-0001',
+  ]);
+  expect(
+    within(dialog).getByText(
+      /Gutschrift mindert sie den Betrag, als Lastschrift erhöht sie ihn/,
+    ),
+  ).toBeTruthy();
+});
+
+test('an unclear correction result blocks another post until the list is read again', async () => {
+  const { calls } = setup({
+    documents: [invoiceFinal],
+    correction: () =>
+      Response.json(
+        { ...correctionDraft, eventId: 'event-2' },
+        { status: 201 },
+      ),
+  });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  fireEvent.click(
+    within(invoices).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Rechnungskorrektur anlegen',
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Korrektur anlegen' }),
+  );
+  expect(
+    await within(dialog).findByText(
+      'Rechnungskorrektur angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
+    ),
+  ).toBeTruthy();
+  const fieldset = within(dialog)
+    .getByLabelText('Dokumentenart')
+    .closest('fieldset') as HTMLFieldSetElement;
+  expect(fieldset.disabled).toBe(true);
+  expect(calls.filter((call) => call.url.endsWith('/correction'))).toHaveLength(
+    1,
+  );
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dateien aktualisieren' }),
+  );
+  expect(
+    await within(dialog).findByText(
+      /Liste aktualisiert. Bitte prüfen Sie vorhandene Korrekturen/,
+    ),
+  ).toBeTruthy();
+  expect(fieldset.disabled).toBe(false);
+  expect(calls.filter((call) => call.url.endsWith('/correction'))).toHaveLength(
+    1,
+  );
+});
+
+test('Escape closes the correction dialog and returns focus without a request', async () => {
+  const { calls } = setup({ documents: [invoiceFinal] });
+  render(<EventDocuments {...props} />);
+  const invoices = await screen.findByRole('region', { name: 'Rechnungen' });
+  const row = within(invoices).getByRole('listitem');
+  fireEvent.click(
+    within(row).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  );
+  await screen.findByRole('dialog', { name: 'Rechnungskorrektur anlegen' });
+  fireEvent.keyDown(window, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(document.activeElement).toBe(
+    within(row).getByRole('button', {
+      name: 'Rechnung RE-2030-0001 korrigieren',
+    }),
+  );
+  expect(calls.some((call) => call.url.endsWith('/correction'))).toBe(false);
 });
 
 test('a fully credited invoice warns before a second credit', async () => {
@@ -3844,11 +4150,11 @@ test('a fully credited invoice warns before a second credit', async () => {
       name: 'Rechnung RE-2030-0001 korrigieren',
     }),
   );
-  const form = within(row).getByRole('form', {
+  const dialog = await screen.findByRole('dialog', {
     name: 'Rechnungskorrektur anlegen',
   });
-  // The guard is the server's; the form says so before the round trip.
-  expect(within(form).getByRole('alert').textContent).toContain(
+  // The guard is the server's; the dialog says so before the round trip.
+  expect(within(dialog).getByRole('alert').textContent).toContain(
     'bereits vollständig gutgeschrieben',
   );
 });
@@ -3888,8 +4194,11 @@ test('a refused credit is explained instead of retried', async () => {
       name: 'Rechnung RE-2030-0001 korrigieren',
     }),
   );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Rechnungskorrektur anlegen',
+  });
   fireEvent.click(
-    within(row).getByRole('button', { name: 'Korrektur anlegen' }),
+    within(dialog).getByRole('button', { name: 'Korrektur anlegen' }),
   );
   expect(
     await screen.findByText(
