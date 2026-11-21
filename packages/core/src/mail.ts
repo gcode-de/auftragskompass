@@ -7,6 +7,16 @@ import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 import { encryptTelegramToken, decryptTelegramToken } from './telegram.js';
 import { readDocumentPdf } from './document-artifacts.js';
+import {
+  assertMailPlaceholders,
+  escapeMailHtmlText,
+  mailBodyTextFromHtml,
+  mailPlaceholderValues,
+  resolveMailPlaceholders,
+  sanitizeMailHtml,
+  type MailPlaceholder,
+  type MailValueSources,
+} from './mail-content.js';
 import type { StorageAdapter } from './storage.js';
 import type {
   MailSendAttachment,
@@ -71,6 +81,7 @@ export type MailErrorReason =
   | 'not_retryable'
   | 'not_final'
   | 'attachment_unavailable'
+  | 'invalid_content'
   | 'idempotency_conflict';
 export class MailError extends Error {
   constructor(readonly reason: MailErrorReason) {
@@ -214,8 +225,25 @@ export type MailDocumentSendInput = {
   /** Client-generated once per gesture: same id, same order. */
   requestId: string;
   to: string;
+  /** Legacy plain cover text; resolved like `bodyHtml`, never HTML. */
   bodyText?: string | null;
+  /** MAIL-EDITOR-01: formatted cover text with the documented placeholders. */
+  bodyHtml?: string | null;
   accountId?: string | null;
+};
+// MAIL-EDITOR-01: the read-only twin of a document send. It runs the very
+// same checks and content assembly and stores nothing.
+export type MailDocumentPreviewInput = {
+  documentId: string;
+  bodyText?: string | null;
+  bodyHtml?: string | null;
+};
+export type MailDocumentPreview = {
+  subject: string;
+  bodyHtml: string | null;
+  bodyText: string;
+  /** Names of known placeholders without a value; they stay visible. */
+  missing: string[];
 };
 export type MailDocumentSendResult = {
   job: MailOutboxRow;
@@ -233,6 +261,12 @@ export type MailOutboxConfig = {
   key?: Uint8Array | null;
   /** MAIL-DOC-01: content-addressed store the attachment bytes come from. */
   store?: StorageAdapter | null;
+};
+/** MAIL-EDITOR-01: the repository may resolve {{documentLink}}. */
+export type MailRepositoryOptions = {
+  store?: StorageAdapter | null;
+  /** Admin origin; empty leaves {{documentLink}} without a value. */
+  origin?: string;
 };
 export type MailOutboxFailure =
   | { type: 'database'; stage: 'claim' | 'finalize' }
@@ -283,6 +317,18 @@ function bodyText(
       throw new MailError(reason);
   }
   return trimmed;
+}
+// MAIL-EDITOR-01: formatted body content. Markup is allowed here - the
+// sanitizer decides what survives - only the size is bounded.
+function htmlBody(
+  value: unknown,
+  max: number,
+  reason: MailErrorReason,
+): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') throw new MailError(reason);
+  if (value.length > max) throw new MailError(reason);
+  return value.trim();
 }
 const addressPattern = /^[^\s@,<>"'\\]+@[^\s@,<>"'\\]+\.[^\s@,<>"'\\]+$/;
 // Shared by the mail core and the notification settings: one address form.
@@ -504,10 +550,11 @@ export function mailRepository(
   pool: Pool,
   tenantId: string,
   encryptionKey: Uint8Array | null,
-  options: { store?: StorageAdapter | null } = {},
+  options: MailRepositoryOptions = {},
 ) {
   const db = database(pool),
-    store = options.store ?? null;
+    store = options.store ?? null,
+    origin = options.origin ?? '';
 
   // Reads are tenant-bound by this closure; routes add the membership check.
   async function requireMember(actorId: string) {
@@ -582,6 +629,152 @@ export function mailRepository(
         sizeBytes: Number(attachment.size_bytes),
       },
       created,
+    };
+  }
+
+  // MAIL-EDITOR-01: the placeholder values of one document, read from the
+  // structured fields only - a first name never comes from the full name and
+  // a missing field stays a missing value.
+  async function mailValueSources(
+    connection: Connection,
+    document: {
+      id: string;
+      grossMinor: number;
+      contactId: string | null;
+      eventId: string | null;
+    },
+  ): Promise<MailValueSources> {
+    let contact: MailValueSources['contact'] = null;
+    if (document.contactId) {
+      const result = (await reviewed(connection).execute(sql`
+        SELECT name, first_name FROM contacts
+         WHERE tenant_id=${tenantId} AND id=${document.contactId}::uuid`)) as {
+        rows: { name: string; first_name: string }[];
+      };
+      const row = result.rows[0];
+      if (row) contact = { name: row.name, firstName: row.first_name };
+    }
+    let event: MailValueSources['event'] = null;
+    if (document.eventId) {
+      const result = (await reviewed(connection).execute(sql`
+        SELECT name, event_date::text AS event_date, venue, venue_override,
+               location_id::text AS location_id,
+               event_type_id::text AS event_type_id,
+               package_id::text AS package_id
+          FROM events
+         WHERE tenant_id=${tenantId} AND id=${document.eventId}::uuid`)) as {
+        rows: {
+          name: string;
+          event_date: string | null;
+          venue: string | null;
+          venue_override: boolean;
+          location_id: string | null;
+          event_type_id: string | null;
+          package_id: string | null;
+        }[];
+      };
+      const row = result.rows[0];
+      if (row) {
+        let locationName: string | null = null;
+        if (row.location_id) {
+          const location = (await reviewed(connection).execute(sql`
+            SELECT name FROM locations
+             WHERE tenant_id=${tenantId} AND id=${row.location_id}::uuid`)) as {
+            rows: { name: string }[];
+          };
+          locationName = location.rows[0]?.name ?? null;
+        }
+        let eventTypeName: string | null = null,
+          packageName: string | null = null;
+        const kindIds = [row.event_type_id, row.package_id].filter(
+          (value): value is string => Boolean(value),
+        );
+        if (kindIds.length) {
+          const names = (await reviewed(connection).execute(sql`
+            SELECT id::text AS id, name FROM master_data
+             WHERE tenant_id=${tenantId} AND id=ANY(${kindIds}::uuid[])`)) as {
+            rows: { id: string; name: string }[];
+          };
+          const byId = new Map(
+            names.rows.map((entry) => [entry.id, entry.name]),
+          );
+          eventTypeName = row.event_type_id
+            ? (byId.get(row.event_type_id) ?? null)
+            : null;
+          packageName = row.package_id
+            ? (byId.get(row.package_id) ?? null)
+            : null;
+        }
+        event = {
+          name: row.name,
+          eventDate: row.event_date,
+          venue: row.venue,
+          venueOverride: row.venue_override,
+          locationName,
+          eventTypeName,
+          packageName,
+        };
+      }
+    }
+    const tenant = (await reviewed(connection).execute(sql`
+      SELECT timezone FROM tenants WHERE id=${tenantId}`)) as {
+      rows: { timezone: string }[];
+    };
+    return {
+      origin,
+      document: { id: document.id, grossMinor: document.grossMinor },
+      contact,
+      event,
+      timezone: tenant.rows[0]?.timezone ?? 'UTC',
+    };
+  }
+
+  // MAIL-EDITOR-01: the body of a document mail. Unknown placeholders are
+  // invalid content; known ones without a value stay visible instead of
+  // being silently emptied. The HTML is always sanitized and the text
+  // alternative is always derived on the server.
+  async function documentMailContent(
+    connection: Connection,
+    document: {
+      id: string;
+      number: string;
+      grossMinor: number;
+      contactId: string | null;
+      eventId: string | null;
+    },
+    input: { bodyHtml: string | null; bodyText: string | null },
+  ): Promise<{ bodyHtml: string | null; bodyText: string; missing: string[] }> {
+    const raw = input.bodyHtml ?? input.bodyText ?? '';
+    try {
+      assertMailPlaceholders(raw);
+    } catch {
+      throw new MailError('invalid_content');
+    }
+    const values = mailPlaceholderValues(
+      await mailValueSources(connection, document),
+    );
+    const fallback = `Anbei erhalten Sie das Dokument ${document.number} als PDF.`;
+    if (input.bodyHtml) {
+      // Values are text: escaped for the HTML, raw for the text alternative.
+      const escaped = Object.fromEntries(
+        Object.entries(values).map(([name, value]) => [
+          name,
+          escapeMailHtmlText(value),
+        ]),
+      ) as Partial<Record<MailPlaceholder, string>>;
+      const resolved = resolveMailPlaceholders(input.bodyHtml, escaped),
+        html = sanitizeMailHtml(resolved.text);
+      return {
+        bodyHtml: html,
+        bodyText: mailBodyTextFromHtml(html),
+        missing: resolved.missing,
+      };
+    }
+    const resolved = resolveMailPlaceholders(input.bodyText ?? '', values);
+    return {
+      bodyHtml: null,
+      bodyText: resolved.text || fallback,
+      missing: resolved.missing,
     };
   }
 
@@ -910,17 +1103,21 @@ export function mailRepository(
           return await documentSendOf(tx, toOutbox(existing.rows[0]), false);
 
         const to = mailAddressList(input.to),
-          text = bodyText(input.bodyText ?? '', 20000, 'invalid_body');
+          text = bodyText(input.bodyText ?? '', 20000, 'invalid_body'),
+          html = htmlBody(input.bodyHtml, 200000, 'invalid_body');
+        // At most one body kind: the formatted body wins nothing silently.
+        if (html && text) throw new MailError('invalid_body');
         if (!to) throw new MailError('invalid_recipients');
         const found = await tx.execute<{
           number: string | null;
           state: 'draft' | 'final' | 'withdrawn';
           pdf_hash: string | null;
+          gross_minor: string;
           contact_id: string | null;
           event_id: string | null;
         }>(
-          sql`SELECT number, state, pdf_hash, contact_id::text AS contact_id,
-                     event_id::text AS event_id
+          sql`SELECT number, state, pdf_hash, gross_minor,
+                     contact_id::text AS contact_id, event_id::text AS event_id
                 FROM documents
                WHERE tenant_id=${tenantId} AND id=${input.documentId}::uuid`,
         );
@@ -949,16 +1146,25 @@ export function mailRepository(
           messageId = randomUUID(),
           filename = attachmentFileName(document.number),
           subject = `Dokument ${document.number}`.slice(0, 998),
-          body =
-            text ||
-            `Anbei erhalten Sie das Dokument ${document.number} als PDF.`;
+          // MAIL-EDITOR-01: resolve, sanitize and derive - on the server.
+          content = await documentMailContent(
+            tx,
+            {
+              id: input.documentId,
+              number: document.number,
+              grossMinor: Number(document.gross_minor),
+              contactId: document.contact_id,
+              eventId: document.event_id,
+            },
+            { bodyHtml: html || null, bodyText: text || null },
+          );
         const inserted = (await reviewed(tx).execute(sql`
           INSERT INTO mail_messages AS m
             (tenant_id,id,account_id,direction,folder,subject,body_text,
-             to_addresses,contact_id,event_id)
+             body_html,to_addresses,contact_id,event_id)
           VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
-                  ${subject},${body},${to},${document.contact_id}::uuid,
-                  ${document.event_id}::uuid)
+                  ${subject},${content.bodyText},${content.bodyHtml},${to},
+                  ${document.contact_id}::uuid,${document.event_id}::uuid)
           RETURNING ${messageColumns}`)) as { rows: MessageQueryRow[] };
         await reviewed(tx).execute(sql`
           INSERT INTO mail_attachments
@@ -996,6 +1202,54 @@ export function mailRepository(
             sizeBytes: bytes.byteLength,
           },
           created: true,
+        };
+      });
+    },
+
+    // MAIL-EDITOR-01: the read-only twin of the send above. The same document
+    // checks and the same content assembly - but no order, no attachment
+    // check, no audit and no row of any kind.
+    async previewDocumentSend(
+      input: MailDocumentPreviewInput,
+    ): Promise<MailDocumentPreview> {
+      return db.transaction(async (tx) => {
+        const text = bodyText(input.bodyText ?? '', 20000, 'invalid_body'),
+          html = htmlBody(input.bodyHtml, 200000, 'invalid_body');
+        if (html && text) throw new MailError('invalid_body');
+        const found = await tx.execute<{
+          number: string | null;
+          state: 'draft' | 'final' | 'withdrawn';
+          gross_minor: string;
+          contact_id: string | null;
+          event_id: string | null;
+        }>(
+          sql`SELECT number, state, gross_minor,
+                     contact_id::text AS contact_id, event_id::text AS event_id
+                FROM documents
+               WHERE tenant_id=${tenantId} AND id=${input.documentId}::uuid`,
+        );
+        const document = found.rows[0];
+        // Another tenant's row is missing, never forbidden: no leak.
+        if (!document) throw new MailError('not_found');
+        // A draft has no final content to preview honestly.
+        if (document.state !== 'final' || !document.number)
+          throw new MailError('not_final');
+        const content = await documentMailContent(
+          tx,
+          {
+            id: input.documentId,
+            number: document.number,
+            grossMinor: Number(document.gross_minor),
+            contactId: document.contact_id,
+            eventId: document.event_id,
+          },
+          { bodyHtml: html || null, bodyText: text || null },
+        );
+        return {
+          subject: `Dokument ${document.number}`.slice(0, 998),
+          bodyHtml: content.bodyHtml,
+          bodyText: content.bodyText,
+          missing: content.missing,
         };
       });
     },
@@ -1618,9 +1872,14 @@ export function registerMailRoutes(
   options: {
     store?: StorageAdapter | null;
     key?: Uint8Array | null;
+    /** MAIL-EDITOR-01: admin origin for {{documentLink}}. */
+    origin?: string;
   } = {},
 ) {
-  const repo = mailRepository(pool, tenantId, options.key ?? null, options),
+  const repo = mailRepository(pool, tenantId, options.key ?? null, {
+      store: options.store ?? null,
+      origin: options.origin ?? '',
+    }),
     params = {
       type: 'object',
       required: ['id'],
@@ -1817,6 +2076,7 @@ export function registerMailRoutes(
             requestId: { type: 'string', minLength: 1, maxLength: 200 },
             to: { type: 'string', minLength: 3, maxLength: 4000 },
             bodyText: { type: 'string', maxLength: 20000 },
+            bodyHtml: { type: 'string', maxLength: 200000 },
             accountId: { type: 'string', format: 'uuid' },
           },
         },
@@ -1834,6 +2094,52 @@ export function registerMailRoutes(
           job: result.job,
           attachment: result.attachment,
         });
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // MAIL-EDITOR-01: the read-only twin of the order above. It runs the same
+  // checks and content assembly so the preview is the actual result, and it
+  // writes nothing - no message, no order, no audit.
+  app.post<{ Body: MailDocumentPreviewInput }>(
+    '/api/v1/mail/document-send/preview',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['documentId'],
+          properties: {
+            documentId: { type: 'string', format: 'uuid' },
+            bodyText: { type: 'string', maxLength: 20000 },
+            bodyHtml: { type: 'string', maxLength: 200000 },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['subject', 'bodyHtml', 'bodyText', 'missing'],
+            properties: {
+              subject: { type: 'string' },
+              bodyHtml: nullableText,
+              bodyText: { type: 'string' },
+              missing: {
+                type: 'array',
+                maxItems: 9,
+                items: { type: 'string', maxLength: 40 },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        // Reading the resolved content requires an active membership.
+        await repo.requireMember(request.authSession!.userId);
+        return await repo.previewDocumentSend(request.body);
       } catch (error) {
         return failure(error, reply);
       }

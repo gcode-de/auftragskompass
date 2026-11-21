@@ -80,7 +80,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // MAIL-ACCOUNT-01 (0072) adds three columns to mail_accounts (sender
   // identity and transport choice) with one table-level check, and widens the
   // audit vocabulary by one action; every existing row keeps its meaning.
-  expect(applied.at(-1)!.name).toBe('0072_mail_account_settings.sql');
+  // MAIL-EDITOR-01a (0073) adds one optional column to contacts (the separate
+  // first name of MAIL-EDITOR-01); every existing row keeps its meaning.
+  expect(applied.at(-1)!.name).toBe('0073_contact_first_name.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

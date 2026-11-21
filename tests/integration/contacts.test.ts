@@ -112,6 +112,55 @@ test('contacts normalize, suggest duplicates across phone fields and keep archiv
     ]),
   ).rejects.toMatchObject({ code: '23503' });
 });
+test('the contact first name is its own structured field and never guessed', async () => {
+  const repo = contactRepository(pool, tenantId);
+  // Distinct addresses and no phones keep the duplicate suggestions of the
+  // other tests untouched.
+  const distinct = {
+    ...input,
+    phone: '',
+    mobile: '',
+  };
+  // A legacy write without the field keeps working and stores no guessed name.
+  const legacy = await repo.save(actorId, {
+    ...distinct,
+    name: 'Legacy Names',
+    email: 'legacy-names@example.invalid',
+  });
+  expect(legacy.firstName).toBe('');
+  const named = await repo.save(actorId, {
+    ...distinct,
+    name: 'First Name Holder',
+    email: 'erika-first-name@example.invalid',
+    firstName: ' Erika ',
+  });
+  expect(named.firstName).toBe('Erika');
+  // An update without the field keeps the stored one; only an explicit value
+  // changes it (H034 keep-on-absent pattern).
+  const kept = await repo.save(
+    actorId,
+    {
+      ...distinct,
+      name: 'First Name Holder',
+      email: 'erika-first-name@example.invalid',
+    },
+    named.id,
+    named.version,
+  );
+  expect(kept.firstName).toBe('Erika');
+  const cleared = await repo.save(
+    actorId,
+    {
+      ...distinct,
+      name: 'First Name Holder',
+      email: 'erika-first-name@example.invalid',
+      firstName: '',
+    },
+    kept.id,
+    kept.version,
+  );
+  expect(cleared.firstName).toBe('');
+});
 test('contact API authorizes reads, export and writes, validates and rolls back unaudited changes', async () => {
   const config = {
     origin: 'https://admin.example.invalid',
@@ -172,12 +221,51 @@ test('contact API authorizes reads, export and writes, validates and rolls back 
       { kind: 'unknown' },
       { country: 'Germany' },
       { state: 'deleted' },
+      { firstName: 'x'.repeat(201) },
     ])
       expect((await create({ ...input, ...bad })).statusCode).toBe(400);
     const created = await create({ ...input, name: '=Synthetic formula' });
     expect(created.statusCode).toBe(201);
     expect(created.json()).not.toHaveProperty('tenantId');
     expect(created.json()).not.toHaveProperty('phoneKey');
+    // The first name travels as its own field: a write without it answers the
+    // empty string, an explicit value is stored, and an update without it
+    // keeps the stored value.
+    expect(created.json()).toHaveProperty('firstName', '');
+    // A distinct address and no phone keep the duplicate suggestions below
+    // untouched.
+    const named = await create({
+      ...input,
+      email: 'named@example.invalid',
+      phone: '',
+      firstName: 'Erika',
+    });
+    expect(named.statusCode).toBe(201);
+    expect(named.json()).toHaveProperty('firstName', 'Erika');
+    const namedUrl = '/api/v1/contacts/' + named.json().id;
+    const namedRest = {
+      ...input,
+      email: 'named@example.invalid',
+      phone: '',
+    };
+    const keptPut = await app.inject({
+      method: 'PUT',
+      url: namedUrl,
+      cookies,
+      headers,
+      payload: { ...namedRest, version: 1 },
+    });
+    expect(keptPut.statusCode).toBe(200);
+    expect(keptPut.json()).toHaveProperty('firstName', 'Erika');
+    const clearedPut = await app.inject({
+      method: 'PUT',
+      url: namedUrl,
+      cookies,
+      headers,
+      payload: { ...namedRest, firstName: '', version: 2 },
+    });
+    expect(clearedPut.statusCode).toBe(200);
+    expect(clearedPut.json()).toHaveProperty('firstName', '');
     const contactUrl = '/api/v1/contacts/' + created.json().id;
     expect(
       (await app.inject({ url: contactUrl, cookies })).json(),

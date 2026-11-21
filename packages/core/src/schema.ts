@@ -147,6 +147,7 @@ export const contacts = pgTable('contacts', {
   id: uuid('id').notNull(),
   kind: text('kind').notNull(),
   name: text('name').notNull(),
+  firstName: text('first_name').notNull().default(''),
   contactPerson: text('contact_person').notNull(),
   street: text('street').notNull(),
   postalCode: text('postal_code').notNull(),

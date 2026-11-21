@@ -154,7 +154,11 @@ const validators = Object.fromEntries(
           data: {
             type: 'object',
             additionalProperties: false,
-            required: Object.keys(fields[section]),
+            // MAIL-EDITOR-01a: the first name is optional exactly like in the
+            // contact API, so old import files stay valid.
+            required: Object.keys(fields[section]).filter(
+              (name) => name !== 'firstName',
+            ),
             properties: fields[section],
           },
         },

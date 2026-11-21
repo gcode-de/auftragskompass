@@ -7,6 +7,7 @@ type ContactInput = Omit<Contact, 'id' | 'version'>;
 
 const fields = [
   ['name', 'Name / Firma', 200],
+  ['firstName', 'Vorname', 200],
   ['contactPerson', 'Ansprechpartner', 200],
   ['street', 'Straße und Hausnummer', 200],
   ['postalCode', 'Postleitzahl', 20],
@@ -29,6 +30,7 @@ function blankContact(): ContactInput {
   return {
     kind: 'private',
     name: '',
+    firstName: '',
     contactPerson: '',
     street: '',
     postalCode: '',
@@ -41,18 +43,24 @@ function blankContact(): ContactInput {
   };
 }
 
+// Trust boundary: a list answer may predate a field. Missing text becomes
+// empty text instead of crashing the form submit; the form validation and the
+// server contract stay the single judges of what is acceptable.
+const text = (value: string) => (typeof value === 'string' ? value : '');
+
 function contactInput(row: Contact): ContactInput {
   return {
     kind: row.kind,
-    name: row.name,
-    contactPerson: row.contactPerson,
-    street: row.street,
-    postalCode: row.postalCode,
-    city: row.city,
-    country: row.country,
-    email: row.email,
-    phone: row.phone,
-    mobile: row.mobile,
+    name: text(row.name),
+    firstName: text(row.firstName),
+    contactPerson: text(row.contactPerson),
+    street: text(row.street),
+    postalCode: text(row.postalCode),
+    city: text(row.city),
+    country: text(row.country),
+    email: text(row.email),
+    phone: text(row.phone),
+    mobile: text(row.mobile),
     state: row.state,
   };
 }

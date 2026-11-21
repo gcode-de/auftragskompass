@@ -10,6 +10,10 @@ import { phonePattern } from './inquiry-form-definition.js';
 export type ContactInput = {
   kind: 'private' | 'company';
   name: string;
+  /** MAIL-EDITOR-01a: the contact's own first name. Absent keeps the stored
+   *  one on updates and means "none" on inserts; it is never guessed from
+   *  `name`. */
+  firstName?: string;
   contactPerson: string;
   street: string;
   postalCode: string;
@@ -143,6 +147,8 @@ export function contactRepository(pool: Connection, tenantId: string) {
         const values = {
           ...input,
           name: input.name.trim(),
+          firstName:
+            input.firstName === undefined ? undefined : input.firstName.trim(),
           email: input.email.trim().toLowerCase(),
           phoneKey: phoneKey(input.phone, input.country),
           mobileKey: phoneKey(input.mobile, input.country),
@@ -174,6 +180,7 @@ const phone = { type: 'string', maxLength: 60, pattern: phonePattern };
 export const contactFields = {
   kind: { type: 'string', enum: ['private', 'company'] },
   name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
+  firstName: { type: 'string', maxLength: 200 },
   contactPerson: { type: 'string', maxLength: 200 },
   street: { type: 'string', maxLength: 200 },
   postalCode: { type: 'string', maxLength: 20 },
@@ -195,6 +202,11 @@ export function registerContactRoutes(
 ) {
   const repo = contactRepository(pool, tenantId);
   const fields = contactFields;
+  // MAIL-EDITOR-01a: writes may omit the optional first name (legacy calls
+  // stay valid); answers always carry it.
+  const writeRequired = Object.keys(fields).filter(
+    (key) => key !== 'firstName',
+  );
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',
@@ -306,7 +318,7 @@ export function registerContactRoutes(
         body: {
           type: 'object',
           additionalProperties: false,
-          required: Object.keys(fields),
+          required: writeRequired,
           properties: fields,
         },
         response: { 201: row },
@@ -337,7 +349,7 @@ export function registerContactRoutes(
         body: {
           type: 'object',
           additionalProperties: false,
-          required: [...Object.keys(fields), 'version'],
+          required: [...writeRequired, 'version'],
           properties: { ...fields, version },
         },
         response: { 200: row },

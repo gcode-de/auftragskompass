@@ -363,6 +363,8 @@ function setup(
     recordPayment?: () => Response;
     // MAIL-DOC-01: the answer to "Per E-Mail senden".
     mailSend?: (body: unknown) => Response | Promise<Response>;
+    // MAIL-EDITOR-01: the answer to the read-only mail preview.
+    mailPreview?: (body: unknown) => Response | Promise<Response>;
   } = {},
 ) {
   const calls: {
@@ -590,6 +592,22 @@ function setup(
         }
         if (options.recordPayment) return options.recordPayment();
         return Response.json(paymentRows[0]!, { status: 201 });
+      }
+      if (url === '/api/v1/mail/document-send/preview') {
+        const body = JSON.parse(String(init!.body));
+        calls.push({
+          url,
+          method,
+          body,
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.mailPreview) return await options.mailPreview(body);
+        return Response.json({
+          subject: 'Dokument AN-2030-0001',
+          bodyHtml: '<p>Vorschau</p>',
+          bodyText: 'Vorschau',
+          missing: [],
+        });
       }
       if (url === '/api/v1/mail/document-send') {
         const body = JSON.parse(String(init!.body));
@@ -5536,9 +5554,13 @@ test('the mail dialog prefills the contact address and keeps it correctable', as
   fireEvent.change(recipient, {
     target: { value: 'synthetic.other@example.invalid' },
   });
-  fireEvent.change(within(dialog).getByLabelText(/Begleittext/), {
-    target: { value: 'Anbei das fiktive Dokument.' },
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Platzhalter einfügen' }),
+  );
+  fireEvent.change(within(dialog).getByLabelText('Platzhalter'), {
+    target: { value: 'contact' },
   });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Einfügen' }));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
   const requests = calls.filter(
@@ -5548,7 +5570,7 @@ test('the mail dialog prefills the contact address and keeps it correctable', as
   expect(requests[0]!.body).toMatchObject({
     documentId: finalized.id,
     to: 'synthetic.other@example.invalid',
-    bodyText: 'Anbei das fiktive Dokument.',
+    bodyHtml: '<p>{{contact}}</p>',
   });
   expect(typeof (requests[0]!.body as { requestId: string }).requestId).toBe(
     'string',
@@ -5648,4 +5670,284 @@ test('a double click sends one order, and an unclear outcome blocks until the li
   expect((repeated[1]!.body as { requestId: string }).requestId).toBe(
     requestId,
   );
+});
+
+// MAIL-EDITOR-01: the formatted body editor of the document mail.
+test('the mail editor exposes accessible formatting and a described placeholder picker', async () => {
+  setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Begleittext (optional)',
+  });
+  expect(editor.getAttribute('aria-multiline')).toBe('true');
+  // Toolbar buttons name their action and expose their state.
+  const bold = within(dialog).getByRole('button', { name: 'Fett' });
+  expect(bold.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(bold);
+  expect(bold.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(bold);
+  expect(bold.getAttribute('aria-pressed')).toBe('false');
+  for (const name of [
+    'Kursiv',
+    'Unterstrichen',
+    'Aufzählung',
+    'Nummerierung',
+    'Link',
+  ])
+    expect(within(dialog).getByRole('button', { name })).toBeTruthy();
+  // Selecting a placeholder alone changes nothing; the separate insert
+  // action writes the token at the cursor (BKP015.10).
+  const pickerToggle = within(dialog).getByRole('button', {
+    name: 'Platzhalter einfügen',
+  });
+  fireEvent.click(pickerToggle);
+  fireEvent.keyDown(
+    within(dialog).getByRole('group', {
+      name: 'Platzhalter für den Begleittext',
+    }),
+    { key: 'a' },
+  );
+  fireEvent.change(within(dialog).getByLabelText('Platzhalter'), {
+    target: { value: 'contactFirstName' },
+  });
+  expect(
+    within(dialog).getByText(/hinterlegten Vornamen des Hauptkontakts/),
+  ).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Einfügen' }));
+  expect(editor.textContent).toContain('{{contactFirstName}}');
+  expect(
+    within(dialog).getByText('{{contactFirstName}} eingefügt.'),
+  ).toBeTruthy();
+  // The focus stays in the body so the user keeps writing.
+  await waitFor(() => expect(editor).toBe(document.activeElement));
+  // Escape closes the picker and returns the keyboard to its toggle.
+  fireEvent.click(pickerToggle);
+  fireEvent.keyDown(
+    within(dialog).getByRole('group', {
+      name: 'Platzhalter für den Begleittext',
+    }),
+    {
+      key: 'Escape',
+    },
+  );
+  await waitFor(() =>
+    expect(
+      within(dialog).queryByRole('group', {
+        name: 'Platzhalter für den Begleittext',
+      }),
+    ).toBeNull(),
+  );
+  expect(pickerToggle).toBe(document.activeElement);
+});
+
+test('the mail preview shows the resolved content and honest missing values without ordering', async () => {
+  const { calls } = setup({
+    documents: [finalized],
+    mailPreview: () =>
+      Response.json({
+        subject: 'Dokument AN-2030-0001',
+        bodyHtml: '<p>Hallo {{package}}</p>',
+        bodyText: 'Hallo {{package}}',
+        missing: ['package'],
+      }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Platzhalter einfügen' }),
+  );
+  fireEvent.change(within(dialog).getByLabelText('Platzhalter'), {
+    target: { value: 'contact' },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Einfügen' }));
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  await screen.findByText('Betreff: Dokument AN-2030-0001');
+  expect(within(dialog).getByText('Hallo {{package}}')).toBeTruthy();
+  expect(
+    within(dialog).getByText(/Ohne Wert bleiben sichtbar: \{\{package\}\}/),
+  ).toBeTruthy();
+  const previews = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send/preview',
+  );
+  expect(previews).toHaveLength(1);
+  expect(previews[0]!.method).toBe('POST');
+  // The composed body travels with the preview request.
+  expect(previews[0]!.body).toMatchObject({
+    documentId: finalized.id,
+    bodyHtml: '<p>{{contact}}</p>',
+  });
+  // The preview never orders anything.
+  expect(
+    calls.filter((call) => call.url === '/api/v1/mail/document-send'),
+  ).toHaveLength(0);
+});
+
+test('a refused preview keeps the dialog usable and names the problem', async () => {
+  setup({
+    documents: [finalized],
+    mailPreview: () =>
+      Response.json({ error: 'invalid_content' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  await screen.findByText(/Unbekannter Platzhalter im Text/);
+  // The dialog stays open and sending remains available.
+  expect(within(dialog).getByRole('button', { name: 'Senden' })).toBeTruthy();
+});
+
+test('the mail editor toolbar toggles every format and the link row edits a target', async () => {
+  setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  // Every format button names its action and exposes its state.
+  for (const name of [
+    'Kursiv',
+    'Unterstrichen',
+    'Aufzählung',
+    'Nummerierung',
+  ]) {
+    const button = within(dialog).getByRole('button', { name });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+  }
+  // The link row is a described group: nothing happens without a target,
+  // Escape closes it, and set/remove run against the body.
+  const linkToggle = within(dialog).getByRole('button', { name: 'Link' });
+  expect(linkToggle.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(linkToggle);
+  expect(linkToggle.getAttribute('aria-expanded')).toBe('true');
+  const linkRow = within(dialog).getByRole('group', {
+    name: 'Link bearbeiten',
+  });
+  const setLink = within(linkRow).getByRole('button', { name: 'Link setzen' });
+  const removeLink = within(linkRow).getByRole('button', {
+    name: 'Link entfernen',
+  });
+  expect(setLink.hasAttribute('disabled')).toBe(true);
+  fireEvent.keyDown(linkRow, { key: 'a' });
+  expect(
+    within(dialog).queryByRole('group', { name: 'Link bearbeiten' }),
+  ).toBeTruthy();
+  fireEvent.change(within(linkRow).getByLabelText('Linkziel'), {
+    target: { value: 'https://example.invalid/ziel' },
+  });
+  expect(setLink.hasAttribute('disabled')).toBe(false);
+  fireEvent.click(setLink);
+  // The set mark makes removal available; clicking it really runs.
+  await waitFor(() => expect(removeLink.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(removeLink);
+  fireEvent.keyDown(linkRow, { key: 'Escape' });
+  expect(
+    within(dialog).queryByRole('group', { name: 'Link bearbeiten' }),
+  ).toBeNull();
+  // The toggle closes the row again.
+  fireEvent.click(linkToggle);
+  fireEvent.click(linkToggle);
+  expect(linkToggle.getAttribute('aria-expanded')).toBe('false');
+});
+
+test('a failed or value-less preview is reported honestly without losing the dialog', async () => {
+  const preview = vi
+    .fn()
+    .mockImplementationOnce(() =>
+      Response.json({
+        subject: 'Dokument AN-2030-0001',
+        bodyHtml: null,
+        bodyText: 'Anbei das fiktive Dokument.',
+        missing: [],
+      }),
+    )
+    .mockImplementationOnce(() => {
+      throw new Error('fiktive Netzwerkstörung');
+    });
+  const { calls } = setup({
+    documents: [finalized],
+    mailPreview: preview,
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  // Without HTML the preview shows the text alternative, never a blank box.
+  await screen.findByText('Anbei das fiktive Dokument.');
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  await screen.findByText(/Die Vorschau konnte nicht geladen werden/);
+  expect(within(dialog).getByRole('button', { name: 'Senden' })).toBeTruthy();
+  expect(
+    calls.filter((call) => call.url === '/api/v1/mail/document-send/preview'),
+  ).toHaveLength(2);
+});
+
+test('an invalid body refusal names the content problem and keeps the draft', async () => {
+  setup({
+    documents: [finalized],
+    mailPreview: () =>
+      Response.json({ error: 'invalid_body' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  await screen.findByText(/Der Text konnte nicht übernommen werden/);
 });

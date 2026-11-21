@@ -274,7 +274,10 @@ beforeAll(async () => {
 
   app = Fastify();
   await registerAuth(app, pool, config);
-  registerMailRoutes(app, pool, tenantId, { store: mailStore });
+  registerMailRoutes(app, pool, tenantId, {
+    store: mailStore,
+    origin: config.origin,
+  });
 }, 120000);
 
 afterAll(async () => {
@@ -1795,4 +1798,174 @@ test('the document send route needs a session and CSRF and replays the same orde
       documentId: finalDocumentId,
     }),
   ).rejects.toMatchObject({ reason: 'not_found' });
+});
+
+// MAIL-EDITOR-01: a formatted document mail carries the documented
+// placeholders. The server resolves them from structured data, sanitizes the
+// HTML and derives the text alternative. Everything here is synthetic.
+
+test('document mail content is resolved from structured data, sanitized and stored with its derived text', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  await pool.query(
+    "UPDATE contacts SET first_name='Erika' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, contactId],
+  );
+  await pool.query(
+    `UPDATE events SET event_date='2030-06-15', venue_override=true,
+            venue='Fictional Hall 1'
+       WHERE tenant_id=$1 AND id=$2`,
+    [tenantId, eventId],
+  );
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+    origin: 'https://admin.example.invalid',
+  });
+  const sent = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-html-request-1',
+    to: 'synthetic.contact@example.invalid',
+    bodyHtml:
+      '<p>Hallo <strong>{{contactFirstName}}</strong> {{contact}},</p>' +
+      '<p>{{event}} am {{date}} in {{location}}.</p>' +
+      '<ul><li>{{total}}</li><li>{{package}}</li></ul>' +
+      '<p><a href="{{documentLink}}">Dokument</a></p>' +
+      '<p onclick="x">X</p><script>bad()</script>',
+  });
+  const link = 'https://admin.example.invalid/#document-' + finalDocumentId;
+  const detail = await repo.get(sent.messageId);
+  // The stored HTML is resolved and sanitized; the missing package value
+  // stays visible instead of being silently emptied.
+  expect(detail.bodyHtml).toBe(
+    '<p>Hallo <strong>Erika</strong> Fictional Mail Contact,</p>' +
+      '<p>Fictional mail event am 15.06.2030 in Fictional Hall 1.</p>' +
+      '<ul><li>119,00 €</li><li>{{package}}</li></ul>' +
+      `<p><a href="${link}">Dokument</a></p><p>X</p>`,
+  );
+  expect(detail.bodyText).toBe(
+    'Hallo Erika Fictional Mail Contact,\n' +
+      '\nFictional mail event am 15.06.2030 in Fictional Hall 1.\n' +
+      '\n- 119,00 €\n- {{package}}\n' +
+      `\nDokument (${link})\n\nX`,
+  );
+  // The mail remains an ordinary scheduled draft with its frozen attachment.
+  expect(detail).toMatchObject({
+    direction: 'out',
+    folder: 'drafts',
+    sendState: 'scheduled',
+  });
+});
+
+test('document mail rejects unknown placeholders and mixed bodies and escapes values in HTML', async () => {
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+    origin: 'https://admin.example.invalid',
+  });
+  await expect(
+    repo.scheduleDocumentSend(actorId, {
+      documentId: finalDocumentId,
+      requestId: 'fictional-html-request-2',
+      to: 'synthetic.contact@example.invalid',
+      bodyHtml: '<p>{{nope}} und {{Kontakt_Vorname}}</p>',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_content' });
+  await expect(
+    repo.scheduleDocumentSend(actorId, {
+      documentId: finalDocumentId,
+      requestId: 'fictional-html-request-3',
+      to: 'synthetic.contact@example.invalid',
+      bodyText: 'Hallo',
+      bodyHtml: '<p>x</p>',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_body' });
+  // A structured value is text: the HTML escapes it, the text keeps it raw.
+  await pool.query(
+    "UPDATE contacts SET name='Muster & <b>Co</b>' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, contactId],
+  );
+  const sent = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-html-request-4',
+    to: 'synthetic.contact@example.invalid',
+    bodyHtml: '<p>{{contact}} / {{contactFirstName}}</p>',
+  });
+  const detail = await repo.get(sent.messageId);
+  expect(detail.bodyHtml).toBe(
+    '<p>Muster &amp; &lt;b&gt;Co&lt;/b&gt; / Erika</p>',
+  );
+  expect(detail.bodyText).toBe('Muster & <b>Co</b> / Erika');
+});
+
+test('the document mail preview resolves like the send and persists nothing', async () => {
+  const { headers, csrf } = await signedIn();
+  const countRows = async () =>
+    (
+      await pool.query(
+        `SELECT (SELECT count(*) FROM mail_messages) AS messages,
+                (SELECT count(*) FROM mail_outbox) AS outbox,
+                (SELECT count(*) FROM audit_events) AS audits`,
+      )
+    ).rows[0];
+  const before = await countRows();
+  const preview = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send/preview',
+    headers: { ...headers, ...csrf },
+    payload: {
+      documentId: finalDocumentId,
+      bodyHtml: '<p>Hallo {{contactFirstName}} {{package}}</p>',
+    },
+  });
+  expect(preview.statusCode).toBe(200);
+  expect(preview.json()).toEqual({
+    subject: 'Dokument RE-2030-0001',
+    bodyHtml: '<p>Hallo Erika {{package}}</p>',
+    bodyText: 'Hallo Erika {{package}}',
+    missing: ['package'],
+  });
+  // Session, CSRF and content rules are the same as the send's.
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/mail/document-send/preview',
+        payload: { documentId: finalDocumentId },
+      })
+    ).statusCode,
+  ).toBe(401);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/mail/document-send/preview',
+        headers,
+        payload: { documentId: finalDocumentId },
+      })
+    ).statusCode,
+  ).toBe(403);
+  const refused = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send/preview',
+    headers: { ...headers, ...csrf },
+    payload: {
+      documentId: finalDocumentId,
+      bodyHtml: '<p>{{Kontakt_Vorname}}</p>',
+    },
+  });
+  expect(refused.statusCode).toBe(400);
+  expect(refused.json()).toEqual({ error: 'invalid_content' });
+  const draft = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send/preview',
+    headers: { ...headers, ...csrf },
+    payload: { documentId: draftDocumentId, bodyHtml: '<p>x</p>' },
+  });
+  expect(draft.statusCode).toBe(409);
+  const foreign = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send/preview',
+    headers: { ...headers, ...csrf },
+    payload: { documentId: foreignFinalDocumentId, bodyHtml: '<p>x</p>' },
+  });
+  expect(foreign.statusCode).toBe(404);
+  expect(await countRows()).toEqual(before);
 });

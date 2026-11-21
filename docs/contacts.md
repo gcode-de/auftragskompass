@@ -21,6 +21,8 @@ Alle Routen benötigen die lokale Admin-Sitzung. Schreibende Routen verlangen zu
 
 Der vollständige Schreibdatensatz enthält `kind` (`private`/`company`), `name`, `contactPerson`, `street`, `postalCode`, `city`, `country` (zweistelliger Großbuchstabencode), `email`, `phone`, `mobile`, `state` (`active`/`archived`). Leere optionale Felder werden als leere Zeichenketten übertragen. Antworten enthalten zusätzlich `id` und `version`, keine Mandanten- oder Vergleichsschlüssel.
 
+**Vorname (MAIL-EDITOR-01a):** `firstName` (optional, ≤200 Zeichen) ist der eigene Vorname des Kontakts, getrennt vom vollständigen `name` – er wird nie aus dem vollen Namen geraten. Schreiben ohne `firstName` bleiben gültig (alte Aufrufe unverändert); eine Änderung ohne `firstName` behält den gespeicherten Wert, nur ein übermittelter Wert ändert oder leert ihn. Antworten enthalten `firstName` immer (leer = kein Vorname hinterlegt). Das Feld steht im Anlege-/Bearbeitendialog als „Vorname“, in der Kontaktakte als eigene Zeile (nur bei hinterlegtem Wert) und in der direkten Feldbearbeitung. Website-Anfragen übernehmen ihren strukturierten Formular-Vornamen beim Anlegen eines neuen Kontakts; bestehende Kontakte bleiben unverändert. Der `contacts.csv`-Export enthält `firstName` (Stand dieses Schnitts) noch nicht – der Exportvertrag bleibt unverändert.
+
 ## Direkte Feldbearbeitung (EDIT-01)
 
 Bestehende Kontakte sind zusätzlich direkt in ihrer Akte bearbeitbar. Gültige

@@ -1,5 +1,50 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 21.11.2026 (Nachtsitzung: MAIL-EDITOR-01)
+
+- **Erledigt: MAIL-EDITOR-01 (GOAL B) – formatierter Dokument-Mail-Editor mit
+  Platzhaltern.** Geliefert als drei fokussierte Teilcommits auf
+  `codex/mail-editor-01` (01a Kontakt-Vorname, 01b Mail-Body-Sicherheit/
+  Platzhalter/Vorschau serverseitig, 01c Editor-Oberfläche); ausführliche
+  Abnahmezahlen im [Plan-Eintrag MAIL-EDITOR-01](../IMPLEMENTATION_PLAN.md).
+  Release-/Merge-/Live-Nachweis folgt im Folgecommit dieser Runde (Muster wie
+  `87ecc04`).
+- **Editorbibliothek:** TipTap 3 mit schmaler Extension-Liste gewählt; die
+  Bewertung (TipTap/Plate/Lexical/Quill 2/Eigenbau mit selbst gemessenen
+  Bundlegrößen, Lizenzen, Wartung, A11y) steht in
+  [docs/mail-editor.md](mail-editor.md); Quill ist die dokumentierte
+  Ausweichwahl, falls die Bundlegröße je Leitgröße wird.
+- **Platzhalter:** die bisherigen acht bleiben unverändert; neu genau ein
+  Platzhalter `{{contactFirstName}}` (**Kontakt-Vorname**) aus dem eigenen
+  Feld `contacts.first_name` (Migration 0073; nie aus dem vollen Namen
+  geraten; neue Website-Kontakte übernehmen den strukturierten
+  Formular-Vornamen). Jede andere `{{…}}`-Stelle (auch `{{Kontakt_Vorname}}`)
+  ist `invalid_content`; bekannte Platzhalter ohne Wert bleiben sichtbar. Die
+  Vorschau (`POST /api/v1/mail/document-send/preview`, ohne Persistenz) zeigt
+  das tatsächliche Ergebnis, Betreff und die fehlenden Namen verständlich.
+- **Sicherheit/Verträge:** Body-HTML serverseitig strikt bereinigt (Allowlist
+  p/br/strong/em/u/ul/ol/li/a, href nur http/https/mailto), Textalternative
+  serverseitig abgeleitet (Listen, `Text (URL)`, NBSP→Leerzeichen), Betreff
+  bleibt automatischer Plain-Text-Dokumentbetreff, `bodyHtml`/`bodyText`
+  exklusiv, Outbox/Idempotenz/Anhang unverändert, kein automatischer
+  Kundenversand.
+- **Abnahme grün:** volle Suite 2049/2049 (Statements 94,25 %, Zweige 90,57 %,
+  Zeilen 95,89 %), Changed-Code-Coverage 80/80 Zeilen / 55/64 Zweige (≥80 %),
+  E2E `mail-editor.spec.ts` 1/1 (echtes Tippen/Formatieren/Platzhalter,
+  echte Vorschau „Erika“ + fehlendes `{{package}}`, axe 0, 320/1280 beide
+  Themes ohne Überlauf, echte DB-Rows), Impeccable-Detektor über die geänderten
+  TSX-Dateien `[]`, lokale Qwen-VL-Bildprüfung aller vier Dialog-Screenshots
+  ohne Befund (ein Hinweis: lange Eingabewerte schneiden im nativen Feld ab).
+  Bilder: `tests/test-results/mail-editor-dialog-*.png`.
+- **Ehrliche Grenzen:** `firstName` fehlt weiterhin im `contacts.csv`-Export
+  (offener Datenschnitt); der Betreff ist noch nicht editierbar (kommt mit
+  MAIL-TPL-01); TipTap v3 stiehlt bei Options-Churn pro Render den Fokus –
+  über stabile `deps` gelöst und in `MailBodyEditor.tsx` kommentiert; jsdom-
+  Shim für ProseMirror-Geometrie in `tests/component-setup.ts`.
+- **Hinweis Impeccable:** der Design-Sidecar `.impeccable/design.json` ist zu
+  `DESIGN.md` veraltet (`mention`); Reparatur mit `impeccable document` beim
+  nächsten Designauftrag anbieten.
+
 ## Aktueller Stand, 21.11.2026 (Abendsitzung, laufend)
 
 - **Erledigt 21.11.2026 – MAIL-ACCOUNT-01 (GOAL A): Einstellungen für das

@@ -2472,6 +2472,66 @@ summary {
   justify-items: start;
   gap: 0.4rem;
 }
+/* MAIL-EDITOR-01: the formatted body editor of the document mail. The
+   editable area looks like the other fields; the toolbar and the picker stay
+   quiet rows with the usual 44px targets. */
+.mail-editor-field {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.4rem;
+}
+.mail-editor-label {
+  font-weight: 600;
+}
+.mail-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.mail-body-editor {
+  min-height: 7rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--field-border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.mail-body-editor:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.mail-body-editor p {
+  margin: 0.35rem 0;
+}
+.mail-body-editor ul,
+.mail-body-editor ol {
+  margin: 0.35rem 0;
+  padding-left: 1.25rem;
+}
+.mail-editor-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: end;
+}
+.mail-editor-link-row label {
+  flex: 1 1 16rem;
+}
+.mail-placeholder-picker {
+  display: grid;
+  justify-items: start;
+  gap: 0.4rem;
+}
+.mail-preview {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+.mail-preview-body {
+  margin: 0.5rem 0;
+  max-width: 70ch;
+}
 .offer-draft-editor {
   margin-top: 1rem;
   padding-top: 1rem;

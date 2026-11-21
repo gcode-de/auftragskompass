@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 import { OfferDraftEditor } from './OfferDraftEditor.js';
+import { MailBodyEditor } from './MailBodyEditor.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { parseHundredths } from './decimal.js';
 
@@ -121,6 +122,14 @@ type PaymentRow = {
   recordedAt: string;
 };
 type AcceptanceChannel = 'email' | 'phone' | 'pdf' | 'other';
+// MAIL-EDITOR-01: the answer of the read-only preview route - the actual
+// resolved content plus the names of placeholders without a value.
+type MailPreview = {
+  subject: string;
+  bodyHtml: string | null;
+  bodyText: string;
+  missing: string[];
+};
 type TemplateRow = { id: string; kind: string; name: string; state: string };
 type LibraryFileRow = {
   id: string;
@@ -450,12 +459,18 @@ export function EventDocuments({
     // MAIL-DOC-01: exactly one chosen finalized document, its recipient, an
     // optional cover text and the request id of this one gesture. The id is
     // generated when the dialog opens, so a repeat can only reach the same
-    // order - never a second mail.
+    // order - never a second mail. MAIL-EDITOR-01: the cover text is
+    // formatted HTML with placeholders; the preview shows the actual result.
     [mailSendId, setMailSendId] = useState(''),
     [mailTo, setMailTo] = useState(''),
     [mailBody, setMailBody] = useState(''),
     [mailRequestId, setMailRequestId] = useState(''),
     [mailUncertain, setMailUncertain] = useState(false),
+    [mailPreview, setMailPreview] = useState<MailPreview | null>(null),
+    [mailPreviewState, setMailPreviewState] = useState<
+      'idle' | 'loading' | 'ready' | 'error'
+    >('idle'),
+    [mailPreviewError, setMailPreviewError] = useState(''),
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
     uncertainReload = useRef<HTMLButtonElement>(null),
@@ -1951,6 +1966,9 @@ export function EventDocuments({
     setMailTo(contactEmail?.trim() ?? '');
     setMailBody('');
     setMailUncertain(false);
+    setMailPreview(null);
+    setMailPreviewState('idle');
+    setMailPreviewError('');
     setMailRequestId(crypto.randomUUID());
     mailTrigger.current = trigger;
   }
@@ -1959,6 +1977,9 @@ export function EventDocuments({
     setMailSendId('');
     setMailRequestId('');
     setMailUncertain(false);
+    setMailPreview(null);
+    setMailPreviewState('idle');
+    setMailPreviewError('');
   }
   // The refusal categories of the send route, worded as the operator's next
   // step. Nothing here repeats a document or a customer address.
@@ -1974,8 +1995,46 @@ export function EventDocuments({
         return 'Bitte eine gültige Empfängeradresse eingeben.';
       case 'invalid_account':
         return 'Es ist kein aktives E-Mail-Konto eingerichtet.';
+      case 'invalid_content':
+        return 'Unbekannter Platzhalter im Text. Nur die Platzhalter aus der Auswahl verwenden; die Eingaben bleiben erhalten.';
+      case 'invalid_body':
+        return 'Der Text konnte nicht übernommen werden. Bitte die Eingaben prüfen.';
       default:
         return 'Der Auftrag wurde nicht angelegt. Bitte die Eingaben prüfen.';
+    }
+  }
+  // MAIL-EDITOR-01: the preview runs the same server assembly as the send and
+  // stores nothing. It is a pure read with an honest loading and error state.
+  async function loadMailPreview() {
+    if (!mailSendId || mailPreviewState === 'loading') return;
+    setMailPreviewState('loading');
+    setMailPreview(null);
+    setMailPreviewError('');
+    try {
+      const reply = await fetch('/api/v1/mail/document-send/preview', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          documentId: mailSendId,
+          ...(mailBody.trim() ? { bodyHtml: mailBody } : {}),
+        }),
+      });
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMailPreviewError(documentSendFailureMessage(result.error));
+        setMailPreviewState('error');
+        return;
+      }
+      setMailPreview((await reply.json()) as MailPreview);
+      setMailPreviewState('ready');
+    } catch {
+      setMailPreviewError(
+        'Die Vorschau konnte nicht geladen werden. Bitte erneut versuchen.',
+      );
+      setMailPreviewState('error');
     }
   }
   async function sendDocument(event: FormEvent<HTMLFormElement>) {
@@ -2009,7 +2068,7 @@ export function EventDocuments({
           documentId: mailSendId,
           requestId: mailRequestId,
           to,
-          ...(mailBody.trim() ? { bodyText: mailBody.trim() } : {}),
+          ...(mailBody.trim() ? { bodyHtml: mailBody } : {}),
         }),
       });
       if (!reply.ok) {
@@ -3159,16 +3218,67 @@ export function EventDocuments({
                         onChange={(event) => setMailTo(event.target.value)}
                       />
                     </label>
-                    <label>
-                      Begleittext (optional)
-                      <textarea
-                        rows={3}
-                        maxLength={2000}
+                    {/* MAIL-EDITOR-01: the formatted cover text with the
+                    documented placeholders; an empty body keeps the server's
+                    default text. */}
+                    <div className="mail-editor-field">
+                      <span className="mail-editor-label">
+                        Begleittext (optional)
+                      </span>
+                      <MailBodyEditor
                         value={mailBody}
-                        onChange={(event) => setMailBody(event.target.value)}
+                        onChange={setMailBody}
+                        disabled={busy !== '' || mailUncertain}
+                        label="Begleittext (optional)"
                       />
-                    </label>
+                    </div>
                   </fieldset>
+                  <div className="document-actions">
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== '' || mailUncertain}
+                      onClick={() => void loadMailPreview()}
+                    >
+                      Vorschau anzeigen
+                    </button>
+                  </div>
+                  {mailPreviewState === 'loading' && (
+                    <p role="status">Vorschau wird geladen …</p>
+                  )}
+                  {mailPreviewState === 'error' && (
+                    <p role="alert">{mailPreviewError}</p>
+                  )}
+                  {mailPreview && (
+                    <div className="mail-preview">
+                      <p className="document-hint">
+                        {'Betreff: ' + mailPreview.subject}
+                      </p>
+                      {/* Formatted preview when there is HTML; a plain-text
+                      body shows its text alternative instead of a blank
+                      box. */}
+                      <div className="mail-preview-body">
+                        {mailPreview.bodyHtml ? (
+                          <div
+                            dangerouslySetInnerHTML={{
+                              __html: mailPreview.bodyHtml,
+                            }}
+                          />
+                        ) : (
+                          <p>{mailPreview.bodyText}</p>
+                        )}
+                      </div>
+                      {mailPreview.missing.length > 0 && (
+                        <p role="status">
+                          {'Ohne Wert bleiben sichtbar: ' +
+                            mailPreview.missing
+                              .map((name) => `{{${name}}}`)
+                              .join(', ') +
+                            '. Diese Stellen vor dem Versand entfernen oder ergänzen.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {mailUncertain && (
                     <p role="alert">
                       Der Ausgang ist unklar. Nichts erneut senden, bevor die
