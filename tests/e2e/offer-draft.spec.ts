@@ -3,6 +3,7 @@ import {
   expect,
   test,
   type Browser,
+  type Locator,
   type Route,
 } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
@@ -473,13 +474,14 @@ async function offerDraftScenario(browser: Browser) {
       has: page.getByRole('checkbox', { name: 'Optionale Position' }),
     });
     const itemInfo = position1.getByLabel('Infotext (optional)');
-    const removePosition = position1.getByRole('button', {
-      name: 'Position 1 entfernen',
-    });
-    // EDITOR-ACTIONS-01: all four row actions form one named icon group in the
-    // position header.
-    const positionActions = position1.getByRole('group', {
+    // EDITOR-VISUAL-02 (B37 deviation 1): the four row actions are one menu per
+    // position. The toggle is the only visible row action and keeps the target
+    // size; its group is hidden while it is closed.
+    const rowActions = position1.getByRole('group', {
       name: 'Aktionen dieser Zeile',
+    });
+    const actionsToggle = position1.getByRole('button', {
+      name: 'Aktionen für Position 1',
     });
     const positionList = positions.locator('.offer-draft-position-list');
     // EDITOR-MOBILE-01: the six value fields of a position are one disclosure.
@@ -555,7 +557,7 @@ async function offerDraftScenario(browser: Browser) {
         expect(
           (await optionLabel.boundingBox())!.height,
         ).toBeGreaterThanOrEqual(44);
-        const removeBox = (await removePosition.boundingBox())!;
+        const actionsBox = (await actionsToggle.boundingBox())!;
         const groupBox = (await position1.boundingBox())!;
         const infoBox = (await itemInfo.boundingBox())!;
         const modeBox = (await position1
@@ -566,33 +568,23 @@ async function offerDraftScenario(browser: Browser) {
           groupBox.x + groupBox.width,
         );
         expect(infoBox.y).toBeGreaterThanOrEqual(
-          removeBox.y + removeBox.height,
+          actionsBox.y + actionsBox.height,
         );
         expect(infoBox.x + infoBox.width).toBeLessThanOrEqual(
           groupBox.x + groupBox.width,
         );
-        expect(removeBox.width).toBeGreaterThanOrEqual(44);
-        expect(removeBox.height).toBeGreaterThanOrEqual(44);
-        expect(removeBox.x + removeBox.width).toBeLessThanOrEqual(
+        expect(actionsBox.width).toBeGreaterThanOrEqual(44);
+        expect(actionsBox.height).toBeGreaterThanOrEqual(44);
+        expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(
           groupBox.x + groupBox.width,
         );
         const lastField = boxes.at(-1)!;
-        // EDITOR-ACTIONS-01: the icon group sits in the row header above the
-        // fields; it never claims a field track of its own.
-        await expect(positionActions.getByRole('button')).toHaveCount(4);
-        const actionBoxes = await positionActions
-          .getByRole('button')
-          .evaluateAll((buttons) =>
-            buttons.map((button) => {
-              const { width, height } = button.getBoundingClientRect();
-              return { width, height };
-            }),
-          );
-        expect(
-          actionBoxes.every((box) => box.width >= 44 && box.height >= 44),
-        ).toBe(true);
+        // EDITOR-VISUAL-02: one visible toggle sits in the row header above the
+        // fields and never claims a field track of its own. The closed group is
+        // neither visible nor a Tab stop.
+        await expect(rowActions.getByRole('button')).toHaveCount(1);
         expect
-          .soft(removeBox.y + removeBox.height)
+          .soft(actionsBox.y + actionsBox.height)
           .toBeLessThanOrEqual(boxes[0]!.y);
         if (width === 1440 && !maxWidth) {
           // EDITOR-LAYOUT-01: the wide list wraps onto further rows instead of
@@ -643,19 +635,11 @@ async function offerDraftScenario(browser: Browser) {
     if ((await pageTheme.getAttribute('data-theme')) !== positionOriginalTheme)
       await positionThemeToggle.click();
     await page.setViewportSize({ width: 1280, height: 720 });
-    // EDITOR-ACTIONS-01: the four row actions are the first Tab stops of the
-    // position, in their visible order; the fields follow them.
-    await position1
-      .getByRole('button', { name: 'Position 1 nach oben verschieben' })
-      .focus();
-    for (const name of [
-      /nach unten verschieben/,
-      /Position 1 entfernen/,
-      /als Produkt speichern$/,
-    ]) {
-      await page.keyboard.press('Tab');
-      await expect(position1.getByRole('button', { name })).toBeFocused();
-    }
+    // EDITOR-VISUAL-02: the row menu toggle is the first Tab stop of the
+    // position. Its closed group adds no stop; the fields follow it.
+    await expect(actionsToggle).toHaveCount(1);
+    await actionsToggle.focus();
+    await expect(actionsToggle).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(fields.first()).toBeFocused();
     for (const field of (await fieldControls.all()).slice(1)) {
@@ -815,27 +799,42 @@ async function offerDraftScenario(browser: Browser) {
       'Fictional gross product',
     );
     await page.setViewportSize({ width: 320, height: 844 });
-    const earlier = grossPosition.getByRole('button', {
-      name: /nach oben verschieben/,
+    // EDITOR-VISUAL-02: the moves are entries of the row menu. The toggle is the
+    // 44px touch and keyboard target of the row, the entries keep their names.
+    const earlierToggle = grossPosition.getByRole('button', {
+      name: /^Aktionen für /,
     });
-    const later = netPosition.getByRole('button', {
-      name: /nach unten verschieben/,
+    const laterToggle = netPosition.getByRole('button', {
+      name: /^Aktionen für /,
     });
-    const moveTarget = await earlier.boundingBox();
+    const moveTarget = await earlierToggle.boundingBox();
     expect(moveTarget?.width).toBeGreaterThanOrEqual(44);
     expect(moveTarget?.height).toBeGreaterThanOrEqual(44);
-    await earlier.press('Enter');
+    await earlierToggle.click();
+    await grossPosition
+      .getByRole('button', { name: /nach oben schieben$/ })
+      .press('Enter');
     await expect(netPosition.getByLabel('Beschreibung')).toHaveValue(
       'Fictional net product',
     );
+    // EDITOR-VISUAL-02: focus returns to the toggle of the row that moved; the
+    // row numbers follow the order, so after the move this row is "Position 3"
+    // and the earlier name-based locator points at the other row.
     await expect(
-      netPosition.getByRole('button', { name: /nach oben verschieben/ }),
+      netPosition.getByRole('button', { name: /^Aktionen für / }),
     ).toBeFocused();
     const touch = await context.newCDPSession(page);
     await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await expect(
       netPosition.locator('.offer-draft-position-grip'),
     ).toBeHidden();
+    // A tap on the toggle opens the group; a tap on its downward entry moves
+    // the row, exactly as the former icon did.
+    await laterToggle.scrollIntoViewIfNeeded();
+    await laterToggle.click();
+    const later = netPosition.getByRole('button', {
+      name: /nach unten schieben$/,
+    });
     await later.scrollIntoViewIfNeeded();
     const { x, y, width, height } = (await later.boundingBox())!;
     await touch.send('Input.dispatchTouchEvent', {
@@ -867,12 +866,15 @@ async function offerDraftScenario(browser: Browser) {
       .getByRole('button', { name: 'Freie Position hinzufügen' })
       .click();
     const position6 = positions.getByRole('group', { name: 'Position 6' });
-    // EDITOR-ACTIONS-01: removing a filled row asks first. Cancelling keeps the
-    // row and the focus on its own action; only the confirmation removes it.
-    const removeSixth = position6.getByRole('button', {
-      name: 'Position 6 entfernen',
+    // EDITOR-VISUAL-02: removal is one entry of the row menu. Cancelling keeps
+    // the row and the focus on the row toggle that opened the menu.
+    const sixthToggle = position6.getByRole('button', {
+      name: 'Aktionen für Position 6',
     });
-    await removeSixth.click();
+    await sixthToggle.click();
+    await position6
+      .getByRole('button', { name: 'Position 6: Position entfernen' })
+      .click();
     const removeDialog = editor.getByRole('dialog', {
       name: 'Position 6 entfernen?',
     });
@@ -883,8 +885,11 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       positions.getByRole('group', { name: /^Position / }),
     ).toHaveCount(6);
-    await expect(removeSixth).toBeFocused();
-    await removeSixth.click();
+    await expect(sixthToggle).toBeFocused();
+    await sixthToggle.click();
+    await position6
+      .getByRole('button', { name: 'Position 6: Position entfernen' })
+      .click();
     await editor
       .getByRole('dialog', { name: 'Position 6 entfernen?' })
       .getByRole('button', { name: 'Entfernen' })
@@ -1663,8 +1668,12 @@ async function offerDraftScenario(browser: Browser) {
     await page.keyboard.press('Space');
     await expect(extraOptional).toBeChecked();
 
+    // EDITOR-VISUAL-02: the upward move is one entry of the row menu.
     await secondBlankPosition
-      .getByRole('button', { name: /nach oben verschieben/ })
+      .getByRole('button', { name: /^Aktionen für / })
+      .click();
+    await secondBlankPosition
+      .getByRole('button', { name: /nach oben schieben$/ })
       .click();
     const blankSaveRequest = page.waitForRequest(
       (request) =>
@@ -2230,14 +2239,28 @@ async function offerDraftScenario(browser: Browser) {
       }
       await route.continue();
     });
-    const saveProduct = productPosition.getByRole('button', {
-      name: 'Position 1 als Produkt speichern',
-    });
-    await saveProduct.click();
+    // EDITOR-VISUAL-02: the product action is one entry of the row menu. The
+    // status line sits in the row outside the group, so every check reopens the
+    // menu and reads the entry by its unchanged name.
+    const productEntry = async (row: Locator) => {
+      const toggle = row.getByRole('button', { name: /^Aktionen für / });
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true')
+        await toggle.click();
+      return toggle;
+    };
+    await productEntry(productPosition);
+    await productPosition
+      .getByRole('button', { name: 'Position 1 als Produkt speichern' })
+      .click();
     await expect(productPosition.getByRole('alert')).toContainText(
       'Ausgang unklar.',
     );
-    await expect(saveProduct).toBeDisabled();
+    await productEntry(productPosition);
+    await expect(
+      productPosition.getByRole('button', {
+        name: 'Position 1 als Produkt speichern',
+      }),
+    ).toBeDisabled();
     await expect(
       productPosition.getByRole('button', { name: 'Bestand prüfen' }),
     ).toBeVisible();
@@ -2261,7 +2284,12 @@ async function offerDraftScenario(browser: Browser) {
       ),
     ).toBeVisible();
     // The found product does not unlock a second, identical creation.
-    await expect(saveProduct).toBeDisabled();
+    await productEntry(productPosition);
+    await expect(
+      productPosition.getByRole('button', {
+        name: 'Position 1 als Produkt speichern',
+      }),
+    ).toBeDisabled();
     expect(
       (await products.list()).filter(
         (row) => row.name === 'Fictional reconciled booth product',
@@ -2295,6 +2323,7 @@ async function offerDraftScenario(browser: Browser) {
       .fill('95.00');
     await recreatedPosition.getByLabel('Steuer in Prozent').fill('7');
     productInterception = 'drop';
+    await productEntry(recreatedPosition);
     await recreatedPosition
       .getByRole('button', { name: /als Produkt speichern$/ })
       .click();
@@ -2314,6 +2343,7 @@ async function offerDraftScenario(browser: Browser) {
         'Kein identisches Produkt gefunden. Die Anlage kann erneut gestartet werden.',
       ),
     ).toBeVisible();
+    await productEntry(recreatedPosition);
     await recreatedPosition
       .getByRole('button', { name: /als Produkt speichern$/ })
       .click();

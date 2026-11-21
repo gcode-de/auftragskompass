@@ -331,10 +331,31 @@ function fieldValue(label: string) {
   ).value;
 }
 
-// EDITOR-ACTIONS-01: removing a position asks first in the established form
-// dialog. The helper keeps the older, behaviour-focused tests readable.
+// EDITOR-ACTIONS-01 / EDITOR-VISUAL-02: the row actions of a position are one
+// menu (Bookitup parity, B37 deviation 1). The toggle is the only visible row
+// action; the entries carry the ticket's visible wording with the row prefix.
+// The helpers keep the older, behaviour-focused tests readable.
+function actionsToggle(position: HTMLElement) {
+  return within(position).getByRole('button', { name: /^Aktionen für / });
+}
+function openRowActions(position: HTMLElement) {
+  const toggle = actionsToggle(position);
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+  return within(position).getByRole('group', {
+    name: toggle.getAttribute('aria-label')!,
+  });
+}
+function rowAction(position: HTMLElement, name: RegExp | string) {
+  const toggle = actionsToggle(position);
+  const menu = openRowActions(position);
+  fireEvent.click(within(menu).getByRole('button', { name }));
+  return toggle;
+}
 function removePosition(title: string) {
-  fireEvent.click(screen.getByRole('button', { name: `${title} entfernen` }));
+  rowAction(
+    screen.getByRole('group', { name: title }),
+    `${title}: Position entfernen`,
+  );
   const dialog = screen.getByRole('dialog', { name: `${title} entfernen?` });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Entfernen' }));
 }
@@ -926,11 +947,14 @@ test('reordering keeps unsaved fields and attached text with the moved position'
     name: 'Position 1',
   });
   const firstInput = within(firstPosition).getByLabelText('Beschreibung');
-  const earlier = within(firstPosition).getByRole('button', {
-    name: /nach oben verschieben/,
+  // EDITOR-VISUAL-02: the moves now live in the row menu. Every entry is read
+  // through the menu of its row; the entry itself is hidden while it is closed.
+  const menu = openRowActions(firstPosition);
+  const earlier = within(menu).getByRole('button', {
+    name: /nach oben schieben/,
   });
-  const later = within(firstPosition).getByRole('button', {
-    name: /nach unten verschieben/,
+  const later = within(menu).getByRole('button', {
+    name: /nach unten schieben/,
   });
   const save = screen.getByRole('button', { name: 'Änderungen speichern' });
   expect(earlier.getAttribute('aria-disabled')).toBe('true');
@@ -939,9 +963,16 @@ test('reordering keeps unsaved fields and attached text with the moved position'
   fireEvent.change(firstInput, {
     target: { value: 'Fiktives bearbeitetes Paket' },
   });
-  fireEvent.click(later);
-  fireEvent.click(later);
-  expect(document.activeElement).toBe(later);
+  // EDITOR-VISUAL-02: a chosen entry closes the menu and returns the focus to
+  // the toggle of the moved row (house pattern), not to the hidden entry.
+  const firstToggle = rowAction(firstPosition, /nach unten schieben/);
+  expect(document.activeElement).toBe(firstToggle);
+  // The second move brings the same row to the end of the list. An information
+  // row in between does not change its number, so the boundary is the downward
+  // entry itself.
+  rowAction(firstPosition, /nach unten schieben/);
+  const movedMenu = openRowActions(firstPosition);
+  expect(movedMenu.contains(later)).toBe(true);
   expect(later.getAttribute('aria-disabled')).toBe('true');
   expect(
     within(screen.getByRole('group', { name: 'Position 2' })).getByLabelText(
@@ -994,16 +1025,19 @@ test('consecutive moves between the same slots renew the polite announcement', a
   fireEvent.click(
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
-  await screen.findByRole('group', { name: 'Position 1' });
+  const firstPosition = await screen.findByRole('group', {
+    name: 'Position 1',
+  });
   const liveRegion = container.querySelector('[aria-live="polite"]')!;
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Position 1 nach oben verschieben' }),
-  );
+  // EDITOR-VISUAL-02: the boundary move is read through the row menu; pressing
+  // the entry without a destination keeps the polite region silent.
+  rowAction(firstPosition, /nach oben schieben/);
   expect(liveRegion.textContent).toBe('');
 
   const moveFirstRowDown = () =>
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Position 1 nach unten verschieben' }),
+    rowAction(
+      screen.getByRole('group', { name: 'Position 1' }),
+      /nach unten schieben/,
     );
   moveFirstRowDown();
   const firstAnnouncement = liveRegion.firstChild;
@@ -1068,9 +1102,13 @@ test('only an active position drag can reorder a draft and saving disables dragg
       'Beschreibung',
     ),
   ).toHaveProperty('value', next.description);
+  // EDITOR-VISUAL-02: the row menu is opened before the save so the same
+  // assertion can read the move entry; while the request runs, the entry is
+  // disabled with the row exactly as it was.
+  const menu = openRowActions(first);
   fireEvent.click(save);
   expect(
-    within(first).getByRole('button', { name: /nach oben verschieben/ }),
+    within(menu).getByRole('button', { name: /nach oben schieben/ }),
   ).toHaveProperty('disabled', true);
   expect(grip.draggable).toBe(false);
   transfer.setData.mockClear();
@@ -3142,11 +3180,8 @@ test('a position becomes a product with its exact values while the draft stays u
   );
   await screen.findByLabelText('Betreff');
   const first = screen.getByRole('group', { name: 'Position 1' });
-  fireEvent.click(
-    within(first).getByRole('button', {
-      name: 'Position 1 als Produkt speichern',
-    }),
-  );
+  // EDITOR-VISUAL-02: the product action is one entry of the row menu.
+  rowAction(first, 'Position 1 als Produkt speichern');
 
   await screen.findByText('Als Produkt gespeichert: Fiktives Fotobox-Paket.');
   expect(calls.filter((call) => call.url === '/api/v1/products')).toEqual([
@@ -3182,6 +3217,37 @@ test('a position becomes a product with its exact values while the draft stays u
   expect(hasUnsavedChanges()).toBe(false);
 });
 
+// EDITOR-VISUAL-02: the product entry of the row menu keeps the protection of
+// the former icon. A fast double activation is one gesture: the second click
+// lands on the same running attempt and sends no second request.
+test('a fast double activation of the product entry sends one request', async () => {
+  const { calls } = setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const first = await screen.findByRole('group', { name: 'Position 1' });
+  const menu = openRowActions(first);
+  const entry = within(menu).getByRole('button', {
+    name: 'Position 1 als Produkt speichern',
+  });
+  fireEvent.click(entry);
+  fireEvent.click(entry);
+  await within(first).findByText(
+    'Als Produkt gespeichert: Fiktives Fotobox-Paket.',
+  );
+  expect(
+    calls.filter(
+      (call) => call.url === '/api/v1/products' && call.method === 'POST',
+    ),
+  ).toHaveLength(1);
+  // The menu closed with the gesture; the status line stays readable in the row.
+  expect(menu.hidden).toBe(true);
+  expect(within(first).getByRole('status').textContent).toBe(
+    'Als Produkt gespeichert: Fiktives Fotobox-Paket.',
+  );
+});
+
 test('an unclear product answer requires the stock check before another attempt', async () => {
   let posts = 0;
   const created = {
@@ -3208,17 +3274,16 @@ test('an unclear product answer requires the stock check before another attempt'
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   const first = await screen.findByRole('group', { name: 'Position 1' });
-  fireEvent.click(
-    within(first).getByRole('button', {
-      name: 'Position 1 als Produkt speichern',
-    }),
-  );
+  // EDITOR-VISUAL-02: the product action is one entry of the row menu. Its
+  // status line stays in the row, outside the closed menu.
+  rowAction(first, 'Position 1 als Produkt speichern');
   expect(await within(first).findByRole('alert')).toHaveProperty(
     'textContent',
     'Ausgang unklar. Das Produkt kann angelegt worden sein. Prüfen Sie den Bestand, bevor Sie erneut anlegen.',
   );
+  const menu = openRowActions(first);
   expect(
-    within(first).getByRole('button', {
+    within(menu).getByRole('button', {
       name: 'Position 1 als Produkt speichern',
     }),
   ).toHaveProperty('disabled', true);
@@ -3237,9 +3302,12 @@ test('an unclear product answer requires the stock check before another attempt'
   );
 });
 
-// EDITOR-ACTIONS-01: the four row actions of a position became one compact icon
-// group in its header. The names, the order and the product status stay.
-test('the position header carries one icon group with four named actions', async () => {
+// EDITOR-VISUAL-02 (Bookitup parity, B37 deviation 1): the four row actions of a
+// position are ONE menu at the end of its header. The toggle is the only visible
+// row action; the entries carry the ticket's wording, keep their names and the
+// former behaviour: a chosen entry closes the menu and returns the focus to the
+// toggle, removal still asks first and the product status stays in the row.
+test('the position header carries one action menu with four named entries', async () => {
   const second = {
     ...line,
     id: 'line-2',
@@ -3252,48 +3320,103 @@ test('the position header carries one icon group with four named actions', async
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   const first = await screen.findByRole('group', { name: 'Position 1' });
-  const actions = within(first).getByRole('group', {
-    name: 'Aktionen dieser Zeile',
+
+  // Exactly one toggle per position, named after its row: no visible icon stands
+  // beside it any more.
+  const toggles = within(first).getAllByRole('button', {
+    name: /^Aktionen für Position \d+$/,
   });
-  const buttons = [
-    'Position 1 nach oben verschieben',
-    'Position 1 nach unten verschieben',
-    'Position 1 entfernen',
+  expect(toggles).toHaveLength(1);
+  const toggle = toggles[0]!;
+  expect(toggle.getAttribute('aria-label')).toBe('Aktionen für Position 1');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.getAttribute('class')).toContain('tier-quiet-icon');
+  expect(toggle.textContent).toBe('');
+  const menuId = toggle.getAttribute('aria-controls')!;
+  expect(menuId).toBeTruthy();
+
+  // The group starts closed and hidden; it is not an extra stop in the tab ring.
+  const menu = first.querySelector<HTMLElement>(`[id="${menuId}"]`)!;
+  expect(menu.getAttribute('role')).toBe('group');
+  expect(menu.hidden).toBe(true);
+
+  // Opening shows the four entries in the ticket's order with visible labels.
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(menu.hidden).toBe(false);
+  const entries = within(menu).getAllByRole('button') as HTMLButtonElement[];
+  expect(entries.map((entry) => entry.getAttribute('aria-label'))).toEqual([
+    'Position 1 nach oben schieben',
+    'Position 1 nach unten schieben',
     'Position 1 als Produkt speichern',
-  ].map((name) => within(actions).getByRole('button', { name }));
-  for (const button of buttons) {
-    expect(button.getAttribute('class')).toContain('icon-action');
-    expect(button.getAttribute('class')).toContain('tier-quiet-icon');
-  }
-  // The DOM order is the Tab order: up, down, remove, product.
-  for (let index = 1; index < buttons.length; index += 1)
+    'Position 1: Position entfernen',
+  ]);
+  expect(entries.map((entry) => entry.textContent)).toEqual([
+    'Nach oben schieben',
+    'Nach unten schieben',
+    'Als Produkt speichern',
+    'Position entfernen',
+  ]);
+  // The row is named in every accessible name, and the visible text is part of
+  // it (axe rule label-content-name-mismatch).
+  for (const entry of entries) {
+    const name = entry.getAttribute('aria-label')!;
+    expect(name.startsWith('Position 1')).toBe(true);
     expect(
-      buttons[index - 1]!.compareDocumentPosition(buttons[index]!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  // The group sits in the row header, before the first field.
+      name.toLowerCase().includes(entry.textContent!.toLowerCase().trim()),
+    ).toBe(true);
+  }
+  // At the top the upward entry names the boundary but keeps its name.
+  expect(entries[0]!.getAttribute('aria-disabled')).toBe('true');
+  expect(entries[1]!.getAttribute('aria-disabled')).toBe('false');
+
+  // The menu sits in the row header, after the price basis and before the
+  // first field; the toggle is the tab stop in front of the fields.
   const header = first.querySelector('.offer-draft-position-head')!;
-  expect(header.contains(actions)).toBe(true);
+  expect(header.contains(menu)).toBe(true);
   expect(
-    header.compareDocumentPosition(
+    priceBasisSwitch(first).compareDocumentPosition(toggle) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    toggle.compareDocumentPosition(
       within(first).getByLabelText('Beschreibung'),
     ) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  // No text button of these four remains anywhere in the editor.
-  expect(
-    screen.queryByRole('button', { name: 'Als Produkt speichern' }),
-  ).toBeNull();
-  expect(
-    screen.queryByRole('button', { name: 'Position entfernen' }),
-  ).toBeNull();
 
-  // The product action keeps its status line inside the same row.
-  fireEvent.click(buttons[3]!);
+  // Escape from the open menu closes it and returns the focus to the toggle.
+  expect(menu.hidden).toBe(false);
+  fireEvent.keyDown(menu, { key: 'Escape' });
+  expect(menu.hidden).toBe(true);
+  expect(document.activeElement).toBe(toggles[0]!);
+
+  // Removal is still one deliberate two-step action: cancelling keeps the row
+  // and returns the focus to the same row toggle.
+  rowAction(first, 'Position 1: Position entfernen');
+  const dialog = screen.getByRole('dialog', { name: 'Position 1 entfernen?' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  expect(document.activeElement).toBe(toggles[0]!);
+
+  // The product entry keeps its status line in the row, outside the menu.
+  rowAction(first, 'Position 1 als Produkt speichern');
   expect(
     await within(first).findByText(
       'Als Produkt gespeichert: Fiktives Fotobox-Paket.',
     ),
   ).toBeTruthy();
+  expect(menu.hidden).toBe(true);
+
+  // A chosen entry closes the menu and returns the focus to the toggle. The
+  // downward move renumbers the row, so it runs last.
+  rowAction(first, 'Position 1 nach unten schieben');
+  expect(menu.hidden).toBe(true);
+  expect(toggles[0]!.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(toggles[0]!);
+  expect(toggles[0]!.getAttribute('aria-label')).toBe(
+    'Aktionen für Position 2',
+  );
 });
 
 // EDITOR-VISUAL-01 (Bookitup parity, B37 deviation 2): the price basis is one
@@ -3378,8 +3501,9 @@ test('the price basis is a Brutto/Netto switch in the row header', async () => {
   });
 });
 
-// EDITOR-ACTIONS-01: removal asks first. Cancel, Escape and the backdrop keep
-// the position, leave the editor open and return the focus to its action.
+// EDITOR-ACTIONS-01 / EDITOR-VISUAL-02: removal asks first. Cancel, Escape and
+// the backdrop keep the position, leave the editor open and return the focus to
+// the row toggle – the entry itself is hidden once the menu has closed.
 test('removing a position asks first and cancelling keeps it', async () => {
   const second = {
     ...line,
@@ -3393,11 +3517,9 @@ test('removing a position asks first and cancelling keeps it', async () => {
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   const first = await screen.findByRole('group', { name: 'Position 1' });
-  const remove = within(first).getByRole('button', {
-    name: 'Position 1 entfernen',
-  });
+  const toggle = actionsToggle(first);
 
-  fireEvent.click(remove);
+  rowAction(first, 'Position 1: Position entfernen');
   const dialog = screen.getByRole('dialog', {
     name: 'Position 1 entfernen?',
   });
@@ -3408,23 +3530,23 @@ test('removing a position asks first and cancelling keeps it', async () => {
   fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
-  expect(document.activeElement).toBe(remove);
+  expect(document.activeElement).toBe(toggle);
 
-  fireEvent.click(remove);
+  rowAction(first, 'Position 1: Position entfernen');
   fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
   expect(screen.queryByRole('dialog')).toBeNull();
   // Escape cancelled the question, not the whole editor.
   expect(screen.getByLabelText('Betreff')).toBeTruthy();
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
-  expect(document.activeElement).toBe(remove);
+  expect(document.activeElement).toBe(toggle);
 
-  fireEvent.click(remove);
+  rowAction(first, 'Position 1: Position entfernen');
   fireEvent.mouseDown(document.querySelector('.form-dialog-backdrop')!);
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
-  expect(document.activeElement).toBe(remove);
+  expect(document.activeElement).toBe(toggle);
 
-  fireEvent.click(remove);
+  rowAction(first, 'Position 1: Position entfernen');
   fireEvent.click(
     within(screen.getByRole('dialog')).getByRole('button', {
       name: 'Entfernen',

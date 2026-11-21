@@ -7,6 +7,11 @@ import { formatHundredths, parseHundredths } from './decimal.js';
  * product data and stay out of the request. The action sends exactly one
  * request per gesture and never repeats an unclear outcome by itself: the
  * product list is read and shown first.
+ *
+ * EDITOR-VISUAL-02: the state lives in one hook so a row can show the action
+ * inside its menu and keep the status line outside the closed menu. The icon
+ * button of the template editor and the menu entry of the document editor share
+ * that one state and never run a second request.
  */
 export type PositionProductSource = {
   description: string;
@@ -168,32 +173,48 @@ function rejectionText(status: number) {
   return 'Der Vorgang wurde abgelehnt, weil sich der Bestand geändert hat. Bitte die Produktliste prüfen und erneut versuchen.';
 }
 
-export function SavePositionAsProduct({
-  label,
-  csrfToken,
+export type PositionProductState = {
+  /** Sends exactly one product attempt per gesture. */
+  create: () => Promise<void>;
+  /** Reads the product list; never creates anything. */
+  checkInventory: () => Promise<void>;
+  /** A request runs right now. */
+  busy: boolean;
+  /** The row may not create another product with these values. */
+  createLocked: boolean;
+  /** The unclear outcome offers the deliberate stock check. */
+  mayCheck: boolean;
+  /** The status is a rejection or an unclear outcome. */
+  alert: boolean;
+  /** Empty while the action has nothing to say. */
+  text: string;
+};
+
+export function usePositionProduct({
   position,
+  csrfToken,
   disabled = false,
 }: {
-  /** Accessible row name, for example "Position 1". */
-  label: string;
+  position: PositionProductSource | null;
   csrfToken: string;
-  position: PositionProductSource;
   disabled?: boolean;
-}) {
+}): PositionProductState {
   const [status, setStatus] = useState<{ phase: Phase; text: string }>({
       phase: 'idle',
       text: '',
     }),
     inFlight = useRef(false),
     attempt = useRef<ProductInput | null>(null),
-    signature = [
-      position.description,
-      position.infoText ?? '',
-      position.unit,
-      position.price,
-      position.priceBasis,
-      position.tax,
-    ].join('\u0000'),
+    signature = position
+      ? [
+          position.description,
+          position.infoText ?? '',
+          position.unit,
+          position.price,
+          position.priceBasis,
+          position.tax,
+        ].join('\u0000')
+      : '',
     lastSignature = useRef(signature);
 
   useEffect(() => {
@@ -211,7 +232,7 @@ export function SavePositionAsProduct({
   }, [signature]);
 
   async function create() {
-    if (inFlight.current || disabled) return;
+    if (inFlight.current || disabled || !position) return;
     const built = productInputOf(position);
     if ('error' in built) {
       setStatus({ phase: 'rejected', text: built.error });
@@ -298,9 +319,67 @@ export function SavePositionAsProduct({
       busy ||
       status.phase === 'created' ||
       status.phase === 'unknown' ||
-      status.phase === 'found',
-    mayCheck = status.phase === 'unknown' || status.phase === 'found',
-    alert = status.phase === 'rejected' || status.phase === 'unknown';
+      status.phase === 'found';
+  return {
+    create,
+    checkInventory,
+    busy,
+    createLocked,
+    mayCheck: status.phase === 'unknown' || status.phase === 'found',
+    alert: status.phase === 'rejected' || status.phase === 'unknown',
+    text: status.text,
+  };
+}
+
+/**
+ * The status line of the product action. It stays outside any menu, so the
+ * confirmed success, the rejection and an unclear outcome remain readable and
+ * announced while the row menu is closed.
+ */
+export function PositionProductStatus({
+  state,
+  disabled = false,
+}: {
+  state: PositionProductState;
+  disabled?: boolean;
+}) {
+  if (!state.mayCheck && !state.text) return null;
+  return (
+    <div className="offer-draft-position-product">
+      {state.mayCheck && (
+        <button
+          type="button"
+          className="tertiary-action"
+          disabled={disabled || state.busy}
+          onClick={() => void state.checkInventory()}
+        >
+          Bestand prüfen
+        </button>
+      )}
+      {state.text && (
+        <p role={state.alert ? 'alert' : 'status'}>{state.text}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The icon form of the action, used by the template editor. The document editor
+ * keeps the same state in its row menu and adds the visible label there.
+ */
+export function SavePositionAsProduct({
+  label,
+  csrfToken,
+  position,
+  disabled = false,
+}: {
+  /** Accessible row name, for example "Position 1". */
+  label: string;
+  csrfToken: string;
+  position: PositionProductSource;
+  disabled?: boolean;
+}) {
+  const state = usePositionProduct({ position, csrfToken, disabled });
   return (
     <>
       {/* EDITOR-ACTIONS-01: the row action is a compact icon of the position
@@ -310,8 +389,8 @@ export function SavePositionAsProduct({
         className="icon-action tier-quiet-icon"
         aria-label={`${label} als Produkt speichern`}
         title="Produktstamm aus dieser Position anlegen"
-        disabled={disabled || createLocked}
-        onClick={() => void create()}
+        disabled={disabled || state.createLocked}
+        onClick={() => void state.create()}
       >
         {/* EDITOR-VISUAL-01: the lucide "package-plus" geometry names a product
             unambiguously; the former closed cube read like a gear. */}
@@ -333,23 +412,7 @@ export function SavePositionAsProduct({
         </svg>
       </button>
       {/* The status line stays in the row, under the icon group. */}
-      {(mayCheck || status.text) && (
-        <div className="offer-draft-position-product">
-          {mayCheck && (
-            <button
-              type="button"
-              className="tertiary-action"
-              disabled={disabled || busy}
-              onClick={() => void checkInventory()}
-            >
-              Bestand prüfen
-            </button>
-          )}
-          {status.text && (
-            <p role={alert ? 'alert' : 'status'}>{status.text}</p>
-          )}
-        </div>
-      )}
+      <PositionProductStatus state={state} disabled={disabled} />
     </>
   );
 }

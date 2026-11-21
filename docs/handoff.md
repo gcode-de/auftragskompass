@@ -46,6 +46,27 @@ Abschnitt beschreibt den aktuellen Stand.
   dann Plan-Eintrag ggf. ergänzen. Keine behauptete Gleichheit für Kopf/
   Breiten/Typografie/Abstände. Einzelheiten: Plan EDITOR-VISUAL-01,
   Beobachtungen B38.
+- **Erledigt 21.11.2026 – Nachmittagssitzung (GOAL „sichtbare Bookitup-
+  Angleichung des Dokumenteditors“):** (1) **Visuelle Abnahme nachgeholt**
+  (Dateibild-Vision ohne Bildschirmaufnahme: lokales Qwen-VL via llama.cpp,
+  nichts verließ das Gerät): alle 35 gleichnamigen Vorher-/Nachher-Paare des
+  offer-draft-Archivs angesehen (Planung nannte 25) – EDITOR-VISUAL-01 damit
+  visuell abgenommen; gemeldete Beschnitte waren Bildausschnitt-Artefakte;
+  dazu B15/B17/B25 tatsächlich angesehen (Layout-Details B39). Verbleibend
+  offen: Sichtprüfung Akkordion (EDITOR-MOBILE-01) und Produkt-Modal
+  (EDITOR-PICKER-01) an ihren eigenen Screenshots. (2) **EDITOR-VISUAL-02
+  abgeschlossen:** Positionsaktionen als Zeilenmenü (B37-Abweichung 1) statt
+  vier Einzel-Icons – Menüknopf „Aktionen für Position N“ mit „Nach oben/unten
+  schieben“, „Als Produkt speichern“, „Position entfernen“; alle Verträge
+  (Entfernen-Rückfrage, Sortieransagen, Produkt-POST-Schutz, Fokus) erhalten;
+  implementiert via DeepSeek V4.1 Flash, Review/Review-Fix (E2E-Locator
+  Umnummerierung) und Gates durch MiMo: component 1034/1034, unit 360/360,
+  E2E volle Suite 52/52, typecheck/lint/format/docs/workspace/build grün;
+  visuelle Vorher/Nachher-Abnahme (8 Paare, Breiten/Themes) bestanden.
+  Ehrlich: Menü-Offen-Zustand ohne Screenshot (Component/E2E/axe), Details im
+  Plan EDITOR-VISUAL-02 und B39. (3) Nächster gut belegter Kandidat:
+  Positions-Gesamt-Zeile (Bookitup-Spalte „Gesamt“; erfordert Entscheidung
+  über Client-Rechenweg `lineTotals`, B39).
 - **Werkzeugketten-Befunde dieser Sitzung (Betrieb):** (1) Das Standard-`node`
   der Shell (v23.11.0, außerhalb der unterstützten Engine-Range) bricht im
   `require(esm)`-Pfad mit „request for './Parser.js' is not in cache“ und lässt

@@ -235,3 +235,63 @@ beiden Editoren im direkten Gegenüber; die Vorher-/Nachher-Sichtprüfung der
 eigenen Screenshots (25 Paare, Desktop/Mobil, Hell/Dunkel) ist nach Entsperren
 des Rechners nachzuholen. Bis dahin gilt: keine behauptete Bookitup-Gleichheit
 dieser Bereiche.
+
+## B39 — Nachgeholte visuelle Abnahme EDITOR-VISUAL-01 und Gegenansicht B15/B17/B25 (21.11.2026, Nachmittagssitzung)
+
+**Methode (Dateibilder, ohne Bildschirmaufnahme):** Die archivierten
+Vorher-/Nachher-Screenshots und die privaten Bookitup-Referenzen wurden mit
+einem lokalen Dateibild-Vision-Werkzeug angesehen (Qwen3.6-35B-A3B + mmproj via
+llama.cpp `llama-server`, Bilder auf 1024 px skaliert; keine
+Bildschirmaufnahme, keine Cloud, keine Daten verlassen das Gerät). Im Archiv
+(`evi-before`/`evi-after`) fanden sich **35 gleichnamige Paare** der
+offer-draft-E2E-Suite (die Planung nannte 25) – alle 35 wurden in
+Vorher/Nachher-Vergleichsläufen angesehen. **Kein REA-Beleg** (REA-MCP weiter
+nicht verfügbar). **Werkzeuggrenzen ehrlich:** kleines lokales Modell, bei den
+langen Vollseiten-Bildern teils Halluzinationen (z. B. erfundene Feldnamen);
+solche Befunde wurden durch gezielte Einzelfragen auf dieselben Bilder
+nachgeprüft, bevor sie als Mangel galten.
+
+**Abnahmebefund EDITOR-VISUAL-01 (bestanden):** Brutto/Netto-Radiogruppe im
+Positionskopf und `package-plus`-Icon in allen betroffenen
+Breiten/Themes (320/390/768/1280, hell/dunkel, 22rem-Container) sichtbar;
+„Preisbasis“-Select durchgehend entfernt; unbetroffene Ansichten
+(Rechnungskopf „… bearbeiten“/„Schließen“, Blanko-Dialoge, Angebotserstellung)
+pixelidentisch (keine Kollateralschäden). Gemeldete „Beschnitte“
+(„Beschreibung“, „Infotext (optional)“, „Optionale Position“) in gezielten
+Nachprüfungen als Bildausschnitt-Artefakte enttarnt (Screenshot endet am
+unteren Rand, Inhalt liegt außerhalb) – **keine echten UI-Mängel**; bei 1440 px
+kein Clipping, keine Überlappung, alle Beschriftungen vollständig. Ein
+wiederkehrender schwacher Befund ohne Mangelcharakter: die vier
+unbeschrifteten Aktionssymbole der Kopfzeile sind bei 320 px klein und schwer
+einzuordnen (Eingang für EDITOR-VISUAL-02).
+
+**Tatsächlich gesehene Referenzdetails (Layout, ohne Kundenwerte):**
+- **B15-products:** Listenkopf mit „+ Produkt hinzufügen“, Suchfeld „Produkt
+  suchen“ und Brutto/Netto-Umschalterpaar rechtsbündig darüber; Positionen/
+  Produktzeilen als Tabelle `Produkt/Leistung | Menge | Einheit | Preis (€) |
+  Steuer (%) | Rabatt | Gesamt`; Zeilenende mit Stift- und Papierkorb-Icon;
+  unter der Zeile aufklappbarer Bereich mit Infotext (grau) und
+  Ressourcen-Links.
+- **B17-template-editor:** Kopf mit Breadcrumb „Vorlagen / Standard“,
+  „Vorschau“-Knopf mit Auge und Dreipunkt-Menü; Tabs „Inhalt /
+  Einwilligungen / Einstellungen“; darunter Brutto/Netto-Umschalter rechts;
+  dieselbe Positionstabelle inkl. Optional-Schalter je Zeile und
+  „Detailliertem Subtext“; Fußpanel rechts mit Zwischensumme, Rabatt
+  (Prozent/Feld), „Anmerkung zum Rabatt“, Währung.
+- **B25-document-editor:** Dokumentvorschau mit Kopf „← Vorschau“/„Bearbeiten“
+  und Warn-Dialog „Dokument bereits fertig“ (Abbrechen/Trotzdem bearbeiten);
+  rechtes Panel „Dokument bereitstellen“ (Online freigeben, E-Mail an Kunden,
+  Herunterladen, Drucken) sowie Kontakt-/Orts-/Notiz-Abschnitte.
+
+**Folgerungen:** (1) B37-Abweichung 1 wird als **EDITOR-VISUAL-02
+(Positionsaktionen als Zeilenmenü)** geschlossen – belegte Menüeinträge „als
+Produkt speichern“/„nach unten schieben“ (Nutzerbeobachtung 20.11.), Form
+bestätigt durch den eigenen 320-px-Befund; „Position entfernen“ im Menü ist
+eigene Auslegung (Löschform der Referenz im Dokumenteditor unbeobachtet; B15
+zeigt Zeilenend-Papierkorb). (2) Gut belegter nächster Kandidat: die
+**Gesamt-Spalte je Position** (B15/B17 + Nutzerbeobachtung 20.11. „… Gesamt …“)
+– fehlt heute völlig, erfordert aber eine Entscheidung über den Client-Rechenweg
+(`lineTotals` aus `packages/core/src/document-totals.ts` ist der einzige
+getestete Rechenkern, wird von der Admin-Oberfläche bisher nicht importiert;
+keine zweite Mathematik erfinden). (3) Kopf/Breiten/Typografie/Abstände der
+beiden Editoren bleiben im direkten Gegenüber unbelegt.
