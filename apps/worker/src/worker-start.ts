@@ -11,6 +11,7 @@ import {
   loadWebsiteOptionConfig,
   startTelegramNotifications,
   startMailOutbox,
+  smtpMailSender,
   type InquirySyncConfig,
   type MailOutboxFailure,
   type RuntimeConfig,
@@ -34,8 +35,14 @@ export type WorkerRuntimeDependencies = {
   ): FastifyInstance;
   probe(pool: Pool): Promise<boolean>;
   telegramConfigured?(pool: Pool): Promise<boolean>;
-  // MAIL-021-A: the outbox loop has no provider adapter yet and says so.
-  startMail?(pool: Pool, report: (failure: MailOutboxFailure) => void): Loop;
+  // MAIL-021-A/B: the loop sends through the SMTP adapter. The key opens the
+  // sealed account secret; without it the job stays failed/encryption_unavailable
+  // instead of pretending a provider is present.
+  startMail?(
+    pool: Pool,
+    report: (failure: MailOutboxFailure) => void,
+    key: Uint8Array | null,
+  ): Loop;
   // Returned loops stop in reverse: the drain first, then sync, expiry, pool.
   startExpiry(pool: Pool, report: () => void): Loop & { stop(): Promise<void> };
   // Null means the drain is deliberately unconfigured, not broken.
@@ -74,7 +81,9 @@ export const workerRuntimeDependencies: WorkerRuntimeDependencies = {
     return Boolean(rows[0]?.enabled);
   },
   startExpiry: (pool, report) => startReservationExpiry(pool, report),
-  startMail: (pool, report) => startMailOutbox(pool, report),
+  // The same key file seals the mail secrets; no adapter means no send.
+  startMail: (pool, report, key) =>
+    startMailOutbox(pool, report, 5000, { createSender: smtpMailSender, key }),
   loadOptionConfig: (env) => loadWebsiteOptionConfig(env),
   optionDrainActive: (env) => loadWebsiteOptionDrainActivation(env),
   startDrain: (pool, dependencies, config, entry, error) =>
@@ -110,16 +119,46 @@ export async function startWorkerRuntime(
   const expiry = dependencies.startExpiry(pool, () =>
     app.log.error('reservation_expiry_failed'),
   );
-  // MAIL-021-A: the loop is honest without an adapter - a claimed job becomes
-  // `failed`/`provider_missing`, which is a warning, not a hidden success.
+  // MAIL-021-A/B: a missing adapter, missing key or refused delivery is a job
+  // state, not a hidden success. Only closed categories are logged.
   const mail = dependencies.startMail
-    ? dependencies.startMail(pool, (failure) =>
-        failure.type === 'provider_missing'
-          ? app.log.warn(
-              { mailOutboxFailure: failure },
-              'mail_outbox_provider_missing',
-            )
-          : app.log.error({ mailOutboxFailure: failure }, 'mail_outbox_failed'),
+    ? dependencies.startMail(
+        pool,
+        (failure) => {
+          switch (failure.type) {
+            case 'provider_missing':
+              app.log.warn(
+                { mailOutboxFailure: failure },
+                'mail_outbox_provider_missing',
+              );
+              break;
+            case 'encryption_unavailable':
+              app.log.error(
+                { mailOutboxFailure: failure },
+                'mail_outbox_encryption_unavailable',
+              );
+              break;
+            case 'failed':
+              app.log.warn(
+                { mailOutboxFailure: failure },
+                'mail_outbox_delivery_failed',
+              );
+              break;
+            case 'uncertain':
+              // Terminal and loud: a second automatic attempt could duplicate.
+              app.log.error(
+                { mailOutboxFailure: failure },
+                'mail_outbox_delivery_uncertain',
+              );
+              break;
+            default:
+              app.log.error(
+                { mailOutboxFailure: failure },
+                'mail_outbox_failed',
+              );
+          }
+        },
+        telegramKey,
       )
     : null;
   const telegram = telegramKey
