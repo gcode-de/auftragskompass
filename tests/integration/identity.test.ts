@@ -77,7 +77,10 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // and no mail or Telegram contract changes.
   // MAIL-DOC-01 (0071) adds one tenant-bound attachment table plus a trigger
   // that only allows finalized documents; no existing row changes.
-  expect(applied.at(-1)!.name).toBe('0071_mail_document_attachments.sql');
+  // MAIL-ACCOUNT-01 (0072) adds three columns to mail_accounts (sender
+  // identity and transport choice) with one table-level check, and widens the
+  // audit vocabulary by one action; every existing row keeps its meaning.
+  expect(applied.at(-1)!.name).toBe('0072_mail_account_settings.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

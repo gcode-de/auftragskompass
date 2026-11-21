@@ -1,8 +1,35 @@
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   classifySmtpFailure,
+  smtpMailSender,
+  type MailSendEnvelope,
+  type MailSendResult,
   type SmtpAttemptPhase,
+  type SmtpSenderOptions,
 } from '../../packages/core/src/mail-sender.js';
+
+// MAIL-ACCOUNT-01: the adapter has no seam of its own, so the one nodemailer
+// call it makes is replaced here. Both the transport options and the sendMail
+// payload are captured; the fake transport accepts every message.
+const { transportOptions, sendMailCalls } = vi.hoisted(() => ({
+  transportOptions: [] as Record<string, unknown>[],
+  sendMailCalls: [] as Record<string, unknown>[],
+}));
+
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: (options: Record<string, unknown>) => {
+      transportOptions.push(options);
+      return {
+        sendMail: async (message: Record<string, unknown>) => {
+          sendMailCalls.push(message);
+          return { messageId: 'fictional-message-id' };
+        },
+        close: () => {},
+      };
+    },
+  },
+}));
 
 // MAIL-021-B: the adapter may only answer three things - accepted, unclear, or
 // definitively refused with one code from a closed set. The table below is the
@@ -191,5 +218,119 @@ describe('SMTP TLS requirement', () => {
         'unknown',
       ),
     ).toEqual({ failed: 'provider_timeout' });
+  });
+});
+
+// MAIL-ACCOUNT-01: an explicit security choice from the account settings must
+// reach nodemailer unchanged, and the display name may only decorate the From
+// header - the envelope keeps the bare address the server validates.
+const account = {
+  host: 'smtp.example.invalid',
+  port: 587,
+  username: '',
+  secret: '',
+};
+
+const content = {
+  subject: 'Fictional subject',
+  text: 'Fictional body',
+  html: null,
+  messageId: null,
+};
+
+const bareEnvelope: MailSendEnvelope = {
+  from: 'versand@example.invalid',
+  to: ['synthetic.contact@example.invalid'],
+  cc: [],
+  bcc: [],
+};
+
+async function send(
+  options: Partial<SmtpSenderOptions>,
+  envelope: MailSendEnvelope = bareEnvelope,
+): Promise<MailSendResult> {
+  return smtpMailSender({ ...account, ...options }).send(envelope, content);
+}
+
+describe('SMTP transport security and sender identity', () => {
+  beforeEach(() => {
+    transportOptions.length = 0;
+    sendMailCalls.length = 0;
+  });
+
+  test('starttls hard-requires the upgrade, with and without a username', async () => {
+    expect(await send({ security: 'starttls' })).toBe('sent');
+    expect(
+      await send({
+        security: 'starttls',
+        username: 'synthetic.user@example.invalid',
+        secret: 'fictional-secret',
+      }),
+    ).toBe('sent');
+    expect(
+      transportOptions.map((options) => ({
+        secure: options.secure,
+        requireTLS: options.requireTLS,
+      })),
+    ).toEqual([
+      { secure: false, requireTLS: true },
+      { secure: false, requireTLS: true },
+    ]);
+  });
+
+  test('implicit is TLS from the first byte, never a second upgrade', async () => {
+    await send({
+      security: 'implicit',
+      username: 'synthetic.user@example.invalid',
+      secret: 'fictional-secret',
+    });
+    expect(transportOptions).toHaveLength(1);
+    expect(transportOptions[0]).toMatchObject({
+      secure: true,
+      requireTLS: false,
+    });
+  });
+
+  test('none stays plaintext and never demands an upgrade', async () => {
+    await send({ security: 'none', port: 25 });
+    expect(transportOptions).toHaveLength(1);
+    expect(transportOptions[0]).toMatchObject({
+      secure: false,
+      requireTLS: false,
+    });
+  });
+
+  test('without a security choice the legacy derivation still applies', async () => {
+    await send({
+      username: 'synthetic.user@example.invalid',
+      secret: 'fictional-secret',
+    });
+    await send({ port: 465 });
+    expect(
+      transportOptions.map((options) => ({
+        secure: options.secure,
+        requireTLS: options.requireTLS,
+      })),
+    ).toEqual([
+      // A username forces STARTTLS on the submission port ...
+      { secure: false, requireTLS: true },
+      // ... while 465 is SMTPS without any credentials.
+      { secure: true, requireTLS: false },
+    ]);
+  });
+
+  test('a display name decorates the header, not the envelope', async () => {
+    expect(
+      await send({}, { ...bareEnvelope, fromName: 'Fotobox Muster' }),
+    ).toBe('sent');
+    await send({});
+    expect(sendMailCalls[0]).toMatchObject({
+      from: 'Fotobox Muster <versand@example.invalid>',
+      envelope: { from: 'versand@example.invalid' },
+    });
+    expect(sendMailCalls[1]).toMatchObject({
+      from: 'versand@example.invalid',
+      envelope: { from: 'versand@example.invalid' },
+    });
   });
 });

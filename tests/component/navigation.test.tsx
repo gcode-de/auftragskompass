@@ -144,7 +144,7 @@ test('resolves deep links, settings and browser history without losing search', 
   expect(window.location.search).toBe('?q=Fictional');
 });
 
-test('settings navigation has a labeled thirteen-option select synced with legacy hashes and history', async () => {
+test('settings navigation has a labeled fourteen-option select synced with legacy hashes and history', async () => {
   window.history.replaceState(null, '', '/?q=Fictional#resources');
   render(<SettingsNavigation />);
   const settingsNavigation = screen.getByRole('navigation', {
@@ -153,7 +153,7 @@ test('settings navigation has a labeled thirteen-option select synced with legac
   const select = within(settingsNavigation).getByRole('combobox', {
     name: 'Einstellungsbereich',
   }) as HTMLSelectElement;
-  expect(select.options).toHaveLength(13);
+  expect(select.options).toHaveLength(14);
   expect(select.value).toBe('#settings-resources');
   expect(
     Array.from(select.options).map((option) => [
@@ -166,6 +166,7 @@ test('settings navigation has a labeled thirteen-option select synced with legac
     ['Produkte', '#settings-products'],
     ['Kalender-Abos', '#settings-calendar'],
     ['Telegram', '#settings-telegram'],
+    ['E-Mail-Versand', '#settings-mail'],
     ['Datenimport', '#import-review'],
     ['Datenexport', '#settings-export'],
     ['Website-Formular', '#settings-inquiry'],

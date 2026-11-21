@@ -54,7 +54,10 @@ export type AuditAction =
   | 'mail.sent'
   | 'mail.send_retry'
   // MAIL-DOC-01: the deliberate order that carries a finalized document.
-  | 'mail.document_send_scheduled';
+  | 'mail.document_send_scheduled'
+  // MAIL-ACCOUNT-01: creating or changing a sending account is operator-
+  // traceable; the audit row never carries any secret.
+  | 'mail.account_saved';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

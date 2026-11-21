@@ -6,15 +6,21 @@ import nodemailer from 'nodemailer';
 // code from the closed set below - and never a message, an address, a server
 // reply or a token. SMTP "accepted" is not a delivery proof (BKP023), so the
 // outbox records `sent` for it and nothing more.
+export type MailSmtpSecurity = 'starttls' | 'implicit' | 'none';
 export type MailSenderAccount = {
   host: string;
   port: number | null;
   username: string;
   /** Plain secret, decrypted for the duration of one attempt only. */
   secret: string;
+  /** MAIL-ACCOUNT-01: explicit transport encryption. Absent keeps the legacy
+   *  derivation (SMTPS on 465, requireTLS with credentials). */
+  security?: MailSmtpSecurity;
 };
 export type MailSendEnvelope = {
   from: string;
+  /** Display name for the From header only; the envelope keeps `from` bare. */
+  fromName?: string | undefined;
   to: string[];
   cc: string[];
   bcc: string[];
@@ -141,22 +147,28 @@ function phaseTrackingLogger(track: (phase: SmtpAttemptPhase) => void) {
 // One transport per attempt: a send either completes or is closed, never pooled
 // across accounts. TLS is the library default - SMTPS on 465, opportunistic
 // STARTTLS everywhere else - and certificate verification is never weakened.
-// MAIL-021-B2: with credentials configured TLS is no longer optional. On 465
-// `secure` already encrypts the whole session; on every other port `requireTLS`
-// turns the opportunistic upgrade into a hard requirement, so a provider without
-// STARTTLS fails before AUTH instead of receiving the password in clear text.
-// Without a username there is no password to protect: a local relay may stay
-// unencrypted, on purpose.
+// MAIL-021-B2: with credentials configured TLS is no longer optional, so a
+// provider without STARTTLS fails before AUTH instead of receiving the password
+// in clear text. MAIL-ACCOUNT-01: an explicit `security` from the account
+// settings decides instead - `implicit` is SMTPS from the first byte,
+// `starttls` hard-requires the upgrade and `none` is only ever paired with a
+// username-free local relay (enforced when the account is saved).
 export function smtpMailSender(options: SmtpSenderOptions): MailSender {
   const port = options.port ?? 587;
+  const secure = options.security
+    ? options.security === 'implicit'
+    : port === 465;
+  const requireTLS = options.security
+    ? options.security === 'starttls'
+    : Boolean(options.username);
   return {
     async send(envelope, content) {
       let phase: SmtpAttemptPhase = 'unknown';
       const transport = nodemailer.createTransport({
         host: options.host,
         port,
-        secure: port === 465,
-        requireTLS: Boolean(options.username),
+        secure,
+        requireTLS,
         ...(options.username
           ? { auth: { user: options.username, pass: options.secret } }
           : {}),
@@ -174,7 +186,11 @@ export function smtpMailSender(options: SmtpSenderOptions): MailSender {
             from: envelope.from,
             to: [...envelope.to, ...envelope.cc, ...envelope.bcc],
           },
-          from: envelope.from,
+          // The display name decorates the header only; the envelope above
+          // keeps the bare address the server validates.
+          from: envelope.fromName
+            ? `${envelope.fromName} <${envelope.from}>`
+            : envelope.from,
           to: envelope.to.join(', '),
           ...(envelope.cc.length ? { cc: envelope.cc.join(', ') } : {}),
           // BCC stays in the envelope. nodemailer keeps it out of the generated
