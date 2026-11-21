@@ -32,6 +32,7 @@ import {
   chromiumPdfRenderer,
   registerTelegramSettingsRoutes,
   telegramKeyFromSecret,
+  registerMailRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -146,6 +147,9 @@ try {
     // BKP020.1: the file library shares the storage mount but has its own
     // tenant-bound rows and API.
     registerLibraryFileRoutes(app, pool, auth.tenantId, documentStore);
+    // MAIL-021-A: mail lists, one message and the durable send order. No IMAP
+    // reader and no SMTP adapter exist yet, so no request contacts a provider.
+    registerMailRoutes(app, pool, auth.tenantId);
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);
