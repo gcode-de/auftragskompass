@@ -48,7 +48,7 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // DOC-PRODUCT-01.5: the newest migration adds the one document discount as
   // three additive, NULL-able columns, so every row written before it keeps its
   // stored sums and its claim.
-  expect(applied.at(-1)!.name).toBe('0063_document_total_discount.sql');
+  expect(applied.at(-1)!.name).toBe('0064_product_deleted_audit.sql');
   expect(
     (
       await pool.query<{ column_name: string; is_nullable: string }>(

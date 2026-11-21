@@ -1158,3 +1158,292 @@ test('archiving a filtered row hands the focus to the create action', async () =
     (screen.getByLabelText('Zustand filtern') as HTMLSelectElement).value,
   ).toBe('active');
 });
+
+type DeleteWrite = {
+  url: string;
+  method: string;
+  body: Record<string, unknown>;
+  headers: Record<string, string>;
+};
+function deletionFetcher(
+  rows: (typeof row)[],
+  reply?: (method: string) => Response | Promise<Response>,
+) {
+  let current = rows.map((entry) => ({ ...entry }));
+  const writes: DeleteWrite[] = [];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (!options) return Response.json(current);
+    const method = String(options.method);
+    writes.push({
+      url: String(url),
+      method,
+      body: JSON.parse(String(options.body)) as Record<string, unknown>,
+      headers: { ...(options.headers as Record<string, string>) },
+    });
+    const response = reply
+      ? await reply(method)
+      : new Response(null, { status: 204 });
+    if (method === 'DELETE' && response.status === 204)
+      current = current.filter(
+        (entry) => '/api/v1/products/' + entry.id !== url,
+      );
+    return response;
+  });
+  vi.stubGlobal('fetch', fetcher);
+  return { fetcher, writes };
+}
+async function openDelete(name: string) {
+  openActions(name);
+  fireEvent.click(
+    screen.getByRole('button', { name: `Produkt löschen: ${name}` }),
+  );
+  return screen.findByRole('dialog', { name: 'Produkt löschen?' });
+}
+function confirmDelete(dialog: HTMLElement) {
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }));
+}
+
+test('deleting asks first; cancel, Escape and the backdrop keep the row and return the focus', async () => {
+  const { writes } = deletionFetcher([row, service]);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  const toggle = actionToggle('Synthetic product');
+  let dialog = await openDelete('Synthetic product');
+  expect(dialog.textContent).toContain('Synthetic product');
+  const cancel = within(dialog).getByRole('button', { name: 'Abbrechen' });
+  // The safe choice owns the first focus, never the destructive one.
+  await waitFor(() => expect(document.activeElement).toBe(cancel));
+  expect(writes).toHaveLength(0);
+  fireEvent.click(cancel);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(toggle));
+  dialog = await openDelete('Synthetic product');
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(toggle));
+  dialog = await openDelete('Synthetic product');
+  fireEvent.mouseDown(dialog.parentElement!);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(writes).toHaveLength(0);
+  expect(screen.getByText(summaryText(serviceText))).toBeTruthy();
+});
+
+test('a confirmed delete sends one versioned request, removes the row and reconciles the list', async () => {
+  const { fetcher, writes } = deletionFetcher([row, service]);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  const dialog = await openDelete('Synthetic product');
+  confirmDelete(dialog);
+  await screen.findByText('Produkt gelöscht.');
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({
+    url: '/api/v1/products/synthetic',
+    method: 'DELETE',
+    body: { version: 1 },
+    headers: { 'x-csrf-token': 'csrf' },
+  });
+  await waitFor(() =>
+    expect(screen.queryByText(summaryText(rowText))).toBeNull(),
+  );
+  expect(screen.getByText(summaryText(serviceText))).toBeTruthy();
+  // The saved list is read once more instead of trusting the local removal.
+  expect(fetcher.mock.calls.filter((call) => !call[1]).length).toBeGreaterThan(
+    1,
+  );
+  // The deleted row is gone, so the focus falls back to the create action.
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Produkt anlegen' })).toBe(
+      document.activeElement,
+    ),
+  );
+});
+
+test('a product in use stays, names archiving as the way forward and is asked only once', async () => {
+  const { writes } = deletionFetcher([row], (method) =>
+    method === 'PUT'
+      ? Response.json({ ...row, state: 'archived', version: 2 })
+      : Response.json({ error: 'product_in_use' }, { status: 409 }),
+  );
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  const dialog = await openDelete('Synthetic product');
+  confirmDelete(dialog);
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe(
+    'Produkt wird in Dokumenten oder Vorlagen verwendet. Statt löschen archivieren.',
+  );
+  expect(writes).toHaveLength(1);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
+  // The disclosure reopens on the failed row, so archiving is one step away.
+  const toggle = actionToggle('Synthetic product');
+  await waitFor(() =>
+    expect(toggle.getAttribute('aria-expanded')).toBe('true'),
+  );
+  expect(
+    screen.getByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }),
+  ).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(toggle));
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Produkt archivieren: Synthetic product',
+    }),
+  );
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes[1]!.method).toBe('PUT');
+  expect(writes[1]!.body.state).toBe('archived');
+});
+
+test('a stale delete version is explained and keeps the row', async () => {
+  const { writes } = deletionFetcher([row], () =>
+    Response.json({ error: 'conflict' }, { status: 409 }),
+  );
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  const dialog = await openDelete('Synthetic product');
+  confirmDelete(dialog);
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe(
+    'Inzwischen geändert. Produkte aktualisieren und erneut löschen.',
+  );
+  expect(writes).toHaveLength(1);
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
+});
+
+test('an unknown delete outcome blocks a blind retry until the list is read again', async () => {
+  let attempt = 0;
+  const { writes } = deletionFetcher([row], () => {
+    attempt += 1;
+    if (attempt === 1) throw Error('offline');
+    return new Response(null, { status: 204 });
+  });
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  let dialog = await openDelete('Synthetic product');
+  confirmDelete(dialog);
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe(
+    'Löschung unklar. Bitte Produkte neu laden, bevor du erneut löschst.',
+  );
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  // The delete action stays locked: no second confirmation, no second request.
+  openActions('Synthetic product');
+  const locked = screen.getByRole('button', {
+    name: 'Produkt löschen: Synthetic product',
+  }) as HTMLButtonElement;
+  expect(locked.disabled).toBe(true);
+  fireEvent.click(locked);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(writes).toHaveLength(1);
+  // Only a fresh list read unlocks the action; then the retry may delete.
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Produkte erneut laden' }),
+    );
+  });
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Produkt löschen: Synthetic product',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false),
+  );
+  dialog = await openDelete('Synthetic product');
+  confirmDelete(dialog);
+  await screen.findByText('Produkt gelöscht.');
+  await waitFor(() =>
+    expect(screen.queryByText(summaryText(rowText))).toBeNull(),
+  );
+  expect(writes).toHaveLength(2);
+});
+
+test('a rejected delete keeps the row and reopens its actions for a later attempt', async () => {
+  const { writes } = deletionFetcher([row], () =>
+    Response.json({ error: 'unavailable' }, { status: 503 }),
+  );
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  const dialog = await openDelete('Synthetic product');
+  confirmDelete(dialog);
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe(
+    'Löschen fehlgeschlagen. Produkt und Berechtigung prüfen.',
+  );
+  expect(writes).toHaveLength(1);
+  expect(screen.getByText(summaryText(rowText))).toBeTruthy();
+  const toggle = actionToggle('Synthetic product');
+  await waitFor(() =>
+    expect(toggle.getAttribute('aria-expanded')).toBe('true'),
+  );
+  await waitFor(() => expect(document.activeElement).toBe(toggle));
+});
+
+test('a deleted row is reported honestly when the following list read fails', async () => {
+  let deleted = false;
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (!options) {
+      if (deleted) throw Error('offline');
+      return Response.json([row]);
+    }
+    deleted = true;
+    return new Response(null, { status: 204 });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  const dialog = await openDelete('Synthetic product');
+  confirmDelete(dialog);
+  await screen.findByText(
+    'Produkt gelöscht, die Liste konnte nicht aktualisiert werden.',
+  );
+  expect(screen.queryByText(summaryText(rowText))).toBeNull();
+  // The confirmed deletion is not sent again.
+  expect(fetcher.mock.calls.filter((call) => Boolean(call[1]))).toHaveLength(1);
+});
+
+test('a double confirmation sends exactly one delete and holds the dialog while busy', async () => {
+  let finish: (response: Response) => void = () => {};
+  const writes: DeleteWrite[] = [];
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (!options) return Response.json([row]);
+    writes.push({
+      url: String(_url),
+      method: String(options.method),
+      body: JSON.parse(String(options.body)) as Record<string, unknown>,
+      headers: { ...(options.headers as Record<string, string>) },
+    });
+    return new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<ProductPanel csrfToken="csrf" />);
+  await screen.findByText(summaryText(rowText));
+  const dialog = await openDelete('Synthetic product');
+  const confirm = within(dialog).getByRole('button', { name: 'Löschen' });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  expect(writes).toHaveLength(1);
+  expect(dialog.getAttribute('aria-busy')).toBe('true');
+  expect(
+    (
+      within(dialog).getByRole('button', {
+        name: 'Abbrechen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  await act(async () => finish(new Response(null, { status: 204 })));
+  await screen.findByText('Produkt gelöscht.');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(writes).toHaveLength(1);
+});

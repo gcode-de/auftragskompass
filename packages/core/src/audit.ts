@@ -20,6 +20,7 @@ export type AuditAction =
   | 'resource.updated'
   | 'product.created'
   | 'product.updated'
+  | 'product.deleted'
   | 'contact.created'
   | 'contact.updated'
   | 'location.created'
