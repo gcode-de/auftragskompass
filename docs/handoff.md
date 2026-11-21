@@ -104,17 +104,12 @@ Abschnitt beschreibt den aktuellen Stand.
   in …“ im Drucklayout (PR #41, `658d58c`, CI grün); fehlende Teile entfallen,
   ohne Eventwerte bytegleich. Gold-Pin-Anpassung aussagenerhalten und belegt
   (Details im Plan).
-- **Nachsteuerung 21.11.2026 (Vorrang, Nutzer-Feature-Wünsche):** Als nächste
-  Slices sind geplant und im Plan priorisiert: EDITOR-ACTIONS-01 (Positions-
-  aktionen aufwärts/abwärts/Entfernen/„Als Produkt“ als Icon-Gruppe in der
-  Positions-Überschrift, Entfernen MIT Bestätigung), PRODUCTS-DELETE-01
-  (Produkt löschen mit Bestätigung, Referenzschutz), EDITOR-MOBILE-01
-  (Akkordion für Menge/Einheit/Preis/Preisbasis/Steuer/Rabatt mobil) und
-  EDITOR-PICKER-01 („Produkt hinzufügen“ als Modal mit Suchleiste und
-  Mehrfachauswahl wie in Bookitup; „Hinzufügen“ unten mittig, „Schließen“ X
-  oben rechts, Schließen bei Klick außerhalb ohne Anlage).
-  Danach die restliche Reihenfolge des Plans (Dokumentrest, E-Mail,
-  Parität/Design).
+- **Erledigt 21.11.2026 – EDITOR-ACTIONS-01:** Positionsaktionen als
+  Icon-Gruppe in der Kopfzeile mit Entfernen-Bestätigung (PR #47, `fff7c49`,
+  CI grün; Sichtprüfung 1440 px bestätigt, Details im Plan). Produkt-Icon
+  liest sich als Zahnrad – als visueller Feinschliff notiert.
+- **Aktiver Slice:** PRODUCTS-DELETE-01 (Produkt löschen mit Bestätigung,
+  Referenzschutz). Danach EDITOR-MOBILE-01, EDITOR-PICKER-01.
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
