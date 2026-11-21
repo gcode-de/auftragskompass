@@ -31,6 +31,7 @@ export type MailSendFailureCode =
   | 'provider_recipient_rejected'
   | 'provider_rejected'
   | 'provider_timeout'
+  | 'provider_tls_required'
   | 'internal';
 export type MailSendResult =
   'sent' | 'uncertain' | { failed: MailSendFailureCode };
@@ -61,6 +62,11 @@ export function classifySmtpFailure(
   const code = (error as { code?: unknown }).code,
     command = (error as { command?: unknown }).command,
     responseCode = (error as { responseCode?: unknown }).responseCode;
+  // A certificate that cannot be verified keeps its own diagnosis: it is never
+  // a reason to weaken anything.
+  const certificateProblem = /certificate|self.signed|CERT_/i.test(
+    error.message,
+  );
   // The server answered: the message was refused at that step, nothing queued.
   if (code === 'EAUTH') return { failed: 'provider_auth_failed' };
   if (code === 'EENVELOPE')
@@ -70,15 +76,19 @@ export function classifySmtpFailure(
           ? 'provider_recipient_rejected'
           : 'provider_rejected',
     };
+  // MAIL-021-B2: the session could not be encrypted, so not even the password
+  // left the client. That is a definitive non-delivery and an operator task -
+  // enable TLS at the provider - not a message problem.
+  if (code === 'ETLS')
+    return certificateProblem
+      ? { failed: 'provider_timeout' }
+      : { failed: 'provider_tls_required' };
   if (typeof responseCode === 'number' && Number.isInteger(responseCode))
     return { failed: 'provider_rejected' };
   // Our own message build problem, not a transport outcome.
   if (code === 'EMESSAGE' || code === 'ESTREAM') return { failed: 'internal' };
   // No server ever participated: no connection, no name, no trusted cert.
-  if (
-    /^(connect |getaddrinfo )/.test(error.message) ||
-    /certificate|self.signed|CERT_/i.test(error.message)
-  )
+  if (/^(connect |getaddrinfo )/.test(error.message) || certificateProblem)
     return { failed: 'provider_timeout' };
   if (
     ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EHOSTUNREACH'].includes(
@@ -119,6 +129,12 @@ function phaseTrackingLogger(track: (phase: SmtpAttemptPhase) => void) {
 // One transport per attempt: a send either completes or is closed, never pooled
 // across accounts. TLS is the library default - SMTPS on 465, opportunistic
 // STARTTLS everywhere else - and certificate verification is never weakened.
+// MAIL-021-B2: with credentials configured TLS is no longer optional. On 465
+// `secure` already encrypts the whole session; on every other port `requireTLS`
+// turns the opportunistic upgrade into a hard requirement, so a provider without
+// STARTTLS fails before AUTH instead of receiving the password in clear text.
+// Without a username there is no password to protect: a local relay may stay
+// unencrypted, on purpose.
 export function smtpMailSender(options: SmtpSenderOptions): MailSender {
   const port = options.port ?? 587;
   return {
@@ -128,6 +144,7 @@ export function smtpMailSender(options: SmtpSenderOptions): MailSender {
         host: options.host,
         port,
         secure: port === 465,
+        requireTLS: Boolean(options.username),
         ...(options.username
           ? { auth: { user: options.username, pass: options.secret } }
           : {}),

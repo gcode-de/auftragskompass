@@ -71,7 +71,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // changes no existing row either.
   // MAIL-021-B (0068) only widens two closed vocabularies: the audit actions and
   // the redacted outbox error codes. No table and no column changes.
-  expect(applied.at(-1)!.name).toBe('0068_mail_send.sql');
+  // MAIL-021-B2 (0069) widens the outbox error vocabulary by one code and leaves
+  // every existing table, column and code untouched.
+  expect(applied.at(-1)!.name).toBe('0069_mail_tls_required.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(
@@ -122,6 +124,7 @@ test('migrations serialize, restart safely and detect changed history', async ()
     'provider_auth_failed',
     'provider_recipient_rejected',
     'encryption_unavailable',
+    'provider_tls_required',
   ])
     expect(outboxCodeCheck).toContain(`'${code}'::text`);
   expect(outboxCodeCheck).not.toContain('%');

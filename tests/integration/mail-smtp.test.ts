@@ -1,6 +1,20 @@
-import { afterEach, describe, expect, test } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { SMTPServer } from 'smtp-server';
+import nodemailer from 'nodemailer';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo, Socket } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { smtpMailSender } from '../../packages/core/src/mail-sender.js';
 
 // MAIL-021-B: only a local mock SMTP server on 127.0.0.1. No provider, no real
@@ -18,13 +32,109 @@ const content = {
   messageId: '<fictional-message@example.invalid>',
 };
 
+// MAIL-021-B2: an authenticated send now requires TLS, so the success cases need
+// a session the client can actually verify. No public certificate and no public
+// key may enter the repository, so the fixture is a throwaway self-signed
+// certificate generated once per run with the openssl CLI: valid for two days,
+// for 127.0.0.1 only, kept in a temporary directory and deleted afterwards.
+// It is the mock server's certificate *and* the only extra trust anchor of this
+// test process - verification stays enabled, nothing is disabled.
+type TlsFixture = { key: string; cert: string; directory: string };
+let fixture: TlsFixture;
+
+function createFixture(): TlsFixture {
+  const directory = mkdtempSync(join(tmpdir(), 'ak-mail-tls-')),
+    config = join(directory, 'openssl.cnf');
+  writeFileSync(
+    config,
+    [
+      '[req]',
+      'distinguished_name = dn',
+      'x509_extensions = ext',
+      'prompt = no',
+      '[dn]',
+      'CN = 127.0.0.1',
+      '[ext]',
+      'subjectAltName = IP:127.0.0.1',
+      'basicConstraints = critical,CA:TRUE',
+      'keyUsage = critical,digitalSignature,keyEncipherment,keyCertSign',
+      'extendedKeyUsage = serverAuth',
+      '',
+    ].join('\n'),
+  );
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      '2',
+      '-config',
+      config,
+      '-keyout',
+      join(directory, 'key.pem'),
+      '-out',
+      join(directory, 'cert.pem'),
+    ],
+    { stdio: 'ignore' },
+  );
+  return {
+    key: readFileSync(join(directory, 'key.pem'), 'utf8'),
+    cert: readFileSync(join(directory, 'cert.pem'), 'utf8'),
+    directory,
+  };
+}
+
+// The adapter deliberately has no test hook, so the trust anchor is added where
+// only a test can reach it: the one nodemailer call the adapter makes. The
+// injected `ca` adds a trust anchor; `rejectUnauthorized` keeps its secure
+// default and is never touched here.
+let transportOptions: Record<string, unknown>[] = [];
+
+beforeAll(() => {
+  fixture = createFixture();
+  const realCreate = nodemailer.createTransport.bind(nodemailer) as (
+    options: Record<string, unknown>,
+    defaults?: Record<string, unknown>,
+  ) => ReturnType<typeof nodemailer.createTransport>;
+  vi.spyOn(nodemailer, 'createTransport').mockImplementation(((
+    options: Record<string, unknown>,
+    defaults?: Record<string, unknown>,
+  ) => {
+    transportOptions.push(options);
+    return realCreate(
+      {
+        ...options,
+        tls: {
+          ...((options.tls as Record<string, unknown> | undefined) ?? {}),
+          ca: fixture.cert,
+        },
+      },
+      defaults,
+    );
+  }) as typeof nodemailer.createTransport);
+});
+afterAll(() => {
+  vi.restoreAllMocks();
+  rmSync(fixture.directory, { recursive: true, force: true });
+});
+beforeEach(() => {
+  transportOptions = [];
+});
+
 type Behaviour = {
   rejectAuth?: boolean;
   rejectRecipient?: boolean;
   dropBeforeData?: boolean;
   dropAfterData?: boolean;
   hangAfterData?: boolean;
-  advertiseStartTls?: boolean;
+  /** No TLS at all: a provider that would take the password in clear text. */
+  plaintext?: boolean;
+  /** STARTTLS with smtp-server's built-in, publicly known and expired cert. */
+  expiredCertificate?: boolean;
 };
 
 function mockServer(behaviour: Behaviour = {}) {
@@ -35,18 +145,21 @@ function mockServer(behaviour: Behaviour = {}) {
   };
   let socket: Socket | null = null;
   const server = new SMTPServer({
-    // The mock offers no TLS unless a test asks for it, so the client's default
-    // opportunistic STARTTLS simply has nothing to upgrade to. The adapter never
-    // disables certificate verification - see the TLS test below.
+    // The plaintext case withdraws STARTTLS from EHLO entirely; every other case
+    // offers it, with the fixture certificate or the built-in expired one.
+    disabledCommands: behaviour.plaintext ? ['STARTTLS'] : [],
+    ...(behaviour.plaintext || behaviour.expiredCertificate
+      ? {}
+      : { key: fixture.key, cert: fixture.cert }),
     // PIPELINING is withdrawn for the "abort before DATA" case: a pipelining
     // client writes MAIL FROM, RCPT TO and DATA in one go, so DATA has already
     // left the client before the envelope reply arrives.
-    disabledCommands: behaviour.advertiseStartTls ? [] : ['STARTTLS'],
     hidePIPELINING: behaviour.dropBeforeData === true,
     authOptional: !behaviour.rejectAuth,
-    // The mock is plaintext localhost, so it accepts the synthetic password
-    // without TLS. This is a property of the mock; the adapter neither asks for
-    // plaintext auth nor weakens certificate checks.
+    // The mock accepts AUTH on a session the client did not encrypt, so a
+    // password sent in clear text would be visible instead of impossible. That
+    // is exactly the leak the adapter must never cause - the tests assert the
+    // adapter does not get that far, not that the mock would refuse it.
     allowInsecureAuth: true,
     logger: false,
     onAuth(auth, session, callback) {
@@ -126,6 +239,9 @@ describe('SMTP sender against a local mock', () => {
   test('an accepted message is the only thing reported as sent', async () => {
     const { mock, send } = await sender();
     expect(await send()).toBe('sent');
+    // Configured credentials travel over TLS only: the session was upgraded
+    // before AUTH, and the adapter asked the library to require that upgrade.
+    expect(transportOptions[0]?.requireTLS).toBe(true);
     // An, CC and BCC reach the envelope; BCC never becomes a visible header.
     expect(mock.state.recipients.sort()).toEqual(
       [...envelope.to, ...envelope.cc, ...envelope.bcc].sort(),
@@ -146,6 +262,18 @@ describe('SMTP sender against a local mock', () => {
     const { mock, send } = await sender({ rejectAuth: true });
     expect(await send()).toEqual({ failed: 'provider_auth_failed' });
     expect(mock.state.message).toBeNull();
+  });
+
+  test('credentials without STARTTLS never reach an unencrypted session', async () => {
+    // A provider that offers no TLS at all: with credentials configured the
+    // adapter must refuse before AUTH, because the password would otherwise
+    // cross the wire in clear text. The mock would accept it - this test proves
+    // the adapter never tries.
+    const { mock, send } = await sender({ plaintext: true });
+    expect(await send()).toEqual({ failed: 'provider_tls_required' });
+    expect(mock.state.authAttempts).toBe(0);
+    expect(mock.state.message).toBeNull();
+    expect(mock.state.recipients).toEqual([]);
   });
 
   test('a broken connection before the content is a definitively failed attempt', async () => {
@@ -179,8 +307,9 @@ describe('SMTP sender against a local mock', () => {
   test('an unverifiable certificate is refused instead of bypassed', async () => {
     // The mock's built-in certificate is publicly known and expired, so a client
     // that verified it would have to reject the connection. A sender that
-    // switched verification off would deliver instead.
-    const { mock, send } = await sender({ advertiseStartTls: true });
+    // switched verification off - or that trusted the fixture blindly - would
+    // deliver instead. The fixture CA does not sign this certificate.
+    const { mock, send } = await sender({ expiredCertificate: true });
     const result = await send();
     expect(result).not.toBe('sent');
     expect(result).toEqual({ failed: 'provider_timeout' });
@@ -188,7 +317,9 @@ describe('SMTP sender against a local mock', () => {
   });
 
   test('carries html and a stored Message-ID, and sends unauthenticated without a username', async () => {
-    const mock = mockServer();
+    // No credentials means a local relay: TLS is not forced, because there is no
+    // password to protect. Plaintext is the deliberate exception, not the rule.
+    const mock = mockServer({ plaintext: true });
     open.push(mock);
     const port = await mock.listen();
     const result = await smtpMailSender({
@@ -202,6 +333,7 @@ describe('SMTP sender against a local mock', () => {
       messageId: '<fictional-thread@example.invalid>',
     });
     expect(result).toBe('sent');
+    expect(transportOptions[0]?.requireTLS).toBe(false);
     expect(mock.state.message?.toLowerCase()).toContain(
       'message-id: <fictional-thread@example.invalid>',
     );
