@@ -167,6 +167,7 @@ export {
   mailOutboxStates,
   canTransitionMailOutbox,
   mailOutboxRetryDelaySeconds,
+  mailAddressList,
   mailRepository,
   registerMailRoutes,
   claimMailOutboxJob,
@@ -270,6 +271,13 @@ export {
 } from './website-inquiries.js';
 
 export { registerWebsiteInquiryRoutes } from './website-inquiry-routes.js';
+export {
+  inquiryEmailKey,
+  inquiryEmailSubject,
+  registerInquiryEmailSettingsRoutes,
+  renderWebsiteInquiryEmail,
+  type InquiryEmailSettings,
+} from './inquiry-email.js';
 export {
   stageWebsiteInquiry,
   importStagedWebsiteInquiry,

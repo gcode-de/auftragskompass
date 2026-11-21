@@ -234,7 +234,8 @@ function bodyText(
   return trimmed;
 }
 const addressPattern = /^[^\s@,<>"'\\]+@[^\s@,<>"'\\]+\.[^\s@,<>"'\\]+$/;
-function addressList(
+// Shared by the mail core and the notification settings: one address form.
+export function mailAddressList(
   value: unknown,
   reason: MailErrorReason = 'invalid_recipients',
 ): string {
@@ -517,10 +518,10 @@ export function mailRepository(
             input.bodyHtml === undefined || input.bodyHtml === null
               ? null
               : bodyText(input.bodyHtml, 400000, 'invalid_body'),
-          from = addressList(input.from),
-          to = addressList(input.to),
-          cc = addressList(input.cc),
-          bcc = addressList(input.bcc);
+          from = mailAddressList(input.from),
+          to = mailAddressList(input.to),
+          cc = mailAddressList(input.cc),
+          bcc = mailAddressList(input.bcc);
         const account = await tx.execute<{ id: string }>(
           sql`SELECT id::text AS id FROM mail_accounts
                WHERE tenant_id=${tenantId} AND id=${input.accountId}::uuid`,

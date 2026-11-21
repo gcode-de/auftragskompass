@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { websiteInquiryDeliveries } from './schema.js';
+import { inquiryEmailKey, renderWebsiteInquiryEmail } from './inquiry-email.js';
 import {
   isWebsiteInquiry,
   receiveWebsiteInquiry,
@@ -70,6 +72,42 @@ export async function stageWebsiteInquiry(
         SELECT ${tenantId}, ${value.id} WHERE EXISTS (
           SELECT 1 FROM telegram_settings WHERE tenant_id=${tenantId} AND enabled=true
         ) ON CONFLICT (tenant_id, inquiry_id) DO NOTHING`);
+      // MAIL-NOTIFY-01: the same receipt also orders the e-mail notification -
+      // a second, independent order with its own idempotency key. The savepoint
+      // keeps a mail problem out of the intake path; the mail core alone owns
+      // retries and honest failure states. No enabled mail account means no
+      // honest sender, so nothing is ordered then.
+      const mail = renderWebsiteInquiryEmail(value),
+        key = inquiryEmailKey(value.id);
+      try {
+        await tx.transaction(async (mailTx) => {
+          await mailTx.execute(sql`WITH chosen AS (
+              SELECT a.id AS account_id, a.username, s.recipients
+                FROM inquiry_email_settings s
+                JOIN mail_accounts a
+                  ON a.tenant_id=s.tenant_id AND a.enabled=true
+               WHERE s.tenant_id=${tenantId} AND s.enabled=true
+               ORDER BY a.name, a.id
+               LIMIT 1
+            ), created AS (
+              INSERT INTO mail_messages
+                (tenant_id,id,account_id,direction,folder,send_state,subject,
+                 body_text,from_address,to_addresses)
+              SELECT ${tenantId},${randomUUID()}::uuid,c.account_id,'out','drafts',
+                     'scheduled',${mail.subject},${mail.text},c.username,c.recipients
+                FROM chosen c
+               WHERE NOT EXISTS (SELECT 1 FROM mail_outbox o
+                                  WHERE o.tenant_id=${tenantId}
+                                    AND o.idempotency_key=${key})
+              RETURNING id
+            )
+            INSERT INTO mail_outbox(tenant_id,id,message_id,idempotency_key)
+            SELECT ${tenantId},${randomUUID()}::uuid,id,${key} FROM created
+            ON CONFLICT(tenant_id,idempotency_key) DO NOTHING`);
+        });
+      } catch {
+        // The inquiry stays received; only its optional mail order is missing.
+      }
       return { status: 'stored' as const };
     });
   } catch (error) {
