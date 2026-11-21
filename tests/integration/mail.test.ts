@@ -991,13 +991,16 @@ test('delivers a claimed job once, records sent_at and audits mail.sent', async 
   expect(failures).toEqual([]);
   expect(calls).toHaveLength(1);
   // The account reaches the adapter with the sealed secret decrypted - the only
-  // place the plaintext exists is this attempt.
+  // place the plaintext exists is this attempt. MAIL-ACCOUNT-01: the stored
+  // transport choice travels with it ('starttls' is the stored default for
+  // accounts created without one).
   expect(accounts).toEqual([
     {
       host: 'smtp.example.invalid',
       port: 465,
       username: 'synthetic.sender@example.invalid',
       secret: 'synthetic-smtp-secret',
+      security: 'starttls',
     },
   ]);
   // The adapter receives the sealed secret decrypted, addresses as a list and

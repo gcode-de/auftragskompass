@@ -16,6 +16,7 @@ import type {
   MailSendResult,
   MailSender,
   MailSenderAccount,
+  MailSmtpSecurity,
 } from './mail-sender.js';
 
 // MAIL-021-A: the durable mail core. Rows and the outbox live in reviewed SQL
@@ -54,6 +55,8 @@ export const mailOutboxStates = [
 export type MailErrorReason =
   | 'not_found'
   | 'invalid_account'
+  | 'invalid_sender'
+  | 'invalid_security'
   | 'invalid_direction'
   | 'invalid_folder'
   | 'invalid_subject'
@@ -97,6 +100,8 @@ export function mailOutboxRetryDelaySeconds(attempts: number): number {
   return Math.min(21600, 15 * 2 ** bounded);
 }
 
+export type { MailSmtpSecurity } from './mail-sender.js';
+export const mailSmtpSecurities = ['starttls', 'implicit', 'none'] as const;
 export type MailAccountInput = {
   name: string;
   provider?: string;
@@ -104,8 +109,15 @@ export type MailAccountInput = {
   imapPort?: number | null;
   smtpHost?: string;
   smtpPort?: number | null;
+  /** Display name of the sender identity; kept out of the envelope address. */
+  fromName?: string;
+  /** Sender address; a message without its own falls back to this one. */
+  fromAddress?: string;
+  /** Transport encryption; `none` is only valid without a username. */
+  smtpSecurity?: MailSmtpSecurity;
   username?: string;
-  /** Sealed with the existing AES-256-GCM envelope; never stored as text. */
+  /** Sealed with the existing AES-256-GCM envelope; never stored as text.
+   *  Absent or empty keeps an existing secret untouched. */
   secret?: string;
   enabled?: boolean;
 };
@@ -117,8 +129,13 @@ export type MailAccountRow = {
   imapPort: number | null;
   smtpHost: string;
   smtpPort: number | null;
+  fromName: string;
+  fromAddress: string;
+  smtpSecurity: MailSmtpSecurity;
   username: string;
   enabled: boolean;
+  /** Never the secret itself: only whether one is sealed for this account. */
+  hasSecret: boolean;
 };
 // Addresses are a documented text form: comma-separated, trimmed, each one
 // validated before a row exists. Empty means "no recipient yet" (a draft).
@@ -307,6 +324,44 @@ function idempotencyKeyOf(value: unknown): string {
     throw new MailError('idempotency_conflict');
   return trimmed;
 }
+// One validation path for creating and changing an account. The sender name
+// goes into a mail header, so angle brackets, quotes and backslashes would let
+// it break out of the display form; they are refused here, never escaped later.
+function accountFields(input: MailAccountInput) {
+  const name = plainText(input.name, 200, 'invalid_account');
+  if (!name) throw new MailError('invalid_account');
+  const fromName = plainText(input.fromName, 200, 'invalid_sender');
+  if (/[<>"\\]/.test(fromName)) throw new MailError('invalid_sender');
+  const fromAddress = (input.fromAddress ?? '').trim();
+  if (
+    fromAddress &&
+    (fromAddress.length > 254 ||
+      hasControlCharacters(fromAddress) ||
+      !addressPattern.test(fromAddress))
+  )
+    throw new MailError('invalid_sender');
+  const smtpSecurity = input.smtpSecurity ?? 'starttls';
+  if (!(mailSmtpSecurities as readonly string[]).includes(smtpSecurity))
+    throw new MailError('invalid_security');
+  const username = plainText(input.username, 255, 'invalid_account');
+  // MAIL-021-B2: a password never travels without TLS; 'none' is the local
+  // relay case and must not carry a username into a clear-text AUTH.
+  if (smtpSecurity === 'none' && username)
+    throw new MailError('invalid_security');
+  return {
+    name,
+    provider: plainText(input.provider, 100, 'invalid_account'),
+    imapHost: plainText(input.imapHost, 255, 'invalid_account'),
+    imapPort: portOf(input.imapPort),
+    smtpHost: plainText(input.smtpHost, 255, 'invalid_account'),
+    smtpPort: portOf(input.smtpPort),
+    fromName,
+    fromAddress,
+    smtpSecurity,
+    username,
+    enabled: input.enabled ?? true,
+  };
+}
 // The stored file name is ours: one fixed prefix, the document number reduced to
 // characters that cannot break a MIME header, one extension. No operator input
 // ever becomes a name or a path here.
@@ -329,7 +384,41 @@ const outboxColumns = sql`o.id::text AS id, o.message_id::text AS message_id,
   to_char(o.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
   to_char(o.sent_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS sent_at`;
 const accountColumns = sql`a.id::text AS id, a.name, a.provider,
-  a.imap_host, a.imap_port, a.smtp_host, a.smtp_port, a.username, a.enabled`;
+  a.imap_host, a.imap_port, a.smtp_host, a.smtp_port,
+  a.from_name, a.from_address, a.smtp_security, a.username, a.enabled,
+  (a.secret_ciphertext IS NOT NULL) AS has_secret`;
+type AccountQueryRow = {
+  id: string;
+  name: string;
+  provider: string;
+  imap_host: string;
+  imap_port: number | null;
+  smtp_host: string;
+  smtp_port: number | null;
+  from_name: string;
+  from_address: string;
+  smtp_security: MailSmtpSecurity;
+  username: string;
+  enabled: boolean;
+  has_secret: boolean;
+};
+function toAccount(row: AccountQueryRow): MailAccountRow {
+  return {
+    id: row.id,
+    name: row.name,
+    provider: row.provider,
+    imapHost: row.imap_host,
+    imapPort: row.imap_port,
+    smtpHost: row.smtp_host,
+    smtpPort: row.smtp_port,
+    fromName: row.from_name,
+    fromAddress: row.from_address,
+    smtpSecurity: row.smtp_security,
+    username: row.username,
+    enabled: row.enabled,
+    hasSecret: row.has_secret,
+  };
+}
 
 type MessageQueryRow = {
   id: string;
@@ -503,29 +592,9 @@ export function mailRepository(
       const result = (await reviewed(db).execute(sql`
         SELECT ${accountColumns} FROM mail_accounts a
          WHERE a.tenant_id=${tenantId} ORDER BY a.name`)) as {
-        rows: {
-          id: string;
-          name: string;
-          provider: string;
-          imap_host: string;
-          imap_port: number | null;
-          smtp_host: string;
-          smtp_port: number | null;
-          username: string;
-          enabled: boolean;
-        }[];
+        rows: AccountQueryRow[];
       };
-      return result.rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        provider: row.provider,
-        imapHost: row.imap_host,
-        imapPort: row.imap_port,
-        smtpHost: row.smtp_host,
-        smtpPort: row.smtp_port,
-        username: row.username,
-        enabled: row.enabled,
-      }));
+      return result.rows.map(toAccount);
     },
 
     // The secret is sealed with the same key file and envelope as the Telegram
@@ -537,53 +606,95 @@ export function mailRepository(
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
-        const name = plainText(input.name, 200, 'invalid_account');
-        if (!name) throw new MailError('invalid_account');
-        const enabled = input.enabled ?? true;
+        const fields = accountFields(input);
         const sealed =
-          input.secret === undefined
+          input.secret === undefined || input.secret === ''
             ? null
             : encryptTelegramToken(input.secret, requireKey(encryptionKey));
-        if (enabled && !sealed) throw new MailError('secret_required');
+        if (fields.enabled && !sealed) throw new MailError('secret_required');
         try {
           const result = (await reviewed(tx).execute(sql`
             INSERT INTO mail_accounts AS a
               (tenant_id,id,name,provider,imap_host,imap_port,smtp_host,smtp_port,
-               username,secret_ciphertext,secret_nonce,secret_tag,enabled)
-            VALUES (${tenantId},${randomUUID()}::uuid,${name},
-                    ${plainText(input.provider, 100, 'invalid_account')},
-                    ${plainText(input.imapHost, 255, 'invalid_account')},
-                    ${portOf(input.imapPort)},
-                    ${plainText(input.smtpHost, 255, 'invalid_account')},
-                    ${portOf(input.smtpPort)},
-                    ${plainText(input.username, 255, 'invalid_account')},
-                    ${sealed?.ciphertext ?? null},${sealed?.nonce ?? null},
-                    ${sealed?.tag ?? null},${enabled})
-            RETURNING ${accountColumns}`)) as {
-            rows: {
-              id: string;
-              name: string;
-              provider: string;
-              imap_host: string;
-              imap_port: number | null;
-              smtp_host: string;
-              smtp_port: number | null;
-              username: string;
-              enabled: boolean;
-            }[];
-          };
+               from_name,from_address,smtp_security,username,secret_ciphertext,
+               secret_nonce,secret_tag,enabled)
+            VALUES (${tenantId},${randomUUID()}::uuid,${fields.name},
+                    ${fields.provider},${fields.imapHost},${fields.imapPort},
+                    ${fields.smtpHost},${fields.smtpPort},${fields.fromName},
+                    ${fields.fromAddress},${fields.smtpSecurity},
+                    ${fields.username},${sealed?.ciphertext ?? null},
+                    ${sealed?.nonce ?? null},${sealed?.tag ?? null},
+                    ${fields.enabled})
+            RETURNING ${accountColumns}`)) as { rows: AccountQueryRow[] };
           const row = result.rows[0]!;
-          return {
-            id: row.id,
-            name: row.name,
-            provider: row.provider,
-            imapHost: row.imap_host,
-            imapPort: row.imap_port,
-            smtpHost: row.smtp_host,
-            smtpPort: row.smtp_port,
-            username: row.username,
-            enabled: row.enabled,
-          };
+          await appendAudit(
+            tx,
+            tenantId,
+            'mail.account_saved',
+            actorId,
+            row.id,
+          );
+          return toAccount(row);
+        } catch (error) {
+          const code =
+            (error as { code?: string }).code ??
+            (error as { cause?: { code?: string } }).cause?.code;
+          if (code === '23505') throw new MailError('already_exists');
+          throw error;
+        }
+      });
+    },
+
+    // Changing an account never touches its secret unless a new one is handed
+    // in: an empty or missing password keeps the sealed one. Enabling needs a
+    // secret to exist, the one already sealed is enough.
+    async updateAccount(
+      actorId: string,
+      id: string,
+      input: MailAccountInput,
+    ): Promise<MailAccountRow> {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const fields = accountFields(input);
+        const found = await tx.execute<{ secret_ciphertext: Buffer | null }>(
+          sql`SELECT secret_ciphertext FROM mail_accounts
+               WHERE tenant_id=${tenantId} AND id=${id}::uuid FOR UPDATE`,
+        );
+        const existing = found.rows[0];
+        // Another tenant's account is missing, never forbidden: no leak.
+        if (!existing) throw new MailError('not_found');
+        const sealed =
+          input.secret === undefined || input.secret === ''
+            ? null
+            : encryptTelegramToken(input.secret, requireKey(encryptionKey));
+        if (fields.enabled && !sealed && !existing.secret_ciphertext)
+          throw new MailError('secret_required');
+        try {
+          const result = (await reviewed(tx).execute(sql`
+            UPDATE mail_accounts AS a
+               SET name=${fields.name}, provider=${fields.provider},
+                   imap_host=${fields.imapHost}, imap_port=${fields.imapPort},
+                   smtp_host=${fields.smtpHost}, smtp_port=${fields.smtpPort},
+                   from_name=${fields.fromName},
+                   from_address=${fields.fromAddress},
+                   smtp_security=${fields.smtpSecurity},
+                   username=${fields.username},
+                   secret_ciphertext=COALESCE(${sealed?.ciphertext ?? null}, secret_ciphertext),
+                   secret_nonce=COALESCE(${sealed?.nonce ?? null}, secret_nonce),
+                   secret_tag=COALESCE(${sealed?.tag ?? null}, secret_tag),
+                   enabled=${fields.enabled}, updated_at=now()
+             WHERE a.tenant_id=${tenantId} AND a.id=${id}::uuid
+             RETURNING ${accountColumns}`)) as { rows: AccountQueryRow[] };
+          const row = result.rows[0]!;
+          await appendAudit(
+            tx,
+            tenantId,
+            'mail.account_saved',
+            actorId,
+            row.id,
+          );
+          return toAccount(row);
         } catch (error) {
           const code =
             (error as { code?: string }).code ??
@@ -1005,6 +1116,9 @@ type AttemptRow = {
   enabled: boolean;
   smtp_host: string;
   smtp_port: number | null;
+  smtp_security: MailSmtpSecurity;
+  from_name: string;
+  account_from_address: string;
   username: string;
   secret_ciphertext: Buffer | null;
   secret_nonce: Buffer | null;
@@ -1036,7 +1150,8 @@ async function prepareMailAttempt(
   const { rows } = await client.query<AttemptRow>(
     `SELECT m.subject, m.body_text, m.body_html, m.from_address, m.to_addresses,
             m.cc_addresses, m.bcc_addresses, m.message_id,
-            a.enabled, a.smtp_host, a.smtp_port, a.username,
+            a.enabled, a.smtp_host, a.smtp_port, a.smtp_security, a.from_name,
+            a.from_address AS account_from_address, a.username,
             a.secret_ciphertext, a.secret_nonce, a.secret_tag
        FROM mail_outbox o
        JOIN mail_messages m ON m.tenant_id=o.tenant_id AND m.id=o.message_id
@@ -1064,8 +1179,14 @@ async function prepareMailAttempt(
   } catch {
     return { problem: 'encryption_unavailable' };
   }
-  const from = row.from_address.trim() || row.username.trim(),
-    to = addressesOf(row.to_addresses);
+  // The sender identity: the message's own address first, then the account's
+  // configured one, then the username. The display name decorates the header
+  // only; the envelope always carries the bare address.
+  const from =
+    row.from_address.trim() ||
+    row.account_from_address.trim() ||
+    row.username.trim();
+  const to = addressesOf(row.to_addresses);
   if (!from) return { problem: 'provider_missing' };
   if (!to.length) return { problem: 'internal' };
   // MAIL-DOC-01: an attachment is a reference to one frozen artefact. The bytes
@@ -1100,9 +1221,11 @@ async function prepareMailAttempt(
       port: row.smtp_port,
       username: row.username,
       secret,
+      security: row.smtp_security,
     },
     envelope: {
       from,
+      fromName: row.from_name.trim() || undefined,
       to,
       cc: addressesOf(row.cc_addresses),
       bcc: addressesOf(row.bcc_addresses),
@@ -1429,14 +1552,75 @@ const documentSendSchema = {
     attachment: attachmentSchema,
   },
 } as const;
+// MAIL-ACCOUNT-01: an account answer is this whitelist and nothing else - the
+// sealed secret columns have no schema entry, so they can never serialize.
+const accountSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'id',
+    'name',
+    'provider',
+    'imapHost',
+    'imapPort',
+    'smtpHost',
+    'smtpPort',
+    'fromName',
+    'fromAddress',
+    'smtpSecurity',
+    'username',
+    'enabled',
+    'hasSecret',
+  ],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    provider: { type: 'string' },
+    imapHost: { type: 'string' },
+    imapPort: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] },
+    smtpHost: { type: 'string' },
+    smtpPort: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] },
+    fromName: { type: 'string' },
+    fromAddress: { type: 'string' },
+    smtpSecurity: { type: 'string', enum: [...mailSmtpSecurities] },
+    username: { type: 'string' },
+    enabled: { type: 'boolean' },
+    hasSecret: { type: 'boolean' },
+  },
+} as const;
+const accountBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'fromAddress', 'smtpHost', 'smtpPort', 'smtpSecurity'],
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 200 },
+    provider: { type: 'string', maxLength: 100 },
+    imapHost: { type: 'string', maxLength: 255 },
+    imapPort: { type: 'integer', minimum: 1, maximum: 65535 },
+    smtpHost: { type: 'string', minLength: 1, maxLength: 255 },
+    smtpPort: { type: 'integer', minimum: 1, maximum: 65535 },
+    fromName: { type: 'string', maxLength: 200 },
+    fromAddress: { type: 'string', minLength: 3, maxLength: 254 },
+    smtpSecurity: { type: 'string', enum: [...mailSmtpSecurities] },
+    username: { type: 'string', maxLength: 255 },
+    // Omitted or empty keeps an existing secret; only a non-empty one replaces.
+    secret: { type: 'string', maxLength: 512 },
+    enabled: { type: 'boolean' },
+  },
+} as const;
 
 export function registerMailRoutes(
   app: FastifyInstance,
   pool: Pool,
   tenantId: string,
-  options: { store?: StorageAdapter | null } = {},
+  // MAIL-ACCOUNT-01: the same AES-GCM key that seals the Telegram token seals
+  // account secrets; without it the account routes fail closed (503).
+  options: {
+    store?: StorageAdapter | null;
+    key?: Uint8Array | null;
+  } = {},
 ) {
-  const repo = mailRepository(pool, tenantId, null, options),
+  const repo = mailRepository(pool, tenantId, options.key ?? null, options),
     params = {
       type: 'object',
       required: ['id'],
@@ -1452,6 +1636,9 @@ export function registerMailRoutes(
     if (error instanceof MailError) {
       if (error.reason === 'not_found')
         return reply.code(404).send({ error: 'not_found' });
+      // No key is sealed for this deployment, not a bad request.
+      if (error.reason === 'encryption_unavailable')
+        return reply.code(503).send({ error: 'encryption_unavailable' });
       // The target exists but cannot be sent from its current state.
       if (
         [
@@ -1460,6 +1647,7 @@ export function registerMailRoutes(
           'not_final',
           'attachment_unavailable',
           'idempotency_conflict',
+          'already_exists',
         ].includes(error.reason)
       )
         return reply.code(409).send({ error: error.reason });
@@ -1467,6 +1655,66 @@ export function registerMailRoutes(
     }
     throw error;
   }
+  // MAIL-ACCOUNT-01: the operator's sending accounts. Every answer is the
+  // account whitelist above - the sealed secret never leaves the database, and
+  // a missing or empty secret in a change keeps the stored one untouched.
+  app.get(
+    '/api/v1/mail/accounts',
+    {
+      schema: {
+        response: { 200: { type: 'array', items: accountSchema } },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await repo.requireMember(request.authSession!.userId);
+        return await repo.listAccounts();
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Body: MailAccountInput }>(
+    '/api/v1/mail/accounts',
+    {
+      schema: {
+        body: accountBodySchema,
+        response: { 201: accountSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const account = await repo.saveAccount(
+          request.authSession!.userId,
+          request.body,
+        );
+        return reply.code(201).send(account);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.put<{ Params: { id: string }; Body: MailAccountInput }>(
+    '/api/v1/mail/accounts/:id',
+    {
+      schema: {
+        params,
+        body: accountBodySchema,
+        response: { 200: accountSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.updateAccount(
+          request.authSession!.userId,
+          request.params.id,
+          request.body,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   app.get<{ Querystring: Record<string, string | undefined> }>(
     '/api/v1/mail/messages',
     {

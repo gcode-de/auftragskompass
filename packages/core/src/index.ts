@@ -174,6 +174,8 @@ export {
   runMailOutboxPass,
   startMailOutbox,
   MailError,
+  mailSmtpSecurities,
+  type MailSmtpSecurity,
   type MailDirection,
   type MailFolder,
   type MailEditState,

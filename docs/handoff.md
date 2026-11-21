@@ -2,6 +2,34 @@
 
 ## Aktueller Stand, 21.11.2026 (Abendsitzung, laufend)
 
+- **Erledigt 21.11.2026 – MAIL-ACCOUNT-01 (GOAL A): Einstellungen für das
+  Versandkonto.** Neuer Einstellungsbereich „E-Mail-Versand“ mit Kontoliste
+  und Anlage-/Bearbeitenformular (Absendername/-adresse, SMTP-Host/-Port,
+  Transportverschlüsselung STARTTLS/SSL-TLS/Ohne, Benutzername, Passwort,
+  Aktiv); additive Migration 0072, Konten-Routen GET/POST/PUT
+  `/api/v1/mail/accounts[/:id]` (Admin/Mandant/CSRF, Secret nie in Antworten –
+  `hasSecret`), leeres/fehlendes Passwort behält das gespeicherte Secret,
+  AES-GCM wie Telegram (`AK_TELEGRAM_ENCRYPTION_KEY_FILE`), Sender mit
+  expliziter Transportwahl und Absenderidentität, „Ohne“ nur ohne Benutzername
+  (DB-CHECK + Validierung). Abnahme: RED per stash getrennt beobachtet (7/7
+  rot), danach Konten-Integration 7/7, Mail-Umfeld 45/45, unit 16/16 (5
+  Sender-Mapping-Fälle delegiert an DeepSeek V4.1 Flash, reviewt), component
+  31/31, fokussierter E2E 1/1 (axe 0, Geometrie 1280/320), volle lokale E2E
+  53 Tests: 52 grün + Zählvertrag document-layout 13→14 gezielt nachgeprüft
+  grün; Impeccable-Detektor `[]`, Dateibild-Vision 1280/320 ohne Befund;
+  format/lint/typecheck/docs/workspace/build grün, globale Coverage 95,90 %
+  Zeilen / 90,73 % Zweige. Details und ehrliche Grenzen im Plan-Eintrag
+  MAIL-ACCOUNT-01 (Changed-Code-Coverage-Zahlen im Nachtrag unten).
+- **Bestandskorrektur MAIL-DOC-01 (21.11.2026):** Der Slice ist seit PR #68
+  (`0ad9324`, gemergt 08:28) auf main; Plan-Checkbox und ältere „Aktiver
+  Slice“-Zeilen waren veraltet und sind anhand von Code und Tests korrigiert
+  (Einzelheiten im Plan-Eintrag MAIL-DOC-01).
+- **Betrieb-Schlüsselstatus geprüft (21.11.2026, ohne Inhalte):** CT 114 –
+  `AK_TELEGRAM_ENCRYPTION_KEY_FILE=/run/secrets/telegram_key` in ak-test-api
+  und ak-test-worker vorhanden (Modus 400, 64 Zeichen, Format passt);
+  Kontenänderungen sind damit live möglich. Keine Rotation, keine
+  Schlüsselausgabe.
+
 - **Nutzauftrag (GOAL) 21.11.2026 Abendsitzung:** E-Mail-Einrichtung sicher und
   benutzbar machen – (A) Einstellungen für das Versandkonto, (B) formatierter
   Dokument-Mail-Editor mit Platzhaltern, (C) E-Mail-Vorlagen mit

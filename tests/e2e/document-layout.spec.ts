@@ -551,7 +551,9 @@ test('document layout setup, preview, conflict recovery, and persistence work in
             }),
           ).toBeVisible();
           await expect(settingsSelect).toHaveValue('#settings-document-layout');
-          await expect(settingsSelect.locator('option')).toHaveCount(13);
+          // MAIL-ACCOUNT-01: the settings areas are fourteen now that
+          // "E-Mail-Versand" has its own place next to "Telegram".
+          await expect(settingsSelect.locator('option')).toHaveCount(14);
           await expect(
             settingsNavigation.getByRole('link', {
               name: 'Dokumentlayout',
