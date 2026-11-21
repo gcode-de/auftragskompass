@@ -512,4 +512,89 @@ describe('renderDocumentHtml', () => {
       expect(corrected).not.toContain('Zu zahlender Betrag');
     });
   });
+  // DOC-EVENTINFO-01: the event line under the heading. The observed reference
+  // only ever showed the day; the name and the place are the GOAL requirement,
+  // and every part that is not known stays away instead of being invented.
+  describe('event line', () => {
+    const plain: DocumentRenderInput = {
+        ...base,
+        subject: 'Angebot',
+        introText: 'Einleitung',
+        outroText: 'Schluss',
+        values: {},
+      },
+      lineOf = (html: string) => {
+        const match = html.match(/<p>(für das Event[^<]*)<\/p>/);
+        return match ? match[1]! : null;
+      },
+      render = (values: DocumentRenderInput['values']) =>
+        renderDocumentHtml({ ...plain, values });
+
+    test('prints name, day and place in that order under the heading', () => {
+      const html = render({
+        event: 'Fiktive Hochzeit',
+        date: '14.11.2030',
+        location: 'Fiktiver Saal',
+      });
+      expect(lineOf(html)).toBe(
+        'für das Event Fiktive Hochzeit am 14.11.2030 in Fiktiver Saal',
+      );
+      // Below the heading and above the intro, never inside the title line.
+      expect(html.indexOf('für das Event')).toBeGreaterThan(
+        html.indexOf('</h1>'),
+      );
+      expect(html.indexOf('für das Event')).toBeLessThan(
+        html.indexOf('<p>Einleitung</p>'),
+      );
+    });
+
+    test('prints only the parts that are known', () => {
+      expect(lineOf(render({ date: '14.11.2030' }))).toBe(
+        'für das Event am 14.11.2030',
+      );
+      expect(lineOf(render({ event: 'Fiktive Hochzeit' }))).toBe(
+        'für das Event Fiktive Hochzeit',
+      );
+      expect(lineOf(render({ location: 'Fiktiver Saal' }))).toBe(
+        'für das Event in Fiktiver Saal',
+      );
+      expect(
+        lineOf(render({ event: 'Fiktive Hochzeit', date: '14.11.2030' })),
+      ).toBe('für das Event Fiktive Hochzeit am 14.11.2030');
+      expect(
+        lineOf(
+          render({ event: 'Fiktive Hochzeit', location: 'Fiktiver Saal' }),
+        ),
+      ).toBe('für das Event Fiktive Hochzeit in Fiktiver Saal');
+      expect(
+        lineOf(render({ date: '14.11.2030', location: 'Fiktiver Saal' })),
+      ).toBe('für das Event am 14.11.2030 in Fiktiver Saal');
+    });
+
+    test('trims and escapes every part like any other printed text', () => {
+      const html = render({
+        event: '  <Fiktive> & "Hochzeit"  ',
+        date: ' 14.11.2030 ',
+        location: '\n Saal & 1 \n',
+      });
+      expect(lineOf(html)).toBe(
+        'für das Event &lt;Fiktive&gt; &amp; &quot;Hochzeit&quot; am 14.11.2030 in Saal &amp; 1',
+      );
+      expect(html).not.toContain('<Fiktive>');
+    });
+
+    test('prints no line and moves not one byte without event data', () => {
+      const html = render({ contact: 'Fictional Customer' });
+      expect(lineOf(html)).toBeNull();
+      expect(html).not.toContain('für das Event');
+      // The insertion point stays untouched: the heading, then the intro.
+      expect(html).toContain('    </div>\n    <p>Einleitung</p>');
+      expect(html).toBe(
+        renderDocumentHtml({
+          ...plain,
+          values: { contact: 'Fictional Customer' },
+        }),
+      );
+    });
+  });
 });

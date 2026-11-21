@@ -875,6 +875,11 @@ test('layout preview is authenticated, synthetic, read-only and returns a no-sto
     );
     expect(rendered[0]).toContain('Beispielangebot');
     expect(rendered[0]).toContain('Beispielposition');
+    // DOC-EVENTINFO-01: the preview shows the event line with its own fictional
+    // event day, never the document day that the heading prints.
+    expect(rendered[0]).toContain(
+      'für das Event Fiktives Sommerfest am 14.11.2030 in Beispielsaal',
+    );
     expect(rendered[0]).toContain(
       'data:image/png;base64,' + logoPng.toString('base64'),
     );
@@ -1226,6 +1231,10 @@ test('document template preview uses fixed fictional data and does not write bus
     expect(rendered[0]).toContain('Paket Beispiel / 378,10 € /');
     expect(rendered[0]).toContain('https://example.invalid/vorschau');
     expect(rendered[0]).toContain('Gültig bis 09.11.2030');
+    // DOC-EVENTINFO-01: the same fictional event as the placeholder line.
+    expect(rendered[0]).toContain(
+      'für das Event Fiktives Sommerfest am 26.10.2030 in Beispielsaal',
+    );
     expect(rendered[0]).toContain('Fictional box &amp; light');
     expect(rendered[0]).not.toContain('<script>');
     expect(rendered[0]).not.toContain('layout@example.invalid');

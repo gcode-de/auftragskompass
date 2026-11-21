@@ -219,6 +219,42 @@ function lines(html: string): string {
   return escapeHtml(html).replace(/\r?\n/g, '<br>');
 }
 
+// One printed sentence, not a block: repeated whitespace from the event row
+// becomes a single space so a name or a place can never reflow the heading.
+function oneLine(value: string | undefined): string | undefined {
+  const text = value?.replace(/\s+/g, ' ').trim();
+  return text || undefined;
+}
+
+/**
+ * DOC-EVENTINFO-01: the event line under the document heading.
+ *
+ * The Bookitup reference shows `für das Event am TT.MM.JJJJ`; the manual
+ * observation never had a name or a place entered, so only the day form is
+ * evidenced. Name and place are the GOAL requirement, and `… am <Datum> in
+ * <Ort>` is the wording the template preview already uses for the same three
+ * values, so the document and the preview speak alike.
+ *
+ * The three parts come straight from the render values that `documents.ts`
+ * derives from the events row (`{{event}}`, `{{location}}`, `{{date}}` = the
+ * event day, never the document day). Every unknown part is left out instead of
+ * invented, and a document without any event value gets no line at all - and
+ * therefore not one byte of change.
+ */
+function eventLine(
+  values: Partial<Record<TemplatePlaceholder, string>>,
+): string {
+  const name = oneLine(values.event),
+    day = oneLine(values.date),
+    place = oneLine(values.location);
+  if (!name && !day && !place) return '';
+  return `    <p>${escapeHtml(
+    `für das Event${name ? ` ${name}` : ''}${day ? ` am ${day}` : ''}${
+      place ? ` in ${place}` : ''
+    }`,
+  )}</p>\n`;
+}
+
 // Basis points to a plain percentage: 1900 -> '19', 750 -> '7,50'.
 function percent(basisPoints: number): string {
   const whole = Math.floor(basisPoints / 100),
@@ -456,7 +492,7 @@ ${
       <h1>${escapeHtml(renderTemplate(input.subject, input.values))}</h1>
       <time>Datum ${formatDocumentDate(input.issuedAt, input.timeZone)}</time>
     </div>
-    <p>${lines(renderTemplate(input.introText, input.values))}</p>
+${eventLine(input.values)}    <p>${lines(renderTemplate(input.introText, input.values))}</p>
     <table class="positions">
       <thead><tr>${head.map((cell) => `<th>${cell}</th>`).join('')}</tr></thead>
       <tbody>
@@ -619,7 +655,14 @@ export function documentLayoutRepository(
             priceBasis: 'gross',
           },
         ],
-        values: {},
+        values: {
+          // DOC-EVENTINFO-01: the preview shows the event line with fictional
+          // values. Its day is the event day, so it differs from the document
+          // day the heading prints (26.10.2030).
+          event: 'Fiktives Sommerfest',
+          date: '14.11.2030',
+          location: 'Beispielsaal',
+        },
         ...(logoDataUri ? { logoDataUri } : {}),
       });
       try {
