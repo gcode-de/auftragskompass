@@ -112,8 +112,12 @@ Abschnitt beschreibt den aktuellen Stand.
   Bestätigung und Referenzschutz (PR #49, `b19466f`, CI grün); 409
   `product_in_use` mit Archivierungshinweis statt stiller Löschung, Audit
   ehrlich als `product.deleted` (Migration 0064). Details im Plan.
-- **Aktiver Slice:** EDITOR-MOBILE-01 (Akkordion für die Preisfelder mobil).
-  Danach EDITOR-PICKER-01 (Produkt-Modal mit Suche/Mehrfachauswahl).
+- **Erledigt 21.11.2026 – EDITOR-MOBILE-01:** Mobiles Akkordion für die
+  Preisfelder (PR #51, `2a5719f`, CI grün; component 1012, E2E 51/51 des
+  Koordinators). **Visuelle Abnahme offen** (Bildschirm gesperrt – kein
+  Umgehen; nach Entsperren nachzuholen, zusammen mit dem B15/B25-Rest).
+- **Aktiver Slice:** EDITOR-PICKER-01 (Produkt-Modal mit Suche und
+  Mehrfachauswahl). Danach Dokumentrest → E-Mail → Parität/Design.
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
