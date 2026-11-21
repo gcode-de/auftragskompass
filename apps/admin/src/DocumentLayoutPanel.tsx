@@ -39,6 +39,7 @@ type LayoutInput = {
   footerLeft?: string | undefined;
   footerCenter?: string | undefined;
   footerRight?: string | undefined;
+  taxNumber?: string | undefined;
 };
 type LayoutRow = LayoutInput & {
   version: number;
@@ -87,6 +88,24 @@ function validFooter(layout: LayoutInput) {
   return footerFields.every((field) => isFooterText(layout[field] ?? ''));
 }
 
+// DOC-RG04-01: mirrors the server rule - bounded free text, real line breaks as
+// the only control characters. The browser field type already refuses a line
+// break, but a pasted block can carry anything.
+const taxNumberMaxLength = 100;
+function isTaxNumber(value: string) {
+  return (
+    value.length <= taxNumberMaxLength &&
+    // A real line break is the only control character the print understands.
+    Array.from(value).every((character) => {
+      const code = character.charCodeAt(0);
+      return code === 0x0a || (code > 0x1f && (code < 0x7f || code > 0x9f));
+    })
+  );
+}
+
+const invalidTaxNumber =
+  'Die Steuernummer darf höchstens 100 Zeichen enthalten und keine Steuerzeichen außer Zeilenumbrüchen.';
+
 function isLayoutRow(value: unknown): value is LayoutRow {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
@@ -123,6 +142,11 @@ function isLayoutRow(value: unknown): value is LayoutRow {
         (typeof value === 'string' && isFooterText(value))
       );
     }) &&
+    // DOC-RG04-01: an older server may not send the field at all, and a server
+    // clears it with null - both mean "no number".
+    (row.taxNumber === undefined ||
+      row.taxNumber === null ||
+      (typeof row.taxNumber === 'string' && isTaxNumber(row.taxNumber))) &&
     Number.isSafeInteger(row.version) &&
     Number(row.version) > 0 &&
     (row.logoKey === null || (hasLogo && typeof row.logoKey === 'string')) &&
@@ -147,6 +171,10 @@ function inputFrom(row: LayoutInput): LayoutInput {
     footerLeft: row.footerLeft?.trim() || undefined,
     footerCenter: row.footerCenter?.trim() || undefined,
     footerRight: row.footerRight?.trim() || undefined,
+    // DOC-RG04-01: present only when set. A draft without a number sends no key
+    // at all, so "undefined keeps the stored value" holds and an untouched form
+    // sends the same body as before this slice.
+    ...(row.taxNumber?.trim() ? { taxNumber: row.taxNumber.trim() } : {}),
   };
 }
 
@@ -330,6 +358,10 @@ export function DocumentLayoutPanel({
       );
       return;
     }
+    if (!isTaxNumber(draft.taxNumber ?? '')) {
+      setError(invalidTaxNumber);
+      return;
+    }
     setBusy(true);
     setMessage('');
     setError('');
@@ -426,6 +458,10 @@ export function DocumentLayoutPanel({
       setError(
         'Die Fußzeile erlaubt bis zu vier Zeilen mit je 48 Zeichen pro Spalte.',
       );
+      return;
+    }
+    if (!isTaxNumber(draft.taxNumber ?? '')) {
+      setError(invalidTaxNumber);
       return;
     }
     const sequence = ++previewSequence.current,
@@ -648,6 +684,12 @@ export function DocumentLayoutPanel({
                 {row.showPositionNumbers ? 'an' : 'aus'}
               </dd>
             </div>
+            {row.taxNumber && (
+              <div>
+                <dt>Steuernummer / USt-IdNr</dt>
+                <dd>{row.taxNumber}</dd>
+              </div>
+            )}
           </dl>
           {row.logoKey && <p>Ein Logo ist eingerichtet.</p>}
           {logoFormOpen && (
@@ -839,6 +881,24 @@ export function DocumentLayoutPanel({
                   />
                 </label>
               </div>
+              {/* DOC-RG04-01: § 14 Abs. 4 Nr. 2 UStG asks for either the tax
+                  number or the VAT ID, so this is one optional field. */}
+              <div className="document-layout-fields">
+                <label>
+                  Steuernummer / USt-IdNr
+                  <input
+                    maxLength={taxNumberMaxLength}
+                    aria-describedby="document-tax-number-help"
+                    value={draft.taxNumber ?? ''}
+                    onChange={(event) =>
+                      update({ taxNumber: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
+              <p id="document-tax-number-help">
+                Optional. Wird auf Belegen gedruckt, wenn gesetzt.
+              </p>
             </fieldset>
             <details className="document-layout-display">
               <summary>Darstellung</summary>

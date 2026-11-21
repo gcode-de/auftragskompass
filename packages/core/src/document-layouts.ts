@@ -34,6 +34,7 @@ export class DocumentLayoutError extends Error {
     readonly reason:
       | 'not_found'
       | 'conflict'
+      | 'invalid_tax_number'
       | 'invalid_logo'
       | 'logo_too_large'
       | 'missing_reference'
@@ -45,6 +46,13 @@ export class DocumentLayoutError extends Error {
 }
 
 export const logoLimit = 512 * 1024;
+
+/**
+ * DOC-RG04-01: the tax number or VAT ID an invoice must name (§ 14 Abs. 4 Nr. 2
+ * UStG asks for one of the two). A USt-IdNr has 11 characters, a German
+ * Steuernummer 13; 100 leaves room for a label a business prefixes.
+ */
+export const taxNumberMaxLength = 100;
 
 // The declared media type only counts when the bytes agree with it; otherwise
 // a renamed text file would end up inside a customer-facing PDF.
@@ -79,6 +87,12 @@ export type DocumentLayoutInput = {
   footerLeft?: string;
   footerCenter?: string;
   footerRight?: string;
+  /**
+   * DOC-RG04-01: the tax number or VAT ID this business prints - one field,
+   * because the law asks for one of the two. `undefined` keeps the stored value,
+   * `null` and blank text clear it. Absent means no line and no byte of change.
+   */
+  taxNumber?: string | null;
   /**
    * BKP019.c2: the printed reference of a correction - a print option, never a
    * stored layout field. `documents.ts` builds it per render and the snapshot
@@ -224,6 +238,31 @@ function lines(html: string): string {
 function oneLine(value: string | undefined): string | undefined {
   const text = value?.replace(/\s+/g, ' ').trim();
   return text || undefined;
+}
+
+/**
+ * DOC-RG04-01: the tax number or VAT ID a business prints is free text an
+ * operator typed - no checksum, no country check, no format judgement, exactly
+ * like the printed account of RG-07b. Trimmed and bounded, with real line breaks
+ * as the only control characters; a blank text clears the field like `null`.
+ */
+export function taxNumberOf(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string')
+    throw new DocumentLayoutError('invalid_tax_number');
+  // Every line-ending style becomes the one the printer understands, so a
+  // pasted Windows block is not refused for its dialect.
+  const trimmed = value.replace(/\r\n?/g, '\n').trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.length > taxNumberMaxLength ||
+    [...trimmed].some((character) => {
+      const code = character.codePointAt(0)!;
+      return code !== 0x0a && (code < 0x20 || (code >= 0x7f && code <= 0x9f));
+    })
+  )
+    throw new DocumentLayoutError('invalid_tax_number');
+  return trimmed;
 }
 
 /**
@@ -456,7 +495,15 @@ ${
     layout.senderPostalCode + ' ' + layout.senderCity,
   ]
     .map(escapeHtml)
-    .join(' · ')}</p>
+    .join(' · ')}${
+    // DOC-RG04-01: the tax number sits right under the sender address - the
+    // place an invoice names the business, and the place Bookitup prints it.
+    // `lines()` escapes and line-breaks the value like the printed account, so
+    // no new CSS rule appears and a layout without one keeps every byte.
+    layout.taxNumber
+      ? `<br>Steuernummer / USt-IdNr: ${lines(layout.taxNumber)}`
+      : ''
+  }</p>
     <address>${lines(input.recipientName + '\n' + input.recipientAddress)}</address>
     <p>Nummer ${escapeHtml(input.documentNumber)}</p>
 ${
@@ -577,6 +624,12 @@ export function documentLayoutRepository(
           footerLeft: input.footerLeft?.trim() ?? old?.footerLeft ?? '',
           footerCenter: input.footerCenter?.trim() ?? old?.footerCenter ?? '',
           footerRight: input.footerRight?.trim() ?? old?.footerRight ?? '',
+          // DOC-RG04-01: undefined keeps the stored number, null and blank text
+          // clear it. The column is nullable, so the honest "no number" is NULL.
+          taxNumber:
+            input.taxNumber === undefined
+              ? (old?.taxNumber ?? null)
+              : taxNumberOf(input.taxNumber),
           version: (old?.version ?? 0) + 1,
         };
         const [row] = old
@@ -810,11 +863,26 @@ export function registerDocumentLayoutRoutes(
       pattern:
         '^(?:[^\\x00-\\x1f\\x7f-\\x9f]{0,48}\\r?\\n){0,3}[^\\x00-\\x1f\\x7f-\\x9f]{0,48}(?![\\s\\S])',
     },
+    // DOC-RG04-01: optional, so it never joins `fields` (the required list). Free
+    // text like the printed account: bounded, with real line breaks as the only
+    // control characters.
+    taxNumberText = {
+      anyOf: [
+        {
+          type: 'string',
+          maxLength: taxNumberMaxLength,
+          pattern:
+            '^(?![\\s\\S]*[\\u0000-\\u0009\\u000b-\\u001f\\u007f-\\u009f\\r])[\\s\\S]*$',
+        },
+        { type: 'null' },
+      ],
+    },
     properties = {
       ...fields,
       footerLeft: footerText,
       footerCenter: footerText,
       footerRight: footerText,
+      taxNumber: taxNumberText,
     };
   const version = { type: 'integer', minimum: 1 };
   function failure(error: unknown, reply: FastifyReply) {

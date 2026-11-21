@@ -1389,3 +1389,280 @@ test('document template preview uses fixed fictional data and does not write bus
     await app.close();
   }
 });
+
+// DOC-RG04-01: an invoice must name a tax number or a VAT ID. The layout keeps
+// one optional field for it; this can *print* what an operator typed, it cannot
+// judge a tax number.
+const taxDocument = (
+  input: Omit<DocumentLayoutInput, 'fontFamily'> & { fontFamily: string },
+) =>
+  renderDocumentHtml({
+    layout: {
+      ...input,
+      fontFamily: input.fontFamily as DocumentLayoutInput['fontFamily'],
+    },
+    documentNumber: 'RE-2030-0007',
+    issuedAt: new Date('2030-10-26T10:00:00Z'),
+    timeZone: 'Europe/Berlin',
+    recipientName: 'Fictional Customer',
+    recipientAddress: 'Example Street 2',
+    subject: 'Rechnung',
+    introText: 'Hallo,',
+    outroText: 'Danke.',
+    lines: [
+      {
+        description: 'Fictional box',
+        unit: 'Stück',
+        quantity: 1,
+        unitPriceMinor: 19900,
+        taxBasisPoints: 1900,
+        discountBasisPoints: 0,
+        priceBasis: 'gross',
+      },
+    ],
+    values: {},
+  });
+
+// A fresh tenant per test keeps the version numbers of the shared layouts above
+// untouched - those tests pin exact versions.
+async function taxScenario() {
+  const scope = randomUUID();
+  await bootstrapAccess(
+    pool,
+    scope,
+    'tax@example.invalid',
+    'Synthetic tax',
+    'Europe/Berlin',
+  );
+  await accessRepository(pool, scope).issueSession(
+    { subject: 'tax', email: 'tax@example.invalid' },
+    digest('synthetic-tax'),
+  );
+  return {
+    scope,
+    actor: (await accessRepository(pool, scope).list())[0]!.userId!,
+    repo: documentLayoutRepository(pool, scope, memoryStore().adapter),
+  };
+}
+
+test('a tax number is optional, printed only when set and byte-identical without one', async () => {
+  const s = await taxScenario();
+  const created = await s.repo.save(s.actor, {
+    ...layout,
+    taxNumber: '  DE123456789  ',
+  });
+  expect(created.taxNumber).toBe('DE123456789');
+  expect(taxDocument(created)).toContain(
+    'Steuernummer / USt-IdNr: DE123456789',
+  );
+  // Without a value not one byte moves - not even one style rule.
+  const without = taxDocument(layout);
+  expect(without).not.toContain('Steuernummer');
+  expect(taxDocument({ ...layout, taxNumber: null })).toBe(without);
+  expect(taxDocument({ ...layout, taxNumber: '' })).toBe(without);
+  // undefined keeps the stored value, like the footer columns.
+  const kept = await s.repo.save(s.actor, layout, created.version);
+  expect(kept).toMatchObject({ taxNumber: 'DE123456789', version: 2 });
+  // null and a blank text both clear it.
+  const cleared = await s.repo.save(
+    s.actor,
+    { ...layout, taxNumber: null },
+    kept.version,
+  );
+  expect(cleared).toMatchObject({ taxNumber: null, version: 3 });
+  const blanked = await s.repo.save(
+    s.actor,
+    { ...layout, taxNumber: '   ' },
+    cleared.version,
+  );
+  expect(blanked).toMatchObject({ taxNumber: null, version: 4 });
+  // A second tenant never sees it.
+  const other = await taxScenario();
+  const otherCreated = await other.repo.save(other.actor, layout);
+  expect(otherCreated.taxNumber).toBeNull();
+});
+
+test('a tax number is trimmed, bounded, line-broken and refuses control characters', async () => {
+  const s = await taxScenario();
+  const created = await s.repo.save(s.actor, {
+    ...layout,
+    taxNumber: 'DE 123/456',
+  });
+  const multi = await s.repo.save(
+    s.actor,
+    { ...layout, taxNumber: 'St.Nr. 123/456\r\nUSt-IdNr. DE123456789' },
+    created.version,
+  );
+  // A real line break prints as one, exactly like the printed account.
+  expect(multi.taxNumber).toBe('St.Nr. 123/456\nUSt-IdNr. DE123456789');
+  expect(taxDocument(multi)).toContain(
+    'Steuernummer / USt-IdNr: St.Nr. 123/456<br>USt-IdNr. DE123456789',
+  );
+  // Free text is escaped before it reaches markup.
+  expect(taxDocument({ ...layout, taxNumber: '<Steuer> & Nr.' })).toContain(
+    'Steuernummer / USt-IdNr: &lt;Steuer&gt; &amp; Nr.',
+  );
+  // Over the bound is refused, the exact bound is not.
+  await expect(
+    s.repo.save(
+      s.actor,
+      { ...layout, taxNumber: 'x'.repeat(101) },
+      multi.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_tax_number' });
+  const exact = await s.repo.save(
+    s.actor,
+    { ...layout, taxNumber: 'x'.repeat(100) },
+    multi.version,
+  );
+  expect(exact.taxNumber).toHaveLength(100);
+  // Every control character except the line break is refused.
+  await expect(
+    s.repo.save(
+      s.actor,
+      { ...layout, taxNumber: 'DE\u0007123' },
+      exact.version,
+    ),
+  ).rejects.toMatchObject({ reason: 'invalid_tax_number' });
+  // The database keeps the same rule for every other path.
+  for (const invalid of ['x'.repeat(101), ' DE123', '', 'DE\u0007123']) {
+    await expect(
+      pool.query(
+        'UPDATE document_layouts SET tax_number=$1 WHERE tenant_id=$2',
+        [invalid, s.scope],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'document_layouts_tax_number_check',
+    });
+  }
+});
+
+test('the layout API stores, previews and clears the tax number', async () => {
+  const s = await taxScenario(),
+    config = {
+      origin: 'https://admin.example.invalid',
+      tenantId: s.scope,
+      clientId: 'synthetic',
+      clientSecret: 'synthetic',
+    },
+    rendered: string[] = [],
+    render: PdfRenderer = async (html) => {
+      rendered.push(html);
+      return Buffer.from('%PDF-1.4 synthetic tax preview');
+    },
+    app = createHealthServer(
+      loadRuntimeConfig(
+        {
+          AK_DB_HOST: 'synthetic',
+          AK_DB_NAME: 'synthetic',
+          AK_DB_USER: 'synthetic',
+          AK_DB_PASSWORD_FILE: 'synthetic',
+          AK_LOG_LEVEL: 'silent',
+        },
+        () => 'synthetic-long-secret',
+      ),
+      { database: async () => true, worker: async () => true },
+    );
+  await registerAuth(
+    app,
+    pool,
+    config,
+    (await syntheticGoogle(config)).provider,
+  );
+  registerDocumentLayoutRoutes(
+    app,
+    pool,
+    s.scope,
+    memoryStore().adapter,
+    render,
+  );
+  const cookies = { '__Host-ak-session': 'synthetic-tax' },
+    headers = {
+      origin: config.origin,
+      'x-csrf-token': digest('csrf:synthetic-tax'),
+    };
+  try {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout',
+      cookies,
+      headers,
+      payload: { ...layout, taxNumber: 'DE123456789' },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      taxNumber: 'DE123456789',
+      version: 1,
+    });
+
+    const read = await app.inject({
+      method: 'GET',
+      url: '/api/v1/document-layout',
+      cookies,
+    });
+    expect(read.json()).toMatchObject({ taxNumber: 'DE123456789' });
+
+    // The preview whitelist accepts the field and prints it like the document.
+    const preview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: { ...layout, taxNumber: 'DE123456789' },
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(rendered[0]).toContain('Steuernummer / USt-IdNr: DE123456789');
+
+    // The same free text rules as the repository: bounded, no control characters.
+    for (const invalid of ['x'.repeat(101), 'DE\u0007123']) {
+      const rejected = await app.inject({
+        method: 'PUT',
+        url: '/api/v1/document-layout',
+        cookies,
+        headers,
+        payload: {
+          ...layout,
+          taxNumber: invalid,
+          version: read.json().version,
+        },
+      });
+      expect(rejected.statusCode).toBe(400);
+    }
+    // The preview whitelist accepts the field with a null value and stays silent.
+    const nullPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: { ...layout, taxNumber: null },
+    });
+    expect(nullPreview.statusCode).toBe(200);
+    expect(rendered[1]).not.toContain('Steuernummer');
+    // And it refuses the same overlong value as the save.
+    const overlongPreview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/document-layout/preview',
+      cookies,
+      headers,
+      payload: { ...layout, taxNumber: 'x'.repeat(101) },
+    });
+    expect(overlongPreview.statusCode).toBe(400);
+
+    const cleared = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/document-layout',
+      cookies,
+      headers,
+      payload: { ...layout, taxNumber: null, version: read.json().version },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toMatchObject({
+      taxNumber: null,
+      version: read.json().version + 1,
+    });
+    expect(await s.repo.get()).toMatchObject({ taxNumber: null });
+  } finally {
+    await app.close();
+  }
+});

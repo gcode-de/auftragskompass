@@ -2189,6 +2189,67 @@ test('changing the layout footer and logo preserves finalized PDFs and updates d
   );
 });
 
+// DOC-RG04-01: the stored tax number belongs to the layout, so it reaches every
+// new document - and a finalized PDF keeps exactly the bytes it was issued with.
+test('a stored tax number prints on new documents and leaves a finalized PDF untouched', async () => {
+  const run = dependencies(),
+    layoutRepo = documentLayoutRepository(pool, tenantId, run.deps.store),
+    repo = documentRepository(pool, tenantId, run.deps);
+  // This test brings its own memory store, so the logo a previous test left in
+  // the shared layout row has to exist here as well.
+  await layoutRepo.saveLogo(
+    actorId,
+    Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('synthetic tax logo'),
+    ]),
+    'image/png',
+  );
+  const before = (await layoutRepo.get())!,
+    layoutInput = {
+      ...before,
+      fontFamily: before.fontFamily as 'system',
+    },
+    withTax = await layoutRepo.save(
+      actorId,
+      { ...layoutInput, taxNumber: 'DE123456789' },
+      before.version,
+    );
+  expect(withTax.taxNumber).toBe('DE123456789');
+  const draft = await repo.createDraft(actorId, {
+      templateId,
+      contactId,
+      eventId,
+    }),
+    finalized = await repo.finalize(actorId, draft.id),
+    originalPdf = await readDocumentPdf(run.deps.store, finalized.pdfHash!);
+  expect(run.rendered[0]).toContain('Steuernummer / USt-IdNr: DE123456789');
+
+  const cleared = await layoutRepo.save(
+    actorId,
+    { ...layoutInput, taxNumber: null },
+    withTax.version,
+  );
+  expect(cleared.taxNumber).toBeNull();
+  const unchanged = await repo.get(finalized.id);
+  expect(unchanged).toMatchObject({
+    state: 'final',
+    snapshotHash: finalized.snapshotHash,
+    pdfHash: finalized.pdfHash,
+  });
+  expect(await readDocumentPdf(run.deps.store, unchanged!.pdfHash!)).toEqual(
+    originalPdf,
+  );
+
+  const previewDraft = await repo.createDraft(actorId, {
+    templateId,
+    contactId,
+    eventId,
+  });
+  await repo.preview(previewDraft.id);
+  expect(run.rendered[1]).not.toContain('Steuernummer / USt-IdNr');
+});
+
 test('a free-form place feeds {{location}}, clears honestly and never rewrites final documents', async () => {
   const run = dependencies(),
     png = Buffer.concat([

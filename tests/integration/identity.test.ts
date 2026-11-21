@@ -45,10 +45,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   expect(applied.map((migration) => migration.name)).toContain(
     '0050_event_library_files.sql',
   );
-  // DOC-PRODUCT-01.5: the newest migration adds the one document discount as
-  // three additive, NULL-able columns, so every row written before it keeps its
-  // stored sums and its claim.
-  expect(applied.at(-1)!.name).toBe('0064_product_deleted_audit.sql');
+  // DOC-PRODUCT-01.5: the document discount migration adds three additive,
+  // NULL-able columns, so every row written before it keeps its stored sums and
+  // its claim.
   expect(
     (
       await pool.query<{ column_name: string; is_nullable: string }>(
@@ -64,6 +63,17 @@ test('migrations serialize, restart safely and detect changed history', async ()
     { column_name: 'total_discount_note', is_nullable: 'YES' },
     { column_name: 'total_discount_value', is_nullable: 'YES' },
   ]);
+  // DOC-RG04-01: the newest migration adds one optional, NULL-able column to the
+  // layout, so every stored layout keeps printing exactly as it did.
+  expect(applied.at(-1)!.name).toBe('0065_document_layout_tax_number.sql');
+  expect(
+    (
+      await pool.query<{ column_name: string; is_nullable: string }>(
+        `SELECT column_name, is_nullable FROM information_schema.columns
+          WHERE table_name='document_layouts' AND column_name='tax_number'`,
+      )
+    ).rows,
+  ).toEqual([{ column_name: 'tax_number', is_nullable: 'YES' }]);
   const fileLinkForeignKeys = (
     await pool.query<{ def: string }>(
       "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='event_library_files'::regclass AND contype='f'",
