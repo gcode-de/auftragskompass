@@ -89,7 +89,9 @@ const namedEntities: Record<string, string> = {
   gt: '>',
   quot: '"',
   apos: "'",
-  nbsp: '\u00a0',
+  // A non-breaking space is a formatting artifact; the plain-text
+  // alternative says space.
+  nbsp: ' ',
 };
 
 function decodeEntities(value: string): string {
@@ -235,9 +237,13 @@ export function mailBodyTextFromHtml(html: string): string {
     current += decodeEntities(part);
   }
   if (current.trim()) lines.push(current);
-  return lines
-    .map((line) => line.replace(/\s+$/, ''))
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (
+    lines
+      .map((line) => line.replace(/\s+$/, ''))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      // NBSP from the editor's DOM never reaches the text alternative.
+      .replace(/\u00a0/g, ' ')
+      .trim()
+  );
 }

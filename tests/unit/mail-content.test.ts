@@ -74,6 +74,9 @@ test('the text alternative follows the documented conversion rules', () => {
   ).toBe('Intro\n\n- a\n\nEnde');
   expect(mailBodyTextFromHtml('<p>a</p><p></p><p>b</p>')).toBe('a\n\nb');
   expect(mailBodyTextFromHtml(' <p> a </p> ')).toBe('a');
+  // Non-breaking spaces (entity or DOM artifact) are plain spaces in the
+  // text alternative.
+  expect(mailBodyTextFromHtml('<p>a&nbsp;b\u00a0c</p>')).toBe('a b c');
 });
 
 test('the placeholder set is the document set plus the contact first name', () => {
