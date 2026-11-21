@@ -115,6 +115,24 @@ function decodeEntities(value: string): string {
 }
 
 /**
+ * Resolves a plain-text subject: every value is flattened to one line first,
+ * so no placeholder value can ever inject a header line.
+ */
+export function resolveMailSubject(
+  subject: string,
+  values: Partial<Record<MailPlaceholder, string>>,
+): { subject: string; missing: MailPlaceholder[] } {
+  const flat = Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [
+      name,
+      value.replace(/[\r\n\t]+/g, ' '),
+    ]),
+  ) as Partial<Record<MailPlaceholder, string>>;
+  const resolved = resolveMailPlaceholders(subject, flat);
+  return { subject: resolved.text, missing: resolved.missing };
+}
+
+/**
  * The structured sources one document mail may name. Every value below comes
  * from a stored field; nothing is guessed from a composite name.
  */

@@ -82,7 +82,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // audit vocabulary by one action; every existing row keeps its meaning.
   // MAIL-EDITOR-01a (0073) adds one optional column to contacts (the separate
   // first name of MAIL-EDITOR-01); every existing row keeps its meaning.
-  expect(applied.at(-1)!.name).toBe('0073_contact_first_name.sql');
+  // MAIL-TPL-01a (0074) adds one tenant-bound template table and one audit
+  // action; no existing row and no existing contract changes.
+  expect(applied.at(-1)!.name).toBe('0074_mail_templates.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(
