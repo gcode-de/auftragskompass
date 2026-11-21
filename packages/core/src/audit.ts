@@ -57,7 +57,8 @@ export type AuditAction =
   | 'mail.document_send_scheduled'
   // MAIL-ACCOUNT-01: creating or changing a sending account is operator-
   // traceable; the audit row never carries any secret.
-  | 'mail.account_saved';
+  | 'mail.account_saved'
+  | 'mail.template_saved';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

@@ -33,6 +33,7 @@ import {
   registerTelegramSettingsRoutes,
   telegramKeyFromSecret,
   registerMailRoutes,
+  registerMailTemplateRoutes,
   registerInquiryEmailSettingsRoutes,
 } from '@auftragskompass/core';
 try {
@@ -162,6 +163,8 @@ try {
       // MAIL-EDITOR-01: the admin origin resolves {{documentLink}}.
       origin: auth.origin,
     });
+    // MAIL-TPL-01a: reusable mail templates for the settings.
+    registerMailTemplateRoutes(app, pool, auth.tenantId);
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);

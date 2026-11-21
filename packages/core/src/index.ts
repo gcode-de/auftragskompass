@@ -202,6 +202,22 @@ export {
   maxMailAttachmentBytes,
 } from './mail.js';
 
+// MAIL-TPL-01a: reusable mail templates.
+export {
+  mailTemplateRepository,
+  registerMailTemplateRoutes,
+  mailTemplateFields,
+  previewMailTemplate,
+  mailTemplateExampleValues,
+  mailTemplateStates,
+  MailTemplateError,
+  type MailTemplateInput,
+  type MailTemplateSummary,
+  type MailTemplateDetail,
+  type MailTemplatePreview,
+  type MailTemplateState,
+} from './mail-templates.js';
+
 // MAIL-021-B: the provider boundary of the outbox.
 export {
   smtpMailSender,
