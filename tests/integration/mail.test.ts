@@ -18,6 +18,13 @@ import {
   runMailOutboxPass,
   startMailOutbox,
 } from '../../packages/core/src/mail.js';
+import type {
+  MailSendContent,
+  MailSendEnvelope,
+  MailSendResult,
+  MailSender,
+  MailSenderAccount,
+} from '../../packages/core/src/mail-sender.js';
 
 // MAIL-021-A: synthetic tenant, contact, event and mail only. No provider is
 // contacted and every address ends in @example.invalid.
@@ -155,6 +162,44 @@ function draft(overrides: Record<string, unknown> = {}) {
     to: 'synthetic.contact@example.invalid',
     ...overrides,
   };
+}
+
+// MAIL-021-B: one adapter stub per test instead of a provider. It records what
+// it was asked to send and answers with the outcome the test needs.
+function stubSender(result: MailSendResult, delayMs = 0) {
+  const calls: { envelope: MailSendEnvelope; content: MailSendContent }[] = [];
+  const accounts: MailSenderAccount[] = [];
+  const createSender = (account: MailSenderAccount): MailSender => {
+    accounts.push(account);
+    return {
+      async send(envelope, content) {
+        calls.push({ envelope, content });
+        if (delayMs)
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return result;
+      },
+    };
+  };
+  return { calls, accounts, createSender };
+}
+
+async function signedIn() {
+  const login = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    headers: { origin: config.origin },
+    payload: { identifier: 'fictional.mail.owner', password },
+  });
+  const cookie = login.cookies[0]!,
+    headers = {
+      cookie: `${cookie.name}=${cookie.value}`,
+      origin: config.origin,
+    };
+  const csrf = {
+    'x-csrf-token': (await app.inject({ url: '/auth/me', headers })).json()
+      .csrfToken,
+  };
+  return { headers, csrf };
 }
 
 test('keeps edit, folder and send state separate and links contact and event of the same tenant', async () => {
@@ -773,5 +818,411 @@ test('mail routes answer 403 for a session without an active membership', async 
       })
     ).statusCode,
   ).toBe(403);
+  // MAIL-021-B: the retry is an administrator action as well.
+  expect(
+    (
+      await forbidden.inject({
+        method: 'POST',
+        url: `/api/v1/mail/outbox/${randomUUID()}/retry`,
+        payload: {},
+      })
+    ).statusCode,
+  ).toBe(403);
   await forbidden.close();
+});
+
+// MAIL-021-B: from here on the pass runs with an adapter. Every case still uses
+// the synthetic tenant and a stub sender, never a provider.
+test('delivers a claimed job once, records sent_at and audits mail.sent', async () => {
+  // Earlier tests leave their own queued jobs behind; this test owns the queue.
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  const message = await repo.createMessage(actorId, {
+    ...draft(),
+    cc: 'synthetic.copy@example.invalid',
+    bcc: 'synthetic.blind@example.invalid',
+  });
+  const { job } = await repo.scheduleSend(
+    actorId,
+    message.id,
+    'fictional-key-sent',
+  );
+  const { calls, accounts, createSender } = stubSender('sent');
+  const failures: unknown[] = [];
+  expect(
+    await runMailOutboxPass(pool, (failure) => failures.push(failure), {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(true);
+  expect(failures).toEqual([]);
+  expect(calls).toHaveLength(1);
+  // The account reaches the adapter with the sealed secret decrypted - the only
+  // place the plaintext exists is this attempt.
+  expect(accounts).toEqual([
+    {
+      host: 'smtp.example.invalid',
+      port: 465,
+      username: 'synthetic.sender@example.invalid',
+      secret: 'synthetic-smtp-secret',
+    },
+  ]);
+  // The adapter receives the sealed secret decrypted, addresses as a list and
+  // BCC in the envelope - never in the visible header fields.
+  expect(calls[0]!.envelope).toEqual({
+    from: 'synthetic.sender@example.invalid',
+    to: ['synthetic.contact@example.invalid'],
+    cc: ['synthetic.copy@example.invalid'],
+    bcc: ['synthetic.blind@example.invalid'],
+  });
+  expect(calls[0]!.content).toEqual({
+    subject: 'Fictional offer follow-up',
+    text: 'Synthetic body text.',
+    html: null,
+    messageId: null,
+  });
+  const row = (
+    await pool.query(
+      'SELECT state,sent_at,last_error_code,locked_at FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+      [tenantId, job.id],
+    )
+  ).rows[0]!;
+  expect(row).toMatchObject({
+    state: 'sent',
+    last_error_code: null,
+    locked_at: null,
+  });
+  expect(row.sent_at).not.toBeNull();
+  const sent = await repo.get(message.id);
+  expect(sent).toMatchObject({ sendState: 'sent', folder: 'sent' });
+  expect(sent.sentAt).not.toBeNull();
+  // The audit names the outbox job and no operator: the worker acted, and no
+  // address, subject or provider answer is recorded.
+  const audit = await pool.query<{
+    actor_id: string | null;
+    record_id: string;
+  }>(
+    "SELECT actor_id,record_id::text FROM audit_events WHERE tenant_id=$1 AND action='mail.sent'",
+    [tenantId],
+  );
+  expect(audit.rows).toEqual([{ actor_id: null, record_id: job.id }]);
+  // A delivered job is terminal: a second pass sends nothing.
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(false);
+  expect(calls).toHaveLength(1);
+});
+
+test('a definitely refused attempt is failed with a redacted category and retried by backoff', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  const message = await repo.createMessage(actorId, draft());
+  const { job } = await repo.scheduleSend(
+    actorId,
+    message.id,
+    'fictional-key-rejected',
+  );
+  const { createSender } = stubSender({
+    failed: 'provider_recipient_rejected',
+  });
+  const failures: unknown[] = [];
+  expect(
+    await runMailOutboxPass(pool, (failure) => failures.push(failure), {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(true);
+  expect(failures).toEqual([
+    { type: 'failed', code: 'provider_recipient_rejected' },
+  ]);
+  // Redaction: the closed category, never a server answer or an address.
+  expect(JSON.stringify(failures)).not.toContain('@');
+  const row = (
+    await pool.query(
+      'SELECT state,attempts,last_error_code,next_attempt_at,sent_at,locked_at FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+      [tenantId, job.id],
+    )
+  ).rows[0]!;
+  expect(row).toMatchObject({
+    state: 'failed',
+    attempts: 1,
+    last_error_code: 'provider_recipient_rejected',
+    sent_at: null,
+    locked_at: null,
+  });
+  expect(new Date(row.next_attempt_at).getTime()).toBeGreaterThan(Date.now());
+  expect((await repo.get(message.id)).sendState).toBe('failed');
+  // A safe failure is retried by the existing backoff, not on the next second.
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(false);
+  expect(
+    (
+      await pool.query(
+        'SELECT attempts FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0]!.attempts,
+  ).toBe(1);
+});
+
+test('an unclear outcome is terminal until an operator retries it explicitly', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  const message = await repo.createMessage(actorId, draft());
+  const { job } = await repo.scheduleSend(
+    actorId,
+    message.id,
+    'fictional-key-uncertain',
+  );
+  const { createSender } = stubSender('uncertain');
+  const failures: unknown[] = [];
+  expect(
+    await runMailOutboxPass(pool, (failure) => failures.push(failure), {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(true);
+  expect(failures).toEqual([{ type: 'uncertain' }]);
+  const row = (
+    await pool.query(
+      'SELECT state,last_error_code,sent_at,locked_at FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+      [tenantId, job.id],
+    )
+  ).rows[0]!;
+  expect(row).toMatchObject({
+    state: 'uncertain',
+    last_error_code: 'provider_uncertain',
+    sent_at: null,
+    locked_at: null,
+  });
+  expect((await repo.get(message.id)).sendState).toBe('uncertain');
+  // Even a due, unlocked row is never picked up again automatically: a second
+  // attempt could duplicate a mail the provider already accepted.
+  await pool.query(
+    "UPDATE mail_outbox SET next_attempt_at=now()-interval '1 hour' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, job.id],
+  );
+  const { calls, createSender: afterUncertain } = stubSender('sent');
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender: afterUncertain,
+      key: encryptionKey,
+    }),
+  ).toBe(false);
+  expect(calls).toEqual([]);
+  // And a second send order for the same message is refused, not queued.
+  await expect(
+    repo.scheduleSend(actorId, message.id, 'fictional-key-uncertain-second'),
+  ).rejects.toMatchObject({ reason: 'not_sendable' });
+});
+
+test('the explicit retry moves only an uncertain job back to pending', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  const message = await repo.createMessage(actorId, draft());
+  const { job } = await repo.scheduleSend(
+    actorId,
+    message.id,
+    'fictional-key-retry',
+  );
+  const { headers, csrf } = await signedIn();
+  const retry = (id: string, withCsrf = true) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/v1/mail/outbox/${id}/retry`,
+      headers: withCsrf ? { ...headers, ...csrf } : headers,
+      payload: {},
+    });
+  // Only an unclear outcome may be repeated; a pending order is not.
+  expect((await retry(job.id)).statusCode).toBe(409);
+  // A mutation without CSRF never touches the job.
+  expect((await retry(job.id, false)).statusCode).toBe(403);
+  expect((await retry(randomUUID())).statusCode).toBe(404);
+
+  const { createSender } = stubSender('uncertain');
+  await runMailOutboxPass(pool, () => {}, {
+    createSender,
+    key: encryptionKey,
+  });
+  const repeated = await retry(job.id);
+  expect(repeated.statusCode).toBe(200);
+  expect(repeated.json()).toMatchObject({
+    id: job.id,
+    messageId: message.id,
+    state: 'pending',
+    lastErrorCode: null,
+  });
+  // The retry is the same job: no second order, and the attempt count stays a
+  // record of what already happened.
+  expect(repeated.json().attempts).toBe(1);
+  expect(
+    (
+      await pool.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM mail_outbox WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, message.id],
+      )
+    ).rows[0]!.count,
+  ).toBe(1);
+  expect((await repo.get(message.id)).sendState).toBe('scheduled');
+  const audit = await pool.query<{ actor_id: string }>(
+    "SELECT actor_id FROM audit_events WHERE tenant_id=$1 AND action='mail.send_retry' AND record_id=$2",
+    [tenantId, job.id],
+  );
+  expect(audit.rows).toEqual([{ actor_id: actorId }]);
+
+  // The next pass sends the very same job and closes it.
+  const { calls, createSender: sending } = stubSender('sent');
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender: sending,
+      key: encryptionKey,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(1);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,attempts FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({ state: 'sent', attempts: 2 });
+  // A sent job is not repeatable any more.
+  expect((await retry(job.id)).statusCode).toBe(409);
+  // Neither is a job of another tenant, which is simply not there.
+  const foreign = await mailRepository(
+    pool,
+    otherTenantId,
+    encryptionKey,
+  ).createMessage(otherActorId, {
+    ...draft(),
+    accountId: otherAccountId,
+    subject: 'Fictional foreign retry',
+  });
+  const foreignJob = await mailRepository(
+    pool,
+    otherTenantId,
+    encryptionKey,
+  ).scheduleSend(otherActorId, foreign.id, 'fictional-key-foreign');
+  expect((await retry(foreignJob.job.id)).statusCode).toBe(404);
+});
+
+test('without a key or a usable account the pass fails closed instead of sending', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  const message = await repo.createMessage(actorId, draft());
+  const { job } = await repo.scheduleSend(
+    actorId,
+    message.id,
+    'fictional-key-keyless',
+  );
+  const { calls, createSender } = stubSender('sent');
+  const failures: unknown[] = [];
+  expect(
+    await runMailOutboxPass(pool, (failure) => failures.push(failure), {
+      createSender,
+      key: null,
+    }),
+  ).toBe(true);
+  expect(failures).toEqual([{ type: 'encryption_unavailable' }]);
+  expect(calls).toEqual([]);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,last_error_code FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({
+    state: 'failed',
+    last_error_code: 'encryption_unavailable',
+  });
+
+  // A paused account is no provider either: the job says so instead of guessing.
+  const paused = await repo.saveAccount(actorId, {
+    name: 'Fictional paused sender',
+    enabled: false,
+  });
+  const pausedMessage = await repo.createMessage(
+    actorId,
+    draft({ accountId: paused.id }),
+  );
+  const pausedJob = await repo.scheduleSend(
+    actorId,
+    pausedMessage.id,
+    'fictional-key-paused',
+  );
+  const pausedFailures: unknown[] = [];
+  expect(
+    await runMailOutboxPass(pool, (failure) => pausedFailures.push(failure), {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(true);
+  expect(pausedFailures).toEqual([{ type: 'provider_missing' }]);
+  expect(calls).toEqual([]);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,last_error_code FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, pausedJob.job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({ state: 'failed', last_error_code: 'provider_missing' });
+});
+
+test('parallel workers and a restarted worker never send the same job twice', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  const message = await repo.createMessage(actorId, draft());
+  await repo.scheduleSend(actorId, message.id, 'fictional-key-parallel-send');
+  const { calls, createSender } = stubSender('sent', 25);
+  const passes = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      runMailOutboxPass(pool, () => {}, {
+        createSender,
+        key: encryptionKey,
+      }),
+    ),
+  );
+  expect(passes.filter(Boolean)).toHaveLength(1);
+  expect(calls).toHaveLength(1);
+
+  // A worker that claims and then dies leaves a lease. Only after it expires
+  // does the restarted worker resume the same job - and it sends exactly once.
+  const crashed = await repo.createMessage(actorId, draft());
+  const { job } = await repo.scheduleSend(
+    actorId,
+    crashed.id,
+    'fictional-key-crashed',
+  );
+  await pool.query(
+    `UPDATE mail_outbox
+        SET state='sending', attempts=1, locked_at=now()-interval '3 minutes',
+            next_attempt_at=now()-interval '1 second'
+      WHERE tenant_id=$1 AND id=$2`,
+    [tenantId, job.id],
+  );
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(2);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,attempts FROM mail_outbox WHERE tenant_id=$1 AND id=$2',
+        [tenantId, job.id],
+      )
+    ).rows[0],
+  ).toMatchObject({ state: 'sent', attempts: 2 });
 });

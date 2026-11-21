@@ -186,8 +186,23 @@ export {
   type MailMessageDetail,
   type MailOutboxRow,
   type ClaimedMailOutboxJob,
+  type MailOutboxConfig,
   type MailOutboxFailure,
 } from './mail.js';
+
+// MAIL-021-B: the provider boundary of the outbox.
+export {
+  smtpMailSender,
+  classifySmtpFailure,
+  type MailSender,
+  type MailSenderAccount,
+  type MailSendEnvelope,
+  type MailSendContent,
+  type MailSendFailureCode,
+  type MailSendResult,
+  type SmtpAttemptPhase,
+  type SmtpSenderOptions,
+} from './mail-sender.js';
 
 export { registerImportRoutes } from './import-routes.js';
 

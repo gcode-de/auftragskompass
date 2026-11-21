@@ -27,6 +27,9 @@ describe('mail outbox transitions', () => {
       ['sent', 'failed'],
       ['uncertain', 'sending'],
       ['uncertain', 'failed'],
+      // MAIL-021-B: the operator retry is a deliberate, separately audited act,
+      // not a transition the automatic outbox map may take.
+      ['uncertain', 'pending'],
       ['pending', 'sent'],
       ['pending', 'failed'],
       ['failed', 'sent'],

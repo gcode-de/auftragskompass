@@ -69,7 +69,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // column and no existing action changes meaning.
   // MAIL-021-A (0067) adds the three new mail tables and two audit actions; it
   // changes no existing row either.
-  expect(applied.at(-1)!.name).toBe('0067_mail_core.sql');
+  // MAIL-021-B (0068) only widens two closed vocabularies: the audit actions and
+  // the redacted outbox error codes. No table and no column changes.
+  expect(applied.at(-1)!.name).toBe('0068_mail_send.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(
@@ -98,8 +100,31 @@ test('migrations serialize, restart safely and detect changed history', async ()
   expect(auditActionCheck).toContain('document.acceptance_corrected');
   expect(auditActionCheck).toContain('mail.message_created');
   expect(auditActionCheck).toContain('mail.send_scheduled');
+  // MAIL-021-B: the accepted message and the deliberate retry are their own
+  // actions; the closed list grows by exactly these two.
+  expect(auditActionCheck).toContain('mail.sent');
+  expect(auditActionCheck).toContain('mail.send_retry');
   expect(auditActionCheck).toContain('document.accepted');
   expect(auditActionCheck).toContain('product.deleted');
+  // MAIL-021-B: the redacted outbox vocabulary stays closed and grows additively;
+  // every MAIL-021-A code keeps its meaning.
+  const outboxCodeCheck = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='mail_outbox'::regclass AND conname='mail_outbox_last_error_code_check'",
+    )
+  ).rows[0]!.def;
+  for (const code of [
+    'provider_missing',
+    'provider_timeout',
+    'provider_rejected',
+    'provider_uncertain',
+    'internal',
+    'provider_auth_failed',
+    'provider_recipient_rejected',
+    'encryption_unavailable',
+  ])
+    expect(outboxCodeCheck).toContain(`'${code}'::text`);
+  expect(outboxCodeCheck).not.toContain('%');
   const fileLinkForeignKeys = (
     await pool.query<{ def: string }>(
       "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='event_library_files'::regclass AND contype='f'",

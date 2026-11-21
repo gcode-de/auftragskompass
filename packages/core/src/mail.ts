@@ -5,13 +5,22 @@ import { sql } from 'drizzle-orm';
 import { database, type Connection } from './database.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
-import { encryptTelegramToken } from './telegram.js';
+import { encryptTelegramToken, decryptTelegramToken } from './telegram.js';
+import type {
+  MailSendContent,
+  MailSendEnvelope,
+  MailSendFailureCode,
+  MailSendResult,
+  MailSender,
+  MailSenderAccount,
+} from './mail-sender.js';
 
 // MAIL-021-A: the durable mail core. Rows and the outbox live in reviewed SQL
 // (0067) like the payment and file tables; there is no ORM mirror for them.
-// This slice stores, links and queues mail. It sends nothing: no IMAP reader and
-// no SMTP adapter exist yet, so an outbox job ends as `failed`/`provider_missing`
-// instead of pretending to be delivered.
+// MAIL-021-B adds the one external effect: a claimed job is handed to a
+// MailSender adapter (`mail-sender.ts`), and the pass records exactly what came
+// back - sent, definitively failed, or unclear. Without an adapter nothing
+// leaves the machine and a job ends as `failed`/`provider_missing`.
 export type MailDirection = 'in' | 'out';
 export type MailFolder = 'inbox' | 'drafts' | 'sent' | 'trash';
 /** EM-04: the editorial state, independent of folder and delivery. */
@@ -53,6 +62,7 @@ export type MailErrorReason =
   | 'secret_required'
   | 'encryption_unavailable'
   | 'not_sendable'
+  | 'not_retryable'
   | 'idempotency_conflict';
 export class MailError extends Error {
   constructor(readonly reason: MailErrorReason) {
@@ -166,9 +176,19 @@ export type ClaimedMailOutboxJob = {
   messageId: string;
   attempts: number;
 };
+/** MAIL-021-B: the outbox needs an adapter factory and the key, nothing else. */
+export type MailOutboxConfig = {
+  /** Builds one adapter per account; absent means no provider is configured. */
+  createSender?: (account: MailSenderAccount) => MailSender;
+  /** Key for the sealed account secret, same envelope as the Telegram token. */
+  key?: Uint8Array | null;
+};
 export type MailOutboxFailure =
   | { type: 'database'; stage: 'claim' | 'finalize' }
-  | { type: 'provider_missing' };
+  | { type: 'provider_missing' }
+  | { type: 'encryption_unavailable' }
+  | { type: 'failed'; code: MailSendFailureCode }
+  | { type: 'uncertain' };
 
 type ReviewedSql = {
   execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
@@ -649,6 +669,46 @@ export function mailRepository(
         return { job: toOutbox(row), created: true };
       });
     },
+
+    // MAIL-021-B: the only way out of `uncertain`. A terminal unclear outcome is
+    // never restarted by the loop, so an operator must decide it - and that
+    // decision is audited on its own. The same job goes back to `pending`; no
+    // second order and no second idempotency key exists for this attempt.
+    async retryUncertainSend(
+      actorId: string,
+      outboxId: string,
+    ): Promise<MailOutboxRow> {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const found = await tx.execute<{
+          state: MailOutboxState;
+          message_id: string;
+        }>(
+          sql`SELECT state, message_id::text AS message_id FROM mail_outbox
+               WHERE tenant_id=${tenantId} AND id=${outboxId}::uuid FOR UPDATE`,
+        );
+        const current = found.rows[0];
+        // Another tenant's job is missing, never forbidden: no leak.
+        if (!current) throw new MailError('not_found');
+        if (current.state !== 'uncertain') throw new MailError('not_retryable');
+        const updated = (await reviewed(tx).execute(sql`
+          UPDATE mail_outbox o
+             SET state='pending', next_attempt_at=now(), locked_at=NULL,
+                 last_error_code=NULL, updated_at=now()
+           WHERE o.tenant_id=${tenantId} AND o.id=${outboxId}::uuid
+             AND o.state='uncertain'
+          RETURNING ${outboxColumns}`)) as { rows: OutboxQueryRow[] };
+        const row = updated.rows[0];
+        if (!row) throw new MailError('not_retryable');
+        await tx.execute(
+          sql`UPDATE mail_messages SET send_state='scheduled', updated_at=now()
+               WHERE tenant_id=${tenantId} AND id=${current.message_id}::uuid`,
+        );
+        await appendAudit(tx, tenantId, 'mail.send_retry', actorId, outboxId);
+        return toOutbox(row);
+      });
+    },
   };
 }
 
@@ -700,12 +760,195 @@ export async function claimMailOutboxJob(
   };
 }
 
-// One honest pass without a provider adapter: the job is claimed, then recorded
-// as failed with the redacted category `provider_missing` and a growing backoff.
-// Nothing is ever marked `sent` here.
+// One attempt of this tenant's job: everything the adapter needs, read in a
+// single statement so a message or account removed in between cannot produce a
+// half attempt.
+type MailAttempt =
+  | {
+      account: MailSenderAccount;
+      envelope: MailSendEnvelope;
+      content: MailSendContent;
+    }
+  | {
+      problem:
+        MailSendFailureCode | 'provider_missing' | 'encryption_unavailable';
+    };
+
+type AttemptRow = {
+  subject: string;
+  body_text: string;
+  body_html: string | null;
+  from_address: string;
+  to_addresses: string;
+  cc_addresses: string;
+  bcc_addresses: string;
+  message_id: string | null;
+  enabled: boolean;
+  smtp_host: string;
+  smtp_port: number | null;
+  username: string;
+  secret_ciphertext: Buffer | null;
+  secret_nonce: Buffer | null;
+  secret_tag: Buffer | null;
+};
+
+function addressesOf(value: string): string[] {
+  return value.trim()
+    ? value
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+    : [];
+}
+
+async function prepareMailAttempt(
+  client: PoolClient,
+  job: ClaimedMailOutboxJob,
+  key: Uint8Array | null,
+): Promise<MailAttempt> {
+  const { rows } = await client.query<AttemptRow>(
+    `SELECT m.subject, m.body_text, m.body_html, m.from_address, m.to_addresses,
+            m.cc_addresses, m.bcc_addresses, m.message_id,
+            a.enabled, a.smtp_host, a.smtp_port, a.username,
+            a.secret_ciphertext, a.secret_nonce, a.secret_tag
+       FROM mail_outbox o
+       JOIN mail_messages m ON m.tenant_id=o.tenant_id AND m.id=o.message_id
+       JOIN mail_accounts a ON a.tenant_id=m.tenant_id AND a.id=m.account_id
+      WHERE o.tenant_id=$1 AND o.id=$2`,
+    [job.tenantId, job.id],
+  );
+  const row = rows[0];
+  if (!row) return { problem: 'internal' };
+  // A paused or hostless account is not a provider: say so instead of guessing.
+  if (!row.enabled || !row.smtp_host) return { problem: 'provider_missing' };
+  if (!row.secret_ciphertext || !row.secret_nonce || !row.secret_tag || !key)
+    return { problem: 'encryption_unavailable' };
+  let secret: string;
+  try {
+    // Same AES-256-GCM envelope as the Telegram token: one crypto, one key.
+    secret = decryptTelegramToken(
+      {
+        ciphertext: row.secret_ciphertext,
+        nonce: row.secret_nonce,
+        tag: row.secret_tag,
+      },
+      key,
+    );
+  } catch {
+    return { problem: 'encryption_unavailable' };
+  }
+  const from = row.from_address.trim() || row.username.trim(),
+    to = addressesOf(row.to_addresses);
+  if (!from) return { problem: 'provider_missing' };
+  if (!to.length) return { problem: 'internal' };
+  return {
+    account: {
+      host: row.smtp_host,
+      port: row.smtp_port,
+      username: row.username,
+      secret,
+    },
+    envelope: {
+      from,
+      to,
+      cc: addressesOf(row.cc_addresses),
+      bcc: addressesOf(row.bcc_addresses),
+    },
+    content: {
+      subject: row.subject,
+      text: row.body_text,
+      html: row.body_html,
+      messageId: row.message_id,
+    },
+  };
+}
+
+type MailOutcome =
+  | { state: 'sent' }
+  | { state: 'failed'; code: string }
+  | { state: 'uncertain' };
+
+function failureOf(code: string): MailOutboxFailure {
+  if (code === 'provider_missing') return { type: 'provider_missing' };
+  if (code === 'encryption_unavailable')
+    return { type: 'encryption_unavailable' };
+  return { type: 'failed', code: code as MailSendFailureCode };
+}
+
+// The row and the message state move in one transaction. A claimed job whose
+// lease was taken over by a restarted worker keeps what the other worker wrote:
+// every statement is bound to `state='sending'`, so an old attempt can never
+// overwrite a newer outcome.
+async function finalizeMailOutboxAttempt(
+  client: PoolClient,
+  job: ClaimedMailOutboxJob,
+  outcome: MailOutcome,
+): Promise<void> {
+  if (outcome.state === 'sent') {
+    const closed = await client.query(
+      `UPDATE mail_outbox
+          SET state='sent', sent_at=now(), locked_at=NULL,
+              last_error_code=NULL, updated_at=now()
+        WHERE tenant_id=$1 AND id=$2 AND state='sending'`,
+      [job.tenantId, job.id],
+    );
+    await client.query(
+      `UPDATE mail_messages m
+          SET send_state='sent', sent_at=now(), updated_at=now(),
+              folder=CASE WHEN m.folder='drafts' THEN 'sent' ELSE m.folder END
+         FROM mail_outbox o
+        WHERE o.tenant_id=$1 AND o.id=$2 AND o.state='sent'
+          AND m.tenant_id=o.tenant_id AND m.id=o.message_id`,
+      [job.tenantId, job.id],
+    );
+    // Only the worker that really closed the job records the delivery.
+    if (closed.rowCount)
+      await client.query(
+        `INSERT INTO audit_events (tenant_id, actor_id, action, record_id)
+         VALUES ($1, NULL, 'mail.sent', $2)`,
+        [job.tenantId, job.id],
+      );
+    return;
+  }
+  if (outcome.state === 'failed')
+    await client.query(
+      `UPDATE mail_outbox
+          SET state='failed', last_error_code=$3, locked_at=NULL,
+              next_attempt_at=now()+make_interval(secs=>$4::int),
+              updated_at=now()
+        WHERE tenant_id=$1 AND id=$2 AND state='sending'`,
+      [
+        job.tenantId,
+        job.id,
+        outcome.code,
+        mailOutboxRetryDelaySeconds(job.attempts),
+      ],
+    );
+  else
+    await client.query(
+      `UPDATE mail_outbox
+          SET state='uncertain', last_error_code='provider_uncertain',
+              locked_at=NULL, updated_at=now()
+        WHERE tenant_id=$1 AND id=$2 AND state='sending'`,
+      [job.tenantId, job.id],
+    );
+  await client.query(
+    `UPDATE mail_messages m SET send_state=$3, updated_at=now()
+       FROM mail_outbox o
+      WHERE o.tenant_id=$1 AND o.id=$2 AND o.state=$3
+        AND m.tenant_id=o.tenant_id AND m.id=o.message_id`,
+    [job.tenantId, job.id, outcome.state],
+  );
+}
+
+// One honest pass. The job is claimed, handed to the adapter once, and the
+// outcome is written down: `sent` for an accepted message, `failed` with a
+// redacted category and the usual backoff for a definite refusal, and
+// `uncertain` - terminal - when the provider may have taken the message.
 export async function runMailOutboxPass(
   pool: Pool,
   reportError: (failure: MailOutboxFailure) => void = () => {},
+  config: MailOutboxConfig = {},
 ): Promise<boolean> {
   const client = await pool.connect();
   try {
@@ -720,31 +963,66 @@ export async function runMailOutboxPass(
       return false;
     }
     if (!job) return false;
+    const claimed = job;
+    const conclude = async (
+      outcome: MailOutcome,
+      failure: MailOutboxFailure | null,
+    ) => {
+      try {
+        await client.query('BEGIN');
+        await finalizeMailOutboxAttempt(client, claimed, outcome);
+        await client.query('COMMIT');
+      } catch {
+        await client.query('ROLLBACK').catch(() => {});
+        reportError({ type: 'database', stage: 'finalize' });
+        return false;
+      }
+      if (failure) reportError(failure);
+      return true;
+    };
+    const { createSender, key } = config;
+    // Without an adapter nothing can leave the machine: the job says so.
+    if (!createSender)
+      return conclude(
+        { state: 'failed', code: 'provider_missing' },
+        {
+          type: 'provider_missing',
+        },
+      );
+    let attempt: MailAttempt;
     try {
-      await client.query('BEGIN');
-      await client.query(
-        `UPDATE mail_outbox
-            SET state='failed', last_error_code='provider_missing',
-                next_attempt_at=now()+make_interval(secs=>$3::int),
-                locked_at=NULL, updated_at=now()
-          WHERE tenant_id=$1 AND id=$2 AND state='sending'`,
-        [job.tenantId, job.id, mailOutboxRetryDelaySeconds(job.attempts)],
-      );
-      await client.query(
-        `UPDATE mail_messages m SET send_state='failed', updated_at=now()
-           FROM mail_outbox o
-          WHERE o.tenant_id=$1 AND o.id=$2
-            AND m.tenant_id=o.tenant_id AND m.id=o.message_id`,
-        [job.tenantId, job.id],
-      );
-      await client.query('COMMIT');
+      attempt = await prepareMailAttempt(client, claimed, key ?? null);
     } catch {
-      await client.query('ROLLBACK').catch(() => {});
+      // The attempt never began. The job keeps its lease and is retried after
+      // it expires, exactly like a crashed worker.
       reportError({ type: 'database', stage: 'finalize' });
       return false;
     }
-    reportError({ type: 'provider_missing' });
-    return true;
+    if ('problem' in attempt)
+      return conclude(
+        { state: 'failed', code: attempt.problem },
+        failureOf(attempt.problem),
+      );
+    let result: MailSendResult;
+    try {
+      result = await createSender(attempt.account).send(
+        attempt.envelope,
+        attempt.content,
+      );
+    } catch {
+      // An adapter that throws did not tell us what happened: never retry blind.
+      result = 'uncertain';
+    }
+    if (result === 'sent') return conclude({ state: 'sent' }, null);
+    if (result === 'uncertain')
+      return conclude({ state: 'uncertain' }, { type: 'uncertain' });
+    return conclude(
+      { state: 'failed', code: result.failed },
+      {
+        type: 'failed',
+        code: result.failed,
+      },
+    );
   } finally {
     client.release();
   }
@@ -754,11 +1032,12 @@ export function startMailOutbox(
   pool: Pool,
   reportError: (failure: MailOutboxFailure) => void = () => {},
   intervalMs = 5000,
+  config: MailOutboxConfig = {},
 ) {
   let pending: Promise<void> | null = null;
   const run = () => {
     if (pending) return;
-    pending = runMailOutboxPass(pool, reportError)
+    pending = runMailOutboxPass(pool, reportError, config)
       .then(() => {})
       .catch(() => reportError({ type: 'database', stage: 'claim' }))
       .finally(() => {
@@ -891,7 +1170,11 @@ export function registerMailRoutes(
       if (error.reason === 'not_found')
         return reply.code(404).send({ error: 'not_found' });
       // The target exists but cannot be sent from its current state.
-      if (['not_sendable', 'idempotency_conflict'].includes(error.reason))
+      if (
+        ['not_sendable', 'not_retryable', 'idempotency_conflict'].includes(
+          error.reason,
+        )
+      )
         return reply.code(409).send({ error: error.reason });
       return reply.code(400).send({ error: error.reason });
     }
@@ -962,6 +1245,22 @@ export function registerMailRoutes(
           request.body.idempotencyKey,
         );
         return reply.code(created ? 201 : 200).send(job);
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // MAIL-021-B: the deliberate way out of `uncertain`. No provider is contacted
+  // here - the job simply becomes claimable again as the very same job.
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/mail/outbox/:id/retry',
+    { schema: { params, response: { 200: outboxSchema } } },
+    async (request, reply) => {
+      try {
+        return await repo.retryUncertainSend(
+          request.authSession!.userId,
+          request.params.id,
+        );
       } catch (error) {
         return failure(error, reply);
       }
