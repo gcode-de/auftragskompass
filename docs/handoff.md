@@ -139,10 +139,15 @@ Abschnitt beschreibt den aktuellen Stand.
   **Bewusst offener Härtungspunkt:** requireTLS fehlt noch (Passwort nur bei
   Anbietern ohne STARTTLS gefährdet) – als MAIL-021-B2 mit echtem
   TLS-Fixture geplant, nicht halb umgesetzt.
-- **Aktiver Slice:** MAIL-021-B2 (TLS-Pflicht bei Anmeldung). Danach
-  MAIL-NOTIFY-01 und MAIL-DOC-01. **Von Ihnen offen:** Steuer-Klarstellung
-  Gesamtrabatt (Blocker), Entsperren für die Sichtprüfungen und – für echten
-  Versand – SMTP-Zugangsdaten/Entscheidung zur Mail-Key-Datei.
+- **Erledigt 21.11.2026 – MAIL-021-B2:** TLS-Pflicht bei Zugangsdaten
+  (PR #64, `e8d0e1f`, CI grün) mit echtem TLS-Fixture und Leak-Beweis
+  (0 Auth-Versuche ohne STARTTLS); Passwort nie unverschlüsselt. Details im
+  Plan.
+- **Aktiver Slice:** MAIL-NOTIFY-01 (Website-Anfragebenachrichtigung per
+  E-Mail neben Telegram, auf dem Mailkern). Danach MAIL-DOC-01. **Von Ihnen
+  offen:** Steuer-Klarstellung Gesamtrabatt (Blocker), Entsperren für die
+  Sichtprüfungen und – für echten Versand – SMTP-Zugangsdaten/Entscheidung
+  zur Mail-Key-Datei.
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
