@@ -442,9 +442,12 @@ function priceLabel(priceBasis: 'gross' | 'net') {
 }
 
 // EDITOR-MOBILE-01: below the widest field-grid breakpoint (44rem, the width the
-// stylesheet uses for the full nine-field row) a phone-sized editor folds the
-// six value fields of a position into one disclosure. The query mirrors that
-// breakpoint; without matchMedia the wide layout is the safe default.
+// stylesheet uses for the full field row) a phone-sized editor folds the five
+// value fields of a position (quantity, unit, single price, tax and the discount
+// with its kind switch) into one disclosure. The price basis is no longer one of
+// them - since EDITOR-VISUAL-01 it is a switch of the row header. The query
+// mirrors that breakpoint; without matchMedia the wide layout is the safe
+// default.
 const compactFieldsQuery = '(max-width: 43.99rem)';
 
 function useCompactFields() {
@@ -490,7 +493,7 @@ function unitInvalid(value: string) {
   return !value.trim() || value.length > 40;
 }
 
-// EDITOR-MOBILE-01: the six folded fields decide together whether the group may
+// EDITOR-MOBILE-01: the five folded fields decide together whether the group may
 // stay closed - an invalid value is never hidden behind the summary.
 function valueFieldsInvalid(line: DraftItemValues) {
   return (
@@ -1466,6 +1469,33 @@ export function OfferDraftEditor({
                         >
                           {title}
                         </span>
+                        {/* EDITOR-VISUAL-01 (B37 deviation 2): the price basis is
+                            one compact Brutto/Netto switch of the row header, not
+                            a select beside the price. It keeps the stored value
+                            and only renames the price field; the core computes
+                            every sum. */}
+                        {line.kind !== 'info' && (
+                          <div
+                            className="offer-draft-position-basis"
+                            role="radiogroup"
+                            aria-label="Preisbasis"
+                          >
+                            {(['gross', 'net'] as const).map((basis) => (
+                              <label key={basis}>
+                                <input
+                                  type="radio"
+                                  name={`price-basis-${line.key}`}
+                                  value={basis}
+                                  checked={line.priceBasis === basis}
+                                  onChange={() =>
+                                    changeLine(line.key, 'priceBasis', basis)
+                                  }
+                                />
+                                {basis === 'net' ? 'Netto' : 'Brutto'}
+                              </label>
+                            ))}
+                          </div>
+                        )}
                         <div
                           className="offer-draft-position-actions"
                           role="group"
@@ -1611,11 +1641,13 @@ export function OfferDraftEditor({
                               }
                             />
                           </label>
-                          {/* EDITOR-MOBILE-01: the six value fields keep exactly
+                          {/* EDITOR-MOBILE-01: the five value fields keep exactly
                               this DOM at every width. Above the breakpoint the
                               summary is not displayed and the group is always
                               open; below it the same group folds behind "Preis
-                              und Rabatt" and keeps a short value preview. */}
+                              und Rabatt" and keeps a short value preview. The
+                              Brutto/Netto switch of the header (EDITOR-VISUAL-01)
+                              stays outside the group. */}
                           <details
                             className="offer-draft-position-price-group"
                             open={
@@ -1694,24 +1726,9 @@ export function OfferDraftEditor({
                                   }
                                 />
                               </label>
-                              <label>
-                                Preisbasis
-                                <select
-                                  value={line.priceBasis}
-                                  onChange={(event) =>
-                                    changeLine(
-                                      line.key,
-                                      'priceBasis',
-                                      event.target.value === 'net'
-                                        ? 'net'
-                                        : 'gross',
-                                    )
-                                  }
-                                >
-                                  <option value="gross">Brutto</option>
-                                  <option value="net">Netto</option>
-                                </select>
-                              </label>
+                              {/* EDITOR-VISUAL-01: the basis is the switch of the
+                                  row header; only the price label keeps naming
+                                  the stored basis here. */}
                               <label>
                                 Steuer in Prozent
                                 <input

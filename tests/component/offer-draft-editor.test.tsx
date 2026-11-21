@@ -391,6 +391,19 @@ function priceSummary(group: HTMLElement) {
   return summary;
 }
 
+// EDITOR-VISUAL-01: the price basis is one compact Brutto/Netto switch in the
+// position header instead of a select beside the single price. The stored value
+// is unchanged, so the tests read the checked radio as the basis.
+function priceBasisSwitch(position: HTMLElement) {
+  return within(position).getByRole('radiogroup', { name: 'Preisbasis' });
+}
+function basisOf(position: HTMLElement): 'gross' | 'net' {
+  const checked = within(priceBasisSwitch(position)).getByRole('radio', {
+    checked: true,
+  }) as HTMLInputElement;
+  return checked.value === 'net' ? 'net' : 'gross';
+}
+
 test('offer creation opens in a labelled dialog', async () => {
   setup({ documents: [] });
   render(<EventDocuments {...props} />);
@@ -738,6 +751,8 @@ test('existing standalone information text remains editable', async () => {
   const save = screen.getByRole('button', { name: 'Änderungen speichern' });
   expect(input).toHaveProperty('value', description);
   expect(within(info).queryByLabelText('Menge')).toBeNull();
+  // EDITOR-VISUAL-01: the Brutto/Netto switch belongs to priced rows only.
+  expect(within(info).queryByRole('radiogroup')).toBeNull();
   expect(
     within(info).queryByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toBeNull();
@@ -1342,10 +1357,7 @@ test('the catalog loads on demand and explicitly appends a persisted net product
   expect(
     within(added).getByLabelText('Einzelpreis (Netto) in Euro'),
   ).toHaveProperty('value', '100.00');
-  expect(within(added).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'net',
-  );
+  expect(basisOf(added)).toBe('net');
   expect(within(added).getByLabelText('Steuer in Prozent')).toHaveProperty(
     'value',
     '19.00',
@@ -1396,10 +1408,7 @@ test('the catalog loads on demand and explicitly appends a persisted net product
   expect(
     within(reloaded).getByLabelText('Einzelpreis (Netto) in Euro'),
   ).toHaveProperty('value', '100.00');
-  expect(within(reloaded).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'net',
-  );
+  expect(basisOf(reloaded)).toBe('net');
 });
 
 test('gross and net catalog prices are copied unchanged with their basis', async () => {
@@ -1432,10 +1441,7 @@ test('gross and net catalog prices are copied unchanged with their basis', async
   expect(
     within(grossLine).getByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toHaveProperty('value', '123.45');
-  expect(within(grossLine).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'gross',
-  );
+  expect(basisOf(grossLine)).toBe('gross');
   expect(
     within(grossLine).getByLabelText('Infotext (optional)'),
   ).toHaveProperty('value', '');
@@ -1449,10 +1455,7 @@ test('gross and net catalog prices are copied unchanged with their basis', async
   expect(
     within(netLine).getByLabelText('Einzelpreis (Netto) in Euro'),
   ).toHaveProperty('value', '90071992547409.91');
-  expect(within(netLine).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'net',
-  );
+  expect(basisOf(netLine)).toBe('net');
   expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(3);
   expect(screen.queryByRole('alert')).toBeNull();
 });
@@ -1537,10 +1540,7 @@ test('the product dialog appends every chosen product in list order and focuses 
   expect(
     within(first).getByLabelText('Einzelpreis (Netto) in Euro'),
   ).toHaveProperty('value', '100.00');
-  expect(within(first).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'net',
-  );
+  expect(basisOf(first)).toBe('net');
   expect(within(first).getByLabelText('Steuer in Prozent')).toHaveProperty(
     'value',
     '19.00',
@@ -1561,10 +1561,7 @@ test('the product dialog appends every chosen product in list order and focuses 
   expect(
     within(second).getByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toHaveProperty('value', '123.45');
-  expect(within(second).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'gross',
-  );
+  expect(basisOf(second)).toBe('gross');
   expect(within(second).getByLabelText('Steuer in Prozent')).toHaveProperty(
     'value',
     '7.00',
@@ -1645,19 +1642,16 @@ test('a stored net price basis loads, stays unconverted and saves the chosen bas
   );
   await screen.findByLabelText('Betreff');
   const position = screen.getByRole('group', { name: 'Position 1' });
-  expect(within(position).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'net',
-  );
+  expect(basisOf(position)).toBe('net');
   expect(
     within(position).getByLabelText('Einzelpreis (Netto) in Euro'),
   ).toHaveProperty('value', '100.00');
 
   // Switching the basis renames the price field only; the stored amount is
   // never converted on the client.
-  fireEvent.change(within(position).getByLabelText('Preisbasis'), {
-    target: { value: 'gross' },
-  });
+  fireEvent.click(
+    within(priceBasisSwitch(position)).getByRole('radio', { name: 'Brutto' }),
+  );
   expect(
     within(position).getByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toHaveProperty('value', '100.00');
@@ -1673,10 +1667,7 @@ test('a stored net price basis loads, stays unconverted and saves the chosen bas
     unitPriceMinor: 10000,
     priceBasis: 'gross',
   });
-  expect(within(position).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'gross',
-  );
+  expect(basisOf(position)).toBe('gross');
 
   view.unmount();
   render(<EventDocuments {...props} />);
@@ -1684,10 +1675,7 @@ test('a stored net price basis loads, stays unconverted and saves the chosen bas
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   const reloaded = await screen.findByRole('group', { name: 'Position 1' });
-  expect(within(reloaded).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'gross',
-  );
+  expect(basisOf(reloaded)).toBe('gross');
   expect(
     within(reloaded).getByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toHaveProperty('value', '100.00');
@@ -1720,14 +1708,8 @@ test('mixed gross and net positions show and send their basis while the server t
   await screen.findByLabelText('Betreff');
   const gross = screen.getByRole('group', { name: 'Position 1' }),
     net = screen.getByRole('group', { name: 'Position 2' });
-  expect(within(gross).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'gross',
-  );
-  expect(within(net).getByLabelText('Preisbasis')).toHaveProperty(
-    'value',
-    'net',
-  );
+  expect(basisOf(gross)).toBe('gross');
+  expect(basisOf(net)).toBe('net');
   expect(
     within(gross).getByLabelText('Einzelpreis (Brutto) in Euro'),
   ).toHaveProperty('value', '249.00');
@@ -3314,6 +3296,88 @@ test('the position header carries one icon group with four named actions', async
   ).toBeTruthy();
 });
 
+// EDITOR-VISUAL-01 (Bookitup parity, B37 deviation 2): the price basis is one
+// compact Brutto/Netto switch on top of the row, between the title and the row
+// actions. Switching renames the price field only; the storage model and every
+// typed or saved value stay exactly as they were.
+test('the price basis is a Brutto/Netto switch in the row header', async () => {
+  const { calls } = setup({
+    initial: {
+      ...detail(),
+      lines: [{ ...line, unitPriceMinor: 10000, priceBasis: 'net' as const }],
+    },
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  const header = position.querySelector('.offer-draft-position-head')!;
+  const title = header.querySelector('.offer-draft-position-title')!;
+  const basis = priceBasisSwitch(position);
+  const actions = within(position).getByRole('group', {
+    name: 'Aktionen dieser Zeile',
+  });
+
+  // One named group in the header, between the row title and the actions, and
+  // no longer inside the value fields.
+  expect(header.contains(basis)).toBe(true);
+  expect(
+    position.querySelector('.offer-draft-position-fields')!.contains(basis),
+  ).toBe(false);
+  expect(
+    title.compareDocumentPosition(basis) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    basis.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+
+  // The options are native radios of one group, visibly named Brutto and Netto;
+  // the select beside the price is gone.
+  const radios = within(basis).getAllByRole('radio') as HTMLInputElement[];
+  expect(radios).toHaveLength(2);
+  expect(radios[0]!.name).toBe(radios[1]!.name);
+  expect(within(basis).getByRole('radio', { name: 'Brutto' })).toHaveProperty(
+    'value',
+    'gross',
+  );
+  expect(within(basis).getByRole('radio', { name: 'Netto' })).toHaveProperty(
+    'value',
+    'net',
+  );
+  expect(basisOf(position)).toBe('net');
+  expect(screen.queryByRole('combobox', { name: 'Preisbasis' })).toBeNull();
+  // The row keeps exactly one select: the discount kind. No select, and no
+  // field of the value grid, carries the basis any more.
+  expect(within(position).getAllByRole('combobox')).toHaveLength(1);
+
+  // The switch renames the price field and leaves every typed value alone.
+  const price = within(position).getByLabelText(
+    'Einzelpreis (Netto) in Euro',
+  ) as HTMLInputElement;
+  fireEvent.change(price, { target: { value: '123.45' } });
+  const quantity = within(position).getByLabelText('Menge') as HTMLInputElement;
+  fireEvent.change(quantity, { target: { value: '3' } });
+  fireEvent.click(within(basis).getByRole('radio', { name: 'Brutto' }));
+  expect(within(position).getByLabelText('Einzelpreis (Brutto) in Euro')).toBe(
+    price,
+  );
+  expect(price.value).toBe('123.45');
+  expect(quantity.value).toBe('3');
+  expect(basisOf(position)).toBe('gross');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Änderungen gespeichert.');
+  const savedBody = calls.find((call) => call.method === 'PUT')?.body as {
+    lines: Array<Record<string, unknown>>;
+  };
+  expect(savedBody.lines[0]).toMatchObject({
+    quantity: 3,
+    unitPriceMinor: 12345,
+    priceBasis: 'gross',
+  });
+});
+
 // EDITOR-ACTIONS-01: removal asks first. Cancel, Escape and the backdrop keep
 // the position, leave the editor open and return the focus to its action.
 test('removing a position asks first and cancelling keeps it', async () => {
@@ -3390,17 +3454,24 @@ test('a narrow position folds its value fields into a summary with the typed val
   expect(within(group).queryByLabelText('Beschreibung')).toBeNull();
   const description = within(position).getByLabelText('Beschreibung');
   expect(group.contains(description)).toBe(false);
-  // Every one of the six value fields belongs to the disclosure.
+  // EDITOR-MOBILE-01 / EDITOR-VISUAL-01: the five value fields of the position
+  // belong to the disclosure. The Brutto/Netto switch is not a value field any
+  // more; it stays in the row header at every width.
   for (const label of [
     'Menge',
     'Einheit',
     'Einzelpreis (Brutto) in Euro',
-    'Preisbasis',
     'Steuer in Prozent',
     'Rabattart',
     'Rabatt in Prozent',
   ])
     expect(within(group).getByLabelText(label)).toBeTruthy();
+  expect(within(group).queryByRole('radiogroup')).toBeNull();
+  expect(
+    position
+      .querySelector('.offer-draft-position-head')!
+      .contains(priceBasisSwitch(position)),
+  ).toBe(true);
 });
 
 // EDITOR-MOBILE-01: opening is one deliberate act of the operator. The group
@@ -3491,7 +3562,6 @@ test('a wide view keeps the value fields open without a summary step', async () 
     'Menge',
     'Einheit',
     'Einzelpreis (Brutto) in Euro',
-    'Preisbasis',
     'Steuer in Prozent',
     'Rabattart',
     'Rabatt in Prozent',
