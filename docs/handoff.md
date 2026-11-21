@@ -143,9 +143,13 @@ Abschnitt beschreibt den aktuellen Stand.
   (PR #64, `e8d0e1f`, CI grün) mit echtem TLS-Fixture und Leak-Beweis
   (0 Auth-Versuche ohne STARTTLS); Passwort nie unverschlüsselt. Details im
   Plan.
-- **Aktiver Slice:** MAIL-NOTIFY-01 (Website-Anfragebenachrichtigung per
-  E-Mail neben Telegram, auf dem Mailkern). Danach MAIL-DOC-01. **Von Ihnen
-  offen:** Steuer-Klarstellung Gesamtrabatt (Blocker), Entsperren für die
+- **Erledigt 21.11.2026 – MAIL-NOTIFY-01:** Anfrage-Benachrichtigung per
+  E-Mail neben Telegram (PR #66, `8e8c086`, CI grün); genau ein Mail-Auftrag
+  je Eingang, Telegram unverändert, Details im Plan.
+- **Aktiver Slice:** MAIL-DOC-01 (Dokumente bewusst ausgewählt als Anhang
+  senden – letzter Mail-Slice, danach ist GOAL-Priorität 3 vollständig).
+  Danach weitere Parität und Designsystem. **Von Ihnen offen:**
+  Steuer-Klarstellung Gesamtrabatt (Blocker), Entsperren für die
   Sichtprüfungen und – für echten Versand – SMTP-Zugangsdaten/Entscheidung
   zur Mail-Key-Datei.
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
