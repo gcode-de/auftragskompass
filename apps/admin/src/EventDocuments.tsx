@@ -73,6 +73,8 @@ type CreateKind =
   | 'order_confirmation'
   | 'deposit_invoice'
   | 'invoice'
+  | 'final_invoice'
+  | 'correction'
   | 'blank_invoice';
 type BlankInvoiceRequest = {
   eventId: string;
@@ -152,9 +154,12 @@ const correctionStateLabels: Record<'none' | 'partial' | 'full', string> = {
   partial: 'Teilweise storniert',
   full: 'Storniert',
 };
+// DOC-CREATE-02-Rest: the dialog names the two directions the way the operator
+// speaks about them. `credit` is the existing correction direction, `debit` its
+// counterpart; the request body still carries the stored values.
 const correctionDirectionLabels: Record<CorrectionDirection, string> = {
   credit: 'Gutschrift (mindert den Betrag)',
-  debit: 'Nachberechnung (erhöht den Betrag)',
+  debit: 'Lastschrift (erhöht den Betrag)',
 };
 const acceptanceChannels = Object.keys(
   acceptanceChannelLabels,
@@ -229,6 +234,41 @@ function statusChangeMessage(error: string): string {
       return 'Die Datei wurde nicht gefunden. Bitte Liste aktualisieren.';
     default:
       return 'Statuswechsel nicht möglich.';
+  }
+}
+// DOC-CREATE-02-Rest: one wording per creation kind for the two moments this
+// screen has to speak instead of acting - the unclear answer that blocks every
+// further creation, and the list read that lifts the block. Both wordings were
+// inline switches for three kinds; the two new paths join the same contract.
+function uncertainCreateMessage(kind: CreateKind) {
+  switch (kind) {
+    case 'offer':
+      return 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.';
+    case 'order_confirmation':
+      return 'Der Status der Auftragsbestätigung ist unklar. Bitte Dateien aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.';
+    case 'invoice':
+      return 'Der Status der Rechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.';
+    case 'final_invoice':
+      return 'Der Status der Schlussrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.';
+    case 'correction':
+      return 'Der Status der Rechnungskorrektur ist unklar. Bitte Dateien aktualisieren und vorhandene Korrekturen prüfen, bevor Sie erneut anlegen.';
+    default:
+      return 'Der Status der Anzahlungsrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Anzahlungen prüfen, bevor Sie erneut anlegen.';
+  }
+}
+function reconciledCreateMessage(kind: CreateKind) {
+  switch (kind) {
+    case 'offer':
+      return 'Liste aktualisiert. Bitte prüfen Sie vorhandene Angebote, bevor Sie erneut anlegen.';
+    case 'order_confirmation':
+      return 'Liste aktualisiert. Bitte prüfen Sie vorhandene Auftragsbestätigungen, bevor Sie erneut anlegen.';
+    case 'invoice':
+    case 'final_invoice':
+      return 'Liste aktualisiert. Bitte prüfen Sie vorhandene Rechnungen, bevor Sie erneut anlegen.';
+    case 'correction':
+      return 'Liste aktualisiert. Bitte prüfen Sie vorhandene Korrekturen, bevor Sie erneut anlegen.';
+    default:
+      return 'Liste aktualisiert. Bitte vorhandene Anzahlungen prüfen; der unklare Versuch lässt sich nicht sicher einer einzelnen Anzahlung zuordnen.';
   }
 }
 // BKP013.1: the event file owns one card per document kind that actually
@@ -354,12 +394,10 @@ export function EventDocuments({
     [reloadWarning, setReloadWarning] = useState(false),
     [createUncertain, setCreateUncertain] = useState(false),
     [confirmWithdrawId, setConfirmWithdrawId] = useState(''),
-    // BKP019.c3.2: the finalized confirmation whose final invoice is being
-    // confirmed. A third own state - one step never confirms another.
-    [confirmFinalInvoiceId, setConfirmFinalInvoiceId] = useState(''),
-    // BKP019.c2: the finalized invoice whose correction is being prepared, and
-    // the direction that correction will carry.
-    [correctionId, setCorrectionId] = useState(''),
+    // DOC-CREATE-02-Rest: the finalized confirmation whose final invoice is
+    // preselected in the shared creation dialog, and the claim a correction is
+    // preselected from. Both only carry the selection, never the write.
+    [correctionSourceId, setCorrectionSourceId] = useState(''),
     [correctionDirection, setCorrectionDirection] =
       useState<CorrectionDirection>('credit'),
     // BKP019.a: the compact acceptance form of exactly one row.
@@ -547,11 +585,28 @@ export function EventDocuments({
       .filter((entry) => entry.kind === 'invoice' && entry.sourceDocumentId)
       .map((entry) => entry.sourceDocumentId!),
   );
+  // BKP019.c3.2: the standard and the final invoice are alternatives of the same
+  // confirmation, so both dialogs read the same list - finalized, not withdrawn
+  // and not yet invoiced. The database keeps the exactly-one rule.
   const invoiceSources = depositSources.filter(
     (entry) => !invoicedConfirmations.has(entry.id),
   );
+  // DOC-CREATE-02-Rest: only a finalized claim is corrected. A deposit stays in
+  // the list because a wrong advance is reduced by a correction - exactly the
+  // remedy the finalization hint names - and the endpoint accepts it too. A
+  // draft, an offer, a withdrawal and a correction itself are no sources.
+  const correctionSources = documents.filter(
+    (entry) =>
+      entry.eventId === eventId &&
+      entry.state === 'final' &&
+      (entry.kind === 'invoice' ||
+        entry.kind === 'order_confirmation' ||
+        entry.kind === 'deposit_invoice'),
+  );
   const currentSources =
-    createKind === 'invoice' ? invoiceSources : depositSources;
+    createKind === 'invoice' || createKind === 'final_invoice'
+      ? invoiceSources
+      : depositSources;
   useEffect(() => {
     if (
       createKind === 'order_confirmation' &&
@@ -561,11 +616,20 @@ export function EventDocuments({
   }, [createKind, confirmationSourceId, confirmationSources]);
   useEffect(() => {
     if (
-      (createKind === 'deposit_invoice' || createKind === 'invoice') &&
+      (createKind === 'deposit_invoice' ||
+        createKind === 'invoice' ||
+        createKind === 'final_invoice') &&
       !currentSources.some((entry) => entry.id === depositSourceId)
     )
       setDepositSourceId(currentSources[0]?.id ?? '');
   }, [createKind, depositSourceId, currentSources]);
+  useEffect(() => {
+    if (
+      createKind === 'correction' &&
+      !correctionSources.some((entry) => entry.id === correctionSourceId)
+    )
+      setCorrectionSourceId(correctionSources[0]?.id ?? '');
+  }, [createKind, correctionSourceId, correctionSources]);
   async function load({
     requiredDocumentId,
     strict = false,
@@ -838,10 +902,19 @@ export function EventDocuments({
       if (source) await createConfirmation(source.id, source.version);
       return;
     }
+    if (createKind === 'correction') {
+      const source = correctionSources.find(
+        (entry) => entry.id === correctionSourceId,
+      );
+      if (source) await createCorrection(source);
+      return;
+    }
     const source = currentSources.find((entry) => entry.id === depositSourceId);
     if (source) {
       if (createKind === 'invoice')
         await createInvoice(source.id, source.version);
+      else if (createKind === 'final_invoice')
+        await createFinalInvoice(source.id, source.version);
       else await createDepositInvoice(source.id, source.version);
     }
   }
@@ -1295,8 +1368,8 @@ export function EventDocuments({
   // BKP019.c3.2: the same finalized confirmation can be billed as the final
   // invoice. One explicit step, no retyped amount: the deduction is derived from
   // the advances that are already billed, so the operator decides nothing here
-  // except "yes". Because one confirmation carries exactly one invoice, the
-  // screen offers this step only while no invoice of that confirmation exists.
+  // except "yes". DOC-CREATE-02-Rest: the step now lives in the shared creation
+  // dialog, which the row action opens with its confirmation preselected.
   async function createFinalInvoice(id: string, version: number) {
     if (
       mutating.current ||
@@ -1310,7 +1383,6 @@ export function EventDocuments({
     mutating.current = true;
     setBusy(id);
     setMessage('');
-    setConfirmFinalInvoiceId('');
     try {
       const reply = await fetch('/api/v1/documents/' + id + '/final-invoice', {
         method: 'POST',
@@ -1320,6 +1392,9 @@ export function EventDocuments({
         },
         body: JSON.stringify({ version }),
       });
+      // A server error is an unclear answer: the row may or may not exist, so
+      // nothing is created again until the list was read.
+      if (reply.status >= 500) throw new Error('uncertain-final-invoice');
       if (!reply.ok) {
         const result = (await reply.json()) as { error: string };
         setMessage(
@@ -1357,10 +1432,13 @@ export function EventDocuments({
           ...current.filter((entry) => entry.id !== row.id),
         ]);
         setMessage('Schlussrechnung als Entwurf angelegt.');
-      } else
+        setCreateDialogOpen(false);
+      } else {
+        setCreateUncertain(true);
         setMessage(
           'Schlussrechnung angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
         );
+      }
       try {
         await load();
         setReloadWarning(false);
@@ -1368,27 +1446,27 @@ export function EventDocuments({
         setReloadWarning(true);
       }
     } catch {
-      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+      setMessage('');
+      setCreateUncertain(true);
     } finally {
       mutating.current = false;
       setBusy('');
     }
   }
-  // BKP019.c2: a finalized invoice is corrected by its own follow-up document.
+  // BKP019.c2: a finalized claim is corrected by its own follow-up document.
   // The direction is the one operator decision; the positions are copied and the
-  // invoice itself keeps its number, its state and its bytes.
-  function openCorrection(entry: DocumentRow) {
-    if (mutating.current) return;
-    setMessage('');
-    setCorrectionDirection('credit');
-    setCorrectionId(entry.id);
-  }
-  async function createCorrection(
-    event: FormEvent<HTMLFormElement>,
-    entry: DocumentRow,
-  ) {
-    event.preventDefault();
-    if (mutating.current || busy !== '') return;
+  // source itself keeps its number, its state and its bytes. DOC-CREATE-02-Rest:
+  // the write now comes from the shared creation dialog, which carries the
+  // preselected claim and the direction.
+  async function createCorrection(entry: DocumentRow) {
+    if (
+      mutating.current ||
+      busy !== '' ||
+      createUncertain ||
+      reloadWarning ||
+      initialLoadFailed
+    )
+      return;
     mutating.current = true;
     setBusy(entry.id);
     setMessage('');
@@ -1407,11 +1485,12 @@ export function EventDocuments({
           }),
         },
       );
+      if (reply.status >= 500) throw new Error('uncertain-correction');
       if (!reply.ok) {
         const result = (await reply.json()) as { error: string };
         setMessage(
           result.error === 'duplicate'
-            ? 'Für diese Rechnung gibt es bereits einen offenen Korrektur-Entwurf.'
+            ? 'Für diesen Beleg gibt es bereits einen offenen Korrektur-Entwurf.'
             : result.error === 'credit_exceeds_invoice'
               ? 'Die Gutschrift übersteigt den Rechnungsbetrag. Bitte Betrag prüfen.'
               : result.error === 'invalid_kind'
@@ -1419,7 +1498,9 @@ export function EventDocuments({
                 : result.error === 'invalid_state' ||
                     result.error === 'conflict'
                   ? 'Der Stand wurde geändert. Bitte Liste aktualisieren, dann erneut wählen.'
-                  : 'Rechnungskorrektur konnte nicht erstellt werden. Bitte Angaben prüfen.',
+                  : result.error === 'missing_reference'
+                    ? 'Für diesen Beleg fehlen gespeicherte Angaben, die für eine Korrektur nötig sind.'
+                    : 'Rechnungskorrektur konnte nicht erstellt werden. Bitte Angaben prüfen.',
         );
         try {
           await load();
@@ -1441,11 +1522,13 @@ export function EventDocuments({
           ...current.filter((row) => row.id !== created.id),
         ]);
         setMessage('Rechnungskorrektur als Entwurf angelegt.');
-      } else
+        setCreateDialogOpen(false);
+      } else {
+        setCreateUncertain(true);
         setMessage(
           'Rechnungskorrektur angelegt, aber die Antwort war unklar. Bitte Dateien erneut laden.',
         );
-      setCorrectionId('');
+      }
       try {
         await load();
         setReloadWarning(false);
@@ -1453,7 +1536,8 @@ export function EventDocuments({
         setReloadWarning(true);
       }
     } catch {
-      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+      setMessage('');
+      setCreateUncertain(true);
     } finally {
       mutating.current = false;
       setBusy('');
@@ -1683,15 +1767,7 @@ export function EventDocuments({
         setInitialLoadFailed(false);
         if (createUncertain) {
           setCreateUncertain(false);
-          setMessage(
-            createKind === 'offer'
-              ? 'Liste aktualisiert. Bitte prüfen Sie vorhandene Angebote, bevor Sie erneut anlegen.'
-              : createKind === 'order_confirmation'
-                ? 'Liste aktualisiert. Bitte prüfen Sie vorhandene Auftragsbestätigungen, bevor Sie erneut anlegen.'
-                : createKind === 'invoice'
-                  ? 'Liste aktualisiert. Bitte prüfen Sie vorhandene Rechnungen, bevor Sie erneut anlegen.'
-                  : 'Liste aktualisiert. Bitte vorhandene Anzahlungen prüfen; der unklare Versuch lässt sich nicht sicher einer einzelnen Anzahlung zuordnen.',
-          );
+          setMessage(reconciledCreateMessage(createKind));
         }
       })
       .catch(() => {
@@ -2137,30 +2213,42 @@ export function EventDocuments({
                   PDF öffnen
                 </a>
               )}
-              {/* BKP019.c2: only a finalized invoice is corrected, and only as an
+              {/* BKP019.c2: only a finalized claim is corrected, and only as an
                   explicit step - the correction starts as a draft with its own
-                  number. The direction is the one decision the operator makes.
-                  BKP019.c3.1: a finalized deposit is corrected the same way,
-                  because a wrong advance must not be unfixable. */}
-              {entry.state === 'final' &&
-                (entry.kind === 'invoice' ||
-                  entry.kind === 'deposit_invoice') && (
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    disabled={busy !== ''}
-                    aria-label={
-                      kindName(entry) +
-                      ' ' +
-                      (entry.number ?? '') +
-                      ' korrigieren'
-                    }
-                    aria-expanded={correctionId === entry.id}
-                    onClick={() => openCorrection(entry)}
-                  >
-                    Korrigieren
-                  </button>
-                )}
+                  number. DOC-CREATE-02-Rest: the row action opens the same
+                  creation dialog as every other source-bound kind, with this
+                  claim and the direction preselected. */}
+              {correctionSources.some((source) => source.id === entry.id) && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    busy !== '' ||
+                    createUncertain ||
+                    reloadWarning ||
+                    initialLoadFailed
+                  }
+                  aria-haspopup="dialog"
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' korrigieren'
+                  }
+                  onClick={(event) => {
+                    setMessage('');
+                    setCreateKind('correction');
+                    // The credit note stays the default direction; a fully
+                    // credited source warns instead of hiding its one refusal.
+                    setCorrectionDirection('credit');
+                    setCorrectionSourceId(entry.id);
+                    createDialogTrigger.current = event.currentTarget;
+                    setCreateDialogOpen(true);
+                  }}
+                >
+                  Korrigieren
+                </button>
+              )}
               {/* BKP019.d: a finalized invoice accepts incoming money as an
                   explicit record. Manual only - no bank, card or PSP connection.
                   BKP019.c3.1: an advance payment is paid the same way. */}
@@ -2384,74 +2472,37 @@ export function EventDocuments({
                   the final invoice, which settles the advances already billed on
                   it. A third explicit step, offered only while the confirmation
                   carries no invoice at all - the two invoice roles are
-                  alternatives, not a sequence. */}
-              {entry.state === 'final' &&
-                entry.kind === 'order_confirmation' &&
-                !invoicedConfirmations.has(entry.id) &&
-                (confirmFinalInvoiceId === entry.id ? (
-                  <>
-                    <button
-                      type="button"
-                      className="secondary-action"
-                      disabled={
-                        busy !== '' ||
-                        createUncertain ||
-                        reloadWarning ||
-                        initialLoadFailed
-                      }
-                      aria-label={
-                        kindName(entry) +
-                        ' ' +
-                        (entry.number ?? '') +
-                        ' Schlussrechnung anlegen'
-                      }
-                      onClick={() =>
-                        void createFinalInvoice(entry.id, entry.version)
-                      }
-                    >
-                      Ja, Schlussrechnung anlegen
-                    </button>
-                    <button
-                      type="button"
-                      className="tertiary-action"
-                      disabled={
-                        busy !== '' ||
-                        createUncertain ||
-                        reloadWarning ||
-                        initialLoadFailed
-                      }
-                      aria-label={
-                        kindName(entry) +
-                        ' ' +
-                        (entry.number ?? '') +
-                        ' Schlussrechnung abbrechen'
-                      }
-                      onClick={() => setConfirmFinalInvoiceId('')}
-                    >
-                      Abbrechen
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    disabled={
-                      busy !== '' ||
-                      createUncertain ||
-                      reloadWarning ||
-                      initialLoadFailed
-                    }
-                    aria-label={
-                      kindName(entry) +
-                      ' ' +
-                      (entry.number ?? '') +
-                      ' Schlussrechnung erstellen'
-                    }
-                    onClick={() => setConfirmFinalInvoiceId(entry.id)}
-                  >
-                    Schlussrechnung erstellen
-                  </button>
-                ))}
+                  alternatives, not a sequence. DOC-CREATE-02-Rest: the row action
+                  opens the shared creation dialog with this confirmation
+                  preselected, exactly like the standard invoice. */}
+              {invoiceSources.some((source) => source.id === entry.id) && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    busy !== '' ||
+                    createUncertain ||
+                    reloadWarning ||
+                    initialLoadFailed
+                  }
+                  aria-haspopup="dialog"
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' Schlussrechnung erstellen'
+                  }
+                  onClick={(event) => {
+                    setMessage('');
+                    setCreateKind('final_invoice');
+                    setDepositSourceId(entry.id);
+                    createDialogTrigger.current = event.currentTarget;
+                    setCreateDialogOpen(true);
+                  }}
+                >
+                  Schlussrechnung erstellen
+                </button>
+              )}
             </div>
             {/* BKP019.c3.2: the rule itself is explained where it bites, instead
                 of an action that can only end in a conflict. */}
@@ -2473,68 +2524,6 @@ export function EventDocuments({
               !invoicedConfirmations.has(entry.id) &&
               depositOvershootMinor(entry) > 0 &&
               depositExceededHint(entry)}
-            {(entry.kind === 'invoice' || entry.kind === 'deposit_invoice') &&
-              entry.state === 'final' &&
-              correctionId === entry.id && (
-                <form
-                  className="offer-draft-editor"
-                  aria-label="Rechnungskorrektur anlegen"
-                  onSubmit={(event) => void createCorrection(event, entry)}
-                >
-                  <fieldset disabled={busy !== ''}>
-                    <legend>Rechnungskorrektur anlegen</legend>
-                    <p className="document-hint">
-                      Eine Korrektur ist ein eigener Beleg mit eigener Nummer
-                      und lässt die Rechnung unverändert. Die Positionen werden
-                      zunächst übernommen.
-                    </p>
-                    <div className="offer-draft-fields">
-                      <label>
-                        Richtung
-                        <select
-                          value={correctionDirection}
-                          onChange={(event) =>
-                            setCorrectionDirection(
-                              event.target.value as CorrectionDirection,
-                            )
-                          }
-                        >
-                          {(
-                            Object.keys(
-                              correctionDirectionLabels,
-                            ) as CorrectionDirection[]
-                          ).map((direction) => (
-                            <option key={direction} value={direction}>
-                              {correctionDirectionLabels[direction]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    {correctionDirection === 'credit' &&
-                      entry.remainingCredit === 0 && (
-                        <p role="alert">
-                          Diese Rechnung ist bereits vollständig gutgeschrieben.
-                          Eine weitere Gutschrift wird beim Finalisieren
-                          abgelehnt.
-                        </p>
-                      )}
-                    <div className="document-actions">
-                      <button className="primary-action" disabled={busy !== ''}>
-                        Korrektur anlegen
-                      </button>
-                      <button
-                        type="button"
-                        className="tertiary-action"
-                        disabled={busy !== ''}
-                        onClick={() => setCorrectionId('')}
-                      >
-                        Abbrechen
-                      </button>
-                    </div>
-                  </fieldset>
-                </form>
-              )}
             {(entry.kind === 'invoice' || entry.kind === 'deposit_invoice') &&
               entry.state === 'final' &&
               paymentId === entry.id && (
@@ -2825,15 +2814,7 @@ export function EventDocuments({
       )}
       {createUncertain && !createDialogOpen && (
         <div className="reload-warning">
-          <p role="alert">
-            {createKind === 'offer'
-              ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
-              : createKind === 'order_confirmation'
-                ? 'Der Status der Auftragsbestätigung ist unklar. Bitte Dateien aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
-                : createKind === 'invoice'
-                  ? 'Der Status der Rechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.'
-                  : 'Der Status der Anzahlungsrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Anzahlungen prüfen, bevor Sie erneut anlegen.'}
-          </p>
+          <p role="alert">{uncertainCreateMessage(createKind)}</p>
           <button
             ref={uncertainReload}
             type="button"
@@ -2918,9 +2899,13 @@ export function EventDocuments({
                       ? 'Auftragsbestätigung anlegen'
                       : createKind === 'invoice'
                         ? 'Rechnung anlegen'
-                        : createKind === 'blank_invoice'
-                          ? 'Rechnung ohne Auftragsbestätigung anlegen'
-                          : 'Anzahlungsrechnung anlegen'}
+                        : createKind === 'final_invoice'
+                          ? 'Schlussrechnung anlegen'
+                          : createKind === 'correction'
+                            ? 'Rechnungskorrektur anlegen'
+                            : createKind === 'blank_invoice'
+                              ? 'Rechnung ohne Auftragsbestätigung anlegen'
+                              : 'Anzahlungsrechnung anlegen'}
                 </h4>
                 {(createKind === 'offer' || createKind === 'blank_invoice') && (
                   <p>
@@ -2934,13 +2919,7 @@ export function EventDocuments({
                   !message && (
                     <p role="alert">
                       {createUncertain
-                        ? createKind === 'offer'
-                          ? 'Der Angebotsstatus ist unklar. Bitte Angebote aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
-                          : createKind === 'order_confirmation'
-                            ? 'Der Status der Auftragsbestätigung ist unklar. Bitte Dateien aktualisieren und vorhandene Einträge prüfen, bevor Sie erneut anlegen.'
-                            : createKind === 'invoice'
-                              ? 'Der Status der Rechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Rechnungen prüfen, bevor Sie erneut anlegen.'
-                              : 'Der Status der Anzahlungsrechnung ist unklar. Bitte Dateien aktualisieren und vorhandene Anzahlungen prüfen, bevor Sie erneut anlegen.'
+                        ? uncertainCreateMessage(createKind)
                         : initialLoadFailed
                           ? 'Angebote und Vorlagen konnten nicht geladen werden. Bitte erneut laden, bevor Sie einen Entwurf anlegen.'
                           : 'Die Dateiliste konnte nach dem letzten Speichern nicht aktualisiert werden. Bitte erneut laden, bevor Sie einen weiteren Entwurf anlegen.'}
@@ -3000,12 +2979,22 @@ export function EventDocuments({
                             setConfirmationSourceId(
                               confirmationSources[0]?.id ?? '',
                             );
-                          if (kind === 'deposit_invoice' || kind === 'invoice')
+                          if (
+                            kind === 'deposit_invoice' ||
+                            kind === 'invoice' ||
+                            kind === 'final_invoice'
+                          )
                             setDepositSourceId(
-                              (kind === 'invoice'
-                                ? invoiceSources
-                                : depositSources)[0]?.id ?? '',
+                              (kind === 'deposit_invoice'
+                                ? depositSources
+                                : invoiceSources)[0]?.id ?? '',
                             );
+                          if (kind === 'correction') {
+                            setCorrectionDirection('credit');
+                            setCorrectionSourceId(
+                              correctionSources[0]?.id ?? '',
+                            );
+                          }
                         }}
                       >
                         <option value="offer">Angebot</option>
@@ -3016,6 +3005,8 @@ export function EventDocuments({
                           Anzahlungsrechnung
                         </option>
                         <option value="invoice">Rechnung</option>
+                        <option value="final_invoice">Schlussrechnung</option>
+                        <option value="correction">Rechnungskorrektur</option>
                         <option value="blank_invoice">
                           Rechnung ohne Auftragsbestätigung
                         </option>
@@ -3136,6 +3127,127 @@ export function EventDocuments({
                           }
                         >
                           Auftragsbestätigung anlegen
+                        </button>
+                      </>
+                    ) : createKind === 'final_invoice' ? (
+                      <>
+                        <label>
+                          Auftragsbestätigung
+                          <select
+                            value={depositSourceId}
+                            required
+                            onChange={(event) =>
+                              setDepositSourceId(event.target.value)
+                            }
+                          >
+                            {invoiceSources.length ? (
+                              invoiceSources.map((entry) => (
+                                <option key={entry.id} value={entry.id}>
+                                  {'Auftragsbestätigung ' +
+                                    (entry.number ?? 'Entwurf')}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="">
+                                Keine geeignete Auftragsbestätigung ohne
+                                Rechnung vorhanden
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                        <p className="document-hint">
+                          Die Positionen werden in den Entwurf kopiert und
+                          bleiben dort bearbeitbar. Die bereits gestellten
+                          Anzahlungen werden erst beim Finalisieren brutto
+                          verrechnet und dann eingefroren. Je
+                          Auftragsbestätigung ist genau eine Rechnung möglich –
+                          als Standardrechnung oder als Schlussrechnung.
+                        </p>
+                        <button
+                          className="primary-action"
+                          disabled={
+                            !invoiceSources.some(
+                              (entry) => entry.id === depositSourceId,
+                            )
+                          }
+                        >
+                          Schlussrechnung anlegen
+                        </button>
+                      </>
+                    ) : createKind === 'correction' ? (
+                      <>
+                        <label>
+                          Quellbeleg
+                          <select
+                            value={correctionSourceId}
+                            required
+                            onChange={(event) =>
+                              setCorrectionSourceId(event.target.value)
+                            }
+                          >
+                            {correctionSources.length ? (
+                              correctionSources.map((entry) => (
+                                <option key={entry.id} value={entry.id}>
+                                  {kindName(entry) +
+                                    ' ' +
+                                    (entry.number ?? 'Entwurf')}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="">
+                                Keine geeignete Rechnung oder
+                                Auftragsbestätigung vorhanden
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                        <label>
+                          Richtung
+                          <select
+                            value={correctionDirection}
+                            onChange={(event) =>
+                              setCorrectionDirection(
+                                event.target.value as CorrectionDirection,
+                              )
+                            }
+                          >
+                            {(
+                              Object.keys(
+                                correctionDirectionLabels,
+                              ) as CorrectionDirection[]
+                            ).map((direction) => (
+                              <option key={direction} value={direction}>
+                                {correctionDirectionLabels[direction]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="document-hint">
+                          Eine Korrektur ist ein eigener Beleg mit eigener
+                          Nummer und lässt den Quellbeleg unverändert. Die
+                          Positionen werden zunächst übernommen. Als Gutschrift
+                          mindert sie den Betrag, als Lastschrift erhöht sie
+                          ihn.
+                        </p>
+                        {correctionDirection === 'credit' &&
+                          correctionSources.find(
+                            (entry) => entry.id === correctionSourceId,
+                          )?.remainingCredit === 0 && (
+                            <p role="alert">
+                              Dieser Beleg ist bereits vollständig
+                              gutgeschrieben. Eine weitere Gutschrift wird beim
+                              Finalisieren abgelehnt.
+                            </p>
+                          )}
+                        <button
+                          className="primary-action"
+                          disabled={
+                            !correctionSources.some(
+                              (entry) => entry.id === correctionSourceId,
+                            )
+                          }
+                        >
+                          Korrektur anlegen
                         </button>
                       </>
                     ) : (

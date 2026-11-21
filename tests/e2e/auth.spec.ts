@@ -1778,18 +1778,25 @@ async function signInScenario(
         name: 'Rechnung ' + invoiceNumber + ' korrigieren',
       })
       .click();
-    const correctionForm = invoices.getByRole('form', {
+    const correctionDialog = page.getByRole('dialog', {
       name: 'Rechnungskorrektur anlegen',
     });
-    await expect(correctionForm).toBeVisible();
+    await expect(correctionDialog).toBeVisible();
     // The derived state and the open amount are visible before the write.
     await expect(invoices.getByText('Nicht storniert')).toBeVisible();
     await expect(
       invoices.getByText(/Noch kreditierbar: 100,00 €/),
     ).toBeVisible();
-    await expect(correctionForm.getByLabel('Richtung')).toHaveValue('credit');
-    await correctionForm.getByLabel('Richtung').selectOption('credit');
-    await correctionForm
+    // Kind, source and direction are three selects; the source is preselected
+    // from the row the operator clicked.
+    await expect(correctionDialog.getByRole('combobox').nth(1)).toHaveValue(
+      invoice.id,
+    );
+    await expect(correctionDialog.getByRole('combobox').nth(2)).toHaveValue(
+      'credit',
+    );
+    await correctionDialog.getByRole('combobox').nth(2).selectOption('credit');
+    await correctionDialog
       .getByRole('button', { name: 'Korrektur anlegen' })
       .click();
     await expect(
@@ -1950,11 +1957,14 @@ async function signInScenario(
         name: 'Rechnung ' + invoiceNumber + ' korrigieren',
       })
       .click();
-    // The form warns before the write; the guard is still the server's.
+    // The dialog warns before the write; the guard is still the server's.
+    await expect(correctionDialog).toBeVisible();
     await expect(
-      invoices.getByText(/bereits vollständig gutgeschrieben/),
+      correctionDialog.getByText(/bereits vollständig gutgeschrieben/),
     ).toBeVisible();
-    await invoices.getByRole('button', { name: 'Korrektur anlegen' }).click();
+    await correctionDialog
+      .getByRole('button', { name: 'Korrektur anlegen' })
+      .click();
     await expect(
       page.getByText('Rechnungskorrektur als Entwurf angelegt.'),
     ).toBeVisible();
@@ -2158,11 +2168,14 @@ async function signInScenario(
         name: 'Anzahlungsrechnung ' + depositNumber + ' korrigieren',
       })
       .click();
-    const depositCorrectionForm = deposits.getByRole('form', {
+    const depositCorrectionDialog = page.getByRole('dialog', {
       name: 'Rechnungskorrektur anlegen',
     });
-    await expect(depositCorrectionForm).toBeVisible();
-    await depositCorrectionForm
+    await expect(depositCorrectionDialog).toBeVisible();
+    await expect(depositCorrectionDialog.getByLabel('Quellbeleg')).toHaveValue(
+      deposit.id,
+    );
+    await depositCorrectionDialog
       .getByRole('button', { name: 'Korrektur anlegen' })
       .click();
     await expect(
@@ -2749,22 +2762,21 @@ async function signInScenario(
           ' Schlussrechnung erstellen',
       })
       .click();
+    const finalInvoiceDialog = page.getByRole('dialog', {
+      name: 'Schlussrechnung anlegen',
+    });
+    await expect(finalInvoiceDialog).toBeVisible();
+    // The row action preselects its own confirmation; the dialog explains what
+    // the draft keeps and what the finalization freezes.
+    await expect(finalInvoiceDialog.getByRole('combobox').nth(1)).toHaveValue(
+      settlementConfirmation.id,
+    );
     await expect(
-      orders.getByRole('button', {
-        name:
-          'Auftragsbestätigung ' +
-          settlementConfirmation.number +
-          ' Schlussrechnung anlegen',
-      }),
+      finalInvoiceDialog.getByText(/brutto verrechnet und dann eingefroren/),
     ).toBeVisible();
     expect(await finalInvoiceCount()).toBe(0);
-    await orders
-      .getByRole('button', {
-        name:
-          'Auftragsbestätigung ' +
-          settlementConfirmation.number +
-          ' Schlussrechnung anlegen',
-      })
+    await finalInvoiceDialog
+      .getByRole('button', { name: 'Schlussrechnung anlegen' })
       .click();
     await expect(
       page.getByText('Schlussrechnung als Entwurf angelegt.'),
