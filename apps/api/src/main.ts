@@ -153,7 +153,9 @@ try {
     registerLibraryFileRoutes(app, pool, auth.tenantId, documentStore);
     // MAIL-021-A: mail lists, one message and the durable send order. No IMAP
     // reader and no SMTP adapter exist yet, so no request contacts a provider.
-    registerMailRoutes(app, pool, auth.tenantId);
+    // MAIL-DOC-01: the document store is handed in so a chosen finalized PDF can
+    // be checked and referenced; the bytes stay in that store.
+    registerMailRoutes(app, pool, auth.tenantId, { store: documentStore });
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);

@@ -342,3 +342,55 @@ describe('SMTP sender against a local mock', () => {
     expect(mock.state.authAttempts).toBe(0);
   });
 });
+
+// MAIL-DOC-01: the adapter forwards the attachment it was handed. The bytes
+// are a synthetic PDF artefact - no real document exists anywhere in this test.
+function attachmentBytes(raw: string, filename: string) {
+  // nodemailer quotes a filename only when it has to; the marker is the name.
+  const named = raw.indexOf(filename);
+  if (named < 0) throw new Error('fictional attachment missing');
+  const bodyStart = raw.indexOf('\r\n\r\n', named) + 4,
+    bodyEnd = raw.indexOf('\r\n--', bodyStart);
+  return Buffer.from(
+    raw.slice(bodyStart, bodyEnd < 0 ? undefined : bodyEnd).replace(/\s+/g, ''),
+    'base64',
+  );
+}
+
+test('carries the stored PDF as a byte-identical MIME attachment', async () => {
+  const mock = mockServer({ plaintext: true });
+  open.push(mock);
+  const port = await mock.listen();
+  const bytes = Buffer.from(
+    '%PDF-1.4\n% fictional attachment for the mail fixture\n' +
+      '1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<<>>\n%%EOF\n',
+    'latin1',
+  );
+  const result = await smtpMailSender({
+    host: '127.0.0.1',
+    port,
+    username: '',
+    secret: '',
+  }).send(envelope, {
+    ...content,
+    attachments: [
+      {
+        filename: 'Dokument-RE-2030-0001.pdf',
+        content: bytes,
+        contentType: 'application/pdf',
+      },
+    ],
+  });
+  expect(result).toBe('sent');
+  const raw = mock.state.message!;
+  expect(raw).toContain('Content-Type: application/pdf');
+  expect(raw).toContain('Dokument-RE-2030-0001.pdf');
+  expect(raw).toContain('Content-Transfer-Encoding: base64');
+  // The attachment is rebuilt exactly from the transferred bytes: the adapter
+  // added transport encoding, nothing else.
+  expect(
+    Buffer.compare(attachmentBytes(raw, 'Dokument-RE-2030-0001.pdf'), bytes),
+  ).toBe(0);
+  // A message without attachments keeps its single-part shape.
+  expect(raw).not.toContain('filename="Dokument-RE-2030-0002.pdf"');
+});

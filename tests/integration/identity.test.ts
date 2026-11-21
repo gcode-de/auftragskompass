@@ -75,7 +75,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // every existing table, column and code untouched.
   // MAIL-NOTIFY-01 (0070) adds one tenant-bound settings table; no existing row
   // and no mail or Telegram contract changes.
-  expect(applied.at(-1)!.name).toBe('0070_inquiry_email_notification.sql');
+  // MAIL-DOC-01 (0071) adds one tenant-bound attachment table plus a trigger
+  // that only allows finalized documents; no existing row changes.
+  expect(applied.at(-1)!.name).toBe('0071_mail_document_attachments.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(
@@ -89,11 +91,41 @@ test('migrations serialize, restart safely and detect changed history', async ()
       await pool.query<{ table_name: string }>(
         `SELECT table_name FROM information_schema.tables
           WHERE table_schema='public'
-            AND table_name IN ('mail_accounts','mail_messages','mail_outbox')
+            AND table_name IN
+              ('mail_accounts','mail_messages','mail_outbox','mail_attachments')
           ORDER BY table_name`,
       )
     ).rows.map((row) => row.table_name),
-  ).toEqual(['mail_accounts', 'mail_messages', 'mail_outbox']);
+  ).toEqual([
+    'mail_accounts',
+    'mail_attachments',
+    'mail_messages',
+    'mail_outbox',
+  ]);
+  // MAIL-DOC-01: the attachment row is tenant-bound on both sides - the message
+  // and the finalized document - and the frozen artefact hash must be one.
+  const attachmentForeignKeys = (
+    await pool.query<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='mail_attachments'::regclass AND contype='f' ORDER BY def",
+    )
+  ).rows.map((row) => row.def);
+  expect(
+    attachmentForeignKeys.some((def) =>
+      def.startsWith(
+        'FOREIGN KEY (tenant_id, document_id) REFERENCES documents(tenant_id, id)',
+      ),
+    ),
+  ).toBe(true);
+  expect(attachmentForeignKeys).toContain(
+    'FOREIGN KEY (tenant_id, message_id) REFERENCES mail_messages(tenant_id, id) ON DELETE CASCADE',
+  );
+  // The database, not only the repository, refuses a non-final document.
+  const attachmentTrigger = (
+    await pool.query<{ tgname: string }>(
+      "SELECT tgname FROM pg_trigger WHERE tgrelid='mail_attachments'::regclass AND NOT tgisinternal",
+    )
+  ).rows.map((row) => row.tgname);
+  expect(attachmentTrigger).toEqual(['mail_attachments_final']);
   expect(
     (
       await pool.query<{ column_name: string; is_nullable: string }>(
@@ -116,6 +148,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // actions; the closed list grows by exactly these two.
   expect(auditActionCheck).toContain('mail.sent');
   expect(auditActionCheck).toContain('mail.send_retry');
+  // MAIL-DOC-01: the explicit order that carries a finalized document.
+  expect(auditActionCheck).toContain('mail.document_send_scheduled');
   expect(auditActionCheck).toContain('document.accepted');
   expect(auditActionCheck).toContain('product.deleted');
   // MAIL-021-B: the redacted outbox vocabulary stays closed and grows additively;
@@ -135,6 +169,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     'provider_recipient_rejected',
     'encryption_unavailable',
     'provider_tls_required',
+    // MAIL-DOC-01: an unreadable referenced artefact is its own category.
+    'attachment_unavailable',
   ])
     expect(outboxCodeCheck).toContain(`'${code}'::text`);
   expect(outboxCodeCheck).not.toContain('%');

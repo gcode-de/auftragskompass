@@ -12,9 +12,11 @@ import {
   startTelegramNotifications,
   startMailOutbox,
   smtpMailSender,
+  localStorageAdapter,
   type InquirySyncConfig,
   type MailOutboxFailure,
   type RuntimeConfig,
+  type StorageAdapter,
   type WebsiteOptionConfig,
   type WebsiteOptionDrainDependencies,
 } from '@auftragskompass/core';
@@ -38,10 +40,14 @@ export type WorkerRuntimeDependencies = {
   // MAIL-021-A/B: the loop sends through the SMTP adapter. The key opens the
   // sealed account secret; without it the job stays failed/encryption_unavailable
   // instead of pretending a provider is present.
+  // MAIL-DOC-01: the same content-addressed store the PDF route uses supplies
+  // the attachment bytes; without it a document job stays failed instead of
+  // sending a mail without its document.
   startMail?(
     pool: Pool,
     report: (failure: MailOutboxFailure) => void,
     key: Uint8Array | null,
+    store: StorageAdapter | null,
   ): Loop;
   // Returned loops stop in reverse: the drain first, then sync, expiry, pool.
   startExpiry(pool: Pool, report: () => void): Loop & { stop(): Promise<void> };
@@ -82,8 +88,12 @@ export const workerRuntimeDependencies: WorkerRuntimeDependencies = {
   },
   startExpiry: (pool, report) => startReservationExpiry(pool, report),
   // The same key file seals the mail secrets; no adapter means no send.
-  startMail: (pool, report, key) =>
-    startMailOutbox(pool, report, 5000, { createSender: smtpMailSender, key }),
+  startMail: (pool, report, key, store) =>
+    startMailOutbox(pool, report, 5000, {
+      createSender: smtpMailSender,
+      key,
+      store,
+    }),
   loadOptionConfig: (env) => loadWebsiteOptionConfig(env),
   optionDrainActive: (env) => loadWebsiteOptionDrainActivation(env),
   startDrain: (pool, dependencies, config, entry, error) =>
@@ -159,6 +169,7 @@ export async function startWorkerRuntime(
           }
         },
         telegramKey,
+        localStorageAdapter({ root: config.documentStorage }),
       )
     : null;
   const telegram = telegramKey

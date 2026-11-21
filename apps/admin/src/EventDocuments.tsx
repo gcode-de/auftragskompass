@@ -374,6 +374,7 @@ export function EventDocuments({
   eventId,
   contactId,
   contactName,
+  contactEmail = null,
   timeZone,
   csrfToken,
   recordRemoving = false,
@@ -383,6 +384,9 @@ export function EventDocuments({
   eventId: string;
   contactId: string | null;
   contactName?: string | null;
+  // MAIL-DOC-01: the stored address of the event contact, if there is one. The
+  // dialog prefills exactly this value and never an invented recipient.
+  contactEmail?: string | null;
   timeZone: string;
   csrfToken: string;
   recordRemoving?: boolean;
@@ -443,6 +447,15 @@ export function EventDocuments({
     [libraryState, setLibraryState] = useState<
       'idle' | 'loading' | 'ready' | 'failed'
     >('idle'),
+    // MAIL-DOC-01: exactly one chosen finalized document, its recipient, an
+    // optional cover text and the request id of this one gesture. The id is
+    // generated when the dialog opens, so a repeat can only reach the same
+    // order - never a second mail.
+    [mailSendId, setMailSendId] = useState(''),
+    [mailTo, setMailTo] = useState(''),
+    [mailBody, setMailBody] = useState(''),
+    [mailRequestId, setMailRequestId] = useState(''),
+    [mailUncertain, setMailUncertain] = useState(false),
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
     uncertainReload = useRef<HTMLButtonElement>(null),
@@ -455,7 +468,13 @@ export function EventDocuments({
     blankInvoiceContext = useRef<object | null>(null),
     // DOC-ACCEPT-FIX-01: the row action that opened the correction, so closing
     // it puts the keyboard user back where they were.
-    acceptanceCorrectionTrigger = useRef<string | null>(null);
+    acceptanceCorrectionTrigger = useRef<string | null>(null),
+    // MAIL-DOC-01: the dialog, its trigger and its first field. Closing returns
+    // the focus to the row action instead of the top of the page.
+    mailDialog = useRef<HTMLDialogElement>(null),
+    mailTrigger = useRef<HTMLElement | null>(null),
+    mailDialogWasOpen = useRef(false),
+    mailRecipient = useRef<HTMLInputElement>(null);
   const blankInvoiceKey = 'ak:blank-invoice:' + eventId;
   const blankInvoiceInvalid = typeof pendingBlankInvoice === 'string';
   const blankInvoiceContextChanged =
@@ -559,6 +578,41 @@ export function EventDocuments({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [createDialogOpen, busy]);
+  // MAIL-DOC-01: the same native dialog mechanics as the creation dialog, for
+  // exactly one row. Opening never sends; it only prefills the stored address.
+  useEffect(() => {
+    if (!mailSendId) return;
+    const dialog = mailDialog.current;
+    if (!dialog) return;
+    if (typeof dialog.showModal !== 'function') {
+      // jsdom has no showModal; browsers use the native modal focus behavior.
+      dialog.setAttribute('open', '');
+    } else if (!dialog.open) {
+      dialog.showModal();
+    }
+    mailDialogWasOpen.current = true;
+    mailRecipient.current?.focus();
+  }, [mailSendId]);
+  useEffect(() => {
+    if (mailSendId || !mailDialogWasOpen.current) return;
+    const trigger = mailTrigger.current;
+    if (trigger?.isConnected && !trigger.matches(':disabled')) trigger.focus();
+    mailTrigger.current = null;
+    mailDialogWasOpen.current = false;
+  }, [mailSendId]);
+  useEffect(() => {
+    if (!mailSendId) return;
+    function onKeyDown(event: KeyboardEvent) {
+      // While the order is on its way, Escape cannot hide the state.
+      if (event.key === 'Escape' && busy === '') {
+        setMailSendId('');
+        setMailRequestId('');
+        setMailUncertain(false);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mailSendId, busy]);
   const existingConfirmationSources = new Set(
     documents
       .filter(
@@ -1888,6 +1942,104 @@ export function EventDocuments({
       setBusy('');
     }
   }
+  // MAIL-DOC-01: one explicit gesture. The recipient starts as the stored
+  // contact address - an empty field when the contact has none - and stays
+  // freely correctable; the server validates the final address again.
+  function openMailSend(entry: DocumentRow, trigger: HTMLElement) {
+    setMessage('');
+    setMailSendId(entry.id);
+    setMailTo(contactEmail?.trim() ?? '');
+    setMailBody('');
+    setMailUncertain(false);
+    setMailRequestId(crypto.randomUUID());
+    mailTrigger.current = trigger;
+  }
+  function closeMailSend() {
+    if (busy !== '') return;
+    setMailSendId('');
+    setMailRequestId('');
+    setMailUncertain(false);
+  }
+  // The refusal categories of the send route, worded as the operator's next
+  // step. Nothing here repeats a document or a customer address.
+  function documentSendFailureMessage(error: string) {
+    switch (error) {
+      case 'not_found':
+        return 'Das Dokument wurde nicht gefunden.';
+      case 'not_final':
+        return 'Nur ein finalisiertes Dokument kann per E-Mail gesendet werden.';
+      case 'attachment_unavailable':
+        return 'Das gespeicherte PDF ist derzeit nicht verfügbar. Es wurde kein Auftrag angelegt.';
+      case 'invalid_recipients':
+        return 'Bitte eine gültige Empfängeradresse eingeben.';
+      case 'invalid_account':
+        return 'Es ist kein aktives E-Mail-Konto eingerichtet.';
+      default:
+        return 'Der Auftrag wurde nicht angelegt. Bitte die Eingaben prüfen.';
+    }
+  }
+  async function sendDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      !mailSendId ||
+      !mailRequestId ||
+      mutating.current ||
+      busy !== '' ||
+      mailUncertain ||
+      recordRemoving ||
+      createUncertain
+    )
+      return;
+    const to = mailTo.trim();
+    if (!to) {
+      setMessage('Bitte eine Empfängeradresse eingeben.');
+      return;
+    }
+    mutating.current = true;
+    setBusy('mail');
+    setMessage('');
+    try {
+      const reply = await fetch('/api/v1/mail/document-send', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          documentId: mailSendId,
+          requestId: mailRequestId,
+          to,
+          ...(mailBody.trim() ? { bodyText: mailBody.trim() } : {}),
+        }),
+      });
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(documentSendFailureMessage(result.error));
+        return;
+      }
+      await reply.json();
+      setMailSendId('');
+      setMailRequestId('');
+      setMessage('Dokument als E-Mail-Auftrag vorgemerkt.');
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      // The order may exist. Only the same request id may repeat it, so the
+      // gesture stays locked until the list was read again and the operator
+      // repeats it deliberately - with that very id.
+      setMailUncertain(true);
+      setMessage(
+        'Der Ausgang ist unklar. Bitte die Liste prüfen; eine Wiederholung nutzt denselben Auftrag und kann keine zweite Mail erzeugen.',
+      );
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
   function retryLoad() {
     if (mutating.current) return;
     mutating.current = true;
@@ -1899,6 +2051,14 @@ export function EventDocuments({
         if (createUncertain) {
           setCreateUncertain(false);
           setMessage(reconciledCreateMessage(createKind));
+        }
+        // MAIL-DOC-01: after the list was read again, the unclear gesture may be
+        // repeated - with the same request id, so it can only reach one order.
+        if (mailUncertain) {
+          setMailUncertain(false);
+          setMessage(
+            'Liste aktualisiert. Eine Wiederholung nutzt denselben Auftrag und kann keine zweite Mail erzeugen.',
+          );
         }
       })
       .catch(() => {
@@ -2369,6 +2529,32 @@ export function EventDocuments({
                 >
                   PDF öffnen
                 </a>
+              )}
+              {/* MAIL-DOC-01: only a finalized document has the frozen artefact a
+                  mail may carry. The action opens the dialog; it never sends from
+                  the click alone. */}
+              {entry.state === 'final' && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={
+                    busy !== '' ||
+                    recordRemoving ||
+                    createUncertain ||
+                    initialLoadFailed ||
+                    reloadWarning
+                  }
+                  aria-haspopup="dialog"
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' per E-Mail senden'
+                  }
+                  onClick={(event) => openMailSend(entry, event.currentTarget)}
+                >
+                  Per E-Mail senden
+                </button>
               )}
               {/* BKP019.c2: only a finalized claim is corrected, and only as an
                   explicit step - the correction starts as a draft with its own
@@ -2936,6 +3122,89 @@ export function EventDocuments({
                   </fieldset>
                 </form>
               )}
+            {/* MAIL-DOC-01: the compact dialog of exactly one finalized document.
+                It carries a recipient, an optional cover text and the frozen PDF
+                it names - no attachment picker and no second order per click. */}
+            {mailSendId === entry.id && (
+              <dialog
+                ref={mailDialog}
+                className="form-dialog mail-send-dialog"
+                aria-labelledby={'mail-send-heading-' + entry.id}
+                aria-modal="true"
+                onCancel={(event) => {
+                  event.preventDefault();
+                  closeMailSend();
+                }}
+              >
+                <h4 id={'mail-send-heading-' + entry.id}>
+                  Dokument per E-Mail senden
+                </h4>
+                <p className="document-hint">
+                  {'Angehängt wird das finalisierte PDF ' +
+                    (entry.number ?? '') +
+                    ' – unverändert und nicht neu erzeugt.'}
+                </p>
+                {message && !mailUncertain && <p role="alert">{message}</p>}
+                <form onSubmit={(event) => void sendDocument(event)}>
+                  <fieldset disabled={busy !== '' || mailUncertain}>
+                    <label>
+                      Empfänger
+                      <input
+                        ref={mailRecipient}
+                        type="text"
+                        inputMode="email"
+                        maxLength={254}
+                        autoComplete="off"
+                        value={mailTo}
+                        onChange={(event) => setMailTo(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Begleittext (optional)
+                      <textarea
+                        rows={3}
+                        maxLength={2000}
+                        value={mailBody}
+                        onChange={(event) => setMailBody(event.target.value)}
+                      />
+                    </label>
+                  </fieldset>
+                  {mailUncertain && (
+                    <p role="alert">
+                      Der Ausgang ist unklar. Nichts erneut senden, bevor die
+                      Liste geprüft wurde; eine Wiederholung nutzt denselben
+                      Auftrag.
+                    </p>
+                  )}
+                  <div className="document-actions">
+                    <button
+                      className="primary-action"
+                      disabled={busy !== '' || mailUncertain}
+                    >
+                      Senden
+                    </button>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy !== ''}
+                      onClick={closeMailSend}
+                    >
+                      Abbrechen
+                    </button>
+                    {mailUncertain && (
+                      <button
+                        type="button"
+                        className="tertiary-action"
+                        disabled={busy !== ''}
+                        onClick={retryLoad}
+                      >
+                        Dateien erneut laden
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </dialog>
+            )}
           </li>
         ))}
       </ul>
