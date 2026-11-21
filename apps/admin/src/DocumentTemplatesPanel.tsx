@@ -3,6 +3,11 @@ import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { DiscountField } from './DiscountField.js';
 import { PositionRemoveDialog } from './PositionRemoveDialog.js';
+import {
+  ProductPickerDialog,
+  catalogProductsOf,
+  type CatalogProduct,
+} from './ProductPickerDialog.js';
 import { SavePositionAsProduct } from './SavePositionAsProduct.js';
 
 type Position = {
@@ -55,15 +60,7 @@ type ArchiveFocusIntent = {
   moved: boolean;
   stop: () => void;
 };
-type Product = {
-  id: string;
-  name: string;
-  unit: string;
-  priceMinor: number;
-  priceBasis: string;
-  taxBasisPoints: number;
-  state: string;
-};
+type Product = CatalogProduct;
 type DraftPosition = {
   productId: string;
   description: string;
@@ -512,6 +509,11 @@ function PlaceholderPicker({
 export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const [rows, setRows] = useState<Template[]>([]),
     [products, setProducts] = useState<Product[]>([]),
+    [catalogState, setCatalogState] = useState<
+      'idle' | 'loading' | 'ready' | 'error'
+    >('idle'),
+    [catalogMessage, setCatalogMessage] = useState(''),
+    [productPickerOpen, setProductPickerOpen] = useState(false),
     [draft, setDraft] = useState<Template | null>(null),
     [positions, setPositions] = useState<DraftPosition[]>([emptyPosition()]),
     [editorOpen, setEditorOpen] = useState(false),
@@ -553,7 +555,12 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   } | null>(null);
   const positionRemoveRefs = useRef(new Map<number, HTMLButtonElement>());
   const addPositionRef = useRef<HTMLButtonElement>(null);
+  const addProductRef = useRef<HTMLButtonElement>(null);
   const pendingPositionFocus = useRef<number | null>(null);
+  // EDITOR-PICKER-01: the first appended product position owns the focus, the
+  // same rule the document editor has always used.
+  const pendingProductFocus = useRef<number | null>(null);
+  const positionDescriptionRefs = useRef(new Map<number, HTMLInputElement>());
   const archiveInFlight = useRef(false);
   const saveInFlight = useRef(false);
   const previewInFlight = useRef(false);
@@ -706,18 +713,31 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     if (generation === listGeneration.current) setRows(result);
     return result;
   }
+  // EDITOR-PICKER-01: the catalog is read on mount and on an explicit retry;
+  // the modal reuses the same contract as the document editor.
+  async function loadProducts() {
+    setCatalogState('loading');
+    setCatalogMessage('');
+    try {
+      const response = await fetch('/api/v1/products');
+      if (!response.ok) throw new Error('catalog');
+      const active = catalogProductsOf(await response.json());
+      if (!active) throw new Error('catalog');
+      setProducts(active);
+      setCatalogState('ready');
+    } catch {
+      setProducts([]);
+      setCatalogState('error');
+      setCatalogMessage('Produktkatalog konnte nicht geladen werden.');
+    }
+  }
   useEffect(() => {
     const generation = listGeneration.current;
     void refresh().catch(() => {
       if (generation === listGeneration.current)
         setMessage('Vorlagen konnten nicht geladen werden.');
     });
-    void fetch('/api/v1/products')
-      .then((response) => (response.ok ? response.json() : []))
-      .then((list: Product[]) =>
-        setProducts(list.filter((p) => p.state === 'active')),
-      )
-      .catch(() => setProducts([]));
+    void loadProducts();
   }, []);
   function hasUnsavedDraft() {
     const form = editorFormRef.current;
@@ -900,6 +920,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     invalidatePreview(false);
     placeholderCaret.current.clear();
     setOpenPlaceholderPicker(null);
+    setProductPickerOpen(false);
     // A fresh editor starts with its value groups folded, as a phone shows it.
     setOpenPriceFields([]);
     setSelectedPlaceholder('');
@@ -942,6 +963,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     editorOpenRef.current = false;
     invalidatePreview(false);
     restoreFocusAfterClose.current = true;
+    setProductPickerOpen(false);
     setEditorOpen(false);
     setDraft(null);
     setEditing(false);
@@ -1223,6 +1245,59 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     setMessage('');
     setConversionError(false);
   }
+  // EDITOR-PICKER-01: the same modal as the document editor. It appends one
+  // position per chosen product, in the catalog order, with the unchanged
+  // catalog values; the existing per-position product field stays untouched.
+  function openProductPicker() {
+    if (busy || !editorOpenRef.current) return;
+    setMessage('');
+    setConversionError(false);
+    setCatalogMessage('');
+    setProductPickerOpen(true);
+    if (catalogState !== 'ready') void loadProducts();
+  }
+  function addCatalogProducts(selected: Product[]) {
+    if (busy || selected.length === 0 || !editorOpenRef.current) return;
+    if (positions.length + selected.length > 200) {
+      setMessage(
+        'Eine Vorlage kann höchstens 200 Positionen enthalten. Wähle weniger Produkte.',
+      );
+      setConversionError(true);
+      return;
+    }
+    const added = selected.map((product) => ({
+      productId: product.id,
+      description: product.name,
+      quantity: '1',
+      unit: product.unit,
+      price: formatHundredths(product.priceMinor),
+      priceBasis:
+        product.priceBasis === 'net' ? ('net' as const) : ('gross' as const),
+      tax: formatHundredths(product.taxBasisPoints),
+      discount: '0.00',
+      discountMode: 'percent' as const,
+      discountAmount: '0.00',
+    }));
+    pendingProductFocus.current = positions.length;
+    setPositions((current) => [...current, ...added]);
+    invalidatePreview();
+    setMessage('');
+    setConversionError(false);
+    setProductPickerOpen(false);
+  }
+  useLayoutEffect(() => {
+    if (pendingProductFocus.current === null) return;
+    const index = pendingProductFocus.current;
+    pendingProductFocus.current = null;
+    const target = positionDescriptionRefs.current.get(index);
+    if (
+      target?.isConnected &&
+      !target.closest('[hidden], [inert], [aria-hidden="true"]')
+    ) {
+      target.scrollIntoView?.({ block: 'nearest' });
+      target.focus();
+    }
+  }, [positions]);
   async function save(form: HTMLFormElement, retryCreate = false) {
     if (
       saveInFlight.current ||
@@ -1983,6 +2058,11 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                 <label>
                   Beschreibung
                   <input
+                    ref={(element) => {
+                      if (element)
+                        positionDescriptionRefs.current.set(index, element);
+                      else positionDescriptionRefs.current.delete(index);
+                    }}
                     value={position.description}
                     maxLength={300}
                     onChange={(event) =>
@@ -2122,6 +2202,23 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             >
               Position hinzufügen
             </button>
+            {/* EDITOR-PICKER-01: the observed multi-select catalog picker. It
+                sits beside the free position action, which stays unchanged. */}
+            <button
+              ref={addProductRef}
+              type="button"
+              className="secondary-action"
+              disabled={
+                busy ||
+                archiveReconciliation !== null ||
+                saveRecovery !== null ||
+                uncertainCreate
+              }
+              aria-haspopup="dialog"
+              onClick={openProductPicker}
+            >
+              Produkt hinzufügen
+            </button>
             <label>
               Schlusstext
               <textarea
@@ -2172,6 +2269,20 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             </button>
           </fieldset>
         </form>
+      )}
+      {productPickerOpen && editorOpen && (
+        <ProductPickerDialog
+          products={products}
+          state={catalogState}
+          message={catalogMessage}
+          busy={busy}
+          onRetry={() => void loadProducts()}
+          onAdd={addCatalogProducts}
+          onClose={() => {
+            setProductPickerOpen(false);
+            addProductRef.current?.focus();
+          }}
+        />
       )}
       {positionRemoveCandidate && (
         <PositionRemoveDialog

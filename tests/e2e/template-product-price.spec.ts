@@ -1899,3 +1899,108 @@ test('a phone folds the template position values behind one summary and keeps th
   expect(writes).toEqual([]);
   expect(unexpectedApiWrites).toEqual([]);
 });
+
+// EDITOR-PICKER-01: the template editor offers the observed catalog modal. Two
+// products join the draft in one deliberate batch, in catalog order and with
+// their exact stored values, while the per-position product field stays.
+test('the template catalog dialog appends several chosen products in one batch', async ({
+  page,
+}) => {
+  const api = await stubTemplateApis(page);
+  const firstPosition = await openTemplateEditor(page);
+  await expect(productSelect(firstPosition)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Produkt hinzufügen' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Produkt auswählen' });
+  await expect(dialog).toBeVisible();
+  const choices = dialog.getByRole('checkbox');
+  await expect(choices).toHaveCount(3);
+  // The dialog fits every observed width without horizontal overflow, and each
+  // product row stays a 44px target with its labels visible.
+  for (const width of [320, 390, 768, 1440] as const) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(width + 1);
+    const box = (await dialog.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+    const row = (await dialog
+      .locator('.product-picker-option')
+      .first()
+      .boundingBox())!;
+    expect(row.height).toBeGreaterThanOrEqual(44);
+  }
+  await page.setViewportSize({ width: 1280, height: 844 });
+  const dialogAccessibility = await new AxeBuilder({ page })
+    .include('.product-picker-dialog')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  expect(dialogAccessibility.violations).toEqual([]);
+  await dialog.getByLabel('Produkt suchen').fill('bruttoprodukt');
+  await expect(choices).toHaveCount(1);
+  await dialog.getByLabel('Produkt suchen').fill('');
+  await expect(choices).toHaveCount(3);
+
+  await dialog
+    .getByRole('checkbox', { name: /Fiktives Bruttoprodukt/ })
+    .check();
+  await dialog.getByRole('checkbox', { name: /Fiktives Nettoprodukt/ }).check();
+  await dialog.getByRole('button', { name: 'Hinzufügen', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+
+  const second = page.getByRole('group', { name: 'Position 2' });
+  const third = page.getByRole('group', { name: 'Position 3' });
+  await expect(second.getByLabel('Beschreibung')).toHaveValue(
+    'Fiktives Nettoprodukt',
+  );
+  await expect(second.getByLabel('Beschreibung')).toBeFocused();
+  await expect(second.getByLabel('Einzelpreis (Netto) in Euro')).toHaveValue(
+    '100.00',
+  );
+  await expect(second.getByLabel('Preisbasis')).toHaveValue('net');
+  await expect(second.getByLabel('Steuersatz in Prozent')).toHaveValue('19.00');
+  await expect(third.getByLabel('Beschreibung')).toHaveValue(
+    'Fiktives Bruttoprodukt',
+  );
+  await expect(third.getByLabel('Einzelpreis (Brutto) in Euro')).toHaveValue(
+    '119.00',
+  );
+  await expect(third.getByLabel('Preisbasis')).toHaveValue('gross');
+
+  await page.getByRole('button', { name: 'Vorlage speichern' }).click();
+  await expect(page.getByText('Gespeichert.', { exact: true })).toBeVisible();
+  expect(api.writes).toHaveLength(1);
+  expect(api.writes[0]).toMatchObject({
+    method: 'PUT',
+    path: `/api/v1/document-templates/${templateId}`,
+    body: {
+      positions: [
+        expect.objectContaining({ description: 'Fiktive bestehende Position' }),
+        {
+          productId: netProductId,
+          description: 'Fiktives Nettoprodukt',
+          quantity: 1,
+          unit: 'Stück',
+          unitPriceMinor: 10000,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 0,
+          discountAmountMinor: null,
+          priceBasis: 'net',
+        },
+        {
+          productId: grossProductId,
+          description: 'Fiktives Bruttoprodukt',
+          quantity: 1,
+          unit: 'Stück',
+          unitPriceMinor: 11900,
+          taxBasisPoints: 1900,
+          discountBasisPoints: 0,
+          discountAmountMinor: null,
+          priceBasis: 'gross',
+        },
+      ],
+    },
+  });
+  expect(api.unexpectedApiWrites).toEqual([]);
+});

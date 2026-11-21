@@ -718,33 +718,53 @@ async function offerDraftScenario(browser: Browser) {
     });
     await editor.getByRole('button', { name: 'Produkt hinzufügen' }).click();
     await catalogRequestStarted;
+    const productDialog = editor.getByRole('dialog', {
+      name: 'Produkt auswählen',
+    });
+    await expect(productDialog).toBeVisible();
     await expect(
       editor.getByText('Produktkatalog wird geladen.'),
     ).toBeVisible();
-    await position1
-      .getByLabel('Beschreibung')
-      .fill('Fictional edited booth during catalog load');
     releaseCatalogFailure();
     await expect(editor.getByRole('alert')).toContainText(
       'Produktkatalog konnte nicht geladen werden.',
     );
+    // The modal is the only catalog surface now. Closing it keeps the draft
+    // editable; reopening retries the failed load and lists the active rows.
+    await productDialog.getByRole('button', { name: 'Schließen' }).click();
+    await expect(productDialog).toHaveCount(0);
+    await position1
+      .getByLabel('Beschreibung')
+      .fill('Fictional edited booth during catalog load');
     await expect(position1.getByLabel('Beschreibung')).toHaveValue(
       'Fictional edited booth during catalog load',
     );
-    await editor.getByRole('button', { name: 'Katalog erneut laden' }).click();
-    const productPicker = editor.getByLabel('Produkt aus Katalog');
-    await expect(productPicker).toBeVisible();
-    await expect(productPicker.getByRole('option')).toHaveCount(3);
+    await editor.getByRole('button', { name: 'Produkt hinzufügen' }).click();
+    await expect(productDialog).toBeVisible();
+    const productChoices = productDialog.getByRole('checkbox');
+    await expect(productChoices).toHaveCount(2);
     await expect(
-      productPicker.getByRole('option', {
+      productDialog.getByRole('checkbox', {
         name: /Fictional archived product/,
       }),
     ).toHaveCount(0);
-    await productPicker.selectOption(netProduct.id);
-    await editor
-      .getByRole('button', { name: 'Als Position hinzufügen' })
+    await productDialog.getByLabel('Produkt suchen').fill('gross');
+    await expect(productChoices).toHaveCount(1);
+    await productDialog.getByLabel('Produkt suchen').fill('');
+    await expect(productChoices).toHaveCount(2);
+    // One deliberate batch: the catalog order decides, not the click order.
+    await productDialog
+      .getByRole('checkbox', { name: /Fictional gross product/ })
+      .check();
+    await productDialog
+      .getByRole('checkbox', { name: /Fictional net product/ })
+      .check();
+    await productDialog
+      .getByRole('button', { name: 'Hinzufügen', exact: true })
       .click();
+    await expect(productDialog).toHaveCount(0);
     const netPosition = positions.getByRole('group', { name: 'Position 3' });
+    const grossPosition = positions.getByRole('group', { name: 'Position 4' });
     await expect(netPosition.getByLabel('Beschreibung')).toHaveValue(
       'Fictional net product',
     );
@@ -762,15 +782,9 @@ async function offerDraftScenario(browser: Browser) {
     await expect(netPosition.getByLabel('Rabatt in Prozent')).toHaveValue(
       '0.00',
     );
-    await productPicker.selectOption(grossProduct.id);
-    await editor
-      .getByRole('button', { name: 'Als Position hinzufügen' })
-      .click();
-    const grossPosition = positions.getByRole('group', { name: 'Position 4' });
     await expect(grossPosition.getByLabel('Beschreibung')).toHaveValue(
       'Fictional gross product',
     );
-    await expect(grossPosition.getByLabel('Beschreibung')).toBeFocused();
     await expect(
       grossPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
@@ -1300,6 +1314,13 @@ async function offerDraftScenario(browser: Browser) {
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
     expect(emptyCatalogAxe.violations).toEqual([]);
+    await editor
+      .getByRole('dialog', { name: 'Produkt auswählen' })
+      .getByRole('button', { name: 'Schließen' })
+      .click();
+    await expect(
+      editor.getByRole('dialog', { name: 'Produkt auswählen' }),
+    ).toHaveCount(0);
     await context.unroute('**/api/v1/products', emptyCatalogRoute);
     let previewBytes: Buffer | undefined;
     await context.route(

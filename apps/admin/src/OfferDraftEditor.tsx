@@ -11,6 +11,11 @@ import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
 import { DiscountField } from './DiscountField.js';
 import { PositionRemoveDialog } from './PositionRemoveDialog.js';
+import {
+  ProductPickerDialog,
+  catalogProductsOf,
+  type CatalogProduct,
+} from './ProductPickerDialog.js';
 import { SavePositionAsProduct } from './SavePositionAsProduct.js';
 
 type DraftValues = {
@@ -119,16 +124,6 @@ type DraftTemplate = {
   introText: string;
   outroText: string;
   validityDays: number;
-};
-type CatalogProduct = {
-  id: string;
-  name: string;
-  description?: string;
-  unit: string;
-  priceMinor: number;
-  priceBasis: string;
-  taxBasisPoints: number;
-  state: string;
 };
 type Props = {
   documentId: string;
@@ -576,8 +571,6 @@ export function OfferDraftEditor({
     [catalogState, setCatalogState] = useState<
       'idle' | 'loading' | 'ready' | 'error'
     >('idle'),
-    [selectedProductId, setSelectedProductId] = useState(''),
-    [catalogError, setCatalogError] = useState(false),
     [catalogMessage, setCatalogMessage] = useState(''),
     [dropTarget, setDropTarget] = useState(''),
     // EDITOR-MOBILE-01: the folded price group of a position is opened by its
@@ -600,9 +593,13 @@ export function OfferDraftEditor({
     request = useRef(0),
     lineSequence = useRef(0),
     catalogRequest = useRef<Promise<void> | null>(null),
+    // EDITOR-PICKER-01: one add per gesture. The dialog closes itself, and this
+    // lock keeps a same-tick double activation from appending twice.
+    catalogAddInFlight = useRef(false),
     busyRef = useRef(false),
     dirtyRef = useRef(false),
     subjectInput = useRef<HTMLInputElement | null>(null),
+    productButtonRef = useRef<HTMLButtonElement | null>(null),
     lineInputRefs = useRef(
       new Map<string, HTMLInputElement | HTMLTextAreaElement>(),
     ),
@@ -912,35 +909,19 @@ export function OfferDraftEditor({
   function loadCatalog() {
     if (catalogRequest.current) return catalogRequest.current;
     setCatalogState('loading');
-    setCatalogError(false);
     setCatalogMessage('');
     const pending = (async () => {
       try {
         const response = await fetch('/api/v1/products');
         if (!response.ok) throw new Error('catalog');
         const loaded: unknown = await response.json();
-        if (!Array.isArray(loaded)) throw new Error('catalog');
-        const active = loaded.filter(
-          (product): product is CatalogProduct =>
-            product &&
-            typeof product.id === 'string' &&
-            typeof product.name === 'string' &&
-            (product.description === undefined ||
-              typeof product.description === 'string') &&
-            typeof product.unit === 'string' &&
-            typeof product.priceBasis === 'string' &&
-            typeof product.state === 'string' &&
-            product.state === 'active' &&
-            Number.isSafeInteger(product.priceMinor) &&
-            Number.isInteger(product.taxBasisPoints),
-        );
+        const active = catalogProductsOf(loaded);
+        if (!active) throw new Error('catalog');
         setCatalogProducts(active);
         setCatalogState('ready');
-        setCatalogError(false);
         setCatalogMessage('');
       } catch {
         setCatalogState('error');
-        setCatalogError(true);
         setCatalogMessage('Produktkatalog konnte nicht geladen werden.');
       } finally {
         catalogRequest.current = null;
@@ -959,46 +940,51 @@ export function OfferDraftEditor({
       lineValues.length >= 1000
     )
       return;
+    catalogAddInFlight.current = false;
+    setCatalogMessage('');
     setProductPickerOpen(true);
     if (catalogState === 'idle' || catalogState === 'error') void loadCatalog();
   }
 
-  function appendCatalogProduct() {
+  // EDITOR-PICKER-01: one deliberate add appends every chosen product as a
+  // position, in the order the catalog list showed them. The values are the
+  // unchanged catalog snapshot; the core converts and rounds, never the editor.
+  function addCatalogProducts(selected: CatalogProduct[]) {
     if (
+      catalogAddInFlight.current ||
       busyRef.current ||
       finalizing ||
       loading ||
       isBlocked ||
-      lineValues.length >= 1000 ||
-      catalogState !== 'ready'
+      catalogState !== 'ready' ||
+      selected.length === 0
     )
       return;
-    const product = catalogProducts.find(
-      (entry) => entry.id === selectedProductId,
-    );
-    if (!product) return;
-    const information = product.description?.trim() ?? '';
-    if (information.length > infoTextLimit) {
-      setCatalogError(true);
+    if (lineValues.length + selected.length > 1000) {
       setCatalogMessage(
-        'Der Infotext des Produkts ist zu lang. Kürzen Sie die Beschreibung im Katalog auf höchstens 4.000 Zeichen.',
+        'Ein Dokument kann höchstens 1.000 Positionen enthalten. Wählen Sie weniger Produkte.',
       );
       return;
     }
-    lineSequence.current += 1;
-    const key = `catalog-${lineSequence.current}`;
-    pendingLineFocus.current = key;
-    setLineValues((current) => [
-      ...current,
-      {
-        key,
+    const information = selected.map(
+      (product) => product.description?.trim() ?? '',
+    );
+    if (information.some((text) => text.length > infoTextLimit)) {
+      setCatalogMessage(
+        'Der Infotext eines Produkts ist zu lang. Kürzen Sie die Beschreibung im Katalog auf höchstens 4.000 Zeichen.',
+      );
+      return;
+    }
+    catalogAddInFlight.current = true;
+    const added = selected.map((product, index): DraftItemValues => {
+      lineSequence.current += 1;
+      return {
+        key: `catalog-${lineSequence.current}`,
         productId: product.id,
         description: product.name,
-        infoText: information,
+        infoText: information[index] ?? '',
         quantity: '1',
         unit: product.unit,
-        // The catalog price is copied with its basis; the core converts and
-        // rounds, the editor never does.
         unitPrice: formatHundredths(product.priceMinor),
         priceBasis: product.priceBasis === 'net' ? 'net' : 'gross',
         tax: formatHundredths(product.taxBasisPoints),
@@ -1006,10 +992,11 @@ export function OfferDraftEditor({
         discountMode: 'percent',
         discountAmount: '0.00',
         optional: false,
-      },
-    ]);
-    setSelectedProductId('');
-    setCatalogError(false);
+      };
+    });
+    pendingLineFocus.current = added[0]!.key;
+    setLineValues((current) => [...current, ...added]);
+    setProductPickerOpen(false);
     setCatalogMessage('');
   }
 
@@ -1832,6 +1819,7 @@ export function OfferDraftEditor({
                   Freie Position hinzufügen
                 </button>
                 <button
+                  ref={productButtonRef}
                   type="button"
                   className="secondary-action"
                   disabled={
@@ -1840,83 +1828,12 @@ export function OfferDraftEditor({
                     (isBlocked && !productPickerOpen) ||
                     (lineValues.length >= 1000 && !productPickerOpen)
                   }
-                  aria-expanded={productPickerOpen}
-                  onClick={() =>
-                    productPickerOpen
-                      ? setProductPickerOpen(false)
-                      : openProductPicker()
-                  }
+                  aria-haspopup="dialog"
+                  onClick={() => openProductPicker()}
                 >
-                  {productPickerOpen
-                    ? 'Katalogauswahl schließen'
-                    : 'Produkt hinzufügen'}
+                  Produkt hinzufügen
                 </button>
               </div>
-              {productPickerOpen && (
-                <div className="offer-draft-catalog">
-                  {catalogState === 'loading' && (
-                    <p role="status">Produktkatalog wird geladen.</p>
-                  )}
-                  {catalogState === 'error' && (
-                    <button
-                      type="button"
-                      className="tertiary-action"
-                      disabled={busy || loading || isBlocked}
-                      onClick={() => void loadCatalog()}
-                    >
-                      Katalog erneut laden
-                    </button>
-                  )}
-                  {catalogState === 'ready' && catalogProducts.length === 0 && (
-                    <p role="status">Keine aktiven Produkte im Katalog.</p>
-                  )}
-                  {catalogState === 'ready' && catalogProducts.length > 0 && (
-                    <>
-                      <label>
-                        Produkt aus Katalog
-                        <select
-                          value={selectedProductId}
-                          disabled={busy || loading || isBlocked}
-                          onChange={(event) =>
-                            setSelectedProductId(event.target.value)
-                          }
-                        >
-                          <option value="">Produkt auswählen</option>
-                          {catalogProducts.map((product) => (
-                            <option key={product.id} value={product.id}>
-                              {product.name} —{' '}
-                              {formatHundredths(product.priceMinor)} €{' '}
-                              {product.priceBasis === 'net'
-                                ? 'Netto'
-                                : 'Brutto'}{' '}
-                              — {formatHundredths(product.taxBasisPoints)} %
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        disabled={
-                          !selectedProductId ||
-                          lineValues.length >= 1000 ||
-                          busy ||
-                          loading ||
-                          isBlocked
-                        }
-                        onClick={appendCatalogProduct}
-                      >
-                        Als Position hinzufügen
-                      </button>
-                    </>
-                  )}
-                  {catalogMessage && (
-                    <p role={catalogError ? 'alert' : 'status'}>
-                      {catalogMessage}
-                    </p>
-                  )}
-                </div>
-              )}
               {lineValues.length === 0 && (
                 <p className="document-hint" role="status">
                   Noch keine Positionen. Fügen Sie eine freie Position oder ein
@@ -2120,6 +2037,20 @@ export function OfferDraftEditor({
             </button>
           )}
         </div>
+      )}
+      {productPickerOpen && (
+        <ProductPickerDialog
+          products={catalogProducts}
+          state={catalogState}
+          message={catalogMessage}
+          busy={busy || loading || isBlocked}
+          onRetry={() => void loadCatalog()}
+          onAdd={addCatalogProducts}
+          onClose={() => {
+            setProductPickerOpen(false);
+            productButtonRef.current?.focus();
+          }}
+        />
       )}
       {removeCandidate && (
         <PositionRemoveDialog
