@@ -1001,6 +1001,49 @@ test('event type, package and a missing event date fill the remaining placeholde
   expect(run.rendered[0]).toContain('Fictional Package');
   expect(run.rendered[0]).toContain('Fictional Wedding Type');
   expect(run.rendered[0]).toContain('Fictional Undated Event');
+  // DOC-EVENTINFO-01: the event has a name but neither a day nor a place, so the
+  // line stops after the name instead of inventing either.
+  expect(run.rendered[0]).toContain(
+    'für das Event Fictional Undated Event</p>',
+  );
+  expect(run.rendered[0]).not.toContain(
+    'für das Event Fictional Undated Event am',
+  );
+});
+
+// DOC-EVENTINFO-01: the line is built from the event row the document is linked
+// to - its name, its place and its event day, never the day of the document.
+test('a document prints the event line of its event row', async () => {
+  const run = dependencies(),
+    repo = documentRepository(pool, tenantId, run.deps),
+    draft = await repo.createDraft(actorId, {
+      templateId,
+      eventId,
+      contactId,
+    });
+  await repo.preview(draft.id);
+  expect(run.rendered[0]).toContain(
+    'für das Event Fictional Wedding am 14.11.2030 in Fictional Hall',
+  );
+  // The heading keeps printing the document day; only the line prints the event.
+  expect(run.rendered[0]).toContain('Datum 26.10.2030');
+});
+
+test('a follow-up document inherits the event line and invents no place', async () => {
+  const offer = await confirmedOffer(randomUUID()),
+    confirmation = await offer.repo.createOrderConfirmation(
+      offer.actor,
+      offer.offerId,
+      offer.version,
+    );
+  await offer.repo.preview(confirmation.id);
+  // The offer's render and the confirmation's render carry the same event line;
+  // the event has no place entered, so the line ends after the day.
+  expect(offer.run.rendered.length).toBeGreaterThan(1);
+  for (const html of offer.run.rendered)
+    expect(html).toContain(
+      'für das Event Fictional Confirmation Wedding am 14.11.2030</p>',
+    );
 });
 
 test('a template placeholder without a value rejects the document', async () => {
