@@ -133,12 +133,16 @@ Abschnitt beschreibt den aktuellen Stand.
   (PR #60, `0bb4424`, CI grün): Datenmodell, idempotente Outbox, Worker-Claim
   mit Lease, Secrets im Telegram-AES-GCM-Muster, ohne Adapter ehrlich
   provider_missing. Details im Plan.
-- **Aktiver Slice:** MAIL-021-B (SMTP-Outbox-Versand über einen
-  MailSender-Adapter, Mock-SMTP-Tests, sent/uncertain-Zweig, expliziter
-  Wiederholungsweg aus uncertain – KEIN echter Versand). Danach
+- **Erledigt 21.11.2026 – MAIL-021-B:** SMTP-Outbox-Versand (PR #62,
+  `f5cc42c`, CI grün): Adapter mit sent/uncertain/failed, Retry nur aus
+  uncertain, Mock-SMTP-Abnahme inkl. Doppelclaim/Lease/Redaktion.
+  **Bewusst offener Härtungspunkt:** requireTLS fehlt noch (Passwort nur bei
+  Anbietern ohne STARTTLS gefährdet) – als MAIL-021-B2 mit echtem
+  TLS-Fixture geplant, nicht halb umgesetzt.
+- **Aktiver Slice:** MAIL-021-B2 (TLS-Pflicht bei Anmeldung). Danach
   MAIL-NOTIFY-01 und MAIL-DOC-01. **Von Ihnen offen:** Steuer-Klarstellung
   Gesamtrabatt (Blocker), Entsperren für die Sichtprüfungen und – für echten
-  Versand – SMTP-Zugangsdaten erst auf Ihren ausdrücklichen Wunsch.
+  Versand – SMTP-Zugangsdaten/Entscheidung zur Mail-Key-Datei.
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
