@@ -160,3 +160,36 @@ describe('SMTP failure classification', () => {
 // TLS - opportunistic STARTTLS would otherwise send the password in clear
 // text to a server that never upgrades. Without credentials (local relay) no
 // TLS is forced.
+describe('SMTP TLS requirement', () => {
+  test('a provider without STARTTLS is a definitive failure, not an unclear one', () => {
+    // nodemailer's own wording when the required upgrade never happens: the
+    // session stayed in plaintext, so no credential and no content left.
+    expect(
+      error(
+        {
+          code: 'ETLS',
+          command: 'STARTTLS',
+          responseCode: 500,
+          message:
+            'Error upgrading connection with STARTTLS: 500 Error: command not recognized',
+        },
+        'unknown',
+      ),
+    ).toEqual({ failed: 'provider_tls_required' });
+  });
+
+  test('a certificate problem at the same step keeps its own diagnosis', () => {
+    // A failed upgrade because the chain cannot be verified is not a provider
+    // without TLS; verification must stay the reason that is reported.
+    expect(
+      error(
+        {
+          code: 'ETLS',
+          command: 'STARTTLS',
+          message: 'Error initiating TLS - certificate has expired',
+        },
+        'unknown',
+      ),
+    ).toEqual({ failed: 'provider_timeout' });
+  });
+});
