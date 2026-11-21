@@ -33,6 +33,7 @@ import {
   registerTelegramSettingsRoutes,
   telegramKeyFromSecret,
   registerMailRoutes,
+  registerInquiryEmailSettingsRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -122,6 +123,9 @@ try {
         );
     }
     registerTelegramSettingsRoutes(app, pool, auth.tenantId, telegramKey);
+    // MAIL-NOTIFY-01: target addresses for the additional e-mail notification
+    // of new website inquiries. It only stores addresses and a switch.
+    registerInquiryEmailSettingsRoutes(app, pool, auth.tenantId);
     registerAccessRoutes(app, pool, auth.tenantId, auth.mode ?? 'google');
     registerAuditRoutes(app, pool, auth.tenantId);
     registerMasterDataRoutes(app, pool, auth.tenantId);

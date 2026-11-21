@@ -3,6 +3,7 @@ import { InquiryPreview } from './InquiryPreview.js';
 import { ExportPanel } from './ExportPanel.js';
 import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
 import { TelegramSettingsPanel } from './TelegramSettingsPanel.js';
+import { InquiryEmailSettingsPanel } from './InquiryEmailSettingsPanel.js';
 import { ImportPanel } from './ImportPanel.js';
 import { CalendarPanel } from './CalendarPanel.js';
 import {
@@ -217,6 +218,7 @@ export function AuthPanel() {
             </div>
             <div hidden={route !== 'telegram'}>
               <TelegramSettingsPanel csrfToken={user.csrfToken} />
+              <InquiryEmailSettingsPanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'import'}>
               <ImportPanel

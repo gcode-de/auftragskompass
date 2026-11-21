@@ -73,7 +73,17 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // the redacted outbox error codes. No table and no column changes.
   // MAIL-021-B2 (0069) widens the outbox error vocabulary by one code and leaves
   // every existing table, column and code untouched.
-  expect(applied.at(-1)!.name).toBe('0069_mail_tls_required.sql');
+  // MAIL-NOTIFY-01 (0070) adds one tenant-bound settings table; no existing row
+  // and no mail or Telegram contract changes.
+  expect(applied.at(-1)!.name).toBe('0070_inquiry_email_notification.sql');
+  expect(
+    (
+      await pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='inquiry_email_settings'`,
+      )
+    ).rows,
+  ).toEqual([{ table_name: 'inquiry_email_settings' }]);
   expect(
     (
       await pool.query<{ table_name: string }>(
