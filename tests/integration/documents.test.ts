@@ -8941,9 +8941,10 @@ test('a final invoice without advances settles nothing and stays payable', async
 async function overDepositedOrder(scope: string, unitPrices: number[]) {
   const order = await settlementOrder(scope);
   await settlementRanges(order);
+  const deposits = [];
   for (const unitPriceMinor of unitPrices)
-    await finalizedDeposit(order, unitPriceMinor);
-  return order;
+    deposits.push(await finalizedDeposit(order, unitPriceMinor));
+  return { ...order, deposits };
 }
 
 test('a settlement above the order is refused and leaves the draft untouched', async () => {
@@ -9029,6 +9030,246 @@ test('an optional invoice line cannot raise the settlement limit', async () => {
   });
 });
 
+test('a raised order claim never lets the final invoice settle above its payable', async () => {
+  // DOC-DEPOSIT-FIX-01: 1.690,00 EUR order, 1.800,00 EUR of advances and a
+  // 310,00 EUR debit note on the confirmation. The debit raises the *claim* to
+  // 2.000,00 EUR, so the advances are within the order again - but the positions
+  // the final invoice copies still ask for 1.690,00 EUR, and a deduction of
+  // 1.800,00 EUR would freeze and print "Zu zahlender Betrag -110,00 €".
+  const order = await settlementOrder(randomUUID());
+  await settlementRanges(order);
+  const first = await finalizedDeposit(order, 100000),
+    second = await finalizedDeposit(order, 80000),
+    debit = await finalizedCorrection(
+      order,
+      order.confirmation,
+      'debit',
+      31000,
+    );
+  expect(debit.grossMinor).toBe(31000);
+  const draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    renderedBefore = order.run.rendered.length;
+  await expect(
+    order.repo.finalize(order.actor, draft.id, draft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  // The draft survives untouched: no number, no freeze, nothing rendered.
+  expect(await storedSettlement(order.scope, draft.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    version: 1,
+    deposit_applied_minor: null,
+  });
+  expect(order.run.rendered).toHaveLength(renderedBefore);
+  expect(order.run.rendered.some((html) => html.includes('-110,00'))).toBe(
+    false,
+  );
+  expect(await invoiceSequence(order.scope)).toBe(1);
+  // The documented remedy still works: 110,00 EUR credited on the second
+  // advance leave exactly 1.690,00 EUR, and the untouched draft finalizes.
+  await finalizedCorrection(order, second, 'credit', 11000);
+  const recovered = await order.repo.finalize(
+    order.actor,
+    draft.id,
+    draft.version,
+  );
+  expect(recovered.number).toBe('RE-2030-0001');
+  expect(await settlementRole(order.scope, recovered.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169000',
+  });
+  const printed = order.run.rendered.at(-1)!;
+  expect(printed).toContain('Zu zahlender Betrag');
+  expect(printed).toContain(
+    '<tr><td>Zu zahlender Betrag</td><td>0,00 €</td></tr>',
+  );
+  expect(printed).not.toContain('-110,00');
+  // The advances themselves were never rewritten: they keep their own numbers.
+  expect(first.number).toBe('AZ-2030-0001');
+  expect(second.number).toBe('AZ-2030-0002');
+  expect(
+    ((await order.repo.list({ include: 'offer' })) as DocumentOfferRow[]).find(
+      (row) => row.id === recovered.id,
+    ),
+  ).toMatchObject({ depositAppliedMinor: 169000, openMinor: 0 });
+});
+
+test('the invoice payable bounds the deduction exactly and one cent below', async () => {
+  // The second bound is the invoice's own payable. Billing the corrected order
+  // claim of 2.000,00 EUR means 1.800,00 EUR of advances settle at exactly
+  // 0,00 EUR; one cent less asks for a deduction above the invoice and is
+  // refused, so no negative payable can be frozen.
+  const exact = await settlementOrder(randomUUID());
+  await settlementRanges(exact);
+  await finalizedDeposit(exact, 100000);
+  await finalizedDeposit(exact, 80000);
+  await finalizedCorrection(exact, exact.confirmation, 'debit', 31000);
+  const exactDraft = await exact.repo.createFinalInvoice(
+      exact.actor,
+      exact.confirmation.id,
+      exact.confirmation.version,
+    ),
+    exactEdited = await exact.repo.updateDraftContent(
+      exact.actor,
+      exactDraft.id,
+      {
+        ...confirmationTexts,
+        version: exactDraft.version,
+        lines: [{ ...settlementLines[0]!, unitPriceMinor: 180000 }],
+      },
+    );
+  expect(exactEdited.grossMinor).toBe(180000);
+  const exactInvoice = await exact.repo.finalize(
+    exact.actor,
+    exactDraft.id,
+    exactEdited.version,
+  );
+  expect(await settlementRole(exact.scope, exactInvoice.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '180000',
+  });
+  expect(exact.run.rendered.at(-1)).toContain(
+    '<tr><td>Zu zahlender Betrag</td><td>0,00 €</td></tr>',
+  );
+
+  const short = await settlementOrder(randomUUID());
+  await settlementRanges(short);
+  await finalizedDeposit(short, 100000);
+  await finalizedDeposit(short, 80000);
+  await finalizedCorrection(short, short.confirmation, 'debit', 31000);
+  const shortDraft = await short.repo.createFinalInvoice(
+      short.actor,
+      short.confirmation.id,
+      short.confirmation.version,
+    ),
+    shortEdited = await short.repo.updateDraftContent(
+      short.actor,
+      shortDraft.id,
+      {
+        ...confirmationTexts,
+        version: shortDraft.version,
+        lines: [{ ...settlementLines[0]!, unitPriceMinor: 179999 }],
+      },
+    );
+  await expect(
+    short.repo.finalize(short.actor, shortDraft.id, shortEdited.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  expect(await storedSettlement(short.scope, shortDraft.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    deposit_applied_minor: null,
+  });
+  expect(short.run.rendered.some((html) => html.includes('-0,01'))).toBe(false);
+});
+
+test('a credit and a debit on the advances meet exactly at the invoice payable', async () => {
+  // BKP019.c3.2c keeps its rule while the new bound applies: a debit raises one
+  // advance to 1.040,00 EUR, a credit lowers the other to 650,00 EUR - 1.690,00
+  // EUR settle at exactly 0,00 EUR. One cent less credited leaves 1.690,01 EUR
+  // and is refused; the missing cent finishes the remedy.
+  const exact = await settlementOrder(randomUUID());
+  await settlementRanges(exact);
+  const exactFirst = await finalizedDeposit(exact, 100000),
+    exactSecond = await finalizedDeposit(exact, 80000);
+  await finalizedCorrection(exact, exactFirst, 'debit', 4000);
+  await finalizedCorrection(exact, exactSecond, 'credit', 15000);
+  const exactDraft = await exact.repo.createFinalInvoice(
+      exact.actor,
+      exact.confirmation.id,
+      exact.confirmation.version,
+    ),
+    exactInvoice = await exact.repo.finalize(
+      exact.actor,
+      exactDraft.id,
+      exactDraft.version,
+    );
+  expect(await settlementRole(exact.scope, exactInvoice.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169000',
+  });
+  expect(exact.run.rendered.at(-1)).toContain(
+    '<tr><td>Zu zahlender Betrag</td><td>0,00 €</td></tr>',
+  );
+
+  const over = await settlementOrder(randomUUID());
+  await settlementRanges(over);
+  const overFirst = await finalizedDeposit(over, 100000),
+    overSecond = await finalizedDeposit(over, 80000);
+  await finalizedCorrection(over, overFirst, 'debit', 4000);
+  await finalizedCorrection(over, overSecond, 'credit', 14999);
+  const overDraft = await over.repo.createFinalInvoice(
+    over.actor,
+    over.confirmation.id,
+    over.confirmation.version,
+  );
+  await expect(
+    over.repo.finalize(over.actor, overDraft.id, overDraft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  expect(await storedSettlement(over.scope, overDraft.id)).toMatchObject({
+    state: 'draft',
+    number: null,
+    deposit_applied_minor: null,
+  });
+  await finalizedCorrection(over, overSecond, 'credit', 1);
+  const corrected = await over.repo.finalize(
+    over.actor,
+    overDraft.id,
+    overDraft.version,
+  );
+  expect(await settlementRole(over.scope, corrected.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '169000',
+  });
+  expect(over.run.rendered.at(-1)).toContain(
+    '<tr><td>Zu zahlender Betrag</td><td>0,00 €</td></tr>',
+  );
+});
+
+test('the optional invoice branch keeps its own exact boundary', async () => {
+  // The unconditional invoice bound changes nothing for optional prices: an
+  // unchosen option never enters the payable, so a 1.000,00 EUR invoice with an
+  // optional second position settles 1.000,00 EUR and prints 0,00 EUR.
+  const lines = confirmationLines.map((line) => ({
+    ...line,
+    quantity: 1,
+    unitPriceMinor: 10000,
+    discountBasisPoints: 0,
+  }));
+  const order = await settlementOrder(randomUUID(), lines);
+  await settlementRanges(order);
+  await finalizedDeposit(order, 10000);
+  const draft = await order.repo.createFinalInvoice(
+      order.actor,
+      order.confirmation.id,
+      order.confirmation.version,
+    ),
+    edited = await order.repo.updateDraftContent(order.actor, draft.id, {
+      ...confirmationTexts,
+      version: draft.version,
+      lines: [
+        { kind: 'info', description: 'Fictional settlement note' },
+        lines[0]!,
+        { ...lines[1]!, optional: true },
+      ],
+    }),
+    finalized = await order.repo.finalize(
+      order.actor,
+      draft.id,
+      edited.version,
+    );
+  expect(edited.grossMinor).toBe(10000);
+  expect(await settlementRole(order.scope, finalized.id)).toEqual({
+    invoice_role: 'final',
+    deposit_applied_minor: '10000',
+  });
+  expect(order.run.rendered.at(-1)).toContain(
+    '<tr><td>Zu zahlender Betrag</td><td>0,00 €</td></tr>',
+  );
+});
+
 test('a settlement exactly at the claim is allowed, one cent above is not', async () => {
   // The boundary is the claim of the confirmation, not its gross alone.
   const exact = await overDepositedOrder(randomUUID(), [100000, 69000]),
@@ -9059,9 +9300,12 @@ test('a settlement exactly at the claim is allowed, one cent above is not', asyn
     openMinor: 0,
   });
 
-  // One cent more is refused, and the same draft stays intact for the remedy the
-  // hint names: a debit note on the confirmation raises its claim by exactly
-  // that cent, and the untouched draft then finalizes.
+  // One cent more is refused, and the same draft stays intact. The remedy is a
+  // credit note on the advance - not a debit note on the confirmation: the debit
+  // raises the *order* claim while the invoice keeps asking 1.690,00 EUR, so the
+  // extra cent would still be a deduction above the invoice and would print a
+  // negative "Zu zahlender Betrag" (DOC-DEPOSIT-FIX-01). A credit lowers the
+  // advance's claim to exactly the invoice, and the untouched draft finalizes.
   const over = await overDepositedOrder(randomUUID(), [100000, 69001]),
     overDraft = await over.repo.createFinalInvoice(
       over.actor,
@@ -9079,6 +9323,12 @@ test('a settlement exactly at the claim is allowed, one cent above is not', asyn
     settlementDepositLine(1),
   );
   await over.repo.finalize(over.actor, debit.id, debit.version);
+  // The raised order claim alone is not enough: the invoice still asks 1.690,00
+  // EUR against 1.690,01 EUR of advances, so the draft stays refused.
+  await expect(
+    over.repo.finalize(over.actor, overDraft.id, overDraft.version),
+  ).rejects.toMatchObject({ reason: 'deposits_exceed_order' });
+  await finalizedCorrection(over, over.deposits[1]!, 'credit', 1);
   const recovered = await over.repo.finalize(
     over.actor,
     overDraft.id,
@@ -9087,9 +9337,11 @@ test('a settlement exactly at the claim is allowed, one cent above is not', asyn
   expect(recovered.number).toBe('RE-2030-0001');
   expect(await settlementRole(over.scope, recovered.id)).toEqual({
     invoice_role: 'final',
-    deposit_applied_minor: '169001',
+    deposit_applied_minor: '169000',
   });
-  expect(over.run.rendered.at(-1)).toContain('0,00 €');
+  expect(over.run.rendered.at(-1)).toContain(
+    '<tr><td>Zu zahlender Betrag</td><td>0,00 €</td></tr>',
+  );
 });
 
 // BKP019.c3.2c: the settled amount is the sum of the *corrected* claims of the
