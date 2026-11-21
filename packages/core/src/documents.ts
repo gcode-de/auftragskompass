@@ -276,6 +276,18 @@ export type OfferStatusChange = {
   note?: string;
   attachmentFileId?: string;
 };
+// DOC-ACCEPT-FIX-01: the complete record of an explicit acceptance correction.
+// Every field is judged by exactly the rules of the first acceptance, and the
+// stored record is replaced as one decision - so an omitted note or attachment
+// is cleared, and an omitted instant keeps the documented default (the
+// transaction clock). The document itself is never touched.
+export type AcceptanceCorrection = {
+  version: number;
+  channel: string;
+  acceptedAt?: string;
+  note?: string;
+  attachmentFileId?: string;
+};
 const offerTransitions: Record<OfferStatus | 'unset', readonly OfferStatus[]> =
   {
     unset: ['sent', 'withdrawn'],
@@ -1050,6 +1062,31 @@ export function documentRepository(
       .where(eq(tenants.id, tenantId));
     if (!tenant) throw new DocumentError('missing_reference');
     return tenant.timezone;
+  }
+
+  // BKP019.a / DOC-ACCEPT-FIX-01: the file an acceptance references is read the
+  // same way on both paths - an archived or foreign file can never carry an
+  // acceptance, and an omitted id means "no attachment".
+  async function acceptanceAttachmentOf(
+    connection: Connection,
+    value: string | undefined,
+  ): Promise<string | null> {
+    if (value === undefined) return null;
+    if (typeof value !== 'string' || !acceptanceUuidPattern.test(value))
+      throw new DocumentError('invalid_attachment');
+    const executor = database(connection) as unknown as {
+      execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+    };
+    const files = (await executor.execute(sql`
+      SELECT state FROM library_files
+       WHERE tenant_id = ${tenantId} AND id = ${value}`)) as {
+      rows: { state: 'available' | 'archived' }[];
+    };
+    const file = files.rows[0];
+    if (!file) throw new DocumentError('not_found');
+    if (file.state !== 'available')
+      throw new DocumentError('invalid_attachment');
+    return value;
   }
 
   // BKP019.0 columns are read as reviewed SQL: `date` is cast to text, so the
@@ -3388,28 +3425,9 @@ export function documentRepository(
         }
         // The referenced file is read only now: an archived or foreign file can
         // never become an acceptance, and a repeat above stays a no-op.
-        let attachmentFileId: string | null = null;
-        if (accepting && input.attachmentFileId !== undefined) {
-          const candidate = input.attachmentFileId;
-          if (
-            typeof candidate !== 'string' ||
-            !acceptanceUuidPattern.test(candidate)
-          )
-            throw new DocumentError('invalid_attachment');
-          const executor = database(tx) as unknown as {
-            execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
-          };
-          const files = (await executor.execute(sql`
-            SELECT state FROM library_files
-             WHERE tenant_id = ${tenantId} AND id = ${candidate}`)) as {
-            rows: { state: 'available' | 'archived' }[];
-          };
-          const file = files.rows[0];
-          if (!file) throw new DocumentError('not_found');
-          if (file.state !== 'available')
-            throw new DocumentError('invalid_attachment');
-          attachmentFileId = candidate;
-        }
+        const attachmentFileId = accepting
+          ? await acceptanceAttachmentOf(tx, input.attachmentFileId)
+          : null;
         // One statement keeps status, instant and record atomic; a later status
         // change leaves the acceptance columns exactly as they were.
         await tx.execute(
@@ -3427,6 +3445,72 @@ export function documentRepository(
           tx,
           tenantId,
           offerAuditAction(input.status),
+          actorId,
+          id,
+        );
+        return await offerRowOf(tx, id, at, zone);
+      });
+    },
+    // DOC-ACCEPT-FIX-01: the documented remedy for a record entered wrongly - an
+    // explicit, versioned correction instead of a silently overwritten repeat.
+    // Only the acceptance columns and the version move: the offer status, the
+    // state, the number, the bytes and the sums stay exactly as printed.
+    // A withdrawn offer stays accountable too: 0040 keeps the record readable
+    // after a withdrawal, and correcting a fact is no state transition, so this
+    // path never reopens anything - it only makes the stored record true.
+    async acceptanceCorrection(
+      actorId: string,
+      id: string,
+      input: AcceptanceCorrection,
+    ) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [document] = await tx
+          .select()
+          .from(documents)
+          .where(and(scope, eq(documents.id, id)))
+          .for('update');
+        if (!document) throw new DocumentError('not_found');
+        // Only a finalized offer owns an acceptance axis at all.
+        if (document.kind !== 'offer' || document.state !== 'final')
+          throw new DocumentError('invalid_kind');
+        if (document.version !== input.version)
+          throw new DocumentError('conflict');
+        const current = await offerStateOf(tx, id);
+        // There is nothing to correct before the customer said yes; the same
+        // reason the confirmation path answers with.
+        if (!current.acceptedAt || !current.acceptanceChannel)
+          throw new DocumentError('offer_not_accepted');
+        const zone = await tenantTimeZone(tx),
+          at = now(),
+          // The same three judgements as the first acceptance, so no correction
+          // can store a value the original write would have refused.
+          channel = acceptanceChannelOf(input.channel),
+          acceptedAt =
+            input.acceptedAt === undefined
+              ? at
+              : acceptanceInstantOf(input.acceptedAt, zone, at),
+          note = acceptanceNoteOf(input.note),
+          attachmentFileId = await acceptanceAttachmentOf(
+            tx,
+            input.attachmentFileId,
+          );
+        // The whole record is replaced, so clearing a note or an attachment is
+        // an explicit part of the correction instead of a leftover value.
+        await tx.execute(
+          sql`UPDATE documents
+                 SET accepted_at = ${acceptedAt},
+                     acceptance_channel = ${channel},
+                     acceptance_note = ${note},
+                     acceptance_file_id = ${attachmentFileId}::uuid,
+                     version = version + 1
+               WHERE tenant_id = ${tenantId} AND id = ${id}`,
+        );
+        await appendAudit(
+          tx,
+          tenantId,
+          'document.acceptance_corrected',
           actorId,
           id,
         );
@@ -4100,6 +4184,47 @@ export function registerDocumentRoutes(
     async (request, reply) => {
       try {
         return await repo.changeOfferStatus(
+          request.authSession!.userId,
+          request.params.id,
+          request.body,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // DOC-ACCEPT-FIX-01: the explicit correction of a stored acceptance. Its own
+  // route, because a repeat with different details must stay a 409: only this
+  // call may replace the record, and it is versioned like every other write.
+  app.post<{
+    Params: { id: string };
+    Body: AcceptanceCorrection;
+  }>(
+    '/api/v1/documents/:id/acceptance-correction',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version', 'channel'],
+          properties: {
+            version: { type: 'integer', minimum: 1 },
+            // The channel is mandatory, exactly like the first acceptance. The
+            // closed set, the note bound and the calendar rules are judged by
+            // the domain, so every refusal is one stable error.
+            channel: { type: 'string', maxLength: 40 },
+            acceptedAt: { type: 'string', maxLength: 40 },
+            note: { type: 'string' },
+            attachmentFileId: { type: 'string', format: 'uuid' },
+          },
+        },
+        response: { 200: offerRow },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.acceptanceCorrection(
           request.authSession!.userId,
           request.params.id,
           request.body,

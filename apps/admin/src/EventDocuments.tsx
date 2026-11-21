@@ -189,6 +189,21 @@ function tenantToday(timeZone: string): string {
     .toPlainDate()
     .toString();
 }
+// DOC-ACCEPT-FIX-01: a stored acceptance instant is a real point in time; the
+// datetime-local field of the correction wants the tenant's wall clock. Both
+// read the same zone, so the prefill is exactly what the record displays.
+function acceptedInputValue(value: string, timeZone: string): string {
+  const instant = Temporal.Instant.fromEpochMilliseconds(Date.parse(value)),
+    local = instant.toZonedDateTimeISO(timeZone),
+    pad = (part: number) => String(part).padStart(2, '0');
+  return (
+    local.toPlainDate().toString() +
+    'T' +
+    pad(local.hour) +
+    ':' +
+    pad(local.minute)
+  );
+}
 // One wording per rejected payment; a 409 is never silently retried.
 function paymentFailureMessage(error: string): string {
   switch (error) {
@@ -402,6 +417,10 @@ export function EventDocuments({
       useState<CorrectionDirection>('credit'),
     // BKP019.a: the compact acceptance form of exactly one row.
     [acceptanceId, setAcceptanceId] = useState(''),
+    // DOC-ACCEPT-FIX-01: the separate, explicit correction of a stored
+    // acceptance. It never shares the capture trigger, so a wrong record can
+    // only be replaced on purpose.
+    [acceptanceCorrectionId, setAcceptanceCorrectionId] = useState(''),
     [acceptanceChannel, setAcceptanceChannel] = useState<
       '' | AcceptanceChannel
     >(''),
@@ -433,7 +452,10 @@ export function EventDocuments({
     editorWorkspace = useRef<HTMLDivElement>(null),
     editorTrigger = useRef<string | null>(null),
     blankInvoiceSubmit = useRef<HTMLButtonElement>(null),
-    blankInvoiceContext = useRef<object | null>(null);
+    blankInvoiceContext = useRef<object | null>(null),
+    // DOC-ACCEPT-FIX-01: the row action that opened the correction, so closing
+    // it puts the keyboard user back where they were.
+    acceptanceCorrectionTrigger = useRef<string | null>(null);
   const blankInvoiceKey = 'ak:blank-invoice:' + eventId;
   const blankInvoiceInvalid = typeof pendingBlankInvoice === 'string';
   const blankInvoiceContextChanged =
@@ -493,6 +515,17 @@ export function EventDocuments({
     (trigger ?? createSummary.current)?.focus();
     editorTrigger.current = null;
   }, [editing, busy]);
+  // DOC-ACCEPT-FIX-01: closing the correction - by cancel, Escape or a saved
+  // write - returns the keyboard to the action that opened it.
+  useEffect(() => {
+    if (
+      acceptanceCorrectionId !== '' ||
+      acceptanceCorrectionTrigger.current === null
+    )
+      return;
+    document.getElementById(acceptanceCorrectionTrigger.current)?.focus();
+    acceptanceCorrectionTrigger.current = null;
+  }, [acceptanceCorrectionId]);
   useEffect(() => {
     if (!createDialogOpen) return;
     const dialog = createDialog.current;
@@ -1690,6 +1723,33 @@ export function EventDocuments({
   function closeAcceptance() {
     setAcceptanceId('');
   }
+  // DOC-ACCEPT-FIX-01: exactly one acceptance form can be open, and the
+  // correction owns the same fields as the capture - this names its row.
+  function correctingAcceptance(entry: DocumentRow) {
+    return acceptanceCorrectionId === entry.id;
+  }
+  // DOC-ACCEPT-FIX-01: a correction starts from the stored record. The stored
+  // instant is a real point in time; the datetime-local field wants the tenant's
+  // wall clock, so the same zone that displays the record fills the field.
+  function openAcceptanceCorrection(entry: DocumentRow) {
+    if (mutating.current) return;
+    setMessage('');
+    setAcceptanceId('');
+    setAcceptanceCorrectionId(entry.id);
+    setAcceptanceChannel(entry.acceptanceChannel ?? '');
+    setAcceptanceTime(
+      entry.acceptedAt ? acceptedInputValue(entry.acceptedAt, timeZone) : '',
+    );
+    setAcceptanceNoteText(entry.acceptanceNote ?? '');
+    setAcceptanceFileId(entry.acceptanceFileId ?? '');
+    void loadLibraryFiles();
+  }
+  // Cancelling is data-free: the stored record stays readable and the form only
+  // closes. The focus return is the effect above.
+  function closeAcceptanceCorrection() {
+    if (mutating.current) return;
+    setAcceptanceCorrectionId('');
+  }
   // The acceptance is a record of the customer's yes: the channel is required,
   // the instant defaults to the server clock, note and file are optional.
   async function accept(
@@ -1744,6 +1804,77 @@ export function EventDocuments({
       await reply.json();
       setAcceptanceId('');
       setMessage('Angebotsstatus aktualisiert: Angenommen.');
+      try {
+        await load();
+        setReloadWarning(false);
+      } catch {
+        setReloadWarning(true);
+      }
+    } catch {
+      setMessage('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      mutating.current = false;
+      setBusy('');
+    }
+  }
+  // DOC-ACCEPT-FIX-01: an explicit correction replaces the stored record as one
+  // decision. Only the chosen act writes; a 409 is shown and never repeated, and
+  // the form stays open so the typed values are not lost.
+  async function correctAcceptance(
+    event: FormEvent<HTMLFormElement>,
+    id: string,
+    version: number,
+  ) {
+    event.preventDefault();
+    if (mutating.current || busy !== '') return;
+    if (!acceptanceChannel) {
+      setMessage('Bitte einen Annahmekanal wählen.');
+      return;
+    }
+    mutating.current = true;
+    setBusy(id);
+    setMessage('');
+    try {
+      const reply = await fetch(
+        '/api/v1/documents/' + id + '/acceptance-correction',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          // The whole record is replaced: an emptied note or picker clears the
+          // stored value, and the stored instant was prefilled above.
+          body: JSON.stringify({
+            version,
+            channel: acceptanceChannel,
+            ...(acceptanceTime ? { acceptedAt: acceptanceTime } : {}),
+            ...(acceptanceNoteText.trim()
+              ? { note: acceptanceNoteText.trim() }
+              : {}),
+            ...(acceptanceFileId ? { attachmentFileId: acceptanceFileId } : {}),
+          }),
+        },
+      );
+      if (!reply.ok) {
+        const result = (await reply.json()) as { error: string };
+        setMessage(statusChangeMessage(result.error));
+        if (
+          result.error === 'conflict' ||
+          result.error === 'acceptance_conflict' ||
+          result.error === 'offer_not_accepted' ||
+          result.error === 'not_found'
+        )
+          try {
+            await load();
+          } catch {
+            // The message above already says what to do.
+          }
+        return;
+      }
+      await reply.json();
+      setAcceptanceCorrectionId('');
+      setMessage('Annahmedaten korrigiert.');
       try {
         await load();
         setReloadWarning(false);
@@ -2163,6 +2294,32 @@ export function EventDocuments({
                   </>
                 )}
               </p>
+            )}
+            {/* DOC-ACCEPT-FIX-01: the record above is corrected only by this
+                explicit act - a repeat of the acceptance stays a 409. */}
+            {entry.kind === 'offer' && entry.acceptedAt && (
+              <div className="document-actions">
+                <button
+                  id={'correct-acceptance-' + entry.id}
+                  type="button"
+                  className="secondary-action"
+                  disabled={busy !== '' || recordRemoving}
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' Annahmedaten korrigieren'
+                  }
+                  aria-expanded={correctingAcceptance(entry)}
+                  onClick={(event) => {
+                    acceptanceCorrectionTrigger.current =
+                      event.currentTarget.id;
+                    openAcceptanceCorrection(entry);
+                  }}
+                >
+                  Angaben korrigieren
+                </button>
+              </div>
             )}
             <div className="document-actions">
               {entry.state === 'draft' && (
@@ -2642,20 +2799,37 @@ export function EventDocuments({
               )}
             {entry.kind === 'offer' &&
               entry.state === 'final' &&
-              entry.offerStatus === 'sent' &&
-              acceptanceId === entry.id && (
+              ((entry.offerStatus === 'sent' && acceptanceId === entry.id) ||
+                correctingAcceptance(entry)) && (
                 <form
                   className="offer-draft-editor"
-                  aria-label="Annahme erfassen"
+                  aria-label={
+                    correctingAcceptance(entry)
+                      ? 'Annahmedaten korrigieren'
+                      : 'Annahme erfassen'
+                  }
+                  onKeyDown={(event) => {
+                    // Escape closes without a write; the stored record stays.
+                    if (event.key !== 'Escape') return;
+                    event.preventDefault();
+                    closeAcceptanceCorrection();
+                  }}
                   onSubmit={(event) =>
-                    void accept(event, entry.id, entry.version)
+                    correctingAcceptance(entry)
+                      ? void correctAcceptance(event, entry.id, entry.version)
+                      : void accept(event, entry.id, entry.version)
                   }
                 >
                   <fieldset disabled={busy !== ''}>
-                    <legend>Annahme erfassen</legend>
+                    <legend>
+                      {correctingAcceptance(entry)
+                        ? 'Annahmedaten korrigieren'
+                        : 'Annahme erfassen'}
+                    </legend>
                     <p className="document-hint">
-                      Wie hat der Kunde zugesagt? Pflicht ist nur der Kanal;
-                      Zeitpunkt, Notiz und Anhang sind freiwillig.
+                      {correctingAcceptance(entry)
+                        ? 'Ersetzt die gespeicherten Annahmedaten. Dokument, Nummer und PDF bleiben unverändert.'
+                        : 'Wie hat der Kunde zugesagt? Pflicht ist nur der Kanal; Zeitpunkt, Notiz und Anhang sind freiwillig.'}
                     </p>
                     <div className="offer-draft-fields">
                       <label>
@@ -2706,6 +2880,17 @@ export function EventDocuments({
                           }
                         >
                           <option value="">Kein Anhang</option>
+                          {correctingAcceptance(entry) &&
+                            acceptanceFileId &&
+                            !libraryFiles.some(
+                              (file) =>
+                                file.id === acceptanceFileId &&
+                                file.state === 'available',
+                            ) && (
+                              <option value={acceptanceFileId}>
+                                Bisheriger Anhang (nicht auswählbar)
+                              </option>
+                            )}
                           {libraryFiles
                             .filter((file) => file.state === 'available')
                             .map((file) => (
@@ -2731,13 +2916,19 @@ export function EventDocuments({
                     </p>
                     <div className="document-actions">
                       <button className="primary-action" disabled={busy !== ''}>
-                        Annahme speichern
+                        {correctingAcceptance(entry)
+                          ? 'Korrektur speichern'
+                          : 'Annahme speichern'}
                       </button>
                       <button
                         type="button"
                         className="tertiary-action"
                         disabled={busy !== ''}
-                        onClick={closeAcceptance}
+                        onClick={
+                          correctingAcceptance(entry)
+                            ? closeAcceptanceCorrection
+                            : closeAcceptance
+                        }
                       >
                         Abbrechen
                       </button>
