@@ -1907,6 +1907,12 @@ test('a stored acceptance offers a quiet correction, an unaccepted offer does no
     name: 'Angebot AN-2030-0001 Annahmedaten korrigieren',
   });
   expect(action).toBeTruthy();
+  // axe label-content-name-mismatch: the visible label must appear inside the
+  // accessible name, or screen readers announce a different action than the
+  // one sighted users read (CI-Regression 21.11.2026).
+  expect(action.getAttribute('aria-label')).toContain(
+    (action.textContent ?? '').trim(),
+  );
   const acceptedRow = action.closest('li') as HTMLElement;
   // The readable record stays: the action sits beside it, not instead of it.
   expect(within(acceptedRow).getByText(/Angenommen am/)).toBeTruthy();

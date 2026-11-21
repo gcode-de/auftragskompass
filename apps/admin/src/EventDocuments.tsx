@@ -2477,7 +2477,7 @@ export function EventDocuments({
                     openAcceptanceCorrection(entry);
                   }}
                 >
-                  Angaben korrigieren
+                  Annahmedaten korrigieren
                 </button>
               </div>
             )}
