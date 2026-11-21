@@ -16,7 +16,11 @@ import {
   catalogProductsOf,
   type CatalogProduct,
 } from './ProductPickerDialog.js';
-import { SavePositionAsProduct } from './SavePositionAsProduct.js';
+import {
+  PositionProductStatus,
+  usePositionProduct,
+  type PositionProductSource,
+} from './SavePositionAsProduct.js';
 
 type DraftValues = {
   subject: string;
@@ -540,6 +544,168 @@ function editorDiscardMessage(kind: string | undefined) {
   return kind === 'invoice'
     ? 'Ungespeicherte Rechnungsänderungen verwerfen?'
     : 'Ungespeicherte Angebotsänderungen verwerfen?';
+}
+
+// EDITOR-VISUAL-02 (Bookitup parity, B37 deviation 1): the four row actions of
+// a document position are one menu at the end of its header. The toggle is the
+// only visible action and names its row; the group behind it carries the four
+// entries. Every entry names the row and keeps the visible wording inside that
+// name (axe rule label-content-name-mismatch), closes the menu and returns the
+// focus to the toggle. The product status stays outside the closed menu, so its
+// live messages keep being announced.
+type PositionRowActionsProps = {
+  title: string;
+  menuId: string;
+  canReorder: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  removeDisabled: boolean;
+  productDisabled: boolean;
+  product: PositionProductSource | null;
+  csrfToken: string;
+  onMove: (direction: -1 | 1, origin: HTMLButtonElement) => void;
+  onRemove: () => void;
+  registerRemoveOrigin: (element: HTMLButtonElement | null) => void;
+};
+
+function PositionRowActions({
+  title,
+  menuId,
+  canReorder,
+  canMoveUp,
+  canMoveDown,
+  removeDisabled,
+  productDisabled,
+  product,
+  csrfToken,
+  onMove,
+  onRemove,
+  registerRemoveOrigin,
+}: PositionRowActionsProps) {
+  const [open, setOpen] = useState(false),
+    toggle = useRef<HTMLButtonElement | null>(null),
+    productState = usePositionProduct({
+      position: product,
+      csrfToken,
+      disabled: productDisabled,
+    }),
+    menuLabel = `Aktionen für ${title}`;
+
+  // House pattern: a chosen entry closes the group and the focus returns to the
+  // toggle that opened it, never to an entry that is hidden again.
+  function closeAndFocus() {
+    setOpen(false);
+    const element = toggle.current;
+    if (element?.isConnected) element.focus({ preventScroll: true });
+  }
+
+  function choose(destination: -1 | 1) {
+    const origin = toggle.current;
+    closeAndFocus();
+    if (origin) onMove(destination, origin);
+  }
+
+  return (
+    <div
+      className="offer-draft-position-actions"
+      role="group"
+      aria-label="Aktionen dieser Zeile"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !open) return;
+        // Escape closes the menu only; without stopping here the editor-level
+        // handler would close the whole draft.
+        event.preventDefault();
+        event.stopPropagation();
+        closeAndFocus();
+      }}
+    >
+      <button
+        ref={(element) => {
+          toggle.current = element;
+          registerRemoveOrigin(element);
+        }}
+        type="button"
+        className="icon-action tier-quiet-icon offer-draft-actions-toggle"
+        aria-label={menuLabel}
+        title={menuLabel}
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="currentColor"
+        >
+          <circle cx="5" cy="12" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="19" cy="12" r="1.7" />
+        </svg>
+      </button>
+      <div
+        id={menuId}
+        className="offer-draft-actions-menu"
+        role="group"
+        aria-label={menuLabel}
+        hidden={!open}
+      >
+        <button
+          type="button"
+          className="tertiary-action"
+          aria-label={`${title} nach oben schieben`}
+          disabled={!canReorder}
+          aria-disabled={!canMoveUp}
+          onClick={() => choose(-1)}
+        >
+          Nach oben schieben
+        </button>
+        <button
+          type="button"
+          className="tertiary-action"
+          aria-label={`${title} nach unten schieben`}
+          disabled={!canReorder}
+          aria-disabled={!canMoveDown}
+          onClick={() => choose(1)}
+        >
+          Nach unten schieben
+        </button>
+        {product && (
+          <button
+            type="button"
+            className="tertiary-action"
+            aria-label={`${title} als Produkt speichern`}
+            disabled={productDisabled || productState.createLocked}
+            onClick={() => {
+              closeAndFocus();
+              void productState.create();
+            }}
+          >
+            Als Produkt speichern
+          </button>
+        )}
+        <button
+          type="button"
+          className="tertiary-action"
+          aria-label={`${title}: Position entfernen`}
+          disabled={removeDisabled}
+          onClick={() => {
+            closeAndFocus();
+            onRemove();
+          }}
+        >
+          Position entfernen
+        </button>
+      </div>
+      {product && (
+        <PositionProductStatus
+          state={productState}
+          disabled={productDisabled}
+        />
+      )}
+    </div>
+  );
 }
 
 export function OfferDraftEditor({
@@ -1496,104 +1662,47 @@ export function OfferDraftEditor({
                             ))}
                           </div>
                         )}
-                        <div
-                          className="offer-draft-position-actions"
-                          role="group"
-                          aria-label="Aktionen dieser Zeile"
-                        >
-                          {lineValues.length > 1 &&
-                            ([-1, 1] as const).map((direction) => {
-                              const destination = index + direction;
-                              const label = `${title} nach ${direction === -1 ? 'oben' : 'unten'} verschieben`;
-                              return (
-                                <button
-                                  key={direction}
-                                  type="button"
-                                  className="icon-action tier-quiet-icon offer-draft-move"
-                                  aria-label={label}
-                                  title={label}
-                                  disabled={!canReorder}
-                                  aria-disabled={
-                                    destination < 0 ||
-                                    destination >= lineValues.length
-                                  }
-                                  onClick={(event) =>
-                                    moveLine(
-                                      line.key,
-                                      destination,
-                                      event.currentTarget,
-                                    )
-                                  }
-                                >
-                                  <svg
-                                    aria-hidden="true"
-                                    viewBox="0 0 16 16"
-                                    width="16"
-                                    height="16"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <path
-                                      d={
-                                        direction === -1
-                                          ? 'M4 9l4-4 4 4'
-                                          : 'M4 7l4 4 4-4'
-                                      }
-                                    />
-                                  </svg>
-                                </button>
-                              );
-                            })}
-                          <button
-                            ref={(element) => {
-                              if (element)
-                                removeButtonRefs.current.set(line.key, element);
-                              else removeButtonRefs.current.delete(line.key);
-                            }}
-                            type="button"
-                            className="icon-action tier-quiet-icon"
-                            aria-label={`${title} entfernen`}
-                            title={`${title} entfernen`}
-                            disabled={lineValues.length <= 1 || busy || loading}
-                            onClick={() => askRemove(line.key, title)}
-                          >
-                            <svg
-                              aria-hidden="true"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M4 7h16" />
-                              <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-                              <path d="m6 7 1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
-                              <path d="M10 11v6M14 11v6" />
-                            </svg>
-                          </button>
-                          {/* DOC-PRODUCT-01.6: the deliberate product action of
-                              this row. It reads the row's values and never writes
-                              them back, so the position stays exactly as typed. */}
-                          {line.kind !== 'info' && (
-                            <SavePositionAsProduct
-                              label={title}
-                              csrfToken={csrfToken}
-                              disabled={busy || loading || isBlocked}
-                              position={{
-                                description: line.description,
-                                infoText: line.infoText,
-                                unit: line.unit,
-                                price: line.unitPrice,
-                                priceBasis: line.priceBasis,
-                                tax: line.tax,
-                              }}
-                            />
-                          )}
-                        </div>
+                        {/* EDITOR-VISUAL-02: one compact menu per position
+                            replaces the four unnamed icons. The toggle stays
+                            the single visible row action; the group holds the
+                            four named entries; the product status keeps its
+                            place in the row outside the closed group. */}
+                        <PositionRowActions
+                          title={title}
+                          menuId={`offer-draft-actions-${line.key}`}
+                          canReorder={canReorder}
+                          canMoveUp={index > 0}
+                          canMoveDown={
+                            lineValues.length > 1 &&
+                            index < lineValues.length - 1
+                          }
+                          removeDisabled={
+                            lineValues.length <= 1 || busy || loading
+                          }
+                          productDisabled={busy || loading || isBlocked}
+                          product={
+                            line.kind === 'info'
+                              ? null
+                              : {
+                                  description: line.description,
+                                  infoText: line.infoText,
+                                  unit: line.unit,
+                                  price: line.unitPrice,
+                                  priceBasis: line.priceBasis,
+                                  tax: line.tax,
+                                }
+                          }
+                          csrfToken={csrfToken}
+                          onMove={(direction, origin) =>
+                            moveLine(line.key, index + direction, origin)
+                          }
+                          onRemove={() => askRemove(line.key, title)}
+                          registerRemoveOrigin={(element) => {
+                            if (element)
+                              removeButtonRefs.current.set(line.key, element);
+                            else removeButtonRefs.current.delete(line.key);
+                          }}
+                        />
                       </div>
                       {line.kind === 'info' ? (
                         <label className="offer-draft-info-field">

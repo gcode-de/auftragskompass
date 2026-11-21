@@ -2661,15 +2661,29 @@ summary {
   min-width: 0;
   margin-inline-start: auto;
 }
-.offer-draft-position-actions .offer-draft-move {
-  display: inline-grid;
-  width: 44px;
-  min-height: 44px;
-  padding: 0;
-  place-items: center;
-  scroll-margin-block: 5rem;
+/* EDITOR-VISUAL-02: one quiet menu per position replaces the four unnamed row
+   icons. The toggle keeps its 44px icon target; the group opens in the header
+   flow below it, so no overlay can cover a field at 320px. */
+.offer-draft-actions-toggle {
+  flex: 0 0 auto;
 }
-.offer-draft-move[aria-disabled='true'] {
+.offer-draft-actions-menu {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.offer-draft-actions-menu[hidden] {
+  display: none;
+}
+.offer-draft-actions-menu .tertiary-action {
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.offer-draft-actions-menu [aria-disabled='true'] {
   color: var(--disabled-ink);
   cursor: not-allowed;
 }

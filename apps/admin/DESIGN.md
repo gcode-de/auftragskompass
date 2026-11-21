@@ -412,10 +412,9 @@ dürfen umbrechen. Jeder Rabatt ist EIN Zahlenfeld mit kompaktem
 Prozent-/Euro-Select daneben („Rabattart“); der gespeicherte Wert der jeweils
 anderen Einheit bleibt erhalten und wird vom Wechsel nicht verfälscht.
 Darunter stapeln sich die Felder. Eingaben behalten mindestens 44px Höhe und
-die Tab-Reihenfolge folgt dem Formular. Die Entfernen-Aktion bleibt unter den
-Eingaben; ab 44rem Positionslistenbreite steht sie rechts daneben und richtet
-sich an deren Unterkante aus. Die Tastaturreihenfolge und die mindestens
-44px große Trefferfläche bleiben erhalten.
+die Tab-Reihenfolge folgt dem Formular. Die Zeilenaktionen der Position stehen
+seit EDITOR-VISUAL-02 als EIN Menü am rechten Ende der Kopfzeile (siehe
+„Positionsaktionen“); unter den Eingaben bleibt nur der Infotext.
 
 ### Mobiles Akkordion der Preisfelder (EDITOR-MOBILE-01)
 
@@ -436,20 +435,38 @@ und kein Wertverlust. Ab 44rem ist die Summary `display: none`, die Gruppe ist
 immer offen; das DOM bleibt in beiden Breiten identisch. Gleiches Muster im
 Vorlageneditor.
 
-### Positionsaktionen (EDITOR-ACTIONS-01)
+### Positionsaktionen (EDITOR-ACTIONS-01, geändert EDITOR-VISUAL-02)
 
-Die Aktionen jeder Dokumentposition liegen als kompakte Icon-Gruppe in der
-Positions-Kopfzeile neben „Position N“: aufwärts, abwärts, entfernen und
-„Als Produkt speichern“ (tier-quiet-icon, je 44 px, sichtbarer Fokus,
-zugängliche Namen „Position N …“). Das Produktsymbol ist das Paket mit Plus
-(Lucide-„package-plus“-Geometrie im gemeinsamen Stroke-Stil), damit es nicht als
-Zahnrad gelesen wird. Entfernen fragt vorher bewusst nach
-(„Position N entfernen?“, Abbrechen/Entfernen; Abbruch behält die Position
-und stellt den Fokus auf die Entfernen-Aktion zurück). Die Statuszeile der
-Produktanlage bleibt als eigenes Feld im Zeilenkopf sichtbar. Die Feldreihe
-darunter folgt unverändert EDITOR-LAYOUT-01.
+Die Aktionen jeder Dokumentposition liegen in EINEM Menü am rechten Ende der
+Positions-Kopfzeile (Bookitup-Parität, B37-Abweichung 1). Sichtbar ist nur der
+ruhige Menüknopf „Aktionen für Position N“ (`tier-quiet-icon`, Dreipunkt-Symbol,
+mindestens 44px, mit `aria-expanded` und `aria-controls`). Er öffnet die Gruppe
+„Aktionen für Position N“ (`role="group"`, anfangs `hidden`) mit vier
+beschrifteten Einträgen in dieser Reihenfolge: „Nach oben schieben“, „Nach unten
+schieben“, „Als Produkt speichern“, „Position entfernen“. Die zugänglichen Namen
+nennen die Zeile und enthalten den sichtbaren Text (axe-Regel
+label-content-name-mismatch): „Position N nach oben schieben“, „Position N nach
+unten schieben“, „Position N als Produkt speichern“ und „Position N: Position
+entfernen“. An den Listenenden bleibt der jeweilige Eintrag `aria-disabled`;
+während Laden und Speichern ist die ganze Gruppe deaktiviert wie zuvor.
 
-Zwischen „Position N“ und dieser Icon-Gruppe steht seit EDITOR-VISUAL-01 der
+Nach jeder Aktion schließt die Gruppe und der Fokus kehrt zum Menüknopf zurück
+(Haus-Muster der Vorlagenzeilen). Escape schließt nur das Menü, nicht den Editor.
+Die Gruppe öffnet im Fluss der Kopfzeile unter dem Knopf und nie als Overlay
+über einem Feld; der Menüknopf steht in der Tab-Reihenfolge vor den Feldern,
+bleibt im mobilen Akkordion außerhalb sichtbar und behält seine mindestens
+44px große Trefferfläche. Drag & Drop der Position ist unverändert.
+
+Der Eintrag „Position entfernen“ fragt vorher bewusst nach („Position N
+entfernen?“, Abbrechen/Entfernen); Abbruch behält die Position und stellt den
+Fokus auf den Menüknopf der Zeile zurück. Diese Löschform ist eigene Auslegung
+(GOAL 21.11.2026): Beobachtet ist nur, dass die Referenz je Position ein Menü
+führt (B37-Abweichung 1, manuelle Beobachtung 20.11.2026, kein REA-Beleg); ein
+Löschmenüeintrag wurde nicht gesehen. Die Statuszeile der Produktanlage bleibt
+als eigenes Feld im Zeilenkopf sichtbar, außerhalb des zugeklappten Menüs. Die
+Feldreihe darunter folgt unverändert EDITOR-LAYOUT-01.
+
+Zwischen „Position N“ und diesem Menüknopf steht seit EDITOR-VISUAL-01 der
 Preisbasis-Schalter (Bookitup-Parität, B37-Abweichung 2): eine als „Preisbasis“
 benannte Gruppe (`role="radiogroup"`) aus zwei nativen Radios „Brutto“ und
 „Netto“ in derselben Zeile, nur an Preispositionen. Er ersetzt das frühere
@@ -460,17 +477,20 @@ Betrag. Der Fokusrahmen folgt der allgemeinen Regel, die Ziele bleiben mindesten
 
 ### Position als Produkt (DOC-PRODUCT-01.6)
 
-Jede Preisposition trägt in ihrer Aktionszeile die ruhige tertiäre Aktion
-„Position N als Produkt speichern“. Sie legt über den vorhandenen
-Produkt-POST einen Stammsatz an (Name aus der Beschreibung, Beschreibung aus
-dem Infotext, Einheit, Preis mit Preisgrundlage, Steuer; Menge und Rabatt
-sind bewusst keine Produktstammdaten). Genau ein Auftrag je Geste; während
-der Laufzeit ist die Aktion gesperrt. Unter den Knöpfe steht eine
-Statuszeile: bestätigter Erfolg, bekannte Ablehnung als `alert` oder
-unklarer Ausgang mit der eigenen Aktion „Bestand prüfen“ (nur lesender
-Abgleich; erst nach „nichts gefunden“ ist ein neuer bewusster Klick
-möglich). Wertänderungen setzen Erfolg/Fehler zurück, ein ungeklärter
-Auftrag bleibt gesperrt. Keine neue Farbe, kein Dialog, kein Remount.
+Jede Preisposition trägt in ihrem Zeilenmenü den ruhigen tertiären Eintrag „Als
+Produkt speichern“ (zugänglicher Name „Position N als Produkt speichern“,
+EDITOR-VISUAL-02). Er legt über den vorhandenen Produkt-POST einen Stammsatz an
+(Name aus der Beschreibung, Beschreibung aus dem Infotext, Einheit, Preis mit
+Preisgrundlage, Steuer; Menge und Rabatt sind bewusst keine Produktstammdaten).
+Genau ein Auftrag je Geste; während der Laufzeit ist der Eintrag gesperrt. Unter
+der Kopfzeile und außerhalb des zugeklappten Menüs steht die Statuszeile:
+bestätigter Erfolg, bekannte Ablehnung als `alert` oder unklarer Ausgang mit der
+eigenen Aktion „Bestand prüfen“ (nur lesender Abgleich; erst nach „nichts
+gefunden“ ist ein neuer bewusster Klick möglich). Wertänderungen setzen
+Erfolg/Fehler zurück, ein ungeklärter Auftrag bleibt gesperrt. Der
+zugängliche Status bleibt damit auch bei geschlossenem Menü sichtbar. Keine neue
+Farbe, kein Dialog, kein Remount. Der Vorlageneditor behält die Icon-Form
+desselben Bausteins; beide teilen einen Zustand und senden nie zwei Anfragen.
 
 ### Dokumentanlage-Dialog (DOC-UX-03, DOC-CREATE-02)
 
