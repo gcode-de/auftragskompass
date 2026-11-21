@@ -3403,3 +3403,116 @@ test('a template position groups remove and product as icons and asks before rem
   // The removed group is gone, so the focus lands on a real control.
   expect(document.activeElement).not.toBe(document.body);
 });
+
+// EDITOR-MOBILE-01: the same mobile grouping applies to a template position. A
+// phone-sized editor folds the six value fields behind one summary that names
+// them; the heading, the product and the description stay visible.
+const compactFieldsQuery = '(max-width: 43.99rem)';
+function compactViewport() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === compactFieldsQuery,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+async function openTemplateEditor() {
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  expect(
+    (await screen.findAllByText(/Fictional offer/)).length,
+  ).toBeGreaterThan(0);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  return screen.getByRole('group', { name: 'Position 1' });
+}
+function priceGroup(position: HTMLElement) {
+  const group = position.querySelector<HTMLDetailsElement>(
+    'details.offer-draft-position-price-group',
+  );
+  if (!group) throw new Error('price group missing');
+  return group;
+}
+function priceSummary(group: HTMLElement) {
+  const summary = group.querySelector<HTMLElement>('summary');
+  if (!summary) throw new Error('summary missing');
+  return summary;
+}
+
+test('a narrow template position folds its value fields into a summary with the typed values', async () => {
+  compactViewport();
+  setup();
+  const position = await openTemplateEditor();
+  const group = priceGroup(position);
+  expect(group).toHaveProperty('open', false);
+  expect(priceSummary(group).textContent).toBe(
+    'Preis und Rabatt 1 Stück · 199.00 € · 19.00 %',
+  );
+  // Product and description are not part of the folded group.
+  expect(group.contains(screen.getByLabelText('Produkt'))).toBe(false);
+  expect(group.contains(screen.getByLabelText('Beschreibung'))).toBe(false);
+  for (const label of [
+    'Menge',
+    'Einheit',
+    'Einzelpreis (Brutto) in Euro',
+    'Preisbasis',
+    'Steuersatz in Prozent',
+    'Rabattart',
+    'Rabatt in Prozent',
+  ])
+    expect(within(group).getByLabelText(label)).toBeTruthy();
+});
+
+test('folding a template position keeps every value and every field node', async () => {
+  compactViewport();
+  setup();
+  const position = await openTemplateEditor();
+  const group = priceGroup(position);
+  const summary = priceSummary(group);
+  const quantity = within(group).getByLabelText('Menge');
+
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', true);
+  fireEvent.change(quantity, { target: { value: '2' } });
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', false);
+  expect(within(group).getByLabelText('Menge')).toBe(quantity);
+  expect((quantity as HTMLInputElement).value).toBe('2');
+  expect(priceSummary(group).textContent).toBe(
+    'Preis und Rabatt 2 Stück · 199.00 € · 19.00 %',
+  );
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', true);
+  expect(within(group).getByLabelText('Menge')).toBe(quantity);
+});
+
+test('an invalid template value keeps the folded group open', async () => {
+  compactViewport();
+  setup();
+  const position = await openTemplateEditor();
+  const group = priceGroup(position);
+  const summary = priceSummary(group);
+
+  fireEvent.click(summary);
+  const price = within(group).getByLabelText('Einzelpreis (Brutto) in Euro');
+  fireEvent.change(price, { target: { value: 'kein Preis' } });
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', true);
+
+  fireEvent.change(price, { target: { value: '12.34' } });
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', false);
+});
+
+test('a wide template view keeps the value fields open without a summary step', async () => {
+  setup();
+  const position = await openTemplateEditor();
+  const group = priceGroup(position);
+  expect(group).toHaveProperty('open', true);
+  fireEvent.click(priceSummary(group));
+  expect(group).toHaveProperty('open', true);
+});

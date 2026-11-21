@@ -446,6 +446,69 @@ function priceLabel(priceBasis: 'gross' | 'net') {
   return `Einzelpreis (${priceBasis === 'net' ? 'Netto' : 'Brutto'}) in Euro`;
 }
 
+// EDITOR-MOBILE-01: below the widest field-grid breakpoint (44rem, the width the
+// stylesheet uses for the full nine-field row) a phone-sized editor folds the
+// six value fields of a position into one disclosure. The query mirrors that
+// breakpoint; without matchMedia the wide layout is the safe default.
+const compactFieldsQuery = '(max-width: 43.99rem)';
+
+function useCompactFields() {
+  const [compact, setCompact] = useState(
+    () =>
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia(compactFieldsQuery).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const viewport = window.matchMedia(compactFieldsQuery);
+    const changed = () => setCompact(viewport.matches);
+    viewport.addEventListener('change', changed);
+    return () => viewport.removeEventListener('change', changed);
+  }, []);
+  return compact;
+}
+
+// The folded summary keeps the typed values readable: quantity and unit, the
+// price with its unit and the tax rate. The values are shown exactly as typed -
+// the editor never converts or rounds them for a preview.
+function priceFieldsPreview(
+  quantity: string,
+  unit: string,
+  price: string,
+  tax: string,
+) {
+  const parts: string[] = [];
+  const measure = `${quantity} ${unit}`.trim();
+  if (measure) parts.push(measure);
+  if (price) parts.push(`${price} €`);
+  if (tax) parts.push(`${tax} %`);
+  return parts.join(' · ');
+}
+
+// The same judgements the inputs publish as aria-invalid. They are named once so
+// the disclosure and the field can never disagree about an error.
+function quantityInvalid(value: string) {
+  return !/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 100000;
+}
+
+function unitInvalid(value: string) {
+  return !value.trim() || value.length > 40;
+}
+
+// EDITOR-MOBILE-01: the six folded fields decide together whether the group may
+// stay closed - an invalid value is never hidden behind the summary.
+function valueFieldsInvalid(line: DraftItemValues) {
+  return (
+    quantityInvalid(line.quantity) ||
+    unitInvalid(line.unit) ||
+    decimalInvalid(line.unitPrice) ||
+    percentInvalid(line.tax) ||
+    (line.discountMode === 'percent'
+      ? percentInvalid(line.discount)
+      : decimalInvalid(line.discountAmount))
+  );
+}
+
 // BKP019.b2: the same editor edits an offer, an order confirmation and an
 // invoice draft. The heading says which document is being corrected; anything
 // else keeps the offer wording that existed before.
@@ -517,6 +580,10 @@ export function OfferDraftEditor({
     [catalogError, setCatalogError] = useState(false),
     [catalogMessage, setCatalogMessage] = useState(''),
     [dropTarget, setDropTarget] = useState(''),
+    // EDITOR-MOBILE-01: the folded price group of a position is opened by its
+    // key and stays open until the operator closes it. A visible field error
+    // opens it regardless, so a mistake can never hide behind the summary.
+    [openPriceFields, setOpenPriceFields] = useState<string[]>([]),
     // EDITOR-ACTIONS-01: the row that waits for its removal confirmation. No
     // position changes until the question is answered.
     [removeCandidate, setRemoveCandidate] = useState<{
@@ -553,6 +620,7 @@ export function OfferDraftEditor({
     onProtectedChange,
   };
 
+  const compactFields = useCompactFields();
   const busy = saving || finalizing;
   const dirty = Boolean(
     values &&
@@ -793,6 +861,17 @@ export function OfferDraftEditor({
       current.map((line) =>
         line.key === key && field in line ? { ...line, [field]: value } : line,
       ),
+    );
+  }
+
+  // EDITOR-MOBILE-01: opening and closing is one deliberate act of the operator.
+  // The state survives blur, save and re-renders, so nothing folds away while
+  // someone is still working in the group.
+  function togglePriceFields(key: string) {
+    setOpenPriceFields((current) =>
+      current.includes(key)
+        ? current.filter((entry) => entry !== key)
+        : [...current, key],
     );
   }
 
@@ -1308,6 +1387,17 @@ export function OfferDraftEditor({
                       : `Position ${++itemNumber}`;
                   const canReorder =
                     lineValues.length > 1 && !busy && !loading && !isBlocked;
+                  // EDITOR-MOBILE-01: the folded summary shows the typed values
+                  // even while the fields are closed.
+                  const pricePreview =
+                    line.kind === 'info'
+                      ? ''
+                      : priceFieldsPreview(
+                          line.quantity,
+                          line.unit,
+                          line.unitPrice,
+                          line.tax,
+                        );
                   return (
                     <fieldset
                       className="offer-draft-position"
@@ -1534,124 +1624,162 @@ export function OfferDraftEditor({
                               }
                             />
                           </label>
-                          <label>
-                            Menge
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={line.quantity}
-                              required
-                              aria-invalid={
-                                !/^\d+$/.test(line.quantity) ||
-                                Number(line.quantity) < 1 ||
-                                Number(line.quantity) > 100000
-                              }
-                              onChange={(event) =>
-                                changeLine(
-                                  line.key,
-                                  'quantity',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </label>
-                          <label>
-                            Einheit
-                            <input
-                              value={line.unit}
-                              maxLength={40}
-                              required
-                              aria-invalid={
-                                !line.unit.trim() || line.unit.length > 40
-                              }
-                              onChange={(event) =>
-                                changeLine(line.key, 'unit', event.target.value)
-                              }
-                            />
-                          </label>
-                          <label className="offer-draft-position-wide-field">
-                            {priceLabel(line.priceBasis)}
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={line.unitPrice}
-                              required
-                              aria-invalid={decimalInvalid(line.unitPrice)}
-                              onChange={(event) =>
-                                changeLine(
-                                  line.key,
-                                  'unitPrice',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </label>
-                          <label>
-                            Preisbasis
-                            <select
-                              value={line.priceBasis}
-                              onChange={(event) =>
-                                changeLine(
-                                  line.key,
-                                  'priceBasis',
-                                  event.target.value === 'net'
-                                    ? 'net'
-                                    : 'gross',
-                                )
-                              }
+                          {/* EDITOR-MOBILE-01: the six value fields keep exactly
+                              this DOM at every width. Above the breakpoint the
+                              summary is not displayed and the group is always
+                              open; below it the same group folds behind "Preis
+                              und Rabatt" and keeps a short value preview. */}
+                          <details
+                            className="offer-draft-position-price-group"
+                            open={
+                              !compactFields ||
+                              valueFieldsInvalid(line) ||
+                              openPriceFields.includes(line.key)
+                            }
+                          >
+                            <summary
+                              className="offer-draft-position-price-summary"
+                              onClick={(event) => {
+                                // The open state belongs to this component. The
+                                // native toggle is suppressed so an invalid
+                                // group cannot be closed and React never falls
+                                // out of sync with the attribute.
+                                event.preventDefault();
+                                if (valueFieldsInvalid(line)) return;
+                                togglePriceFields(line.key);
+                              }}
                             >
-                              <option value="gross">Brutto</option>
-                              <option value="net">Netto</option>
-                            </select>
-                          </label>
-                          <label>
-                            Steuer in Prozent
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={line.tax}
-                              required
-                              aria-invalid={percentInvalid(line.tax)}
-                              onChange={(event) =>
-                                changeLine(line.key, 'tax', event.target.value)
-                              }
-                            />
-                          </label>
-                          {/* DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: one number
-                              field with its unit switch beside it. The mode
-                              decides which stored value the core uses and the
-                              inactive one keeps its value untouched. */}
-                          <DiscountField
-                            mode={line.discountMode}
-                            value={
-                              line.discountMode === 'percent'
-                                ? line.discount
-                                : line.discountAmount
-                            }
-                            valueLabel={
-                              line.discountMode === 'percent'
-                                ? 'Rabatt in Prozent'
-                                : 'Rabatt in Euro'
-                            }
-                            valueInvalid={
-                              line.discountMode === 'percent'
-                                ? percentInvalid(line.discount)
-                                : decimalInvalid(line.discountAmount)
-                            }
-                            required
-                            onValueChange={(value) =>
-                              changeLine(
-                                line.key,
-                                line.discountMode === 'percent'
-                                  ? 'discount'
-                                  : 'discountAmount',
-                                value,
-                              )
-                            }
-                            onModeChange={(mode) =>
-                              changeLine(line.key, 'discountMode', mode)
-                            }
-                          />
+                              Preis und Rabatt{' '}
+                              {pricePreview && (
+                                <span className="offer-draft-position-price-preview">
+                                  {pricePreview}
+                                </span>
+                              )}
+                            </summary>
+                            <div className="offer-draft-position-price-fields">
+                              <label>
+                                Menge
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={line.quantity}
+                                  required
+                                  aria-invalid={quantityInvalid(line.quantity)}
+                                  onChange={(event) =>
+                                    changeLine(
+                                      line.key,
+                                      'quantity',
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Einheit
+                                <input
+                                  value={line.unit}
+                                  maxLength={40}
+                                  required
+                                  aria-invalid={unitInvalid(line.unit)}
+                                  onChange={(event) =>
+                                    changeLine(
+                                      line.key,
+                                      'unit',
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label className="offer-draft-position-wide-field">
+                                {priceLabel(line.priceBasis)}
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={line.unitPrice}
+                                  required
+                                  aria-invalid={decimalInvalid(line.unitPrice)}
+                                  onChange={(event) =>
+                                    changeLine(
+                                      line.key,
+                                      'unitPrice',
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Preisbasis
+                                <select
+                                  value={line.priceBasis}
+                                  onChange={(event) =>
+                                    changeLine(
+                                      line.key,
+                                      'priceBasis',
+                                      event.target.value === 'net'
+                                        ? 'net'
+                                        : 'gross',
+                                    )
+                                  }
+                                >
+                                  <option value="gross">Brutto</option>
+                                  <option value="net">Netto</option>
+                                </select>
+                              </label>
+                              <label>
+                                Steuer in Prozent
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={line.tax}
+                                  required
+                                  aria-invalid={percentInvalid(line.tax)}
+                                  onChange={(event) =>
+                                    changeLine(
+                                      line.key,
+                                      'tax',
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              </label>
+                              {/* DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: one
+                                  number field with its unit switch beside it.
+                                  The mode decides which stored value the core
+                                  uses and the inactive one keeps its value
+                                  untouched. */}
+                              <DiscountField
+                                mode={line.discountMode}
+                                value={
+                                  line.discountMode === 'percent'
+                                    ? line.discount
+                                    : line.discountAmount
+                                }
+                                valueLabel={
+                                  line.discountMode === 'percent'
+                                    ? 'Rabatt in Prozent'
+                                    : 'Rabatt in Euro'
+                                }
+                                valueInvalid={
+                                  line.discountMode === 'percent'
+                                    ? percentInvalid(line.discount)
+                                    : decimalInvalid(line.discountAmount)
+                                }
+                                required
+                                onValueChange={(value) =>
+                                  changeLine(
+                                    line.key,
+                                    line.discountMode === 'percent'
+                                      ? 'discount'
+                                      : 'discountAmount',
+                                    value,
+                                  )
+                                }
+                                onModeChange={(mode) =>
+                                  changeLine(line.key, 'discountMode', mode)
+                                }
+                              />
+                            </div>
+                          </details>
                         </div>
                       )}
                       {line.kind !== 'info' && (

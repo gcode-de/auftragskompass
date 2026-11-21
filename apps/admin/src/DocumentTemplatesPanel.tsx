@@ -136,6 +136,78 @@ const storedPriceBasis = (position: Position): 'gross' | 'net' =>
   position.priceBasis === 'net' ? 'net' : 'gross';
 const priceLabel = (priceBasis: string) =>
   `Einzelpreis (${priceBasis === 'net' ? 'Netto' : 'Brutto'}) in Euro`;
+
+// EDITOR-MOBILE-01: the same rule as in the document editor. Below 44rem - the
+// widest field-grid breakpoint in the stylesheet - the six value fields of a
+// template position fold into one disclosure; without matchMedia the wide
+// layout stays the safe default.
+const compactFieldsQuery = '(max-width: 43.99rem)';
+
+function useCompactFields() {
+  const [compact, setCompact] = useState(
+    () =>
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia(compactFieldsQuery).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const viewport = window.matchMedia(compactFieldsQuery);
+    const changed = () => setCompact(viewport.matches);
+    viewport.addEventListener('change', changed);
+    return () => viewport.removeEventListener('change', changed);
+  }, []);
+  return compact;
+}
+
+// The folded summary keeps the typed values readable. They are shown exactly as
+// typed; the template editor never converts or rounds a value for a preview.
+function priceFieldsPreview(
+  quantity: string,
+  unit: string,
+  price: string,
+  tax: string,
+) {
+  const parts: string[] = [];
+  const measure = `${quantity} ${unit}`.trim();
+  if (measure) parts.push(measure);
+  if (price) parts.push(`${price} €`);
+  if (tax) parts.push(`${tax} %`);
+  return parts.join(' · ');
+}
+
+// The same judgement the save uses. A value the core would refuse may never be
+// hidden behind a closed summary.
+function decimalInvalid(value: string) {
+  try {
+    parseHundredths(value);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function percentInvalid(value: string) {
+  try {
+    return parseHundredths(value) > 10000;
+  } catch {
+    return true;
+  }
+}
+
+function templatePositionInvalid(position: DraftPosition) {
+  return (
+    !/^\d+$/.test(position.quantity) ||
+    Number(position.quantity) < 1 ||
+    Number(position.quantity) > 100000 ||
+    !position.unit.trim() ||
+    position.unit.length > 40 ||
+    decimalInvalid(position.price) ||
+    percentInvalid(position.tax) ||
+    (position.discountMode === 'percent'
+      ? percentInvalid(position.discount)
+      : decimalInvalid(position.discountAmount))
+  );
+}
 const toDraft = (position: Position): DraftPosition => ({
   productId: position.productId ?? '',
   description: position.description,
@@ -456,6 +528,9 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     [archiveFocusRequest, setArchiveFocusRequest] =
       useState<ArchiveFocusRequest | null>(null);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
+  // EDITOR-MOBILE-01: the folded price group of a template position is opened
+  // by its index and stays open until the operator closes it.
+  const [openPriceFields, setOpenPriceFields] = useState<number[]>([]);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewMessage, setPreviewMessage] = useState('');
@@ -825,6 +900,8 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     invalidatePreview(false);
     placeholderCaret.current.clear();
     setOpenPlaceholderPicker(null);
+    // A fresh editor starts with its value groups folded, as a phone shows it.
+    setOpenPriceFields([]);
     setSelectedPlaceholder('');
     setPlaceholderNotice(null);
     const nextDraft =
@@ -875,6 +952,15 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       current.map((position, at) =>
         at === index ? { ...position, ...patch } : position,
       ),
+    );
+  }
+  // EDITOR-MOBILE-01: opening and closing is one deliberate act of the operator;
+  // nothing folds away on blur or while typing.
+  function togglePriceFields(index: number) {
+    setOpenPriceFields((current) =>
+      current.includes(index)
+        ? current.filter((entry) => entry !== index)
+        : [...current, index],
     );
   }
   // EDITOR-ACTIONS-01: removal asks first and stays a draft change until the
@@ -1680,6 +1766,7 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       />
     );
   }
+  const compactFields = useCompactFields();
   const visibleRows = rows.filter((row) =>
     matchesTemplateFilters(row, search, kindFilter, stateFilter),
   );
@@ -1903,88 +1990,125 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                     }
                   />
                 </label>
-                <label>
-                  Menge
-                  <input
-                    inputMode="numeric"
-                    value={position.quantity}
-                    onChange={(event) =>
-                      updatePosition(index, { quantity: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Einheit
-                  <input
-                    value={position.unit}
-                    maxLength={40}
-                    onChange={(event) =>
-                      updatePosition(index, { unit: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  {priceLabel(position.priceBasis)}
-                  <input
-                    inputMode="decimal"
-                    value={position.price}
-                    onChange={(event) =>
-                      updatePosition(index, { price: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Preisbasis
-                  <select
-                    value={position.priceBasis}
-                    onChange={(event) =>
-                      updatePosition(index, {
-                        priceBasis:
-                          event.target.value === 'net' ? 'net' : 'gross',
-                      })
-                    }
+                {/* EDITOR-MOBILE-01: the six value fields fold behind one
+                    summary on a phone. They keep exactly this DOM at every
+                    width, so no field is remounted and no value is lost. */}
+                <details
+                  className="offer-draft-position-price-group"
+                  open={
+                    !compactFields ||
+                    templatePositionInvalid(position) ||
+                    openPriceFields.includes(index)
+                  }
+                >
+                  <summary
+                    className="offer-draft-position-price-summary"
+                    onClick={(event) => {
+                      // The open state belongs to this component; the native
+                      // toggle is suppressed so an invalid group stays open and
+                      // the attribute never drifts from React's state.
+                      event.preventDefault();
+                      if (templatePositionInvalid(position)) return;
+                      togglePriceFields(index);
+                    }}
                   >
-                    <option value="gross">Brutto</option>
-                    <option value="net">Netto</option>
-                  </select>
-                </label>
-                <label>
-                  Steuersatz in Prozent
-                  <input
-                    inputMode="decimal"
-                    value={position.tax}
-                    onChange={(event) =>
-                      updatePosition(index, { tax: event.target.value })
-                    }
-                  />
-                </label>
-                {/* DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: one number field with
-                    its unit switch beside it; the other stored value keeps its
-                    place in the form and is never converted. */}
-                <DiscountField
-                  mode={position.discountMode}
-                  value={
-                    position.discountMode === 'percent'
-                      ? position.discount
-                      : position.discountAmount
-                  }
-                  valueLabel={
-                    position.discountMode === 'percent'
-                      ? 'Rabatt in Prozent'
-                      : 'Rabatt in Euro'
-                  }
-                  onValueChange={(value) =>
-                    updatePosition(
-                      index,
-                      position.discountMode === 'percent'
-                        ? { discount: value }
-                        : { discountAmount: value },
-                    )
-                  }
-                  onModeChange={(mode) =>
-                    updatePosition(index, { discountMode: mode })
-                  }
-                />
+                    Preis und Rabatt{' '}
+                    <span className="offer-draft-position-price-preview">
+                      {priceFieldsPreview(
+                        position.quantity,
+                        position.unit,
+                        position.price,
+                        position.tax,
+                      )}
+                    </span>
+                  </summary>
+                  <div className="offer-draft-position-price-fields">
+                    <label>
+                      Menge
+                      <input
+                        inputMode="numeric"
+                        value={position.quantity}
+                        onChange={(event) =>
+                          updatePosition(index, {
+                            quantity: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Einheit
+                      <input
+                        value={position.unit}
+                        maxLength={40}
+                        onChange={(event) =>
+                          updatePosition(index, { unit: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {priceLabel(position.priceBasis)}
+                      <input
+                        inputMode="decimal"
+                        value={position.price}
+                        onChange={(event) =>
+                          updatePosition(index, { price: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Preisbasis
+                      <select
+                        value={position.priceBasis}
+                        onChange={(event) =>
+                          updatePosition(index, {
+                            priceBasis:
+                              event.target.value === 'net' ? 'net' : 'gross',
+                          })
+                        }
+                      >
+                        <option value="gross">Brutto</option>
+                        <option value="net">Netto</option>
+                      </select>
+                    </label>
+                    <label>
+                      Steuersatz in Prozent
+                      <input
+                        inputMode="decimal"
+                        value={position.tax}
+                        onChange={(event) =>
+                          updatePosition(index, { tax: event.target.value })
+                        }
+                      />
+                    </label>
+                    {/* DOC-PRODUCT-01.4 / EDITOR-LAYOUT-01: one number field
+                        with its unit switch beside it; the other stored value
+                        keeps its place in the form and is never converted. */}
+                    <DiscountField
+                      mode={position.discountMode}
+                      value={
+                        position.discountMode === 'percent'
+                          ? position.discount
+                          : position.discountAmount
+                      }
+                      valueLabel={
+                        position.discountMode === 'percent'
+                          ? 'Rabatt in Prozent'
+                          : 'Rabatt in Euro'
+                      }
+                      onValueChange={(value) =>
+                        updatePosition(
+                          index,
+                          position.discountMode === 'percent'
+                            ? { discount: value }
+                            : { discountAmount: value },
+                        )
+                      }
+                      onModeChange={(mode) =>
+                        updatePosition(index, { discountMode: mode })
+                      }
+                    />
+                  </div>
+                </details>
               </fieldset>
             ))}
             <button

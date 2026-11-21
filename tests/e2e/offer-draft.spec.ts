@@ -482,6 +482,11 @@ async function offerDraftScenario(browser: Browser) {
       name: 'Aktionen dieser Zeile',
     });
     const positionList = positions.locator('.offer-draft-position-list');
+    // EDITOR-MOBILE-01: the six value fields of a position are one disclosure.
+    // Its summary is only offered below 44rem; above it the group is open and
+    // the summary is not part of the layout.
+    const priceGroup = position1.locator('.offer-draft-position-price-group');
+    const priceSummary = priceGroup.locator('summary');
     const pageTheme = page.locator('html');
     const positionOriginalTheme = await pageTheme.getAttribute('data-theme');
     const positionThemeToggle = page.getByRole('button', {
@@ -499,6 +504,21 @@ async function offerDraftScenario(browser: Browser) {
         [320, ''],
       ] as const) {
         await page.setViewportSize({ width, height: 900 });
+        // EDITOR-MOBILE-01: below 44rem the value group folds. The geometry
+        // below still measures every field, so the group is opened through its
+        // own summary first - exactly what an operator on a phone does.
+        if (width <= 390) {
+          await expect(priceSummary).toBeVisible();
+          if (
+            !(await priceGroup.evaluate(
+              (element) => (element as HTMLDetailsElement).open,
+            ))
+          )
+            await priceSummary.click();
+        } else {
+          await expect(priceSummary).toBeHidden();
+        }
+        await expect(priceGroup).toHaveAttribute('open', '');
         // EDITOR-LAYOUT-01: the grouped form and the wrapping position fields
         // never push the page sideways at any of these widths.
         expect(
@@ -590,6 +610,35 @@ async function offerDraftScenario(browser: Browser) {
           expect.soft(lastField.y).toBeGreaterThan(boxes[0]!.y);
         }
       }
+    }
+    // EDITOR-MOBILE-01: at phone width the folded group closes and reopens
+    // without losing a value, keeps its 44px touch target and stays reachable by
+    // keyboard. The wide tab walk below is unchanged because the summary is not
+    // displayed there.
+    for (const phoneWidth of [390, 320] as const) {
+      await page.setViewportSize({ width: phoneWidth, height: 900 });
+      await expect(priceSummary).toBeVisible();
+      await expect(priceGroup).toHaveAttribute('open', '');
+      await expect(priceSummary).toContainText('1 Tag · 100.00 € · 19.00 %');
+      expect((await priceSummary.boundingBox())!.height).toBeGreaterThanOrEqual(
+        44,
+      );
+      await priceSummary.click();
+      await expect(priceGroup).not.toHaveAttribute('open', '');
+      await expect(position1.getByLabel('Menge')).toBeHidden();
+      await expect(position1.getByLabel('Menge')).toHaveValue('1');
+      await priceSummary.click();
+      await expect(priceGroup).toHaveAttribute('open', '');
+      await expect(position1.getByLabel('Menge')).toBeVisible();
+      await expect(position1.getByLabel('Menge')).toHaveValue('1');
+      await priceSummary.focus();
+      await expect(priceSummary).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(priceGroup).not.toHaveAttribute('open', '');
+      await page.keyboard.press('Enter');
+      await expect(priceGroup).toHaveAttribute('open', '');
+      await page.keyboard.press('Tab');
+      await expect(position1.getByLabel('Menge')).toBeFocused();
     }
     if ((await pageTheme.getAttribute('data-theme')) !== positionOriginalTheme)
       await positionThemeToggle.click();
