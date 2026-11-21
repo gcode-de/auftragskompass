@@ -10,7 +10,9 @@ import {
   websiteOptionDependencies,
   loadWebsiteOptionConfig,
   startTelegramNotifications,
+  startMailOutbox,
   type InquirySyncConfig,
+  type MailOutboxFailure,
   type RuntimeConfig,
   type WebsiteOptionConfig,
   type WebsiteOptionDrainDependencies,
@@ -32,6 +34,8 @@ export type WorkerRuntimeDependencies = {
   ): FastifyInstance;
   probe(pool: Pool): Promise<boolean>;
   telegramConfigured?(pool: Pool): Promise<boolean>;
+  // MAIL-021-A: the outbox loop has no provider adapter yet and says so.
+  startMail?(pool: Pool, report: (failure: MailOutboxFailure) => void): Loop;
   // Returned loops stop in reverse: the drain first, then sync, expiry, pool.
   startExpiry(pool: Pool, report: () => void): Loop & { stop(): Promise<void> };
   // Null means the drain is deliberately unconfigured, not broken.
@@ -70,6 +74,7 @@ export const workerRuntimeDependencies: WorkerRuntimeDependencies = {
     return Boolean(rows[0]?.enabled);
   },
   startExpiry: (pool, report) => startReservationExpiry(pool, report),
+  startMail: (pool, report) => startMailOutbox(pool, report),
   loadOptionConfig: (env) => loadWebsiteOptionConfig(env),
   optionDrainActive: (env) => loadWebsiteOptionDrainActivation(env),
   startDrain: (pool, dependencies, config, entry, error) =>
@@ -97,11 +102,26 @@ export async function startWorkerRuntime(
     // optional: when absent they must not pull readiness down, because expiry
     // and the local inbox still work without them.
     worker: async () =>
-      expiry.ready() && (!drain || drain.ready()) && (!sync || sync.ready()),
+      expiry.ready() &&
+      (!mail || mail.ready()) &&
+      (!drain || drain.ready()) &&
+      (!sync || sync.ready()),
   });
   const expiry = dependencies.startExpiry(pool, () =>
     app.log.error('reservation_expiry_failed'),
   );
+  // MAIL-021-A: the loop is honest without an adapter - a claimed job becomes
+  // `failed`/`provider_missing`, which is a warning, not a hidden success.
+  const mail = dependencies.startMail
+    ? dependencies.startMail(pool, (failure) =>
+        failure.type === 'provider_missing'
+          ? app.log.warn(
+              { mailOutboxFailure: failure },
+              'mail_outbox_provider_missing',
+            )
+          : app.log.error({ mailOutboxFailure: failure }, 'mail_outbox_failed'),
+      )
+    : null;
   const telegram = telegramKey
     ? startTelegramNotifications(pool, telegramKey, (failure) =>
         app.log.error(
@@ -185,6 +205,7 @@ export async function startWorkerRuntime(
     async close() {
       if (drain) await drain.stop();
       if (telegram) await telegram.stop();
+      if (mail) await mail.stop();
       if (sync) await sync.stop();
       await expiry.stop();
       await endPool();

@@ -44,7 +44,11 @@ export type AuditAction =
   | 'document.finalized'
   // DOC-ACCEPT-FIX-01: correcting a stored acceptance is an explicit act of its
   // own, so it is never mistaken for a second acceptance (`document.accepted`).
-  | 'document.acceptance_corrected';
+  | 'document.acceptance_corrected'
+  // MAIL-021-A: the first durable mail row and the explicit send order are the
+  // two events an operator must be able to trace later.
+  | 'mail.message_created'
+  | 'mail.send_scheduled';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

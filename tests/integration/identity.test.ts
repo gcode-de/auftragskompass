@@ -67,7 +67,19 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // layout, so every stored layout keeps printing exactly as it did.
   // DOC-ACCEPT-FIX-01 (0066) then only widens the audit action list, so no
   // column and no existing action changes meaning.
-  expect(applied.at(-1)!.name).toBe('0066_acceptance_correction_audit.sql');
+  // MAIL-021-A (0067) adds the three new mail tables and two audit actions; it
+  // changes no existing row either.
+  expect(applied.at(-1)!.name).toBe('0067_mail_core.sql');
+  expect(
+    (
+      await pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables
+          WHERE table_schema='public'
+            AND table_name IN ('mail_accounts','mail_messages','mail_outbox')
+          ORDER BY table_name`,
+      )
+    ).rows.map((row) => row.table_name),
+  ).toEqual(['mail_accounts', 'mail_messages', 'mail_outbox']);
   expect(
     (
       await pool.query<{ column_name: string; is_nullable: string }>(
@@ -84,6 +96,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
     )
   ).rows[0]!.def;
   expect(auditActionCheck).toContain('document.acceptance_corrected');
+  expect(auditActionCheck).toContain('mail.message_created');
+  expect(auditActionCheck).toContain('mail.send_scheduled');
   expect(auditActionCheck).toContain('document.accepted');
   expect(auditActionCheck).toContain('product.deleted');
   const fileLinkForeignKeys = (

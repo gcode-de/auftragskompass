@@ -159,6 +159,36 @@ export {
 
 export { startReservationExpiry } from './reservation-worker.js';
 
+export {
+  mailDirections,
+  mailFolders,
+  mailEditStates,
+  mailSendStates,
+  mailOutboxStates,
+  canTransitionMailOutbox,
+  mailOutboxRetryDelaySeconds,
+  mailRepository,
+  registerMailRoutes,
+  claimMailOutboxJob,
+  runMailOutboxPass,
+  startMailOutbox,
+  MailError,
+  type MailDirection,
+  type MailFolder,
+  type MailEditState,
+  type MailSendState,
+  type MailOutboxState,
+  type MailErrorReason,
+  type MailAccountInput,
+  type MailAccountRow,
+  type MailMessageInput,
+  type MailMessageSummary,
+  type MailMessageDetail,
+  type MailOutboxRow,
+  type ClaimedMailOutboxJob,
+  type MailOutboxFailure,
+} from './mail.js';
+
 export { registerImportRoutes } from './import-routes.js';
 
 export { bootstrapPassword, passwordAccess } from './password-access.js';
