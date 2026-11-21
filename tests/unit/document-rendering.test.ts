@@ -597,4 +597,48 @@ describe('renderDocumentHtml', () => {
       );
     });
   });
+
+  // DOC-RG04-01: the business names a tax number or a VAT ID. The layout prints
+  // it in the sender block - one field, one line, and nothing at all without it.
+  describe('tax number', () => {
+    const senderOf = (html: string) => {
+      const match = html.match(/<p class="sender">([\s\S]*?)<\/p>/);
+      return match ? match[1]! : null;
+    };
+    const styles = (markup: string) =>
+      markup.slice(markup.indexOf('<style>'), markup.indexOf('</style>'));
+
+    test('prints the stored number as a second line of the sender block', () => {
+      const html = renderDocumentHtml({
+        ...base,
+        layout: { ...layout, taxNumber: 'DE123456789' },
+      });
+      expect(senderOf(html)).toBe(
+        'Fictional Studio · Synthetic Street 1 · 12345 Fictional Town<br>Steuernummer / USt-IdNr: DE123456789',
+      );
+    });
+
+    test('escapes the value and breaks a real line break like the account', () => {
+      const html = renderDocumentHtml({
+        ...base,
+        layout: { ...layout, taxNumber: '<Nr. 1>\nUSt & Co' },
+      });
+      expect(senderOf(html)).toContain(
+        '<br>Steuernummer / USt-IdNr: &lt;Nr. 1&gt;<br>USt &amp; Co',
+      );
+      expect(html).not.toContain('<Nr. 1>');
+    });
+
+    test('leaves a layout without one byte-identical, style block included', () => {
+      const plain = renderDocumentHtml(base),
+        empty = renderDocumentHtml({
+          ...base,
+          layout: { ...layout, taxNumber: '' },
+        });
+      expect(plain).toBe(renderDocumentHtml({ ...base }));
+      expect(plain).not.toContain('Steuernummer');
+      expect(empty).toBe(plain);
+      expect(styles(plain)).toBe(styles(empty));
+    });
+  });
 });

@@ -1664,6 +1664,9 @@ export function documentRepository(
         footerLeft: layout.footerLeft,
         footerCenter: layout.footerCenter,
         footerRight: layout.footerRight,
+        // DOC-RG04-01: the printed tax number travels with the layout. Absent
+        // keeps the snapshot of every layout without one byte-identical.
+        ...(layout.taxNumber ? { taxNumber: layout.taxNumber } : {}),
         ...(correctionReference ? { correctionReference } : {}),
         ...(depositReference ? { depositReference } : {}),
         ...(invoiceDates ? { invoiceDates } : {}),

@@ -1345,3 +1345,103 @@ test('document layout has a dedicated active settings route', () => {
       .getAttribute('aria-current'),
   ).toBe('page');
 });
+
+test('the tax number loads, saves and can be cleared again', async () => {
+  const withTax = { ...saved, taxNumber: 'DE123456789' };
+  let version = saved.version;
+  const calls = api((_url, options) => {
+    if (options?.method === 'PUT') {
+      const body = JSON.parse(String(options.body)) as {
+        taxNumber?: string;
+      };
+      version += 1;
+      return Response.json({
+        ...withTax,
+        ...body,
+        // The server clears with NULL, never with a blank string.
+        taxNumber: body.taxNumber ? body.taxNumber : null,
+        version,
+      });
+    }
+    return Response.json(withTax);
+  });
+  render(<DocumentLayoutPanel csrfToken="fictional-csrf" active />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Dokumentlayout bearbeiten' }),
+  );
+  expect(
+    screen.getByLabelText<HTMLInputElement>('Steuernummer / USt-IdNr').value,
+  ).toBe('DE123456789');
+  expect(
+    screen.getByText('Optional. Wird auf Belegen gedruckt, wenn gesetzt.'),
+  ).toBeTruthy();
+
+  fireEvent.change(screen.getByLabelText('Ort'), {
+    target: { value: 'Example City' },
+  });
+  fireEvent.change(screen.getByLabelText('Steuernummer / USt-IdNr'), {
+    target: { value: 'DE999999999' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dokumentlayout speichern' }),
+  );
+  expect(await screen.findByText('Gespeichert.')).toBeTruthy();
+  expect(
+    calls
+      .filter((call) => call.options?.method)
+      .map((call) => JSON.parse(String(call.options?.body))),
+  ).toEqual([
+    expect.objectContaining({ taxNumber: 'DE999999999', version: 3 }),
+  ]);
+  expect(hasUnsavedChanges()).toBe(false);
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dokumentlayout bearbeiten' }),
+  );
+  fireEvent.change(screen.getByLabelText('Steuernummer / USt-IdNr'), {
+    target: { value: '' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dokumentlayout speichern' }),
+  );
+  await waitFor(() =>
+    expect(calls.filter((call) => call.options?.method)).toHaveLength(2),
+  );
+  expect(
+    JSON.parse(
+      String(calls.filter((call) => call.options?.method)[1]!.options?.body),
+    ),
+  ).toMatchObject({ taxNumber: '', version: 4 });
+  expect(hasUnsavedChanges()).toBe(false);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dokumentlayout bearbeiten' }),
+  );
+  expect(
+    screen.getByLabelText<HTMLInputElement>('Steuernummer / USt-IdNr').value,
+  ).toBe('');
+});
+
+test('the tax number refuses an overlong or control-character value before saving', async () => {
+  const calls = api(() => Response.json({ ...saved, taxNumber: null }));
+  render(<DocumentLayoutPanel csrfToken="fictional-csrf" active />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Dokumentlayout bearbeiten' }),
+  );
+  fireEvent.change(screen.getByLabelText('Steuernummer / USt-IdNr'), {
+    target: { value: 'x'.repeat(101) },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Dokumentlayout speichern' }),
+  );
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'Die Steuernummer darf höchstens 100 Zeichen enthalten und keine Steuerzeichen außer Zeilenumbrüchen.',
+  );
+  fireEvent.change(screen.getByLabelText('Steuernummer / USt-IdNr'), {
+    target: { value: 'DE\u0007123' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Vorschau erstellen' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'Die Steuernummer darf höchstens 100 Zeichen enthalten und keine Steuerzeichen außer Zeilenumbrüchen.',
+  );
+  expect(calls.filter((call) => call.options?.method)).toHaveLength(0);
+});

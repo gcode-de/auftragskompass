@@ -491,6 +491,9 @@ export const documentLayouts = pgTable('document_layouts', {
   footerLeft: text('footer_left').notNull().default(''),
   footerCenter: text('footer_center').notNull().default(''),
   footerRight: text('footer_right').notNull().default(''),
+  // DOC-RG04-01: the tax number or VAT ID an invoice must name. Optional: NULL
+  // keeps every layout printed exactly as before this slice.
+  taxNumber: text('tax_number'),
   logoKey: text('logo_key'),
   logoMediaType: text('logo_media_type'),
   version: integer('version').notNull().default(1),
