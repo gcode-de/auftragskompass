@@ -339,6 +339,19 @@ function removePosition(title: string) {
   fireEvent.click(within(dialog).getByRole('button', { name: 'Entfernen' }));
 }
 
+// EDITOR-PICKER-01: the catalog is one modal with a search field, a
+// multi-select list of the active products and one deliberate add action.
+async function openProductPicker() {
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  return screen.findByRole('dialog', { name: 'Produkt auswählen' });
+}
+function productOption(dialog: HTMLElement, name: RegExp | string) {
+  return within(dialog).getByRole('checkbox', { name }) as HTMLInputElement;
+}
+function addChosen(dialog: HTMLElement) {
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Hinzufügen' }));
+}
+
 async function openOfferCreate() {
   const trigger = await screen.findByRole('button', {
     name: 'Dokument anlegen',
@@ -1280,29 +1293,18 @@ test('the catalog loads on demand and explicitly appends a persisted net product
   );
 
   fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
-  const picker = await screen.findByLabelText('Produkt aus Katalog');
+  const picker = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
   expect(calls.filter((call) => call.url === '/api/v1/products')).toHaveLength(
     1,
   );
+  // The modal lists the active products as accessible checkboxes; an archived
+  // row stays out exactly as the old select did.
+  expect(within(picker).getAllByRole('checkbox')).toHaveLength(2);
   expect(
-    screen.queryByRole('option', { name: 'Fiktives Archivprodukt' }),
+    within(picker).queryByRole('checkbox', { name: /Fiktives Archivprodukt/ }),
   ).toBeNull();
-  fireEvent.change(picker, { target: { value: 'product-net' } });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Katalogauswahl schließen' }),
-  );
-  expect(
-    screen
-      .getByRole('button', { name: 'Produkt hinzufügen' })
-      .getAttribute('aria-expanded'),
-  ).toBe('false');
-  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
-  expect(
-    (screen.getByLabelText('Produkt aus Katalog') as HTMLSelectElement).value,
-  ).toBe('product-net');
-  expect(calls.filter((call) => call.url === '/api/v1/products')).toHaveLength(
-    1,
-  );
 
   // Choosing only stages the source; it does not replace or append anything.
   expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
@@ -1311,11 +1313,24 @@ test('the catalog loads on demand and explicitly appends a persisted net product
     line.description,
   );
   expect(hasUnsavedChanges()).toBe(false);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
+
+  // Closing without the add action discards the choice and keeps the draft.
+  fireEvent.click(within(picker).getByRole('button', { name: 'Schließen' }));
+  expect(
+    screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeNull();
+  const reopened = await openProductPicker();
+  expect(calls.filter((call) => call.url === '/api/v1/products')).toHaveLength(
+    1,
   );
+  expect(productOption(reopened, /Fiktives Nettoprodukt/).checked).toBe(false);
+  fireEvent.click(productOption(reopened, /Fiktives Nettoprodukt/));
+  addChosen(reopened);
 
   const added = await screen.findByRole('group', { name: 'Position 2' });
+  expect(
+    screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeNull();
   expect(within(added).getByLabelText('Beschreibung')).toHaveProperty(
     'value',
     'Fiktives Nettoprodukt',
@@ -1408,11 +1423,11 @@ test('gross and net catalog prices are copied unchanged with their basis', async
   );
   await screen.findByLabelText('Betreff');
   fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
-  const picker = await screen.findByLabelText('Produkt aus Katalog');
-  fireEvent.change(picker, { target: { value: 'product-gross' } });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
-  );
+  const picker = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
+  fireEvent.click(productOption(picker, /Fiktives Bruttoprodukt/));
+  addChosen(picker);
   const grossLine = await screen.findByRole('group', { name: 'Position 2' });
   expect(
     within(grossLine).getByLabelText('Einzelpreis (Brutto) in Euro'),
@@ -1427,10 +1442,9 @@ test('gross and net catalog prices are copied unchanged with their basis', async
 
   // The net price is not converted: it stays the stored net amount and keeps
   // its basis, even at the largest safe minor unit.
-  fireEvent.change(picker, { target: { value: 'product-overflow' } });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
-  );
+  const reopened = await openProductPicker();
+  fireEvent.click(productOption(reopened, /Fiktives Produkt mit Überlauf/));
+  addChosen(reopened);
   const netLine = await screen.findByRole('group', { name: 'Position 3' });
   expect(
     within(netLine).getByLabelText('Einzelpreis (Netto) in Euro'),
@@ -1441,6 +1455,181 @@ test('gross and net catalog prices are copied unchanged with their basis', async
   );
   expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(3);
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('the product dialog searches by name and description and discards a closed choice', async () => {
+  setup({
+    products: [
+      {
+        ...catalogProducts[0]!,
+        description: 'Fiktiver Katalogtext für den Aufbau',
+      },
+      catalogProducts[1]!,
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const dialog = await openProductPicker();
+  const search = within(dialog).getByLabelText('Produkt suchen');
+  expect(within(dialog).getAllByRole('checkbox')).toHaveLength(2);
+
+  // The search narrows the loaded list by name and by description; it never
+  // changes the catalog request.
+  fireEvent.change(search, { target: { value: 'Aufbau' } });
+  expect(within(dialog).getAllByRole('checkbox')).toHaveLength(1);
+  expect(
+    within(dialog).getByRole('checkbox', { name: /Nettoprodukt/ }),
+  ).toBeTruthy();
+  fireEvent.change(search, { target: { value: 'bruttoprodukt' } });
+  expect(within(dialog).getAllByRole('checkbox')).toHaveLength(1);
+  fireEvent.change(search, { target: { value: 'kein solcher Treffer' } });
+  expect(within(dialog).getByText('Keine Produkte gefunden.')).toBeTruthy();
+
+  // Escape closes without the add action; the staged choice is gone with it.
+  fireEvent.change(search, { target: { value: '' } });
+  fireEvent.click(productOption(dialog, /Nettoprodukt/));
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(
+    screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeNull();
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Produkt hinzufügen' })).toBe(
+    document.activeElement,
+  );
+  const reopened = await openProductPicker();
+  expect(productOption(reopened, /Nettoprodukt/).checked).toBe(false);
+});
+
+test('the product dialog appends every chosen product in list order and focuses the first new position', async () => {
+  const { calls } = setup({
+    products: [
+      {
+        ...catalogProducts[0]!,
+        description: 'Fiktiver Nettotext',
+      },
+      { ...catalogProducts[1]!, description: 'Fiktiver Bruttotext' },
+    ],
+  });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const dialog = await openProductPicker();
+  // The click order is deliberately reversed; the list order decides.
+  fireEvent.click(productOption(dialog, /Fiktives Bruttoprodukt/));
+  fireEvent.click(productOption(dialog, /Fiktives Nettoprodukt/));
+  addChosen(dialog);
+
+  const first = await screen.findByRole('group', { name: 'Position 2' });
+  const second = await screen.findByRole('group', { name: 'Position 3' });
+  expect(within(first).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktives Nettoprodukt',
+  );
+  expect(within(first).getByLabelText('Einheit')).toHaveProperty(
+    'value',
+    'Paket',
+  );
+  expect(
+    within(first).getByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+  expect(within(first).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'net',
+  );
+  expect(within(first).getByLabelText('Steuer in Prozent')).toHaveProperty(
+    'value',
+    '19.00',
+  );
+  expect(within(first).getByLabelText('Menge')).toHaveProperty('value', '1');
+  expect(within(first).getByLabelText('Rabatt in Prozent')).toHaveProperty(
+    'value',
+    '0.00',
+  );
+  expect(within(first).getByLabelText('Infotext (optional)')).toHaveProperty(
+    'value',
+    'Fiktiver Nettotext',
+  );
+  expect(within(second).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fiktives Bruttoprodukt',
+  );
+  expect(
+    within(second).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '123.45');
+  expect(within(second).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'gross',
+  );
+  expect(within(second).getByLabelText('Steuer in Prozent')).toHaveProperty(
+    'value',
+    '7.00',
+  );
+  expect(within(second).getByLabelText('Infotext (optional)')).toHaveProperty(
+    'value',
+    'Fiktiver Bruttotext',
+  );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(first).getByLabelText('Beschreibung'),
+    ),
+  );
+  expect(
+    screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeNull();
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(3);
+  expect(calls.filter((call) => call.url === '/api/v1/products')).toHaveLength(
+    1,
+  );
+  expect(hasUnsavedChanges()).toBe(true);
+});
+
+test('a backdrop close keeps the draft and an empty choice cannot be added', async () => {
+  setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const dialog = await openProductPicker();
+  const add = within(dialog).getByRole('button', { name: 'Hinzufügen' });
+  expect(add).toHaveProperty('disabled', true);
+  fireEvent.click(productOption(dialog, /Nettoprodukt/));
+  expect(add).toHaveProperty('disabled', false);
+  fireEvent.click(productOption(dialog, /Nettoprodukt/));
+  expect(add).toHaveProperty('disabled', true);
+
+  fireEvent.mouseDown(dialog.parentElement!);
+  expect(
+    screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeNull();
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
+  // The old single row stays exactly as it was.
+  expect(screen.getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    line.description,
+  );
+});
+
+test('one add activation appends the chosen batch once', async () => {
+  setup({ products: [catalogProducts[0]!, catalogProducts[1]!] });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  await screen.findByLabelText('Betreff');
+  const dialog = await openProductPicker();
+  fireEvent.click(productOption(dialog, /Nettoprodukt/));
+  fireEvent.click(productOption(dialog, /Bruttoprodukt/));
+  const add = within(dialog).getByRole('button', { name: 'Hinzufügen' });
+  fireEvent.click(add);
+  // A second activation of the same action never becomes a second batch.
+  fireEvent.click(add);
+  expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(3);
 });
 
 test('a stored net price basis loads, stays unconverted and saves the chosen basis', async () => {
@@ -1588,12 +1777,18 @@ test('catalog failure can be retried and an empty active catalog has a clear sta
   );
   await screen.findByLabelText('Betreff');
   fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const failed = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
   expect((await screen.findByRole('alert')).textContent).toContain(
     'Produktkatalog konnte nicht geladen werden.',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Katalog erneut laden' }));
-  expect(await screen.findByLabelText('Produkt aus Katalog')).toBeTruthy();
+  fireEvent.click(
+    within(failed).getByRole('button', { name: 'Katalog erneut laden' }),
+  );
+  expect(await within(failed).findAllByRole('checkbox')).toHaveLength(2);
   expect(attempts).toBe(2);
+  fireEvent.click(within(failed).getByRole('button', { name: 'Schließen' }));
 
   cleanup();
   setup({ products: [] });
@@ -1606,9 +1801,10 @@ test('catalog failure can be retried and an empty active catalog has a clear sta
   expect(
     await screen.findByText('Keine aktiven Produkte im Katalog.'),
   ).toBeTruthy();
-  expect(
-    screen.getByRole('button', { name: 'Freie Position hinzufügen' }),
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Hinzufügen' })).toHaveProperty(
+    'disabled',
+    true,
+  );
 });
 
 test('a delayed catalog response does not replace edits made while it loads', async () => {
@@ -1625,12 +1821,15 @@ test('a delayed catalog response does not replace edits made while it loads', as
   );
   await screen.findByLabelText('Betreff');
   fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
   expect(await screen.findByText('Produktkatalog wird geladen.')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Beschreibung'), {
     target: { value: 'Fiktive eigene Änderung während des Ladens' },
   });
   resolveProducts(Response.json(catalogProducts));
-  await screen.findByLabelText('Produkt aus Katalog');
+  await within(dialog).findAllByRole('checkbox');
   expect(screen.getByLabelText('Beschreibung')).toHaveProperty(
     'value',
     'Fiktive eigene Änderung während des Ladens',
@@ -2363,11 +2562,11 @@ test('catalog information belongs to the position through saving, reloading and 
   );
   await screen.findByLabelText('Betreff');
   fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
-  const picker = await screen.findByLabelText('Produkt aus Katalog');
-  fireEvent.change(picker, { target: { value: 'product-net' } });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
-  );
+  const picker = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
+  fireEvent.click(productOption(picker, /Fiktives Nettoprodukt/));
+  addChosen(picker);
   const position = await screen.findByRole('group', { name: 'Position 2' });
   const info = within(position).getByLabelText('Infotext (optional)');
   expect(info).toHaveProperty('value', 'Fiktiver Text\nmit zweiter Zeile');
@@ -2437,15 +2636,18 @@ test('invalid catalog information does not add a partial product', async () => {
   );
   await screen.findByLabelText('Betreff');
   fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
-  const picker = await screen.findByLabelText('Produkt aus Katalog');
-  fireEvent.change(picker, { target: { value: 'product-net' } });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Als Position hinzufügen' }),
-  );
+  const picker = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
+  fireEvent.click(productOption(picker, /Fiktives Nettoprodukt/));
+  addChosen(picker);
   expect((await screen.findByRole('alert')).textContent).toContain(
-    'Der Infotext des Produkts ist zu lang',
+    'Der Infotext eines Produkts ist zu lang',
   );
   expect(screen.getAllByRole('group', { name: /^Position / })).toHaveLength(1);
+  expect(
+    screen.getByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeTruthy();
 });
 
 // EDITOR-LAYOUT-01: the form is read as named groups instead of one dense

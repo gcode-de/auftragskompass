@@ -2151,6 +2151,129 @@ test('an oversized net product is copied without conversion and keeps its basis'
   ).toBe('5.00');
   expect(screen.queryByRole('alert')).toBeNull();
 });
+// EDITOR-PICKER-01: the template editor offers the same catalog modal. It
+// appends one position per chosen product in catalog order; the per-position
+// product field keeps its own contract.
+test('the product dialog appends each chosen product as its own template position', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Produkt hinzufügen' }));
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
+  expect(within(dialog).getAllByRole('checkbox')).toHaveLength(3);
+  expect(
+    within(dialog).queryByRole('checkbox', {
+      name: /Fictional archived product/,
+    }),
+  ).toBeNull();
+  fireEvent.click(
+    within(dialog).getByRole('checkbox', { name: /Fictional gross product/ }),
+  );
+  fireEvent.click(
+    within(dialog).getByRole('checkbox', { name: /Fictional product/ }),
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Hinzufügen' }));
+
+  const second = await screen.findByRole('group', { name: 'Position 2' });
+  const third = screen.getByRole('group', { name: 'Position 3' });
+  expect(within(second).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fictional product',
+  );
+  expect(
+    within(second).getByLabelText('Einzelpreis (Netto) in Euro'),
+  ).toHaveProperty('value', '100.00');
+  expect(within(second).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'net',
+  );
+  expect(within(second).getByLabelText('Steuersatz in Prozent')).toHaveProperty(
+    'value',
+    '19.00',
+  );
+  expect(within(second).getByLabelText('Menge')).toHaveProperty('value', '1');
+  expect(within(second).getByLabelText('Einheit')).toHaveProperty(
+    'value',
+    'Stück',
+  );
+  expect(within(third).getByLabelText('Beschreibung')).toHaveProperty(
+    'value',
+    'Fictional gross product',
+  );
+  expect(
+    within(third).getByLabelText('Einzelpreis (Brutto) in Euro'),
+  ).toHaveProperty('value', '123.45');
+  expect(within(third).getByLabelText('Preisbasis')).toHaveProperty(
+    'value',
+    'gross',
+  );
+  expect(
+    screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeNull();
+  expect(document.activeElement).toBe(
+    within(second).getByLabelText('Beschreibung'),
+  );
+
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Vorlage speichern' }).closest('form')!,
+  );
+  await screen.findByText('Gespeichert.');
+  expect(
+    (writes[0]!.body.positions as Array<Record<string, unknown>>).slice(1),
+  ).toEqual([
+    {
+      productId: product.id,
+      description: 'Fictional product',
+      quantity: 1,
+      unit: 'Stück',
+      unitPriceMinor: 10000,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+      discountAmountMinor: null,
+      priceBasis: 'net',
+    },
+    {
+      productId: grossProduct.id,
+      description: 'Fictional gross product',
+      quantity: 1,
+      unit: 'Stück',
+      unitPriceMinor: 12345,
+      taxBasisPoints: 1900,
+      discountBasisPoints: 0,
+      discountAmountMinor: null,
+      priceBasis: 'gross',
+    },
+  ]);
+});
+test('closing the template product dialog keeps the draft without new positions', async () => {
+  const writes = setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  const trigger = screen.getByRole('button', { name: 'Produkt hinzufügen' });
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Produkt auswählen',
+  });
+  fireEvent.click(
+    within(dialog).getByRole('checkbox', { name: /Fictional product/ }),
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Schließen' }));
+  expect(
+    screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
+  ).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.queryByRole('group', { name: 'Position 2' })).toBeNull();
+  expect(hasUnsavedChanges()).toBe(false);
+  expect(writes).toEqual([]);
+});
 test('opening another template draft clears the previous save error', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
   setup();

@@ -1591,6 +1591,62 @@ time {
 .position-remove-dialog {
   width: min(100%, 26rem);
 }
+/* EDITOR-PICKER-01: the catalog picker is a modal list - a search field, a
+   scrollable set of checkbox rows and one add action at the bottom centre. The
+   close icon sits in the dialog header like every other form dialog. */
+.product-picker-dialog {
+  width: min(100%, 32rem);
+}
+.product-picker-list {
+  max-height: min(50dvh, 22rem);
+  overflow-y: auto;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-block: 1px solid var(--border);
+}
+.product-picker-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.4rem 0.35rem;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+.product-picker-option:hover {
+  background: var(--hover-surface);
+}
+.product-picker-option input {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.15rem;
+}
+.product-picker-text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.product-picker-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.product-picker-detail,
+.product-picker-description {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.product-picker-description {
+  white-space: pre-line;
+}
+.product-picker-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.9rem;
+}
+
 .offer-create-dialog::backdrop {
   background: var(--scrim);
 }
