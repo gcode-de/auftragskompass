@@ -1,5 +1,40 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 21.11.2026 (Abendsitzung, laufend)
+
+- **Nutzauftrag (GOAL) 21.11.2026 Abendsitzung:** E-Mail-Einrichtung sicher und
+  benutzbar machen – (A) Einstellungen für das Versandkonto, (B) formatierter
+  Dokument-Mail-Editor mit Platzhaltern, (C) E-Mail-Vorlagen mit
+  Standardanhängen. Kleine nummerierte Slices, einzeln abschließen und
+  ausliefern; Bookitup-ähnliche Bedienung; OpenCode-Abo sparsam. Verbindlich
+  im [Implementierungsplan](../IMPLEMENTATION_PLAN.md) unter GOAL
+  21.11.2026 (Abendsitzung) mit Abnahmekriterien festgehalten.
+- **Bestandskorrektur MAIL-DOC-01 (21.11.2026):** Der Slice ist seit PR #68
+  (`0ad9324`, gemergt 08:28) auf main; Plan-Checkbox und ältere „Aktiver
+  Slice“-Zeilen waren veraltet und sind anhand von Code und Tests korrigiert
+  (Einzelheiten im Plan-Eintrag MAIL-DOC-01).
+- **Bestandscheck 21.11.2026 (Vor Slice A):** Mailkern, idempotente Outbox,
+  SMTP-Adapter (TLS-Pflicht bei Zugangsdaten), Dokumentanhang-Versand und
+  Anfragebenachrichtigung sind implementiert; es gibt **keine**
+  Konten-HTTP-Routen und **keine** SMTP-Kontoeinstellungen im Frontend
+  (`listAccounts`/`saveAccount` nur repository-intern, `saveAccount` nur
+  INSERT, kein Absendername/-adresse, keine Transportverschlüsselungswahl).
+  Slice A (MAIL-ACCOUNT-01, `codex/mail-account-01`) schließt genau das.
+- **CI/Live geprüft 21.11.2026:** Main-CI zu `1482043` (Lauf 44916136724)
+  vollständig grün (quality + browser + images). Live auf CT 114 (pve1 =
+  192.168.68.211): ak-test-api/worker/admin tragen exakt
+  `14820434e41c73709fda2db4b411e2e2354f54b5`, ak-test-gateway `2527d01…`,
+  ak-test-database – alle healthy; `ak-test-update.timer` ist alleiniger
+  Updater. Checkpoint-Dreifachvergleich weiterhin nur über die private
+  Betreiberübergabe belegt.
+- **Werkzeugketten dieser Sitzung:** Node 26
+  (`/Users/gp/.hermes/tools/node-26.12.1-darwin-arm64/bin`) für die lokale
+  Testkette; vor E2E-Läufen `pkill -f "vite.js preview"`; Skills Ponytail
+  (full) und Impeccable unter `~/.codex/skills/` vorhanden und gelesen,
+  REA (`reverse-engineer-anything`) dort ebenfalls installiert (Nutzung nur
+  bei tatsächlichem Bedarf). DeepSeek V4.1 Flash über OpenCode nur für klar
+  abgegrenzte Teilaufgaben, sparsam.
+
 ## Aktueller Stand, 20.11.2026 (laufende Hermes-Sitzung)
 
 Die folgenden datierten Abschnitte sind historische Momentaufnahmen; dieser
@@ -234,9 +269,10 @@ Abschnitt beschreibt den aktuellen Stand.
 - **Erledigt 21.11.2026 – MAIL-NOTIFY-01:** Anfrage-Benachrichtigung per
   E-Mail neben Telegram (PR #66, `8e8c086`, CI grün); genau ein Mail-Auftrag
   je Eingang, Telegram unverändert, Details im Plan.
-- **Aktiver Slice:** MAIL-DOC-01 (Dokumente bewusst ausgewählt als Anhang
-  senden – letzter Mail-Slice, danach ist GOAL-Priorität 3 vollständig).
-  Danach weitere Parität und Designsystem. **Von Ihnen offen:**
+- **(historisch, korrigiert – siehe oben) Aktiver Slice:** MAIL-DOC-01
+  (Dokumente bewusst ausgewählt als Anhang senden – MAIL-DOC-01 ist erledigt,
+  PR #68; der Mail-Slice GOAL A ist jetzt MAIL-ACCOUNT-01).
+  **Von Ihnen offen:**
   Steuer-Klarstellung Gesamtrabatt (Blocker), Entsperren für die
   Sichtprüfungen und – für echten Versand – SMTP-Zugangsdaten/Entscheidung
   zur Mail-Key-Datei.
