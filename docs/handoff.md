@@ -29,6 +29,32 @@ Abschnitt beschreibt den aktuellen Stand.
   `fallback_model` in der Konfiguration auskommentiert), der CLI-Aufruf nennt
   DeepSeek V4.1 Flash – Modell-Selbstauskünfte gelten damit als unzuverlässig,
   maßgeblich sind Aufruf und Metadaten.
+- **Erledigt 21.11.2026 – EDITOR-VISUAL-01 (kleiner Bookitup-Darstellungsslice,
+  GOAL dieser Sitzung):** Zwei belegte sichtbare Unterschiede des
+  Dokumenteditors angeglichen: Brutto/Netto als Schalter oben an der
+  Positionszeile statt „Preisbasis“-Select neben dem Preis (B37-Abweichung 2)
+  und Produkt-Icon Lucide `package-plus` statt der Zahnrad-Lesart
+  (EDITOR-ACTIONS-01-Feinschliff). Implementierung als begrenzte Delegation an
+  DeepSeek V4.1 Flash (`hermes -z -m deepseek-v4.1-flash --provider
+  opencode-go`, tatsächlich eingesetzt, RED 8 → component 1033/1033), Review
+  und Gates durch MiMo V2.6 Pro: unit 360/360, typecheck/lint/format/docs/
+  build grün, volle lokale E2E 52/52. **Visuelle Abnahme offen:** die
+  macOS-Sitzung war überwiegend gesperrt; gesehen wurde nur B25 (Bookitup-
+  Vorschau+Warndialog), nicht B15/B17 und nicht die eigenen Vorher-/Nachher-
+  Bilder (25 Paare archiviert unter dem Scratch-Evidenzordner). Nach
+  Entsperren: Sichtprüfung der Paare + Gegenansicht B15/B25/B17 nachholen,
+  dann Plan-Eintrag ggf. ergänzen. Keine behauptete Gleichheit für Kopf/
+  Breiten/Typografie/Abstände. Einzelheiten: Plan EDITOR-VISUAL-01,
+  Beobachtungen B38.
+- **Werkzeugketten-Befunde dieser Sitzung (Betrieb):** (1) Das Standard-`node`
+  der Shell (v23.11.0, außerhalb der unterstützten Engine-Range) bricht im
+  `require(esm)`-Pfad mit „request for './Parser.js' is not in cache“ und lässt
+  Playwright-Specs nicht laden; **Node 26 (`/Users/gp/.hermes/tools/node-26.12.1-darwin-arm64/bin`) ist für die lokale Testkette zu verwenden.**
+  (2) Ein verwaister `vite preview`-Prozess auf Port 14873 (Altstand einer
+  Vor-Sitzung) ließ den E2E-Proxy mit HTTP 500 antworten; vor E2E-Läufen
+  `pkill -f "vite.js preview"` ausführen. (3) Playwright-Screenshots landen je
+  nach Aufruf in `./test-results` oder `tests/test-results` – vor dem
+  Archivieren den tatsächlichen Ort prüfen.
 - **Git-/CI-Stand (20.11.2026, nach Tagesschluss):** `origin/main` = `435fe93`
   (Merges #27–#31 der heutigen Dokument-Slices; alle Main-CI-Läufe inkl.
   Images grün; ein Runner-`ERR_NETWORK_CHANGED`-Flake via gezieltem Re-Run

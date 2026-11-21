@@ -208,3 +208,30 @@ Select neben dem Preis (gleiche Semantik, andere Stelle); (3) die direkte
 Gegenansicht der Bilder B15/B25 steht nach Entsperren des Rechners noch aus –
 verwendet wurden die dokumentierten AX-Beobachtungen dieser Screenshots und die
 manuelle Nutzerbeschreibung (kein REA-Beleg).
+
+## B38 — EDITOR-VISUAL-01: Referenzstand und Wirkung (21.11.2026)
+
+**Methode/Ehrlichkeit:** Browser-/Bildbeobachtungen, ausdrücklich **kein
+REA-Beleg** (REA-MCP nicht verbunden, Geltungsbereich Artefakt-/Runtime-Zugriff
+lag nicht vor). Die macOS-Sitzung war während des Slices überwiegend gesperrt;
+das Vision-Werkzeug (`auxiliary.vision`) selbst funktionierte (Bildbeschreibungen
+von Captures kamen echte zurück), Fenster-/Vollbild-Captures lieferten bei
+gesperrter Sitzung schwarze beziehungsweise 0×0-Bilder.
+
+**Tatsächlich gesehen (11:31, entsperrtes Fenster):** B25-document-editor.png –
+Bookitup-Dokumentvorschau (Angebot Nr. 038) mit Kopf „← Vorschau“/„Bearbeiten“,
+Warndialog „Dokument bereits fertig“ (Abbrechen/Trotzdem bearbeiten) und
+rechtem Panel „Dokument bereitstellen“ (Online freigeben, E-Mail an Kunden,
+Herunterladen, Drucken). Der Editor dahinter war wie seinerzeit (B25) nicht zu
+sehen. **Nicht gesehen (Sperre):** B15-products.png und B17-template-editor.png
+(Positionen-Referenz) sowie die eigenen Vorher-/Nachher-Bilder.
+
+**Umgesetzt (Sichtbefunde, nicht neu vermessen):** B37-Abweichung 2 geschlossen
+(Brutto/Netto-Schalter oben an der Positionszeile, Select entfernt) und der
+offene Feinschliff-Befund EDITOR-ACTIONS-01 (Produkt-Icon als Zahnrad gelesen →
+Lucide `package-plus`). B37-Abweichung 1 (Positions-Menü-Form) bewusst
+unangetastet. **Unbelegt bleiben:** Kopf, Breiten, Typografie, Abstände der
+beiden Editoren im direkten Gegenüber; die Vorher-/Nachher-Sichtprüfung der
+eigenen Screenshots (25 Paare, Desktop/Mobil, Hell/Dunkel) ist nach Entsperren
+des Rechners nachzuholen. Bis dahin gilt: keine behauptete Bookitup-Gleichheit
+dieser Bereiche.

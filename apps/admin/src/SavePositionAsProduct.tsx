@@ -313,6 +313,8 @@ export function SavePositionAsProduct({
         disabled={disabled || createLocked}
         onClick={() => void create()}
       >
+        {/* EDITOR-VISUAL-01: the lucide "package-plus" geometry names a product
+            unambiguously; the former closed cube read like a gear. */}
         <svg
           aria-hidden="true"
           viewBox="0 0 24 24"
@@ -322,9 +324,12 @@ export function SavePositionAsProduct({
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <path d="M20.5 7.5 12 3 3.5 7.5v9L12 21l8.5-4.5Z" />
-          <path d="m3.5 7.5 8.5 4.5 8.5-4.5" />
-          <path d="M12 12v9" />
+          <path d="M16 16h6" />
+          <path d="M19 13v6" />
+          <path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14" />
+          <path d="m7.5 4.27 9 5.15" />
+          <path d="M3.29 7 12 12l8.71-5" />
+          <path d="M12 22V12" />
         </svg>
       </button>
       {/* The status line stays in the row, under the icon group. */}

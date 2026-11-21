@@ -2611,6 +2611,28 @@ summary {
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+/* EDITOR-VISUAL-01: the price basis is one compact Brutto/Netto switch between
+   the row title and the row actions. It keeps the documented target size of its
+   two radio labels and never claims a track of the field grid. */
+.offer-draft-position-basis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.5rem;
+  min-width: 0;
+  margin-inline-start: 0.25rem;
+  padding-inline: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+.offer-draft-position-basis > label:has(input[type='radio']) {
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.offer-draft-position-basis > label:has(input:checked) {
+  font-weight: 600;
+}
 .offer-draft-position[data-drop-target] {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
