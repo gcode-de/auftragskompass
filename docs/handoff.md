@@ -67,6 +67,25 @@ Abschnitt beschreibt den aktuellen Stand.
   Plan EDITOR-VISUAL-02 und B39. (3) Nächster gut belegter Kandidat:
   Positions-Gesamt-Zeile (Bookitup-Spalte „Gesamt“; erfordert Entscheidung
   über Client-Rechenweg `lineTotals`, B39).
+- **Vorfall/Hotfix 21.11.2026 (Nachmittag, CI-MAILFLAKE-01):** Die Main-CI zu
+  `f231677` (EDITOR-VISUAL-02) war in `quality` rot, obwohl derselbe Stand in
+  beiden PR-Läufen grün war – zwei latente Test-Races: (1) der Vertrag
+  „keine Mailfläche“ der Eventakte traf per Gesamttext-Regex die seit **PR #68
+  (MAIL-DOC-01, bereits auf main gemergt – Plan-/Handoff-Eintrag dazu waren
+  veraltet, Abnahmestand der Mail-Sitzung ungeprüft)** legitime Zeilenaktion
+  „Per E-Mail senden“ (asynchrones Nachrendern der Dokumentzeilen; lokal 3/5
+  rot reproduziert); (2) drei `getByRole`-Stellen in `events.test.tsx` griffen
+  in die noch ladende Record-Shell. Behoben als PR #73 (`856277e`,
+  `test: wait out event record loads and pin the mail contract`): nur zwei
+  Testdateien, keine Produktänderung, keine abgeschwächte Assertion (Vertrag
+  präzisiert auf „keine Mailfläche neben der dokumentierten Senden-Aktion“);
+  vorher 3/5 rot → nachher 6/6, Component 3× 1034/1034. **Main-CI zu `eecd278`
+  inkl. Images grün. Betrieb geprüft (15:45):** ak-test-api/admin/worker
+  tragen exakt `eecd27853dd7d87e7b630ec294f6b56e07f729dc`, healthy;
+  ak-test-gateway `2527d01…` healthy; ak-test-database healthy;
+  ak-test-update.timer ist alleiniger Updater und hat `eecd278` regulär
+  ausgeliefert. Checkpoint-Dreifachvergleich (CT/Host/Betreiberkopie) wie zuvor
+  von hier nicht belegt – Dump-Pfade stehen in der privaten Betreiberübergabe.
 - **Werkzeugketten-Befunde dieser Sitzung (Betrieb):** (1) Das Standard-`node`
   der Shell (v23.11.0, außerhalb der unterstützten Engine-Range) bricht im
   `require(esm)`-Pfad mit „request for './Parser.js' is not in cache“ und lässt
