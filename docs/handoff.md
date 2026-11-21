@@ -6,9 +6,16 @@
   Platzhaltern.** Geliefert als drei fokussierte Teilcommits auf
   `codex/mail-editor-01` (01a Kontakt-Vorname, 01b Mail-Body-Sicherheit/
   Platzhalter/Vorschau serverseitig, 01c Editor-Oberfläche); ausführliche
-  Abnahmezahlen im [Plan-Eintrag MAIL-EDITOR-01](../IMPLEMENTATION_PLAN.md).
-  Release-/Merge-/Live-Nachweis folgt im Folgecommit dieser Runde (Muster wie
-  `87ecc04`).
+  **Abnahmezahlen im [Plan-Eintrag MAIL-EDITOR-01](../IMPLEMENTATION_PLAN.md).
+  Release (21.11.2026, nachts):** PR #77 (Merge-Commit `4e93a5d`, die drei
+  Teilcommits erhalten, Branch lokal und remote gelöscht); Main-CI-Lauf
+  `44959633120` vollständig grün inkl. beider Images; der automatische
+  Updater hat nach grünem Head selbstständig aktualisiert – ak-test-api/
+  worker/admin tragen exakt `4e93a5d0ddfdfb10851b751d4e7fd48a710c7148`,
+  alle drei healthy (zusätzlich database/gateway healthy),
+  `last-success.json` stimmt, vor dem Wechsel liegt der geprüfte Checkpoint
+  `preupdate-4e93a5d0ddfd-20261121T231613404204Z.dump`; die öffentliche
+  Adresse antwortet HTTP 200.
 - **Editorbibliothek:** TipTap 3 mit schmaler Extension-Liste gewählt; die
   Bewertung (TipTap/Plate/Lexical/Quill 2/Eigenbau mit selbst gemessenen
   Bundlegrößen, Lizenzen, Wartung, A11y) steht in
