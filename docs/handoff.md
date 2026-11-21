@@ -126,12 +126,17 @@ Abschnitt beschreibt den aktuellen Stand.
 - **Erledigt 21.11.2026 – DOC-RG04-01:** Steuernummer/USt-IdNr auf Belegen
   (PR #56, `3ff4c93`, CI grün); „abbilden können“ ohne Rechtsabnahme, Details
   im Plan. Damit ist die letzte offene Lastenheft-MUSS-Lücke geschlossen.
-- **Aktiver Slice:** DOC-ACCEPT-FIX-01 (Annahme-Korrekturpfad: eine
-  gespeicherte Angebotsannahme explizit korrigierbar machen – bisher 409 bei
-  abweichenden Angaben, dokumentierter BKP019.a-Rest). Danach E-Mail-Versand/
-  Anfragebenachrichtigung, dann Parität/Designsystem. **Von Ihnen offen:**
-  Steuer-Klarstellung Gesamtrabatt (Blocker) und Entsperren für die
-  Sichtprüfungen.
+- **Erledigt 21.11.2026 – DOC-ACCEPT-FIX-01:** Annahme explizit korrigierbar
+  (PR #58, `a7f3292`, CI grün); Audit `document.acceptance_corrected`,
+  bestehende No-op-/409-Verträge unverändert, Details im Plan.
+- **Aktiver Slice:** MAIL-021-A (Dauerhafter Mailkern: Datenmodell und
+  Outbox; Bestandscheck: keine Mail-Infrastruktur vorhanden, nur generische
+  Worker-Muster). Danach MAIL-021-B (SMTP-Outbox-Versand), MAIL-NOTIFY-01
+  (Anfragebenachrichtigung per E-Mail), MAIL-DOC-01 (Dokumente als Anhang) –
+  alle ausschließlich mit synthetischen Tests, KEIN echter Versand ohne
+  gesonderte Nutzeranweisung. **Von Ihnen offen:** Steuer-Klarstellung
+  Gesamtrabatt (Blocker), Entsperren für die Sichtprüfungen und – für
+  MAIL-021-B – echte SMTP-Zugangsdaten erst auf Ihren ausdrücklichen Wunsch.
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
