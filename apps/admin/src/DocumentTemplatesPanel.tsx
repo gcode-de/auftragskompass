@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { DiscountField } from './DiscountField.js';
+import { PositionRemoveDialog } from './PositionRemoveDialog.js';
 import { SavePositionAsProduct } from './SavePositionAsProduct.js';
 
 type Position = {
@@ -469,6 +470,15 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     field: PlaceholderField;
     text: string;
   } | null>(null);
+  // EDITOR-ACTIONS-01: a position waits for its removal confirmation; until it
+  // is answered the draft stays untouched.
+  const [positionRemoveCandidate, setPositionRemoveCandidate] = useState<{
+    index: number;
+    title: string;
+  } | null>(null);
+  const positionRemoveRefs = useRef(new Map<number, HTMLButtonElement>());
+  const addPositionRef = useRef<HTMLButtonElement>(null);
+  const pendingPositionFocus = useRef<number | null>(null);
   const archiveInFlight = useRef(false);
   const saveInFlight = useRef(false);
   const previewInFlight = useRef(false);
@@ -867,6 +877,40 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       ),
     );
   }
+  // EDITOR-ACTIONS-01: removal asks first and stays a draft change until the
+  // template is saved. Every cancel path returns the focus to its own icon.
+  function askRemovePosition(index: number) {
+    if (busy || positions.length <= 1) return;
+    setPositionRemoveCandidate({ index, title: `Position ${index + 1}` });
+  }
+  function cancelRemovePosition() {
+    const candidate = positionRemoveCandidate;
+    setPositionRemoveCandidate(null);
+    if (candidate) positionRemoveRefs.current.get(candidate.index)?.focus();
+  }
+  function confirmRemovePosition() {
+    const candidate = positionRemoveCandidate;
+    setPositionRemoveCandidate(null);
+    if (!candidate) return;
+    invalidatePreview();
+    pendingPositionFocus.current = candidate.index;
+    setPositions((current) =>
+      current.filter((_row, at) => at !== candidate.index),
+    );
+  }
+  useLayoutEffect(() => {
+    if (pendingPositionFocus.current === null) return;
+    const index = pendingPositionFocus.current;
+    pendingPositionFocus.current = null;
+    // The row that took the place of the removed one owns the next focus. When
+    // only one position is left its own removal is disabled, so the add action
+    // takes over instead of dropping the focus on the document.
+    const target = positionRemoveRefs.current.get(
+      Math.min(index, positions.length - 1),
+    );
+    if (target && !target.disabled) target.focus();
+    else addPositionRef.current?.focus();
+  }, [positions]);
   function clearPreview() {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = '';
@@ -1773,7 +1817,66 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             <h3>Positionen</h3>
             {positions.map((position, index) => (
               <fieldset key={index}>
-                <legend>Position {index + 1}</legend>
+                {/* EDITOR-ACTIONS-01: the legend names the group for assistive
+                    technology; the visible header carries the title and the
+                    row's compact icon group. */}
+                <legend className="sr-only">Position {index + 1}</legend>
+                <div className="offer-draft-position-head">
+                  <span
+                    className="offer-draft-position-title"
+                    aria-hidden="true"
+                  >
+                    Position {index + 1}
+                  </span>
+                  <div
+                    className="offer-draft-position-actions"
+                    role="group"
+                    aria-label="Aktionen dieser Zeile"
+                  >
+                    <button
+                      ref={(element) => {
+                        if (element)
+                          positionRemoveRefs.current.set(index, element);
+                        else positionRemoveRefs.current.delete(index);
+                      }}
+                      type="button"
+                      className="icon-action tier-quiet-icon"
+                      aria-label={`Position ${index + 1} entfernen`}
+                      title={`Position ${index + 1} entfernen`}
+                      disabled={positions.length === 1}
+                      onClick={() => askRemovePosition(index)}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M4 7h16" />
+                        <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                        <path d="m6 7 1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+                        <path d="M10 11v6M14 11v6" />
+                      </svg>
+                    </button>
+                    {/* DOC-PRODUCT-01.6: the same deliberate action as in the
+                        document editor. It only reads this row's values. */}
+                    <SavePositionAsProduct
+                      label={`Position ${index + 1}`}
+                      csrfToken={csrfToken}
+                      disabled={busy}
+                      position={{
+                        description: position.description,
+                        unit: position.unit,
+                        price: position.price,
+                        priceBasis: position.priceBasis,
+                        tax: position.tax,
+                      }}
+                    />
+                  </div>
+                </div>
                 <label>
                   Produkt
                   <select
@@ -1882,36 +1985,10 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                     updatePosition(index, { discountMode: mode })
                   }
                 />
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={positions.length === 1}
-                  onClick={() => {
-                    invalidatePreview();
-                    setPositions((current) =>
-                      current.filter((_row, at) => at !== index),
-                    );
-                  }}
-                >
-                  Position entfernen
-                </button>
-                {/* DOC-PRODUCT-01.6: the same deliberate action as in the
-                    document editor. It only reads this row's values. */}
-                <SavePositionAsProduct
-                  label={`Position ${index + 1}`}
-                  csrfToken={csrfToken}
-                  disabled={busy}
-                  position={{
-                    description: position.description,
-                    unit: position.unit,
-                    price: position.price,
-                    priceBasis: position.priceBasis,
-                    tax: position.tax,
-                  }}
-                />
               </fieldset>
             ))}
             <button
+              ref={addPositionRef}
               type="button"
               className="secondary-action"
               onClick={() => {
@@ -1971,6 +2048,14 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             </button>
           </fieldset>
         </form>
+      )}
+      {positionRemoveCandidate && (
+        <PositionRemoveDialog
+          position={positionRemoveCandidate.title}
+          message="Die Position wird erst beim Speichern aus der Vorlage entfernt."
+          onConfirm={confirmRemovePosition}
+          onCancel={cancelRemovePosition}
+        />
       )}
       <p role={conversionError ? 'alert' : 'status'}>{message}</p>
       {uncertainCreate && editorOpen && (

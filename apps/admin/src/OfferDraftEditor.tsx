@@ -10,6 +10,7 @@ import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
 import { DiscountField } from './DiscountField.js';
+import { PositionRemoveDialog } from './PositionRemoveDialog.js';
 import { SavePositionAsProduct } from './SavePositionAsProduct.js';
 
 type DraftValues = {
@@ -516,12 +517,19 @@ export function OfferDraftEditor({
     [catalogError, setCatalogError] = useState(false),
     [catalogMessage, setCatalogMessage] = useState(''),
     [dropTarget, setDropTarget] = useState(''),
+    // EDITOR-ACTIONS-01: the row that waits for its removal confirmation. No
+    // position changes until the question is answered.
+    [removeCandidate, setRemoveCandidate] = useState<{
+      key: string;
+      title: string;
+    } | null>(null),
     [moveAnnouncement, setMoveAnnouncement] = useState({
       sequence: 0,
       text: '',
     }),
     draggedLine = useRef(''),
     pendingMoveFocus = useRef<HTMLButtonElement | null>(null),
+    removeButtonRefs = useRef(new Map<string, HTMLButtonElement>()),
     request = useRef(0),
     lineSequence = useRef(0),
     catalogRequest = useRef<Promise<void> | null>(null),
@@ -926,6 +934,26 @@ export function OfferDraftEditor({
     setCatalogMessage('');
   }
 
+  // EDITOR-ACTIONS-01: removal is a deliberate two-step action. The question
+  // reuses the shared form dialog; every cancel path returns the focus to the
+  // icon that asked, and only the confirmation removes the position.
+  function askRemove(key: string, title: string) {
+    if (finalizing || busyRef.current) return;
+    setRemoveCandidate({ key, title });
+  }
+
+  function cancelRemove() {
+    const candidate = removeCandidate;
+    setRemoveCandidate(null);
+    if (candidate) removeButtonRefs.current.get(candidate.key)?.focus();
+  }
+
+  function confirmRemove() {
+    const candidate = removeCandidate;
+    setRemoveCandidate(null);
+    if (candidate) removeLine(candidate.key);
+  }
+
   function removeLine(key: string) {
     if (finalizing) return;
     if (lineValues.length <= 1) return;
@@ -1314,7 +1342,12 @@ export function OfferDraftEditor({
                       disabled={busy || loading}
                       key={line.key}
                     >
-                      <legend>
+                      {/* EDITOR-ACTIONS-01: the legend names the group for
+                          assistive technology; the visible header carries the
+                          title and one compact icon group for every row
+                          action. */}
+                      <legend className="sr-only">{title}</legend>
+                      <div className="offer-draft-position-head">
                         {lineValues.length > 1 && (
                           <span
                             className="offer-draft-position-grip"
@@ -1350,8 +1383,111 @@ export function OfferDraftEditor({
                             </svg>
                           </span>
                         )}
-                        {title}
-                      </legend>
+                        <span
+                          className="offer-draft-position-title"
+                          aria-hidden="true"
+                        >
+                          {title}
+                        </span>
+                        <div
+                          className="offer-draft-position-actions"
+                          role="group"
+                          aria-label="Aktionen dieser Zeile"
+                        >
+                          {lineValues.length > 1 &&
+                            ([-1, 1] as const).map((direction) => {
+                              const destination = index + direction;
+                              const label = `${title} nach ${direction === -1 ? 'oben' : 'unten'} verschieben`;
+                              return (
+                                <button
+                                  key={direction}
+                                  type="button"
+                                  className="icon-action tier-quiet-icon offer-draft-move"
+                                  aria-label={label}
+                                  title={label}
+                                  disabled={!canReorder}
+                                  aria-disabled={
+                                    destination < 0 ||
+                                    destination >= lineValues.length
+                                  }
+                                  onClick={(event) =>
+                                    moveLine(
+                                      line.key,
+                                      destination,
+                                      event.currentTarget,
+                                    )
+                                  }
+                                >
+                                  <svg
+                                    aria-hidden="true"
+                                    viewBox="0 0 16 16"
+                                    width="16"
+                                    height="16"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path
+                                      d={
+                                        direction === -1
+                                          ? 'M4 9l4-4 4 4'
+                                          : 'M4 7l4 4 4-4'
+                                      }
+                                    />
+                                  </svg>
+                                </button>
+                              );
+                            })}
+                          <button
+                            ref={(element) => {
+                              if (element)
+                                removeButtonRefs.current.set(line.key, element);
+                              else removeButtonRefs.current.delete(line.key);
+                            }}
+                            type="button"
+                            className="icon-action tier-quiet-icon"
+                            aria-label={`${title} entfernen`}
+                            title={`${title} entfernen`}
+                            disabled={lineValues.length <= 1 || busy || loading}
+                            onClick={() => askRemove(line.key, title)}
+                          >
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M4 7h16" />
+                              <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                              <path d="m6 7 1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+                              <path d="M10 11v6M14 11v6" />
+                            </svg>
+                          </button>
+                          {/* DOC-PRODUCT-01.6: the deliberate product action of
+                              this row. It reads the row's values and never writes
+                              them back, so the position stays exactly as typed. */}
+                          {line.kind !== 'info' && (
+                            <SavePositionAsProduct
+                              label={title}
+                              csrfToken={csrfToken}
+                              disabled={busy || loading || isBlocked}
+                              position={{
+                                description: line.description,
+                                infoText: line.infoText,
+                                unit: line.unit,
+                                price: line.unitPrice,
+                                priceBasis: line.priceBasis,
+                                tax: line.tax,
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
                       {line.kind === 'info' ? (
                         <label className="offer-draft-info-field">
                           Text
@@ -1518,80 +1654,6 @@ export function OfferDraftEditor({
                           />
                         </div>
                       )}
-                      <div className="offer-draft-position-actions">
-                        {lineValues.length > 1 &&
-                          ([-1, 1] as const).map((direction) => {
-                            const destination = index + direction;
-                            const label = `${title} nach ${direction === -1 ? 'oben' : 'unten'} verschieben`;
-                            return (
-                              <button
-                                key={direction}
-                                type="button"
-                                className="tertiary-action offer-draft-move"
-                                aria-label={label}
-                                title={label}
-                                disabled={!canReorder}
-                                aria-disabled={
-                                  destination < 0 ||
-                                  destination >= lineValues.length
-                                }
-                                onClick={(event) =>
-                                  moveLine(
-                                    line.key,
-                                    destination,
-                                    event.currentTarget,
-                                  )
-                                }
-                              >
-                                <svg
-                                  aria-hidden="true"
-                                  viewBox="0 0 16 16"
-                                  width="16"
-                                  height="16"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path
-                                    d={
-                                      direction === -1
-                                        ? 'M4 9l4-4 4 4'
-                                        : 'M4 7l4 4 4-4'
-                                    }
-                                  />
-                                </svg>
-                              </button>
-                            );
-                          })}
-                        <button
-                          type="button"
-                          className="tertiary-action"
-                          disabled={lineValues.length <= 1 || busy || loading}
-                          onClick={() => removeLine(line.key)}
-                        >
-                          {title} entfernen
-                        </button>
-                        {/* DOC-PRODUCT-01.6: the deliberate product action of
-                            this row. It reads the row's values and never writes
-                            them back, so the position stays exactly as typed. */}
-                        {line.kind !== 'info' && (
-                          <SavePositionAsProduct
-                            label={title}
-                            csrfToken={csrfToken}
-                            disabled={busy || loading || isBlocked}
-                            position={{
-                              description: line.description,
-                              infoText: line.infoText,
-                              unit: line.unit,
-                              price: line.unitPrice,
-                              priceBasis: line.priceBasis,
-                              tax: line.tax,
-                            }}
-                          />
-                        )}
-                      </div>
                       {line.kind !== 'info' && (
                         <label className="offer-draft-position-option">
                           <input
@@ -1930,6 +1992,14 @@ export function OfferDraftEditor({
             </button>
           )}
         </div>
+      )}
+      {removeCandidate && (
+        <PositionRemoveDialog
+          position={removeCandidate.title}
+          message="Die Position wird mit ihren Angaben erst beim Speichern aus dem Dokument entfernt."
+          onConfirm={confirmRemove}
+          onCancel={cancelRemove}
+        />
       )}
     </section>
   );

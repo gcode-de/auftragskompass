@@ -1587,6 +1587,10 @@ time {
   width: min(32rem, calc(100% - 1rem));
   margin: auto;
 }
+/* EDITOR-ACTIONS-01: the removal question stays one short, deliberate box. */
+.position-remove-dialog {
+  width: min(100%, 26rem);
+}
 .offer-create-dialog::backdrop {
   background: var(--scrim);
 }
@@ -2536,9 +2540,20 @@ summary {
   padding: 0.45rem 0.5rem 0.65rem;
   border: 1px solid var(--border);
 }
-.offer-draft-position legend {
+/* EDITOR-ACTIONS-01: the legend only names the field group; the visible header
+   carries the row title and its compact icon group on one line. */
+.offer-draft-position-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
+  min-width: 0;
+  margin-block: 0 0.35rem;
   padding-inline: 0.25rem;
+}
+.offer-draft-position-title {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .offer-draft-position[data-drop-target] {
   outline: 2px solid var(--focus);
@@ -2564,6 +2579,9 @@ summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  margin-inline-start: auto;
 }
 .offer-draft-position-actions .offer-draft-move {
   display: inline-grid;
@@ -2577,10 +2595,11 @@ summary {
   color: var(--disabled-ink);
   cursor: not-allowed;
 }
-/* DOC-PRODUCT-01.6: the product action of one row keeps its own status line.
-   The line sits under the buttons and never widens the row. */
+/* DOC-PRODUCT-01.6 / EDITOR-ACTIONS-01: the product action is one icon of the
+   header group; its status line keeps its own row inside the group. */
 .offer-draft-position-product {
   display: flex;
+  flex-basis: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.15rem 0.5rem;
@@ -2656,20 +2675,6 @@ summary {
   .offer-draft-position-wide-field,
   .offer-draft-position-fields > .discount-field {
     grid-column: span 2;
-  }
-  .offer-draft-position-actions {
-    justify-self: end;
-  }
-}
-@container draft-positions (min-width: 60rem) {
-  .offer-draft-position {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    column-gap: 0.65rem;
-  }
-  .offer-draft-position-fields,
-  .offer-draft-info-field {
-    margin-bottom: 0;
   }
 }
 .offer-draft-total {

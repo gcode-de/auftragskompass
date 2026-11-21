@@ -1208,9 +1208,22 @@ test('password, import, template and number panels name a tier for every action'
   expect(
     tier(within(templates).getByRole('button', { name: 'Vorlage speichern' })),
   ).toBe('primary-action');
-  for (const name of ['Position hinzufügen', 'Position entfernen'])
-    expect(tier(within(templates).getByRole('button', { name })), name).toBe(
-      'secondary-action',
+  expect(
+    tier(
+      within(templates).getByRole('button', { name: 'Position hinzufügen' }),
+    ),
+  ).toBe('secondary-action');
+  // EDITOR-ACTIONS-01: the row actions are quiet icon actions in the position
+  // header instead of text buttons beside the fields.
+  const rowActions = within(templates).getByRole('group', {
+    name: 'Aktionen dieser Zeile',
+  });
+  for (const name of [
+    'Position 1 entfernen',
+    'Position 1 als Produkt speichern',
+  ])
+    expect(tier(within(rowActions).getByRole('button', { name })), name).toBe(
+      'icon-action',
     );
   for (const name of [
     'Vorlage bearbeiten: Synthetic offer template',

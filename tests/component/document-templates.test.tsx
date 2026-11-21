@@ -2198,8 +2198,11 @@ test('edits every position field, removes a row and cancels the draft', async ()
     target: { value: '7.00' },
   });
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
   fireEvent.click(
-    screen.getAllByRole('button', { name: 'Position entfernen' })[1]!,
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Entfernen',
+    }),
   );
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(1);
   vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -3352,4 +3355,51 @@ test('a template position becomes a product without writing the template', async
     (screen.getByLabelText('Einzelpreis (Brutto) in Euro') as HTMLInputElement)
       .value,
   ).toBe('199.00');
+});
+
+// EDITOR-ACTIONS-01: a template position header carries the same compact icon
+// group. Removal asks first, exactly like the document editor.
+test('a template position groups remove and product as icons and asks before removing', async () => {
+  setup();
+  render(<DocumentTemplatesPanel csrfToken="fictional-csrf" />);
+  await screen.findAllByText(/Fictional offer/);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Vorlage bearbeiten: Fictional offer' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }));
+  const first = screen.getByRole('group', { name: 'Position 1' });
+  const actions = within(first).getByRole('group', {
+    name: 'Aktionen dieser Zeile',
+  });
+  for (const name of [
+    'Position 1 entfernen',
+    'Position 1 als Produkt speichern',
+  ])
+    expect(
+      within(actions).getByRole('button', { name }).getAttribute('class'),
+    ).toContain('icon-action');
+  expect(
+    screen.queryByRole('button', { name: 'Position entfernen' }),
+  ).toBeNull();
+
+  const remove = within(actions).getByRole('button', {
+    name: 'Position 1 entfernen',
+  });
+  fireEvent.click(remove);
+  const dialog = screen.getByRole('dialog', { name: 'Position 1 entfernen?' });
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  expect(document.activeElement).toBe(remove);
+
+  fireEvent.click(remove);
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Entfernen',
+    }),
+  );
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(1);
+  // The removed group is gone, so the focus lands on a real control.
+  expect(document.activeElement).not.toBe(document.body);
 });

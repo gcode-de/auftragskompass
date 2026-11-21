@@ -1194,8 +1194,22 @@ test('template adopts net product prices with their stored basis unchanged and k
   ).toHaveValue('90071992547409.91');
   await expect(overflowPosition.getByLabel('Preisbasis')).toHaveValue('net');
   await expect(page.getByRole('alert')).toHaveCount(0);
+  // EDITOR-ACTIONS-01: the row action is a named icon and asks before removing.
   await overflowPosition
-    .getByRole('button', { name: 'Position entfernen' })
+    .getByRole('button', { name: 'Position 4 entfernen' })
+    .click();
+  const removeDialog = page.getByRole('dialog', {
+    name: 'Position 4 entfernen?',
+  });
+  await expect(removeDialog).toBeVisible();
+  await removeDialog.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(page.getByRole('group', { name: 'Position 4' })).toHaveCount(1);
+  await overflowPosition
+    .getByRole('button', { name: 'Position 4 entfernen' })
+    .click();
+  await page
+    .getByRole('dialog', { name: 'Position 4 entfernen?' })
+    .getByRole('button', { name: 'Entfernen' })
     .click();
   await expect(page.getByRole('group', { name: 'Position 4' })).toHaveCount(0);
 

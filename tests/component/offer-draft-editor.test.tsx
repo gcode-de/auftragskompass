@@ -331,6 +331,14 @@ function fieldValue(label: string) {
   ).value;
 }
 
+// EDITOR-ACTIONS-01: removing a position asks first in the established form
+// dialog. The helper keeps the older, behaviour-focused tests readable.
+function removePosition(title: string) {
+  fireEvent.click(screen.getByRole('button', { name: `${title} entfernen` }));
+  const dialog = screen.getByRole('dialog', { name: `${title} entfernen?` });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Entfernen' }));
+}
+
 async function openOfferCreate() {
   const trigger = await screen.findByRole('button', {
     name: 'Dokument anlegen',
@@ -732,8 +740,8 @@ test('existing standalone information text remains editable', async () => {
   ).toHaveProperty('disabled', true);
   fireEvent.change(reloadedText, { target: { value: 'Geänderter Hinweis' } });
 
-  fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Position 1 entfernen' }));
+  removePosition('Position 2');
+  removePosition('Position 1');
   expect(document.activeElement).toBe(
     within(reloaded).getByRole('textbox', { name: 'Text' }),
   );
@@ -1152,7 +1160,7 @@ test('existing and free positions save exactly, removal/addition persist, and ro
   fireEvent.change(within(first).getByLabelText('Rabatt in Prozent'), {
     target: { value: '12,50' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
+  removePosition('Position 2');
   expect(document.activeElement).toBe(
     within(first).getByLabelText('Beschreibung'),
   );
@@ -1666,7 +1674,7 @@ test('removing the first of three positions focuses the first surviving descript
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   await screen.findByRole('group', { name: 'Position 3' });
-  fireEvent.click(screen.getByRole('button', { name: 'Position 1 entfernen' }));
+  removePosition('Position 1');
   const remaining = screen.getByRole('group', { name: 'Position 1' });
   await waitFor(() =>
     expect(document.activeElement).toBe(
@@ -1698,7 +1706,7 @@ test('removing the middle of three positions focuses the next surviving descript
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
   );
   await screen.findByRole('group', { name: 'Position 3' });
-  fireEvent.click(screen.getByRole('button', { name: 'Position 2 entfernen' }));
+  removePosition('Position 2');
   const remaining = screen.getByRole('group', { name: 'Position 2' });
   await waitFor(() =>
     expect(document.activeElement).toBe(
@@ -2379,11 +2387,7 @@ test('catalog information belongs to the position through saving, reloading and 
       target: { value: 'Fiktiver Text zum Entfernen' },
     },
   );
-  fireEvent.click(
-    within(reloadedPosition).getByRole('button', {
-      name: 'Position 2 entfernen',
-    }),
-  );
+  removePosition('Position 2');
   expect(screen.queryByRole('group', { name: 'Position 2' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
   await screen.findByText('Änderungen gespeichert.');
@@ -3017,4 +3021,118 @@ test('an unclear product answer requires the stock check before another attempt'
     'value',
     'Fiktives Fotobox-Paket',
   );
+});
+
+// EDITOR-ACTIONS-01: the four row actions of a position became one compact icon
+// group in its header. The names, the order and the product status stay.
+test('the position header carries one icon group with four named actions', async () => {
+  const second = {
+    ...line,
+    id: 'line-2',
+    position: 1,
+    description: 'Fiktiver Aufbau',
+  };
+  setup({ initial: { ...detail(), lines: [line, second] } });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const first = await screen.findByRole('group', { name: 'Position 1' });
+  const actions = within(first).getByRole('group', {
+    name: 'Aktionen dieser Zeile',
+  });
+  const buttons = [
+    'Position 1 nach oben verschieben',
+    'Position 1 nach unten verschieben',
+    'Position 1 entfernen',
+    'Position 1 als Produkt speichern',
+  ].map((name) => within(actions).getByRole('button', { name }));
+  for (const button of buttons) {
+    expect(button.getAttribute('class')).toContain('icon-action');
+    expect(button.getAttribute('class')).toContain('tier-quiet-icon');
+  }
+  // The DOM order is the Tab order: up, down, remove, product.
+  for (let index = 1; index < buttons.length; index += 1)
+    expect(
+      buttons[index - 1]!.compareDocumentPosition(buttons[index]!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  // The group sits in the row header, before the first field.
+  const header = first.querySelector('.offer-draft-position-head')!;
+  expect(header.contains(actions)).toBe(true);
+  expect(
+    header.compareDocumentPosition(
+      within(first).getByLabelText('Beschreibung'),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  // No text button of these four remains anywhere in the editor.
+  expect(
+    screen.queryByRole('button', { name: 'Als Produkt speichern' }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Position entfernen' }),
+  ).toBeNull();
+
+  // The product action keeps its status line inside the same row.
+  fireEvent.click(buttons[3]!);
+  expect(
+    await within(first).findByText(
+      'Als Produkt gespeichert: Fiktives Fotobox-Paket.',
+    ),
+  ).toBeTruthy();
+});
+
+// EDITOR-ACTIONS-01: removal asks first. Cancel, Escape and the backdrop keep
+// the position, leave the editor open and return the focus to its action.
+test('removing a position asks first and cancelling keeps it', async () => {
+  const second = {
+    ...line,
+    id: 'line-2',
+    position: 1,
+    description: 'Fiktiver Aufbau',
+  };
+  setup({ initial: { ...detail(), lines: [line, second] } });
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const first = await screen.findByRole('group', { name: 'Position 1' });
+  const remove = within(first).getByRole('button', {
+    name: 'Position 1 entfernen',
+  });
+
+  fireEvent.click(remove);
+  const dialog = screen.getByRole('dialog', {
+    name: 'Position 1 entfernen?',
+  });
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  expect(document.activeElement).toBe(
+    within(dialog).getByRole('button', { name: 'Abbrechen' }),
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  expect(document.activeElement).toBe(remove);
+
+  fireEvent.click(remove);
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  // Escape cancelled the question, not the whole editor.
+  expect(screen.getByLabelText('Betreff')).toBeTruthy();
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  expect(document.activeElement).toBe(remove);
+
+  fireEvent.click(remove);
+  fireEvent.mouseDown(document.querySelector('.form-dialog-backdrop')!);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
+  expect(document.activeElement).toBe(remove);
+
+  fireEvent.click(remove);
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Entfernen',
+    }),
+  );
+  expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(1);
 });
