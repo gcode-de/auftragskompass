@@ -123,10 +123,12 @@ Abschnitt beschreibt den aktuellen Stand.
 - **Offene Sichtprüfungen (warten auf Entsperren des Rechners):** Akkordion
   (EDITOR-MOBILE-01), Produkt-Modal (EDITOR-PICKER-01), direkte
   Gegenansicht der Bookitup-Bilder B15/B25. Danach Plan-Einträge abschließen.
-- **Aktiver Slice:** DOC-RG04-01 (Pflichtangaben: Steuernummer/USt-IdNr auf
-  Rechnungen – letzte offene Lastenheft-MUSS-Lücke RG-04; Ist-Stand geprüft:
-  nur dieses Feld fehlt, Empfänger-/Absenderanschrift und Steuerzeilen
-  bestehen). Danach Annahme-Korrekturpfad, dann E-Mail-Versand/
+- **Erledigt 21.11.2026 – DOC-RG04-01:** Steuernummer/USt-IdNr auf Belegen
+  (PR #56, `3ff4c93`, CI grün); „abbilden können“ ohne Rechtsabnahme, Details
+  im Plan. Damit ist die letzte offene Lastenheft-MUSS-Lücke geschlossen.
+- **Aktiver Slice:** DOC-ACCEPT-FIX-01 (Annahme-Korrekturpfad: eine
+  gespeicherte Angebotsannahme explizit korrigierbar machen – bisher 409 bei
+  abweichenden Angaben, dokumentierter BKP019.a-Rest). Danach E-Mail-Versand/
   Anfragebenachrichtigung, dann Parität/Designsystem. **Von Ihnen offen:**
   Steuer-Klarstellung Gesamtrabatt (Blocker) und Entsperren für die
   Sichtprüfungen.
