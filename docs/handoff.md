@@ -116,8 +116,17 @@ Abschnitt beschreibt den aktuellen Stand.
   Preisfelder (PR #51, `2a5719f`, CI grün; component 1012, E2E 51/51 des
   Koordinators). **Visuelle Abnahme offen** (Bildschirm gesperrt – kein
   Umgehen; nach Entsperren nachzuholen, zusammen mit dem B15/B25-Rest).
-- **Aktiver Slice:** EDITOR-PICKER-01 (Produkt-Modal mit Suche und
-  Mehrfachauswahl). Danach Dokumentrest → E-Mail → Parität/Design.
+- **Erledigt 21.11.2026 – EDITOR-PICKER-01:** Produkt-Mehrfachauswahl im
+  Modal „Produkt auswählen“ mit Suche (PR #53, `c637923`, CI grün; component
+  1018, E2E 52/52 des Koordinators). **Visuelle Abnahme offen** (Bildschirm
+  gesperrt). Damit sind alle vier Nutzer-Feature-Wünsche umgesetzt.
+- **Offene Sichtprüfungen (warten auf Entsperren des Rechners):** Akkordion
+  (EDITOR-MOBILE-01), Produkt-Modal (EDITOR-PICKER-01), direkte
+  Gegenansicht der Bookitup-Bilder B15/B25. Danach Plan-Einträge abschließen.
+- **Aktiver Slice:** Dokumentrest (GOAL-Priorität 2): offene Dokumentabläufe
+  vervollständigen; danach E-Mail-Versand/Anfragebenachrichtigung, dann
+  Parität/Designsystem. **Von Ihnen offen:** Steuer-Klarstellung
+  Gesamtrabatt (Blocker).
 - **Erledigt 21.11.2026 – DOC-CREATE-02-Rest:** Schlussrechnung und
   Rechnungskorrektur im einheitlichen Dokumentdialog (PR #45, `f5ebf49`, CI
   grün; volle E2E-Suite 50/50); Inline-Wege sind im Dialog aufgegangen,
