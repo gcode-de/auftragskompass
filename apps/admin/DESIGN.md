@@ -417,6 +417,24 @@ Eingaben; ab 44rem Positionslistenbreite steht sie rechts daneben und richtet
 sich an deren Unterkante aus. Die Tastaturreihenfolge und die mindestens
 44px große Trefferfläche bleiben erhalten.
 
+### Mobiles Akkordion der Preisfelder (EDITOR-MOBILE-01)
+
+Unterhalb von 44rem Viewportbreite – derselbe Schwellwert, an dem das Feldraster
+zuletzt umbricht – fasst je Position ein natives `<details>` die sechs
+Werteingaben zusammen: Menge, Einheit, Einzelpreis samt Preisbasis, Steuer,
+Rabattart und Rabatt. Die Positionsüberschrift mit ihrer Icon-Gruppe und die
+Beschreibung bleiben sofort sichtbar; Produkt und Beschreibung stehen im
+Vorlageneditor ebenfalls außerhalb der Gruppe. Die Summary heißt „Preis und
+Rabatt“ und zeigt die getippten Werte als knappe Vorschau
+(„1 Tag · 100,00 € · 19 %“), damit die Position auch zugeklappt lesbar bleibt.
+Sie ist mindestens 48px hoch, per Enter/Leertaste bedienbar und die Felder
+folgen ihr in natürlicher Reihenfolge. Die Gruppe startet zugeklappt; ein Feld
+mit `aria-invalid` hält sie offen, und nach dem Aufklappen bleibt sie bis zur
+bewussten Bedienung der Summary offen – kein Zuklappen bei Blur, kein Remount
+und kein Wertverlust. Ab 44rem ist die Summary `display: none`, die Gruppe ist
+immer offen; das DOM bleibt in beiden Breiten identisch. Gleiches Muster im
+Vorlageneditor.
+
 ### Positionsaktionen (EDITOR-ACTIONS-01)
 
 Die Aktionen jeder Dokumentposition liegen als kompakte Icon-Gruppe in der

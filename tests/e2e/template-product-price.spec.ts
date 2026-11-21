@@ -1848,3 +1848,54 @@ test('confirmed archive remains successful when list refresh fails and retry per
   expect(api.writes).toHaveLength(1);
   expect(api.unexpectedApiWrites).toEqual([]);
 });
+
+// EDITOR-MOBILE-01: the template editor folds the six value fields of a
+// position on a phone, keeps the typed values across closing and opening, and
+// leaves the wide form unchanged.
+test('a phone folds the template position values behind one summary and keeps them', async ({
+  page,
+}) => {
+  const { writes, unexpectedApiWrites } = await stubTemplateApis(page);
+  const position = await openTemplateEditor(page);
+  const group = position.locator('.offer-draft-position-price-group');
+  const summary = group.locator('summary');
+  const quantity = position.getByLabel('Menge');
+  const price = position.getByLabel('Einzelpreis (Brutto) in Euro');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(summary).toBeVisible();
+  await expect(group).not.toHaveAttribute('open', '');
+  await expect(summary).toContainText('1 Pauschale · 88.88 € · 19.00 %');
+  expect((await summary.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // The heading, the product choice and the description stay outside the group.
+  await expect(position.locator('select').first()).toBeVisible();
+  await expect(position.getByLabel('Beschreibung')).toBeVisible();
+
+  await summary.click();
+  await expect(group).toHaveAttribute('open', '');
+  await expect(quantity).toBeVisible();
+  await price.fill('123.45');
+  await summary.click();
+  await expect(group).not.toHaveAttribute('open', '');
+  await expect(price).toBeHidden();
+  await expect(price).toHaveValue('123.45');
+  await expect(summary).toContainText('1 Pauschale · 123.45 € · 19.00 %');
+
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(group).toHaveAttribute('open', '');
+  await expect(price).toBeVisible();
+  await expect(price).toHaveValue('123.45');
+  await page.keyboard.press('Tab');
+  await expect(quantity).toBeFocused();
+
+  // A wide view keeps the group open and offers no summary step at all.
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await expect(summary).toBeHidden();
+  await expect(group).toHaveAttribute('open', '');
+  await expect(quantity).toBeVisible();
+  await expect(quantity).toHaveValue('1');
+  await expect(price).toHaveValue('123.45');
+  expect(writes).toEqual([]);
+  expect(unexpectedApiWrites).toEqual([]);
+});

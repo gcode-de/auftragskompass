@@ -348,6 +348,36 @@ async function openOfferCreate() {
   return trigger;
 }
 
+// EDITOR-MOBILE-01: a phone-sized viewport folds the six value fields of a
+// position into one disclosure. jsdom has neither a viewport preference nor a
+// container size, so the frame is stubbed exactly like the file and event
+// filter tests do.
+const compactFieldsQuery = '(max-width: 43.99rem)';
+function compactViewport() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === compactFieldsQuery,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+function priceGroup(position: HTMLElement) {
+  const group = position.querySelector<HTMLDetailsElement>(
+    'details.offer-draft-position-price-group',
+  );
+  if (!group) throw new Error('price group missing');
+  return group;
+}
+function priceSummary(group: HTMLElement) {
+  const summary = group.querySelector<HTMLElement>('summary');
+  if (!summary) throw new Error('summary missing');
+  return summary;
+}
+
 test('offer creation opens in a labelled dialog', async () => {
   setup({ documents: [] });
   render(<EventDocuments {...props} />);
@@ -3135,4 +3165,133 @@ test('removing a position asks first and cancelling keeps it', async () => {
     }),
   );
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(1);
+});
+
+// EDITOR-MOBILE-01: on a phone the six value fields of one position are one
+// native disclosure. The heading and the description stay visible; the summary
+// names the typed values even while the fields are folded away.
+test('a narrow position folds its value fields into a summary with the typed values', async () => {
+  compactViewport();
+  setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  const group = priceGroup(position);
+  expect(group).toHaveProperty('open', false);
+  const summary = priceSummary(group);
+  expect(summary.textContent).toBe(
+    'Preis und Rabatt 1 Pauschale · 249.00 € · 19.00 %',
+  );
+  // The description is not part of the folded group and stays readable.
+  expect(within(group).queryByLabelText('Beschreibung')).toBeNull();
+  const description = within(position).getByLabelText('Beschreibung');
+  expect(group.contains(description)).toBe(false);
+  // Every one of the six value fields belongs to the disclosure.
+  for (const label of [
+    'Menge',
+    'Einheit',
+    'Einzelpreis (Brutto) in Euro',
+    'Preisbasis',
+    'Steuer in Prozent',
+    'Rabattart',
+    'Rabatt in Prozent',
+  ])
+    expect(within(group).getByLabelText(label)).toBeTruthy();
+});
+
+// EDITOR-MOBILE-01: opening is one deliberate act of the operator. The group
+// keeps its values and its field nodes while it is closed, so nothing is
+// remounted and no state can be lost between the two states.
+test('folding keeps every value and every field node of the position', async () => {
+  compactViewport();
+  setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  const group = priceGroup(position);
+  const summary = priceSummary(group);
+  const quantity = within(group).getByLabelText('Menge');
+  const unit = within(group).getByLabelText('Einheit');
+
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', true);
+  fireEvent.change(quantity, { target: { value: '2' } });
+  fireEvent.change(unit, { target: { value: 'Tag' } });
+  expect(hasUnsavedChanges()).toBe(true);
+
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', false);
+  // The same nodes survive the closed state with their typed values.
+  expect(within(group).getByLabelText('Menge')).toBe(quantity);
+  expect(within(group).getByLabelText('Einheit')).toBe(unit);
+  expect((quantity as HTMLInputElement).value).toBe('2');
+  expect((unit as HTMLInputElement).value).toBe('Tag');
+  expect(priceSummary(group).textContent).toBe(
+    'Preis und Rabatt 2 Tag · 249.00 € · 19.00 %',
+  );
+
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', true);
+  expect(within(group).getByLabelText('Menge')).toBe(quantity);
+  expect((quantity as HTMLInputElement).value).toBe('2');
+  expect(hasUnsavedChanges()).toBe(true);
+});
+
+// EDITOR-MOBILE-01: an invalid field may never hide behind the summary, so the
+// group refuses to close while one of its values is aria-invalid.
+test('an invalid value keeps the folded group open', async () => {
+  compactViewport();
+  setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  const group = priceGroup(position);
+  const summary = priceSummary(group);
+
+  fireEvent.click(summary);
+  const quantity = within(group).getByLabelText('Menge');
+  fireEvent.change(quantity, { target: { value: '0' } });
+  expect(quantity.getAttribute('aria-invalid')).toBe('true');
+
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', true);
+  expect(quantity.getAttribute('aria-invalid')).toBe('true');
+
+  fireEvent.change(quantity, { target: { value: '3' } });
+  expect(quantity.getAttribute('aria-invalid')).toBe('false');
+  fireEvent.click(summary);
+  expect(group).toHaveProperty('open', false);
+});
+
+// EDITOR-MOBILE-01: a wide view is unchanged. The value fields are open, no
+// summary is offered as an extra stop and the fields keep their natural order.
+test('a wide view keeps the value fields open without a summary step', async () => {
+  setup();
+  render(<EventDocuments {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
+  );
+  const position = await screen.findByRole('group', { name: 'Position 1' });
+  const group = priceGroup(position);
+  expect(group).toHaveProperty('open', true);
+  fireEvent.click(priceSummary(group));
+  expect(group).toHaveProperty('open', true);
+  const labels = Array.from(group.querySelectorAll<HTMLElement>('label')).map(
+    (label) => label.firstChild?.textContent?.trim(),
+  );
+  expect(labels).toEqual([
+    'Menge',
+    'Einheit',
+    'Einzelpreis (Brutto) in Euro',
+    'Preisbasis',
+    'Steuer in Prozent',
+    'Rabattart',
+    'Rabatt in Prozent',
+  ]);
 });
