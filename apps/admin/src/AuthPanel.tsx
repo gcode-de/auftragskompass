@@ -5,6 +5,7 @@ import { CalendarFeedsPanel } from './CalendarFeedsPanel.js';
 import { TelegramSettingsPanel } from './TelegramSettingsPanel.js';
 import { InquiryEmailSettingsPanel } from './InquiryEmailSettingsPanel.js';
 import { MailAccountSettingsPanel } from './MailAccountSettingsPanel.js';
+import { MailTemplatesPanel } from './MailTemplatesPanel.js';
 import { ImportPanel } from './ImportPanel.js';
 import { CalendarPanel } from './CalendarPanel.js';
 import {
@@ -223,6 +224,9 @@ export function AuthPanel() {
             </div>
             <div hidden={route !== 'mail'}>
               <MailAccountSettingsPanel csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'mail-templates'}>
+              <MailTemplatesPanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'import'}>
               <ImportPanel

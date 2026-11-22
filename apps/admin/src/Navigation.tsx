@@ -69,6 +69,7 @@ const settingsLinks = [
   ['settings-calendar', 'Kalender-Abos'],
   ['settings-telegram', 'Telegram'],
   ['settings-mail', 'E-Mail-Versand'],
+  ['settings-mail-templates', 'E-Mail-Vorlagen'],
   ['import-review', 'Datenimport'],
   ['settings-export', 'Datenexport'],
   ['settings-inquiry', 'Website-Formular'],
@@ -83,6 +84,7 @@ export type WorkspaceRoute =
   | 'subscriptions'
   | 'telegram'
   | 'mail'
+  | 'mail-templates'
   | 'import'
   | 'security'
   | 'inquiry'
@@ -99,6 +101,7 @@ export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'subscriptions',
   'telegram',
   'mail',
+  'mail-templates',
   'import',
   'security',
   'export',
@@ -118,6 +121,7 @@ const settingsHashes = {
   subscriptions: 'settings-calendar',
   telegram: 'settings-telegram',
   mail: 'settings-mail',
+  'mail-templates': 'settings-mail-templates',
   import: 'import-review',
   security: 'settings-security',
   export: 'settings-export',
@@ -143,6 +147,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'settings-calendar') return 'subscriptions';
   if (hash === 'settings-telegram') return 'telegram';
   if (hash === 'settings-mail') return 'mail';
+  if (hash === 'settings-mail-templates') return 'mail-templates';
   if (hash === 'settings-inquiry') return 'inquiry';
   if (hash === 'settings-export') return 'export';
   if (hash === 'settings-security') return 'security';

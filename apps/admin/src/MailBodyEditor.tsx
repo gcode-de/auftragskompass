@@ -121,6 +121,9 @@ export function MailBodyEditor({
   disabled?: boolean;
   label?: string;
 }) {
+  // What this component last reported or was given; only an outside change
+  // replaces the document, so typing is never overwritten.
+  const emitted = useRef(value);
   const editor = useEditor(
     {
       extensions: mailExtensions,
@@ -135,7 +138,8 @@ export function MailBodyEditor({
         },
       },
       onUpdate: ({ editor: current }) => {
-        onChange(current.isEmpty ? '' : current.getHTML());
+        emitted.current = current.isEmpty ? '' : current.getHTML();
+        onChange(emitted.current);
       },
     },
     // Recreate only when the label changes (never in practice); this keeps
@@ -150,6 +154,13 @@ export function MailBodyEditor({
     [linkOpen, setLinkOpen] = useState(false),
     [href, setHref] = useState(''),
     pickerToggle = useRef<HTMLButtonElement>(null);
+  // The template editor receives its body after the detail fetch; a late
+  // external value replaces the document once (never an update echo).
+  useEffect(() => {
+    if (!editor || value === emitted.current) return;
+    emitted.current = value;
+    editor.commands.setContent(value || '<p></p>', { emitUpdate: false });
+  }, [editor, value]);
   // Toolbar state follows every transaction, so `aria-pressed` never lies.
   useEffect(() => {
     if (!editor) return;
