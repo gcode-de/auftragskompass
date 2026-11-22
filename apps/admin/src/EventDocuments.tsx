@@ -130,6 +130,7 @@ type MailPreview = {
   bodyText: string;
   missing: string[];
 };
+type MailTemplateOption = { id: string; name: string };
 type TemplateRow = { id: string; kind: string; name: string; state: string };
 type LibraryFileRow = {
   id: string;
@@ -471,6 +472,12 @@ export function EventDocuments({
       'idle' | 'loading' | 'ready' | 'error'
     >('idle'),
     [mailPreviewError, setMailPreviewError] = useState(''),
+    // MAIL-TPL-01c: an editable subject and the active templates to apply.
+    [mailSubject, setMailSubject] = useState(''),
+    [mailTemplates, setMailTemplates] = useState<MailTemplateOption[]>([]),
+    [mailTemplateId, setMailTemplateId] = useState(''),
+    [mailTemplateBusy, setMailTemplateBusy] = useState(false),
+    [templateNotice, setTemplateNotice] = useState(''),
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
     uncertainReload = useRef<HTMLButtonElement>(null),
@@ -1960,17 +1967,40 @@ export function EventDocuments({
   // MAIL-DOC-01: one explicit gesture. The recipient starts as the stored
   // contact address - an empty field when the contact has none - and stays
   // freely correctable; the server validates the final address again.
+  // MAIL-TPL-01c: the default subject is the automatic document subject; an
+  // empty subject at send time keeps exactly this behaviour on the server.
+  function defaultMailSubject(entry: DocumentRow) {
+    return 'Dokument ' + (entry.number ?? '');
+  }
   function openMailSend(entry: DocumentRow, trigger: HTMLElement) {
     setMessage('');
     setMailSendId(entry.id);
     setMailTo(contactEmail?.trim() ?? '');
     setMailBody('');
+    setMailSubject(defaultMailSubject(entry));
+    setMailTemplateId('');
+    setTemplateNotice('');
     setMailUncertain(false);
     setMailPreview(null);
     setMailPreviewState('idle');
     setMailPreviewError('');
     setMailRequestId(crypto.randomUUID());
     mailTrigger.current = trigger;
+    // Only active templates are offered; a failed list is a quiet notice.
+    void fetch('/api/v1/mail-templates')
+      .then(async (response) => {
+        if (!response.ok) throw Error('load');
+        const rows = (await response.json()) as {
+          id: string;
+          name: string;
+          state: string;
+        }[];
+        setMailTemplates(rows.filter((row) => row.state === 'active'));
+      })
+      .catch(() => {
+        setMailTemplates([]);
+        setTemplateNotice('Die Vorlagen konnten nicht geladen werden.');
+      });
   }
   function closeMailSend() {
     if (busy !== '') return;
@@ -1980,6 +2010,33 @@ export function EventDocuments({
     setMailPreview(null);
     setMailPreviewState('idle');
     setMailPreviewError('');
+  }
+  // MAIL-TPL-01c: applying a template replaces subject and body once; the
+  // draft is afterwards fully editable and the template itself never changes.
+  async function applyMailTemplate(entry: DocumentRow) {
+    if (!mailSendId || !mailTemplateId || mailTemplateBusy) return;
+    if (
+      (mailBody.trim() !== '' || mailSubject !== defaultMailSubject(entry)) &&
+      !window.confirm('Ungespeicherte Änderungen durch die Vorlage ersetzen?')
+    )
+      return;
+    setMailTemplateBusy(true);
+    setTemplateNotice('');
+    try {
+      const response = await fetch('/api/v1/mail-templates/' + mailTemplateId);
+      if (!response.ok) throw Error('load');
+      const detail = (await response.json()) as {
+        subject: string;
+        bodyHtml: string;
+      };
+      setMailSubject(detail.subject);
+      setMailBody(detail.bodyHtml);
+      setTemplateNotice('Vorlage übernommen.');
+    } catch {
+      setTemplateNotice('Die Vorlage konnte nicht geladen werden.');
+    } finally {
+      setMailTemplateBusy(false);
+    }
   }
   // The refusal categories of the send route, worded as the operator's next
   // step. Nothing here repeats a document or a customer address.
@@ -2019,6 +2076,7 @@ export function EventDocuments({
         },
         body: JSON.stringify({
           documentId: mailSendId,
+          subject: mailSubject,
           ...(mailBody.trim() ? { bodyHtml: mailBody } : {}),
         }),
       });
@@ -2068,6 +2126,7 @@ export function EventDocuments({
           documentId: mailSendId,
           requestId: mailRequestId,
           to,
+          subject: mailSubject,
           ...(mailBody.trim() ? { bodyHtml: mailBody } : {}),
         }),
       });
@@ -3218,6 +3277,52 @@ export function EventDocuments({
                         onChange={(event) => setMailTo(event.target.value)}
                       />
                     </label>
+                    {/* MAIL-TPL-01c: the subject is plain text with the
+                    documented placeholders; empty keeps the automatic
+                    document subject. */}
+                    <label>
+                      Betreff
+                      <input
+                        type="text"
+                        maxLength={998}
+                        value={mailSubject}
+                        onChange={(event) => setMailSubject(event.target.value)}
+                      />
+                    </label>
+                    {/* Applying a template replaces the draft once - the
+                    selection alone changes nothing (BKP015.10 pattern). */}
+                    <div className="mail-template-row">
+                      <label>
+                        Aus Vorlage
+                        <select
+                          value={mailTemplateId}
+                          onChange={(event) =>
+                            setMailTemplateId(event.target.value)
+                          }
+                        >
+                          <option value="">Keine Vorlage</option>
+                          {mailTemplates.map((row) => (
+                            <option key={row.id} value={row.id}>
+                              {row.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={
+                          !mailTemplateId ||
+                          busy !== '' ||
+                          mailUncertain ||
+                          mailTemplateBusy
+                        }
+                        onClick={() => void applyMailTemplate(entry)}
+                      >
+                        Übernehmen
+                      </button>
+                    </div>
+                    {templateNotice && <p role="status">{templateNotice}</p>}
                     {/* MAIL-EDITOR-01: the formatted cover text with the
                     documented placeholders; an empty body keeps the server's
                     default text. */}

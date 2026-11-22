@@ -13,6 +13,7 @@ import {
   mailBodyTextFromHtml,
   mailPlaceholderValues,
   resolveMailPlaceholders,
+  resolveMailSubject,
   sanitizeMailHtml,
   type MailPlaceholder,
   type MailValueSources,
@@ -225,6 +226,9 @@ export type MailDocumentSendInput = {
   /** Client-generated once per gesture: same id, same order. */
   requestId: string;
   to: string;
+  /** MAIL-TPL-01c: plain-text subject with placeholders; empty keeps the
+   *  automatic document subject. Values resolve to one line, never a header. */
+  subject?: string | null;
   /** Legacy plain cover text; resolved like `bodyHtml`, never HTML. */
   bodyText?: string | null;
   /** MAIL-EDITOR-01: formatted cover text with the documented placeholders. */
@@ -235,6 +239,7 @@ export type MailDocumentSendInput = {
 // same checks and content assembly and stores nothing.
 export type MailDocumentPreviewInput = {
   documentId: string;
+  subject?: string | null;
   bodyText?: string | null;
   bodyHtml?: string | null;
 };
@@ -742,18 +747,37 @@ export function mailRepository(
       contactId: string | null;
       eventId: string | null;
     },
-    input: { bodyHtml: string | null; bodyText: string | null },
-  ): Promise<{ bodyHtml: string | null; bodyText: string; missing: string[] }> {
-    const raw = input.bodyHtml ?? input.bodyText ?? '';
+    input: {
+      subject?: string | null;
+      bodyHtml: string | null;
+      bodyText: string | null;
+    },
+  ): Promise<{
+    subject: string;
+    bodyHtml: string | null;
+    bodyText: string;
+    missing: string[];
+  }> {
+    const raw = input.bodyHtml ?? input.bodyText ?? '',
+      rawSubject = input.subject ?? '';
     try {
-      assertMailPlaceholders(raw);
+      assertMailPlaceholders(raw, rawSubject);
     } catch {
       throw new MailError('invalid_content');
     }
+    // MAIL-TPL-01c: the subject is plain text - a value may never split a
+    // header line - and an empty one keeps the automatic document subject.
+    if (rawSubject.length > 998 || hasControlCharacters(rawSubject))
+      throw new MailError('invalid_subject');
     const values = mailPlaceholderValues(
       await mailValueSources(connection, document),
     );
     const fallback = `Anbei erhalten Sie das Dokument ${document.number} als PDF.`;
+    const subject = rawSubject
+      ? resolveMailSubject(rawSubject, values)
+      : { subject: `Dokument ${document.number}`, missing: [] };
+    if (subject.subject.length > 998) throw new MailError('invalid_subject');
+    const missing = [...subject.missing];
     if (input.bodyHtml) {
       // Values are text: escaped for the HTML, raw for the text alternative.
       const escaped = Object.fromEntries(
@@ -765,16 +789,18 @@ export function mailRepository(
       const resolved = resolveMailPlaceholders(input.bodyHtml, escaped),
         html = sanitizeMailHtml(resolved.text);
       return {
+        subject: subject.subject,
         bodyHtml: html,
         bodyText: mailBodyTextFromHtml(html),
-        missing: resolved.missing,
+        missing: [...new Set([...missing, ...resolved.missing])],
       };
     }
     const resolved = resolveMailPlaceholders(input.bodyText ?? '', values);
     return {
+      subject: subject.subject,
       bodyHtml: null,
       bodyText: resolved.text || fallback,
-      missing: resolved.missing,
+      missing: [...new Set([...missing, ...resolved.missing])],
     };
   }
 
@@ -1145,8 +1171,8 @@ export function mailRepository(
         const account = await usableAccount(tx, input.accountId),
           messageId = randomUUID(),
           filename = attachmentFileName(document.number),
-          subject = `Dokument ${document.number}`.slice(0, 998),
-          // MAIL-EDITOR-01: resolve, sanitize and derive - on the server.
+          // MAIL-EDITOR-01/MAIL-TPL-01c: resolve subject and body, sanitize
+          // and derive - on the server.
           content = await documentMailContent(
             tx,
             {
@@ -1156,14 +1182,18 @@ export function mailRepository(
               contactId: document.contact_id,
               eventId: document.event_id,
             },
-            { bodyHtml: html || null, bodyText: text || null },
+            {
+              subject: input.subject ?? null,
+              bodyHtml: html || null,
+              bodyText: text || null,
+            },
           );
         const inserted = (await reviewed(tx).execute(sql`
           INSERT INTO mail_messages AS m
             (tenant_id,id,account_id,direction,folder,subject,body_text,
              body_html,to_addresses,contact_id,event_id)
           VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
-                  ${subject},${content.bodyText},${content.bodyHtml},${to},
+                  ${content.subject},${content.bodyText},${content.bodyHtml},${to},
                   ${document.contact_id}::uuid,${document.event_id}::uuid)
           RETURNING ${messageColumns}`)) as { rows: MessageQueryRow[] };
         await reviewed(tx).execute(sql`
@@ -1243,10 +1273,14 @@ export function mailRepository(
             contactId: document.contact_id,
             eventId: document.event_id,
           },
-          { bodyHtml: html || null, bodyText: text || null },
+          {
+            subject: input.subject ?? null,
+            bodyHtml: html || null,
+            bodyText: text || null,
+          },
         );
         return {
-          subject: `Dokument ${document.number}`.slice(0, 998),
+          subject: content.subject,
           bodyHtml: content.bodyHtml,
           bodyText: content.bodyText,
           missing: content.missing,
@@ -2075,6 +2109,7 @@ export function registerMailRoutes(
             documentId: { type: 'string', format: 'uuid' },
             requestId: { type: 'string', minLength: 1, maxLength: 200 },
             to: { type: 'string', minLength: 3, maxLength: 4000 },
+            subject: { type: 'string', maxLength: 998 },
             bodyText: { type: 'string', maxLength: 20000 },
             bodyHtml: { type: 'string', maxLength: 200000 },
             accountId: { type: 'string', format: 'uuid' },
@@ -2112,6 +2147,7 @@ export function registerMailRoutes(
           required: ['documentId'],
           properties: {
             documentId: { type: 'string', format: 'uuid' },
+            subject: { type: 'string', maxLength: 998 },
             bodyText: { type: 'string', maxLength: 20000 },
             bodyHtml: { type: 'string', maxLength: 200000 },
           },

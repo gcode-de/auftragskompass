@@ -42,6 +42,10 @@ import {
   registerMailRoutes,
   mailRepository,
 } from '../../packages/core/src/mail.js';
+import {
+  registerMailTemplateRoutes,
+  mailTemplateRepository,
+} from '../../packages/core/src/mail-templates.js';
 
 // MAIL-EDITOR-01: the formatted document mail in real Chromium against the
 // real routes - compose with formatting and placeholders, preview the actual
@@ -207,6 +211,15 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       enabled: true,
     });
 
+    registerMailTemplateRoutes(app, pool, tenantId);
+    // MAIL-TPL-01c: one active template with a subject placeholder; its body
+    // stays empty so the composed draft below is unambiguous.
+    await mailTemplateRepository(pool, tenantId).save(actorId, {
+      name: 'Fictional Erinnerung',
+      subject: 'Erinnerung für {{contact}}',
+      bodyHtml: '',
+    });
+
     // Synthetic business data: one contact with a structured first name and
     // one event with a free-text venue - the exact fields the placeholders
     // resolve from.
@@ -332,6 +345,16 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       'recipient@example.invalid',
     );
 
+    // MAIL-TPL-01c: applying the active template adopts its subject into the
+    // still fully editable draft.
+    await dialog
+      .getByLabel('Aus Vorlage')
+      .selectOption({ label: 'Fictional Erinnerung' });
+    await dialog.getByRole('button', { name: 'Übernehmen' }).click();
+    await expect(dialog.getByLabel('Betreff')).toHaveValue(
+      'Erinnerung für {{contact}}',
+    );
+
     // Compose: real typing, a formatted selection and two placeholders from
     // the described picker - the contact first name and a value that will
     // stay visible because none is stored.
@@ -342,9 +365,12 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       await dialog
         .getByRole('button', { name: 'Platzhalter einfügen' })
         .click();
-      // The only combobox in the dialog: the wrapped label text would also
-      // contain every option, so the role is the stable handle.
-      await dialog.getByRole('combobox').selectOption(name);
+      // Scope to the picker group: the wrapped label text would also contain
+      // every option, and the dialog now has a template combobox as well.
+      await dialog
+        .getByRole('group', { name: 'Platzhalter für den Begleittext' })
+        .getByRole('combobox')
+        .selectOption(name);
       await dialog.getByRole('button', { name: 'Einfügen' }).click();
     };
     await editor.click();
@@ -362,7 +388,9 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     // The preview is the actual server result: resolved value, visible
     // missing token, real subject.
     await dialog.getByRole('button', { name: 'Vorschau anzeigen' }).click();
-    await expect(dialog.getByText(`Betreff: Dokument ${number}`)).toBeVisible();
+    await expect(
+      dialog.getByText('Betreff: Erinnerung für Fictional Mail Recipient'),
+    ).toBeVisible();
     const previewBody = dialog.locator('.mail-preview-body');
     await expect(previewBody).toContainText('Hallo Erika {{package}}');
     await expect(previewBody.locator('strong')).toHaveText(
@@ -400,7 +428,8 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
         [tenantId],
       )
     ).rows[0]!;
-    expect(message.subject).toBe(`Dokument ${number}`);
+    // The template subject arrived resolved from structured data.
+    expect(message.subject).toBe('Erinnerung für Fictional Mail Recipient');
     // ProseMirror keeps typed boundary spaces as non-breaking spaces in the
     // HTML (marked `~` here); the text alternative normalizes them.
     expect(message.body_html.replace(/\u00a0/g, '~')).toBe(
