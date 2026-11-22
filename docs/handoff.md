@@ -1,5 +1,30 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 22.11.2026 (Nacht 2: MAIL-TPL-01c)
+
+- **Erledigt: MAIL-TPL-01c (Aus Vorlage senden: Betreff und Inhalt)** –
+  PR #82 (`2b574a8`, Merge `90c1119`, gemergt bei `mergeStateStatus: CLEAN`).
+  Der Dokument-Mail-Dialog bietet **aktive** Vorlagen an (die Auswahl ändert
+  nichts), „Übernehmen" kopiert Betreff und Inhalt **einmalig** in den danach
+  voll editierbaren Entwurf – spätere Vorlagenänderungen ändern weder Entwurf
+  noch gesendete Mails, und ein schmutziger Entwurf fragt per
+  `window.confirm` vor dem Ersetzen. Sichtbares Betrefffeld (Standard
+  „Dokument <Nummer>"); `scheduleDocumentSend` und die Vorschau akzeptieren
+  optional `subject` (plainText mit Platzhaltern, serverseitig
+  `resolveMailSubject` – Werte eine Zeile, kein Headerbruch; aufgelöster
+  Betreff >998/Steuerzeichen wird abgelehnt; leerer Betreff behält den
+  Dokumentbetreff, alte Aufrufe unverändert).
+  **Abnahme:** Integration mail 26/26 (u.a. Zeilenumbruch-Versuch über
+  mehrzeiliges Venue), Component 141/141 (Annahme, Dirty-Schutz ja/nein,
+  gesendetes `subject`, keine Vorlagen-Schreibungen), unit 391/391, E2E
+  `mail-editor.spec.ts` 1/1 (Vorlagenannahme im echten Dialog, Vorschau
+  „Erinnerung für Fictional Mail Recipient", DB-Betreff aufgelöst),
+  Changed-Code 37/41 Zeilen (90,2 %) / 40/47 Zweige (85,1 %). Main-CI
+  `44970019461` grün inkl. Images; live verifiziert auf `90c11198efe4…`
+  (Checkpoint vorhanden).
+- **Nächster Schritt:** MAIL-TPL-01d (Standard-Dateianhänge) als letzter
+  Teilslice von MAIL-TPL-01; der Plan steht vollständig.
+
 ## Aktueller Stand, 22.11.2026 (Nacht: MAIL-TPL-01a/01b)
 
 - **Erledigt: MAIL-TPL-01a (Vorlagendaten und Routen) und MAIL-TPL-01b
