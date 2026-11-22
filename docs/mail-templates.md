@@ -63,10 +63,18 @@ wie die Dokument-Mail-Vorschau. Unbekannte Platzhalter werden abgelehnt – die
 Vorschau erfindet für nichts einen Ersatz; `missing` bleibt bei den
 Beispielwerten leer und zeigt nur, was die Werteabdeckung nicht kennt.
 
-## Ehrliche Grenzen (Teilslice 01a)
+## Anwenden im Dokument-Mail-Dialog (01c)
 
-- Noch keine Oberfläche und keine Anwendung im Composer (01b/01c).
-- Betreffzeilen-Auflösung mit echten Werten passiert erst beim Anwenden (01c);
-  die Umsetzung dort muss `resolveMailSubject` verwenden (Werte einzeilig).
-- Standard-Dateianhänge (Plan-Unterpunkt) sind Teil von 01c und erweitern den
-  Anhangvertrag additiv.
+Die Auswahl „Aus Vorlage“ im Dokument-Mail-Dialog bietet **nur aktive**
+Vorlagen an; die Auswahl allein ändert nichts, „Übernehmen“ kopiert Betreff
+und Inhalt **einmalig** in den danach voll editierbaren Entwurf – spätere
+Änderungen an der Vorlage ändern weder den Entwurf noch gesendete Mails
+(kein persistenter Bezug). Ein schmutziger Entwurf fragt per `window.confirm`
+vor dem Ersetzen. Der Dialog hat ein sichtbares Betrefffeld (Standard
+„Dokument <Nummer>“); gesendet wird der Betreff als `plainText` mit
+Platzhaltern, serverseitig über `resolveMailSubject` aufgelöst.
+
+## Ehrliche Grenzen
+
+- Standard-Dateianhänge (Plan-Unterpunkt) sind Teil von MAIL-TPL-01d und
+  erweitern den Anhangvertrag additiv.

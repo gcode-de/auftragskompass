@@ -1895,6 +1895,55 @@ test('document mail rejects unknown placeholders and mixed bodies and escapes va
   expect(detail.bodyText).toBe('Muster & <b>Co</b> / Erika');
 });
 
+test('the document mail subject is plain text with resolved placeholders', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  await pool.query(
+    "UPDATE contacts SET first_name='Erika' WHERE tenant_id=$1 AND id=$2",
+    [tenantId, contactId],
+  );
+  // The free-text venue can be multiline; a value must never split a header
+  // line even where the structured field allows line breaks.
+  await pool.query(
+    `UPDATE events SET event_date=NULL, venue_override=true, venue=$3
+       WHERE tenant_id=$1 AND id=$2`,
+    [tenantId, eventId, 'Halle A\nBcc: injiziert@example.invalid'],
+  );
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+    origin: 'https://admin.example.invalid',
+  });
+  const sent = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-subject-request-1',
+    to: 'synthetic.contact@example.invalid',
+    subject: 'Erinnerung für {{contactFirstName}} {{location}}',
+    bodyText: 'Kurz.',
+  });
+  // The injected line break is flattened to one line, never a second header.
+  expect((await repo.get(sent.messageId)).subject).toBe(
+    'Erinnerung für Erika Halle A Bcc: injiziert@example.invalid',
+  );
+  // An unknown placeholder in the subject is invalid content.
+  await expect(
+    repo.scheduleDocumentSend(actorId, {
+      documentId: finalDocumentId,
+      requestId: 'fictional-subject-request-2',
+      to: 'synthetic.contact@example.invalid',
+      subject: '{{Kontakt_Vorname}}',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_content' });
+  // A missing subject keeps the automatic document subject.
+  const automatic = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-subject-request-3',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Kurz.',
+  });
+  expect((await repo.get(automatic.messageId)).subject).toBe(
+    'Dokument RE-2030-0001',
+  );
+});
+
 test('the document mail preview resolves like the send and persists nothing', async () => {
   const { headers, csrf } = await signedIn();
   const countRows = async () =>
@@ -1922,6 +1971,19 @@ test('the document mail preview resolves like the send and persists nothing', as
     bodyText: 'Hallo Erika {{package}}',
     missing: ['package'],
   });
+  // MAIL-TPL-01c: an explicit subject resolves with the same values.
+  const withSubject = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send/preview',
+    headers: { ...headers, ...csrf },
+    payload: {
+      documentId: finalDocumentId,
+      subject: 'Erinnerung für {{contactFirstName}}',
+      bodyHtml: '<p>Hallo</p>',
+    },
+  });
+  expect(withSubject.statusCode).toBe(200);
+  expect(withSubject.json().subject).toBe('Erinnerung für Erika');
   // Session, CSRF and content rules are the same as the send's.
   expect(
     (

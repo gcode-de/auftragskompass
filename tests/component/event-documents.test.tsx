@@ -365,6 +365,9 @@ function setup(
     mailSend?: (body: unknown) => Response | Promise<Response>;
     // MAIL-EDITOR-01: the answer to the read-only mail preview.
     mailPreview?: (body: unknown) => Response | Promise<Response>;
+    // MAIL-TPL-01c: the mail templates offered by the composer.
+    mailTemplates?: unknown[];
+    mailTemplateDetail?: unknown;
   } = {},
 ) {
   const calls: {
@@ -592,6 +595,14 @@ function setup(
         }
         if (options.recordPayment) return options.recordPayment();
         return Response.json(paymentRows[0]!, { status: 201 });
+      }
+      if (url === '/api/v1/mail-templates') {
+        calls.push({ url, method });
+        return Response.json(options.mailTemplates ?? []);
+      }
+      if (/^\/api\/v1\/mail-templates\/[^/]+$/.test(url)) {
+        calls.push({ url, method });
+        return Response.json(options.mailTemplateDetail ?? {});
       }
       if (url === '/api/v1/mail/document-send/preview') {
         const body = JSON.parse(String(init!.body));
@@ -5950,4 +5961,86 @@ test('an invalid body refusal names the content problem and keeps the draft', as
     within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
   );
   await screen.findByText(/Der Text konnte nicht übernommen werden/);
+});
+
+// MAIL-TPL-01c: applying a template to the document mail draft.
+const mailTemplate = {
+  id: '44444444-0000-4000-8000-000000000002',
+  name: 'Erinnerung',
+  subject: 'Erinnerung für {{contact}}',
+  state: 'active',
+  version: 1,
+};
+
+test('applying a template fills subject and body and guards dirty drafts', async () => {
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const { calls } = setup({
+    documents: [finalized],
+    mailTemplates: [
+      mailTemplate,
+      {
+        ...mailTemplate,
+        id: 'archived-1',
+        name: 'Archiviert',
+        state: 'archived',
+      },
+    ],
+    mailTemplateDetail: {
+      ...mailTemplate,
+      bodyHtml: '<p>Geplant für {{event}}</p>',
+    },
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const subject = within(dialog).getByLabelText('Betreff') as HTMLInputElement;
+  expect(subject.value).toBe('Dokument AN-2030-0001');
+  // Only active templates are offered.
+  const templateSelect = within(dialog).getByLabelText('Aus Vorlage');
+  expect(
+    within(templateSelect as HTMLElement)
+      .getAllByRole('option')
+      .map((option) => option.textContent),
+  ).toEqual(expect.arrayContaining(['Erinnerung']));
+  expect((templateSelect as HTMLElement).textContent).not.toContain(
+    'Archiviert',
+  );
+  // Selecting alone changes nothing.
+  fireEvent.change(templateSelect, { target: { value: mailTemplate.id } });
+  expect(subject.value).toBe('Dokument AN-2030-0001');
+  // Applying adopts subject and body into the editable draft.
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+  await waitFor(() => expect(subject.value).toBe('Erinnerung für {{contact}}'));
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Begleittext (optional)',
+  });
+  await waitFor(() => expect(editor.textContent).toContain('{{event}}'));
+  // A dirty draft asks before it is replaced - and keeps everything on "no".
+  fireEvent.change(subject, { target: { value: 'Selbst geschrieben' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+  expect(confirmSpy).toHaveBeenCalled();
+  expect(subject.value).toBe('Selbst geschrieben');
+  expect(editor.textContent).toContain('{{event}}');
+  // On "yes" the template replaces the draft.
+  confirmSpy.mockReturnValue(true);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+  await waitFor(() => expect(subject.value).toBe('Erinnerung für {{contact}}'));
+  // The send carries the subject; the template itself is never modified.
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
+  const requests = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(requests).toHaveLength(1);
+  expect(requests[0]!.body).toMatchObject({
+    subject: 'Erinnerung für {{contact}}',
+  });
+  expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(0);
 });

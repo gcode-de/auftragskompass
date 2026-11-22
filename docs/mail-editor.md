@@ -85,10 +85,13 @@ entfernt oder ergänzt werden kann.
 - **Textalternative:** `body_text` wird serverseitig aus dem bereinigten HTML
   erzeugt (Absätze als Leerzeile, `<br>` als Zeilenumbruch, Listen mit
   Aufzählungspunkt, Links als `Text (URL)`), nie vom Client übernommen.
-- **Keine Header-Injection:** Betreff bleibt `plainText` (der automatische
-  Dokumentbetreff `Dokument <Nummer>`); Empfängerfelder laufen durch die
-  bestehende Adressvalidierung ohne Steuerzeichen. Platzhalter stehen nie in
-  Headern.
+- **Keine Header-Injection:** der Betreff ist `plainText` (≤998 Zeichen, keine
+  Steuerzeichen) und wird serverseitig über `resolveMailSubject` aufgelöst,
+  dessen Werte auf eine Zeile gebracht werden – ein Wert mit Zeilenumbruch
+  kann nie eine zweite Headerzeile erzeugen (mit MAIL-TPL-01c testiert). Ein
+  leerer oder fehlender Betreff behält den automatischen Dokumentbetreff
+  `Dokument <Nummer>`; Empfängerfelder laufen durch die bestehende
+  Adressvalidierung ohne Steuerzeichen.
 - **Versandweg unverändert:** ausschließlich Outbox/Worker, idempotente Geste
   `document-send:<doc>:<requestId>`, Anhang = eingefrorenes PDF-Artefakt; die
   bestehenden MAIL-DOC-01- und Outbox-Verträge bleiben unverändert. Es gibt
@@ -105,10 +108,10 @@ entfernt oder ergänzt werden kann.
 - Das Feld „Vorname“ ist (Stand dieses Slices) bewusst **nicht** Bestandteil des
   `contacts.csv`-Exports; der Exportvertrag bleibt unverändert. Nachtrag in
   einem Datenschnitt folgt.
-- Der Betreff ist in diesem Slice nicht editierbar (automatischer
-  Dokumentbetreff); Betreff mit Platzhaltern kommt mit den Mailvorlagen
-  (MAIL-TPL-01).
 - Der Editor bietet keine Überschriften, Zitate, Code, Bilder oder Tabellen –
   bewusst, entsprechend der Allowlist.
+- Der Betreff ist seit MAIL-TPL-01c im Dialog sichtbar und editierbar
+  (Platzhalter möglich); die Übernahme aus einer Vorlage kopiert Betreff und
+  Inhalt einmalig in den Entwurf (Details in [mail-templates.md](mail-templates.md)).
 - Listen sind eine Ebene tief; tiefere Verschachtelungen im Body-HTML bleiben
   deterministisch, sind aber nicht über die Werkzeugleiste erreichbar.
