@@ -153,7 +153,7 @@ test('settings navigation has a labeled fourteen-option select synced with legac
   const select = within(settingsNavigation).getByRole('combobox', {
     name: 'Einstellungsbereich',
   }) as HTMLSelectElement;
-  expect(select.options).toHaveLength(14);
+  expect(select.options).toHaveLength(15);
   expect(select.value).toBe('#settings-resources');
   expect(
     Array.from(select.options).map((option) => [
@@ -167,6 +167,7 @@ test('settings navigation has a labeled fourteen-option select synced with legac
     ['Kalender-Abos', '#settings-calendar'],
     ['Telegram', '#settings-telegram'],
     ['E-Mail-Versand', '#settings-mail'],
+    ['E-Mail-Vorlagen', '#settings-mail-templates'],
     ['Datenimport', '#import-review'],
     ['Datenexport', '#settings-export'],
     ['Website-Formular', '#settings-inquiry'],
