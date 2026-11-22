@@ -1,5 +1,37 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 22.11.2026 (Nacht: MAIL-TPL-01a/01b)
+
+- **Erledigt: MAIL-TPL-01a (Vorlagendaten und Routen) und MAIL-TPL-01b
+  (Einstellungen „E-Mail-Vorlagen")** – die ersten beiden von drei
+  Teilslices von MAIL-TPL-01 (Konkretisierung im Plan-Eintrag).
+  - **01a** PR #79 (`b123950`, Merge `2f01c13`): Migration 0074
+    `mail_templates` + Audit `mail.template_saved`; `mail-templates.ts`
+    (Feldvalidierung/Sanitizing/`{{…}}`-Assert, `resolveMailSubject` bringt
+    Betreffwerte auf eine Zeile – keine Header-Injection); Routen
+    `GET/POST/PUT /api/v1/mail-templates[/:id]` plus rein synthetische
+    Vorschau `POST /api/v1/mail-templates/preview` (feste Beispielwerte in
+    [docs/mail-templates.md](mail-templates.md)). Main-CI `44963583825`
+    grün inkl. Images; live verifiziert auf `2f01c133dd42…`.
+  - **01b** PR #80 (`224eff4`, Merge `fb8f9a8`): Einstellungsbereich
+    „E-Mail-Vorlagen" (`#settings-mail-templates`; Zählvertrag der
+    Einstellungsbereiche 14→15), `MailTemplatesPanel` mit Liste,
+    Anlegen/Bearbeiten/Archivieren, `MailBodyEditor` samt Platzhalterpicker
+    und Beispielvorschau; „Abbrechen" kehrt ohne Schreibvorgang zurück.
+    Main-CI `44965789777` grün inkl. Images; live verifiziert auf
+    `fb8f9a84f347…`, Checkpoint `preupdate-fb8f9a84f347-…` vorhanden.
+- **Prozessnotiz (ehrlich):** PR #80 wurde gemergt, während der PR-Zustand
+  noch `UNSTABLE` war – ein Browser-Job lief noch. Er scheiterte danach an
+  einem Infrastruktur-Abbruch („terminating connection due to administrator
+  command", Testcontainer-Datenbank) in `document-layout.spec.ts`; derselbe
+  Test war im Zwillingslauf grün, lief lokal erneut grün (22,7 s), und die
+  Main-CI des Merge-Kompletts ist vollständig grün. Künftig strikt erst bei
+  `mergeStateStatus: CLEAN` mergen.
+- **Nächster Schritt:** MAIL-TPL-01c (Aus Vorlage senden und
+  Standardanhänge) – der Plan steht vollständig; zu beachten: Betreffauflösung
+  nur über `resolveMailSubject`, Anhangvertrag `mail_attachments` additiv auf
+  Bibliotheksdateien erweitern, fehlende Dateien vor dem Versand benennen.
+
 ## Aktueller Stand, 21.11.2026 (Nachtsitzung: MAIL-EDITOR-01)
 
 - **Erledigt: MAIL-EDITOR-01 (GOAL B) – formatierter Dokument-Mail-Editor mit
