@@ -110,6 +110,65 @@ Freigabe fragen. Keine echten Kundenaktionen.
 
 - [ ] **PARITY-REST — weitere Bookitup-Parität und Designsystem** (GOAL-Priorität 4): kleine belegte Paritätsslices in UI/UX/Logik; Designsystem aus bestehenden Tokens/Komponenten konsolidieren, mobil/Desktop und Hell/Dunkel prüfen; kein dekorativer Redesign-Großumbau, keine neue Abstraktion ohne Bedarf.
 
+## Nutzauftrag 23.11.2026 (Editor, Anhänge, Dokumente wie Bookitup)
+
+Konkrete Reihenfolge des Nutzers: (1) Editor wie bei bookitup – mehr
+Möglichkeiten, Icon-Buttons, Enter = Absatz mit Abstand, Shift+Enter =
+Zeilenumbruch im selben Absatz; TinyMCE prüfen und ggf. tauschen;
+(2) der fehlgeschlagene GitHub-Run muss gefixt werden; (3) spontane Anhänge
+beim Mail-Schreiben (Drop-Zone auf dem Textbereich, Bibliothek,
+Event-Dokumente) mit Liste aller Anhänge samt Lösch-Icon (nach Bestätigung)
+inklusive des ursprünglich zu versendenden Dokuments; (4) Dokumente-
+Verwaltung (allgemein und Event) genauer wie bei bookitup mit allen
+Funktionen und möglichst ähnlicher UI (Belege: Screenshots
+`~/Downloads/bookitup`, Doku im Repo). Skills REA/taste/impeccable/ponytail,
+Umsetzung bevorzugt per DeepSeek-V4.1-Flash-Subagents; GitHub Flow,
+Branches nach dem Merge löschen.
+
+- [x] **E2E-HARDENING — fehlgeschlagener GitHub-Run** *(23.11.2026, erledigt
+  als `fix: absorb e2e teardown connection noise`, PR #88)*: der rote
+  Browser-Lauf stammte aus dem Teardown (Testkörper war längst fertig –
+  Trace-Beweis), nicht aus dem Test; ein letzter pg-Fehler einer sterbenden
+  Testcontainer-Verbindung ließ `pool.end()` im `finally` ablehnen. Dasselbe
+  Signaturbild wurde zuvor als „Flake“ am document-layout-Spec notiert. Alle
+  sieben container-basierten E2E-Specs hören jetzt auf Idle-Verbindungsfehler
+  (Aufräum-Rauschen, nie ein Testergebnis; abgewartete Queries lehnen weiter
+  dort, wo Tests hinschauen), entleeren den Pool und stoppen den Container
+  ohne Ablehnung; die beiden Specs ohne `app.close()` schließen die App vor
+  dem Entleeren. Lokal 3/3 der betroffenen Specs grün; Main-CI des Merges
+  ist der Nachweis.
+- [ ] **EDITOR-02 — Editor-Upgrade: Icons, Werkzeuge, Enter/Shift+Enter**:
+  TinyMCE-Prüfung dokumentiert (docs/mail-editor.md; Ergebnis: kein Tausch –
+  Lizenz GPL/proprietär für ein öffentliches Repo, ≈1,24 MB Assets gegen
+  129 KB gzip, Inline-Styles kollidieren mit dem Sanitizing; TipTap bleibt).
+  Icon-Leiste im Hausstil (24×24-Stroke, Lucide-Geometrie, `aria-label`/
+  `title`/`aria-pressed`) mit Fett/Kursiv/Unterstrichen/Durchgestrichen/
+  Überschrift 2/Überschrift 3/Zitat/Aufzählung/Nummerierung/Link/
+  Rückgängig/Wiederholen; `@tiptap/extension-hard-break` für Shift+Enter
+  (`<br>` im selben Absatz, ohne Abstand) bei Enter = neuer Absatz mit
+  Abstand; Allowlist serverseitig um `h2`,`h3`,`s`,`blockquote` erweitert
+  (Sanitize + Textalternative mit „> “-Zitatmarken), Angriffsfälle erweitert.
+  **Tests:** Unit (neue Tags/Textalternative), Component (Icon-Leiste/aria/
+  Zustände), E2E (Enter/Shift+Enter gegen die echte Textalternative, Icons,
+  axe 0, 320/1280 beide Themes). Commit `feat: upgrade the mail editor
+  toolbar and line breaks`.
+- [ ] **ATTACH-01 — Spontane Anhänge im Mail-Dialog**: Drop-Zone auf dem
+  Textbereich für eine oder mehrere Dateien (Upload in die Bibliothek über
+  die vorhandene Upload-API), Auswahl aus der Bibliothek und aus vorhandenen
+  Event-Dokumenten; alle Anhänge als Liste mit Lösch-Icon (Löschen erst nach
+  Bestätigung) – einschließlich des ursprünglichen Dokuments (z. B. Angebot),
+  dessen Entfernen ausdrücklich möglich ist. **Tests:** Upload/Drop-Zone,
+  Auswahl aus drei Quellen, Entfernen mit Bestätigung, fehlende Dateien
+  benannt, Outbox-/Anhangverträge unverändert (nur additiv).
+- [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup**: allgemeine
+  und Event-Dokumente mit allen Funktionen und möglichst ähnlicher UI;
+  Grundlagen: `Bookitup_Funktionsinventar_vollstaendig.md`,
+  `docs/bookitup-ux-reference.md`, `docs/bookitup-parity/tasks-documents-mail.md`,
+  Screenshots in `~/Downloads/bookitup` (Rechnungserstellung/Aufgaben/
+  Ressourcen) und `Dokumente-2026-alle-arten-status.csv` (nur Struktur
+  übernehmen, keine echten Kundendaten). Vor Umsetzung in kleine
+  nummerierte Unter-Slices teilen.
+
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
 - [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.

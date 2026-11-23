@@ -5760,6 +5760,56 @@ test('the mail editor exposes accessible formatting and a described placeholder 
   expect(pickerToggle).toBe(document.activeElement);
 });
 
+test('the mail editor toolbar is an icon toolbar with the expanded tool set', async () => {
+  setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  // Every tool is an icon button: an accessible name plus a hidden stroke
+  // icon, never a text label standing in for a glyph.
+  for (const name of [
+    'Fett',
+    'Kursiv',
+    'Unterstrichen',
+    'Durchgestrichen',
+    'Überschrift 2',
+    'Überschrift 3',
+    'Zitat',
+    'Aufzählung',
+    'Nummerierung',
+    'Link',
+    'Rückgängig',
+    'Wiederholen',
+  ]) {
+    const button = within(dialog).getByRole('button', { name });
+    expect(button.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+    expect(button.textContent).toBe('');
+  }
+  // The new block toggles announce and flip their state like the marks.
+  for (const name of [
+    'Durchgestrichen',
+    'Überschrift 2',
+    'Überschrift 3',
+    'Zitat',
+  ]) {
+    const button = within(dialog).getByRole('button', { name });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+  }
+});
+
 test('the mail preview shows the resolved content and honest missing values without ordering', async () => {
   const { calls } = setup({
     documents: [finalized],

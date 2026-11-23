@@ -76,7 +76,21 @@ export function escapeMailHtmlText(value: string): string {
 // pattern follows sanitizeNotes in events.ts.
 export function sanitizeMailHtml(html: string): string {
   return sanitizeHtml(html, {
-    allowedTags: ['p', 'br', 'strong', 'em', 'u', 'ul', 'ol', 'li', 'a'],
+    allowedTags: [
+      'p',
+      'br',
+      'strong',
+      'em',
+      'u',
+      's',
+      'h2',
+      'h3',
+      'blockquote',
+      'ul',
+      'ol',
+      'li',
+      'a',
+    ],
     allowedAttributes: { a: ['href'] },
     allowedSchemes: ['https', 'http', 'mailto'],
     allowProtocolRelative: false,
@@ -190,15 +204,21 @@ export function mailPlaceholderValues(
 /**
  * The plain-text alternative, derived on the server from already sanitized
  * mail HTML (run `sanitizeMailHtml` first; raw HTML may break the scanner).
- * Documented rules: `<br>` is a line break, `</p>` separates paragraphs with
- * one blank line, list items get `- ` or counting `1. ` prefixes, a link
+ * Documented rules: `<br>` is a line break, `</p>` and headings separate
+ * blocks with one blank line, list items get `- ` or counting `1. `
+ * prefixes, quotes carry the conventional `> ` marker per line, a link
  * becomes `Text (URL)` unless the text already is the URL, entities decode,
  * and the result carries no trailing spaces and at most one blank line.
  */
 export function mailBodyTextFromHtml(html: string): string {
   const lines: string[] = [];
   let current = '';
+  let quoteDepth = 0;
   const lists: { ordered: boolean; count: number }[] = [];
+  // Inside a quote every non-empty line carries the conventional marker;
+  // blank separator lines stay blank so the blocks remain readable.
+  const pushLine = (line: string) =>
+    lines.push(quoteDepth > 0 && line ? '> '.repeat(quoteDepth) + line : line);
   const anchors: { href: string; mark: number }[] = [];
   for (const part of html.split(/(<[^>]*>)/)) {
     if (!part) continue;
@@ -208,17 +228,28 @@ export function mailBodyTextFromHtml(html: string): string {
       const closing = match[1] === '/',
         tag = match[2]!.toLowerCase();
       if (tag === 'br') {
-        lines.push(current);
+        pushLine(current);
         current = '';
-      } else if (tag === 'p') {
+      } else if (tag === 'p' || tag === 'h2' || tag === 'h3') {
         if (closing) {
-          lines.push(current);
+          pushLine(current);
           current = '';
           lines.push('');
         }
+      } else if (tag === 'blockquote') {
+        if (current.trim()) {
+          pushLine(current);
+          current = '';
+        }
+        if (closing) {
+          pushLine(current);
+          current = '';
+          quoteDepth = Math.max(0, quoteDepth - 1);
+          lines.push('');
+        } else quoteDepth += 1;
       } else if (tag === 'ul' || tag === 'ol') {
         if (current.trim()) {
-          lines.push(current);
+          pushLine(current);
           current = '';
         }
         if (closing) {
@@ -227,10 +258,10 @@ export function mailBodyTextFromHtml(html: string): string {
         } else lists.push({ ordered: tag === 'ol', count: 0 });
       } else if (tag === 'li') {
         if (closing) {
-          lines.push(current);
+          pushLine(current);
           current = '';
         } else {
-          if (current.trim()) lines.push(current);
+          if (current.trim()) pushLine(current);
           const list = lists[lists.length - 1];
           if (list?.ordered) {
             list.count += 1;
@@ -254,7 +285,7 @@ export function mailBodyTextFromHtml(html: string): string {
     }
     current += decodeEntities(part);
   }
-  if (current.trim()) lines.push(current);
+  if (current.trim()) pushLine(current);
   return (
     lines
       .map((line) => line.replace(/\s+$/, ''))
