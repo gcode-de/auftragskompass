@@ -1,5 +1,30 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 23.11.2026 (MAIL-TPL-01d)
+
+- **Erledigt: MAIL-TPL-01d (Standard-Dateianhänge: Daten und Sendeweg)** –
+  PR #84 (`639480a`, Merge `438c499`, gemergt bei `mergeStateStatus: CLEAN`).
+  Migration 0075 (`mail_template_attachments`, `mail_file_attachments` mit
+  Verfügbarkeits-Triggern; der Vertrag `mail_attachments` von 0071 bleibt
+  bytegleich). Vorlagen speichern `attachmentFileIds` (keep-on-absent, max 20;
+  nicht verfügbare Datei lehnt den ganzen Vorgang ab, nie stillschweigend
+  weggelassen). `scheduleDocumentSend` friert pro Datei Speicherschlüssel/
+  Hash/Größe unter server-erzeugtem Dateinamen ein; der Worker liest beide
+  Anhangstabellen pro Versuch neu und **verifiziert den SHA-256** – ersetze
+  oder beschädigte Bytes sind `attachment_unavailable` und nie die falschen
+  (durch Test belegt). Antworten/Replays nennen `files`; der Dialog zeigt die
+  Standardanhänge sichtbar/entfernbar vor dem Versand.
+  **Abnahme:** Integration mail 28/28 + mail-templates 7/7 + identity
+  (Migrationspin 0075), Component 142/142, unit 391/391, beide Mail-E2E grün;
+  Changed-Code 58/61 Zeilen (95,1 %) / 34/39 Zweige (87,2 %). Main-CI
+  `45166934538` grün inkl. Images; live verifiziert auf `438c499faa6b…`
+  (Checkpoint vorhanden).
+- **Beobachtungspunkt:** nach dem Tippen eines abschließenden Leerzeichens
+  kann die Picker-Einfügung nach Fokusverlust an der falschen Stelle landen;
+  der E2E setzt den Cursor explizit („End“). Als Restrisiko notiert.
+- **Nächster Schritt:** MAIL-TPL-01e (Anhangswahl in den Einstellungen) –
+  die Speicher-API ist fertig, es fehlt nur die Oberfläche.
+
 ## Aktueller Stand, 22.11.2026 (Nacht 2: MAIL-TPL-01c)
 
 - **Erledigt: MAIL-TPL-01c (Aus Vorlage senden: Betreff und Inhalt)** –
