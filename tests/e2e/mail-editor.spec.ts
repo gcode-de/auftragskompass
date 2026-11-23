@@ -376,6 +376,10 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     await editor.click();
     await editor.pressSequentially('Hallo ');
     await insertPlaceholder('contactFirstName');
+    // Explicitly continue at the line end: after a trailing space the
+    // restored selection may otherwise sit before it and the next insert
+    // lands at the wrong place.
+    await editor.press('End');
     await editor.pressSequentially(' ');
     await insertPlaceholder('package');
     await editor.press('ControlOrMeta+a');

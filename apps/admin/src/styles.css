@@ -2522,6 +2522,18 @@ summary {
   justify-items: start;
   gap: 0.4rem;
 }
+/* MAIL-TPL-01d: the carried files are a quiet named list; each row keeps its
+   44px remove action. */
+.mail-file-attachments {
+  display: grid;
+  gap: 0.4rem;
+}
+.mail-file-attachments li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
 /* MAIL-TPL-01c: the template picker stays a quiet row next to its apply
    action. */
 .mail-template-row {

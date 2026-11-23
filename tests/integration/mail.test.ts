@@ -2031,3 +2031,175 @@ test('the document mail preview resolves like the send and persists nothing', as
   expect(foreign.statusCode).toBe(404);
   expect(await countRows()).toEqual(before);
 });
+
+// MAIL-TPL-01d: library files travel with the mail as frozen, verified
+// references. The document attachment contract stays untouched.
+async function seedLibraryFile(
+  overrides: { state?: string; displayName?: string } = {},
+) {
+  const id = randomUUID(),
+    storageKey = 'file-' + id + '.pdf';
+  const bytes = Buffer.from('%PDF-1.4 synthetic library file\n', 'latin1'),
+    sha256 = createHash('sha256').update(bytes).digest('hex');
+  await pool.query(
+    `INSERT INTO library_files
+       (tenant_id,id,display_name,media_type,size_bytes,sha256,storage_key,
+        scan_state,state,uploaded_at,uploaded_by,archived_at)
+     VALUES ($1,$2,$8,'application/pdf',$3,$4,$5,
+             'not_scanned',$6,now(),$7,
+             CASE WHEN $6='archived' THEN now() ELSE NULL END)`,
+    [
+      tenantId,
+      id,
+      bytes.byteLength,
+      sha256,
+      storageKey,
+      overrides.state ?? 'available',
+      actorId,
+      overrides.displayName ?? 'Fictional Datei',
+    ],
+  );
+  await mailStore.put(storageKey, bytes);
+  return { id, storageKey, sha256, bytes };
+}
+
+test('library files travel with the mail as frozen verified references', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const file = await seedLibraryFile();
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+    origin: 'https://admin.example.invalid',
+  });
+  const sent = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-file-request-1',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Mit Anhang.',
+    fileIds: [file.id],
+  });
+  // The server generates the file name and reports the carried files.
+  expect(sent.files).toEqual([
+    {
+      libraryFileId: file.id,
+      filename: 'Fictional_Datei.pdf',
+      mediaType: 'application/pdf',
+      sizeBytes: file.bytes.byteLength,
+    },
+  ]);
+  // The row freezes the exact reference; nothing is copied into the database.
+  const row = (
+    await pool.query(
+      `SELECT library_file_id::text AS library_file_id, storage_key, sha256
+         FROM mail_file_attachments
+        WHERE tenant_id=$1 AND message_id=$2`,
+      [tenantId, sent.messageId],
+    )
+  ).rows[0];
+  expect(row).toMatchObject({
+    library_file_id: file.id,
+    storage_key: file.storageKey,
+    sha256: file.sha256,
+  });
+
+  // The worker hands exactly these bytes to the provider.
+  const { calls, createSender } = stubSender('sent');
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+      store: mailStore,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(1);
+  const attachments = calls[0]!.content.attachments ?? [];
+  const carried = attachments.find(
+    (entry) => entry.filename === 'Fictional_Datei.pdf',
+  );
+  expect(carried).toBeTruthy();
+  expect(carried!.content.equals(file.bytes)).toBe(true);
+
+  // An unavailable file refuses the whole order - never a silent drop - and
+  // the rolled-back transaction leaves no message behind.
+  const archived = await seedLibraryFile({ state: 'archived' });
+  await expect(
+    repo.scheduleDocumentSend(actorId, {
+      documentId: finalDocumentId,
+      requestId: 'fictional-file-request-2',
+      to: 'synthetic.contact@example.invalid',
+      bodyText: 'Darf nicht gespeichert werden.',
+      fileIds: [archived.id],
+    }),
+  ).rejects.toMatchObject({ reason: 'attachment_unavailable' });
+  expect(
+    (
+      await pool.query(
+        "SELECT count(*) FROM mail_messages WHERE tenant_id=$1 AND body_text='Darf nicht gespeichert werden.'",
+        [tenantId],
+      )
+    ).rows[0].count,
+  ).toBe('0');
+
+  // A replay answers the very same order with the very same files.
+  const replay = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-file-request-1',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Mit Anhang.',
+    fileIds: [file.id],
+  });
+  expect(replay.files).toEqual(sent.files);
+  expect(replay.messageId).toBe(sent.messageId);
+});
+
+test('a replaced or corrupted library file is a named failure, never the wrong bytes', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const file = await seedLibraryFile();
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+    origin: 'https://admin.example.invalid',
+  });
+  const sent = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-file-request-corrupt',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Mit beschädigtem Anhang.',
+    fileIds: [file.id],
+  });
+  // Something overwrites the stored bytes after the order was made.
+  await mailStore.put(
+    file.storageKey,
+    Buffer.from('%PDF-1.4 replaced by something else\n', 'latin1'),
+  );
+  const { calls, createSender } = stubSender('sent');
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+      store: mailStore,
+    }),
+  ).toBe(true);
+  // The attempt is a definite non-delivery and the wrong bytes never leave.
+  expect(calls).toHaveLength(0);
+  expect(
+    (
+      await pool.query(
+        'SELECT state,last_error_code FROM mail_outbox WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, sent.messageId],
+      )
+    ).rows[0],
+  ).toMatchObject({
+    state: 'failed',
+    last_error_code: 'attachment_unavailable',
+  });
+
+  // A display name that sanitises to nothing still becomes a safe file name.
+  const odd = await seedLibraryFile({ displayName: '...' });
+  const named = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-file-request-odd-name',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Mit seltsam benanntem Anhang.',
+    fileIds: [odd.id],
+  });
+  expect(named.files[0]!.filename).toBe('Datei.pdf');
+});

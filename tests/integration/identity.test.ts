@@ -84,7 +84,10 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // first name of MAIL-EDITOR-01); every existing row keeps its meaning.
   // MAIL-TPL-01a (0074) adds one tenant-bound template table and one audit
   // action; no existing row and no existing contract changes.
-  expect(applied.at(-1)!.name).toBe('0074_mail_templates.sql');
+  // MAIL-TPL-01d (0075) adds two tenant-bound attachment reference tables
+  // with their availability triggers; the document attachment contract
+  // (0071) stays byte-identical.
+  expect(applied.at(-1)!.name).toBe('0075_mail_file_attachments.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

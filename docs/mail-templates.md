@@ -74,7 +74,25 @@ vor dem Ersetzen. Der Dialog hat ein sichtbares Betrefffeld (Standard
 „Dokument <Nummer>“); gesendet wird der Betreff als `plainText` mit
 Platzhaltern, serverseitig über `resolveMailSubject` aufgelöst.
 
+## Standard-Dateianhänge (01d)
+
+Eine Vorlage kann **verfügbare** Dateien der Bibliothek als Standardanhänge
+benennen (`attachmentFileIds`, höchstens 20; eine abwesende Liste behält die
+gespeicherte, eine übermittelte ersetzt sie vollständig). Jede Datei wird vor
+der Speicherung erneut geprüft (`state='available'`, Prüfstand wie in
+`library_files` dokumentiert) und noch einmal durch einen Datenbank-Trigger –
+eine nicht verfügbare Datei lehnt den gesamten Vorgang mit
+`attachment_unavailable` ab und wird **nie** stillschweigend weggelassen.
+
+Beim Versand zeigt der Dialog die Standardanhänge der übernommenen Vorlage mit
+Namen; jede Datei kann einzeln entfernt werden. `scheduleDocumentSend`
+akzeptiert `fileIds` und friert pro Datei den Speicherschlüssel, den Hash und
+die Größe ein (`mail_file_attachments`); der Worker liest die Bytes bei jedem
+Versuch neu und prüft den Hash – eine ersetzte oder beschädigte Datei ist
+dann `attachment_unavailable` und nie die falschen Bytes. Der bisherige
+Vertrag `mail_attachments` (nur finale Dokumente) bleibt unverändert.
+
 ## Ehrliche Grenzen
 
-- Standard-Dateianhänge (Plan-Unterpunkt) sind Teil von MAIL-TPL-01d und
-  erweitern den Anhangvertrag additiv.
+- Das Auswählen der Anhänge in den Einstellungen ist MAIL-TPL-01e; die
+  Speicher-API (`attachmentFileIds`) ist bereits vollständig.

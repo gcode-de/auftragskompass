@@ -5988,6 +5988,14 @@ test('applying a template fills subject and body and guards dirty drafts', async
     mailTemplateDetail: {
       ...mailTemplate,
       bodyHtml: '<p>Geplant für {{event}}</p>',
+      attachments: [
+        {
+          libraryFileId: '44444444-0000-4000-8000-000000000003',
+          name: 'Fictional Datei',
+          mediaType: 'application/pdf',
+          sizeBytes: 29,
+        },
+      ],
     },
   });
   render(
@@ -6032,6 +6040,9 @@ test('applying a template fills subject and body and guards dirty drafts', async
   confirmSpy.mockReturnValue(true);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
   await waitFor(() => expect(subject.value).toBe('Erinnerung für {{contact}}'));
+  // MAIL-TPL-01d: the standard attachment is named before the send and
+  // travels with it.
+  expect(within(dialog).getByText('Fictional Datei')).toBeTruthy();
   // The send carries the subject; the template itself is never modified.
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
@@ -6042,5 +6053,61 @@ test('applying a template fills subject and body and guards dirty drafts', async
   expect(requests[0]!.body).toMatchObject({
     subject: 'Erinnerung für {{contact}}',
   });
+  expect(requests[0]!.body).toMatchObject({
+    fileIds: ['44444444-0000-4000-8000-000000000003'],
+  });
   expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(0);
+});
+
+test('a removed standard attachment does not travel and the rest stays', async () => {
+  const { calls } = setup({
+    documents: [finalized],
+    mailTemplates: [mailTemplate],
+    mailTemplateDetail: {
+      ...mailTemplate,
+      bodyHtml: '<p>Geplant für {{event}}</p>',
+      attachments: [
+        {
+          libraryFileId: '44444444-0000-4000-8000-000000000003',
+          name: 'Fictional Datei',
+          mediaType: 'application/pdf',
+          sizeBytes: 29,
+        },
+        {
+          libraryFileId: '44444444-0000-4000-8000-000000000004',
+          name: 'Zweite Datei',
+          mediaType: 'application/pdf',
+          sizeBytes: 29,
+        },
+      ],
+    },
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.change(within(dialog).getByLabelText('Aus Vorlage'), {
+    target: { value: mailTemplate.id },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+  await screen.findByText('Fictional Datei');
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Fictional Datei entfernen' }),
+  );
+  expect(within(dialog).queryByText('Fictional Datei')).toBeNull();
+  expect(within(dialog).getByText('Zweite Datei')).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
+  const requests = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(requests[0]!.body).toMatchObject({
+    fileIds: ['44444444-0000-4000-8000-000000000004'],
+  });
 });

@@ -5,7 +5,7 @@ import {
 } from '@testcontainers/postgresql';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
@@ -30,6 +30,7 @@ const config = {
 let container: StartedPostgreSqlContainer,
   pool: Pool,
   app: FastifyInstance,
+  actorId: string,
   otherActorId: string;
 
 beforeAll(async () => {
@@ -68,6 +69,7 @@ beforeAll(async () => {
     'SELECT tenant_id,user_id FROM allowed_accounts WHERE tenant_id=ANY($1)',
     [[tenantId, otherTenantId]],
   );
+  actorId = owners.rows.find((row) => row.tenant_id === tenantId)!.user_id;
   otherActorId = owners.rows.find(
     (row) => row.tenant_id === otherTenantId,
   )!.user_id;
@@ -322,4 +324,94 @@ test('templates are tenant-bound and writing needs an administrator', async () =
   await expect(foreign.get(saved.id)).resolves.toMatchObject({
     name: 'Foreign template',
   });
+});
+
+// MAIL-TPL-01d: standard file attachments reference available library files.
+function seedLibraryFile(overrides: { state?: string } = {}) {
+  return (async () => {
+    const id = randomUUID(),
+      storageKey = 'file-' + id + '.pdf';
+    const bytes = Buffer.from('%PDF-1.4 synthetic library file\n', 'latin1');
+    await pool.query(
+      `INSERT INTO library_files
+         (tenant_id,id,display_name,media_type,size_bytes,sha256,storage_key,
+          scan_state,state,uploaded_at,uploaded_by,archived_at)
+       VALUES ($1,$2,'Fictional Datei','application/pdf',$3,$4,$5,
+               'not_scanned',$6,now(),$7,
+               CASE WHEN $6='archived' THEN now() ELSE NULL END)`,
+      [
+        tenantId,
+        id,
+        bytes.byteLength,
+        createHash('sha256').update(bytes).digest('hex'),
+        storageKey,
+        overrides.state ?? 'available',
+        actorId,
+      ],
+    );
+    return { id, storageKey, bytes };
+  })();
+}
+
+test('templates carry standard file references and refuse unavailable ones', async () => {
+  const { headers, csrf } = await signedIn();
+  const file = await seedLibraryFile();
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail-templates',
+    headers: { ...headers, ...csrf },
+    payload: templateInput({
+      name: 'Mit Anhang',
+      attachmentFileIds: [file.id],
+    }),
+  });
+  expect(created.statusCode).toBe(201);
+  expect(created.json().attachments).toEqual([
+    {
+      libraryFileId: file.id,
+      name: 'Fictional Datei',
+      mediaType: 'application/pdf',
+      sizeBytes: file.bytes.byteLength,
+    },
+  ]);
+  // An archived file is refused - never silently dropped.
+  const archived = await seedLibraryFile({ state: 'archived' });
+  const refused = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail-templates',
+    headers: { ...headers, ...csrf },
+    payload: templateInput({
+      name: 'Mit unbrauchbarem Anhang',
+      attachmentFileIds: [archived.id],
+    }),
+  });
+  expect(refused.statusCode).toBe(400);
+  expect(refused.json()).toEqual({ error: 'attachment_unavailable' });
+  // Replacing the set works in both directions.
+  const replaced = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/mail-templates/' + created.json().id,
+    headers: { ...headers, ...csrf },
+    payload: {
+      ...templateInput({ name: 'Mit Anhang' }),
+      attachmentFileIds: [],
+      version: created.json().version,
+    },
+  });
+  expect(replaced.statusCode).toBe(200);
+  expect(replaced.json().attachments).toEqual([]);
+});
+
+test('a template refuses more than the documented number of attachments', async () => {
+  const ids = Array.from({ length: 21 }, () => randomUUID());
+  // The route schema caps the list first; the repository guard is the same
+  // rule for every caller.
+  await expect(
+    mailTemplateRepository(pool, tenantId).save(actorId, {
+      name: 'Zu viele Anhänge',
+      subject: 'x',
+      bodyHtml: '<p>x</p>',
+      attachmentFileIds: ids,
+    }),
+  ).rejects.toMatchObject({ reason: 'attachment_unavailable' });
 });
