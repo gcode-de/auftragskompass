@@ -33,6 +33,12 @@ test('the sending account settings create and change an account in Chromium', as
     'postgres:17.6-alpine',
   ).start();
   const pool = new Pool({ connectionString: container.getConnectionUri() });
+  // A stopping test container can still deliver one last error on an idle
+  // connection ("terminating connection due to administrator command").
+  // That is teardown noise, never a test result - awaited queries still
+  // reject exactly where the tests look at them.
+  pool.on('error', () => undefined);
+
   const app = Fastify();
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
   const adminHeaders = Object.fromEntries(
@@ -238,8 +244,8 @@ test('the sending account settings create and change an account in Chromium', as
   } finally {
     await context.close();
     await app.close();
-    await pool.end();
-    await container.stop();
+    await pool.end().catch(() => undefined);
+    await container.stop().catch(() => undefined);
     await rm(dir, { recursive: true, force: true });
   }
 });
