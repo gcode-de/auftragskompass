@@ -152,14 +152,30 @@ Branches nach dem Merge löschen.
   Zustände), E2E (Enter/Shift+Enter gegen die echte Textalternative, Icons,
   axe 0, 320/1280 beide Themes). Commit `feat: upgrade the mail editor
   toolbar and line breaks`.
-- [ ] **ATTACH-01 — Spontane Anhänge im Mail-Dialog**: Drop-Zone auf dem
-  Textbereich für eine oder mehrere Dateien (Upload in die Bibliothek über
-  die vorhandene Upload-API), Auswahl aus der Bibliothek und aus vorhandenen
-  Event-Dokumenten; alle Anhänge als Liste mit Lösch-Icon (Löschen erst nach
-  Bestätigung) – einschließlich des ursprünglichen Dokuments (z. B. Angebot),
-  dessen Entfernen ausdrücklich möglich ist. **Tests:** Upload/Drop-Zone,
-  Auswahl aus drei Quellen, Entfernen mit Bestätigung, fehlende Dateien
-  benannt, Outbox-/Anhangverträge unverändert (nur additiv).
+- [ ] **ATTACH-01 — Spontane Anhänge im Mail-Dialog** *(23.11.2026 in 01a/01b
+  geteilt, „kleine vollständige Änderungen“)*.
+  **ATTACH-01a — Anhänge sichtbar/entfernbar, drei Quellen:** der Mail-Dialog
+  zeigt alle Anhänge als eine Liste mit Lösch-Icon, Löschen erst nach
+  Bestätigung (`window.confirm`, Hausmuster) – ausdrücklich **auch** das
+  ursprüngliche Dokument (z. B. Angebot), dessen Entfernen möglich ist;
+  Quellen sind das Hauptdokument, vorhandene Event-Dokumente (finale,
+  auswählbar) und Bibliotheksdateien (auch die Standardanhänge der
+  Vorlage). Serverseitig additiv: `attachDocument` (Standard true) und
+  `documentIds` (weitere Event-Dokumente) in `scheduleDocumentSend`;
+  Antwort `attachment` wird nullable (nur bei mitgesendetem Hauptdokument),
+  `files` unverändert; jede Datei/jedes Dokument wird erneut geprüft
+  (fehlend/archiviert/nicht final = ganze Auftrag abgelehnt, nie
+  stillschweigend weggelassen); Worker/Outbox unverändert. **Tests:**
+  Integration (ohne Hauptdokument, Zusatzdokumente, abgelehnte Quellen,
+  Replay identisch), Component (Liste/Icons/Bestätigung/drei Quellen).
+  Commit `feat: list and choose mail attachments in the composer`. **01a abgenommen (23.11.2026):** eine benannte Anhängeliste im Mail-Dialog – Hauptdokument, weitere Event-Dokumente und Bibliotheksdateien – jedes Entfernen fragt per `window.confirm` zuerst, ausdrücklich auch das ursprüngliche Dokument; zwei Picker ergänzen finale Event-Dokumente und verfügbare Bibliotheksdateien, die Vorlagen-Standardanhänge reihen sich in dieselbe Liste. Serverseitig additiv: `scheduleDocumentSend` akzeptiert `attachDocument` (Standard true) und `documentIds`; jede Datei/jedes Dokument wird erneut geprüft (nicht verfügbar/nicht final = ganzer Auftrag abgelehnt), Worker/Outbox unverändert, Antwort `attachment` nullable (Geste-Dokument = Hauptanhang, Replays identisch). Integration mail 29/29 (ohne Hauptdokument, Zusatzdokumente im Worker, Ablehnung ohne Nachricht, Replay mit `attachDocument: true` bleibt dokumentfrei), Component 144/144 (Liste/Icons/Bestätigung ja-nein/drei Quellen), E2E-Paar grün; Changed-Code 68/74 Zeilen (91,9 %) und 46/51 Zweige (90,2 %).
+  **ATTACH-01b — Drop-Zone und Upload:** Drop-Zone auf dem Textbereich für
+  eine oder mehrere Dateien (Upload in die Bibliothek über die vorhandene
+  Upload-API, Base64-JSON-Vertrag), zusätzlich ein beschrifteter
+  Datei-Wähler als tastaturbedienbare Alternative (Barrierefreiheit);
+  Fehler/Zustände ehrlich (Laden, abgelehnt, zu groß), neue Dateien
+  erscheinen in der Anhängeliste. **Tests:** Upload/Erfolg/Fehler,
+  Mehrfachauswahl, Zustände. Commit `feat: attach dropped files to mails`.
 - [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup**: allgemeine
   und Event-Dokumente mit allen Funktionen und möglichst ähnlicher UI;
   Grundlagen: `Bookitup_Funktionsinventar_vollstaendig.md`,

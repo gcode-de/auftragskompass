@@ -368,6 +368,8 @@ function setup(
     // MAIL-TPL-01c: the mail templates offered by the composer.
     mailTemplates?: unknown[];
     mailTemplateDetail?: unknown;
+    // ATTACH-01a: available library files for the attachment chooser.
+    libraryFiles?: unknown[];
   } = {},
 ) {
   const calls: {
@@ -418,7 +420,8 @@ function setup(
       if (url === '/api/v1/library-files') {
         calls.push({ url, method });
         if (options.library) return options.library();
-        return Response.json(libraryFiles);
+        // A test may present its own available files (ATTACH-01a).
+        return Response.json(options.libraryFiles ?? libraryFiles);
       }
       if (url === '/api/v1/document-templates') {
         calls.push({ url, method });
@@ -6159,5 +6162,78 @@ test('a removed standard attachment does not travel and the rest stays', async (
   );
   expect(requests[0]!.body).toMatchObject({
     fileIds: ['44444444-0000-4000-8000-000000000004'],
+  });
+});
+
+// ATTACH-01a: one named attachment list, every removal behind a confirmation.
+test('the attachment list names every source and each removal asks first', async () => {
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const { calls } = setup({
+    documents: [
+      finalized,
+      { ...finalized, id: 'doc-extra', number: 'AN-2030-0042' },
+    ],
+    libraryFiles: [
+      {
+        id: '44444444-0000-4000-8000-000000000011',
+        displayName: 'Fictional Datei',
+        mediaType: 'application/pdf',
+        sizeBytes: 29,
+        state: 'available',
+      },
+    ],
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  // The document itself is named from the start; declining the confirmation
+  // keeps it.
+  expect(within(dialog).getByText('Angebot AN-2030-0001')).toBeTruthy();
+  fireEvent.click(
+    within(dialog).getByRole('button', {
+      name: 'Angebot AN-2030-0001 entfernen',
+    }),
+  );
+  expect(confirmSpy).toHaveBeenCalled();
+  expect(within(dialog).getByText('Angebot AN-2030-0001')).toBeTruthy();
+  // Confirming removes it for this one mail.
+  confirmSpy.mockReturnValue(true);
+  fireEvent.click(
+    within(dialog).getByRole('button', {
+      name: 'Angebot AN-2030-0001 entfernen',
+    }),
+  );
+  expect(within(dialog).queryByText('Angebot AN-2030-0001')).toBeNull();
+  // A second event document and a library file can be added.
+  fireEvent.change(within(dialog).getByLabelText('Aus Event-Dokumenten'), {
+    target: { value: 'doc-extra' },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dokument hinzufügen' }),
+  );
+  expect(within(dialog).getByText('Angebot AN-2030-0042')).toBeTruthy();
+  fireEvent.change(within(dialog).getByLabelText('Aus Bibliothek'), {
+    target: { value: '44444444-0000-4000-8000-000000000011' },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Datei hinzufügen' }),
+  );
+  expect(within(dialog).getByText('Fictional Datei')).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
+  const requests = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(requests[0]!.body).toMatchObject({
+    attachDocument: false,
+    documentIds: ['doc-extra'],
+    fileIds: ['44444444-0000-4000-8000-000000000011'],
   });
 });

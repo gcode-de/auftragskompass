@@ -2203,3 +2203,112 @@ test('a replaced or corrupted library file is a named failure, never the wrong b
   });
   expect(named.files[0]!.filename).toBe('Datei.pdf');
 });
+
+// ATTACH-01a: the document itself travels only on request and other final
+// event documents may join - every removal is explicit, never a silent drop.
+test('the mail can travel without its document and with additional documents', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+    origin: 'https://admin.example.invalid',
+  });
+
+  // Without the document the order carries no document attachment at all.
+  const bare = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-attach-request-1',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Ganz ohne Dokument.',
+    attachDocument: false,
+  });
+  expect(bare.attachment).toBeNull();
+  expect(
+    (
+      await pool.query(
+        'SELECT count(*) FROM mail_attachments WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, bare.messageId],
+      )
+    ).rows[0].count,
+  ).toBe('0');
+  // A replay answers the very same gesture, document-free as well.
+  const replay = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-attach-request-1',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Ganz ohne Dokument.',
+    attachDocument: true,
+  });
+  expect(replay.attachment).toBeNull();
+  expect(replay.messageId).toBe(bare.messageId);
+
+  // Only the order under test remains in the outbox for the worker below.
+  await pool.query('DELETE FROM mail_outbox');
+  // A second final document of the event travels next to the main one.
+  const templateId = (
+    await pool.query<{ id: string }>(
+      'SELECT id FROM document_templates WHERE tenant_id=$1 LIMIT 1',
+      [tenantId],
+    )
+  ).rows[0]!.id;
+  const extra = await seedDocument({
+    tenant: tenantId,
+    templateId,
+    kind: 'offer',
+    state: 'final',
+    number: 'AN-2030-0042',
+    pdfHash,
+    contactId,
+    eventId,
+  });
+  const sent = await repo.scheduleDocumentSend(actorId, {
+    documentId: finalDocumentId,
+    requestId: 'fictional-attach-request-2',
+    to: 'synthetic.contact@example.invalid',
+    bodyText: 'Mit Zusatzdokument.',
+    documentIds: [extra],
+  });
+  expect(sent.attachment).toMatchObject({ documentId: finalDocumentId });
+  expect(sent.messageId).toBeTruthy();
+  const carried = (
+    await pool.query<{ filename: string }>(
+      'SELECT filename FROM mail_attachments WHERE tenant_id=$1 AND message_id=$2 ORDER BY filename',
+      [tenantId, sent.messageId],
+    )
+  ).rows.map((row) => row.filename);
+  expect(carried).toEqual([
+    'Dokument-AN-2030-0042.pdf',
+    'Dokument-RE-2030-0001.pdf',
+  ]);
+  // The worker hands both documents to the provider.
+  const { calls, createSender } = stubSender('sent');
+  expect(
+    await runMailOutboxPass(pool, () => {}, {
+      createSender,
+      key: encryptionKey,
+      store: mailStore,
+    }),
+  ).toBe(true);
+  expect(calls).toHaveLength(1);
+  expect(
+    (calls[0]!.content.attachments ?? []).map((entry) => entry.filename),
+  ).toEqual(['Dokument-AN-2030-0042.pdf', 'Dokument-RE-2030-0001.pdf']);
+
+  // A withdrawn document is refused as a whole - never a silent drop.
+  await expect(
+    repo.scheduleDocumentSend(actorId, {
+      documentId: finalDocumentId,
+      requestId: 'fictional-attach-request-3',
+      to: 'synthetic.contact@example.invalid',
+      bodyText: 'Darf nicht gespeichert werden.',
+      documentIds: [withdrawnDocumentId],
+    }),
+  ).rejects.toMatchObject({ reason: 'attachment_unavailable' });
+  expect(
+    (
+      await pool.query(
+        "SELECT count(*) FROM mail_messages WHERE tenant_id=$1 AND body_text='Darf nicht gespeichert werden.'",
+        [tenantId],
+      )
+    ).rows[0].count,
+  ).toBe('0');
+});

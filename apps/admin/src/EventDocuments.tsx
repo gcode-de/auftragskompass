@@ -139,6 +139,51 @@ type MailFileAttachment = {
   mediaType: string;
   sizeBytes: number;
 };
+// ATTACH-01a: one named attachment list; every removal asks first - also the
+// document the mail was started for.
+type MailNamedAttachment = { id: string; label: string };
+
+function TrashButton({
+  label,
+  disabled,
+  onConfirm,
+}: {
+  label: string;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="mail-editor-tool"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={() => {
+        const name = label.replace(/ entfernen$/, '');
+        if (!window.confirm(`„${name}“ wirklich aus dieser Mail entfernen?`))
+          return;
+        onConfirm();
+      }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M10 11v6" />
+        <path d="M14 11v6" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+        <path d="M3 6h18" />
+        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      </svg>
+    </button>
+  );
+}
 type TemplateRow = { id: string; kind: string; name: string; state: string };
 type LibraryFileRow = {
   id: string;
@@ -487,6 +532,15 @@ export function EventDocuments({
     [mailTemplateBusy, setMailTemplateBusy] = useState(false),
     [templateNotice, setTemplateNotice] = useState(''),
     [mailFiles, setMailFiles] = useState<MailFileAttachment[]>([]),
+    // ATTACH-01a: the chosen document travels on request only, and extra
+    // documents or library files can join from the two pickers below.
+    [mailAttachDocument, setMailAttachDocument] = useState(true),
+    [mailDocs, setMailDocs] = useState<MailNamedAttachment[]>([]),
+    [mailLibraryFiles, setMailLibraryFiles] = useState<MailNamedAttachment[]>(
+      [],
+    ),
+    [mailDocId, setMailDocId] = useState(''),
+    [mailFileId, setMailFileId] = useState(''),
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
     uncertainReload = useRef<HTMLButtonElement>(null),
@@ -1990,6 +2044,27 @@ export function EventDocuments({
     setMailTemplateId('');
     setTemplateNotice('');
     setMailFiles([]);
+    setMailAttachDocument(true);
+    setMailDocs([]);
+    setMailDocId('');
+    setMailFileId('');
+    // The library picker lists the available files; a failed list leaves the
+    // picker empty and never invents an entry.
+    void fetch('/api/v1/library-files')
+      .then(async (response) => {
+        if (!response.ok) throw Error('load');
+        const rows = (await response.json()) as {
+          id: string;
+          displayName: string;
+          state: string;
+        }[];
+        setMailLibraryFiles(
+          rows
+            .filter((row) => row.state === 'available')
+            .map((row) => ({ id: row.id, label: row.displayName })),
+        );
+      })
+      .catch(() => setMailLibraryFiles([]));
     setMailUncertain(false);
     setMailPreview(null);
     setMailPreviewState('idle');
@@ -2142,6 +2217,10 @@ export function EventDocuments({
           to,
           subject: mailSubject,
           ...(mailBody.trim() ? { bodyHtml: mailBody } : {}),
+          attachDocument: mailAttachDocument,
+          ...(mailDocs.length
+            ? { documentIds: mailDocs.map((doc) => doc.id) }
+            : {}),
           ...(mailFiles.length
             ? { fileIds: mailFiles.map((file) => file.libraryFileId) }
             : {}),
@@ -3340,33 +3419,144 @@ export function EventDocuments({
                       </button>
                     </div>
                     {templateNotice && <p role="status">{templateNotice}</p>}
-                    {/* MAIL-TPL-01d: every carried file is named here, before
-                    the send; removing one keeps the rest. */}
-                    {mailFiles.length > 0 && (
-                      <ul className="mail-file-attachments">
-                        {mailFiles.map((file) => (
-                          <li key={file.libraryFileId}>
-                            <span>{file.name}</span>{' '}
-                            <button
-                              type="button"
-                              className="tertiary-action"
-                              disabled={busy !== '' || mailUncertain}
-                              onClick={() =>
-                                setMailFiles((current) =>
-                                  current.filter(
-                                    (entry) =>
-                                      entry.libraryFileId !==
-                                      file.libraryFileId,
-                                  ),
-                                )
-                              }
-                            >
-                              {file.name} entfernen
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    {/* ATTACH-01a: one named list for every attachment -
+                    the document itself, extra event documents and library
+                    files - and each removal asks before it happens. */}
+                    <ul className="mail-file-attachments">
+                      {mailAttachDocument && (
+                        <li>
+                          <span>
+                            {kindName(entry)} {entry.number}
+                          </span>
+                          <TrashButton
+                            label={`${kindName(entry)} ${entry.number} entfernen`}
+                            disabled={busy !== '' || mailUncertain}
+                            onConfirm={() => setMailAttachDocument(false)}
+                          />
+                        </li>
+                      )}
+                      {mailDocs.map((doc) => (
+                        <li key={doc.id}>
+                          <span>{doc.label}</span>
+                          <TrashButton
+                            label={`${doc.label} entfernen`}
+                            disabled={busy !== '' || mailUncertain}
+                            onConfirm={() =>
+                              setMailDocs((current) =>
+                                current.filter((item) => item.id !== doc.id),
+                              )
+                            }
+                          />
+                        </li>
+                      ))}
+                      {mailFiles.map((file) => (
+                        <li key={file.libraryFileId}>
+                          <span>{file.name}</span>
+                          <TrashButton
+                            label={`${file.name} entfernen`}
+                            disabled={busy !== '' || mailUncertain}
+                            onConfirm={() =>
+                              setMailFiles((current) =>
+                                current.filter(
+                                  (item) =>
+                                    item.libraryFileId !== file.libraryFileId,
+                                ),
+                              )
+                            }
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mail-template-row">
+                      <label>
+                        Aus Event-Dokumenten
+                        <select
+                          value={mailDocId}
+                          onChange={(event) => setMailDocId(event.target.value)}
+                        >
+                          <option value="">Dokument wählen</option>
+                          {documents
+                            .filter(
+                              (doc) =>
+                                doc.state === 'final' &&
+                                doc.id !== entry.id &&
+                                !mailDocs.some((item) => item.id === doc.id),
+                            )
+                            .map((doc) => (
+                              <option key={doc.id} value={doc.id}>
+                                {kindName(doc)} {doc.number}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={!mailDocId || busy !== '' || mailUncertain}
+                        onClick={() => {
+                          const doc = documents.find(
+                            (item) => item.id === mailDocId,
+                          );
+                          if (!doc) return;
+                          setMailDocs((current) =>
+                            current.concat({
+                              id: doc.id,
+                              label: `${kindName(doc)} ${doc.number}`,
+                            }),
+                          );
+                          setMailDocId('');
+                        }}
+                      >
+                        Dokument hinzufügen
+                      </button>
+                    </div>
+                    <div className="mail-template-row">
+                      <label>
+                        Aus Bibliothek
+                        <select
+                          value={mailFileId}
+                          onChange={(event) =>
+                            setMailFileId(event.target.value)
+                          }
+                        >
+                          <option value="">Datei wählen</option>
+                          {mailLibraryFiles
+                            .filter(
+                              (file) =>
+                                !mailFiles.some(
+                                  (item) => item.libraryFileId === file.id,
+                                ),
+                            )
+                            .map((file) => (
+                              <option key={file.id} value={file.id}>
+                                {file.label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={!mailFileId || busy !== '' || mailUncertain}
+                        onClick={() => {
+                          const file = mailLibraryFiles.find(
+                            (item) => item.id === mailFileId,
+                          );
+                          if (!file) return;
+                          setMailFiles((current) =>
+                            current.concat({
+                              libraryFileId: file.id,
+                              name: file.label,
+                              mediaType: 'application/pdf',
+                              sizeBytes: 0,
+                            }),
+                          );
+                          setMailFileId('');
+                        }}
+                      >
+                        Datei hinzufügen
+                      </button>
+                    </div>
                     {/* MAIL-EDITOR-01: the formatted cover text with the
                     documented placeholders; an empty body keeps the server's
                     default text. */}

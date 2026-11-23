@@ -236,6 +236,12 @@ export type MailDocumentSendInput = {
   /** MAIL-TPL-01d: chosen library files; an unavailable file refuses the
    *  whole order and is never silently dropped. */
   fileIds?: string[];
+  /** ATTACH-01a: whether the chosen document itself travels; default true.
+   *  Removing it is an explicit decision, never a silent drop. */
+  attachDocument?: boolean;
+  /** ATTACH-01a: other final documents of the event to carry along. An
+   *  unavailable one refuses the whole order like every other attachment. */
+  documentIds?: string[];
   accountId?: string | null;
 };
 // MAIL-EDITOR-01: the read-only twin of a document send. It runs the very
@@ -264,7 +270,8 @@ export type MailFileAttachmentSummary = {
 export type MailDocumentSendResult = {
   job: MailOutboxRow;
   messageId: string;
-  attachment: MailAttachmentSummary;
+  /** ATTACH-01a: null when the chosen document does not travel. */
+  attachment: MailAttachmentSummary | null;
   files: MailFileAttachmentSummary[];
   created: boolean;
 };
@@ -636,13 +643,16 @@ export function mailRepository(
     connection: Connection,
     job: MailOutboxRow,
     created: boolean,
+    // ATTACH-01a: the gesture's document is the definition of "the main
+    // attachment"; it travels only when the order said so.
+    mainDocumentId: string,
   ): Promise<MailDocumentSendResult> {
     const result = (await reviewed(connection).execute(sql`
       SELECT a.document_id::text AS document_id, a.filename, a.media_type,
              a.size_bytes
         FROM mail_attachments a
        WHERE a.tenant_id=${tenantId} AND a.message_id=${job.messageId}::uuid
-       ORDER BY a.filename LIMIT 1`)) as {
+         AND a.document_id=${mainDocumentId}::uuid`)) as {
       rows: {
         document_id: string;
         filename: string;
@@ -650,10 +660,7 @@ export function mailRepository(
         size_bytes: string;
       }[];
     };
-    const attachment = result.rows[0];
-    // A job of this route without its reference is a broken row, not something
-    // to answer with a made-up attachment.
-    if (!attachment) throw new Error('mail attachment reference missing');
+    const reference = result.rows[0];
     // MAIL-TPL-01d: the carried library files belong to the same answer.
     const fileRows = (await reviewed(connection).execute(sql`
       SELECT library_file_id::text AS library_file_id, filename, media_type,
@@ -671,12 +678,14 @@ export function mailRepository(
     return {
       job,
       messageId: job.messageId,
-      attachment: {
-        documentId: attachment.document_id,
-        filename: attachment.filename,
-        mediaType: attachment.media_type,
-        sizeBytes: Number(attachment.size_bytes),
-      },
+      attachment: reference
+        ? {
+            documentId: reference.document_id,
+            filename: reference.filename,
+            mediaType: reference.media_type,
+            sizeBytes: Number(reference.size_bytes),
+          }
+        : null,
       files: fileRows.rows.map((row) => ({
         libraryFileId: row.library_file_id,
         filename: row.filename,
@@ -1176,7 +1185,12 @@ export function mailRepository(
           rows: OutboxQueryRow[];
         };
         if (existing.rows[0])
-          return await documentSendOf(tx, toOutbox(existing.rows[0]), false);
+          return await documentSendOf(
+            tx,
+            toOutbox(existing.rows[0]),
+            false,
+            input.documentId,
+          );
 
         const to = mailAddressList(input.to),
           text = bodyText(input.bodyText ?? '', 20000, 'invalid_body'),
@@ -1222,7 +1236,8 @@ export function mailRepository(
         // frozen by its storage key. An unavailable file refuses the whole
         // order - the transaction leaves no message behind - and is never
         // silently dropped.
-        const fileIds = [...new Set(input.fileIds ?? [])];
+        const attachDocument = input.attachDocument ?? true,
+          fileIds = [...new Set(input.fileIds ?? [])];
         if (fileIds.length > 20) throw new MailError('attachment_unavailable');
         const files: {
           libraryFileId: string;
@@ -1259,6 +1274,49 @@ export function mailRepository(
           });
         }
 
+        // ATTACH-01a: other final documents of the event travel on request;
+        // each is re-checked and read once here like the main document, and
+        // an unavailable one refuses the whole order.
+        const extraDocumentIds = [...new Set(input.documentIds ?? [])].filter(
+          (id) => id !== input.documentId,
+        );
+        if (extraDocumentIds.length > 10)
+          throw new MailError('attachment_unavailable');
+        const extraDocuments: {
+          id: string;
+          number: string;
+          pdfHash: string;
+          sizeBytes: number;
+        }[] = [];
+        for (const documentId of extraDocumentIds) {
+          const found = await tx.execute<{
+            number: string | null;
+            state: 'draft' | 'final' | 'withdrawn';
+            pdf_hash: string | null;
+          }>(
+            sql`SELECT number, state, pdf_hash FROM documents
+                 WHERE tenant_id=${tenantId} AND id=${documentId}::uuid`,
+          );
+          const row = found.rows[0];
+          if (!row || row.state !== 'final' || !row.number || !row.pdf_hash)
+            throw new MailError('attachment_unavailable');
+          let sizeBytes: number;
+          try {
+            sizeBytes = (await readDocumentPdf(store!, row.pdf_hash))
+              .byteLength;
+          } catch {
+            throw new MailError('attachment_unavailable');
+          }
+          if (!sizeBytes || sizeBytes > maxMailAttachmentBytes)
+            throw new MailError('attachment_unavailable');
+          extraDocuments.push({
+            id: documentId,
+            number: row.number,
+            pdfHash: row.pdf_hash,
+            sizeBytes,
+          });
+        }
+
         const account = await usableAccount(tx, input.accountId),
           messageId = randomUUID(),
           filename = attachmentFileName(document.number),
@@ -1287,12 +1345,23 @@ export function mailRepository(
                   ${content.subject},${content.bodyText},${content.bodyHtml},${to},
                   ${document.contact_id}::uuid,${document.event_id}::uuid)
           RETURNING ${messageColumns}`)) as { rows: MessageQueryRow[] };
-        await reviewed(tx).execute(sql`
-          INSERT INTO mail_attachments
-            (tenant_id,message_id,document_id,pdf_hash,filename,media_type,size_bytes)
-          VALUES (${tenantId},${messageId}::uuid,${input.documentId}::uuid,
-                  ${document.pdf_hash},${filename},'application/pdf',
-                  ${bytes.byteLength})`);
+        // ATTACH-01a: the document itself travels only on request - removing
+        // it is an explicit decision and never a silent drop.
+        if (attachDocument)
+          await reviewed(tx).execute(sql`
+            INSERT INTO mail_attachments
+              (tenant_id,message_id,document_id,pdf_hash,filename,media_type,size_bytes)
+            VALUES (${tenantId},${messageId}::uuid,${input.documentId}::uuid,
+                    ${document.pdf_hash},${filename},'application/pdf',
+                    ${bytes.byteLength})`);
+        for (const doc of extraDocuments) {
+          await reviewed(tx).execute(sql`
+            INSERT INTO mail_attachments
+              (tenant_id,message_id,document_id,pdf_hash,filename,media_type,size_bytes)
+            VALUES (${tenantId},${messageId}::uuid,${doc.id}::uuid,
+                    ${doc.pdfHash},${attachmentFileName(doc.number)},
+                    'application/pdf',${doc.sizeBytes})`);
+        }
         for (const file of files) {
           await reviewed(tx).execute(sql`
             INSERT INTO mail_file_attachments
@@ -1325,12 +1394,14 @@ export function mailRepository(
         return {
           job: toOutbox(job.rows[0]),
           messageId: inserted.rows[0]!.id,
-          attachment: {
-            documentId: input.documentId,
-            filename,
-            mediaType: 'application/pdf',
-            sizeBytes: bytes.byteLength,
-          },
+          attachment: attachDocument
+            ? {
+                documentId: input.documentId,
+                filename,
+                mediaType: 'application/pdf' as const,
+                sizeBytes: bytes.byteLength,
+              }
+            : null,
           files: files.map(
             ({ libraryFileId, filename: name, mediaType, sizeBytes }) => ({
               libraryFileId,
@@ -1991,7 +2062,8 @@ const documentSendSchema = {
   properties: {
     messageId: { type: 'string', format: 'uuid' },
     job: outboxSchema,
-    attachment: attachmentSchema,
+    // ATTACH-01a: null when the chosen document does not travel.
+    attachment: { anyOf: [attachmentSchema, { type: 'null' }] },
     files: { type: 'array', maxItems: 20, items: fileAttachmentSchema },
   },
 } as const;
