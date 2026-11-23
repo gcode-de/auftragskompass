@@ -17,6 +17,14 @@ type TemplatePreview = {
   bodyText: string;
   missing: string[];
 };
+// MAIL-TPL-01e: one selectable library file for the standard attachments.
+type LibraryFile = {
+  id: string;
+  displayName: string;
+  mediaType: string;
+  sizeBytes: number;
+  state: string;
+};
 
 const stateLabels = {
   active: 'Aktiv',
@@ -36,6 +44,8 @@ function errorText(code: string | undefined) {
       return 'Der Zustand ist nicht gültig.';
     case 'invalid_content':
       return 'Unbekannter Platzhalter. Nur die Platzhalter aus der Auswahl verwenden; die Eingaben bleiben erhalten.';
+    case 'attachment_unavailable':
+      return 'Eine ausgewählte Datei ist nicht mehr verfügbar. Bitte die Anhänge prüfen.';
     case 'conflict':
       return 'Die Vorlage wurde inzwischen geändert. Bitte neu laden und erneut bearbeiten.';
     case 'not_found':
@@ -64,6 +74,8 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const [previewState, setPreviewState] = useState<
     'idle' | 'loading' | 'ready' | 'error'
   >('idle');
+  const [libraryFiles, setLibraryFiles] = useState<LibraryFile[]>([]);
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
 
   async function load(): Promise<MailTemplateSummary[]> {
     const response = await fetch('/api/v1/mail-templates');
@@ -73,6 +85,17 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
 
   useEffect(() => {
     let active = true;
+    // The chooser lists the available library files; a failed list leaves
+    // the chooser empty and never invents an entry.
+    void fetch('/api/v1/library-files')
+      .then(async (response) => {
+        if (!response.ok) throw Error('load');
+        const files = (await response.json()) as LibraryFile[];
+        if (active) setLibraryFiles(files);
+      })
+      .catch(() => {
+        if (active) setLibraryFiles([]);
+      });
     void load()
       .then((result) => {
         if (active) setRows(result);
@@ -112,9 +135,13 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
         const detail = (await response.json()) as {
           bodyHtml: string;
           version: number;
+          attachments: { libraryFileId: string }[];
         };
         setForm((current) => ({ ...current, bodyHtml: detail.bodyHtml }));
         setVersion(detail.version);
+        setAttachmentIds(
+          (detail.attachments ?? []).map((entry) => entry.libraryFileId),
+        );
       })
       .catch(() => {
         setError(true);
@@ -128,6 +155,7 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     setEditing('new');
     setVersion(1);
     setForm(emptyForm);
+    setAttachmentIds([]);
     setMessage('');
     setError(false);
     setPreview(null);
@@ -165,6 +193,9 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
             subject: form.subject,
             bodyHtml: form.bodyHtml,
             state: form.state,
+            // The editor knows the full set: an explicit list replaces the
+            // stored attachments deterministically.
+            attachmentFileIds: attachmentIds,
             ...(updating ? { version } : {}),
           }),
         },
@@ -250,6 +281,13 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
       setPreviewState('error');
     }
   }
+
+  const availableFiles = libraryFiles.filter(
+    (file) => file.state === 'available',
+  );
+  const unavailableFiles = libraryFiles.filter(
+    (file) => attachmentIds.includes(file.id) && file.state !== 'available',
+  );
 
   return (
     <section aria-label="E-Mail-Vorlagen" aria-busy={busy}>
@@ -373,6 +411,56 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                   label="Text (optional)"
                 />
               </div>
+              {/* MAIL-TPL-01e: the standard attachments are chosen from the
+              available library files; a file that became unavailable stays
+              named and removable instead of vanishing silently. */}
+              <fieldset className="mail-attachment-chooser">
+                <legend>Standard-Anhänge</legend>
+                <p className="document-hint">
+                  Ausgewählte Dateien der Bibliothek reisen mit jeder Mail aus
+                  dieser Vorlage; beim Versand sind sie sichtbar und einzeln
+                  entfernbar.
+                </p>
+                {availableFiles.length === 0 && (
+                  <p>Keine verfügbaren Dateien in der Bibliothek.</p>
+                )}
+                {availableFiles.map((file) => (
+                  <label key={file.id}>
+                    <input
+                      type="checkbox"
+                      checked={attachmentIds.includes(file.id)}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setAttachmentIds((current) =>
+                          event.target.checked
+                            ? [...current, file.id]
+                            : current.filter((id) => id !== file.id),
+                        )
+                      }
+                    />
+                    {file.displayName} ({file.mediaType}, {file.sizeBytes}{' '}
+                    Bytes)
+                  </label>
+                ))}
+                {unavailableFiles.map((file) => (
+                  <p role="status" key={file.id}>
+                    {file.displayName} ist nicht mehr verfügbar und kann nicht
+                    gespeichert werden.{' '}
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy}
+                      onClick={() =>
+                        setAttachmentIds((current) =>
+                          current.filter((id) => id !== file.id),
+                        )
+                      }
+                    >
+                      {file.displayName} entfernen
+                    </button>
+                  </p>
+                ))}
+              </fieldset>
               <div className="document-actions">
                 <button
                   type="button"

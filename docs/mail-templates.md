@@ -92,7 +92,17 @@ Versuch neu und prüft den Hash – eine ersetzte oder beschädigte Datei ist
 dann `attachment_unavailable` und nie die falschen Bytes. Der bisherige
 Vertrag `mail_attachments` (nur finale Dokumente) bleibt unverändert.
 
+## Anhänge wählen (01e)
+
+In „E-Mail-Vorlagen“ wählt die Standard-Anhänge-Auswahl aus den
+**verfügbaren** Dateien der Bibliothek (Name, Medientyp, Größe). Eine nicht
+mehr verfügbare, aber noch gewählte Datei bleibt **benannt** und einzeln
+entfernbar, statt stillschweigend zu verschwinden; ohne Dateien sagt die
+Auswahl „Keine verfügbaren Dateien in der Bibliothek.“ Jede Speicherung
+sendet die vollständige Auswahl (`attachmentFileIds`), und eine Ablehnung
+wegen einer inzwischen unbrauchbaren Datei wird verständlich benannt.
+
 ## Ehrliche Grenzen
 
-- Das Auswählen der Anhänge in den Einstellungen ist MAIL-TPL-01e; die
-  Speicher-API (`attachmentFileIds`) ist bereits vollständig.
+- Keine weiteren offenen Punkte der Anhangskette; der Versand zeigt die
+  Dateien sichtbar/entfernbar (01d) und die Auswahl ist vollständig (01e).
