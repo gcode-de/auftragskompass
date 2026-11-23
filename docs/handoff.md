@@ -1,5 +1,31 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 23.11.2026 (MAIL-TPL-01e – MAIL-TPL-01 vollständig)
+
+- **Erledigt: MAIL-TPL-01e (Anhänge in den Einstellungen wählen)** – PR #86
+  (`20c59d4`, Merge `8c90272`, gemergt bei `mergeStateStatus: CLEAN`).
+  Die Standard-Anhänge-Auswahl zeigt die verfügbaren Bibliotheksdateien
+  (Name/Medientyp/Größe) als Checkboxen; eine nicht mehr verfügbare, aber
+  gewählte Datei bleibt benannt und einzeln entfernbar; jede Speicherung
+  sendet die Gesamtmenge `attachmentFileIds`, Ablehnungen werden benannt.
+  **Abnahme:** Component mail-templates-panel 14/14, Component-Suite
+  1062/1062, unit 391/391, E2E `mail-templates-settings.spec.ts` 1/1
+  (Auswahl → Speichern → Wiederöffnen; axe 0), Changed-Code 22/22 Zeilen
+  (100 %) / 12/14 Zweige (85,7 %). Main-CI `45176324400` grün inkl. Images;
+  live verifiziert auf `8c9027202b33…` (Checkpoint vorhanden).
+- **Damit sind die Prioritäten des Auftrags vollständig erledigt:**
+  MAIL-EDITOR-01 (GOAL B, PR #77) und MAIL-TPL-01 (GOAL C) in allen fünf
+  Teilslices (PRs #79, #80, #82, #84, #86) – inklusive Editorbibliotheks-
+  bewertung, `{{contactFirstName}}` aus strukturierten Daten, serverseitigem
+  Sanitizing/Textalternative/Betreffauflösung, Vorschau, Vorlagenverwaltung
+  und sicherer Standardanhänge. Bewusst offen und später: MAIL-LATER
+  (IMAP-Postfach) sowie die notierten Restpunkte (Vorname im
+  `contacts.csv`-Export; Beobachtungspunkt Picker nach Leerzeichen).
+- **Nebenbefund:** ein Quality-Job von PR #86 scheiterte einmalig an einem
+  Focus-Timing-Flake im Alt-Test „a blank offer finalized in another tab …“
+  (Zwilling grün, lokal dreimal grün); die gezielte Job-Wiederholung war
+  danach grün.
+
 ## Aktueller Stand, 23.11.2026 (MAIL-TPL-01d)
 
 - **Erledigt: MAIL-TPL-01d (Standard-Dateianhänge: Daten und Sendeweg)** –
