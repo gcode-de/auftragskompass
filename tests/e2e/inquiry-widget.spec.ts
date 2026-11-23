@@ -41,6 +41,12 @@ test.use({ locale: 'de-DE' });
 test.beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17.6-alpine').start();
   pool = new Pool({ connectionString: container.getConnectionUri() });
+  // A stopping test container can still deliver one last error on an idle
+  // connection ("terminating connection due to administrator command").
+  // That is teardown noise, never a test result - awaited queries still
+  // reject exactly where the tests look at them.
+  pool.on('error', () => undefined);
+
   await migrateGateway(pool);
   app = await createInquiryGateway({
     pool,
@@ -62,8 +68,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   await app?.close();
-  await pool?.end();
-  await container?.stop();
+  await pool?.end().catch(() => undefined);
+  await container?.stop().catch(() => undefined);
 });
 test('isolated public form is accessible in both themes at mobile, tablet and desktop widths and safely retries a lost public receipt', async ({
   page,
