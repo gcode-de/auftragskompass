@@ -1,5 +1,45 @@
 # Projektübergabe AuftragsKompass
 
+## Aktueller Stand, 23.11.2026 (Nutzauftrag Editor/Anhänge/Dokumente, Teil 1+2 erledigt)
+
+- **Editor-Upgrade (EDITOR-02, PR #89, Merge `78398d3`):** Icon-Leiste im
+  Hausstil (24×24-Stroke, Lucide-Geometrie, `aria-label`/`title`/`aria-pressed`)
+  mit Fett/Kursiv/Unterstrichen/Durchgestrichen/Überschrift 2/Überschrift 3/
+  Zitat/Aufzählung/Nummerierung/Link/Rückgängig/Wiederholen; Enter = neuer
+  Absatz mit Abstand, Shift+Enter = `<br>` im selben Absatz ohne Abstand
+  (HardBreak-Extension war der konkrete Defekt, im echten Chromium gegen die
+  echte Textalternative belegt). Allowlist serverseitig um `h2`,`h3`,`s`,
+  `blockquote` erweitert (Textalternative mit „> “-Zitatmarken).
+  **TinyMCE bewusst nicht übernommen** (Bewertung in
+  [mail-editor.md](mail-editor.md)): GPLv2+/proprietäre Self-Hosted-Lizenz
+  für ein öffentliches Repo, gemessene ≈1,24 MB Assets gegen 129 KB gzip,
+  Inline-Styles kollidieren mit dem Sanitizing; die Wünsche sind direkt in
+  TipTap umgesetzt.
+- **Anhänge (ATTACH-01a PR #91 / 01b PR #92, Merge `76b2399` bzw. `4c0a97a`):**
+  eine benannte Anhängeliste im Mail-Dialog – Hauptdokument, weitere
+  Event-Dokumente und Bibliotheksdateien – jedes Entfernen fragt zuerst,
+  ausdrücklich auch das ursprüngliche Dokument; zwei Picker, Vorlagen-
+  Standardanhänge in derselben Liste. Drop-Zone auf dem Textbereich plus
+  beschrifteter Datei-Wähler; Upload über die Bibliotheks-API mit
+  denselben ehrlichen Fehlermeldungen. **Zwei echte Produktfehler gefunden
+  und behoben:** ProseMirror verschluckt Drop-Ereignisse (Zone hört jetzt in
+  der Capture-Phase) und ein Render-Rennschild im Inhalts-Sync überschrieb
+  getippten Text (Wurzel des geschlossenen Picker-Beobachtungspunkts).
+  Component-Tests der 01b-Fälle per DeepSeek V4.1 Flash nach Vertrag
+  geschrieben, von MiMo reviewt und selbst gelaufen (150/150).
+- **Betriebsstörung 23.11.2026 (Plattenplatz voll):** dokumentiert in
+  [incidents.md](incidents.md) inkl. Ursache (CT-refquota zu 100 %,
+  Image-Wachstum/Checkpoints/Mitnutzer), Wiederanlauf (Betreiber erweiterte
+  rootfs, der bestehende Updater-Lauf endete selbst „updated") und vier
+  Empfehlungen zur Speicherüberwachung. Kein manueller Eingriff erfolgt.
+- **Live geprüft (23.11.2026):** alle Merges über Main-CI inkl. Images grün;
+  die Container trugen nach jedem Fenster die exakte Merge-Revision mit
+  geprüftem Pre-Update-Checkpoint (zuletzt `4c0a97a87172…`).
+- **Offen:** DOCS-BOOKITUP – die Verwaltung allgemeiner und Event-Dokumente
+  „wie bei bookitup“ (Screenshots in `~/Downloads/bookitup`, Doku im Repo);
+  als eigene Arbeitsfolge mit Unter-Slices geplant (Plan-Eintrag steht).
+  Nichts davon ist begonnen; keine echten Kundendaten wurden verarbeitet.
+
 ## Aktueller Stand, 23.11.2026 (MAIL-TPL-01e – MAIL-TPL-01 vollständig)
 
 - **Erledigt: MAIL-TPL-01e (Anhänge in den Einstellungen wählen)** – PR #86
