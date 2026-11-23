@@ -9,7 +9,7 @@ import {
 // BKP020.1: the file library is its own named region beside the document
 // index. It lists uploaded files only and makes the missing malware scan
 // explicit instead of implying a check that does not exist.
-const maxBytes = 10 * 1024 * 1024,
+export const maxBytes = 10 * 1024 * 1024,
   mediaTypes = [
     'application/pdf',
     'image/png',
@@ -87,7 +87,7 @@ function validRows(reply: unknown): Row[] | null {
   return rows;
 }
 
-function mediaTypeOf(file: File): MediaType | null {
+export function mediaTypeOf(file: File): MediaType | null {
   if (knownMediaType(file.type)) return file.type;
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
   return extensionTypes[extension] ?? null;
@@ -105,7 +105,26 @@ function dateText(day: string): string {
   return `${date}.${month}.${year}`;
 }
 
-function readFileBase64(file: File): Promise<string> {
+// Shared with the mail composer (ATTACH-01b): the same honest upload errors.
+export async function uploadError(reply: Response): Promise<string> {
+  if (reply.status === 413)
+    return 'Die Datei ist größer als 10 MiB. Bitte eine kleinere Datei wählen.';
+  if (reply.status === 415)
+    return 'Der Dateiinhalt passt nicht zum Dateityp. Bitte die Datei prüfen.';
+  if (reply.status === 400) {
+    const body = (await reply.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    return body?.error === 'invalid_name'
+      ? 'Der Dateiname ist ungültig. Bitte einen Namen mit 1 bis 200 Zeichen ohne Steuerzeichen wählen.'
+      : 'Die Datei konnte nicht gelesen werden. Bitte erneut wählen.';
+  }
+  if (reply.status === 401 || reply.status === 403)
+    return 'Die Anmeldung ist abgelaufen oder es fehlt die Berechtigung.';
+  return 'Der Uploadstand ist unklar. Bitte die Liste neu laden, bevor du es erneut versuchst.';
+}
+
+export function readFileBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('read_failed'));
@@ -189,23 +208,6 @@ export function LibraryFiles({
       return;
     }
     setPending(file);
-  }
-  async function uploadError(reply: Response): Promise<string> {
-    if (reply.status === 413)
-      return 'Die Datei ist größer als 10 MiB. Bitte eine kleinere Datei wählen.';
-    if (reply.status === 415)
-      return 'Der Dateiinhalt passt nicht zum Dateityp. Bitte die Datei prüfen.';
-    if (reply.status === 400) {
-      const body = (await reply.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      return body?.error === 'invalid_name'
-        ? 'Der Dateiname ist ungültig. Bitte einen Namen mit 1 bis 200 Zeichen ohne Steuerzeichen wählen.'
-        : 'Die Datei konnte nicht gelesen werden. Bitte erneut wählen.';
-    }
-    if (reply.status === 401 || reply.status === 403)
-      return 'Die Anmeldung ist abgelaufen oder es fehlt die Berechtigung.';
-    return 'Der Uploadstand ist unklar. Bitte die Liste neu laden, bevor du es erneut versuchst.';
   }
   async function uploadSelected(event: FormEvent) {
     event.preventDefault();

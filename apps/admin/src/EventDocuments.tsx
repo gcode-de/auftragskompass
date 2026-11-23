@@ -9,6 +9,12 @@ import {
 import { Temporal } from '@js-temporal/polyfill';
 import { OfferDraftEditor } from './OfferDraftEditor.js';
 import { MailBodyEditor } from './MailBodyEditor.js';
+import {
+  maxBytes,
+  mediaTypeOf,
+  readFileBase64,
+  uploadError,
+} from './LibraryFiles.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { parseHundredths } from './decimal.js';
 
@@ -541,6 +547,11 @@ export function EventDocuments({
     ),
     [mailDocId, setMailDocId] = useState(''),
     [mailFileId, setMailFileId] = useState(''),
+    // ATTACH-01b: dropped or chosen files travel through the library upload.
+    [uploading, setUploading] = useState(false),
+    [uploadNotice, setUploadNotice] = useState(''),
+    [uploadFail, setUploadFail] = useState(''),
+    [dragging, setDragging] = useState(false),
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
     uncertainReload = useRef<HTMLButtonElement>(null),
@@ -2127,6 +2138,70 @@ export function EventDocuments({
       setMailTemplateBusy(false);
     }
   }
+
+  // ATTACH-01b: dropped or chosen files go through the same library upload as
+  // the files area; each file is named in the outcome, good or bad.
+  async function uploadFiles(files: FileList | File[]) {
+    setUploadNotice('');
+    setUploadFail('');
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const mediaType = mediaTypeOf(file);
+        if (!mediaType) {
+          setUploadFail(`${file.name}: Der Dateityp wird nicht unterstützt.`);
+          continue;
+        }
+        if (file.size > maxBytes) {
+          setUploadFail(`${file.name}: Die Datei ist größer als 10 MiB.`);
+          continue;
+        }
+        try {
+          const contentBase64 = await readFileBase64(file),
+            reply = await fetch('/api/v1/library-files', {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-csrf-token': csrfToken,
+              },
+              body: JSON.stringify({
+                displayName: file.name,
+                mediaType,
+                contentBase64,
+                requestId: crypto.randomUUID(),
+              }),
+            });
+          if (reply.status !== 201) {
+            setUploadFail(await uploadError(reply));
+            continue;
+          }
+          const row = (await reply.json()) as {
+            id: string;
+            displayName: string;
+            mediaType: string;
+            sizeBytes: number;
+          };
+          setMailFiles((current) =>
+            current.concat({
+              libraryFileId: row.id,
+              name: row.displayName,
+              mediaType: row.mediaType,
+              sizeBytes: row.sizeBytes,
+            }),
+          );
+          setUploadNotice(
+            `${file.name} wurde angehängt. Die Datei ist ungeprüft.`,
+          );
+        } catch {
+          setUploadFail(
+            'Der Uploadstand ist unklar. Bitte die Anhänge prüfen, bevor du es erneut versuchst.',
+          );
+        }
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
   // The refusal categories of the send route, worded as the operator's next
   // step. Nothing here repeats a document or a customer address.
   function documentSendFailureMessage(error: string) {
@@ -3419,6 +3494,27 @@ export function EventDocuments({
                       </button>
                     </div>
                     {templateNotice && <p role="status">{templateNotice}</p>}
+                    {/* ATTACH-01b: files can be dropped onto the text area
+                    above or chosen here; every upload is named, good or
+                    bad. */}
+                    <div className="mail-upload-row">
+                      <label>
+                        Datei zum Anhängen wählen
+                        <input
+                          type="file"
+                          multiple
+                          disabled={busy !== '' || mailUncertain || uploading}
+                          onChange={(event) => {
+                            const files = event.target.files;
+                            if (files?.length) void uploadFiles(files);
+                            event.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {uploading && <p role="status">Datei wird hochgeladen …</p>}
+                    {uploadNotice && <p role="status">{uploadNotice}</p>}
+                    {uploadFail && <p role="alert">{uploadFail}</p>}
                     {/* ATTACH-01a: one named list for every attachment -
                     the document itself, extra event documents and library
                     files - and each removal asks before it happens. */}
@@ -3560,7 +3656,27 @@ export function EventDocuments({
                     {/* MAIL-EDITOR-01: the formatted cover text with the
                     documented placeholders; an empty body keeps the server's
                     default text. */}
-                    <div className="mail-editor-field">
+                    <div
+                      className="mail-editor-field"
+                      data-dragging={dragging ? 'true' : 'false'}
+                      // Capture phase: the editor below swallows drop
+                      // events on its own surface, and the browser default
+                      // for a dropped file would be navigation. Internal
+                      // text drops carry no files and stay untouched.
+                      onDragOverCapture={(event) => {
+                        event.preventDefault();
+                        setDragging(true);
+                      }}
+                      onDragLeave={() => setDragging(false)}
+                      onDropCapture={(event) => {
+                        event.preventDefault();
+                        setDragging(false);
+                        if (event.dataTransfer.files.length) {
+                          event.stopPropagation();
+                          void uploadFiles(event.dataTransfer.files);
+                        }
+                      }}
+                    >
                       <span className="mail-editor-label">
                         Begleittext (optional)
                       </span>

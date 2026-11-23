@@ -370,6 +370,8 @@ function setup(
     mailTemplateDetail?: unknown;
     // ATTACH-01a: available library files for the attachment chooser.
     libraryFiles?: unknown[];
+    // ATTACH-01b: the answer to a file uploaded from the mail composer.
+    libraryUpload?: (body: unknown) => Response | Promise<Response>;
   } = {},
 ) {
   const calls: {
@@ -418,6 +420,30 @@ function setup(
         return options.documentsResponse?.() ?? Response.json(state.documents);
       }
       if (url === '/api/v1/library-files') {
+        // ATTACH-01b: the composer uploads dropped or chosen files through the
+        // same library endpoint; the answer names exactly the uploaded file.
+        if (method === 'POST') {
+          const body = JSON.parse(String(init!.body)) as {
+            displayName: string;
+            mediaType: string;
+          };
+          calls.push({
+            url,
+            method,
+            body,
+            headers: init!.headers as Record<string, string>,
+          });
+          if (options.libraryUpload) return await options.libraryUpload(body);
+          return Response.json(
+            {
+              id: 'file-up-1',
+              displayName: body.displayName,
+              mediaType: body.mediaType,
+              sizeBytes: 29,
+            },
+            { status: 201 },
+          );
+        }
         calls.push({ url, method });
         if (options.library) return options.library();
         // A test may present its own available files (ATTACH-01a).
@@ -5529,6 +5555,25 @@ function openMailSend(trigger: HTMLElement) {
   return screen.findByRole('dialog', { name: 'Dokument per E-Mail senden' });
 }
 
+// ATTACH-01b: jsdom has no elementFromPoint, so ProseMirror's own drop handler -
+// which runs before React's bubbling one - would throw on the way to the drop
+// zone. The stub only lives for the synchronous dispatch.
+function dropFiles(target: HTMLElement, files: File[]) {
+  Object.defineProperty(document, 'elementFromPoint', {
+    configurable: true,
+    value: () => null,
+  });
+  try {
+    fireEvent.drop(target, {
+      dataTransfer: { files },
+      clientX: -5,
+      clientY: -5,
+    });
+  } finally {
+    delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+  }
+}
+
 test('only a finalized document offers the mail action', async () => {
   setup({
     documents: [
@@ -6235,5 +6280,207 @@ test('the attachment list names every source and each removal asks first', async
     attachDocument: false,
     documentIds: ['doc-extra'],
     fileIds: ['44444444-0000-4000-8000-000000000011'],
+  });
+});
+
+// ATTACH-01b: files dropped onto the cover text area are uploaded through the
+// library endpoint and appear in the one named attachment list.
+test('dropping files on the text area uploads them into the attachment list', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Begleittext (optional)',
+  });
+  dropFiles(editor, [
+    new File(['pdf-bytes'], 'Rechnung.pdf', {
+      type: 'application/pdf',
+    }),
+  ]);
+  await screen.findByText(
+    'Rechnung.pdf wurde angehängt. Die Datei ist ungeprüft.',
+  );
+  expect(within(dialog).getByText('Rechnung.pdf')).toBeTruthy();
+  const uploads = calls.filter(
+    (call) => call.url === '/api/v1/library-files' && call.method === 'POST',
+  );
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0]!.body).toMatchObject({
+    displayName: 'Rechnung.pdf',
+    mediaType: 'application/pdf',
+  });
+  expect(typeof (uploads[0]!.body as { requestId: string }).requestId).toBe(
+    'string',
+  );
+  // The upload travels with the session's CSRF token.
+  expect(uploads[0]!.headers).toMatchObject({
+    'x-csrf-token': props.csrfToken,
+  });
+});
+
+test('several dropped files are uploaded one after another', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Begleittext (optional)',
+  });
+  dropFiles(editor, [
+    new File(['pdf-bytes'], 'Rechnung.pdf', {
+      type: 'application/pdf',
+    }),
+    new File(['png-bytes'], 'Foto.png', { type: 'image/png' }),
+  ]);
+  await screen.findByText('Foto.png wurde angehängt. Die Datei ist ungeprüft.');
+  expect(within(dialog).getByText('Rechnung.pdf')).toBeTruthy();
+  expect(within(dialog).getByText('Foto.png')).toBeTruthy();
+  const uploads = calls.filter(
+    (call) => call.url === '/api/v1/library-files' && call.method === 'POST',
+  );
+  expect(uploads).toHaveLength(2);
+  expect(
+    uploads.map((call) => (call.body as { displayName: string }).displayName),
+  ).toEqual(['Rechnung.pdf', 'Foto.png']);
+});
+
+test('an unsupported file type is refused with its name and never uploaded', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Begleittext (optional)',
+  });
+  dropFiles(editor, [
+    new File(['x'], 'virus.exe', { type: 'application/x-msdownload' }),
+  ]);
+  await screen.findByText('virus.exe: Der Dateityp wird nicht unterstützt.');
+  expect(
+    calls.filter(
+      (call) => call.url === '/api/v1/library-files' && call.method === 'POST',
+    ),
+  ).toHaveLength(0);
+});
+
+test('an oversized file is refused with its name and never uploaded', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Begleittext (optional)',
+  });
+  const file = new File(['pdf-bytes'], 'big.pdf', {
+    type: 'application/pdf',
+  });
+  Object.defineProperty(file, 'size', { value: 20 * 1024 * 1024 });
+  dropFiles(editor, [file]);
+  await screen.findByText('big.pdf: Die Datei ist größer als 10 MiB.');
+  expect(
+    calls.filter(
+      (call) => call.url === '/api/v1/library-files' && call.method === 'POST',
+    ),
+  ).toHaveLength(0);
+});
+
+test('a failed upload reports the unclear state by name', async () => {
+  const { calls } = setup({
+    documents: [finalized],
+    libraryUpload: () => {
+      throw new Error('fiktive Netzwerkstörung');
+    },
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Begleittext (optional)',
+  });
+  dropFiles(editor, [
+    new File(['pdf-bytes'], 'Rechnung.pdf', {
+      type: 'application/pdf',
+    }),
+  ]);
+  await screen.findByText(
+    'Der Uploadstand ist unklar. Bitte die Anhänge prüfen, bevor du es erneut versuchst.',
+  );
+  expect(
+    calls.filter(
+      (call) => call.url === '/api/v1/library-files' && call.method === 'POST',
+    ),
+  ).toHaveLength(1);
+});
+
+test('the file input uploads chosen files like a drop', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  const input = within(dialog).getByLabelText('Datei zum Anhängen wählen');
+  fireEvent.change(input, {
+    target: {
+      files: [
+        new File(['pdf-bytes'], 'Rechnung.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+      value: '',
+    },
+  });
+  await screen.findByText(
+    'Rechnung.pdf wurde angehängt. Die Datei ist ungeprüft.',
+  );
+  expect(within(dialog).getByText('Rechnung.pdf')).toBeTruthy();
+  const uploads = calls.filter(
+    (call) => call.url === '/api/v1/library-files' && call.method === 'POST',
+  );
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0]!.body).toMatchObject({
+    displayName: 'Rechnung.pdf',
+    mediaType: 'application/pdf',
   });
 });
