@@ -92,6 +92,39 @@ Schreiber, nicht leere Ziele und Überschreiben einer Sicherung. Erst nach
 fachlichem Abgleich über die weitere Umschaltung entscheiden; keine Sicherung
 über das laufende Datenvolume zurückspielen.
 
+### Betriebsstörung 23.11.2026: Plattenplatz voll, Updatelauf brach ab
+
+- **Symptome:** Drei Läufe des alleinigen Updaters scheiterten (20:33
+  „Failed to start", 21:06, 21:35 und 22:08 „Update not confirmed; inspect
+  operator state and service health"); `podman pull` lief lange und
+  `podman inspect` hing in Locks. Die Anwendung selbst blieb erreichbar
+  (`/auth/me` antwortete 401, Index 200).
+- **Ursache:** Die ZFS-`refquota` des CT war zu 100 % ausgeschöpft. Der
+  Bedarf teilt sich mit weiteren Anwendungen desselben CT (unter anderem
+  Portainer und weitere Stacks) und wächst mit jedem Updatezyklus durch
+  neue Image-Layers je Revision sowie durch die Pre-Update-Checkpoints
+  (Ordner derzeit 878 MB). Der Pull des grünen Stands scheiterte am fehlenden
+  Platz; die Abbrüche hinterließen genau den beobachteten Zustand aus
+  laufendem Pull und belegten Locks.
+- **Wiederanlauf (Betreiber, 23.11.2026):** `pct resize 114 rootfs +10G`
+  (45 → 55 GiB). Danach beendete der bestehende Updater-Lauf (22:13–22:40)
+  seinen Pull selbst erfolgreich und meldete „updated". Kontrolle danach:
+  alle drei App-Container healthy auf der exakten Revision des gemergten
+  Stands, der Pre-Update-Checkpoint (`preupdate-…​.dump`, 17,3 MB) liegt vor
+  dem Wechsel, der Service ist inaktiv, der Timer aktiv. Es erfolgte kein
+  manueller Eingriff, kein erneutes Update und kein Neustart von CT oder
+  Containern.
+- **Künftige Speicherüberwachung (Empfehlung, noch nicht umgesetzt):**
+  1. Auslastung der CT-`refquota` auf dem Host beobachten (`zfs get
+     used,refquota,referenced …`) und bei 80 %/90 % alarmieren.
+  2. Plattenplatz-Vorabprüfung im Updater: vor `podman pull` den freien
+     Platz gegen den doppelten Image-Bedarf prüfen und im Zweifel mit klarer
+     Meldung abbrechen – fail fast statt eines Pull-Abbruchs.
+  3. Nach erfolgreichem Update alte Image-Layers bewusst und separat
+     aufräumen (`podman image prune`), nicht im selben Lauf.
+  4. Aufbewahrung der Pre-Update-Checkpoints nach Anzahl oder Alter
+     begrenzen; der Ordner wächst mit jedem Lauf.
+
 ## Nachweis und offene Grenzen
 
 Der native [Podman-Probelauf](operations.md#nativer-podman-probelauf) verwendet
