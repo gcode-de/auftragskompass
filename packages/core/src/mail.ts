@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { sql } from 'drizzle-orm';
@@ -233,6 +233,9 @@ export type MailDocumentSendInput = {
   bodyText?: string | null;
   /** MAIL-EDITOR-01: formatted cover text with the documented placeholders. */
   bodyHtml?: string | null;
+  /** MAIL-TPL-01d: chosen library files; an unavailable file refuses the
+   *  whole order and is never silently dropped. */
+  fileIds?: string[];
   accountId?: string | null;
 };
 // MAIL-EDITOR-01: the read-only twin of a document send. It runs the very
@@ -250,10 +253,19 @@ export type MailDocumentPreview = {
   /** Names of known placeholders without a value; they stay visible. */
   missing: string[];
 };
+// MAIL-TPL-01d: one carried library file, referenced by its frozen storage
+// key - the bytes are never copied into the database.
+export type MailFileAttachmentSummary = {
+  libraryFileId: string;
+  filename: string;
+  mediaType: string;
+  sizeBytes: number;
+};
 export type MailDocumentSendResult = {
   job: MailOutboxRow;
   messageId: string;
   attachment: MailAttachmentSummary;
+  files: MailFileAttachmentSummary[];
   created: boolean;
 };
 /** The storage limit is the same one an artefact may have on disk. */
@@ -419,6 +431,24 @@ function accountFields(input: MailAccountInput) {
 function attachmentFileName(number: string): string {
   const base = `Dokument-${number}`.replace(/[^A-Za-z0-9._-]/g, '_');
   return base.slice(0, 120) + '.pdf';
+}
+// MAIL-TPL-01d: the same rule for library files - the display name never
+// becomes a path or a MIME header as typed, only safe characters survive and
+// the derived extension is always present.
+const fileExtensions: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'application/zip': 'zip',
+};
+function libraryFileName(displayName: string, mediaType: string): string {
+  const extension = fileExtensions[mediaType] ?? 'bin';
+  const base =
+    displayName.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '') || 'Datei';
+  const named = base.toLowerCase().endsWith('.' + extension)
+    ? base
+    : base + '.' + extension;
+  return named.slice(0, 121);
 }
 
 const messageColumns = sql`m.id::text AS id, m.account_id::text AS account_id,
@@ -624,6 +654,20 @@ export function mailRepository(
     // A job of this route without its reference is a broken row, not something
     // to answer with a made-up attachment.
     if (!attachment) throw new Error('mail attachment reference missing');
+    // MAIL-TPL-01d: the carried library files belong to the same answer.
+    const fileRows = (await reviewed(connection).execute(sql`
+      SELECT library_file_id::text AS library_file_id, filename, media_type,
+             size_bytes
+        FROM mail_file_attachments
+       WHERE tenant_id=${tenantId} AND message_id=${job.messageId}::uuid
+       ORDER BY filename`)) as {
+      rows: {
+        library_file_id: string;
+        filename: string;
+        media_type: string;
+        size_bytes: string;
+      }[];
+    };
     return {
       job,
       messageId: job.messageId,
@@ -633,6 +677,12 @@ export function mailRepository(
         mediaType: attachment.media_type,
         sizeBytes: Number(attachment.size_bytes),
       },
+      files: fileRows.rows.map((row) => ({
+        libraryFileId: row.library_file_id,
+        filename: row.filename,
+        mediaType: row.media_type,
+        sizeBytes: Number(row.size_bytes),
+      })),
       created,
     };
   }
@@ -1168,6 +1218,47 @@ export function mailRepository(
         if (!bytes.byteLength || bytes.byteLength > maxMailAttachmentBytes)
           throw new MailError('attachment_unavailable');
 
+        // MAIL-TPL-01d: every chosen library file is checked again here and
+        // frozen by its storage key. An unavailable file refuses the whole
+        // order - the transaction leaves no message behind - and is never
+        // silently dropped.
+        const fileIds = [...new Set(input.fileIds ?? [])];
+        if (fileIds.length > 20) throw new MailError('attachment_unavailable');
+        const files: {
+          libraryFileId: string;
+          filename: string;
+          mediaType: string;
+          sizeBytes: number;
+          storageKey: string;
+          sha256: string;
+        }[] = [];
+        for (const fileId of fileIds) {
+          const found = await tx.execute<{
+            id: string;
+            display_name: string;
+            media_type: string;
+            size_bytes: string;
+            storage_key: string;
+            sha256: string;
+          }>(
+            sql`SELECT id::text AS id, display_name, media_type, size_bytes,
+                       storage_key, sha256
+                  FROM library_files
+                 WHERE tenant_id=${tenantId} AND id=${fileId}::uuid
+                   AND state='available' AND scan_state='not_scanned'`,
+          );
+          const row = found.rows[0];
+          if (!row) throw new MailError('attachment_unavailable');
+          files.push({
+            libraryFileId: row.id,
+            filename: libraryFileName(row.display_name, row.media_type),
+            mediaType: row.media_type,
+            sizeBytes: Number(row.size_bytes),
+            storageKey: row.storage_key,
+            sha256: row.sha256,
+          });
+        }
+
         const account = await usableAccount(tx, input.accountId),
           messageId = randomUUID(),
           filename = attachmentFileName(document.number),
@@ -1202,6 +1293,15 @@ export function mailRepository(
           VALUES (${tenantId},${messageId}::uuid,${input.documentId}::uuid,
                   ${document.pdf_hash},${filename},'application/pdf',
                   ${bytes.byteLength})`);
+        for (const file of files) {
+          await reviewed(tx).execute(sql`
+            INSERT INTO mail_file_attachments
+              (tenant_id,message_id,library_file_id,filename,media_type,
+               size_bytes,storage_key,sha256)
+            VALUES (${tenantId},${messageId}::uuid,${file.libraryFileId}::uuid,
+                    ${file.filename},${file.mediaType},${file.sizeBytes},
+                    ${file.storageKey},${file.sha256})`);
+        }
         const job = (await reviewed(tx).execute(sql`
           INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
           VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
@@ -1231,6 +1331,14 @@ export function mailRepository(
             mediaType: 'application/pdf',
             sizeBytes: bytes.byteLength,
           },
+          files: files.map(
+            ({ libraryFileId, filename: name, mediaType, sizeBytes }) => ({
+              libraryFileId,
+              filename: name,
+              mediaType,
+              sizeBytes,
+            }),
+          ),
           created: true,
         };
       });
@@ -1500,6 +1608,41 @@ async function prepareMailAttempt(
     } catch {
       // A referenced document that cannot be read is a definite non-delivery:
       // the mail must not go out without the document it announces.
+      return { problem: 'attachment_unavailable' };
+    }
+  }
+  // MAIL-TPL-01d: library files travel from the same store through their
+  // frozen key, and every attempt verifies the recorded hash - a replaced or
+  // corrupted file is a named failure and never the wrong bytes.
+  const fileReferences = await client.query<{
+    filename: string;
+    media_type: string;
+    storage_key: string;
+    sha256: string;
+  }>(
+    `SELECT filename, media_type, storage_key, sha256
+       FROM mail_file_attachments
+      WHERE tenant_id=$1 AND message_id=$2
+      ORDER BY filename`,
+    [job.tenantId, job.messageId],
+  );
+  if (fileReferences.rows.length && !store)
+    return { problem: 'attachment_unavailable' };
+  for (const reference of fileReferences.rows) {
+    try {
+      const content = await store!.read(reference.storage_key);
+      if (
+        content.byteLength <= 0 ||
+        content.byteLength > maxMailAttachmentBytes ||
+        createHash('sha256').update(content).digest('hex') !== reference.sha256
+      )
+        return { problem: 'attachment_unavailable' };
+      attachments.push({
+        filename: reference.filename,
+        content,
+        contentType: reference.media_type,
+      });
+    } catch {
       return { problem: 'attachment_unavailable' };
     }
   }
@@ -1830,14 +1973,26 @@ const attachmentSchema = {
     sizeBytes: { type: 'integer', minimum: 1 },
   },
 } as const;
+const fileAttachmentSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['libraryFileId', 'filename', 'mediaType', 'sizeBytes'],
+  properties: {
+    libraryFileId: { type: 'string', format: 'uuid' },
+    filename: { type: 'string' },
+    mediaType: { type: 'string' },
+    sizeBytes: { type: 'integer', minimum: 1 },
+  },
+} as const;
 const documentSendSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['messageId', 'job', 'attachment'],
+  required: ['messageId', 'job', 'attachment', 'files'],
   properties: {
     messageId: { type: 'string', format: 'uuid' },
     job: outboxSchema,
     attachment: attachmentSchema,
+    files: { type: 'array', maxItems: 20, items: fileAttachmentSchema },
   },
 } as const;
 // MAIL-ACCOUNT-01: an account answer is this whitelist and nothing else - the
@@ -2112,6 +2267,11 @@ export function registerMailRoutes(
             subject: { type: 'string', maxLength: 998 },
             bodyText: { type: 'string', maxLength: 20000 },
             bodyHtml: { type: 'string', maxLength: 200000 },
+            fileIds: {
+              type: 'array',
+              maxItems: 20,
+              items: { type: 'string', format: 'uuid' },
+            },
             accountId: { type: 'string', format: 'uuid' },
           },
         },
@@ -2128,6 +2288,7 @@ export function registerMailRoutes(
           messageId: result.messageId,
           job: result.job,
           attachment: result.attachment,
+          files: result.files,
         });
       } catch (error) {
         return failure(error, reply);

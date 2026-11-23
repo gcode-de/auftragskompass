@@ -131,6 +131,14 @@ type MailPreview = {
   missing: string[];
 };
 type MailTemplateOption = { id: string; name: string };
+// MAIL-TPL-01d: one standard attachment of the applied template, carried as
+// a reference to a library file.
+type MailFileAttachment = {
+  libraryFileId: string;
+  name: string;
+  mediaType: string;
+  sizeBytes: number;
+};
 type TemplateRow = { id: string; kind: string; name: string; state: string };
 type LibraryFileRow = {
   id: string;
@@ -478,6 +486,7 @@ export function EventDocuments({
     [mailTemplateId, setMailTemplateId] = useState(''),
     [mailTemplateBusy, setMailTemplateBusy] = useState(false),
     [templateNotice, setTemplateNotice] = useState(''),
+    [mailFiles, setMailFiles] = useState<MailFileAttachment[]>([]),
     mutating = useRef(false),
     createSummary = useRef<HTMLButtonElement>(null),
     uncertainReload = useRef<HTMLButtonElement>(null),
@@ -1980,6 +1989,7 @@ export function EventDocuments({
     setMailSubject(defaultMailSubject(entry));
     setMailTemplateId('');
     setTemplateNotice('');
+    setMailFiles([]);
     setMailUncertain(false);
     setMailPreview(null);
     setMailPreviewState('idle');
@@ -2028,9 +2038,13 @@ export function EventDocuments({
       const detail = (await response.json()) as {
         subject: string;
         bodyHtml: string;
+        attachments: MailFileAttachment[];
       };
       setMailSubject(detail.subject);
       setMailBody(detail.bodyHtml);
+      // The standard attachments are visible from the start and each one can
+      // be removed before the send - nothing travels unseen.
+      setMailFiles(detail.attachments ?? []);
       setTemplateNotice('Vorlage übernommen.');
     } catch {
       setTemplateNotice('Die Vorlage konnte nicht geladen werden.');
@@ -2047,7 +2061,7 @@ export function EventDocuments({
       case 'not_final':
         return 'Nur ein finalisiertes Dokument kann per E-Mail gesendet werden.';
       case 'attachment_unavailable':
-        return 'Das gespeicherte PDF ist derzeit nicht verfügbar. Es wurde kein Auftrag angelegt.';
+        return 'Ein Anhang ist derzeit nicht verfügbar. Bitte die Anhänge prüfen; es wurde kein Auftrag angelegt.';
       case 'invalid_recipients':
         return 'Bitte eine gültige Empfängeradresse eingeben.';
       case 'invalid_account':
@@ -2128,6 +2142,9 @@ export function EventDocuments({
           to,
           subject: mailSubject,
           ...(mailBody.trim() ? { bodyHtml: mailBody } : {}),
+          ...(mailFiles.length
+            ? { fileIds: mailFiles.map((file) => file.libraryFileId) }
+            : {}),
         }),
       });
       if (!reply.ok) {
@@ -3323,6 +3340,33 @@ export function EventDocuments({
                       </button>
                     </div>
                     {templateNotice && <p role="status">{templateNotice}</p>}
+                    {/* MAIL-TPL-01d: every carried file is named here, before
+                    the send; removing one keeps the rest. */}
+                    {mailFiles.length > 0 && (
+                      <ul className="mail-file-attachments">
+                        {mailFiles.map((file) => (
+                          <li key={file.libraryFileId}>
+                            <span>{file.name}</span>{' '}
+                            <button
+                              type="button"
+                              className="tertiary-action"
+                              disabled={busy !== '' || mailUncertain}
+                              onClick={() =>
+                                setMailFiles((current) =>
+                                  current.filter(
+                                    (entry) =>
+                                      entry.libraryFileId !==
+                                      file.libraryFileId,
+                                  ),
+                                )
+                              }
+                            >
+                              {file.name} entfernen
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {/* MAIL-EDITOR-01: the formatted cover text with the
                     documented placeholders; an empty body keeps the server's
                     default text. */}

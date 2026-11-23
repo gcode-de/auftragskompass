@@ -30,7 +30,8 @@ export type MailTemplateErrorReason =
   | 'invalid_subject'
   | 'invalid_body'
   | 'invalid_state'
-  | 'invalid_content';
+  | 'invalid_content'
+  | 'attachment_unavailable';
 export class MailTemplateError extends Error {
   constructor(readonly reason: MailTemplateErrorReason) {
     super('Mail template rejected');
@@ -43,6 +44,16 @@ export type MailTemplateInput = {
   bodyHtml: string;
   /** Omitted means `active`; updates send the state explicitly. */
   state?: MailTemplateState;
+  /** MAIL-TPL-01d: standard file references; absent keeps the stored set,
+   *  an explicit list replaces it (possibly empty). */
+  attachmentFileIds?: string[];
+};
+/** One standard attachment: a reference to an available library file. */
+export type MailTemplateAttachment = {
+  libraryFileId: string;
+  name: string;
+  mediaType: string;
+  sizeBytes: number;
 };
 export type MailTemplateSummary = {
   id: string;
@@ -53,7 +64,10 @@ export type MailTemplateSummary = {
   createdAt: string;
   updatedAt: string;
 };
-export type MailTemplateDetail = MailTemplateSummary & { bodyHtml: string };
+export type MailTemplateDetail = MailTemplateSummary & {
+  bodyHtml: string;
+  attachments: MailTemplateAttachment[];
+};
 export type MailTemplatePreview = {
   subject: string;
   bodyHtml: string;
@@ -183,7 +197,10 @@ type TemplateQueryRow = {
   created_at: string;
   updated_at: string;
 };
-function toDetail(row: TemplateQueryRow): MailTemplateDetail {
+function toDetail(
+  row: TemplateQueryRow,
+  attachments: MailTemplateAttachment[],
+): MailTemplateDetail {
   return {
     id: row.id,
     name: row.name,
@@ -193,8 +210,27 @@ function toDetail(row: TemplateQueryRow): MailTemplateDetail {
     version: row.version,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
+    attachments,
   };
 }
+
+type FileRefQueryRow = {
+  library_file_id: string;
+  name: string;
+  media_type: string;
+  size_bytes: string;
+};
+function toAttachment(row: FileRefQueryRow): MailTemplateAttachment {
+  return {
+    libraryFileId: row.library_file_id,
+    name: row.name,
+    mediaType: row.media_type,
+    sizeBytes: Number(row.size_bytes),
+  };
+}
+
+const fileRefColumns = sql`a.library_file_id::text AS library_file_id,
+  f.display_name AS name, f.media_type, f.size_bytes`;
 function toSummary(row: TemplateQueryRow): MailTemplateSummary {
   return {
     id: row.id,
@@ -209,6 +245,23 @@ function toSummary(row: TemplateQueryRow): MailTemplateSummary {
 
 export function mailTemplateRepository(pool: Pool, tenantId: string) {
   const db = database(pool);
+
+  // MAIL-TPL-01d: the standard attachments of one template, as references
+  // joined with the names the operator recognises.
+  async function templateAttachments(
+    connection: Connection,
+    templateId: string,
+  ): Promise<MailTemplateAttachment[]> {
+    const result = (await reviewed(connection).execute(sql`
+      SELECT ${fileRefColumns}
+        FROM mail_template_attachments a
+        JOIN library_files f
+          ON f.tenant_id=a.tenant_id AND f.id=a.library_file_id
+       WHERE a.tenant_id=${tenantId}
+         AND a.template_id=${templateId}::uuid
+       ORDER BY a.position, a.library_file_id`)) as { rows: FileRefQueryRow[] };
+    return result.rows.map(toAttachment);
+  }
 
   // Reads are tenant-bound by this closure; routes add the membership check.
   async function requireMember(actorId: string) {
@@ -235,7 +288,7 @@ export function mailTemplateRepository(pool: Pool, tenantId: string) {
       const row = result.rows[0];
       // Another tenant's template is missing, never forbidden: no leak.
       if (!row) throw new MailTemplateError('not_found');
-      return toDetail(row);
+      return toDetail(row, await templateAttachments(db, id));
     },
 
     async save(
@@ -245,6 +298,7 @@ export function mailTemplateRepository(pool: Pool, tenantId: string) {
         subject: string;
         bodyHtml: string;
         state?: string;
+        attachmentFileIds?: string[];
       },
       id?: string,
       version?: number,
@@ -280,19 +334,64 @@ export function mailTemplateRepository(pool: Pool, tenantId: string) {
                            ${fields.subject},${fields.bodyHtml},${fields.state},1)
                    RETURNING ${templateColumns}`,
         )) as { rows: TemplateQueryRow[] };
+        const templateId = result.rows[0]!.id;
+        // MAIL-TPL-01d: an explicit list replaces the standard attachments,
+        // an absent one keeps them (keep-on-absent like every optional
+        // field). Every referenced file is checked again here and once more
+        // by the database trigger - an unavailable file refuses the whole
+        // save and is never silently dropped.
+        if (input.attachmentFileIds !== undefined) {
+          const ids = [...new Set(input.attachmentFileIds)];
+          if (ids.length > 20)
+            throw new MailTemplateError('attachment_unavailable');
+          for (const fileId of ids) {
+            const check = await tx.execute(
+              sql`SELECT 1 FROM library_files
+                   WHERE tenant_id=${tenantId} AND id=${fileId}::uuid
+                     AND state='available' AND scan_state='not_scanned'`,
+            );
+            if (!check.rows[0])
+              throw new MailTemplateError('attachment_unavailable');
+          }
+          await reviewed(tx).execute(sql`
+            DELETE FROM mail_template_attachments
+             WHERE tenant_id=${tenantId} AND template_id=${templateId}::uuid`);
+          let position = 0;
+          for (const fileId of ids) {
+            await reviewed(tx).execute(sql`
+              INSERT INTO mail_template_attachments
+                (tenant_id,template_id,library_file_id,position)
+              VALUES (${tenantId},${templateId}::uuid,${fileId}::uuid,${position})`);
+            position += 1;
+          }
+        }
         await appendAudit(
           tx,
           tenantId,
           'mail.template_saved',
           actorId,
-          result.rows[0]!.id,
+          templateId,
         );
-        return toDetail(result.rows[0]!);
+        return toDetail(
+          result.rows[0]!,
+          await templateAttachments(tx, templateId),
+        );
       });
     },
   };
 }
 
+const attachmentSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['libraryFileId', 'name', 'mediaType', 'sizeBytes'],
+  properties: {
+    libraryFileId: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    mediaType: { type: 'string' },
+    sizeBytes: { type: 'integer', minimum: 1 },
+  },
+} as const;
 const templateSchema = {
   type: 'object',
   additionalProperties: false,
@@ -305,6 +404,7 @@ const templateSchema = {
     'version',
     'createdAt',
     'updatedAt',
+    'attachments',
   ],
   properties: {
     id: { type: 'string', format: 'uuid' },
@@ -315,15 +415,18 @@ const templateSchema = {
     version: { type: 'integer', minimum: 1 },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
+    attachments: { type: 'array', maxItems: 20, items: attachmentSchema },
   },
 } as const;
 const summarySchema = {
   type: 'object',
   additionalProperties: false,
-  required: templateSchema.required.filter((key) => key !== 'bodyHtml'),
+  required: templateSchema.required.filter(
+    (key) => key !== 'bodyHtml' && key !== 'attachments',
+  ),
   properties: Object.fromEntries(
     Object.entries(templateSchema.properties).filter(
-      ([key]) => key !== 'bodyHtml',
+      ([key]) => key !== 'bodyHtml' && key !== 'attachments',
     ),
   ),
 } as const;
@@ -337,6 +440,11 @@ const bodySchema = {
     bodyHtml: { type: 'string', maxLength: 200000 },
     state: { type: 'string', enum: [...mailTemplateStates] },
     version: { type: 'integer', minimum: 1 },
+    attachmentFileIds: {
+      type: 'array',
+      maxItems: 20,
+      items: { type: 'string', format: 'uuid' },
+    },
   },
 } as const;
 const previewBodySchema = {
@@ -428,6 +536,7 @@ export function registerMailTemplateRoutes(
             subject: string;
             bodyHtml: string;
             state?: string;
+            attachmentFileIds?: string[];
           },
         );
         return reply.code(201).send(created);
@@ -453,6 +562,7 @@ export function registerMailTemplateRoutes(
           bodyHtml: string;
           state?: string;
           version?: number;
+          attachmentFileIds?: string[];
         };
         return await repo.save(
           request.authSession!.userId,
