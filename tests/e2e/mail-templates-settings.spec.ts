@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Pool } from 'pg';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:https';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -18,6 +18,7 @@ import {
   mailTemplateRepository,
   registerMailTemplateRoutes,
 } from '../../packages/core/src/mail-templates.js';
+import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 
 // MAIL-TPL-01b: the mail template settings in real Chromium against the real
 // routes - open the area, create a template with a placeholder, save it, axe
@@ -133,6 +134,37 @@ test('mail templates are managed in the settings in Chromium', async ({
       mode: 'password' as const,
     });
     registerMailTemplateRoutes(app, pool, tenantId);
+    // MAIL-TPL-01e: one available library file for the attachment chooser.
+    const storedFiles = new Map<string, Buffer>();
+    registerLibraryFileRoutes(app, pool, tenantId, {
+      async put(key: string, bytes: Buffer) {
+        storedFiles.set(key, Buffer.from(bytes));
+      },
+      async read(key: string) {
+        const bytes = storedFiles.get(key);
+        if (!bytes) throw new Error('synthetic E2E artifact is missing');
+        return Buffer.from(bytes);
+      },
+      async remove(key: string) {
+        storedFiles.delete(key);
+      },
+    });
+    await pool.query(
+      `INSERT INTO library_files
+         (tenant_id,id,display_name,media_type,size_bytes,sha256,storage_key,
+          scan_state,state,uploaded_at,uploaded_by)
+       VALUES ($1::uuid,$2::uuid,'Fictional Datei','application/pdf',29,
+               $3,$4,'not_scanned','available',now(),$5::uuid)`,
+      [
+        tenantId,
+        randomUUID(),
+        createHash('sha256')
+          .update(Buffer.from('%PDF-1.4 synthetic library file\n', 'latin1'))
+          .digest('hex'),
+        'file-fixture.pdf',
+        actorId,
+      ],
+    );
     // One existing template so the list and the edit flow have a row.
     await mailTemplateRepository(pool, tenantId).save(actorId, {
       name: 'Fictional Bestätigung',
@@ -219,6 +251,22 @@ test('mail templates are managed in the settings in Chromium', async ({
         /Beispielvorschau – Betreff: Erinnerung für Alex Beispiel/,
       ),
     ).toBeVisible();
+
+    // MAIL-TPL-01e: the standard attachment chooser lists available library
+    // files; checking one travels with the save and survives a reopen.
+    await section.getByRole('checkbox', { name: /Fictional Datei/ }).check();
+    await section.getByRole('button', { name: 'Vorlage speichern' }).click();
+    await expect(
+      section.getByText('E-Mail-Vorlage gespeichert.'),
+    ).toBeVisible();
+    // The stored choice survives closing and reopening the editor.
+    await section.getByRole('button', { name: 'Abbrechen' }).click();
+    await section
+      .getByRole('button', { name: 'Fictionale Erinnerung bearbeiten' })
+      .click();
+    await expect(
+      section.getByRole('checkbox', { name: /Fictional Datei/ }),
+    ).toBeChecked();
 
     await page.setViewportSize({ width: 320, height: 720 });
     expect(await overflow()).toBe(true);

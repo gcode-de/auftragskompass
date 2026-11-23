@@ -24,22 +24,46 @@ const summary = {
 };
 const detail = { ...summary, bodyHtml: '<p>Hallo {{contactFirstName}}</p>' };
 
+const availableFile = {
+  id: '44444444-0000-4000-8000-000000000011',
+  displayName: 'Fictional Datei',
+  mediaType: 'application/pdf',
+  sizeBytes: 29,
+  state: 'available',
+};
+const archivedFile = {
+  id: '44444444-0000-4000-8000-000000000012',
+  displayName: 'Archivierte Datei',
+  mediaType: 'application/pdf',
+  sizeBytes: 29,
+  state: 'archived',
+};
+
 function stubTemplateFetch(
   handlers: {
     list?: unknown[];
     detail?: unknown;
     preview?: unknown;
-    write?: { status: number; body: unknown };
+    write?:
+      { status: number; body: unknown } | { status: number; body: unknown }[];
     failList?: boolean;
+    libraryFiles?: unknown[];
   } = {},
 ) {
   const calls: { path: string; options: RequestInit | undefined }[] = [];
   let failedOnce = false;
+  const writeResponses = Array.isArray(handlers.write)
+    ? [...handlers.write]
+    : handlers.write
+      ? [handlers.write]
+      : [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, options?: RequestInit) => {
       calls.push({ path, options });
       if (!options) {
+        if (path === '/api/v1/library-files')
+          return Response.json(handlers.libraryFiles ?? []);
         if (path === '/api/v1/mail-templates') {
           if (handlers.failList && !failedOnce) {
             failedOnce = true;
@@ -58,10 +82,9 @@ function stubTemplateFetch(
             missing: ['package'],
           },
         );
-      if (handlers.write)
-        return Response.json(handlers.write.body, {
-          status: handlers.write.status,
-        });
+      const respond = writeResponses.shift();
+      if (respond)
+        return Response.json(respond.body, { status: respond.status });
       return Response.json(handlers.detail ?? detail);
     }),
   );
@@ -282,6 +305,7 @@ test('a save that cannot reload the list is still honestly confirmed', async () 
     'fetch',
     vi.fn(async (path: string, options?: RequestInit) => {
       if (!options) {
+        if (path === '/api/v1/library-files') return Response.json([]);
         listCalls++;
         if (listCalls > 1) throw Error('fiktive Netzwerkstörung');
         return Response.json([]);
@@ -345,4 +369,95 @@ test('a preview without formatted body shows its text alternative', async () => 
   );
   fireEvent.click(screen.getByRole('button', { name: 'Vorschau anzeigen' }));
   await screen.findByText('Nur Text.');
+});
+
+// MAIL-TPL-01e: the standard attachment chooser in the settings.
+test('the chooser lists available files and names unavailable ones honestly', async () => {
+  const calls = stubTemplateFetch({
+    libraryFiles: [availableFile, archivedFile],
+    detail: {
+      ...detail,
+      attachments: [
+        {
+          libraryFileId: archivedFile.id,
+          name: archivedFile.displayName,
+          mediaType: archivedFile.mediaType,
+          sizeBytes: archivedFile.sizeBytes,
+        },
+      ],
+    },
+    write: { status: 200, body: { ...summary, version: 4 } },
+  });
+  render(<MailTemplatesPanel csrfToken="fictional-csrf" />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Zahlungserinnerung bearbeiten',
+    }),
+  );
+  await screen.findByRole('textbox', { name: 'Text (optional)' });
+  // The available file is selectable; the unavailable one is named with a
+  // remove action instead of vanishing.
+  const checkbox = screen.getByRole('checkbox', {
+    name: /Fictional Datei/,
+  }) as HTMLInputElement;
+  expect(checkbox.checked).toBe(false);
+  expect(
+    screen.getByText(/Archivierte Datei ist nicht mehr verfügbar/),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Archivierte Datei entfernen' }),
+  );
+  expect(
+    screen.queryByText(/Archivierte Datei ist nicht mehr verfügbar/),
+  ).toBeNull();
+  // Both directions work: check, uncheck, then the final check travels.
+  fireEvent.click(checkbox);
+  expect(checkbox.checked).toBe(true);
+  fireEvent.click(checkbox);
+  expect(checkbox.checked).toBe(false);
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole('button', { name: 'Vorlage speichern' }));
+  await screen.findByText('E-Mail-Vorlage gespeichert.');
+  const put = calls.find(({ options }) => options?.method === 'PUT')!;
+  expect(JSON.parse(String(put.options?.body))).toMatchObject({
+    attachmentFileIds: [availableFile.id],
+  });
+});
+
+test('an unavailable attachment refuses the save with a named message', async () => {
+  stubTemplateFetch({
+    libraryFiles: [archivedFile],
+    detail: {
+      ...detail,
+      attachments: [
+        {
+          libraryFileId: archivedFile.id,
+          name: archivedFile.displayName,
+          mediaType: archivedFile.mediaType,
+          sizeBytes: archivedFile.sizeBytes,
+        },
+      ],
+    },
+    write: [
+      { status: 400, body: { error: 'attachment_unavailable' } },
+      { status: 200, body: { ...summary, version: 4 } },
+    ],
+  });
+  render(<MailTemplatesPanel csrfToken="fictional-csrf" />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Zahlungserinnerung bearbeiten',
+    }),
+  );
+  await screen.findByRole('textbox', { name: 'Text (optional)' });
+  fireEvent.click(screen.getByRole('button', { name: 'Vorlage speichern' }));
+  await screen.findByText(
+    'Eine ausgewählte Datei ist nicht mehr verfügbar. Bitte die Anhänge prüfen.',
+  );
+  // After removing the file the save goes through.
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Archivierte Datei entfernen' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Vorlage speichern' }));
+  await screen.findByText('E-Mail-Vorlage gespeichert.');
 });

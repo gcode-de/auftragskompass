@@ -2522,6 +2522,18 @@ summary {
   justify-items: start;
   gap: 0.4rem;
 }
+/* MAIL-TPL-01e: the attachment chooser is a quiet checkbox group whose rows
+   keep the 44px target height. */
+.mail-attachment-chooser {
+  display: grid;
+  gap: 0.4rem;
+}
+.mail-attachment-chooser label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 44px;
+}
 /* MAIL-TPL-01d: the carried files are a quiet named list; each row keeps its
    44px remove action. */
 .mail-file-attachments {
