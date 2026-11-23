@@ -275,9 +275,15 @@ export function MailBodyEditor({
     [href, setHref] = useState(''),
     pickerToggle = useRef<HTMLButtonElement>(null);
   // The template editor receives its body after the detail fetch; a late
-  // external value replaces the document once (never an update echo).
+  // external value replaces the document once. The guard compares against
+  // the previously seen prop, not against the emitted HTML: a render that
+  // still carries the old prop (racing the parent's state update after a
+  // transaction) must never reset what the user just typed.
+  const lastValue = useRef(value);
   useEffect(() => {
-    if (!editor || value === emitted.current) return;
+    if (!editor || value === lastValue.current) return;
+    lastValue.current = value;
+    if (value === emitted.current) return;
     emitted.current = value;
     editor.commands.setContent(value || '<p></p>', { emitUpdate: false });
   }, [editor, value]);

@@ -46,6 +46,7 @@ import {
   registerMailTemplateRoutes,
   mailTemplateRepository,
 } from '../../packages/core/src/mail-templates.js';
+import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 
 // MAIL-EDITOR-01: the formatted document mail in real Chromium against the
 // real routes - compose with formatting and placeholders, preview the actual
@@ -218,6 +219,9 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     });
 
     registerMailTemplateRoutes(app, pool, tenantId);
+    // ATTACH-01b: dropped or chosen files upload through the real library
+    // endpoint, backed by the in-memory store of this harness.
+    registerLibraryFileRoutes(app, pool, tenantId, storage);
     // MAIL-TPL-01c: one active template with a subject placeholder; its body
     // stays empty so the composed draft below is unambiguous.
     await mailTemplateRepository(pool, tenantId).save(actorId, {
@@ -430,6 +434,33 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
         () => document.documentElement.scrollWidth <= window.innerWidth,
       );
     expect(await overflow()).toBe(true);
+
+    // ATTACH-01b: a file dropped onto the text area is uploaded through the
+    // library endpoint and named in the attachment list - in a real browser,
+    // past ProseMirror's own drop handling.
+    await editor.evaluate((el) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File(['%PDF-1.4 fictional drop'], 'Dropped Datei.pdf', {
+          type: 'application/pdf',
+        }),
+      );
+      el.dispatchEvent(
+        new DragEvent('drop', {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: transfer,
+        }),
+      );
+    });
+    await expect(
+      dialog.getByText(
+        'Dropped Datei.pdf wurde angehängt. Die Datei ist ungeprüft.',
+      ),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText('Dropped Datei.pdf', { exact: true }),
+    ).toBeVisible();
 
     // Send: one durable order, resolved and sanitized on the server.
     await dialog.getByRole('button', { name: 'Senden' }).click();

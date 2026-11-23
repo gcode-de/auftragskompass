@@ -2565,6 +2565,21 @@ summary {
   justify-items: start;
   gap: 0.4rem;
 }
+/* ATTACH-01b: the text area is the drop zone; the drag state is shown by a
+   stronger border and never by colour alone. */
+.mail-editor-field[data-dragging='true'] > .mail-body-editor {
+  border-color: var(--action);
+  border-style: dashed;
+}
+.mail-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.mail-upload-row input {
+  min-height: 44px;
+}
 /* MAIL-TPL-01e: the attachment chooser is a quiet checkbox group whose rows
    keep the 44px target height. */
 .mail-attachment-chooser {
