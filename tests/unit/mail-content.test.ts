@@ -52,6 +52,26 @@ test.each([
   expect(sanitizeMailHtml(input)).toBe(expected);
 });
 
+test('the mail allowlist grows for headings, strike and quotes - and nothing else', () => {
+  expect(
+    sanitizeMailHtml(
+      '<h2>Titel</h2><h3>Untertitel</h3><p><s>alt</s> neu</p>' +
+        '<blockquote>Zitat</blockquote><table><tr><td>x</td></tr></table>' +
+        '<h4 onclick="evil()">Zu tief</h4>',
+    ),
+  ).toBe(
+    '<h2>Titel</h2><h3>Untertitel</h3><p><s>alt</s> neu</p>' +
+      '<blockquote>Zitat</blockquote>xZu tief',
+  );
+  // The attack cases hold for the new tags as well.
+  expect(
+    sanitizeMailHtml('<blockquote style="x"><img src="y">Q</blockquote>'),
+  ).toBe('<blockquote>Q</blockquote>');
+  expect(sanitizeMailHtml('<h2><script>evil()</script>T</h2>')).toBe(
+    '<h2>T</h2>',
+  );
+});
+
 test('the text alternative follows the documented conversion rules', () => {
   expect(mailBodyTextFromHtml('<p>one</p><p>two</p>')).toBe('one\n\ntwo');
   expect(mailBodyTextFromHtml('<p>a<br />b</p>')).toBe('a\nb');
@@ -77,6 +97,19 @@ test('the text alternative follows the documented conversion rules', () => {
   // Non-breaking spaces (entity or DOM artifact) are plain spaces in the
   // text alternative.
   expect(mailBodyTextFromHtml('<p>a&nbsp;b\u00a0c</p>')).toBe('a b c');
+  // Headings are paragraph-like lines; a hard break is a plain line break
+  // inside the same block; quotes carry the conventional marker.
+  expect(
+    mailBodyTextFromHtml(
+      '<h2>Titel</h2><p>Einleitung</p><blockquote>Z1<br />Z2</blockquote>',
+    ),
+  ).toBe('Titel\n\nEinleitung\n\n> Z1\n> Z2');
+  expect(mailBodyTextFromHtml('<p><s>alt</s> neu</p>')).toBe('alt neu');
+  // Stray text before a list flushes first; a bare item outside any list
+  // falls back to the bullet form instead of crashing.
+  expect(
+    mailBodyTextFromHtml('Restsatz<ul><li>a</li></ul><li>ohne Liste</li>'),
+  ).toBe('Restsatz\n- a\n\n- ohne Liste');
 });
 
 test('the placeholder set is the document set plus the contact first name', () => {

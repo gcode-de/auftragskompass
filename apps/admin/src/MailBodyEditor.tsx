@@ -1,5 +1,9 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
+import Blockquote from '@tiptap/extension-blockquote';
+import HardBreak from '@tiptap/extension-hard-break';
+import Heading from '@tiptap/extension-heading';
+import Strike from '@tiptap/extension-strike';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
@@ -83,9 +87,13 @@ export const mailPlaceholderOffers = [
 ] as const;
 
 // The editor produces exactly the mail allowlist (docs/mail-editor.md):
-// paragraphs, emphasis, lists and links - nothing else. The server sanitizes
-// again regardless. The extensions are module-level so `useEditor` never sees
-// churn and never resets or steals focus on an unrelated re-render.
+// paragraphs and headings, emphasis and strike, quotes, lists, hard breaks
+// and links - nothing else. The server sanitizes again regardless. Enter
+// splits the blocks (a new paragraph with the usual spacing), Shift+Enter
+// inserts a hard break inside the same block (no spacing) - both come with
+// the extensions below and are covered by the E2E. The extensions are
+// module-level so `useEditor` never sees churn and never resets or steals
+// focus on an unrelated re-render.
 const mailExtensions = [
   Document,
   Paragraph,
@@ -93,6 +101,10 @@ const mailExtensions = [
   Bold,
   Italic,
   Underline,
+  Strike,
+  Heading.configure({ levels: [2, 3] }),
+  Blockquote,
+  HardBreak,
   BulletList,
   OrderedList,
   ListItem,
@@ -102,6 +114,111 @@ const mailExtensions = [
   }),
   History,
 ];
+
+// One consistent icon language: the navigation's 24x24 stroke geometry
+// (Lucide, ISC) rendered at the house stroke weight.
+const toolIconPaths = {
+  bold: [
+    'M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8',
+  ],
+  italic: ['M19 4H10', 'M14 20H5', 'M15 4L9 20'],
+  underline: ['M6 4v6a6 6 0 0 0 12 0V4', 'M4 20h16'],
+  strike: ['M16 4H9a3 3 0 0 0-2.83 4', 'M14 12a4 4 0 0 1 0 8H6', 'M4 12h16'],
+  heading2: [
+    'M4 12h8',
+    'M4 18V6',
+    'M12 18V6',
+    'M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1',
+  ],
+  heading3: [
+    'M4 12h8',
+    'M4 18V6',
+    'M12 18V6',
+    'M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 0 1-2 2',
+    'M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2',
+  ],
+  quote: [
+    'M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z',
+    'M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z',
+  ],
+  bulletList: [
+    'M3 5h.01',
+    'M3 12h.01',
+    'M3 19h.01',
+    'M8 5h13',
+    'M8 12h13',
+    'M8 19h13',
+  ],
+  orderedList: [
+    'M11 5h10',
+    'M11 12h10',
+    'M11 19h10',
+    'M4 4h1v5',
+    'M4 9h2',
+    'M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02',
+  ],
+  link: [
+    'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
+    'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+  ],
+  undo: [
+    'M9 14 4 9l5-5',
+    'M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11',
+  ],
+  redo: [
+    'm15 14 5-5-5-5',
+    'M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13',
+  ],
+};
+
+function ToolIcon({ icon }: { icon: keyof typeof toolIconPaths }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {toolIconPaths[icon].map((path) => (
+        <path key={path} d={path} />
+      ))}
+    </svg>
+  );
+}
+
+function ToolButton({
+  icon,
+  label,
+  pressed,
+  expanded,
+  disabled,
+  onClick,
+}: {
+  icon: keyof typeof toolIconPaths;
+  label: string;
+  pressed?: boolean;
+  expanded?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="mail-editor-tool"
+      aria-label={label}
+      title={label}
+      {...(pressed === undefined ? {} : { 'aria-pressed': pressed })}
+      {...(expanded === undefined ? {} : { 'aria-expanded': expanded })}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <ToolIcon icon={icon} />
+    </button>
+  );
+}
 
 /**
  * MAIL-EDITOR-01: the formatted body editor of the document mail. It owns its
@@ -126,6 +243,9 @@ export function MailBodyEditor({
   const emitted = useRef(value);
   const editor = useEditor(
     {
+      // SSR-safe: the first render carries no editor yet, so the toolbar's
+      // inactive fallbacks are real code paths instead of dead branches.
+      immediatelyRender: false,
       extensions: mailExtensions,
       content: value,
       editable: !disabled,
@@ -194,66 +314,98 @@ export function MailBodyEditor({
         role="group"
         aria-label="Text formatieren"
       >
-        <button
-          type="button"
-          className="secondary-action"
-          aria-pressed={editor?.isActive('bold') ?? false}
+        <ToolButton
+          icon="bold"
+          label="Fett"
+          pressed={editor?.isActive('bold') ?? false}
           disabled={disabled}
           onClick={() => run((e) => e.chain().focus().toggleBold().run())}
-        >
-          Fett
-        </button>
-        <button
-          type="button"
-          className="secondary-action"
-          aria-pressed={editor?.isActive('italic') ?? false}
+        />
+        <ToolButton
+          icon="italic"
+          label="Kursiv"
+          pressed={editor?.isActive('italic') ?? false}
           disabled={disabled}
           onClick={() => run((e) => e.chain().focus().toggleItalic().run())}
-        >
-          Kursiv
-        </button>
-        <button
-          type="button"
-          className="secondary-action"
-          aria-pressed={editor?.isActive('underline') ?? false}
+        />
+        <ToolButton
+          icon="underline"
+          label="Unterstrichen"
+          pressed={editor?.isActive('underline') ?? false}
           disabled={disabled}
           onClick={() => run((e) => e.chain().focus().toggleUnderline().run())}
-        >
-          Unterstrichen
-        </button>
-        <button
-          type="button"
-          className="secondary-action"
-          aria-pressed={editor?.isActive('bulletList') ?? false}
+        />
+        <ToolButton
+          icon="strike"
+          label="Durchgestrichen"
+          pressed={editor?.isActive('strike') ?? false}
+          disabled={disabled}
+          onClick={() => run((e) => e.chain().focus().toggleStrike().run())}
+        />
+        <ToolButton
+          icon="heading2"
+          label="Überschrift 2"
+          pressed={editor?.isActive('heading', { level: 2 }) ?? false}
+          disabled={disabled}
+          onClick={() =>
+            run((e) => e.chain().focus().toggleHeading({ level: 2 }).run())
+          }
+        />
+        <ToolButton
+          icon="heading3"
+          label="Überschrift 3"
+          pressed={editor?.isActive('heading', { level: 3 }) ?? false}
+          disabled={disabled}
+          onClick={() =>
+            run((e) => e.chain().focus().toggleHeading({ level: 3 }).run())
+          }
+        />
+        <ToolButton
+          icon="quote"
+          label="Zitat"
+          pressed={editor?.isActive('blockquote') ?? false}
+          disabled={disabled}
+          onClick={() => run((e) => e.chain().focus().toggleBlockquote().run())}
+        />
+        <ToolButton
+          icon="bulletList"
+          label="Aufzählung"
+          pressed={editor?.isActive('bulletList') ?? false}
           disabled={disabled}
           onClick={() => run((e) => e.chain().focus().toggleBulletList().run())}
-        >
-          Aufzählung
-        </button>
-        <button
-          type="button"
-          className="secondary-action"
-          aria-pressed={editor?.isActive('orderedList') ?? false}
+        />
+        <ToolButton
+          icon="orderedList"
+          label="Nummerierung"
+          pressed={editor?.isActive('orderedList') ?? false}
           disabled={disabled}
           onClick={() =>
             run((e) => e.chain().focus().toggleOrderedList().run())
           }
-        >
-          Nummerierung
-        </button>
-        <button
-          type="button"
-          className="secondary-action"
-          aria-expanded={linkOpen}
+        />
+        <ToolButton
+          icon="link"
+          label="Link"
+          expanded={linkOpen}
           disabled={disabled}
           onClick={() => {
             const wasOpen = linkOpen;
             setLinkOpen(!wasOpen);
             if (!wasOpen) setHref(editor?.getAttributes('link').href ?? '');
           }}
-        >
-          Link
-        </button>
+        />
+        <ToolButton
+          icon="undo"
+          label="Rückgängig"
+          disabled={disabled || !(editor?.can().undo() ?? false)}
+          onClick={() => run((e) => e.chain().focus().undo().run())}
+        />
+        <ToolButton
+          icon="redo"
+          label="Wiederholen"
+          disabled={disabled || !(editor?.can().redo() ?? false)}
+          onClick={() => run((e) => e.chain().focus().redo().run())}
+        />
       </div>
       {linkOpen && (
         <div

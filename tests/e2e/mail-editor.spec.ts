@@ -388,6 +388,12 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     await editor.press('End');
     await editor.pressSequentially(' ');
     await insertPlaceholder('package');
+    // Enter starts a new paragraph (its own spacing); Shift+Enter stays in
+    // the same paragraph with a plain line break.
+    await editor.press('Enter');
+    await editor.pressSequentially('Zweiter Absatz');
+    await editor.press('Shift+Enter');
+    await editor.pressSequentially('Fortsetzung');
     await editor.press('ControlOrMeta+a');
     await dialog.getByRole('button', { name: 'Fett' }).click();
     await expect(dialog.getByRole('button', { name: 'Fett' })).toHaveAttribute(
@@ -403,7 +409,9 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     ).toBeVisible();
     const previewBody = dialog.locator('.mail-preview-body');
     await expect(previewBody).toContainText('Hallo Erika {{package}}');
-    await expect(previewBody.locator('strong')).toHaveText(
+    await expect(previewBody).toContainText('Zweiter Absatz');
+    await expect(previewBody).toContainText('Fortsetzung');
+    await expect(previewBody.locator('strong').first()).toHaveText(
       'Hallo Erika {{package}}',
     );
     await expect(
@@ -441,11 +449,15 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     // The template subject arrived resolved from structured data.
     expect(message.subject).toBe('Erinnerung für Fictional Mail Recipient');
     // ProseMirror keeps typed boundary spaces as non-breaking spaces in the
-    // HTML (marked `~` here); the text alternative normalizes them.
+    // HTML (marked `~` here); the text alternative normalizes them. Enter
+    // produced the second paragraph, Shift+Enter the plain line break.
     expect(message.body_html.replace(/\u00a0/g, '~')).toBe(
-      '<p><strong>Hallo~Erika~{{package}}</strong></p>',
+      '<p><strong>Hallo~Erika~{{package}}</strong></p>' +
+        '<p><strong>Zweiter Absatz<br />Fortsetzung</strong></p>',
     );
-    expect(message.body_text).toBe('Hallo Erika {{package}}');
+    expect(message.body_text).toBe(
+      'Hallo Erika {{package}}\n\nZweiter Absatz\nFortsetzung',
+    );
     const job = (
       await pool.query<{ state: string }>(
         'SELECT state FROM mail_outbox WHERE tenant_id=$1',

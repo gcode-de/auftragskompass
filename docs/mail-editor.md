@@ -28,8 +28,9 @@ inklusive seiner Pflicht-Stylesheet-Datei.
 | vorhandener `contentEditable`-Bau (Event-Notizen, `document.execCommand`) | – | – | 0 KB neu | – | `document.execCommand` ist veraltet (MDN), Eigenentwicklung für Auswahl/Links |
 
 **Auswahl: TipTap 3 mit schmaler Extension-Liste** (Document, Paragraph, Text,
-Bold, Italic, Underline, BulletList, OrderedList, ListItem, Link, History – kein
-StarterKit). Begründung: die einzige Wahl, die zugleich aktiv gewartet, MIT-
+Bold, Italic, Underline, Strike, Heading 2/3, Blockquote, BulletList,
+OrderedList, ListItem, HardBreak, Link, History – kein StarterKit).
+Begründung: die einzige Wahl, die zugleich aktiv gewartet, MIT-
 lizenziert, offiziell dokumentiert und deren HTML-Ausgabe deckungsgleich mit der
 ohnehin erzwungenen Mail-Allowlist ist; Barrierefreiheit ist offiziell
 dokumentiert und die Werkzeugleiste bleibt unter unserer Kontrolle (echte
@@ -72,19 +73,45 @@ leer), im Klartext wie im HTML. Die Vorschau zeigt das tatsächliche Ergebnis un
 nennt die fehlenden Namen verständlich, damit die Stelle vor dem Versand
 entfernt oder ergänzt werden kann.
 
+## Werkzeuge und Zeilenumbrüche
+
+Die Werkzeugleiste ist eine Icon-Leiste im Strichstil der Navigation
+(24×24, `currentColor`, Lucide-Geometrie, ISC): Fett, Kursiv, Unterstrichen,
+Durchgestrichen, Überschrift 2, Überschrift 3, Zitat, Aufzählung,
+Nummerierung, Link, Rückgängig, Wiederholen – jeder Knopf trägt
+`aria-label`/`title` und Schaltflächen mit Zustand zusätzlich
+`aria-pressed` (Zustand nie nur über Farbe). Enter beginnt einen neuen
+Absatz (mit dem gewohnten Abstand), Shift+Enter erzeugt einen
+Zeilenumbruch im selben Absatz ohne Abstand (`<br>`); beides ist im
+E2E gegen die echte Textalternative belegt.
+
+## TinyMCE-Prüfung (23.11.2026, kein Tausch)
+
+TinyMCE 8.10.2 wurde geprüft und **nicht** übernommen: die Lizenz ist
+GPLv2+ **oder** die proprietäre Tiny-Self-Hosted-Lizenz – für dieses
+öffentliche Repository ein Lizenz-/Copyleft-Wechsel (TipTap bleibt MIT).
+Gemessene Runtime-Assets (min., unkomprimiert): Kern 489 KB, Theme 450 KB,
+Icons 113 KB, Skin-CSS 190 KB – zusammen rund 1,24 MB gegen 129 KB gzip
+des schlanken TipTap-Satzes. Dazu emittiert TinyMCE Inline-Styles und
+Klassen, die das serverseitige Sanitizing ohnehin entfernt, während TipTaps
+semantisches HTML 1:1 zur Allowlist passt. Die gewünschten Ziele
+(Icon-Buttons, mehr Werkzeuge, Enter/Shift-Enter) sind direkt in TipTap
+umgesetzt; Quill bleibt die dokumentierte Ausweichwahl.
+
 ## Sicherheit und Verträge
 
 - **Serverseitiges Sanitizing:** das eingehende Body-HTML wird immer durch
   `sanitize-html` bereinigt, bevor es gespeichert oder versendet wird. Erlaubt
-  sind ausschließlich `p`, `br`, `strong`, `em`, `u`, `ul`, `ol`, `li`, `a`;
-  an `a` nur `href` mit den Schemata `https`, `http`, `mailto`; keine Bilder,
-  kein `style`, keine Skripte, keine Protokoll-relativen Links. Angriffsfälle
-  (Skript-Tags, Event-Handler, `javascript:`-Links, iframe, verschachteltes
-  HTML) sind als Unit-Tests belegt; gespeichertes Body-HTML ist in der
-  Integration stets bereinigt.
+  sind ausschließlich `p`, `br`, `strong`, `em`, `u`, `s`, `h2`, `h3`,
+  `blockquote`, `ul`, `ol`, `li`, `a`; an `a` nur `href` mit den Schemata
+  `https`, `http`, `mailto`; keine Bilder, kein `style`, keine Skripte,
+  keine Protokoll-relativen Links. Angriffsfälle (Skript-Tags, Event-Handler,
+  `javascript:`-Links, iframe, verschachteltes HTML) sind als Unit-Tests
+  belegt; gespeichertes Body-HTML ist in der Integration stets bereinigt.
 - **Textalternative:** `body_text` wird serverseitig aus dem bereinigten HTML
-  erzeugt (Absätze als Leerzeile, `<br>` als Zeilenumbruch, Listen mit
-  Aufzählungspunkt, Links als `Text (URL)`), nie vom Client übernommen.
+  erzeugt (Absätze und Überschriften als Blöcke mit Leerzeile, `<br>` als
+  Zeilenumbruch, Listen mit Aufzählungspunkt, Zitate mit „> “-Marke je
+  Zeile, Links als `Text (URL)`), nie vom Client übernommen.
 - **Keine Header-Injection:** der Betreff ist `plainText` (≤998 Zeichen, keine
   Steuerzeichen) und wird serverseitig über `resolveMailSubject` aufgelöst,
   dessen Werte auf eine Zeile gebracht werden – ein Wert mit Zeilenumbruch
