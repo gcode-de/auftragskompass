@@ -2343,6 +2343,52 @@ test('the mail can travel without its document and with additional documents', a
   ).toBe('0');
 });
 
+// The route schema must carry the ATTACH-01a fields: Fastify silently strips
+// unknown body properties, so a missing entry dropped every extra document.
+test('the document send route carries the attachment choice through', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const { headers, csrf } = await signedIn();
+  const templateId = (
+    await pool.query<{ id: string }>(
+      'SELECT id FROM document_templates WHERE tenant_id=$1 LIMIT 1',
+      [tenantId],
+    )
+  ).rows[0]!.id;
+  const extra = await seedDocument({
+    tenant: tenantId,
+    templateId,
+    kind: 'offer',
+    state: 'final',
+    number: 'AN-2030-0077',
+    pdfHash,
+    contactId,
+    eventId,
+  });
+  const reply = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send',
+    headers: { ...headers, ...csrf },
+    payload: {
+      documentId: finalDocumentId,
+      requestId: 'fictional-route-attach-choice',
+      to: 'synthetic.contact@example.invalid',
+      bodyText: 'Nur das Zusatzdokument.',
+      attachDocument: false,
+      documentIds: [extra],
+    },
+  });
+  expect(reply.statusCode).toBe(201);
+  expect(reply.json().attachment).toBeNull();
+  expect(
+    (
+      await pool.query<{ filename: string }>(
+        'SELECT filename FROM mail_attachments WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, reply.json().messageId],
+      )
+    ).rows.map((row) => row.filename),
+  ).toEqual(['Dokument-AN-2030-0077.pdf']);
+});
+
 // MAIL-EVENT-01: a free mail from the event is one gesture and one durable
 // order under one request id; the body runs through the mail allowlist.
 test('composes a free mail as one idempotent order with sanitized html', async () => {
