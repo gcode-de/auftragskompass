@@ -2622,6 +2622,22 @@ carries the alert colour and its cause, never colour alone. */
   display: grid;
   gap: 0.4rem;
 }
+/* MAIL-SIG-01a: the standard switch keeps the 44px target of the other
+checkbox rows; the logo preview stays small and keeps its proportions. */
+.signature-default {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 44px;
+}
+.signature-logo-preview {
+  display: block;
+  max-height: 4rem;
+  max-width: 12rem;
+  width: auto;
+  height: auto;
+  margin-bottom: 0.5rem;
+}
 .mail-attachment-chooser label {
   display: flex;
   gap: 0.5rem;

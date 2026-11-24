@@ -337,16 +337,30 @@ Branches nach dem Merge löschen.
   Platzhalter, Replay, Ablehnungen ohne Nachricht), Component (Vorlage mit
   Standardanhang, Dokument/Bibliothek, Upload, benannte Ablehnung).
   Commit `feat: attach files and templates to event mails`.
-- [ ] **MAIL-SIG-01 — Signaturen:** Einstellungen verwalten mehrere
-  Signaturen (Bezeichnung, Text im vorhandenen Mail-Editor, optional ein
-  Logo als PNG/JPEG über den Storage-Adapter mit Linkziel), genau eine ist
-  Standard. Das Logo steht als Baustein frei im Text und reist als
-  eingebettetes CID-Bild, nie als externer Verweis. Alle Mail-Dialoge
-  wählen die Standardsignatur vor, ein Auswahlfeld ersetzt sie durch eine
-  andere oder „Keine Signatur“. **Tests:** Migration/Integration (ein
-  Standard je Mandant, Logo-Bytes im Worker als Inline-Anhang),
-  Component (Einstellungen, Auswahl in den Dialogen). Commit
-  `feat: manage mail signatures`.
+- [ ] **MAIL-SIG-01 — Signaturen** *(24.11.2026 in 01a/01b geteilt)*.
+  **MAIL-SIG-01a — Signaturen verwalten (24.11.2026 umgesetzt):**
+  Migration 0077 `mail_signatures` (Bezeichnung, Text in der Mail-Allowlist,
+  optionales Logo als Schlüssel/Typ/Größe/SHA-256 im Storage-Adapter,
+  optionaler Logo-Link, `is_default` mit partiellem Unique-Index: höchstens
+  ein Standard je Mandant) plus Auditaktion `mail.signature_saved`. Routen
+  `GET/POST /api/v1/mail-signatures`, `PUT/DELETE …/:id`, `PUT/DELETE/GET
+  …/:id/logo` (rohes PNG/JPEG, Bytes-Prüfung wie das Dokumentlogo, 512 KiB).
+  Der Text kennt nur den Baustein `{{logo}}`, jeder andere Platzhalter wird
+  abgelehnt; ein neuer Standard löst den alten in derselben Transaktion ab.
+  Einstellungen → E-Mail-Vorlagen zeigt darunter „E-Mail-Signaturen“
+  (Liste mit Standard/Logo, Editor mit Logo-Baustein, Upload mit Vorschau,
+  Link, Standardschalter, Löschen mit Rückfrage). **Tests:** Integration
+  (CRUD, ein Standard, Allowlist, Ablehnungen, Logo-Bytes, Mandanten-
+  trennung, DB-Index), Component (6), E2E (echter Upload, Vorschau, axe,
+  1280/320). Commit `feat: manage mail signatures`.
+  **MAIL-SIG-01b — Signatur im Versand:** alle Mail-Dialoge wählen die
+  Standardsignatur vor, ein Auswahlfeld ersetzt sie durch eine andere oder
+  „Keine Signatur“. Der Server hängt die gewählte Signatur an, setzt das
+  Logo an die Stelle von `{{logo}}` (optional verlinkt) und friert die
+  Logo-Bytes als Inline-Bild (CID) am Auftrag ein; der Worker liest und
+  prüft sie pro Versuch wie die anderen Anhänge. **Tests:** Integration
+  (Anhängen, CID im Worker, ohne Signatur, gelöschte Signatur), Component.
+  Commit `feat: send mails with the chosen signature`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 

@@ -89,7 +89,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // (0071) stays byte-identical.
   // MAIL-FWD-01 (0076) adds one tenant-bound settings row for the
   // accounting address; no existing row and no existing contract changes.
-  expect(applied.at(-1)!.name).toBe('0076_mail_forward_settings.sql');
+  // MAIL-SIG-01a (0077) adds one tenant-bound signature table, a partial
+  // unique index for the one standard and one audit action.
+  expect(applied.at(-1)!.name).toBe('0077_mail_signatures.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

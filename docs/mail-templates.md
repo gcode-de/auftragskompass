@@ -9,13 +9,13 @@ sind die des [Mail-Editors](mail-editor.md) und dort verbindlich dokumentiert.
 
 Eine Vorlage ist mandantengebunden und enthält:
 
-| Feld | Regeln |
-| --- | --- |
-| `name` | 1–120 Zeichen, ohne Steuerzeichen, getrimmt |
-| `subject` | ≤998 Zeichen, **plainText** mit den neun bekannten Platzhaltern; Steuerzeichen werden abgelehnt (keine Header-Injection), Werte werden bei der Auflösung auf eine Zeile gebracht |
+| Feld       | Regeln                                                                                                                                                                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | 1–120 Zeichen, ohne Steuerzeichen, getrimmt                                                                                                                                                                             |
+| `subject`  | ≤998 Zeichen, **plainText** mit den neun bekannten Platzhaltern; Steuerzeichen werden abgelehnt (keine Header-Injection), Werte werden bei der Auflösung auf eine Zeile gebracht                                        |
 | `bodyHtml` | ≤200000 Zeichen, wird **vor dem Speichern serverseitig bereinigt** (dieselbe Allowlist wie der Mail-Editor: p/br/strong/em/u/ul/ol/li/a, href nur http/https/mailto); unbekannte `{{…}}`-Stellen sind `invalid_content` |
-| `state` | `active` / `inactive` / `archived`; Archivieren ist ein sichtbarer Zustandswechsel, **kein Löschen** – es gibt keinen Löschendpunkt |
-| `version` | Optimistische Sperre; Änderungen ohne die aktuelle Version ergeben `409 conflict` |
+| `state`    | `active` / `inactive` / `archived`; Archivieren ist ein sichtbarer Zustandswechsel, **kein Löschen** – es gibt keinen Löschendpunkt                                                                                     |
+| `version`  | Optimistische Sperre; Änderungen ohne die aktuelle Version ergeben `409 conflict`                                                                                                                                       |
 
 Änderungen sind vollständige Ersetzungen (Name, Betreff, Inhalt, Zustand) mit
 der übermittelten `version`. Antworten enthalten nie Mandanten- oder
@@ -46,17 +46,17 @@ Die Vorschau löst Betreff und Inhalt mit **festen, offensichtlich fiktiven
 Beispielwerten** auf – analog zur Dokumentlayout-Vorschau, niemals abgeleitet
 aus echten Datensätzen (eine Vorlage gehört zu keinem Kunden):
 
-| Platzhalter | Beispielwert |
-| --- | --- |
-| `{{contact}}` | `Alex Beispiel` |
-| `{{contactFirstName}}` | `Alex` |
-| `{{event}}` | `Fiktives Sommerfest` |
-| `{{date}}` | `26.10.2030` |
-| `{{location}}` | `Beispielsaal` |
-| `{{eventType}}` | `Feier` |
-| `{{package}}` | `Paket Beispiel` |
-| `{{total}}` | `119,00 €` |
-| `{{documentLink}}` | `https://example.invalid/vorschau` |
+| Platzhalter            | Beispielwert                       |
+| ---------------------- | ---------------------------------- |
+| `{{contact}}`          | `Alex Beispiel`                    |
+| `{{contactFirstName}}` | `Alex`                             |
+| `{{event}}`            | `Fiktives Sommerfest`              |
+| `{{date}}`             | `26.10.2030`                       |
+| `{{location}}`         | `Beispielsaal`                     |
+| `{{eventType}}`        | `Feier`                            |
+| `{{package}}`          | `Paket Beispiel`                   |
+| `{{total}}`            | `119,00 €`                         |
+| `{{documentLink}}`     | `https://example.invalid/vorschau` |
 
 Die Antwort (`subject`, `bodyHtml`, `bodyText`, `missing`) hat dieselbe Form
 wie die Dokument-Mail-Vorschau. Unbekannte Platzhalter werden abgelehnt – die
@@ -106,3 +106,28 @@ wegen einer inzwischen unbrauchbaren Datei wird verständlich benannt.
 
 - Keine weiteren offenen Punkte der Anhangskette; der Versand zeigt die
   Dateien sichtbar/entfernbar (01d) und die Auswahl ist vollständig (01e).
+
+## Signaturen (MAIL-SIG-01a)
+
+Unter Einstellungen → E-Mail-Vorlagen stehen darunter die
+„E-Mail-Signaturen“. Jede Signatur hat eine Bezeichnung, einen Text im
+Mail-Editor und optional ein Logo (PNG oder JPEG, höchstens 512 KiB, geprüft
+an den Bytes wie das Dokumentlogo) mit einem optionalen Link. Der Baustein
+„Logo“ (`{{logo}}`) legt fest, wo das Logo im Text steht; andere Platzhalter
+kennt eine Signatur nicht. Genau eine Signatur kann Standard sein; ein
+neuer Standard löst den alten ab, die Datenbank erzwingt das über einen
+partiellen Unique-Index.
+
+| Route                                     | Erfolg                                                     | Fehler                                                       |
+| ----------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------ |
+| `GET /api/v1/mail-signatures`             | `200` Liste                                                | `403`                                                        |
+| `POST /api/v1/mail-signatures`            | `201` Signatur                                             | `400 invalid_name/invalid_body/invalid_content/invalid_link` |
+| `PUT /api/v1/mail-signatures/:id`         | `200` Signatur                                             | wie oben, `404`                                              |
+| `DELETE /api/v1/mail-signatures/:id`      | `204`                                                      | `404`                                                        |
+| `PUT /api/v1/mail-signatures/:id/logo`    | `200` Signatur (Body: rohes `image/png` oder `image/jpeg`) | `400 invalid_logo`, `413 logo_too_large`, `404`              |
+| `DELETE /api/v1/mail-signatures/:id/logo` | `200` Signatur                                             | `404`                                                        |
+| `GET /api/v1/mail-signatures/:id/logo`    | `200` Bild, `no-store`                                     | `404`                                                        |
+
+Ein Logo-Upload legt immer einen neuen Speicherschlüssel an; alte Bytes
+bleiben liegen, damit ein bereits beauftragter Versand sie noch lesen kann.
+Wie die Signatur in den Versand kommt, regelt MAIL-SIG-01b.

@@ -5,7 +5,7 @@ import { Pool } from 'pg';
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -19,6 +19,7 @@ import {
   registerMailTemplateRoutes,
 } from '../../packages/core/src/mail-templates.js';
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
+import { registerMailSignatureRoutes } from '../../packages/core/src/mail-signatures.js';
 
 // MAIL-TPL-01b: the mail template settings in real Chromium against the real
 // routes - open the area, create a template with a placeholder, save it, axe
@@ -142,7 +143,7 @@ test('mail templates are managed in the settings in Chromium', async ({
     registerMailTemplateRoutes(app, pool, tenantId);
     // MAIL-TPL-01e: one available library file for the attachment chooser.
     const storedFiles = new Map<string, Buffer>();
-    registerLibraryFileRoutes(app, pool, tenantId, {
+    const memoryStore = {
       async put(key: string, bytes: Buffer) {
         storedFiles.set(key, Buffer.from(bytes));
       },
@@ -154,7 +155,10 @@ test('mail templates are managed in the settings in Chromium', async ({
       async remove(key: string) {
         storedFiles.delete(key);
       },
-    });
+    };
+    registerLibraryFileRoutes(app, pool, tenantId, memoryStore);
+    // MAIL-SIG-01a: signatures share the synthetic store for their logo.
+    registerMailSignatureRoutes(app, pool, tenantId, memoryStore);
     await pool.query(
       `INSERT INTO library_files
          (tenant_id,id,display_name,media_type,size_bytes,sha256,storage_key,
@@ -278,6 +282,56 @@ test('mail templates are managed in the settings in Chromium', async ({
     expect(await overflow()).toBe(true);
     await section.screenshot({
       path: 'tests/test-results/mail-templates-settings-320.png',
+    });
+
+    // MAIL-SIG-01a: a signature with an uploaded logo, shown back as image.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const signatures = page.getByRole('region', { name: 'E-Mail-Signaturen' });
+    await signatures.getByRole('button', { name: 'Signatur anlegen' }).click();
+    await signatures.getByLabel('Bezeichnung').fill('Fiktive Signatur');
+    await signatures
+      .getByRole('textbox', { name: 'Signaturtext' })
+      .fill('Viele Grüße');
+    await signatures
+      .getByLabel('Logo verlinkt auf (optional)')
+      .fill('https://example.invalid/');
+    const logoPath = join(dir, 'logo.png');
+    await writeFile(
+      logoPath,
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    );
+    await signatures.getByLabel(/Logo hochladen/).setInputFiles(logoPath);
+    await signatures
+      .getByRole('button', { name: 'Signatur speichern' })
+      .click();
+    await expect(signatures.getByText('Signatur gespeichert.')).toBeVisible();
+    await expect(
+      signatures.getByText('Fiktive Signatur (Standard) · mit Logo'),
+    ).toBeVisible();
+    await signatures
+      .getByRole('button', { name: 'Fiktive Signatur bearbeiten' })
+      .click();
+    const preview = signatures.getByRole('img', {
+      name: 'Aktuelles Logo von Fiktive Signatur',
+    });
+    await expect(preview).toBeVisible();
+    expect(
+      await preview.evaluate((image: HTMLImageElement) => image.naturalWidth),
+    ).toBe(1);
+    expect(
+      (await new AxeBuilder({ page }).include('#settings').analyze())
+        .violations,
+    ).toEqual([]);
+    await signatures.screenshot({
+      path: 'tests/test-results/mail-signatures-settings-1280.png',
+    });
+    await page.setViewportSize({ width: 320, height: 720 });
+    expect(await overflow()).toBe(true);
+    await signatures.screenshot({
+      path: 'tests/test-results/mail-signatures-settings-320.png',
     });
   } finally {
     await context.close();

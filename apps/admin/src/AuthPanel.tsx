@@ -25,6 +25,7 @@ import { DocumentLayoutPanel } from './DocumentLayoutPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
 import { WebsiteInbox } from './WebsiteInbox.js';
 import { UndeliveredMailNotice } from './EventMails.js';
+import { MailSignaturesPanel } from './MailSignaturesPanel.js';
 import { MasterDataSettings } from './MasterDataPanel.js';
 import { PasswordPanel } from './PasswordPanel.js';
 import { AccessPanel } from './AccessPanel.js';
@@ -229,6 +230,7 @@ export function AuthPanel() {
             </div>
             <div hidden={route !== 'mail-templates'}>
               <MailTemplatesPanel csrfToken={user.csrfToken} />
+              <MailSignaturesPanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'import'}>
               <ImportPanel
