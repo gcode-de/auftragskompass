@@ -7010,3 +7010,33 @@ test('a toggled-off app user is omitted from the forwarding', async () => {
   const sent = calls.filter((call) => call.url === '/api/v1/mail/compose');
   expect(sent[0]!.body).not.toHaveProperty('forwardUserIds');
 });
+
+// MAIL-UX-02: a broken link names the things to check - contact, event or
+// forwarding - and never pretends an account problem.
+test('a refused link names contact, event or forwarding as the cause', async () => {
+  setup({
+    documents: [finalized],
+    compose: () => Response.json({ error: 'invalid_link' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await waitFor(() =>
+    expect(
+      within(dialog).getByText(/Kontakt, Event oder Weiterleitung/),
+    ).toBeTruthy(),
+  );
+  expect(
+    screen.queryByText(/E-Mail-Konto ist nicht vollständig eingerichtet/),
+  ).toBeNull();
+});
