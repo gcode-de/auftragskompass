@@ -24,6 +24,7 @@ import {
   runMailOutboxPass,
   startMailOutbox,
 } from '../../packages/core/src/mail.js';
+import { escapeMailHtmlText } from '../../packages/core/src/mail-content.js';
 import type {
   MailSendContent,
   MailSendEnvelope,
@@ -2440,6 +2441,130 @@ test('the document send route carries the attachment choice through', async () =
       )
     ).rows.map((row) => row.filename),
   ).toEqual(['Dokument-AN-2030-0077.pdf']);
+});
+
+// MAIL-EVENT-02: the free event mail carries the same attachment sources as
+// the document mail and resolves template placeholders from contact and
+// event - a placeholder without a value is refused, never sent literally.
+test('a free event mail carries attachments and resolved placeholders', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const { headers, csrf } = await signedIn();
+  const file = await seedLibraryFile({ displayName: 'Preisliste.pdf' });
+  const payload = {
+    requestId: 'fictional-compose-attachments',
+    to: 'synthetic.contact@example.invalid',
+    subject: 'Ihr Event {{event}}',
+    bodyHtml: '<p>Hallo {{contact}}</p>',
+    contactId,
+    eventId,
+    documentIds: [finalDocumentId],
+    fileIds: [file.id],
+  };
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload,
+  });
+  expect(created.statusCode).toBe(201);
+  const messageId = created.json().messageId as string;
+  const stored = (
+    await pool.query<{ subject: string; body_html: string }>(
+      'SELECT subject, body_html FROM mail_messages WHERE tenant_id=$1 AND id=$2',
+      [tenantId, messageId],
+    )
+  ).rows[0]!;
+  // The contact name is whatever earlier cases left; it arrives escaped.
+  const name = (
+    await pool.query<{ name: string }>(
+      'SELECT name FROM contacts WHERE tenant_id=$1 AND id=$2',
+      [tenantId, contactId],
+    )
+  ).rows[0]!.name;
+  expect(stored).toEqual({
+    subject: 'Ihr Event Fictional mail event',
+    body_html: '<p>Hallo ' + escapeMailHtmlText(name) + '</p>',
+  });
+  expect(
+    (
+      await pool.query(
+        'SELECT filename FROM mail_attachments WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, messageId],
+      )
+    ).rows,
+  ).toEqual([{ filename: 'Dokument-RE-2030-0001.pdf' }]);
+  expect(
+    (
+      await pool.query(
+        'SELECT filename FROM mail_file_attachments WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, messageId],
+      )
+    ).rows,
+  ).toEqual([{ filename: 'Preisliste.pdf' }]);
+  // The worker hands both attachments to the provider.
+  const { calls, createSender } = stubSender('sent');
+  await runMailOutboxPass(pool, () => {}, {
+    createSender,
+    key: encryptionKey,
+    store: mailStore,
+  });
+  expect(
+    (calls[0]!.content.attachments ?? []).map((entry) => entry.filename),
+  ).toEqual(['Dokument-RE-2030-0001.pdf', 'Preisliste.pdf']);
+  // The same request id answers the very same order.
+  const replay = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload,
+  });
+  expect(replay.statusCode).toBe(200);
+  expect(replay.json().id).toBe(created.json().id);
+
+  const count = async () =>
+    Number(
+      (
+        await pool.query(
+          'SELECT count(*) FROM mail_messages WHERE tenant_id=$1',
+          [tenantId],
+        )
+      ).rows[0].count,
+    );
+  const before = await count();
+  const refuse = async (extra: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/mail/compose',
+      headers: { ...headers, ...csrf },
+      payload: {
+        requestId: randomUUID(),
+        to: 'synthetic.contact@example.invalid',
+        subject: 'Fiktiv',
+        contactId,
+        eventId,
+        ...extra,
+      },
+    });
+  // Only a document can fill the total; a free mail refuses it.
+  const total = await refuse({ bodyHtml: '<p>Summe {{total}}</p>' });
+  expect(total.statusCode).toBe(400);
+  expect(total.json()).toEqual({ error: 'missing_placeholder' });
+  // Without a linked contact the contact placeholder has no value either.
+  const unlinked = await refuse({
+    subject: 'Hallo {{contact}}',
+    contactId: undefined,
+  });
+  expect(unlinked.json()).toEqual({ error: 'missing_placeholder' });
+  expect((await refuse({ subject: '{{unbekannt}}' })).json()).toEqual({
+    error: 'invalid_content',
+  });
+  // A draft document or an archived file refuses the whole order.
+  const draft = await refuse({ documentIds: [draftDocumentId] });
+  expect(draft.statusCode).toBe(409);
+  expect(draft.json()).toEqual({ error: 'attachment_unavailable' });
+  const archived = await seedLibraryFile({ state: 'archived' });
+  expect((await refuse({ fileIds: [archived.id] })).statusCode).toBe(409);
+  expect(await count()).toBe(before);
 });
 
 // MAIL-EVENT-01: a free mail from the event is one gesture and one durable

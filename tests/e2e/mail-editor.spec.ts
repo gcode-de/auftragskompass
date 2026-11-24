@@ -585,6 +585,39 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       });
       await cycleDialog.getByRole('button', { name: 'Abbrechen' }).click();
     }
+
+    // MAIL-EVENT-02: the free event mail carries a library file at 320 px.
+    await page.getByRole('button', { name: 'Neue Mail schreiben' }).click();
+    const compose = page.getByRole('dialog', { name: 'Neue Mail schreiben' });
+    await expect(compose).toBeVisible();
+    await compose.getByLabel('Betreff').fill('Fiktive freie Mail');
+    await compose
+      .getByLabel('Aus Bibliothek')
+      .selectOption({ label: 'Dropped Datei.pdf' });
+    await compose.getByRole('button', { name: 'Datei hinzufügen' }).click();
+    await expect(
+      compose.getByText('Dropped Datei.pdf', { exact: true }),
+    ).toBeVisible();
+    expect(await overflow()).toBe(true);
+    expect(
+      (await new AxeBuilder({ page }).include('.mail-compose-dialog').analyze())
+        .violations,
+    ).toEqual([]);
+    await compose.screenshot({
+      path: 'tests/test-results/mail-compose-dialog-320-light.png',
+    });
+    await compose.getByRole('button', { name: 'Senden' }).click();
+    await expect(compose).toBeHidden();
+    expect(
+      (
+        await pool.query(
+          `SELECT f.filename FROM mail_file_attachments f
+             JOIN mail_messages m ON m.id=f.message_id
+            WHERE m.tenant_id=$1 AND m.subject='Fiktive freie Mail'`,
+          [tenantId],
+        )
+      ).rows,
+    ).toEqual([{ filename: 'Dropped_Datei.pdf' }]);
   } finally {
     await context.close();
     await app.close();

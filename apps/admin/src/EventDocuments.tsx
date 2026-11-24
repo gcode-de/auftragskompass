@@ -540,6 +540,8 @@ export function EventDocuments({
     [composeTo, setComposeTo] = useState(''),
     [composeSubject, setComposeSubject] = useState(''),
     [composeBody, setComposeBody] = useState(''),
+    // MAIL-EVENT-02: an applied template replaces the editor content once.
+    [composeReplace, setComposeReplace] = useState(0),
     [composeRequestId, setComposeRequestId] = useState(''),
     // MAIL-FWD-01: forwarding switches per mail; the addresses are resolved
     // on the server from the setting and the tenant's own users.
@@ -2134,6 +2136,224 @@ export function EventDocuments({
   // empty subject at send time keeps exactly this behaviour on the server.
   // MAIL-FWD-01: the forwarding switches of both mail dialogs - one shared
   // rendering so the two paths can never grow apart.
+  // MAIL-EVENT-02: template, upload and attachment list are one set of
+  // controls shared by the document mail and the free event mail. Both
+  // dialogs are never open together, so they share the attachment state.
+  function mailAttachmentControls(
+    main: DocumentRow | null,
+    onApplyTemplate: () => void,
+  ) {
+    return (
+      <>
+        {/* Applying a template replaces the draft once - the
+    selection alone changes nothing (BKP015.10 pattern). */}
+        <div className="mail-template-row">
+          <label>
+            Aus Vorlage
+            <select
+              value={mailTemplateId}
+              onChange={(event) => setMailTemplateId(event.target.value)}
+            >
+              <option value="">Keine Vorlage</option>
+              {mailTemplates.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={
+              !mailTemplateId ||
+              busy !== '' ||
+              mailUncertain ||
+              mailTemplateBusy
+            }
+            onClick={onApplyTemplate}
+          >
+            Übernehmen
+          </button>
+        </div>
+        {templateNotice && <p role="status">{templateNotice}</p>}
+        {/* ATTACH-01b: files can be dropped onto the text area
+    above or chosen here; every upload is named, good or
+    bad. */}
+        <div className="mail-upload-row">
+          <label>
+            Datei zum Anhängen wählen
+            <input
+              type="file"
+              multiple
+              disabled={busy !== '' || mailUncertain || uploading}
+              onChange={(event) => {
+                const files = event.target.files;
+                if (files?.length) void uploadFiles(files);
+                event.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+        {uploading && <p role="status">Datei wird hochgeladen …</p>}
+        {uploadNotice && <p role="status">{uploadNotice}</p>}
+        {uploadFail && <p role="alert">{uploadFail}</p>}
+        {/* ATTACH-01a: one named list for every attachment -
+    the document itself, extra event documents and library
+    files - and each removal asks before it happens. */}
+        <ul className="mail-file-attachments">
+          {main && mailAttachDocument && (
+            <li>
+              <span>
+                {kindName(main)} {main.number}
+              </span>
+              <TrashButton
+                label={`${kindName(main)} ${main.number} entfernen`}
+                disabled={busy !== '' || mailUncertain}
+                onConfirm={() => setMailAttachDocument(false)}
+              />
+            </li>
+          )}
+          {mailDocs.map((doc) => (
+            <li key={doc.id}>
+              <span>{doc.label}</span>
+              <TrashButton
+                label={`${doc.label} entfernen`}
+                disabled={busy !== '' || mailUncertain}
+                onConfirm={() =>
+                  setMailDocs((current) =>
+                    current.filter((item) => item.id !== doc.id),
+                  )
+                }
+              />
+            </li>
+          ))}
+          {mailFiles.map((file) => (
+            <li key={file.libraryFileId}>
+              <span>{file.name}</span>
+              <TrashButton
+                label={`${file.name} entfernen`}
+                disabled={busy !== '' || mailUncertain}
+                onConfirm={() =>
+                  setMailFiles((current) =>
+                    current.filter(
+                      (item) => item.libraryFileId !== file.libraryFileId,
+                    ),
+                  )
+                }
+              />
+            </li>
+          ))}
+        </ul>
+        <div className="mail-template-row">
+          <label>
+            Aus Event-Dokumenten
+            <select
+              value={mailDocId}
+              onChange={(event) => setMailDocId(event.target.value)}
+            >
+              <option value="">Dokument wählen</option>
+              {documents
+                .filter(
+                  (doc) =>
+                    doc.state === 'final' &&
+                    doc.id !== main?.id &&
+                    !mailDocs.some((item) => item.id === doc.id),
+                )
+                .map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {kindName(doc)} {doc.number}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={!mailDocId || busy !== '' || mailUncertain}
+            onClick={() => {
+              const doc = documents.find((item) => item.id === mailDocId);
+              if (!doc) return;
+              setMailDocs((current) =>
+                current.concat({
+                  id: doc.id,
+                  label: `${kindName(doc)} ${doc.number}`,
+                }),
+              );
+              setMailDocId('');
+            }}
+          >
+            Dokument hinzufügen
+          </button>
+        </div>
+        <div className="mail-template-row">
+          <label>
+            Aus Bibliothek
+            <select
+              value={mailFileId}
+              onChange={(event) => setMailFileId(event.target.value)}
+            >
+              <option value="">Datei wählen</option>
+              {mailLibraryFiles
+                .filter(
+                  (file) =>
+                    !mailFiles.some((item) => item.libraryFileId === file.id),
+                )
+                .map((file) => (
+                  <option key={file.id} value={file.id}>
+                    {file.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={!mailFileId || busy !== '' || mailUncertain}
+            onClick={() => {
+              const file = mailLibraryFiles.find(
+                (item) => item.id === mailFileId,
+              );
+              if (!file) return;
+              setMailFiles((current) =>
+                current.concat({
+                  libraryFileId: file.id,
+                  name: file.label,
+                  mediaType: 'application/pdf',
+                  sizeBytes: 0,
+                }),
+              );
+              setMailFileId('');
+            }}
+          >
+            Datei hinzufügen
+          </button>
+        </div>
+      </>
+    );
+  }
+  // ATTACH-01b: the editor surface accepts dropped files. Capture phase: the
+  // editor below swallows drop events on its own surface, and the browser
+  // default for a dropped file would be navigation. Internal text drops carry
+  // no files and stay untouched.
+  function dropZoneProps() {
+    return {
+      'data-dragging': dragging ? 'true' : 'false',
+      onDragOverCapture: (event: React.DragEvent) => {
+        event.preventDefault();
+        setDragging(true);
+      },
+      onDragLeave: () => setDragging(false),
+      onDropCapture: (event: React.DragEvent) => {
+        event.preventDefault();
+        setDragging(false);
+        if (event.dataTransfer.files.length) {
+          event.stopPropagation();
+          void uploadFiles(event.dataTransfer.files);
+        }
+      },
+    };
+  }
   function forwardingControls() {
     return (
       <fieldset className="mail-forwarding">
@@ -2177,22 +2397,9 @@ export function EventDocuments({
   function defaultMailSubject(entry: DocumentRow) {
     return 'Dokument ' + (entry.number ?? '');
   }
-  function openMailSend(entry: DocumentRow, trigger: HTMLElement) {
-    setMessage('');
-    setMailSendId(entry.id);
-    setMailTo(contactEmail?.trim() ?? '');
-    setMailBody('');
-    setMailBodyReplace((count) => count + 1);
-    setForwardAccounting(false);
-    setForwardUserIds([]);
-    setMailSubject(defaultMailSubject(entry));
-    setMailTemplateId('');
-    setTemplateNotice('');
-    setMailFiles([]);
-    setMailAttachDocument(true);
-    setMailDocs([]);
-    setMailDocId('');
-    setMailFileId('');
+  // The pickers of both mail dialogs: available library files and active
+  // templates, read again whenever a dialog opens.
+  function loadMailChoices() {
     // The library picker lists the available files; a failed list leaves the
     // picker empty and never invents an entry.
     void fetch('/api/v1/library-files')
@@ -2210,12 +2417,6 @@ export function EventDocuments({
         );
       })
       .catch(() => setMailLibraryFiles([]));
-    setMailUncertain(false);
-    setMailPreview(null);
-    setMailPreviewState('idle');
-    setMailPreviewError('');
-    setMailRequestId(crypto.randomUUID());
-    mailTrigger.current = trigger;
     // Only active templates are offered; a failed list is a quiet notice.
     void fetch('/api/v1/mail-templates')
       .then(async (response) => {
@@ -2231,6 +2432,30 @@ export function EventDocuments({
         setMailTemplates([]);
         setTemplateNotice('Die Vorlagen konnten nicht geladen werden.');
       });
+  }
+  function openMailSend(entry: DocumentRow, trigger: HTMLElement) {
+    setMessage('');
+    setMailSendId(entry.id);
+    setMailTo(contactEmail?.trim() ?? '');
+    setMailBody('');
+    setMailBodyReplace((count) => count + 1);
+    setForwardAccounting(false);
+    setForwardUserIds([]);
+    setMailSubject(defaultMailSubject(entry));
+    setMailTemplateId('');
+    setTemplateNotice('');
+    setMailFiles([]);
+    setMailAttachDocument(true);
+    setMailDocs([]);
+    setMailDocId('');
+    setMailFileId('');
+    setMailUncertain(false);
+    setMailPreview(null);
+    setMailPreviewState('idle');
+    setMailPreviewError('');
+    setMailRequestId(crypto.randomUUID());
+    mailTrigger.current = trigger;
+    loadMailChoices();
   }
   function closeMailSend() {
     if (busy !== '') return;
@@ -2249,6 +2474,18 @@ export function EventDocuments({
     setComposeTo(contactEmail?.trim() ?? '');
     setComposeSubject('');
     setComposeBody('');
+    setComposeReplace((count) => count + 1);
+    // MAIL-EVENT-02: the shared attachment state starts empty for this mail.
+    setMailFiles([]);
+    setMailDocs([]);
+    setMailDocId('');
+    setMailFileId('');
+    setMailTemplateId('');
+    setTemplateNotice('');
+    setUploadNotice('');
+    setUploadFail('');
+    setMailUncertain(false);
+    loadMailChoices();
     setForwardAccounting(false);
     setForwardUserIds([]);
     setComposeRequestId(crypto.randomUUID());
@@ -2274,6 +2511,12 @@ export function EventDocuments({
           ...(eventId ? { eventId } : {}),
           forwardAccounting,
           ...(forwardUserIds.length ? { forwardUserIds } : {}),
+          ...(mailDocs.length
+            ? { documentIds: mailDocs.map((doc) => doc.id) }
+            : {}),
+          ...(mailFiles.length
+            ? { fileIds: mailFiles.map((file) => file.libraryFileId) }
+            : {}),
         }),
       });
       if (!reply.ok) {
@@ -2295,10 +2538,13 @@ export function EventDocuments({
   }
   // MAIL-TPL-01c: applying a template replaces subject and body once; the
   // draft is afterwards fully editable and the template itself never changes.
-  async function applyMailTemplate(entry: DocumentRow) {
-    if (!mailSendId || !mailTemplateId || mailTemplateBusy) return;
+  async function applyMailTemplate(
+    dirty: boolean,
+    apply: (subject: string, bodyHtml: string) => void,
+  ) {
+    if (!mailTemplateId || mailTemplateBusy) return;
     if (
-      (mailBody.trim() !== '' || mailSubject !== defaultMailSubject(entry)) &&
+      dirty &&
       !window.confirm('Ungespeicherte Änderungen durch die Vorlage ersetzen?')
     )
       return;
@@ -2312,9 +2558,7 @@ export function EventDocuments({
         bodyHtml: string;
         attachments: MailFileAttachment[];
       };
-      setMailSubject(detail.subject);
-      setMailBody(detail.bodyHtml);
-      setMailBodyReplace((count) => count + 1);
+      apply(detail.subject, detail.bodyHtml);
       // The standard attachments are visible from the start and each one can
       // be removed before the send - nothing travels unseen.
       setMailFiles(detail.attachments ?? []);
@@ -2407,6 +2651,8 @@ export function EventDocuments({
         return 'Bitte eine gültige Empfängeradresse eingeben.';
       case 'invalid_account':
         return 'Es ist kein aktives E-Mail-Konto eingerichtet.';
+      case 'missing_placeholder':
+        return 'Ein Platzhalter hat für diese Mail keinen Wert. Betrag und Dokumentlink gibt es nur beim Dokumentversand, Kontakt- und Eventwerte nur mit zugeordnetem Kontakt bzw. Event. Bitte den Platzhalter entfernen; die Eingaben bleiben erhalten.';
       case 'invalid_content':
         return 'Unbekannter Platzhalter im Text. Nur die Platzhalter aus der Auswahl verwenden; die Eingaben bleiben erhalten.';
       case 'invalid_body':
@@ -3689,223 +3935,23 @@ export function EventDocuments({
                         onChange={(event) => setMailSubject(event.target.value)}
                       />
                     </label>
-                    {/* Applying a template replaces the draft once - the
-                    selection alone changes nothing (BKP015.10 pattern). */}
-                    <div className="mail-template-row">
-                      <label>
-                        Aus Vorlage
-                        <select
-                          value={mailTemplateId}
-                          onChange={(event) =>
-                            setMailTemplateId(event.target.value)
-                          }
-                        >
-                          <option value="">Keine Vorlage</option>
-                          {mailTemplates.map((row) => (
-                            <option key={row.id} value={row.id}>
-                              {row.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        disabled={
-                          !mailTemplateId ||
-                          busy !== '' ||
-                          mailUncertain ||
-                          mailTemplateBusy
-                        }
-                        onClick={() => void applyMailTemplate(entry)}
-                      >
-                        Übernehmen
-                      </button>
-                    </div>
-                    {templateNotice && <p role="status">{templateNotice}</p>}
-                    {/* ATTACH-01b: files can be dropped onto the text area
-                    above or chosen here; every upload is named, good or
-                    bad. */}
-                    <div className="mail-upload-row">
-                      <label>
-                        Datei zum Anhängen wählen
-                        <input
-                          type="file"
-                          multiple
-                          disabled={busy !== '' || mailUncertain || uploading}
-                          onChange={(event) => {
-                            const files = event.target.files;
-                            if (files?.length) void uploadFiles(files);
-                            event.target.value = '';
-                          }}
-                        />
-                      </label>
-                    </div>
-                    {uploading && <p role="status">Datei wird hochgeladen …</p>}
-                    {uploadNotice && <p role="status">{uploadNotice}</p>}
-                    {uploadFail && <p role="alert">{uploadFail}</p>}
-                    {/* ATTACH-01a: one named list for every attachment -
-                    the document itself, extra event documents and library
-                    files - and each removal asks before it happens. */}
-                    <ul className="mail-file-attachments">
-                      {mailAttachDocument && (
-                        <li>
-                          <span>
-                            {kindName(entry)} {entry.number}
-                          </span>
-                          <TrashButton
-                            label={`${kindName(entry)} ${entry.number} entfernen`}
-                            disabled={busy !== '' || mailUncertain}
-                            onConfirm={() => setMailAttachDocument(false)}
-                          />
-                        </li>
-                      )}
-                      {mailDocs.map((doc) => (
-                        <li key={doc.id}>
-                          <span>{doc.label}</span>
-                          <TrashButton
-                            label={`${doc.label} entfernen`}
-                            disabled={busy !== '' || mailUncertain}
-                            onConfirm={() =>
-                              setMailDocs((current) =>
-                                current.filter((item) => item.id !== doc.id),
-                              )
-                            }
-                          />
-                        </li>
-                      ))}
-                      {mailFiles.map((file) => (
-                        <li key={file.libraryFileId}>
-                          <span>{file.name}</span>
-                          <TrashButton
-                            label={`${file.name} entfernen`}
-                            disabled={busy !== '' || mailUncertain}
-                            onConfirm={() =>
-                              setMailFiles((current) =>
-                                current.filter(
-                                  (item) =>
-                                    item.libraryFileId !== file.libraryFileId,
-                                ),
-                              )
-                            }
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mail-template-row">
-                      <label>
-                        Aus Event-Dokumenten
-                        <select
-                          value={mailDocId}
-                          onChange={(event) => setMailDocId(event.target.value)}
-                        >
-                          <option value="">Dokument wählen</option>
-                          {documents
-                            .filter(
-                              (doc) =>
-                                doc.state === 'final' &&
-                                doc.id !== entry.id &&
-                                !mailDocs.some((item) => item.id === doc.id),
-                            )
-                            .map((doc) => (
-                              <option key={doc.id} value={doc.id}>
-                                {kindName(doc)} {doc.number}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        disabled={!mailDocId || busy !== '' || mailUncertain}
-                        onClick={() => {
-                          const doc = documents.find(
-                            (item) => item.id === mailDocId,
-                          );
-                          if (!doc) return;
-                          setMailDocs((current) =>
-                            current.concat({
-                              id: doc.id,
-                              label: `${kindName(doc)} ${doc.number}`,
-                            }),
-                          );
-                          setMailDocId('');
-                        }}
-                      >
-                        Dokument hinzufügen
-                      </button>
-                    </div>
-                    <div className="mail-template-row">
-                      <label>
-                        Aus Bibliothek
-                        <select
-                          value={mailFileId}
-                          onChange={(event) =>
-                            setMailFileId(event.target.value)
-                          }
-                        >
-                          <option value="">Datei wählen</option>
-                          {mailLibraryFiles
-                            .filter(
-                              (file) =>
-                                !mailFiles.some(
-                                  (item) => item.libraryFileId === file.id,
-                                ),
-                            )
-                            .map((file) => (
-                              <option key={file.id} value={file.id}>
-                                {file.label}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        disabled={!mailFileId || busy !== '' || mailUncertain}
-                        onClick={() => {
-                          const file = mailLibraryFiles.find(
-                            (item) => item.id === mailFileId,
-                          );
-                          if (!file) return;
-                          setMailFiles((current) =>
-                            current.concat({
-                              libraryFileId: file.id,
-                              name: file.label,
-                              mediaType: 'application/pdf',
-                              sizeBytes: 0,
-                            }),
-                          );
-                          setMailFileId('');
-                        }}
-                      >
-                        Datei hinzufügen
-                      </button>
-                    </div>
+                    {mailAttachmentControls(
+                      entry,
+                      () =>
+                        void applyMailTemplate(
+                          mailBody.trim() !== '' ||
+                            mailSubject !== defaultMailSubject(entry),
+                          (subject, body) => {
+                            setMailSubject(subject);
+                            setMailBody(body);
+                            setMailBodyReplace((count) => count + 1);
+                          },
+                        ),
+                    )}
                     {/* MAIL-EDITOR-01: the formatted cover text with the
                     documented placeholders; an empty body keeps the server's
                     default text. */}
-                    <div
-                      className="mail-editor-field"
-                      data-dragging={dragging ? 'true' : 'false'}
-                      // Capture phase: the editor below swallows drop
-                      // events on its own surface, and the browser default
-                      // for a dropped file would be navigation. Internal
-                      // text drops carry no files and stay untouched.
-                      onDragOverCapture={(event) => {
-                        event.preventDefault();
-                        setDragging(true);
-                      }}
-                      onDragLeave={() => setDragging(false)}
-                      onDropCapture={(event) => {
-                        event.preventDefault();
-                        setDragging(false);
-                        if (event.dataTransfer.files.length) {
-                          event.stopPropagation();
-                          void uploadFiles(event.dataTransfer.files);
-                        }
-                      }}
-                    >
+                    <div className="mail-editor-field" {...dropZoneProps()}>
                       <span className="mail-editor-label">
                         Begleittext (optional)
                       </span>
@@ -4192,11 +4238,25 @@ export function EventDocuments({
                       }
                     />
                   </label>
-                  <div className="mail-editor-field">
+                  {mailAttachmentControls(
+                    null,
+                    () =>
+                      void applyMailTemplate(
+                        composeBody.trim() !== '' ||
+                          composeSubject.trim() !== '',
+                        (subject, body) => {
+                          setComposeSubject(subject);
+                          setComposeBody(body);
+                          setComposeReplace((count) => count + 1);
+                        },
+                      ),
+                  )}
+                  <div className="mail-editor-field" {...dropZoneProps()}>
                     <span className="mail-editor-label">Text (optional)</span>
                     <MailBodyEditor
                       value={composeBody}
                       onChange={setComposeBody}
+                      replaceKey={composeReplace}
                       disabled={busy !== ''}
                       label="Text (optional)"
                       withPlaceholderPicker={false}

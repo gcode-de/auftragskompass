@@ -138,6 +138,24 @@ umgesetzt; Quill bleibt die dokumentierte Ausweichwahl.
   Allerweltsmeldung „Der Auftrag wurde nicht angelegt“ ist damit
   abgeschafft; die Ursache eines Fehlers ist ohne Log-Lesung benennbar.
 
+## Freie Mail aus dem Event (MAIL-EVENT-01/02)
+
+„Neue Mail schreiben“ in der Eventakte nutzt denselben Editor und dieselben
+Bausteine wie der Dokumentversand: „Aus Vorlage“ (übernimmt Betreff, Text und
+Standardanhänge einmal), Datei-Upload per Auswahl oder Drop auf den Text,
+finale Event-Dokumente und Bibliotheksdateien. Alle Anhänge stehen in einer
+Liste und lassen sich vor dem Versand entfernen; ein eigenes Hauptdokument
+hat die freie Mail nicht.
+
+`POST /api/v1/mail/compose` nimmt dafür `documentIds` (höchstens 10, nur
+finale Dokumente des Mandanten) und `fileIds` (höchstens 20, nur verfügbare
+Bibliotheksdateien). Eine nicht verfügbare Quelle lehnt den ganzen Auftrag
+mit `attachment_unavailable` ab. Platzhalter aus einer Vorlage werden aus
+dem verknüpften Kontakt und Event aufgelöst. Bleibt einer ohne Wert,
+antwortet die Route `400 missing_placeholder`: `{{total}}` und
+`{{documentLink}}` gibt es nur beim Dokumentversand, Kontakt- und
+Eventwerte nur mit zugeordnetem Kontakt bzw. Event.
+
 ## Versandstatus (MAIL-STATUS-01)
 
 Ein Dialog bestätigt nur, dass der Auftrag in `mail_outbox` liegt; versendet

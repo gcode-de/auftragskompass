@@ -320,13 +320,22 @@ Branches nach dem Merge löschen.
   (Polling bis Ergebnis, Alert bei Fehlschlag, Erneut senden mit CSRF und
   Schlüssel, Ladefehler, leer/inaktiv, globaler Hinweis, eigene Texte je
   Code). Commit `feat: show the real delivery state of event mails`.
-- [ ] **MAIL-EVENT-02 — freie Event-Mail mit Anhängen und Vorlagen:** der
-  Compose-Dialog erhält dieselben Anhangswege wie der Dokumentdialog
-  (Upload/Drop, Bibliothek, finale Event-Dokumente als eine entfernbare
-  Liste) und die Vorlagenübernahme samt Standardanhängen; `POST
-  /api/v1/mail/compose` akzeptiert `documentIds`/`fileIds` mit denselben
-  Prüfungen wie `scheduleDocumentSend`. **Tests:** Integration (Route über
-  HTTP, Ablehnung nicht verfügbarer Quellen, Replay), Component.
+- [x] **MAIL-EVENT-02 — freie Event-Mail mit Anhängen und Vorlagen
+  (24.11.2026):** der Compose-Dialog bietet dieselben Bausteine wie der
+  Dokumentdialog – „Aus Vorlage“ samt Standardanhängen, Datei-Upload/Drop,
+  finale Event-Dokumente und Bibliotheksdateien in einer entfernbaren Liste
+  (ohne eigenes Hauptdokument). Die Bausteine sind dafür in gemeinsame
+  Render-Funktionen gezogen, beide Dialoge teilen den Anhangszustand.
+  Serverseitig nutzen `scheduleDocumentSend` und `scheduleCompose` dieselben
+  Helfer (`freezeFiles`, `freezeDocuments`, `insertAttachments`); `POST
+  /api/v1/mail/compose` akzeptiert `documentIds` (≤ 10) und `fileIds`
+  (≤ 20). Weil Vorlagen Platzhalter mitbringen, löst die freie Mail sie
+  jetzt aus Kontakt und Event auf; ein Platzhalter ohne Wert (Betrag und
+  Dokumentlink gibt es nur mit Dokument) wird mit `missing_placeholder`
+  abgelehnt statt wörtlich versendet. **Tests:** Integration (Route über
+  HTTP mit Dokument und Datei bis in den Worker, aufgelöste und maskierte
+  Platzhalter, Replay, Ablehnungen ohne Nachricht), Component (Vorlage mit
+  Standardanhang, Dokument/Bibliothek, Upload, benannte Ablehnung).
   Commit `feat: attach files and templates to event mails`.
 - [ ] **MAIL-SIG-01 — Signaturen:** Einstellungen verwalten mehrere
   Signaturen (Bezeichnung, Text im vorhandenen Mail-Editor, optional ein
