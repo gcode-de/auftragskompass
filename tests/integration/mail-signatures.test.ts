@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { localStorageAdapter } from '../../packages/core/src/storage.js';
 import {
   mailSignatureRepository,
+  normalizeSignature,
   registerMailSignatureRoutes,
 } from '../../packages/core/src/mail-signatures.js';
 
@@ -286,4 +287,72 @@ test('a foreign tenant never sees or changes these signatures', async () => {
     ),
   ).rejects.toThrow();
   expect(actorId).toBeTruthy();
+});
+
+test('edge cases: long text, a jpeg, a too large logo and a promoted standard', async () => {
+  const repo = mailSignatureRepository(pool, tenantId, store);
+  expect(() =>
+    normalizeSignature({ ...input, bodyHtml: 'x'.repeat(50001) }),
+  ).toThrow(expect.objectContaining({ reason: 'invalid_body' }));
+  // Plain text without any token is fine and stays as it is.
+  expect(
+    normalizeSignature({ ...input, bodyHtml: '<p>Nur Text</p>' }),
+  ).toMatchObject({
+    bodyHtml: '<p>Nur Text</p>',
+  });
+  const plain = await repo.create(actorId, {
+    ...input,
+    name: 'Ohne Standard',
+    isDefault: false,
+  });
+  // Promoting an existing signature makes it the only standard.
+  const promoted = await repo.update(actorId, plain.id, {
+    ...input,
+    name: 'Ohne Standard',
+    isDefault: true,
+  });
+  expect(promoted.isDefault).toBe(true);
+  expect(
+    (await repo.list()).filter((row) => row.isDefault).map((row) => row.id),
+  ).toEqual([plain.id]);
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  await repo.saveLogo(actorId, plain.id, jpeg, 'image/jpeg');
+  expect((await repo.readLogo(plain.id)).mediaType).toBe('image/jpeg');
+  await expect(
+    repo.saveLogo(
+      actorId,
+      plain.id,
+      Buffer.concat([jpeg, Buffer.alloc(512 * 1024)]),
+      'image/jpeg',
+    ),
+  ).rejects.toMatchObject({ reason: 'logo_too_large' });
+  // A declared type that does not match the bytes is not a logo.
+  await expect(
+    repo.saveLogo(actorId, plain.id, jpeg, 'image/png'),
+  ).rejects.toMatchObject({ reason: 'invalid_logo' });
+});
+
+test('a missing content type, a foreign actor and a shared image parser', async () => {
+  const { headers, csrf } = await signedIn();
+  const row = (await mailSignatureRepository(pool, tenantId, store).list())[0]!;
+  const untyped = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/mail-signatures/' + row.id + '/logo',
+    headers: { ...headers, ...csrf },
+  });
+  expect(untyped.statusCode).toBeGreaterThanOrEqual(400);
+  // An actor of another tenant is no administrator here.
+  await expect(
+    mailSignatureRepository(pool, tenantId, store).create(otherActorId, input),
+  ).rejects.toThrow();
+  // A server that already parses images keeps its parser.
+  const second = Fastify();
+  second.addContentTypeParser(
+    'image/png',
+    { parseAs: 'buffer' },
+    (_request, body, done) => done(null, body),
+  );
+  registerMailSignatureRoutes(second, pool, tenantId, store);
+  await second.ready();
+  await second.close();
 });
