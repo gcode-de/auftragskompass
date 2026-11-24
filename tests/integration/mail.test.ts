@@ -2452,3 +2452,52 @@ test('refuses a free mail like the document send and names the code', async () =
     ).json().error,
   ).toBe('invalid_link');
 });
+
+// MAIL-EVENT-01: the quiet corners of the compose order - an empty
+// recipient list, a foreign contact link, and the successful order with
+// linked contact and event but no body at all.
+test('the compose order covers its empty and linked corners', async () => {
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  await expect(
+    repo.scheduleCompose(actorId, {
+      requestId: 'fictional-compose-corner-1',
+      to: '',
+      subject: 'Fiktiver Betreff',
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_recipients' });
+  // A contact of another tenant is not a link this tenant owns.
+  await expect(
+    repo.scheduleCompose(actorId, {
+      requestId: 'fictional-compose-corner-2',
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiver Betreff',
+      contactId: otherContactId,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_link' });
+  const { job, created } = await repo.scheduleCompose(actorId, {
+    requestId: 'fictional-compose-corner-3',
+    to: 'synthetic.contact@example.invalid',
+    subject: 'Fiktiver Ecken-Betreff',
+    contactId,
+    eventId,
+  });
+  expect(created).toBe(true);
+  expect(job.state).toBe('pending');
+  const message = (
+    await pool.query<{
+      body_html: string | null;
+      body_text: string;
+      contact_id: string | null;
+      event_id: string | null;
+    }>(
+      'SELECT body_html, body_text, contact_id, event_id FROM mail_messages' +
+        ' WHERE tenant_id=$1 AND id=$2',
+      [tenantId, job.messageId],
+    )
+  ).rows[0]!;
+  // No body: nothing to sanitize and nothing to derive - not a blank html.
+  expect(message.body_html).toBeNull();
+  expect(message.body_text).toBe('');
+  expect(message.contact_id).toBe(contactId);
+  expect(message.event_id).toBe(eventId);
+});

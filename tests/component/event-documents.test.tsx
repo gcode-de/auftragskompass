@@ -6685,3 +6685,130 @@ test('a refused free mail names its cause and keeps the dialog open', async () =
   );
   expect(within(dialog).getByRole('button', { name: 'Senden' })).toBeTruthy();
 });
+
+// MAIL-EVENT-01: the composed body travels when there is one, and an
+// unclear outcome is named as such - the request id makes a retry safe.
+test('a composed body travels as html and an unclear outcome keeps the dialog', async () => {
+  let fail = true;
+  const { calls } = setup({
+    documents: [finalized],
+    compose: () => {
+      if (fail) throw new Error('Fiktive Antwort verloren');
+      return Response.json(
+        {
+          id: 'job-compose-2',
+          messageId: 'mail-compose-2',
+          idempotencyKey: 'mail-compose:fictional-2',
+          state: 'pending',
+          attempts: 0,
+          nextAttemptAt: '2030-10-26T10:00:00.000Z',
+          lastErrorCode: null,
+          createdAt: '2030-10-26T10:00:00.000Z',
+          sentAt: null,
+        },
+        { status: 201 },
+      );
+    },
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await waitFor(() =>
+    expect(within(dialog).getByText(/Der Ausgang ist unklar/)).toBeTruthy(),
+  );
+  // The dialog stays open and the gesture can only reach the same order.
+  expect(within(dialog).getByRole('button', { name: 'Senden' })).toBeTruthy();
+  const first = calls.filter((call) => call.url === '/api/v1/mail/compose');
+  expect(first).toHaveLength(1);
+  fail = false;
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Mail als Auftrag vorgemerkt.');
+  const second = calls.filter((call) => call.url === '/api/v1/mail/compose');
+  expect(second).toHaveLength(2);
+  expect((second[1]!.body as { requestId: string }).requestId).toBe(
+    (second[0]!.body as { requestId: string }).requestId,
+  );
+});
+
+test('a free mail without body sends no bodyHtml and the dialog cancels cleanly', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  // The native cancel gesture (Escape in browsers) closes without an order.
+  fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'Neue Mail schreiben' }),
+    ).toBeNull(),
+  );
+  expect(
+    calls.filter((call) => call.url === '/api/v1/mail/compose'),
+  ).toHaveLength(0);
+  // An empty body sends no bodyHtml at all - the server derives nothing
+  // from a body that does not exist.
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const reopened = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.click(within(reopened).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Mail als Auftrag vorgemerkt.');
+  const composeCalls = calls.filter(
+    (call) => call.url === '/api/v1/mail/compose',
+  );
+  expect(composeCalls).toHaveLength(1);
+  expect(composeCalls[0]!.body).not.toHaveProperty('bodyHtml');
+});
+
+// MAIL-EVENT-01: the dialog works without any contact data, a double click
+// orders once, and the payload carries no absent links.
+test('the compose dialog works without contact data and locks during the order', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(<EventDocuments {...props} contactId={null} eventId="" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  // No contact: the dialog names that honestly and the field stays empty.
+  expect(within(dialog).getByText(/Kein Hauptkontakt zugeordnet/)).toBeTruthy();
+  expect(within(dialog).getByLabelText('An')).toHaveProperty('value', '');
+  // Without a recipient nothing can be sent; the operator types one.
+  fireEvent.change(within(dialog).getByLabelText('An'), {
+    target: { value: 'synthetic.other@example.invalid' },
+  });
+  // A double click orders once - the second click lands while busy.
+  const send = within(dialog).getByRole('button', { name: 'Senden' });
+  fireEvent.click(send);
+  fireEvent.click(send);
+  await screen.findByText('Mail als Auftrag vorgemerkt.');
+  const composeCalls = calls.filter(
+    (call) => call.url === '/api/v1/mail/compose',
+  );
+  expect(composeCalls).toHaveLength(1);
+  // Absent links are absent in the payload - never sent as unknown ids.
+  expect(composeCalls[0]!.body).not.toHaveProperty('contactId');
+  expect(composeCalls[0]!.body).not.toHaveProperty('eventId');
+});
