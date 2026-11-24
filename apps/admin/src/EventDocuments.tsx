@@ -2404,9 +2404,10 @@ export function EventDocuments({
         return 'Der Text konnte nicht übernommen werden. Bitte die Eingaben prüfen.';
       case 'invalid_subject':
         return 'Der Betreff ist zu lang oder enthält unerlaubte Zeichen. Bitte den Betreff prüfen; die Eingaben bleiben erhalten.';
+      case 'invalid_link':
+        return 'Eine Verknüpfung (Kontakt, Event oder Weiterleitung) wurde nicht gefunden oder gehört zu einem anderen Mandanten. Bitte die Auswahl prüfen; es wurde nichts gesendet.';
       case 'invalid_sender':
       case 'invalid_security':
-      case 'invalid_link':
       case 'invalid_direction':
       case 'invalid_folder':
       case 'invalid_port':

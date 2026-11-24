@@ -14,6 +14,7 @@ import { migrate } from '../../packages/core/src/identity.js';
 import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
+import { accessRepository } from '../../packages/core/src/access.js';
 import { decryptTelegramToken } from '../../packages/core/src/telegram.js';
 import { registerMailForwardSettingsRoutes } from '../../packages/core/src/mail-forward.js';
 import {
@@ -2508,12 +2509,9 @@ test('the compose order covers its empty and linked corners', async () => {
 // server - from the stored accounting setting and this tenant's users.
 test('forwards outgoing mail to accounting and app users under the switches', async () => {
   const repo = mailRepository(pool, tenantId, encryptionKey),
-    userId = randomUUID();
-  await pool.query('INSERT INTO users(tenant_id,id,email) VALUES($1,$2,$3)', [
-    tenantId,
-    userId,
-    'synthetic.user@example.invalid',
-  ]);
+    // The dialog lists allowed accounts (`/api/v1/access`): the forwarding
+    // resolves exactly those ids - never user ids of another id space.
+    account = (await accessRepository(pool, tenantId).list())[0]!;
   // The switch on, nothing configured: refused, never a dropped copy.
   await expect(
     repo.scheduleCompose(actorId, {
@@ -2533,7 +2531,7 @@ test('forwards outgoing mail to accounting and app users under the switches', as
     to: 'synthetic.contact@example.invalid',
     subject: 'Fiktiver Weiterleitungs-Betreff',
     forwardAccounting: true,
-    forwardUserIds: [userId],
+    forwardUserIds: [account.id],
   });
   const cc = (
     await pool.query<{ cc_addresses: string }>(
@@ -2542,7 +2540,7 @@ test('forwards outgoing mail to accounting and app users under the switches', as
     )
   ).rows[0]!;
   expect(cc.cc_addresses).toBe(
-    'synthetic.accounting@example.invalid,synthetic.user@example.invalid',
+    `synthetic.accounting@example.invalid,${account.email}`,
   );
   // A user id this tenant does not own refuses the whole order.
   await expect(

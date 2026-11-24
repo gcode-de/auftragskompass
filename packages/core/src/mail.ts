@@ -439,8 +439,11 @@ export async function resolveForwardCc(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
       if (!userIds.every((id) => uuid.test(id)))
         throw new MailError('invalid_link');
+      // The ids come from the access list (`/api/v1/access`): they are
+      // allowed-account ids, not user ids. Resolving against the wrong id
+      // space refused every forwarded mail with `invalid_link`.
       const { rows } = await tx.execute<{ email: string }>(
-        sql`SELECT email FROM users
+        sql`SELECT email FROM allowed_accounts
              WHERE tenant_id = ${tenantId}
                AND id IN (${sql.join(
                  userIds.map((id) => sql`${id}::uuid`),
