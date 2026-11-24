@@ -728,9 +728,10 @@ a.workspace-title:hover {
   gap: 0.5rem;
 }
 .settings-navigation-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  /* UI-PARITY-01: grouped links need the column; narrower widths use the
+  labeled select with the same groups. */
+  display: none;
+  gap: 0.25rem;
 }
 .settings-navigation-links a {
   color: var(--muted);
@@ -740,6 +741,21 @@ a.workspace-title:hover {
 .settings-navigation-links a[aria-current] {
   background: var(--selected-surface);
   color: var(--selected-ink);
+}
+.settings-navigation-select {
+  display: grid;
+  gap: 0.35rem;
+}
+.settings-navigation-select select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.55rem 0.65rem;
+  color: var(--ink);
+  font: inherit;
+  background: var(--field-surface);
+  border: 1px solid var(--field-border);
+  border-radius: 0.4rem;
 }
 @media (min-width: 1100px) {
   #settings:not([hidden]) {
@@ -769,9 +785,21 @@ a.workspace-title:hover {
     align-items: center;
     min-height: 44px;
   }
-}
-.settings-navigation-select {
-  display: none;
+  .settings-navigation-group-label {
+    display: block;
+    margin-top: 0.75rem;
+    /* Same left edge as the single areas between the groups. */
+    padding: 0 0.85rem 0.15rem;
+    color: var(--ink);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .settings-navigation-group > a {
+    padding-left: 1.6rem;
+  }
+  .settings-navigation-select {
+    display: none;
+  }
 }
 #settings > div > section + section {
   border-top: 1px solid var(--border);

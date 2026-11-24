@@ -2,160 +2,160 @@
 name: AuftragsKompass
 description: Interne Verwaltungsoberfläche für den lokalen Fotobox-Betrieb
 colors:
-  surface: "light-dark(#ffffff, #1e1d1b)"
-  canvas: "light-dark(#f5f4f1, #141312)"
-  ink: "light-dark(#20211f, #e8e4df)"
-  muted: "light-dark(#5d5c58, #b0aaa2)"
-  accent: "light-dark(#3d6b58, #9dc1af)"
-  border: "light-dark(#dbd8d2, #3b3833)"
-  action-ink: "light-dark(#ffffff, #12201b)"
-  action-hover: "light-dark(#2f5749, #b2d2c1)"
-  hover-surface: "light-dark(#efede8, #2a2825)"
-  field-surface: "light-dark(#fbfaf8, #191817)"
-  field-border: "light-dark(#8f8a82, #7d776f)"
-  focus: "light-dark(#20695a, #9fd3ba)"
-  status-surface: "light-dark(#f1efec, #242220)"
-  alert-surface: "light-dark(#fdf0ed, #3d2523)"
-  alert-ink: "light-dark(#a3312a, #f6bcb2)"
-  table-surface: "light-dark(#f3f1ed, #242220)"
-  selection: "light-dark(#dcd9d3, #3a3733)"
-  selection-ink: "light-dark(#1d1c1a, #f0ece7)"
-  selected-surface: "light-dark(#eeece7, #302d29)"
-  selected-ink: "light-dark(#33544a, #e8e4df)"
-  disabled-surface: "light-dark(#e9e6e0, #262421)"
-  disabled-ink: "light-dark(#6b665f, #a9a29a)"
-  sidebar: "#1b1a18"
-  sidebar-ink: "#eae6e0"
-  sidebar-focus: "#cfd8d0"
-  sidebar-active: "#2f3a34"
-  sidebar-hover: "#2a2825"
-  sidebar-link: "#c6c1ba"
-  sidebar-muted: "#a8a29a"
-  sidebar-selected-ink: "#ffffff"
-  backdrop: "#0b0a09aa"
-  scrim: "light-dark(#1b1a1866, #0b0a09cc)"
-  menu-close-border: "#6f6a63"
-  calendar-ink: "#111827"
-  status-inquiry: "light-dark(#6b665f, #a9a29a)"
-  status-option: "light-dark(#8a5a12, #e0b45c)"
-  status-booked: "light-dark(#2f5749, #9dc1af)"
-  status-hold: "light-dark(#6a4b8a, #c9aee6)"
-  status-cancelled: "light-dark(#8f8a82, #7d776f)"
-  status-blocked: "light-dark(#8f8a82, #7d776f)"
-  status-unavailable: "light-dark(#8f8a82, #7d776f)"
-  status-conflict: "light-dark(#a3312a, #f6bcb2)"
+  surface: 'light-dark(#ffffff, #1e1d1b)'
+  canvas: 'light-dark(#f5f4f1, #141312)'
+  ink: 'light-dark(#20211f, #e8e4df)'
+  muted: 'light-dark(#5d5c58, #b0aaa2)'
+  accent: 'light-dark(#3d6b58, #9dc1af)'
+  border: 'light-dark(#dbd8d2, #3b3833)'
+  action-ink: 'light-dark(#ffffff, #12201b)'
+  action-hover: 'light-dark(#2f5749, #b2d2c1)'
+  hover-surface: 'light-dark(#efede8, #2a2825)'
+  field-surface: 'light-dark(#fbfaf8, #191817)'
+  field-border: 'light-dark(#8f8a82, #7d776f)'
+  focus: 'light-dark(#20695a, #9fd3ba)'
+  status-surface: 'light-dark(#f1efec, #242220)'
+  alert-surface: 'light-dark(#fdf0ed, #3d2523)'
+  alert-ink: 'light-dark(#a3312a, #f6bcb2)'
+  table-surface: 'light-dark(#f3f1ed, #242220)'
+  selection: 'light-dark(#dcd9d3, #3a3733)'
+  selection-ink: 'light-dark(#1d1c1a, #f0ece7)'
+  selected-surface: 'light-dark(#eeece7, #302d29)'
+  selected-ink: 'light-dark(#33544a, #e8e4df)'
+  disabled-surface: 'light-dark(#e9e6e0, #262421)'
+  disabled-ink: 'light-dark(#6b665f, #a9a29a)'
+  sidebar: '#1b1a18'
+  sidebar-ink: '#eae6e0'
+  sidebar-focus: '#cfd8d0'
+  sidebar-active: '#2f3a34'
+  sidebar-hover: '#2a2825'
+  sidebar-link: '#c6c1ba'
+  sidebar-muted: '#a8a29a'
+  sidebar-selected-ink: '#ffffff'
+  backdrop: '#0b0a09aa'
+  scrim: 'light-dark(#1b1a1866, #0b0a09cc)'
+  menu-close-border: '#6f6a63'
+  calendar-ink: '#111827'
+  status-inquiry: 'light-dark(#6b665f, #a9a29a)'
+  status-option: 'light-dark(#8a5a12, #e0b45c)'
+  status-booked: 'light-dark(#2f5749, #9dc1af)'
+  status-hold: 'light-dark(#6a4b8a, #c9aee6)'
+  status-cancelled: 'light-dark(#8f8a82, #7d776f)'
+  status-blocked: 'light-dark(#8f8a82, #7d776f)'
+  status-unavailable: 'light-dark(#8f8a82, #7d776f)'
+  status-conflict: 'light-dark(#a3312a, #f6bcb2)'
 typography:
   body:
     fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     lineHeight: 1.5
   headline:
-    fontSize: "1.5rem"
+    fontSize: '1.5rem'
     lineHeight: 1.2
-    letterSpacing: "-0.025em"
+    letterSpacing: '-0.025em'
   workspace-title:
-    fontSize: "1.5rem"
+    fontSize: '1.5rem'
     fontWeight: 650
-    letterSpacing: "-0.025em"
+    letterSpacing: '-0.025em'
   workspace-heading:
-    fontSize: "1.25rem"
+    fontSize: '1.25rem'
     lineHeight: 1.2
-    letterSpacing: "-0.025em"
+    letterSpacing: '-0.025em'
   record-heading:
-    fontSize: "1.35rem"
+    fontSize: '1.35rem'
     lineHeight: 1.2
-    letterSpacing: "-0.025em"
+    letterSpacing: '-0.025em'
   event-month-heading:
-    fontSize: "1.1rem"
+    fontSize: '1.1rem'
     lineHeight: 1.2
-    letterSpacing: "-0.025em"
+    letterSpacing: '-0.025em'
   event-row-title:
-    fontSize: "1.05rem"
+    fontSize: '1.05rem'
     fontWeight: 650
   event-count:
-    fontSize: "0.8rem"
+    fontSize: '0.8rem'
     fontWeight: 400
   label:
     fontWeight: 550
   button:
     fontWeight: 600
 rounded:
-  control: "0.4rem"
-  sidebar-link: "0.5rem"
-  fieldset: "0.65rem"
-  workspace: "0.75rem"
-  login: "1rem"
+  control: '0.4rem'
+  sidebar-link: '0.5rem'
+  fieldset: '0.65rem'
+  workspace: '0.75rem'
+  login: '1rem'
 spacing:
-  form-gap: "1rem"
-  fieldset-padding: "1.25rem"
-  workspace-padding: "1.75rem"
-  mobile-workspace-padding: "1rem"
+  form-gap: '1rem'
+  fieldset-padding: '1.25rem'
+  workspace-padding: '1.75rem'
+  mobile-workspace-padding: '1rem'
 components:
   button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.action-ink}"
-    rounded: "{rounded.control}"
-    padding: "0.6rem 1rem"
-    typography: "{typography.button}"
+    backgroundColor: '{colors.accent}'
+    textColor: '{colors.action-ink}'
+    rounded: '{rounded.control}'
+    padding: '0.6rem 1rem'
+    typography: '{typography.button}'
   button-secondary:
-    backgroundColor: "transparent"
-    textColor: "#33544a / #cdc7bf"
-    border: "1px solid #8f8a82 / #757067"
-    rounded: "{rounded.control}"
-    padding: "0.6rem 1rem"
+    backgroundColor: 'transparent'
+    textColor: '#33544a / #cdc7bf'
+    border: '1px solid #8f8a82 / #757067'
+    rounded: '{rounded.control}'
+    padding: '0.6rem 1rem'
   button-tertiary:
-    backgroundColor: "transparent"
-    textColor: "#33544a / #cdc7bf"
-    border: "none"
-    rounded: "{rounded.control}"
-    padding: "0.6rem 1rem"
+    backgroundColor: 'transparent'
+    textColor: '#33544a / #cdc7bf'
+    border: 'none'
+    rounded: '{rounded.control}'
+    padding: '0.6rem 1rem'
   button-disabled:
-    backgroundColor: "{colors.disabled-surface}"
-    textColor: "{colors.disabled-ink}"
-    border: "1px dashed #8f8a82 / #757067"
-    rounded: "{rounded.control}"
-    padding: "0.6rem 1rem"
+    backgroundColor: '{colors.disabled-surface}'
+    textColor: '{colors.disabled-ink}'
+    border: '1px dashed #8f8a82 / #757067'
+    rounded: '{rounded.control}'
+    padding: '0.6rem 1rem'
   button-primary-hover:
-    backgroundColor: "{colors.action-hover}"
+    backgroundColor: '{colors.action-hover}'
   button-account:
-    backgroundColor: "transparent"
-    textColor: "{colors.sidebar-ink}"
-    rounded: "{rounded.control}"
-    padding: "0.6rem 1rem"
+    backgroundColor: 'transparent'
+    textColor: '{colors.sidebar-ink}'
+    rounded: '{rounded.control}'
+    padding: '0.6rem 1rem'
   theme-toggle:
-    backgroundColor: "transparent"
-    textColor: "#33544a / #cdc7bf"
-    border: "1px solid #8f8a82 / #757067"
-    rounded: "{rounded.control}"
-    padding: "0.6rem 1rem"
+    backgroundColor: 'transparent'
+    textColor: '#33544a / #cdc7bf'
+    border: '1px solid #8f8a82 / #757067'
+    rounded: '{rounded.control}'
+    padding: '0.6rem 1rem'
   theme-toggle-pressed:
-    backgroundColor: "{colors.selected-surface}"
-    textColor: "{colors.selected-ink}"
+    backgroundColor: '{colors.selected-surface}'
+    textColor: '{colors.selected-ink}'
   record-navigation:
-    backgroundColor: "transparent"
-    textColor: "#33544a / #cdc7bf"
-    padding: "0 0 1rem"
+    backgroundColor: 'transparent'
+    textColor: '#33544a / #cdc7bf'
+    padding: '0 0 1rem'
   record-navigation-current:
-    backgroundColor: "{colors.selected-surface}"
-    textColor: "{colors.selected-ink}"
+    backgroundColor: '{colors.selected-surface}'
+    textColor: '{colors.selected-ink}'
   event-disclosure:
-    textColor: "{colors.accent}"
-    padding: "0.75rem 0.25rem"
+    textColor: '{colors.accent}'
+    padding: '0.75rem 0.25rem'
   event-row:
-    padding: "1.25rem 0"
+    padding: '1.25rem 0'
   input:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.control}"
-    padding: "0.6rem 0.7rem"
+    backgroundColor: '{colors.surface}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.control}'
+    padding: '0.6rem 0.7rem'
   workspace:
-    backgroundColor: "{colors.surface}"
-    rounded: "{rounded.workspace}"
-    padding: "1.75rem"
+    backgroundColor: '{colors.surface}'
+    rounded: '{rounded.workspace}'
+    padding: '1.75rem'
   navigation-active:
-    backgroundColor: "{colors.sidebar-active}"
-    textColor: "{colors.sidebar-selected-ink}"
-    rounded: "{rounded.sidebar-link}"
-    padding: "0.8rem 0.9rem"
+    backgroundColor: '{colors.sidebar-active}'
+    textColor: '{colors.sidebar-selected-ink}'
+    rounded: '{rounded.sidebar-link}'
+    padding: '0.8rem 0.9rem'
 ---
 
 # Design System: AuftragsKompass
@@ -304,7 +304,9 @@ Dateienbereich bleibt über sein bestehendes Ziel und seine Deep Links erreichba
 Ein kurzer Hinweis mit Rückweg zu Events erklärt die aktuell vorhandene Angebotserstellung.
 
 Die Kopfzeile zentriert Suche und Farbschema vertikal auf derselben Höhe.
-Ab 1100px steht die Einstellungsnavigation als vertikale Spalte neben dem Inhalt; mobil bleibt die Bereichsauswahl erhalten.
+Ab 1100px steht die Einstellungsnavigation als vertikale Spalte neben dem Inhalt; darunter (nicht mehr erst ab 900px) ersetzt sie der beschriftete Bereichswähler.
+
+**Gruppierte Einstellungen (UI-PARITY-01, 25.11.2026):** Reihenfolge und Gruppen folgen der beobachteten Bookitup-Einstellungsnavigation (Screenshots vom 24.11.2026, Browserbeobachtung, kein REA-Beleg): Stammdaten · Integrationen (Kalender-Abos, Telegram, Website-Formular, Website-Eingänge) · Ressourcen · E-Mail (Vorlagen, Ein- & Ausgangsserver, Signatur) · Dokumente (Dokument-Vorlagen, Produkte, Dokument-Layout, Nummernkreise) · Daten (Datenimport, Datenexport) · Passwort & Account. Behutsam vereinfacht: Bookitups Gruppen klappen ein, hier sind sie dauerhaft offen (`role="group"` mit `aria-label`), damit kein Bereich einen Extraklick kostet. Gruppenüberschrift `0.8rem`/600 in `ink`, links bündig mit den Einzelbereichen (`0.85rem` Innenabstand); Unterpunkte `1.6rem` eingerückt. Der Bereichswähler zeigt dieselben Gruppen als `<optgroup>`. Die Signatur hat eine eigene Seite (`#settings-mail-signatures`). Bookitup-Punkte ohne Gegenstück (Profil, Team, Paket & Abrechnung, Dienstleister-Netzwerk, Workflow, Aufgabenvorlagen, Fragebogen-/Vertragsvorlagen, Mehrwertsteuer, Datenschutz) werden nicht als tote Einträge nachgebildet.
 
 ## Do's and Don'ts
 
@@ -319,7 +321,6 @@ Ab 1100px steht die Einstellungsnavigation als vertikale Spalte neben dem Inhalt
 - Keine zusätzliche Markenwelt oder unbelegte Produktfunktionen aus dieser Dokumentation ableiten.
 - Keine Bewegungsanimation für den Tastaturaufruf des mobilen Menüs ergänzen.
 - Keine Daten aus einem ausgeblendeten Arbeitsbereich als sichtbar behandeln.
-
 
 ### Dokumentlayout (BKP018.1, 24.10.2026)
 
@@ -371,16 +372,13 @@ seitliches Scrollen. Beim Verlassen speichert die bestehende Event-Warteschlange
 Entwürfe, Konflikte und Fehler bleiben erkennbar. Der Editor zeigt formatierte
 Inhalte statt HTML-Quelltext; die Bereinigung beim Speichern bleibt unverändert.
 
-
 Die Eventfilter zeigen keine technische Zeitzonenzeile; Zeiträume verwenden weiterhin die konfigurierte Geschäftszeitzone.
 
 Bei der Ressourcenzuweisung stehen Belegungsprüfung und die unverbindliche Vormerkung im Vordergrund; technische Zeitzonendetails bleiben der Oberfläche fern.
 
-
 Die Angebotsanlage in Event-Dateien ist ein natives, zunächst geschlossenes Disclosure; die Vorlagenwahl und das Anlegen erscheinen nach bewusstem Öffnen. Nach dem Schließen eines neu angelegten Blankoentwurfs kehrt der Fokus zum Disclosure zurück.
 
 Geschäftsdokumente stehen im Dateienbereich des Events vor der Dateibibliothek; beide bleiben erreichbar.
-
 
 ### Globale Dokumentliste (UI-01.2)
 
@@ -393,7 +391,6 @@ Breite Tabellen scrollen innerhalb ihres Listenbereichs. Die Dokumenttabelle
 ist als Region benannt und mit sichtbarem Fokus per Tab erreichbar. Die
 Pfeiltasten scrollen den Bereich horizontal. Auf Mobilbreite
 erhält die Dokumentspalte mindestens 8rem für Titel und Belegnummer.
-
 
 ### Kopf im Dokumenteditor (DOC-UX-04.1)
 

@@ -372,6 +372,33 @@ Branches nach dem Merge löschen.
   Wechsel, Vorschau, ohne Signaturen), E2E (Vorauswahl und gespeicherter
   Text in Chromium). Commit `feat: send mails with the chosen signature`.
 
+## Nutzauftrag 25.11.2026 (UI-Abgleich mit Bookitup, Backend unverändert)
+
+Grundlage: Bookitup-Screenshots des Benutzers vom 24.11.2026 und älter
+(privat, außerhalb des Repositorys; enthalten echte Daten und werden nicht
+kopiert). Browser-/Bildbeobachtung, **kein REA-Beleg**: der REA-Skill ist
+installiert, die REA-MCP-Werkzeuge waren in dieser Sitzung nicht verfügbar
+und der Diagnoseaufruf wurde von der Rechteprüfung abgelehnt. Je Slice
+nur Oberfläche; fehlende Bookitup-Fachmodule (Aufgaben, Workflows,
+Freigaben, Verdienst, Vermittlungen, eigene Felder) werden nicht als
+Attrappen nachgebaut.
+
+- [x] **UI-PARITY-01 — Einstellungen in Bookitups Gruppen (25.11.2026):**
+  Einstellungsnavigation in Bookitup-Reihenfolge mit benannten, dauerhaft
+  offenen Gruppen (Integrationen, E-Mail, Dokumente, Daten) und
+  Bookitup-Bezeichnungen, wo sie zutreffen (Ein- & Ausgangsserver,
+  Dokument-Vorlagen, Dokument-Layout, Passwort & Account); „Signatur“ als
+  eigene Seite unter E-Mail. Unter 1100 px derselbe Inhalt als
+  Bereichswähler mit `<optgroup>`. Hashes und Deep Links bleiben.
+  **Tests:** Component (Gruppen in Links und Auswahl, Reihenfolge,
+  Hashes), E2E (Grenze 1099/1100, Signatur-Seite, Linknamen).
+  Commit `feat: group the settings like bookitup`.
+- [ ] **UI-PARITY-02 — „E-Mails“ als eigener Bereich der Eventakte:**
+  Bookitup führt in der Eventakte „E-Mails“ mit Ordnern (Entwürfe, Geplant,
+  Fehlgeschlagen, Gesendet …). Der Bereich „Mails“ (MAIL-STATUS-01) wandert
+  aus „Dateien“ in einen eigenen Aktenbereich mit Ordnerfilter aus dem
+  vorhandenen `sendState`; „Neue Mail schreiben“ steht dort. Keine neue API.
+
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
 - [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.

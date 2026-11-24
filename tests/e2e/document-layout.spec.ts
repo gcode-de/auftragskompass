@@ -240,7 +240,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
     );
     await expect(settingsSelect).toBeHidden();
     await settingsNavigation
-      .getByRole('link', { name: 'Dokumentlayout', exact: true })
+      .getByRole('link', { name: 'Dokument-Layout', exact: true })
       .click();
     await expect(page).toHaveURL(/#settings-document-layout$/);
     const layout = page.getByRole('region', { name: 'Dokumentlayout' });
@@ -557,12 +557,12 @@ test('document layout setup, preview, conflict recovery, and persistence work in
             }),
           ).toBeVisible();
           await expect(settingsSelect).toHaveValue('#settings-document-layout');
-          // MAIL-ACCOUNT-01: "E-Mail-Versand" has its own place next to
-          // "Telegram"; MAIL-TPL-01b adds "E-Mail-Vorlagen" next to it.
-          await expect(settingsSelect.locator('option')).toHaveCount(15);
+          // UI-PARITY-01: sixteen areas in Bookitup's groups, including
+          // the separate signature page under E-Mail.
+          await expect(settingsSelect.locator('option')).toHaveCount(16);
           await expect(
             settingsNavigation.getByRole('link', {
-              name: 'Dokumentlayout',
+              name: 'Dokument-Layout',
               exact: true,
             }),
           ).toHaveCount(0);
@@ -604,7 +604,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
           await expect(settingsSelect).toBeHidden();
           await expect(
             settingsNavigation.getByRole('link', {
-              name: 'Dokumentlayout',
+              name: 'Dokument-Layout',
               exact: true,
             }),
           ).toBeVisible();
@@ -623,23 +623,25 @@ test('document layout setup, preview, conflict recovery, and persistence work in
           expect(result.violations, `${theme} at ${width}px`).toEqual([]);
         }
       }
-      await page.setViewportSize({ width: 900, height: 844 });
+      // UI-PARITY-01: the grouped link column needs 1100px; below it the
+      // labeled select carries the same groups.
+      await page.setViewportSize({ width: 1099, height: 844 });
       await expect(settingsSelect).toBeVisible();
       await expect(settingsNavigation.getByRole('link')).toHaveCount(0);
       await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
-        .toBeLessThanOrEqual(901);
-      await page.setViewportSize({ width: 901, height: 844 });
+        .toBeLessThanOrEqual(1100);
+      await page.setViewportSize({ width: 1100, height: 844 });
       await expect(settingsSelect).toBeHidden();
       await expect(
         settingsNavigation.getByRole('link', {
-          name: 'Dokumentlayout',
+          name: 'Dokument-Layout',
           exact: true,
         }),
       ).toBeVisible();
       await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
-        .toBeLessThanOrEqual(902);
+        .toBeLessThanOrEqual(1101);
     }
     await page.setViewportSize({ width: 1280, height: 844 });
 

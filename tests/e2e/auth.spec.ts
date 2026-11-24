@@ -3046,7 +3046,7 @@ async function signInScenario(
     });
     if ((await libraryThemeToggle.getAttribute('aria-pressed')) === 'true')
       await libraryThemeToggle.click();
-    await navigate('Einstellungen', 'Konto & Zugriff');
+    await navigate('Einstellungen', 'Passwort & Account');
     if (mode === 'google') {
       await page
         .getByLabel('Google-E-Mail-Adresse')
@@ -6110,7 +6110,7 @@ async function signInScenario(
       await page.screenshot({ path: 'tests/test-results/admin-desktop.png' });
     }
     if (mode === 'password') {
-      await navigate('Einstellungen', 'Konto & Zugriff');
+      await navigate('Einstellungen', 'Passwort & Account');
       const change = page.getByRole('region', {
         name: 'Eigenes Passwort',
         exact: true,
