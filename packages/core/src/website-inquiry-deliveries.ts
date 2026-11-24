@@ -4,6 +4,7 @@ import { database, type Connection } from './database.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { websiteInquiryDeliveries } from './schema.js';
 import { inquiryEmailKey, renderWebsiteInquiryEmail } from './inquiry-email.js';
+import { inquiryNoticeExtras } from './inquiry-notice.js';
 import {
   isWebsiteInquiry,
   receiveWebsiteInquiry,
@@ -18,6 +19,9 @@ export async function stageWebsiteInquiry(
   actorId: string,
   input: unknown,
   at: Date,
+  // INQUIRY-INFO-01: the admin address for the notification's links; with
+  // no address the notice honestly carries no link lines.
+  options: { noticeOrigin?: string } = {},
 ): Promise<{ status: 'stored' | 'duplicate' }> {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   if (
@@ -77,7 +81,17 @@ export async function stageWebsiteInquiry(
       // keeps a mail problem out of the intake path; the mail core alone owns
       // retries and honest failure states. No enabled mail account means no
       // honest sender, so nothing is ordered then.
-      const mail = renderWebsiteInquiryEmail(value),
+      const extras = await inquiryNoticeExtras(
+        tx,
+        tenantId,
+        { origin: options.noticeOrigin ?? '' },
+        {
+          id: value.id,
+          eventDate: value.submission.fields.eventDate ?? null,
+          email: value.submission.fields.email ?? null,
+        },
+      );
+      const mail = renderWebsiteInquiryEmail(value, extras),
         key = inquiryEmailKey(value.id);
       try {
         await tx.transaction(async (mailTx) => {

@@ -173,11 +173,17 @@ export async function startWorkerRuntime(
       )
     : null;
   const telegram = telegramKey
-    ? startTelegramNotifications(pool, telegramKey, (failure) =>
-        app.log.error(
-          { telegramFailure: failure },
-          'telegram_notification_failed',
-        ),
+    ? startTelegramNotifications(
+        pool,
+        telegramKey,
+        (failure) =>
+          app.log.error(
+            { telegramFailure: failure },
+            'telegram_notification_failed',
+          ),
+        fetch,
+        // INQUIRY-INFO-01: the admin address for the notification's links.
+        env.AK_AUTH_ORIGIN ?? '',
       )
     : null;
   if (!telegramKey && dependencies.telegramConfigured)
