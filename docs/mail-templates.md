@@ -130,4 +130,23 @@ partiellen Unique-Index.
 
 Ein Logo-Upload legt immer einen neuen Speicherschlüssel an; alte Bytes
 bleiben liegen, damit ein bereits beauftragter Versand sie noch lesen kann.
-Wie die Signatur in den Versand kommt, regelt MAIL-SIG-01b.
+
+### Signatur im Versand (MAIL-SIG-01b)
+
+Beide Mail-Dialoge wählen die Standardsignatur vor; das Feld „Signatur“
+ersetzt sie durch eine andere oder „Keine Signatur“. Ohne gespeicherte
+Signatur erscheint das Feld nicht. `POST /api/v1/mail/compose`,
+`POST /api/v1/mail/document-send` und die Vorschau nehmen dafür
+`signatureId`.
+
+Der Server hängt die Signatur an den Text an. An der Stelle von `{{logo}}`
+steht das Logo als `<img src="cid:signature-logo">`, mit Link, falls einer
+hinterlegt ist. Die geprüften Logo-Bytes werden in `mail_inline_images`
+(Schlüssel, Typ, Größe, SHA-256) am Auftrag eingefroren. Der Worker liest
+sie bei jedem Versuch, prüft den Hash und versendet sie als Inline-Bild
+(`multipart/related`). Ein späterer Logo-Wechsel oder eine gelöschte
+Signatur ändert einen bereits beauftragten Versand nicht. Die Vorschau
+zeigt das Logo über `GET /api/v1/mail-signatures/:id/logo`.
+
+Ablehnungen: eine gelöschte oder fremde Signatur `400 invalid_link`,
+nicht lesbare oder ersetzte Logo-Bytes `409 attachment_unavailable`.

@@ -34,6 +34,8 @@ export type MailSendAttachment = {
   filename: string;
   content: Buffer;
   contentType: string;
+  // MAIL-SIG-01b: an inline image the HTML references as `cid:<cid>`.
+  cid?: string;
 };
 export type MailSendContent = {
   subject: string;
@@ -210,6 +212,7 @@ export function smtpMailSender(options: SmtpSenderOptions): MailSender {
                   filename: attachment.filename,
                   content: attachment.content,
                   contentType: attachment.contentType,
+                  ...(attachment.cid ? { cid: attachment.cid } : {}),
                 })),
               }
             : {}),

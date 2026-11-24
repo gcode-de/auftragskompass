@@ -337,7 +337,7 @@ Branches nach dem Merge löschen.
   Platzhalter, Replay, Ablehnungen ohne Nachricht), Component (Vorlage mit
   Standardanhang, Dokument/Bibliothek, Upload, benannte Ablehnung).
   Commit `feat: attach files and templates to event mails`.
-- [ ] **MAIL-SIG-01 — Signaturen** *(24.11.2026 in 01a/01b geteilt)*.
+- [x] **MAIL-SIG-01 — Signaturen** *(24.11.2026 in 01a/01b geteilt)*.
   **MAIL-SIG-01a — Signaturen verwalten (24.11.2026 umgesetzt):**
   Migration 0077 `mail_signatures` (Bezeichnung, Text in der Mail-Allowlist,
   optionales Logo als Schlüssel/Typ/Größe/SHA-256 im Storage-Adapter,
@@ -353,14 +353,24 @@ Branches nach dem Merge löschen.
   (CRUD, ein Standard, Allowlist, Ablehnungen, Logo-Bytes, Mandanten-
   trennung, DB-Index), Component (6), E2E (echter Upload, Vorschau, axe,
   1280/320). Commit `feat: manage mail signatures`.
-  **MAIL-SIG-01b — Signatur im Versand:** alle Mail-Dialoge wählen die
-  Standardsignatur vor, ein Auswahlfeld ersetzt sie durch eine andere oder
-  „Keine Signatur“. Der Server hängt die gewählte Signatur an, setzt das
-  Logo an die Stelle von `{{logo}}` (optional verlinkt) und friert die
-  Logo-Bytes als Inline-Bild (CID) am Auftrag ein; der Worker liest und
-  prüft sie pro Versuch wie die anderen Anhänge. **Tests:** Integration
-  (Anhängen, CID im Worker, ohne Signatur, gelöschte Signatur), Component.
-  Commit `feat: send mails with the chosen signature`.
+  **MAIL-SIG-01b — Signatur im Versand (25.11.2026 umgesetzt):** beide
+  Mail-Dialoge (Dokumentversand, freie Event-Mail) laden die Signaturen,
+  wählen den Standard vor und bieten im Feld „Signatur“ jede andere und
+  „Keine Signatur“; ohne Signaturen bleibt das Feld weg. `signatureId`
+  reist mit Compose, Dokumentversand und Vorschau. Der Server hängt die
+  Signatur an (ein reiner Standardtext wird dafür zu Absätzen), setzt an
+  `{{logo}}` das Logo als `<img src="cid:signature-logo">`, optional in
+  seinem Link, und friert die zuvor geprüften Logo-Bytes in der neuen
+  Tabelle `mail_inline_images` (0078, additiv) am Auftrag ein. Der Worker
+  liest und prüft sie pro Versuch per SHA-256 und übergibt sie mit
+  `cid` an nodemailer (`multipart/related`, `Content-Disposition: inline`).
+  Die Vorschau zeigt das Logo über die Logo-Route. Gelöschte Signatur =
+  `invalid_link`, ersetzte Logo-Bytes = `attachment_unavailable`.
+  **Tests:** Integration (Compose und Dokumentversand mit Signatur, Worker
+  mit CID-Bytes, Vorschau, ersetzte Bytes, gelöschte Signatur; SMTP-MIME
+  mit Content-ID; Migrationspin 0078), Component (Vorauswahl, Keine,
+  Wechsel, Vorschau, ohne Signaturen), E2E (Vorauswahl und gespeicherter
+  Text in Chromium). Commit `feat: send mails with the chosen signature`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 

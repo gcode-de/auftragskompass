@@ -47,6 +47,7 @@ import {
   mailTemplateRepository,
 } from '../../packages/core/src/mail-templates.js';
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
+import { registerMailSignatureRoutes } from '../../packages/core/src/mail-signatures.js';
 
 // MAIL-EDITOR-01: the formatted document mail in real Chromium against the
 // real routes - compose with formatting and placeholders, preview the actual
@@ -204,6 +205,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       origin,
       key: mailKey,
     });
+    registerMailSignatureRoutes(app, pool, tenantId, storage);
     // The durable order needs a sending account; its secret is sealed with
     // the same synthetic key and never leaves the process.
     await mailRepository(pool, tenantId, mailKey).saveAccount(actorId, {
@@ -586,10 +588,19 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       await cycleDialog.getByRole('button', { name: 'Abbrechen' }).click();
     }
 
+    // MAIL-SIG-01b: a standard signature is preselected and travels along.
+    await pool.query(
+      `INSERT INTO mail_signatures (tenant_id,id,name,body_html,is_default)
+       VALUES ($1,$2,'Fiktive Signatur','<p>Fiktive Grüße</p>',true)`,
+      [tenantId, randomUUID()],
+    );
     // MAIL-EVENT-02: the free event mail carries a library file at 320 px.
     await page.getByRole('button', { name: 'Neue Mail schreiben' }).click();
     const compose = page.getByRole('dialog', { name: 'Neue Mail schreiben' });
     await expect(compose).toBeVisible();
+    await expect(
+      compose.getByLabel('Signatur').locator('option:checked'),
+    ).toHaveText('Fiktive Signatur (Standard)');
     await compose.getByLabel('Betreff').fill('Fiktive freie Mail');
     await compose
       .getByLabel('Aus Bibliothek')
@@ -618,6 +629,14 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
         )
       ).rows,
     ).toEqual([{ filename: 'Dropped_Datei.pdf' }]);
+    expect(
+      (
+        await pool.query<{ body_html: string }>(
+          "SELECT body_html FROM mail_messages WHERE tenant_id=$1 AND subject='Fiktive freie Mail'",
+          [tenantId],
+        )
+      ).rows[0]!.body_html,
+    ).toBe('<p>Fiktive Grüße</p>');
   } finally {
     await context.close();
     await app.close();

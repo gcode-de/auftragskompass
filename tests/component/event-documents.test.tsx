@@ -376,6 +376,8 @@ function setup(
     libraryFiles?: unknown[];
     // ATTACH-01b: the answer to a file uploaded from the mail composer.
     libraryUpload?: (body: unknown) => Response | Promise<Response>;
+    // MAIL-SIG-01b: the signatures both mail dialogs offer.
+    signatures?: unknown[];
   } = {},
 ) {
   const calls: {
@@ -657,6 +659,10 @@ function setup(
       if (url === '/api/v1/mail-templates') {
         calls.push({ url, method });
         return Response.json(options.mailTemplates ?? []);
+      }
+      if (url === '/api/v1/mail-signatures') {
+        calls.push({ url, method });
+        return Response.json(options.signatures ?? []);
       }
       if (/^\/api\/v1\/mail-templates\/[^/]+$/.test(url)) {
         calls.push({ url, method });
@@ -7063,7 +7069,7 @@ test('a refused link names contact, event or forwarding as the cause', async () 
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await waitFor(() =>
     expect(
-      within(dialog).getByText(/Kontakt, Event oder Weiterleitung/),
+      within(dialog).getByText(/Kontakt, Event, Weiterleitung oder Signatur/),
     ).toBeTruthy(),
   );
   expect(
@@ -7192,4 +7198,122 @@ test('a free mail upload attaches the file and a placeholder without value is na
   );
   const request = calls.find((call) => call.url === '/api/v1/mail/compose')!;
   expect((request.body as { fileIds: string[] }).fileIds).toHaveLength(1);
+});
+
+// MAIL-SIG-01b: the standard signature is preselected in both dialogs and
+// can be replaced by another one or by none.
+const signatures = [
+  {
+    id: '55555555-0000-4000-8000-000000000001',
+    name: 'Standard',
+    isDefault: true,
+  },
+  {
+    id: '55555555-0000-4000-8000-000000000002',
+    name: 'Kurz',
+    isDefault: false,
+  },
+];
+
+test('the document mail preselects the standard signature and can send none', async () => {
+  const { calls } = setup({ documents: [finalized], signatures });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const dialog = await openMailSend(
+    await screen.findByRole('button', {
+      name: 'Angebot AN-2030-0001 per E-Mail senden',
+    }),
+  );
+  const choice = await within(dialog).findByLabelText('Signatur');
+  await waitFor(() =>
+    expect(choice).toHaveProperty('value', signatures[0]!.id),
+  );
+  expect(
+    within(choice)
+      .getAllByRole('option')
+      .map((option) => option.textContent),
+  ).toEqual(['Standard (Standard)', 'Kurz', 'Keine Signatur']);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  await waitFor(() =>
+    expect(
+      calls.find((call) => call.url === '/api/v1/mail/document-send/preview')
+        ?.body,
+    ).toMatchObject({ signatureId: signatures[0]!.id }),
+  );
+  fireEvent.change(choice, { target: { value: 'none' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText(
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+  );
+  const send = calls.find((call) => call.url === '/api/v1/mail/document-send')!;
+  expect(send.body).not.toHaveProperty('signatureId');
+});
+
+test('the free mail sends the signature chosen instead of the standard', async () => {
+  const { calls } = setup({ documents: [finalized], signatures });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  const choice = await within(dialog).findByLabelText('Signatur');
+  await waitFor(() =>
+    expect(choice).toHaveProperty('value', signatures[0]!.id),
+  );
+  fireEvent.change(choice, { target: { value: signatures[1]!.id } });
+  fireEvent.change(within(dialog).getByLabelText('Betreff'), {
+    target: { value: 'Fiktiv' },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText(
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+  );
+  expect(
+    calls.find((call) => call.url === '/api/v1/mail/compose')!.body,
+  ).toMatchObject({ signatureId: signatures[1]!.id });
+});
+
+test('without any signature the dialog offers no choice and sends none', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  await waitFor(() =>
+    expect(calls.some((call) => call.url === '/api/v1/mail-signatures')).toBe(
+      true,
+    ),
+  );
+  expect(within(dialog).queryByLabelText('Signatur')).toBeNull();
+  fireEvent.change(within(dialog).getByLabelText('Betreff'), {
+    target: { value: 'Fiktiv' },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText(
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+  );
+  expect(
+    calls.find((call) => call.url === '/api/v1/mail/compose')!.body,
+  ).not.toHaveProperty('signatureId');
 });
