@@ -2634,3 +2634,36 @@ test('refuses a forwarding that cannot be fulfilled instead of dropping a copy',
     }),
   ).rejects.toMatchObject({ reason: 'invalid_link' });
 });
+
+// MAIL-UX-02 follow-up: the placeholder values of an event with an event
+// type and a package resolve from master data. The lookup used to throw on
+// its array parameter ("malformed array literal") and answered 500 for
+// every real event - the root of the long-unclear
+// "Der Auftrag wurde nicht angelegt. Bitte die Eingaben prüfen.".
+test('a document mail of an event with type and package resolves its placeholders', async () => {
+  const eventTypeId = randomUUID(),
+    packageId = randomUUID();
+  for (const [id, kind, name] of [
+    [eventTypeId, 'event_type', 'Fiktive Eventart'],
+    [packageId, 'package', 'Fiktives Paket'],
+  ] as const)
+    await pool.query(
+      'INSERT INTO master_data(tenant_id,id,kind,name,position,state)' +
+        ' VALUES($1,$2,$3,$4,1,$5)',
+      [tenantId, id, kind, name, 'active'],
+    );
+  await pool.query(
+    'UPDATE events SET event_type_id=$3, package_id=$4' +
+      ' WHERE tenant_id=$1 AND id=$2',
+    [tenantId, eventId, eventTypeId, packageId],
+  );
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+  });
+  const preview = await repo.previewDocumentSend({
+    documentId: finalDocumentId,
+    bodyHtml: '<p>{{eventType}} - {{package}}</p>',
+  });
+  expect(preview.bodyText).toBe('Fiktive Eventart - Fiktives Paket');
+  expect(preview.missing).toEqual([]);
+});

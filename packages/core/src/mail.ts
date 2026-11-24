@@ -823,9 +823,17 @@ export function mailRepository(
           (value): value is string => Boolean(value),
         );
         if (kindIds.length) {
+          // An explicit IN list, never an array parameter: drizzle's raw
+          // parameter serialisation cannot feed `::uuid[]` (it answers
+          // "cannot coerce" and used to 500 every real event with a type or
+          // package - the root of the long-unclear send refusals).
           const names = (await reviewed(connection).execute(sql`
             SELECT id::text AS id, name FROM master_data
-             WHERE tenant_id=${tenantId} AND id=ANY(${kindIds}::uuid[])`)) as {
+             WHERE tenant_id=${tenantId}
+               AND id IN (${sql.join(
+                 kindIds.map((id) => sql`${id}::uuid`),
+                 sql`, `,
+               )})`)) as {
             rows: { id: string; name: string }[];
           };
           const byId = new Map(
