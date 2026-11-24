@@ -153,7 +153,8 @@ export function resolveMailSubject(
 export type MailValueSources = {
   /** Admin origin for {{documentLink}}; empty means the link has no value. */
   origin: string;
-  document: { id: string; grossMinor: number };
+  // MAIL-EVENT-02: null for a free mail; total and link then have no value.
+  document: { id: string; grossMinor: number } | null;
   contact?: { name: string; firstName: string } | null;
   event?: {
     name: string;
@@ -171,11 +172,13 @@ export type MailValueSources = {
 export function mailPlaceholderValues(
   sources: MailValueSources,
 ): Partial<Record<MailPlaceholder, string>> {
-  const values: Partial<Record<MailPlaceholder, string>> = {
-    total: formatMinorUnits(sources.document.grossMinor) + ' €',
-  };
-  if (sources.origin)
-    values.documentLink = sources.origin + '/#document-' + sources.document.id;
+  const values: Partial<Record<MailPlaceholder, string>> = {};
+  if (sources.document) {
+    values.total = formatMinorUnits(sources.document.grossMinor) + ' €';
+    if (sources.origin)
+      values.documentLink =
+        sources.origin + '/#document-' + sources.document.id;
+  }
   if (sources.contact) {
     values.contact = sources.contact.name;
     if (sources.contact.firstName)

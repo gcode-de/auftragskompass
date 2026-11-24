@@ -84,6 +84,9 @@ export type MailErrorReason =
   | 'attachment_unavailable'
   | 'forward_unavailable'
   | 'invalid_content'
+  // MAIL-EVENT-02: a free mail has no document, so a placeholder only a
+  // document (or a missing contact/event value) can fill is refused.
+  | 'missing_placeholder'
   | 'idempotency_conflict';
 export class MailError extends Error {
   constructor(readonly reason: MailErrorReason) {
@@ -184,6 +187,9 @@ export type MailComposeInput = {
   // server from the stored setting and this tenant's own users.
   forwardAccounting?: boolean;
   forwardUserIds?: readonly string[];
+  // MAIL-EVENT-02: the same attachment sources as the document mail.
+  documentIds?: readonly string[];
+  fileIds?: readonly string[];
 };
 export type MailOutboxRow = {
   id: string;
@@ -779,7 +785,8 @@ export function mailRepository(
   async function mailValueSources(
     connection: Connection,
     document: {
-      id: string;
+      // MAIL-EVENT-02: null for a free mail - no total, no document link.
+      id: string | null;
       grossMinor: number;
       contactId: string | null;
       eventId: string | null;
@@ -871,11 +878,132 @@ export function mailRepository(
     };
     return {
       origin,
-      document: { id: document.id, grossMinor: document.grossMinor },
+      document: document.id
+        ? { id: document.id, grossMinor: document.grossMinor }
+        : null,
       contact,
       event,
       timezone: tenant.rows[0]?.timezone ?? 'UTC',
     };
+  }
+
+  type FrozenFile = {
+    libraryFileId: string;
+    filename: string;
+    mediaType: string;
+    sizeBytes: number;
+    storageKey: string;
+    sha256: string;
+  };
+  type FrozenDocument = {
+    id: string;
+    number: string;
+    pdfHash: string;
+    sizeBytes: number;
+  };
+  // MAIL-TPL-01d: every chosen library file is checked again here and frozen
+  // by its storage key. An unavailable file refuses the whole order - the
+  // transaction leaves no message behind - and is never silently dropped.
+  async function freezeFiles(
+    connection: Connection,
+    ids: readonly string[] | undefined,
+  ): Promise<FrozenFile[]> {
+    const fileIds = [...new Set(ids ?? [])];
+    if (fileIds.length > 20) throw new MailError('attachment_unavailable');
+    const files: FrozenFile[] = [];
+    for (const fileId of fileIds) {
+      const found = (await reviewed(connection).execute(
+        sql`SELECT id::text AS id, display_name, media_type, size_bytes,
+                   storage_key, sha256
+              FROM library_files
+             WHERE tenant_id=${tenantId} AND id=${fileId}::uuid
+               AND state='available' AND scan_state='not_scanned'`,
+      )) as {
+        rows: {
+          id: string;
+          display_name: string;
+          media_type: string;
+          size_bytes: string;
+          storage_key: string;
+          sha256: string;
+        }[];
+      };
+      const row = found.rows[0];
+      if (!row) throw new MailError('attachment_unavailable');
+      files.push({
+        libraryFileId: row.id,
+        filename: libraryFileName(row.display_name, row.media_type),
+        mediaType: row.media_type,
+        sizeBytes: Number(row.size_bytes),
+        storageKey: row.storage_key,
+        sha256: row.sha256,
+      });
+    }
+    return files;
+  }
+  // ATTACH-01a: final documents travel on request; each is re-checked and
+  // read once here, and an unavailable one refuses the whole order.
+  async function freezeDocuments(
+    connection: Connection,
+    ids: readonly string[],
+  ): Promise<FrozenDocument[]> {
+    const documentIds = [...new Set(ids)];
+    if (documentIds.length > 10) throw new MailError('attachment_unavailable');
+    if (documentIds.length && !store)
+      throw new MailError('attachment_unavailable');
+    const documents: FrozenDocument[] = [];
+    for (const documentId of documentIds) {
+      const found = (await reviewed(connection).execute(
+        sql`SELECT number, state, pdf_hash FROM documents
+             WHERE tenant_id=${tenantId} AND id=${documentId}::uuid`,
+      )) as {
+        rows: {
+          number: string | null;
+          state: 'draft' | 'final' | 'withdrawn';
+          pdf_hash: string | null;
+        }[];
+      };
+      const row = found.rows[0];
+      if (!row || row.state !== 'final' || !row.number || !row.pdf_hash)
+        throw new MailError('attachment_unavailable');
+      let sizeBytes: number;
+      try {
+        sizeBytes = (await readDocumentPdf(store!, row.pdf_hash)).byteLength;
+      } catch {
+        throw new MailError('attachment_unavailable');
+      }
+      if (!sizeBytes || sizeBytes > maxMailAttachmentBytes)
+        throw new MailError('attachment_unavailable');
+      documents.push({
+        id: documentId,
+        number: row.number,
+        pdfHash: row.pdf_hash,
+        sizeBytes,
+      });
+    }
+    return documents;
+  }
+  async function insertAttachments(
+    connection: Connection,
+    messageId: string,
+    documents: readonly FrozenDocument[],
+    files: readonly FrozenFile[],
+  ) {
+    for (const doc of documents)
+      await reviewed(connection).execute(sql`
+        INSERT INTO mail_attachments
+          (tenant_id,message_id,document_id,pdf_hash,filename,media_type,size_bytes)
+        VALUES (${tenantId},${messageId}::uuid,${doc.id}::uuid,
+                ${doc.pdfHash},${attachmentFileName(doc.number)},
+                'application/pdf',${doc.sizeBytes})`);
+    for (const file of files)
+      await reviewed(connection).execute(sql`
+        INSERT INTO mail_file_attachments
+          (tenant_id,message_id,library_file_id,filename,media_type,
+           size_bytes,storage_key,sha256)
+        VALUES (${tenantId},${messageId}::uuid,${file.libraryFileId}::uuid,
+                ${file.filename},${file.mediaType},${file.sizeBytes},
+                ${file.storageKey},${file.sha256})`);
   }
 
   // MAIL-EDITOR-01: the body of a document mail. Unknown placeholders are
@@ -1273,14 +1401,18 @@ export function mailRepository(
           return { job: toOutbox(existing.rows[0]), created: false };
         const to = mailAddressList(input.to);
         if (!to) throw new MailError('invalid_recipients');
-        const subject = plainText(input.subject ?? '', 998, 'invalid_subject');
-        if (!subject) throw new MailError('invalid_subject');
-        // The same sanitizer as the document mail: only the mail allowlist
-        // leaves the server, and the text alternative is derived here.
-        const html = sanitizeMailHtml(
-          htmlBody(input.bodyHtml, 200000, 'invalid_body'),
-        );
-        const text = mailBodyTextFromHtml(html);
+        const rawSubject = plainText(
+            input.subject ?? '',
+            998,
+            'invalid_subject',
+          ),
+          rawHtml = htmlBody(input.bodyHtml, 200000, 'invalid_body');
+        if (!rawSubject) throw new MailError('invalid_subject');
+        try {
+          assertMailPlaceholders(rawHtml, rawSubject);
+        } catch {
+          throw new MailError('invalid_content');
+        }
         // A contact or event of another tenant is not a link this tenant owns.
         if (input.contactId) {
           const linked = await tx.execute<{ id: string }>(
@@ -1296,6 +1428,37 @@ export function mailRepository(
           );
           if (!linked.rows[0]) throw new MailError('invalid_link');
         }
+        // MAIL-EVENT-02: an applied template brings placeholders. They resolve
+        // from the linked contact and event like a document mail; one that
+        // stays without a value is refused, never sent as literal text.
+        const values = mailPlaceholderValues(
+            await mailValueSources(tx, {
+              id: null,
+              grossMinor: 0,
+              contactId: input.contactId ?? null,
+              eventId: input.eventId ?? null,
+            }),
+          ),
+          resolvedSubject = resolveMailSubject(rawSubject, values),
+          resolvedBody = resolveMailPlaceholders(
+            rawHtml,
+            Object.fromEntries(
+              Object.entries(values).map(([name, value]) => [
+                name,
+                escapeMailHtmlText(value),
+              ]),
+            ),
+          );
+        if (resolvedSubject.missing.length || resolvedBody.missing.length)
+          throw new MailError('missing_placeholder');
+        const subject = resolvedSubject.subject;
+        if (subject.length > 998) throw new MailError('invalid_subject');
+        // The same sanitizer as the document mail: only the mail allowlist
+        // leaves the server, and the text alternative is derived here.
+        const html = sanitizeMailHtml(resolvedBody.text),
+          text = mailBodyTextFromHtml(html);
+        const files = await freezeFiles(tx, input.fileIds),
+          documents = await freezeDocuments(tx, input.documentIds ?? []);
         // MAIL-FWD-01: the forwarding switches resolve their addresses here;
         // an unconfigured switch refuses instead of dropping a copy.
         const cc = await resolveForwardCc(tx, tenantId, {
@@ -1313,6 +1476,7 @@ export function mailRepository(
                   ${subject},${text},${html || null},${to},${cc || ''},
                   ${input.contactId ?? null}::uuid,${input.eventId ?? null}::uuid,
                   'scheduled')`);
+        await insertAttachments(tx, messageId, documents, files);
         await appendAudit(
           tx,
           tenantId,
@@ -1415,85 +1579,11 @@ export function mailRepository(
         // order - the transaction leaves no message behind - and is never
         // silently dropped.
         const attachDocument = input.attachDocument ?? true,
-          fileIds = [...new Set(input.fileIds ?? [])];
-        if (fileIds.length > 20) throw new MailError('attachment_unavailable');
-        const files: {
-          libraryFileId: string;
-          filename: string;
-          mediaType: string;
-          sizeBytes: number;
-          storageKey: string;
-          sha256: string;
-        }[] = [];
-        for (const fileId of fileIds) {
-          const found = await tx.execute<{
-            id: string;
-            display_name: string;
-            media_type: string;
-            size_bytes: string;
-            storage_key: string;
-            sha256: string;
-          }>(
-            sql`SELECT id::text AS id, display_name, media_type, size_bytes,
-                       storage_key, sha256
-                  FROM library_files
-                 WHERE tenant_id=${tenantId} AND id=${fileId}::uuid
-                   AND state='available' AND scan_state='not_scanned'`,
+          files = await freezeFiles(tx, input.fileIds),
+          extraDocuments = await freezeDocuments(
+            tx,
+            (input.documentIds ?? []).filter((id) => id !== input.documentId),
           );
-          const row = found.rows[0];
-          if (!row) throw new MailError('attachment_unavailable');
-          files.push({
-            libraryFileId: row.id,
-            filename: libraryFileName(row.display_name, row.media_type),
-            mediaType: row.media_type,
-            sizeBytes: Number(row.size_bytes),
-            storageKey: row.storage_key,
-            sha256: row.sha256,
-          });
-        }
-
-        // ATTACH-01a: other final documents of the event travel on request;
-        // each is re-checked and read once here like the main document, and
-        // an unavailable one refuses the whole order.
-        const extraDocumentIds = [...new Set(input.documentIds ?? [])].filter(
-          (id) => id !== input.documentId,
-        );
-        if (extraDocumentIds.length > 10)
-          throw new MailError('attachment_unavailable');
-        const extraDocuments: {
-          id: string;
-          number: string;
-          pdfHash: string;
-          sizeBytes: number;
-        }[] = [];
-        for (const documentId of extraDocumentIds) {
-          const found = await tx.execute<{
-            number: string | null;
-            state: 'draft' | 'final' | 'withdrawn';
-            pdf_hash: string | null;
-          }>(
-            sql`SELECT number, state, pdf_hash FROM documents
-                 WHERE tenant_id=${tenantId} AND id=${documentId}::uuid`,
-          );
-          const row = found.rows[0];
-          if (!row || row.state !== 'final' || !row.number || !row.pdf_hash)
-            throw new MailError('attachment_unavailable');
-          let sizeBytes: number;
-          try {
-            sizeBytes = (await readDocumentPdf(store!, row.pdf_hash))
-              .byteLength;
-          } catch {
-            throw new MailError('attachment_unavailable');
-          }
-          if (!sizeBytes || sizeBytes > maxMailAttachmentBytes)
-            throw new MailError('attachment_unavailable');
-          extraDocuments.push({
-            id: documentId,
-            number: row.number,
-            pdfHash: row.pdf_hash,
-            sizeBytes,
-          });
-        }
 
         const account = await usableAccount(tx, input.accountId),
           messageId = randomUUID(),
@@ -1539,23 +1629,7 @@ export function mailRepository(
             VALUES (${tenantId},${messageId}::uuid,${input.documentId}::uuid,
                     ${document.pdf_hash},${filename},'application/pdf',
                     ${bytes.byteLength})`);
-        for (const doc of extraDocuments) {
-          await reviewed(tx).execute(sql`
-            INSERT INTO mail_attachments
-              (tenant_id,message_id,document_id,pdf_hash,filename,media_type,size_bytes)
-            VALUES (${tenantId},${messageId}::uuid,${doc.id}::uuid,
-                    ${doc.pdfHash},${attachmentFileName(doc.number)},
-                    'application/pdf',${doc.sizeBytes})`);
-        }
-        for (const file of files) {
-          await reviewed(tx).execute(sql`
-            INSERT INTO mail_file_attachments
-              (tenant_id,message_id,library_file_id,filename,media_type,
-               size_bytes,storage_key,sha256)
-            VALUES (${tenantId},${messageId}::uuid,${file.libraryFileId}::uuid,
-                    ${file.filename},${file.mediaType},${file.sizeBytes},
-                    ${file.storageKey},${file.sha256})`);
-        }
+        await insertAttachments(tx, messageId, extraDocuments, files);
         const job = (await reviewed(tx).execute(sql`
           INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
           VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
@@ -2538,6 +2612,16 @@ export function registerMailRoutes(
             forwardUserIds: {
               type: 'array',
               maxItems: 5,
+              items: { type: 'string', format: 'uuid' },
+            },
+            documentIds: {
+              type: 'array',
+              maxItems: 10,
+              items: { type: 'string', format: 'uuid' },
+            },
+            fileIds: {
+              type: 'array',
+              maxItems: 20,
               items: { type: 'string', format: 'uuid' },
             },
           },

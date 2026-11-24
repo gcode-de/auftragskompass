@@ -7070,3 +7070,126 @@ test('a refused link names contact, event or forwarding as the cause', async () 
     screen.queryByText(/E-Mail-Konto ist nicht vollständig eingerichtet/),
   ).toBeNull();
 });
+
+// MAIL-EVENT-02: the free event mail offers the template and every
+// attachment source of the document mail - with no document of its own.
+test('the free event mail applies a template and carries chosen attachments', async () => {
+  const { calls } = setup({
+    documents: [finalized],
+    mailTemplates: [mailTemplate],
+    mailTemplateDetail: {
+      ...mailTemplate,
+      bodyHtml: '<p>Geplant für {{event}}</p>',
+      attachments: [
+        {
+          libraryFileId: '44444444-0000-4000-8000-000000000003',
+          name: 'Standard Datei',
+          mediaType: 'application/pdf',
+          sizeBytes: 29,
+        },
+      ],
+    },
+    libraryFiles: [
+      {
+        id: '44444444-0000-4000-8000-000000000011',
+        displayName: 'Fictional Datei',
+        mediaType: 'application/pdf',
+        sizeBytes: 29,
+        state: 'available',
+      },
+    ],
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  // No document belongs to a free mail, so none is listed up front.
+  expect(within(dialog).queryAllByRole('listitem')).toHaveLength(0);
+  await within(dialog).findByRole('option', { name: 'Erinnerung' });
+  fireEvent.change(within(dialog).getByLabelText('Aus Vorlage'), {
+    target: { value: mailTemplate.id },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+  await within(dialog).findByText('Standard Datei');
+  expect(within(dialog).getByLabelText('Betreff')).toHaveProperty(
+    'value',
+    'Erinnerung für {{contact}}',
+  );
+  fireEvent.change(within(dialog).getByLabelText('Aus Event-Dokumenten'), {
+    target: { value: finalized.id },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Dokument hinzufügen' }),
+  );
+  expect(within(dialog).getByText('Angebot AN-2030-0001')).toBeTruthy();
+  fireEvent.change(within(dialog).getByLabelText('Aus Bibliothek'), {
+    target: { value: '44444444-0000-4000-8000-000000000011' },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Datei hinzufügen' }),
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText(
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+  );
+  const request = calls.find((call) => call.url === '/api/v1/mail/compose')!;
+  expect(request.body).toMatchObject({
+    subject: 'Erinnerung für {{contact}}',
+    bodyHtml: '<p>Geplant für {{event}}</p>',
+    documentIds: [finalized.id],
+    fileIds: [
+      '44444444-0000-4000-8000-000000000003',
+      '44444444-0000-4000-8000-000000000011',
+    ],
+  });
+});
+
+test('a free mail upload attaches the file and a placeholder without value is named', async () => {
+  const { calls } = setup({
+    documents: [finalized],
+    compose: () =>
+      Response.json({ error: 'missing_placeholder' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.change(within(dialog).getByLabelText('Datei zum Anhängen wählen'), {
+    target: {
+      files: [new File(['%PDF-1.4'], 'Plan.pdf', { type: 'application/pdf' })],
+    },
+  });
+  await within(dialog).findByText(
+    'Plan.pdf wurde angehängt. Die Datei ist ungeprüft.',
+  );
+  fireEvent.change(within(dialog).getByLabelText('Betreff'), {
+    target: { value: 'Summe {{total}}' },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  expect((await within(dialog).findByRole('alert')).textContent).toContain(
+    'Ein Platzhalter hat für diese Mail keinen Wert',
+  );
+  // The dialog stays open with the input intact.
+  expect(within(dialog).getByLabelText('Betreff')).toHaveProperty(
+    'value',
+    'Summe {{total}}',
+  );
+  const request = calls.find((call) => call.url === '/api/v1/mail/compose')!;
+  expect((request.body as { fileIds: string[] }).fileIds).toHaveLength(1);
+});
