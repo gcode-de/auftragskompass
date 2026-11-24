@@ -190,6 +190,8 @@ export type MailComposeInput = {
   // MAIL-EVENT-02: the same attachment sources as the document mail.
   documentIds?: readonly string[];
   fileIds?: readonly string[];
+  // MAIL-SIG-01b: the chosen signature; absent or null sends none.
+  signatureId?: string | null;
 };
 export type MailOutboxRow = {
   id: string;
@@ -272,6 +274,8 @@ export type MailDocumentSendInput = {
   // server from the stored setting and this tenant's own users.
   forwardAccounting?: boolean;
   forwardUserIds?: readonly string[];
+  /** MAIL-SIG-01b: the chosen signature; absent or null sends none. */
+  signatureId?: string | null;
 };
 // MAIL-EDITOR-01: the read-only twin of a document send. It runs the very
 // same checks and content assembly and stores nothing.
@@ -280,6 +284,7 @@ export type MailDocumentPreviewInput = {
   subject?: string | null;
   bodyText?: string | null;
   bodyHtml?: string | null;
+  signatureId?: string | null;
 };
 export type MailDocumentPreview = {
   subject: string;
@@ -1006,6 +1011,109 @@ export function mailRepository(
                 ${file.storageKey},${file.sha256})`);
   }
 
+  // MAIL-SIG-01b: the chosen signature is appended on the server. `{{logo}}`
+  // becomes the logo image - an inline `cid:` part for a send, the logo route
+  // for a preview - optionally wrapped in its link. A send freezes the logo
+  // bytes it checked (key, hash) so the worker reads exactly these again.
+  type FrozenInline = {
+    contentId: string;
+    filename: string;
+    mediaType: string;
+    sizeBytes: number;
+    storageKey: string;
+    sha256: string;
+  };
+  async function signatureOf(
+    connection: Connection,
+    signatureId: string | null | undefined,
+    mode: 'send' | 'preview',
+  ): Promise<{ html: string; inline: FrozenInline | null } | null> {
+    if (!signatureId) return null;
+    const found = (await reviewed(connection).execute(sql`
+      SELECT name, body_html, logo_key, logo_media_type, logo_size_bytes,
+             logo_sha256, logo_link
+        FROM mail_signatures
+       WHERE tenant_id=${tenantId} AND id=${signatureId}::uuid`)) as {
+      rows: {
+        name: string;
+        body_html: string;
+        logo_key: string | null;
+        logo_media_type: string | null;
+        logo_size_bytes: number | null;
+        logo_sha256: string | null;
+        logo_link: string;
+      }[];
+    };
+    const row = found.rows[0];
+    // A deleted or foreign signature is a link this tenant does not own.
+    if (!row) throw new MailError('invalid_link');
+    let inline: FrozenInline | null = null,
+      image = '';
+    if (row.logo_key && row.logo_media_type && row.logo_sha256) {
+      if (mode === 'send') {
+        if (!store) throw new MailError('attachment_unavailable');
+        try {
+          const bytes = await store.read(row.logo_key);
+          if (
+            createHash('sha256').update(bytes).digest('hex') !== row.logo_sha256
+          )
+            throw new MailError('attachment_unavailable');
+        } catch {
+          throw new MailError('attachment_unavailable');
+        }
+        inline = {
+          contentId: 'signature-logo',
+          filename:
+            row.logo_media_type === 'image/png' ? 'logo.png' : 'logo.jpg',
+          mediaType: row.logo_media_type,
+          sizeBytes: Number(row.logo_size_bytes),
+          storageKey: row.logo_key,
+          sha256: row.logo_sha256,
+        };
+      }
+      const src =
+        mode === 'send'
+          ? 'cid:signature-logo'
+          : '/api/v1/mail-signatures/' + signatureId + '/logo';
+      image = `<img src="${src}" alt="${escapeMailHtmlText(row.name)}" style="max-width:240px;height:auto;border:0">`;
+      if (row.logo_link)
+        image = `<a href="${escapeMailHtmlText(row.logo_link)}">${image}</a>`;
+    }
+    return { html: row.body_html.split('{{logo}}').join(image), inline };
+  }
+  // A plain cover text becomes paragraphs, so the signature can follow it.
+  function withSignature(
+    bodyHtml: string | null,
+    bodyText: string,
+    signature: { html: string } | null,
+  ): { bodyHtml: string | null; bodyText: string } {
+    if (!signature) return { bodyHtml, bodyText };
+    const html =
+      (bodyHtml ??
+        bodyText
+          .split(/\n{2,}/)
+          .map(
+            (part) =>
+              '<p>' + escapeMailHtmlText(part).replace(/\n/g, '<br>') + '</p>',
+          )
+          .join('')) + signature.html;
+    return { bodyHtml: html, bodyText: mailBodyTextFromHtml(html) };
+  }
+  async function insertInline(
+    connection: Connection,
+    messageId: string,
+    inline: FrozenInline | null | undefined,
+  ) {
+    if (!inline) return;
+    await reviewed(connection).execute(sql`
+      INSERT INTO mail_inline_images
+        (tenant_id,message_id,content_id,filename,media_type,size_bytes,
+         storage_key,sha256)
+      VALUES (${tenantId},${messageId}::uuid,${inline.contentId},
+              ${inline.filename},${inline.mediaType},${inline.sizeBytes},
+              ${inline.storageKey},${inline.sha256})`);
+  }
+
   // MAIL-EDITOR-01: the body of a document mail. Unknown placeholders are
   // invalid content; known ones without a value stay visible instead of
   // being silently emptied. The HTML is always sanitized and the text
@@ -1455,7 +1563,13 @@ export function mailRepository(
         if (subject.length > 998) throw new MailError('invalid_subject');
         // The same sanitizer as the document mail: only the mail allowlist
         // leaves the server, and the text alternative is derived here.
-        const html = sanitizeMailHtml(resolvedBody.text),
+        const signature = await signatureOf(tx, input.signatureId, 'send'),
+          signed = withSignature(
+            sanitizeMailHtml(resolvedBody.text),
+            '',
+            signature,
+          ),
+          html = signed.bodyHtml ?? '',
           text = mailBodyTextFromHtml(html);
         const files = await freezeFiles(tx, input.fileIds),
           documents = await freezeDocuments(tx, input.documentIds ?? []);
@@ -1477,6 +1591,7 @@ export function mailRepository(
                   ${input.contactId ?? null}::uuid,${input.eventId ?? null}::uuid,
                   'scheduled')`);
         await insertAttachments(tx, messageId, documents, files);
+        await insertInline(tx, messageId, signature?.inline);
         await appendAudit(
           tx,
           tenantId,
@@ -1605,6 +1720,8 @@ export function mailRepository(
               bodyText: text || null,
             },
           );
+        const signature = await signatureOf(tx, input.signatureId, 'send'),
+          signed = withSignature(content.bodyHtml, content.bodyText, signature);
         // MAIL-FWD-01: the forwarding switches resolve their addresses here;
         // an unconfigured switch refuses instead of dropping a copy.
         const cc = await resolveForwardCc(tx, tenantId, {
@@ -1616,7 +1733,7 @@ export function mailRepository(
             (tenant_id,id,account_id,direction,folder,subject,body_text,
              body_html,to_addresses,cc_addresses,contact_id,event_id)
           VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
-                  ${content.subject},${content.bodyText},${content.bodyHtml},${to},
+                  ${content.subject},${signed.bodyText},${signed.bodyHtml},${to},
                   ${cc || ''},
                   ${document.contact_id}::uuid,${document.event_id}::uuid)
           RETURNING ${messageColumns}`)) as { rows: MessageQueryRow[] };
@@ -1630,6 +1747,7 @@ export function mailRepository(
                     ${document.pdf_hash},${filename},'application/pdf',
                     ${bytes.byteLength})`);
         await insertAttachments(tx, messageId, extraDocuments, files);
+        await insertInline(tx, messageId, signature?.inline);
         const job = (await reviewed(tx).execute(sql`
           INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
           VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
@@ -1717,10 +1835,15 @@ export function mailRepository(
             bodyText: text || null,
           },
         );
+        const signed = withSignature(
+          content.bodyHtml,
+          content.bodyText,
+          await signatureOf(tx, input.signatureId, 'preview'),
+        );
         return {
           subject: content.subject,
-          bodyHtml: content.bodyHtml,
-          bodyText: content.bodyText,
+          bodyHtml: signed.bodyHtml,
+          bodyText: signed.bodyText,
           missing: content.missing,
         };
       });
@@ -1971,6 +2094,37 @@ async function prepareMailAttempt(
         filename: reference.filename,
         content,
         contentType: reference.media_type,
+      });
+    } catch {
+      return { problem: 'attachment_unavailable' };
+    }
+  }
+  // MAIL-SIG-01b: the frozen signature logo, verified like a library file.
+  const inlineImages = await client.query<{
+    content_id: string;
+    filename: string;
+    media_type: string;
+    storage_key: string;
+    sha256: string;
+  }>(
+    `SELECT content_id, filename, media_type, storage_key, sha256
+       FROM mail_inline_images
+      WHERE tenant_id=$1 AND message_id=$2
+      ORDER BY content_id`,
+    [job.tenantId, job.messageId],
+  );
+  if (inlineImages.rows.length && !store)
+    return { problem: 'attachment_unavailable' };
+  for (const image of inlineImages.rows) {
+    try {
+      const content = await store!.read(image.storage_key);
+      if (createHash('sha256').update(content).digest('hex') !== image.sha256)
+        return { problem: 'attachment_unavailable' };
+      attachments.push({
+        filename: image.filename,
+        content,
+        contentType: image.media_type,
+        cid: image.content_id,
       });
     } catch {
       return { problem: 'attachment_unavailable' };
@@ -2624,6 +2778,7 @@ export function registerMailRoutes(
               maxItems: 20,
               items: { type: 'string', format: 'uuid' },
             },
+            signatureId: { type: 'string', format: 'uuid' },
           },
         },
         response: { 200: outboxSchema, 201: outboxSchema },
@@ -2671,6 +2826,7 @@ export function registerMailRoutes(
               items: { type: 'string', format: 'uuid' },
             },
             accountId: { type: 'string', format: 'uuid' },
+            signatureId: { type: 'string', format: 'uuid' },
             forwardAccounting: { type: 'boolean' },
             forwardUserIds: {
               type: 'array',
@@ -2715,6 +2871,7 @@ export function registerMailRoutes(
             subject: { type: 'string', maxLength: 998 },
             bodyText: { type: 'string', maxLength: 20000 },
             bodyHtml: { type: 'string', maxLength: 200000 },
+            signatureId: { type: 'string', format: 'uuid' },
           },
         },
         response: {

@@ -394,3 +394,36 @@ test('carries the stored PDF as a byte-identical MIME attachment', async () => {
   // A message without attachments keeps its single-part shape.
   expect(raw).not.toContain('filename="Dokument-RE-2030-0002.pdf"');
 });
+
+// MAIL-SIG-01b: the signature logo is an inline part the HTML references.
+test('carries an inline image with its content id next to the html', async () => {
+  const mock = mockServer({ plaintext: true });
+  open.push(mock);
+  const port = await mock.listen();
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const result = await smtpMailSender({
+    host: '127.0.0.1',
+    port,
+    username: '',
+    secret: '',
+  }).send(envelope, {
+    ...content,
+    html: '<p>Hallo</p><p><img src="cid:signature-logo" alt=""></p>',
+    attachments: [
+      {
+        filename: 'logo.png',
+        content: png,
+        contentType: 'image/png',
+        cid: 'signature-logo',
+      },
+    ],
+  });
+  expect(result).toBe('sent');
+  const raw = mock.state.message!;
+  expect(raw).toContain('Content-ID: <signature-logo>');
+  expect(raw).toContain('Content-Disposition: inline');
+  expect(raw).toContain('multipart/related');
+});

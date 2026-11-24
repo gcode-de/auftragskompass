@@ -561,6 +561,12 @@ export function EventDocuments({
     // MAIL-TPL-01c: an editable subject and the active templates to apply.
     [mailSubject, setMailSubject] = useState(''),
     [mailTemplates, setMailTemplates] = useState<MailTemplateOption[]>([]),
+    // MAIL-SIG-01b: the signatures offered by both mail dialogs and the one
+    // chosen for this mail ('' = none chosen yet, 'none' = no signature).
+    [mailSignatures, setMailSignatures] = useState<
+      { id: string; name: string; isDefault: boolean }[]
+    >([]),
+    [mailSignatureId, setMailSignatureId] = useState(''),
     [mailTemplateId, setMailTemplateId] = useState(''),
     [mailTemplateBusy, setMailTemplateBusy] = useState(false),
     [templateNotice, setTemplateNotice] = useState(''),
@@ -2354,6 +2360,28 @@ export function EventDocuments({
       },
     };
   }
+  // MAIL-SIG-01b: the standard signature is preselected and can be replaced
+  // by another one or by none; without any signature the choice is hidden.
+  function signatureControl() {
+    if (!mailSignatures.length) return null;
+    return (
+      <label>
+        Signatur
+        <select
+          value={mailSignatureId}
+          onChange={(event) => setMailSignatureId(event.target.value)}
+        >
+          {mailSignatures.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+              {row.isDefault ? ' (Standard)' : ''}
+            </option>
+          ))}
+          <option value="none">Keine Signatur</option>
+        </select>
+      </label>
+    );
+  }
   function forwardingControls() {
     return (
       <fieldset className="mail-forwarding">
@@ -2400,6 +2428,23 @@ export function EventDocuments({
   // The pickers of both mail dialogs: available library files and active
   // templates, read again whenever a dialog opens.
   function loadMailChoices() {
+    // The standard signature is preselected; a failed list offers none.
+    setMailSignatureId('');
+    void fetch('/api/v1/mail-signatures')
+      .then(async (response) => {
+        if (!response.ok) throw Error('load');
+        const rows = (await response.json()) as {
+          id: string;
+          name: string;
+          isDefault: boolean;
+        }[];
+        setMailSignatures(rows);
+        setMailSignatureId(rows.find((row) => row.isDefault)?.id ?? 'none');
+      })
+      .catch(() => {
+        setMailSignatures([]);
+        setMailSignatureId('none');
+      });
     // The library picker lists the available files; a failed list leaves the
     // picker empty and never invents an entry.
     void fetch('/api/v1/library-files')
@@ -2516,6 +2561,9 @@ export function EventDocuments({
             : {}),
           ...(mailFiles.length
             ? { fileIds: mailFiles.map((file) => file.libraryFileId) }
+            : {}),
+          ...(mailSignatureId && mailSignatureId !== 'none'
+            ? { signatureId: mailSignatureId }
             : {}),
         }),
       });
@@ -2660,7 +2708,7 @@ export function EventDocuments({
       case 'invalid_subject':
         return 'Der Betreff ist zu lang oder enthält unerlaubte Zeichen. Bitte den Betreff prüfen; die Eingaben bleiben erhalten.';
       case 'invalid_link':
-        return 'Eine Verknüpfung (Kontakt, Event oder Weiterleitung) wurde nicht gefunden oder gehört zu einem anderen Mandanten. Bitte die Auswahl prüfen; es wurde nichts gesendet.';
+        return 'Eine Verknüpfung (Kontakt, Event, Weiterleitung oder Signatur) wurde nicht gefunden oder gehört zu einem anderen Mandanten. Bitte die Auswahl prüfen; es wurde nichts gesendet.';
       case 'invalid_sender':
       case 'invalid_security':
       case 'invalid_direction':
@@ -2714,6 +2762,9 @@ export function EventDocuments({
           documentId: mailSendId,
           subject: mailSubject,
           ...(mailBody.trim() ? { bodyHtml: mailBody } : {}),
+          ...(mailSignatureId && mailSignatureId !== 'none'
+            ? { signatureId: mailSignatureId }
+            : {}),
         }),
       });
       if (!reply.ok) {
@@ -2771,6 +2822,9 @@ export function EventDocuments({
             : {}),
           ...(mailFiles.length
             ? { fileIds: mailFiles.map((file) => file.libraryFileId) }
+            : {}),
+          ...(mailSignatureId && mailSignatureId !== 'none'
+            ? { signatureId: mailSignatureId }
             : {}),
           forwardAccounting,
           ...(forwardUserIds.length ? { forwardUserIds } : {}),
@@ -4017,6 +4071,7 @@ export function EventDocuments({
                       Auftrag.
                     </p>
                   )}
+                  {signatureControl()}
                   {forwardingControls()}
                   <div className="document-actions">
                     <button
@@ -4262,6 +4317,7 @@ export function EventDocuments({
                       withPlaceholderPicker={false}
                     />
                   </div>
+                  {signatureControl()}
                   {forwardingControls()}
                   <div className="document-actions">
                     <button

@@ -2567,6 +2567,145 @@ test('a free event mail carries attachments and resolved placeholders', async ()
   expect(await count()).toBe(before);
 });
 
+// MAIL-SIG-01b: the chosen signature follows the text; its logo travels as an
+// inline image frozen with the order and verified by the worker.
+test('the chosen signature and its inline logo travel with the mail', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const { headers, csrf } = await signedIn();
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const signatureId = randomUUID(),
+    logoKey = 'signature-' + signatureId + '.png';
+  await mailStore.put(logoKey, png);
+  await pool.query(
+    `INSERT INTO mail_signatures
+       (tenant_id,id,name,body_html,logo_key,logo_media_type,logo_size_bytes,
+        logo_sha256,logo_link,is_default)
+     VALUES ($1,$2,'Fiktiv & Co','<p>Grüße</p><p>{{logo}}</p>',$3,'image/png',$4,$5,
+             'https://example.invalid/?a=1&b=2',true)`,
+    [
+      tenantId,
+      signatureId,
+      logoKey,
+      png.byteLength,
+      createHash('sha256').update(png).digest('hex'),
+    ],
+  );
+  const signatureHtml =
+    '<p>Grüße</p><p><a href="https://example.invalid/?a=1&amp;b=2">' +
+    '<img src="cid:signature-logo" alt="Fiktiv &amp; Co" ' +
+    'style="max-width:240px;height:auto;border:0"></a></p>';
+  const composed = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload: {
+      requestId: 'fictional-signature-compose',
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Mit Signatur',
+      bodyHtml: '<p>Hallo</p>',
+      signatureId,
+    },
+  });
+  expect(composed.statusCode).toBe(201);
+  const stored = (
+    await pool.query<{ body_html: string; body_text: string }>(
+      'SELECT body_html, body_text FROM mail_messages WHERE tenant_id=$1 AND id=$2',
+      [tenantId, composed.json().messageId],
+    )
+  ).rows[0]!;
+  expect(stored.body_html).toBe('<p>Hallo</p>' + signatureHtml);
+  expect(stored.body_text).toBe('Hallo\n\nGrüße');
+  const { calls, createSender } = stubSender('sent');
+  await runMailOutboxPass(pool, () => {}, {
+    createSender,
+    key: encryptionKey,
+    store: mailStore,
+  });
+  const inline = calls[0]!.content.attachments!.find(
+    (entry) => entry.cid === 'signature-logo',
+  )!;
+  expect(inline).toMatchObject({
+    filename: 'logo.png',
+    contentType: 'image/png',
+  });
+  expect(inline.content.equals(png)).toBe(true);
+
+  // A document mail without text keeps its default sentence before the
+  // signature; the preview shows the logo through the logo route.
+  const documentPayload = {
+    documentId: finalDocumentId,
+    requestId: 'fictional-signature-document',
+    to: 'synthetic.contact@example.invalid',
+    signatureId,
+  };
+  const preview = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send/preview',
+    headers: { ...headers, ...csrf },
+    payload: { documentId: finalDocumentId, signatureId },
+  });
+  expect(preview.json().bodyHtml).toContain(
+    '<img src="/api/v1/mail-signatures/' + signatureId + '/logo"',
+  );
+  const sent = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send',
+    headers: { ...headers, ...csrf },
+    payload: documentPayload,
+  });
+  expect(sent.statusCode).toBe(201);
+  const documentMail = (
+    await pool.query<{ body_html: string }>(
+      'SELECT body_html FROM mail_messages WHERE tenant_id=$1 AND id=$2',
+      [tenantId, sent.json().messageId],
+    )
+  ).rows[0]!;
+  expect(documentMail.body_html).toBe(
+    '<p>Anbei erhalten Sie das Dokument RE-2030-0001 als PDF.</p>' +
+      signatureHtml,
+  );
+  expect(
+    (
+      await pool.query(
+        'SELECT content_id FROM mail_inline_images WHERE tenant_id=$1 AND message_id=$2',
+        [tenantId, sent.json().messageId],
+      )
+    ).rows,
+  ).toEqual([{ content_id: 'signature-logo' }]);
+
+  // Replaced logo bytes are a named failure at order time, never wrong bytes.
+  await mailStore.put(logoKey, Buffer.from('replaced'));
+  const replaced = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload: {
+      requestId: randomUUID(),
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiv',
+      signatureId,
+    },
+  });
+  expect(replaced.json()).toEqual({ error: 'attachment_unavailable' });
+  // A deleted signature is a link this tenant no longer owns.
+  await pool.query('DELETE FROM mail_signatures WHERE id=$1', [signatureId]);
+  const deleted = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload: {
+      requestId: randomUUID(),
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiv',
+      signatureId,
+    },
+  });
+  expect(deleted.json()).toEqual({ error: 'invalid_link' });
+});
+
 // MAIL-EVENT-01: a free mail from the event is one gesture and one durable
 // order under one request id; the body runs through the mail allowlist.
 test('composes a free mail as one idempotent order with sanitized html', async () => {
