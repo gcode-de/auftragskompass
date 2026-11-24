@@ -280,7 +280,7 @@ export function MailAccountSettingsPanel({ csrfToken }: { csrfToken: string }) {
           />
         </label>
         <button className="secondary-action" disabled={busy}>
-          Buchhaltungs-Mail speichern
+          Buchhaltungs-Mail festlegen
         </button>
       </form>
       <p role={error ? 'alert' : 'status'}>{message}</p>

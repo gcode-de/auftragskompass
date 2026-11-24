@@ -200,7 +200,7 @@ test('the accounting address saves, refuses invalid input and names an unclear o
     target: { value: 'synthetic.accounting@example.invalid' },
   });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Buchhaltungs-Mail speichern' }),
+    screen.getByRole('button', { name: 'Buchhaltungs-Mail festlegen' }),
   );
   await screen.findByText('Buchhaltungs-Mail gespeichert.');
   const puts = calls.filter((call) => call.method === 'PUT');
@@ -212,12 +212,12 @@ test('the accounting address saves, refuses invalid input and names an unclear o
   );
   mode = 'bad-request';
   fireEvent.click(
-    screen.getByRole('button', { name: 'Buchhaltungs-Mail speichern' }),
+    screen.getByRole('button', { name: 'Buchhaltungs-Mail festlegen' }),
   );
   await screen.findByText('Bitte eine gültige Adresse eingeben.');
   mode = 'failure';
   fireEvent.click(
-    screen.getByRole('button', { name: 'Buchhaltungs-Mail speichern' }),
+    screen.getByRole('button', { name: 'Buchhaltungs-Mail festlegen' }),
   );
   await screen.findByText(/Der Speicherstand ist unklar/);
 });
