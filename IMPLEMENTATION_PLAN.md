@@ -209,7 +209,13 @@ Branches nach dem Merge löschen.
   können den getippten Text ersetzt gar nicht mehr (`replaceKey`-Vertrag).
   Component 168/168, Mail-Integration 30/30 (neuer `internal`-Fall),
   E2E mail-editor in echtem Chromium mehrfach grün.
-- [ ] **UI-SCROLL-01 — Scrollen bei offenen Dialogen verhindern:** die
+- [x] **UI-SCROLL-01 — Scrollen bei offenen Dialogen verhindern (23.11.2026):**
+  ein zentraler DOM-Beobachter sperrt das Body-Scrollen, solange irgendein
+  offenes Modal-Dialogelement existiert (`dialog[open]` oder
+  `[role="dialog"]`) – keine Einzelverdrahtung, kein Dialog kann fehlen,
+  gestapelte Dialoge brauchen keinen Zähler. Die Sperre erhält und
+  stellt einen vorhandenen Overflow-Wert wieder her. Component 1081/1081
+  (7 neue Fälle). Ursprüngliche Fassung: die
   nativen `<dialog>`-Modals sperren das Hintergrundscrollen nicht
   zuverlässig; Body-Scroll-Lock beim Öffnen, Freigabe beim Schließen,
   referenzgezählt wegen übereinanderliegender Dialoge.
