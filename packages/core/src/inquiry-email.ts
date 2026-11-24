@@ -5,6 +5,7 @@ import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { database } from './database.js';
 import { mailAddressList, MailError } from './mail.js';
 import { renderWebsiteInquiryTelegramMessage } from './telegram-message.js';
+import type { InquiryNoticeExtras } from './inquiry-notice.js';
 import { isWebsiteInquiry } from './website-inquiries.js';
 
 // MAIL-NOTIFY-01: the second, independent notification of a received website
@@ -20,11 +21,14 @@ export function inquiryEmailKey(inquiryId: string): string {
 // The body is the bounded Telegram field summary plus the opaque inquiry id as
 // the only reference. Nothing beyond that measure is added, and no token,
 // address link or secret is part of it.
-export function renderWebsiteInquiryEmail(input: unknown): {
+export function renderWebsiteInquiryEmail(
+  input: unknown,
+  extras?: InquiryNoticeExtras | null,
+): {
   subject: string;
   text: string;
 } {
-  const summary = renderWebsiteInquiryTelegramMessage(input);
+  const summary = renderWebsiteInquiryTelegramMessage(input, extras);
   return {
     subject: inquiryEmailSubject,
     text: isWebsiteInquiry(input)

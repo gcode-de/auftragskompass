@@ -36,6 +36,21 @@ Kundendaten werden damit an Telegram und den konfigurierten Chat übermittelt.
 Überschreitet der Text Telegrams Zeichenlimit, wird er sichtbar gekürzt; die
 vollständigen Angaben bleiben im AuftragsKompass einsehbar.
 
+**Zusatzfakten (INQUIRY-INFO-01):** beide Benachrichtigungswege – Telegram und
+die E-Mail-Benachrichtigung – tragen dieselben drei Zusatzzeilen: die Anzahl
+freier Einheiten je Ressourcenkategorie (z. B. Fotoboxen und Drucker) am
+Veranstaltungsdatum, einen Verweis auf das Event in der Verwaltung und einen
+Antwort-Mail-Link an die anfragende Adresse. Der Verweis zeigt auf das Event,
+sobald die Übernahme es angelegt hat, sonst auf den Tag in der
+Eventübersicht. Die Zählung nutzt dieselbe Pufferregel wie die
+Reservierungsprüfung; eine Reservierung, deren Zeitraum nicht lesbar ist,
+sperrt konservativ mit. Die Links hängen von der Worker-Umgebungsvariable
+`AK_AUTH_ORIGIN` (Admin-Adresse) ab; ohne sie enthält die Benachrichtigung
+keine Linkzeilen, die übrigen Zusätze bleiben. Die E-Mail wird beim lokalen
+Eingang gebildet – ihr Event-Verweis zeigt daher meist auf den Tag, die
+Telegram-Nachricht entsteht beim Versand und zeigt meist direkt auf das
+Event.
+
 Der Versand läuft über eine Datenbankwarteschlange mit Wiederholung bei
 Fehlern und einem auf sechs Stunden begrenzten Wiederholungsabstand. Auch
 dauerhaft ungültige Zugangsdaten werden weiter versucht; nach Korrektur der

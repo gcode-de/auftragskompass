@@ -5,6 +5,11 @@ import { sql } from 'drizzle-orm';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { database } from './database.js';
 import { renderWebsiteInquiryTelegramMessage } from './telegram-message.js';
+import {
+  inquiryNoticeExtras,
+  type InquiryNoticeExtras,
+} from './inquiry-notice.js';
+import { isWebsiteInquiry } from './website-inquiries.js';
 
 class TelegramEncryptionUnavailable extends Error {}
 
@@ -156,7 +161,35 @@ export function startTelegramNotifications(
   key: Uint8Array,
   reportError: (failure: TelegramNotificationFailure) => void,
   fetcher: typeof fetch = fetch,
+  // INQUIRY-INFO-01: the admin address for the notification's links; with
+  // no address the message carries no link lines instead of broken ones.
+  noticeOrigin = '',
 ) {
+  // INQUIRY-INFO-01: the extras come from the database at send time - by
+  // then the import may already have created the event, so the message can
+  // point at it directly. A failure here never blocks the notification: it
+  // simply arrives without the extra lines.
+  async function noticeExtrasFor(job: {
+    tenant_id: string;
+    inquiry_id: string;
+    payload: unknown;
+  }): Promise<InquiryNoticeExtras | null> {
+    if (!isWebsiteInquiry(job.payload)) return null;
+    try {
+      return await inquiryNoticeExtras(
+        pool,
+        job.tenant_id,
+        { origin: noticeOrigin },
+        {
+          id: job.inquiry_id,
+          eventDate: job.payload.submission.fields.eventDate ?? null,
+          email: job.payload.submission.fields.email ?? null,
+        },
+      );
+    } catch {
+      return null;
+    }
+  }
   let pending: Promise<void> | null = null;
   const run = () => {
     if (pending) return;
@@ -217,7 +250,10 @@ export function startTelegramNotifications(
                 ...(job.topic_id
                   ? { message_thread_id: Number(job.topic_id) }
                   : {}),
-                text: renderWebsiteInquiryTelegramMessage(job.payload),
+                text: renderWebsiteInquiryTelegramMessage(
+                  job.payload,
+                  await noticeExtrasFor(job),
+                ),
               }),
               signal: AbortSignal.timeout(10000),
               redirect: 'error',

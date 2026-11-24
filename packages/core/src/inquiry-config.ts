@@ -116,6 +116,8 @@ export type InquirySyncConfig = {
   requestKey: GatewayKey;
   responseKeys: readonly GatewayKey[];
   intervalMs: number;
+  /** INQUIRY-INFO-01: the admin address for notification links. */
+  noticeOrigin?: string;
 };
 
 // The worker reads the gateway over its public HTTPS origin, so the transport
@@ -160,6 +162,17 @@ export function loadInquirySyncConfig(
   const intervalMs = Number(env.AK_INQUIRY_SYNC_INTERVAL_MS ?? '30000');
   if (!Number.isInteger(intervalMs) || intervalMs < 5000 || intervalMs > 600000)
     throw new Error('Invalid AK_INQUIRY_SYNC_INTERVAL_MS');
+  // INQUIRY-INFO-01: the admin address for the notification's links. It is
+  // optional like AK_AUTH_ORIGIN is for the worker; when it is absent or
+  // malformed the notices carry no links instead of failing the sync.
+  let noticeOrigin = '';
+  if (env.AK_AUTH_ORIGIN) {
+    try {
+      noticeOrigin = new URL(env.AK_AUTH_ORIGIN).origin;
+    } catch {
+      throw new Error('Invalid AK_AUTH_ORIGIN');
+    }
+  }
   return {
     tenantId,
     actorId,
@@ -167,5 +180,6 @@ export function loadInquirySyncConfig(
     requestKey,
     responseKeys: syncKeys,
     intervalMs,
+    noticeOrigin,
   };
 }

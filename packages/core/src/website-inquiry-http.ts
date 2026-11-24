@@ -5,6 +5,8 @@ export type InquirySyncOptions = {
   requestKey: GatewayKey;
   responseKeys: readonly GatewayKey[];
   now?: () => Date;
+  /** INQUIRY-INFO-01: the admin address for notification links. */
+  noticeOrigin?: string;
 };
 export function inquirySyncOptions(options: InquirySyncOptions) {
   try {
@@ -30,6 +32,7 @@ export function inquirySyncOptions(options: InquirySyncOptions) {
         secret: Buffer.from(key.secret),
       })),
       now: options.now ?? (() => new Date()),
+      noticeOrigin: options.noticeOrigin ?? '',
     };
   } catch {
     throw new WebsiteInquiryError('invalid');

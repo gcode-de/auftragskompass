@@ -47,6 +47,7 @@ export async function pullWebsiteInquiries(
       requestId,
       keys: config.keys,
       at: config.now(),
+      noticeOrigin: config.noticeOrigin,
     });
   } catch (error) {
     if (

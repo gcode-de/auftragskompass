@@ -19,7 +19,12 @@ export async function receiveWebsiteInquiryBatch(
   tenantId: string,
   actorId: string,
   packet: unknown,
-  options: { requestId: string; keys: readonly GatewayKey[]; at: Date },
+  options: {
+    requestId: string;
+    keys: readonly GatewayKey[];
+    at: Date;
+    noticeOrigin?: string;
+  },
 ) {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   if (
@@ -72,6 +77,7 @@ export async function receiveWebsiteInquiryBatch(
               actorId,
               inquiry,
               at,
+              { noticeOrigin: options.noticeOrigin ?? '' },
             );
           return inquiries.length;
         },

@@ -31,6 +31,7 @@ import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerEventRoutes } from '../../packages/core/src/events.js';
 import { registerWebsiteInquiryRoutes } from '../../packages/core/src/website-inquiry-routes.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { inquiryNoticeExtras } from '../../packages/core/src/inquiry-notice.js';
 let container: StartedPostgreSqlContainer,
   pool: Pool,
   tenantId: string,
@@ -2294,5 +2295,99 @@ test('BKP002: the Option path keeps schema, hash and tenant protection', async (
     events: 1,
     contacts: 0,
     website_inquiries: 1,
+  });
+});
+
+// INQUIRY-INFO-01: the extras come from the same tables the conflict rule
+// reads - free units per category on the event day, the event (or its day)
+// in the admin, and the answer link. All rows synthetic.
+test('the notice extras count free units and link the day or the event', async () => {
+  // The tenant trigger seeds example resources; this case owns its rows.
+  await pool.query('DELETE FROM resource_units WHERE tenant_id=$1', [tenantId]);
+  await pool.query('DELETE FROM resources WHERE tenant_id=$1', [tenantId]);
+  const boxResource = randomUUID(),
+    printerResource = randomUUID(),
+    units: Record<string, string> = {};
+  for (const [id, code, category, quantity] of [
+    [boxResource, 'BOX', 'Fotobox', 2],
+    [printerResource, 'PRINT', 'Drucker', 1],
+  ] as const) {
+    // The resources trigger materializes one unit per quantity.
+    await pool.query(
+      `INSERT INTO resources(tenant_id,id,name,code,category,description,
+         quantity,before_days,after_days,blocked,state,position)
+       VALUES($1,$2,$3,$4,$5,'',$6,0,0,false,'active',1)`,
+      [tenantId, id, 'Fictional ' + code, code, category, quantity],
+    );
+    const unitRows = (
+      await pool.query<{ id: string; ordinal: number }>(
+        'SELECT id, ordinal FROM resource_units WHERE tenant_id=$1 AND resource_id=$2 ORDER BY ordinal',
+        [tenantId, id],
+      )
+    ).rows;
+    expect(unitRows).toHaveLength(quantity);
+    for (const row of unitRows) units[code + row.ordinal] = row.id;
+  }
+  // A manual block on the event day blocks one of the two Fotobox units.
+  await pool.query(
+    `INSERT INTO reservations(tenant_id,id,request_id,request_hash,unit_id,
+       state,period_source,base_start,base_end,time_zone,before_days,after_days,
+       starts_at,ends_at)
+     VALUES($1,$2,$3,$4,$5,'blocked','manual',$6,$7,'Europe/Berlin',0,0,$6,$7)`,
+    [
+      tenantId,
+      randomUUID(),
+      randomUUID(),
+      'a'.repeat(64),
+      units['BOX1'],
+      '2030-10-27T08:00:00.000Z',
+      '2030-10-27T16:00:00.000Z',
+    ],
+  );
+  const inquiryId = randomUUID(),
+    origin = 'https://admin.example.invalid';
+  const dayView = await inquiryNoticeExtras(
+    pool,
+    tenantId,
+    { origin },
+    {
+      id: inquiryId,
+      eventDate: '2030-10-27',
+      email: 'fictional@example.invalid',
+    },
+  );
+  expect(dayView.freeUnits).toEqual([
+    { category: 'Drucker', free: 1, total: 1 },
+    { category: 'Fotobox', free: 1, total: 2 },
+  ]);
+  expect(dayView.eventLink).toEqual({
+    href: `${origin}/?from=2030-10-27&to=2030-10-27#events`,
+    exact: false,
+  });
+  expect(dayView.replyLink).toBe(
+    'mailto:fictional@example.invalid?subject=Ihre%20Anfrage',
+  );
+  // Once the import has created the event, the link names it directly.
+  const value = entry();
+  await receiveOption(value, 'DE');
+  const eventId = (
+    await pool.query<{ event_id: string }>(
+      'SELECT event_id FROM website_inquiries WHERE tenant_id=$1 AND id=$2',
+      [tenantId, value.id],
+    )
+  ).rows[0]!.event_id;
+  const exact = await inquiryNoticeExtras(
+    pool,
+    tenantId,
+    { origin },
+    {
+      id: value.id,
+      eventDate: '2030-10-27',
+      email: 'fictional@example.invalid',
+    },
+  );
+  expect(exact.eventLink).toEqual({
+    href: `${origin}/#event-${eventId}`,
+    exact: true,
   });
 });

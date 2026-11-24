@@ -219,11 +219,21 @@ Branches nach dem Merge löschen.
   nativen `<dialog>`-Modals sperren das Hintergrundscrollen nicht
   zuverlässig; Body-Scroll-Lock beim Öffnen, Freigabe beim Schließen,
   referenzgezählt wegen übereinanderliegender Dialoge.
-- [ ] **INQUIRY-INFO-01 — Anfrage-Infos mit Ressourcen und Links:** die
+- [x] **INQUIRY-INFO-01 — Anfrage-Infos mit Ressourcen und Links
+  (23.11.2026):** die
   Benachrichtigungen zu Website-Anfragen (Telegram und E-Mail) erhalten
-  die Anzahl freier Fotoboxen und Drucker am Eventdatum, einen Link zum
-  Event und einen Link zum Antwort-Mail; nur strukturierte Zählwerte,
-  keine Kundenansprache erfinden.
+  die Anzahl freier Einheiten je Ressourcenkategorie (Fotoboxen, Drucker)
+  am Eventdatum, einen Link zum Event und einen Link zum Antwort-Mail.
+  Umgesetzt als `inquiryNoticeExtras` (Zählung über `bufferedPeriod` –
+  eine Ableitung der Sperrsemantik; lesbarer Zeitraum sperrt konservativ),
+  dieselben Zusatzzeilen in beiden Kanälen, Zeilen stehen vor dem
+  Kommentar, damit das Kürzen nur den Kommentar-Schwanz trifft. Der
+  Event-Verweis zeigt auf `#event-<id>`, sobald die Übernahme das Event
+  angelegt hat, sonst ehrlich auf den Tag in der Eventübersicht; der
+  Antwort-Link ist ein `mailto:` ohne Namen im Betreff. Ohne die
+  Worker-Variable `AK_AUTH_ORIGIN` tritt keine kaputte Linkzeile auf.
+  Unit 403/403 (Zählung, Kürzen, Kanalgleichheit) plus Integrationsfall
+  gegen echte Tabellen (Frei-Zählung, Tages- und Event-Verweis).
 - [ ] **MAIL-EVENT-01 — neue Mail direkt aus dem Event:** zusätzlich zum
   Dokumentversand kann aus dem Event heraus eine neue Mail begonnen
   werden (derselbe Editor, dieselbe Vorschau, ohne Dokument).
