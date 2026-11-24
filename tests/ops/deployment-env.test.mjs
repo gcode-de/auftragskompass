@@ -28,3 +28,28 @@ test('deployment templates pass the drain activation through paused', async () =
   );
   assert.doesNotMatch(quadlet, /^Environment=AK_INQUIRY_OPTION_DRAIN=on$/m);
 });
+
+// The worker reads finalized PDFs to attach them to outbox mail. Without the
+// shared documents volume every attachment is `attachment_unavailable`.
+test('API and worker share the document storage in every deployment template', async () => {
+  const compose = await readFile('compose.yaml', 'utf8');
+  for (const [name, next] of [
+    ['api', 'worker'],
+    ['worker', 'admin'],
+  ]) {
+    const service = compose.slice(
+      compose.indexOf(`\n  ${name}:`),
+      compose.indexOf(`\n  ${next}:`),
+    );
+    assert.match(service, /AK_DOCUMENT_STORAGE: \/data$/m, name);
+    assert.ok(service.includes("volumes: ['documents:/data']"), name);
+  }
+  for (const name of ['api', 'worker']) {
+    const quadlet = await readFile(
+      `infrastructure/podman/ak-test-${name}.container`,
+      'utf8',
+    );
+    assert.match(quadlet, /^Volume=ak-test-documents\.volume:\/data$/m, name);
+    assert.match(quadlet, /^Environment=AK_DOCUMENT_STORAGE=\/data$/m, name);
+  }
+});
