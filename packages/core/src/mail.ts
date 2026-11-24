@@ -2173,7 +2173,12 @@ export function registerMailRoutes(
         return reply.code(409).send({ error: error.reason });
       return reply.code(400).send({ error: error.reason });
     }
-    throw error;
+    // MAIL-UX-02: an unexpected failure is neither a bad request nor a
+    // foreign Fastify body. The client names every code it knows, so this
+    // answer carries a stable `internal` and the full error stays in the
+    // server log where it belongs - never in the reply.
+    reply.log.error({ err: error }, 'mail route failed unexpectedly');
+    return reply.code(500).send({ error: 'internal' });
   }
   // MAIL-ACCOUNT-01: the operator's sending accounts. Every answer is the
   // account whitelist above - the sealed secret never leaves the database, and

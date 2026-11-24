@@ -5934,6 +5934,111 @@ test('a refused preview keeps the dialog usable and names the problem', async ()
   expect(within(dialog).getByRole('button', { name: 'Senden' })).toBeTruthy();
 });
 
+// MAIL-UX-02: every refusal names its cause; an unknown code is quoted
+// verbatim and never dressed up as an input problem.
+test('an unknown refusal code is quoted and claims no order', async () => {
+  setup({
+    documents: [finalized],
+    mailSend: () => Response.json({ error: 'daemon_hickup' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  // The wording lives in the page status and the dialog alert; the
+  // assertion is scoped to the open dialog.
+  await waitFor(() =>
+    expect(
+      within(dialog).getByText(/Unbekannter Fehler \(Code: daemon_hickup\)/),
+    ).toBeTruthy(),
+  );
+  expect(screen.queryByText(/Der Auftrag wurde nicht angelegt/)).toBeNull();
+});
+
+// MAIL-UX-02: a server-side crash answers with the stable internal code and
+// is named as such - both for the preview and the send.
+test('an unexpected failure is named as an internal error in preview and send', async () => {
+  setup({
+    documents: [finalized],
+    mailPreview: () => new Response('', { status: 500 }),
+    mailSend: () => Response.json({ error: 'internal' }, { status: 500 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  await screen.findByText(/Interner Fehler/);
+  expect(screen.queryByText(/Der Auftrag wurde nicht angelegt/)).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await waitFor(() =>
+    expect(within(dialog).getByText(/Interner Fehler/)).toBeTruthy(),
+  );
+});
+
+test('a refused subject names the subject as the next step', async () => {
+  setup({
+    documents: [finalized],
+    mailSend: () =>
+      Response.json({ error: 'invalid_subject' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await waitFor(() =>
+    expect(
+      within(dialog).getByText(
+        /Der Betreff ist zu lang oder enthält unerlaubte Zeichen/,
+      ),
+    ).toBeTruthy(),
+  );
+});
+
+test('a missing permission is named as such, not as an input problem', async () => {
+  setup({
+    documents: [finalized],
+    mailPreview: () => Response.json({ error: 'forbidden' }, { status: 403 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Vorschau anzeigen' }),
+  );
+  await screen.findByText(/keine Berechtigung/);
+  expect(screen.queryByText(/Der Auftrag wurde nicht angelegt/)).toBeNull();
+});
+
 test('the mail editor toolbar toggles every format and the link row edits a target', async () => {
   setup({ documents: [finalized] });
   render(

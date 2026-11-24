@@ -967,6 +967,33 @@ test('mail routes answer 403 for a session without an active membership', async 
   await forbidden.close();
 });
 
+// MAIL-UX-02: an unexpected failure answers the stable `internal` code - the
+// full error stays in the server log, the reply is never a foreign body.
+test('an unexpected failure answers the stable internal code', async () => {
+  const broken = Fastify();
+  broken.decorateRequest('authSession', null);
+  broken.addHook('onRequest', async (request) => {
+    request.authSession = { userId: randomUUID(), email };
+  });
+  const brokenPool = {
+    query: () => {
+      throw new Error('Synthetischer Datenbankausfall');
+    },
+    connect: () => {
+      throw new Error('Synthetischer Datenbankausfall');
+    },
+  } as unknown as Parameters<typeof registerMailRoutes>[1];
+  registerMailRoutes(broken, brokenPool, tenantId);
+  const reply = await broken.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send/preview',
+    payload: { documentId: randomUUID() },
+  });
+  expect(reply.statusCode).toBe(500);
+  expect(reply.json()).toEqual({ error: 'internal' });
+  await broken.close();
+});
+
 // MAIL-021-B: from here on the pass runs with an adapter. Every case still uses
 // the synthetic tenant and a stub sender, never a provider.
 test('delivers a claimed job once, records sent_at and audits mail.sent', async () => {

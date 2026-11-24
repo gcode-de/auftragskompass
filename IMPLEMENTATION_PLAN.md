@@ -191,6 +191,40 @@ Branches nach dem Merge löschen.
   Mehrfach, Typ, Größe, Netzfehler, Datei-Wähler – von DeepSeek V4.1 Flash
   nach Vertrag geschrieben, von MiMo reviewt und selbst gelaufen), E2E
   mail-editor 1/1 inkl. echtem Datei-Drop und Listenzeile.
+## Nutzauftrag 23.11.2026 (zweite Runde: fünf UX-Slices)
+
+- [x] **MAIL-UX-02 — jede Mail-Ablehnung benennt ihre Ursache (23.11.2026):**
+  die irreführende Allerweltsmeldung „Der Auftrag wurde nicht angelegt“
+  erschien für Vorschau und Versand, sobald der Server einen der vielen
+  unmappeten Codes lieferte (20 Codes standen 8 gemappten gegenüber) oder
+  ein unerwarteter Fehler als fremder Fastify-Body antwortete. Jetzt:
+  vollständige Code-Abbildung mit handlungsweisenden Meldungen, unbekannte
+  Codes werden wörtlich zitiert, unerwartete Fehler antworten mit dem
+  stabilen Code `internal` (Vollfehler nur im Serverlog). Zusätzlich die
+  Wurzel des wiederaufgetretenen Picker-Versatzes geschlossen: TippTaps
+  verzögertes `focus()` ließ ein Fokusfenster, in dem der Browser-Caret
+  beim Refocus auf 0 stand und der Observer das in den Editor-State spülte
+  – die Einfügeposition wird jetzt beim Öffnen der Auswahl gemerkt,
+  explizit gesetzt und der Fokus synchron zurückgegeben; Value-Echos
+  können den getippten Text ersetzt gar nicht mehr (`replaceKey`-Vertrag).
+  Component 168/168, Mail-Integration 30/30 (neuer `internal`-Fall),
+  E2E mail-editor in echtem Chromium mehrfach grün.
+- [ ] **UI-SCROLL-01 — Scrollen bei offenen Dialogen verhindern:** die
+  nativen `<dialog>`-Modals sperren das Hintergrundscrollen nicht
+  zuverlässig; Body-Scroll-Lock beim Öffnen, Freigabe beim Schließen,
+  referenzgezählt wegen übereinanderliegender Dialoge.
+- [ ] **INQUIRY-INFO-01 — Anfrage-Infos mit Ressourcen und Links:** die
+  Benachrichtigungen zu Website-Anfragen (Telegram und E-Mail) erhalten
+  die Anzahl freier Fotoboxen und Drucker am Eventdatum, einen Link zum
+  Event und einen Link zum Antwort-Mail; nur strukturierte Zählwerte,
+  keine Kundenansprache erfinden.
+- [ ] **MAIL-EVENT-01 — neue Mail direkt aus dem Event:** zusätzlich zum
+  Dokumentversand kann aus dem Event heraus eine neue Mail begonnen
+  werden (derselbe Editor, dieselbe Vorschau, ohne Dokument).
+- [ ] **MAIL-FWD-01 — ausgehende Mails weiterleiten:** Optionen in den
+  Einstellungen für die Buchhaltungs-Mail und Schalter im Editor, um
+  ausgehende Mails an App-User und/oder die Buchhaltung weiterzuleiten.
+
 - [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup** *(23.11.2026
   konkretisiert)*. **Belege:** die CSV `Dokumente-2026-alle-arten-status.csv`
   ist eine reine Kopfzeile und belegt die Spaltenstruktur der globalen Liste

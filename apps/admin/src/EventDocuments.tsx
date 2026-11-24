@@ -524,6 +524,8 @@ export function EventDocuments({
     [mailSendId, setMailSendId] = useState(''),
     [mailTo, setMailTo] = useState(''),
     [mailBody, setMailBody] = useState(''),
+    // MAIL-UX-02: bump to let the editor adopt an externally replaced body.
+    [mailBodyReplace, setMailBodyReplace] = useState(0),
     [mailRequestId, setMailRequestId] = useState(''),
     [mailUncertain, setMailUncertain] = useState(false),
     [mailPreview, setMailPreview] = useState<MailPreview | null>(null),
@@ -2051,6 +2053,7 @@ export function EventDocuments({
     setMailSendId(entry.id);
     setMailTo(contactEmail?.trim() ?? '');
     setMailBody('');
+    setMailBodyReplace((count) => count + 1);
     setMailSubject(defaultMailSubject(entry));
     setMailTemplateId('');
     setTemplateNotice('');
@@ -2128,6 +2131,7 @@ export function EventDocuments({
       };
       setMailSubject(detail.subject);
       setMailBody(detail.bodyHtml);
+      setMailBodyReplace((count) => count + 1);
       // The standard attachments are visible from the start and each one can
       // be removed before the send - nothing travels unseen.
       setMailFiles(detail.attachments ?? []);
@@ -2203,7 +2207,9 @@ export function EventDocuments({
     }
   }
   // The refusal categories of the send route, worded as the operator's next
-  // step. Nothing here repeats a document or a customer address.
+  // step. Nothing here repeats a document or a customer address. MAIL-UX-02:
+  // every code the server can answer has its own line, and an unknown code is
+  // quoted verbatim - the cause is never unclear again.
   function documentSendFailureMessage(error: string) {
     switch (error) {
       case 'not_found':
@@ -2220,9 +2226,43 @@ export function EventDocuments({
         return 'Unbekannter Platzhalter im Text. Nur die Platzhalter aus der Auswahl verwenden; die Eingaben bleiben erhalten.';
       case 'invalid_body':
         return 'Der Text konnte nicht übernommen werden. Bitte die Eingaben prüfen.';
+      case 'invalid_subject':
+        return 'Der Betreff ist zu lang oder enthält unerlaubte Zeichen. Bitte den Betreff prüfen; die Eingaben bleiben erhalten.';
+      case 'invalid_sender':
+      case 'invalid_security':
+      case 'invalid_link':
+      case 'invalid_direction':
+      case 'invalid_folder':
+      case 'invalid_port':
+      case 'secret_required':
+        return 'Das E-Mail-Konto ist nicht vollständig eingerichtet. Bitte es in den Einstellungen prüfen; es wurde nichts gesendet.';
+      case 'already_exists':
+        return 'Der Eintrag besteht bereits. Bitte die Liste prüfen.';
+      case 'not_sendable':
+        return 'Der Auftrag kann aus diesem Zustand nicht gesendet werden. Bitte die Liste prüfen.';
+      case 'not_retryable':
+        return 'Der Auftrag kann nicht erneut versucht werden. Bitte die Liste prüfen.';
+      case 'idempotency_conflict':
+        return 'Dieselbe Anfrage wurde bereits mit anderem Inhalt verarbeitet. Bitte die Eingaben prüfen und nur einmal senden.';
+      case 'encryption_unavailable':
+        return 'Die Verschlüsselung ist derzeit nicht eingerichtet. Es wurde nichts gesendet.';
+      case 'forbidden':
+        return 'Ihr Konto hat dafür keine Berechtigung. Es wurde nichts gesendet.';
+      case 'internal':
+        return 'Interner Fehler. Es wurde nichts gesendet; bitte erneut versuchen und bei Wiederholung melden.';
+      case 'unbekannt':
+        return 'Die Anfrage konnte nicht beantwortet werden. Bitte die Verbindung prüfen und erneut versuchen.';
       default:
-        return 'Der Auftrag wurde nicht angelegt. Bitte die Eingaben prüfen.';
+        return `Unbekannter Fehler (Code: ${String(error).slice(0, 60)}). Bitte die Eingaben prüfen und den Code beim Melden angeben.`;
     }
+  }
+  // MAIL-UX-02: a refusal body that is not JSON or carries no code is still
+  // named honestly - by HTTP class, never silently as an input problem.
+  async function failureCode(reply: Response): Promise<string> {
+    const body = (await reply.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    return body?.error ?? (reply.status >= 500 ? 'internal' : 'unbekannt');
   }
   // MAIL-EDITOR-01: the preview runs the same server assembly as the send and
   // stores nothing. It is a pure read with an honest loading and error state.
@@ -2245,8 +2285,9 @@ export function EventDocuments({
         }),
       });
       if (!reply.ok) {
-        const result = (await reply.json()) as { error: string };
-        setMailPreviewError(documentSendFailureMessage(result.error));
+        setMailPreviewError(
+          documentSendFailureMessage(await failureCode(reply)),
+        );
         setMailPreviewState('error');
         return;
       }
@@ -2302,8 +2343,7 @@ export function EventDocuments({
         }),
       });
       if (!reply.ok) {
-        const result = (await reply.json()) as { error: string };
-        setMessage(documentSendFailureMessage(result.error));
+        setMessage(documentSendFailureMessage(await failureCode(reply)));
         return;
       }
       await reply.json();
@@ -3683,6 +3723,7 @@ export function EventDocuments({
                       <MailBodyEditor
                         value={mailBody}
                         onChange={setMailBody}
+                        replaceKey={mailBodyReplace}
                         disabled={busy !== '' || mailUncertain}
                         label="Begleittext (optional)"
                       />
