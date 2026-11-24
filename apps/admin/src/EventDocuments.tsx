@@ -526,6 +526,13 @@ export function EventDocuments({
     [mailBody, setMailBody] = useState(''),
     // MAIL-UX-02: bump to let the editor adopt an externally replaced body.
     [mailBodyReplace, setMailBodyReplace] = useState(0),
+    // MAIL-EVENT-01: a free mail from the event - no document, one durable
+    // order under one request id.
+    [composeOpen, setComposeOpen] = useState(false),
+    [composeTo, setComposeTo] = useState(''),
+    [composeSubject, setComposeSubject] = useState(''),
+    [composeBody, setComposeBody] = useState(''),
+    [composeRequestId, setComposeRequestId] = useState(''),
     [mailRequestId, setMailRequestId] = useState(''),
     [mailUncertain, setMailUncertain] = useState(false),
     [mailPreview, setMailPreview] = useState<MailPreview | null>(null),
@@ -572,7 +579,12 @@ export function EventDocuments({
     mailDialog = useRef<HTMLDialogElement>(null),
     mailTrigger = useRef<HTMLElement | null>(null),
     mailDialogWasOpen = useRef(false),
-    mailRecipient = useRef<HTMLInputElement>(null);
+    mailRecipient = useRef<HTMLInputElement>(null),
+    // MAIL-EVENT-01: the compose dialog mirrors the mail dialog mechanics.
+    composeDialog = useRef<HTMLDialogElement>(null),
+    composeTrigger = useRef<HTMLElement | null>(null),
+    composeWasOpen = useRef(false),
+    composeToField = useRef<HTMLInputElement>(null);
   const blankInvoiceKey = 'ak:blank-invoice:' + eventId;
   const blankInvoiceInvalid = typeof pendingBlankInvoice === 'string';
   const blankInvoiceContextChanged =
@@ -698,6 +710,27 @@ export function EventDocuments({
     mailTrigger.current = null;
     mailDialogWasOpen.current = false;
   }, [mailSendId]);
+  // MAIL-EVENT-01: the compose dialog uses the same native dialog mechanics.
+  useEffect(() => {
+    if (!composeOpen) return;
+    const dialog = composeDialog.current;
+    if (!dialog) return;
+    if (typeof dialog.showModal !== 'function') {
+      // jsdom has no showModal; browsers use the native modal focus behavior.
+      dialog.setAttribute('open', '');
+    } else if (!dialog.open) {
+      dialog.showModal();
+    }
+    composeWasOpen.current = true;
+    composeToField.current?.focus();
+  }, [composeOpen]);
+  useEffect(() => {
+    if (composeOpen || !composeWasOpen.current) return;
+    const trigger = composeTrigger.current;
+    if (trigger?.isConnected && !trigger.matches(':disabled')) trigger.focus();
+    composeTrigger.current = null;
+    composeWasOpen.current = false;
+  }, [composeOpen]);
   useEffect(() => {
     if (!mailSendId) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -2109,6 +2142,53 @@ export function EventDocuments({
     setMailPreview(null);
     setMailPreviewState('idle');
     setMailPreviewError('');
+  }
+  // MAIL-EVENT-01: a free mail from the event. One gesture, one order - the
+  // request id keeps a retry on the very same order.
+  function openCompose(trigger: HTMLElement) {
+    setMessage('');
+    composeTrigger.current = trigger;
+    setComposeTo(contactEmail?.trim() ?? '');
+    setComposeSubject('');
+    setComposeBody('');
+    setComposeRequestId(crypto.randomUUID());
+    setComposeOpen(true);
+  }
+  async function sendCompose() {
+    if (!composeOpen || busy !== '') return;
+    setBusy('compose');
+    setMessage('');
+    try {
+      const reply = await fetch('/api/v1/mail/compose', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          requestId: composeRequestId,
+          to: composeTo,
+          subject: composeSubject,
+          ...(composeBody.trim() ? { bodyHtml: composeBody } : {}),
+          ...(contactId ? { contactId } : {}),
+          ...(eventId ? { eventId } : {}),
+        }),
+      });
+      if (!reply.ok) {
+        setMessage(documentSendFailureMessage(await failureCode(reply)));
+        return;
+      }
+      await reply.json();
+      setComposeOpen(false);
+      setMessage('Mail als Auftrag vorgemerkt.');
+    } catch {
+      // The request id makes a retry safe: it can only reach the same order.
+      setMessage(
+        'Der Ausgang ist unklar. Bitte den Postausgang prüfen; ein erneuter Versuch kann nur denselben Auftrag erreichen.',
+      );
+    } finally {
+      setBusy('');
+    }
   }
   // MAIL-TPL-01c: applying a template replaces subject and body once; the
   // draft is afterwards fully editable and the template itself never changes.
@@ -3947,6 +4027,90 @@ export function EventDocuments({
             >
               {pendingBlankInvoice ? 'Anlage fortsetzen' : 'Dokument anlegen'}
             </button>
+            {/* MAIL-EVENT-01: a free mail from the event - the same dialog
+            mechanics as the document mail, without document and placeholders. */}
+            <button
+              type="button"
+              className="secondary-action"
+              aria-haspopup="dialog"
+              disabled={busy !== ''}
+              onClick={(event) => openCompose(event.currentTarget)}
+            >
+              Neue Mail schreiben
+            </button>
+            {composeOpen && (
+              <dialog
+                ref={composeDialog}
+                className="form-dialog mail-compose-dialog"
+                aria-labelledby="mail-compose-heading"
+                aria-modal="true"
+                onCancel={(event) => {
+                  event.preventDefault();
+                  if (busy === '') setComposeOpen(false);
+                }}
+              >
+                <h4 id="mail-compose-heading">Neue Mail schreiben</h4>
+                <p>
+                  Eventkontakt:{' '}
+                  {contactId
+                    ? contactName?.trim() || 'Zugeordneter Kontakt'
+                    : 'Kein Hauptkontakt zugeordnet'}
+                </p>
+                {message && <p role="alert">{message}</p>}
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void sendCompose();
+                  }}
+                >
+                  <label>
+                    An
+                    <input
+                      ref={composeToField}
+                      value={composeTo}
+                      onChange={(event) =>
+                        setComposeTo(event.currentTarget.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    Betreff
+                    <input
+                      value={composeSubject}
+                      onChange={(event) =>
+                        setComposeSubject(event.currentTarget.value)
+                      }
+                    />
+                  </label>
+                  <div className="mail-editor-field">
+                    <span className="mail-editor-label">Text (optional)</span>
+                    <MailBodyEditor
+                      value={composeBody}
+                      onChange={setComposeBody}
+                      disabled={busy !== ''}
+                      label="Text (optional)"
+                      withPlaceholderPicker={false}
+                    />
+                  </div>
+                  <div className="document-actions">
+                    <button
+                      className="primary-action"
+                      disabled={busy !== '' || composeTo.trim() === ''}
+                    >
+                      Senden
+                    </button>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy !== ''}
+                      onClick={() => setComposeOpen(false)}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </form>
+              </dialog>
+            )}
             {createDialogOpen && (
               <dialog
                 ref={createDialog}

@@ -234,7 +234,19 @@ Branches nach dem Merge löschen.
   Worker-Variable `AK_AUTH_ORIGIN` tritt keine kaputte Linkzeile auf.
   Unit 403/403 (Zählung, Kürzen, Kanalgleichheit) plus Integrationsfall
   gegen echte Tabellen (Frei-Zählung, Tages- und Event-Verweis).
-- [ ] **MAIL-EVENT-01 — neue Mail direkt aus dem Event:** zusätzlich zum
+- [x] **MAIL-EVENT-01 — neue Mail direkt aus dem Event (23.11.2026):**
+  „Neue Mail schreiben“ im Event-Dokumentenbereich öffnet einen
+  Compose-Dialog (An vorbelegt aus dem Eventkontakt, Betreff, formatierter
+  Editor ohne Platzhalterwähler, da freie Mails nichts auflösen). Eine
+  Geste, ein dauerhafter Auftrag: `POST /api/v1/mail/compose` unter einer
+  Anfrage-ID (Wiederholung erreicht nur denselben Auftrag), Body durch
+  dieselbe Allowlist-Bereinigung und Textalternative wie die Dokument-
+  mail, Betreff/Adressen durch dieselbe Plain-Text-/Adressprüfung
+  (keine Header-Injection), Event/Kontakt mandantengebunden verknüpft,
+  Audit `mail.message_created` + `mail.send_scheduled` (keine neue
+  Migration nötig). Ablehnungen benennen ihre Ursache wie MAIL-UX-02.
+  Integration 32/32 (idempotent, sanitisiert, Refusals), Component 156/156.
+  Ursprüngliche Fassung: zusätzlich zum
   Dokumentversand kann aus dem Event heraus eine neue Mail begonnen
   werden (derselbe Editor, dieselbe Vorschau, ohne Dokument).
 - [ ] **MAIL-FWD-01 — ausgehende Mails weiterleiten:** Optionen in den

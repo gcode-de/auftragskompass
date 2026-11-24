@@ -2339,3 +2339,116 @@ test('the mail can travel without its document and with additional documents', a
     ).rows[0].count,
   ).toBe('0');
 });
+
+// MAIL-EVENT-01: a free mail from the event is one gesture and one durable
+// order under one request id; the body runs through the mail allowlist.
+test('composes a free mail as one idempotent order with sanitized html', async () => {
+  const { headers, csrf } = await signedIn();
+  const payload = {
+    requestId: 'fictional-compose-key',
+    to: 'synthetic.contact@example.invalid',
+    subject: 'Fiktiver Freie-Mail-Betreff',
+    bodyHtml:
+      '<p>Hallo <strong>Welt</strong></p><script>alert(1)</script>' +
+      '<p><a href="javascript:evil()">Link</a></p>',
+  };
+  const first = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload,
+  });
+  expect(first.statusCode).toBe(201);
+  const job = first.json();
+  expect(job.state).toBe('pending');
+  const message = (
+    await pool.query<{
+      subject: string;
+      body_html: string;
+      body_text: string;
+      to_addresses: string;
+      send_state: string;
+      contact_id: string | null;
+      event_id: string | null;
+    }>(
+      'SELECT subject, body_html, body_text, to_addresses, send_state,' +
+        ' contact_id, event_id FROM mail_messages' +
+        ' WHERE tenant_id=$1 AND id=$2',
+      [tenantId, job.messageId],
+    )
+  ).rows[0]!;
+  expect(message.subject).toBe('Fiktiver Freie-Mail-Betreff');
+  expect(message.to_addresses).toBe('synthetic.contact@example.invalid');
+  expect(message.send_state).toBe('scheduled');
+  // The allowlist owns the outgoing html and the text alternative is real.
+  expect(message.body_html).not.toContain('script');
+  expect(message.body_html).not.toContain('javascript:');
+  expect(message.body_html).toContain('<strong>Welt</strong>');
+  expect(message.body_text).toContain('Hallo Welt');
+  // The same gesture answers the very same order - and creates no second.
+  const replay = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload,
+  });
+  expect(replay.statusCode).toBe(200);
+  expect(replay.json().id).toBe(job.id);
+  const jobs = await pool.query(
+    'SELECT count(*) FROM mail_outbox WHERE tenant_id=$1' +
+      ' AND idempotency_key=$2',
+    [tenantId, 'mail-compose:fictional-compose-key'],
+  );
+  expect(Number(jobs.rows[0].count)).toBe(1);
+});
+
+test('refuses a free mail like the document send and names the code', async () => {
+  const { headers, csrf } = await signedIn();
+  const at = (payload: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/mail/compose',
+      headers: { ...headers, ...csrf },
+      payload,
+    });
+  // A subject with a line break could split a header line: refused.
+  expect(
+    (
+      await at({
+        requestId: 'fictional-compose-refusal-1',
+        to: 'synthetic.contact@example.invalid',
+        subject: 'Betreff\nmit Zeile',
+      })
+    ).json().error,
+  ).toBe('invalid_subject');
+  // No subject at all is refused as honestly as a broken one.
+  expect(
+    (
+      await at({
+        requestId: 'fictional-compose-refusal-2',
+        to: 'synthetic.contact@example.invalid',
+      })
+    ).json().error,
+  ).toBe('invalid_subject');
+  // An address that passes the shape but not the address check.
+  expect(
+    (
+      await at({
+        requestId: 'fictional-compose-refusal-3',
+        to: 'not-an-address',
+        subject: 'Fiktiver Betreff',
+      })
+    ).json().error,
+  ).toBe('invalid_recipients');
+  // An event of another tenant is not a link this tenant owns.
+  expect(
+    (
+      await at({
+        requestId: 'fictional-compose-refusal-4',
+        to: 'synthetic.contact@example.invalid',
+        subject: 'Fiktiver Betreff',
+        eventId: randomUUID(),
+      })
+    ).json().error,
+  ).toBe('invalid_link');
+});

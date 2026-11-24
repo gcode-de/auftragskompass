@@ -365,6 +365,7 @@ function setup(
     mailSend?: (body: unknown) => Response | Promise<Response>;
     // MAIL-EDITOR-01: the answer to the read-only mail preview.
     mailPreview?: (body: unknown) => Response | Promise<Response>;
+    compose?: (body: unknown) => Response | Promise<Response>;
     // MAIL-TPL-01c: the mail templates offered by the composer.
     mailTemplates?: unknown[];
     mailTemplateDetail?: unknown;
@@ -648,6 +649,30 @@ function setup(
           bodyText: 'Vorschau',
           missing: [],
         });
+      }
+      if (url === '/api/v1/mail/compose') {
+        const body = JSON.parse(String(init!.body));
+        calls.push({
+          url,
+          method,
+          body,
+          headers: init!.headers as Record<string, string>,
+        });
+        if (options.compose) return await options.compose(body);
+        return Response.json(
+          {
+            id: 'job-compose-1',
+            messageId: 'mail-compose-1',
+            idempotencyKey: 'mail-compose:fictional',
+            state: 'pending',
+            attempts: 0,
+            nextAttemptAt: '2030-10-26T10:00:00.000Z',
+            lastErrorCode: null,
+            createdAt: '2030-10-26T10:00:00.000Z',
+            sentAt: null,
+          },
+          { status: 201 },
+        );
       }
       if (url === '/api/v1/mail/document-send') {
         const body = JSON.parse(String(init!.body));
@@ -6588,4 +6613,75 @@ test('the file input uploads chosen files like a drop', async () => {
     displayName: 'Rechnung.pdf',
     mediaType: 'application/pdf',
   });
+});
+
+// MAIL-EVENT-01: a free mail from the event - prefilled recipient, one
+// durable order, and every refusal names its cause like the document mail.
+test('the event composes a free mail with a prefilled recipient', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  // The recipient comes from the event contact; the editor has no
+  // placeholder picker - a free mail resolves nothing.
+  expect(within(dialog).getByLabelText('An')).toHaveProperty(
+    'value',
+    'synthetic.contact@example.invalid',
+  );
+  expect(
+    within(dialog).queryByRole('button', { name: 'Platzhalter einfügen' }),
+  ).toBeNull();
+  fireEvent.change(within(dialog).getByLabelText('Betreff'), {
+    target: { value: 'Fiktiver Freie-Mail-Betreff' },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Mail als Auftrag vorgemerkt.');
+  const composeCalls = calls.filter(
+    (call) => call.url === '/api/v1/mail/compose',
+  );
+  expect(composeCalls).toHaveLength(1);
+  expect(composeCalls[0]!.body).toMatchObject({
+    to: 'synthetic.contact@example.invalid',
+    subject: 'Fiktiver Freie-Mail-Betreff',
+  });
+  expect(
+    (composeCalls[0]!.body as { requestId: string }).requestId,
+  ).toBeTruthy();
+});
+
+test('a refused free mail names its cause and keeps the dialog open', async () => {
+  setup({
+    documents: [finalized],
+    compose: () => Response.json({ error: 'invalid_subject' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await waitFor(() =>
+    expect(
+      within(dialog).getByText(
+        /Der Betreff ist zu lang oder enthält unerlaubte Zeichen/,
+      ),
+    ).toBeTruthy(),
+  );
+  expect(within(dialog).getByRole('button', { name: 'Senden' })).toBeTruthy();
 });
