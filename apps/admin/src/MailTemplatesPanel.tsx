@@ -114,9 +114,12 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     };
   }, []);
 
+  // MAIL-UX-02: bump to let the editor adopt an externally replaced body.
+  const [editorReplace, setEditorReplace] = useState(0);
   function startEdit(summary: MailTemplateSummary) {
     setEditing(summary.id);
     setVersion(summary.version);
+    setEditorReplace((count) => count + 1);
     setForm({
       name: summary.name,
       subject: summary.subject,
@@ -138,6 +141,7 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
           attachments: { libraryFileId: string }[];
         };
         setForm((current) => ({ ...current, bodyHtml: detail.bodyHtml }));
+        setEditorReplace((count) => count + 1);
         setVersion(detail.version);
         setAttachmentIds(
           (detail.attachments ?? []).map((entry) => entry.libraryFileId),
@@ -409,6 +413,7 @@ export function MailTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                   }
                   disabled={busy}
                   label="Text (optional)"
+                  replaceKey={editorReplace}
                 />
               </div>
               {/* MAIL-TPL-01e: the standard attachments are chosen from the

@@ -129,6 +129,14 @@ umgesetzt; Quill bleibt die dokumentierte Ausweichwahl.
   nichts (kein Auftrag, kein Audit, kein Outboxeintrag). Antwort: bereinigtes
   und aufgelöstes `bodyHtml`, abgeleitetes `bodyText` und die Namen fehlender
   Platzhalter. Autorisierung und Mandantenisolation wie beim Versand.
+- **Jede Ablehnung benennt ihre Ursache (MAIL-UX-02):** Vorschau und Versand
+  bilden jeden Code des Servers in eine eigene, handlungsweisende Meldung ab
+  (Betreff, Konto, Berechtigung, Konflikt …); ein **unbekannter Code wird
+  wörtlich zitiert** statt irreführend als Eingabefehler zu erscheinen, und
+  ein unerwarteter Serverfehler antwortet mit dem stabilen Code `internal`
+  (Vollfehler nur im Serverlog, nie in der Antwort). Die frühere
+  Allerweltsmeldung „Der Auftrag wurde nicht angelegt“ ist damit
+  abgeschafft; die Ursache eines Fehlers ist ohne Log-Lesung benennbar.
 
 ## Grenzen (ehrlich)
 

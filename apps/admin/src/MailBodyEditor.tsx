@@ -232,11 +232,20 @@ export function MailBodyEditor({
   onChange,
   disabled = false,
   label = 'Begleittext',
+  replaceKey = 0,
 }: {
   value: string;
   onChange: (html: string) => void;
   disabled?: boolean;
   label?: string;
+  /**
+   * MAIL-UX-02: bump to replace the document from outside (applying a
+   * template, opening another draft). After mount the editor owns its
+   * content - a changed `value` alone never touches the typed text, so a
+   * stale render can never overwrite or reorder what was typed (the root
+   * of the old picker-insert watch item).
+   */
+  replaceKey?: number;
 }) {
   // What this component last reported or was given; only an outside change
   // replaces the document, so typing is never overwritten.
@@ -273,20 +282,20 @@ export function MailBodyEditor({
     [notice, setNotice] = useState(''),
     [linkOpen, setLinkOpen] = useState(false),
     [href, setHref] = useState(''),
-    pickerToggle = useRef<HTMLButtonElement>(null);
-  // The template editor receives its body after the detail fetch; a late
-  // external value replaces the document once. The guard compares against
-  // the previously seen prop, not against the emitted HTML: a render that
-  // still carries the old prop (racing the parent's state update after a
-  // transaction) must never reset what the user just typed.
-  const lastValue = useRef(value);
+    pickerToggle = useRef<HTMLButtonElement>(null),
+    savedBodyPos = useRef<number | null>(null);
+  // MAIL-UX-02: the document is replaced only on an explicit `replaceKey`
+  // bump (template load, new draft) - never by a value echo. A stale render
+  // that races the editor can therefore not reorder or truncate typed text,
+  // which reset the caret to the start and made inserts land wrongly (the
+  // root of the old picker-insert watch item, seen again in an E2E race).
+  const appliedReplaceKey = useRef(replaceKey);
   useEffect(() => {
-    if (!editor || value === lastValue.current) return;
-    lastValue.current = value;
-    if (value === emitted.current) return;
+    if (!editor || appliedReplaceKey.current === replaceKey) return;
+    appliedReplaceKey.current = replaceKey;
     emitted.current = value;
     editor.commands.setContent(value || '<p></p>', { emitUpdate: false });
-  }, [editor, value]);
+  }, [editor, value, replaceKey]);
   // Toolbar state follows every transaction, so `aria-pressed` never lies.
   useEffect(() => {
     if (!editor) return;
@@ -304,10 +313,22 @@ export function MailBodyEditor({
   }
   function insertPlaceholder() {
     if (!editor || !chosen) return;
-    // The last cursor position in the body, not the picker, is the target -
-    // and the focus stays there so the user keeps writing (BKP015.10).
-    editor.chain().focus().insertContent(`{{${chosen.name}}}`).run();
-    setNotice(`{{${chosen.name}}} eingefügt.`);
+    // BKP015.10: the target is the last caret position in the body - taken
+    // when the picker opened, never the picker's own focus. The position is
+    // written explicitly and the DOM focus returns synchronously: the
+    // deferred `focus()` of a command chain left a window in which the
+    // picker unmounted (focus fell to the page) and the browser's refocus
+    // caret landed at the document start - the root of inserts landing
+    // wrongly. A plain insert then continued from there and reordered text.
+    const text = `{{${chosen.name}}}`,
+      at = savedBodyPos.current ?? editor.state.selection.from;
+    editor
+      .chain()
+      .insertContentAt({ from: at, to: at }, text)
+      .setTextSelection(at + text.length)
+      .run();
+    editor.view.focus();
+    setNotice(`${text} eingefügt.`);
     setSelected('');
     setPickerOpen(false);
   }
@@ -475,7 +496,11 @@ export function MailBodyEditor({
           className="secondary-action"
           aria-expanded={pickerOpen}
           aria-controls={panelId}
-          onClick={() => setPickerOpen(!pickerOpen)}
+          onClick={() => {
+            if (!pickerOpen && editor)
+              savedBodyPos.current = editor.state.selection.from;
+            setPickerOpen(!pickerOpen);
+          }}
         >
           {pickerOpen ? 'Platzhalterauswahl schließen' : 'Platzhalter einfügen'}
         </button>
