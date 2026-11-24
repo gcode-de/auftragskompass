@@ -146,7 +146,11 @@ test('a load failure offers a reload and shows no invented accounts', async () =
   let attempt = 0;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => {
+    vi.fn(async (input: RequestInfo | URL) => {
+      // MAIL-FWD-01: the panel also loads the accounting address; only the
+      // account list is meant to fail here.
+      if (!String(input).includes('/mail/accounts'))
+        return Response.json({ accountingRecipient: '' });
       attempt += 1;
       if (attempt === 1) return new Response(null, { status: 500 });
       return Response.json([]);
@@ -161,4 +165,59 @@ test('a load failure offers a reload and shows no invented accounts', async () =
   // The reloaded empty state shows the form, never invented accounts.
   await screen.findByLabelText('Kontoname');
   expect(screen.queryByText('Versandkonten')).toBeNull();
+});
+
+// MAIL-FWD-01: the accounting address saves with its own honest states -
+// a refused address, an unclear outcome and the success.
+test('the accounting address saves, refuses invalid input and names an unclear outcome', async () => {
+  const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+  let mode: 'ok' | 'bad-request' | 'failure' = 'ok';
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input),
+        method = init?.method ?? 'GET';
+      if (url.includes('/mail/accounts')) return Response.json([]);
+      if (url.includes('/settings/mail-accounting')) {
+        calls.push({ url, method, body: init?.body });
+        if (method === 'PUT') {
+          if (mode === 'bad-request')
+            return Response.json(
+              { error: 'invalid_recipients' },
+              { status: 400 },
+            );
+          if (mode === 'failure') return new Response(null, { status: 500 });
+          return new Response(null, { status: 204 });
+        }
+        return Response.json({ accountingRecipient: '' });
+      }
+      return new Response(null, { status: 404 });
+    }),
+  );
+  render(<MailAccountSettingsPanel csrfToken="fictional-csrf" />);
+  const input = await screen.findByLabelText('Adresse der Buchhaltung');
+  fireEvent.change(input, {
+    target: { value: 'synthetic.accounting@example.invalid' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Buchhaltungs-Mail speichern' }),
+  );
+  await screen.findByText('Buchhaltungs-Mail gespeichert.');
+  const puts = calls.filter((call) => call.method === 'PUT');
+  expect(puts).toHaveLength(1);
+  expect(puts[0]!.body).toBe(
+    JSON.stringify({
+      accountingRecipient: 'synthetic.accounting@example.invalid',
+    }),
+  );
+  mode = 'bad-request';
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Buchhaltungs-Mail speichern' }),
+  );
+  await screen.findByText('Bitte eine gültige Adresse eingeben.');
+  mode = 'failure';
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Buchhaltungs-Mail speichern' }),
+  );
+  await screen.findByText(/Der Speicherstand ist unklar/);
 });

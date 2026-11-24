@@ -366,6 +366,9 @@ function setup(
     // MAIL-EDITOR-01: the answer to the read-only mail preview.
     mailPreview?: (body: unknown) => Response | Promise<Response>;
     compose?: (body: unknown) => Response | Promise<Response>;
+    // MAIL-FWD-01: the forwarding switches load their targets.
+    accessUsers?: () => Response;
+    mailAccounting?: () => Response;
     // MAIL-TPL-01c: the mail templates offered by the composer.
     mailTemplates?: unknown[];
     mailTemplateDetail?: unknown;
@@ -625,6 +628,31 @@ function setup(
         }
         if (options.recordPayment) return options.recordPayment();
         return Response.json(paymentRows[0]!, { status: 201 });
+      }
+      if (url === '/api/v1/access') {
+        calls.push({ url, method });
+        if (options.accessUsers) return options.accessUsers();
+        return Response.json([
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'synthetic.user@example.invalid',
+            active: true,
+            claimed: true,
+          },
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            email: 'synthetic.inactive@example.invalid',
+            active: false,
+            claimed: true,
+          },
+        ]);
+      }
+      if (url === '/api/v1/settings/mail-accounting') {
+        calls.push({ url, method });
+        if (options.mailAccounting) return options.mailAccounting();
+        return Response.json({
+          accountingRecipient: 'synthetic.accounting@example.invalid',
+        });
       }
       if (url === '/api/v1/mail-templates') {
         calls.push({ url, method });
@@ -6811,4 +6839,174 @@ test('the compose dialog works without contact data and locks during the order',
   // Absent links are absent in the payload - never sent as unknown ids.
   expect(composeCalls[0]!.body).not.toHaveProperty('contactId');
   expect(composeCalls[0]!.body).not.toHaveProperty('eventId');
+});
+
+// MAIL-FWD-01: the forwarding switches name their targets and travel as
+// switches only - the addresses are resolved on the server.
+test('the mail dialog forwards to accounting and app users under its switches', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  // The switches name their targets honestly.
+  await waitFor(() =>
+    expect(within(dialog).getByText(/Kopie an Buchhaltung/)).toBeTruthy(),
+  );
+  expect(
+    within(dialog).getByText(/synthetic\.accounting@example\.invalid/),
+  ).toBeTruthy();
+  // Only active app users appear as choices.
+  expect(
+    within(dialog).getByText(/Kopie an synthetic\.user@example\.invalid/),
+  ).toBeTruthy();
+  expect(
+    within(dialog).queryByText(/synthetic\.inactive@example\.invalid/),
+  ).toBeNull();
+  fireEvent.click(within(dialog).getByText(/Kopie an Buchhaltung/));
+  fireEvent.click(
+    within(dialog).getByText(/Kopie an synthetic\.user@example\.invalid/),
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
+  const sent = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(sent).toHaveLength(1);
+  // Switches only - never an address the client could invent.
+  expect(sent[0]!.body).toMatchObject({
+    forwardAccounting: true,
+    forwardUserIds: ['11111111-1111-4111-8111-111111111111'],
+  });
+});
+
+test('an unfilled forwarding names its cause like every other refusal', async () => {
+  setup({
+    documents: [finalized],
+    compose: () =>
+      Response.json({ error: 'forward_unavailable' }, { status: 409 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await waitFor(() =>
+    expect(
+      within(dialog).getByText(/Die Weiterleitung ist nicht eingerichtet/),
+    ).toBeTruthy(),
+  );
+});
+
+// MAIL-FWD-01: broken forwarding lists never block the dialog - the
+// switches stay and the server refuses an unfilled forwarding.
+test('a failed forwarding list load leaves both dialogs usable', async () => {
+  const { calls } = setup({
+    documents: [finalized],
+    accessUsers: () => new Response(null, { status: 500 }),
+    mailAccounting: () => new Response(null, { status: 500 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 per E-Mail senden',
+  });
+  const dialog = await openMailSend(trigger);
+  // The switch exists without a named address; no user list appears.
+  await waitFor(() =>
+    expect(within(dialog).getByText(/Kopie an Buchhaltung/)).toBeTruthy(),
+  );
+  expect(
+    within(dialog).queryByRole('group', { name: 'Kopie an App-User' }),
+  ).toBeNull();
+  // Toggling the switch off keeps the payload free of forwarding.
+  fireEvent.click(within(dialog).getByText(/Kopie an Buchhaltung/));
+  fireEvent.click(within(dialog).getByText(/Kopie an Buchhaltung/));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Dokument als E-Mail-Auftrag vorgemerkt.');
+  const sent = calls.filter(
+    (call) => call.url === '/api/v1/mail/document-send',
+  );
+  expect(sent).toHaveLength(1);
+  // Toggled off: the switch travels as false and no user ids at all.
+  expect(sent[0]!.body).toMatchObject({ forwardAccounting: false });
+  expect(sent[0]!.body).not.toHaveProperty('forwardUserIds');
+});
+
+// MAIL-FWD-01: odd forwarding answers degrade honestly - no invented
+// users, no invented address - and a toggled-off user travels not at all.
+test('odd forwarding answers invent nothing and a toggled user is omitted', async () => {
+  const { calls } = setup({
+    documents: [finalized],
+    accessUsers: () => Response.json({ unexpected: true }),
+    mailAccounting: () => Response.json({}),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  await waitFor(() =>
+    expect(within(dialog).getByText(/Kopie an Buchhaltung/)).toBeTruthy(),
+  );
+  // No invented user choices and no invented address text.
+  expect(
+    within(dialog).queryByRole('group', { name: 'Kopie an App-User' }),
+  ).toBeNull();
+  expect(within(dialog).queryByText(/@example\.invalid/)).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Mail als Auftrag vorgemerkt.');
+  const sent = calls.filter((call) => call.url === '/api/v1/mail/compose');
+  expect(sent[0]!.body).toMatchObject({ forwardAccounting: false });
+  expect(sent[0]!.body).not.toHaveProperty('forwardUserIds');
+});
+
+test('a toggled-off app user is omitted from the forwarding', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  const userSwitch = await within(dialog).findByText(
+    /Kopie an synthetic\.user@example\.invalid/,
+  );
+  fireEvent.click(userSwitch);
+  fireEvent.click(userSwitch);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
+  await screen.findByText('Mail als Auftrag vorgemerkt.');
+  const sent = calls.filter((call) => call.url === '/api/v1/mail/compose');
+  expect(sent[0]!.body).not.toHaveProperty('forwardUserIds');
 });

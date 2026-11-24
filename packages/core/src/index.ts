@@ -307,6 +307,11 @@ export {
   type InquiryEmailSettings,
 } from './inquiry-email.js';
 export {
+  registerMailForwardSettingsRoutes,
+  readMailForwardSettings,
+  type MailForwardSettings,
+} from './mail-forward.js';
+export {
   stageWebsiteInquiry,
   importStagedWebsiteInquiry,
 } from './website-inquiry-deliveries.js';

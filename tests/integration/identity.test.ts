@@ -87,7 +87,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // MAIL-TPL-01d (0075) adds two tenant-bound attachment reference tables
   // with their availability triggers; the document attachment contract
   // (0071) stays byte-identical.
-  expect(applied.at(-1)!.name).toBe('0075_mail_file_attachments.sql');
+  // MAIL-FWD-01 (0076) adds one tenant-bound settings row for the
+  // accounting address; no existing row and no existing contract changes.
+  expect(applied.at(-1)!.name).toBe('0076_mail_forward_settings.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

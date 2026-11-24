@@ -61,6 +61,9 @@ export function MailAccountSettingsPanel({ csrfToken }: { csrfToken: string }) {
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
+  // MAIL-FWD-01: the address a mail can additionally be forwarded to. The
+  // switch lives per mail; this only stores the address.
+  const [accountingRecipient, setAccountingRecipient] = useState('');
 
   async function load(): Promise<MailAccount[]> {
     const response = await fetch('/api/v1/mail/accounts');
@@ -70,6 +73,17 @@ export function MailAccountSettingsPanel({ csrfToken }: { csrfToken: string }) {
 
   useEffect(() => {
     let active = true;
+    // MAIL-FWD-01: the stored accounting address; a failure leaves the field
+    // empty and the save offers the honest retry.
+    void fetch('/api/v1/settings/mail-accounting')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((value) => {
+        if (!active || !value) return;
+        setAccountingRecipient(
+          (value as { accountingRecipient?: string }).accountingRecipient ?? '',
+        );
+      })
+      .catch(() => undefined);
     void load()
       .then((result) => {
         if (!active) return;
@@ -90,6 +104,41 @@ export function MailAccountSettingsPanel({ csrfToken }: { csrfToken: string }) {
       active = false;
     };
   }, []);
+
+  // MAIL-FWD-01: store the accounting address; empty only disables the
+  // switch in the dialogs. The same address validation as every recipient.
+  async function saveAccounting() {
+    setBusy(true);
+    setMessage('');
+    setError(false);
+    try {
+      const response = await fetch('/api/v1/settings/mail-accounting', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          accountingRecipient: accountingRecipient.trim(),
+        }),
+      });
+      if (response.status === 400) {
+        setError(true);
+        setMessage('Bitte eine gültige Adresse eingeben.');
+        return;
+      }
+      if (!response.ok) throw Error('save');
+      setError(false);
+      setMessage('Buchhaltungs-Mail gespeichert.');
+    } catch {
+      setError(true);
+      setMessage(
+        'Der Speicherstand ist unklar. Bitte erneut speichern; es wurde keine Mail versendet.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function editAccount(account: MailAccount) {
     setEditing(account.id);
@@ -208,6 +257,32 @@ export function MailAccountSettingsPanel({ csrfToken }: { csrfToken: string }) {
         gespeichert und nie wieder angezeigt. Das Speichern dieser Einstellungen
         versendet keine E-Mail.
       </p>
+      {/* MAIL-FWD-01: where a mail can additionally be forwarded to. */}
+      <h3>Buchhaltungs-Mail</h3>
+      <p>
+        Diese Adresse kann im Mail-Dialog als Kopie gewählt werden. Ohne
+        hinterlegte Adresse ist der Schalter dort nicht eingerichtet.
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void saveAccounting();
+        }}
+      >
+        <label>
+          Adresse der Buchhaltung
+          <input
+            type="email"
+            value={accountingRecipient}
+            onChange={(event) =>
+              setAccountingRecipient(event.currentTarget.value)
+            }
+          />
+        </label>
+        <button className="secondary-action" disabled={busy}>
+          Buchhaltungs-Mail speichern
+        </button>
+      </form>
       <p role={error ? 'alert' : 'status'}>{message}</p>
       {accounts === null ? (
         <>

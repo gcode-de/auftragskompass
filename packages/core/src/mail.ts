@@ -82,6 +82,7 @@ export type MailErrorReason =
   | 'not_retryable'
   | 'not_final'
   | 'attachment_unavailable'
+  | 'forward_unavailable'
   | 'invalid_content'
   | 'idempotency_conflict';
 export class MailError extends Error {
@@ -179,6 +180,10 @@ export type MailComposeInput = {
   contactId?: string | null;
   eventId?: string | null;
   accountId?: string | null;
+  // MAIL-FWD-01: switches only - every forwarded address is resolved on the
+  // server from the stored setting and this tenant's own users.
+  forwardAccounting?: boolean;
+  forwardUserIds?: readonly string[];
 };
 export type MailOutboxRow = {
   id: string;
@@ -255,6 +260,10 @@ export type MailDocumentSendInput = {
    *  unavailable one refuses the whole order like every other attachment. */
   documentIds?: string[];
   accountId?: string | null;
+  // MAIL-FWD-01: switches only - every forwarded address is resolved on the
+  // server from the stored setting and this tenant's own users.
+  forwardAccounting?: boolean;
+  forwardUserIds?: readonly string[];
 };
 // MAIL-EDITOR-01: the read-only twin of a document send. It runs the very
 // same checks and content assembly and stores nothing.
@@ -399,6 +408,54 @@ function portOf(value: unknown): number | null {
     throw new MailError('invalid_port');
   return value;
 }
+// MAIL-FWD-01: the cc list for an outgoing mail - the stored accounting
+// address when its switch is on (an unconfigured switch refuses), and the
+// e-mail addresses of the named app users of this tenant (an unknown id
+// refuses). A requested forwarding that cannot be fulfilled never becomes
+// a silently dropped copy.
+export async function resolveForwardCc(
+  connection: Connection,
+  tenantId: string,
+  forward: {
+    accounting?: boolean | undefined;
+    userIds?: readonly string[] | undefined;
+  },
+): Promise<string> {
+  return database(connection).transaction(async (tx) => {
+    const cc: string[] = [];
+    if (forward.accounting) {
+      const { rows } = await tx.execute<{ accounting_recipient: string }>(
+        sql`SELECT accounting_recipient FROM mail_forward_settings
+             WHERE tenant_id = ${tenantId}`,
+      );
+      const configured = (rows[0]?.accounting_recipient ?? '').trim();
+      if (!configured) throw new MailError('forward_unavailable');
+      cc.push(...mailAddressList(configured).split(','));
+    }
+    const userIds = [...new Set(forward.userIds ?? [])];
+    if (userIds.length > 5) throw new MailError('forward_unavailable');
+    if (userIds.length) {
+      const uuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+      if (!userIds.every((id) => uuid.test(id)))
+        throw new MailError('invalid_link');
+      const { rows } = await tx.execute<{ email: string }>(
+        sql`SELECT email FROM users
+             WHERE tenant_id = ${tenantId}
+               AND id IN (${sql.join(
+                 userIds.map((id) => sql`${id}::uuid`),
+                 sql`, `,
+               )})`,
+      );
+      // Every requested user must exist in this tenant - a half-fulfilled
+      // forwarding would be a silent drop.
+      if (rows.length !== userIds.length) throw new MailError('invalid_link');
+      for (const row of rows) cc.push(...mailAddressList(row.email).split(','));
+    }
+    return [...new Set(cc.filter(Boolean))].join(',');
+  });
+}
+
 function idempotencyKeyOf(value: unknown): string {
   if (typeof value !== 'string') throw new MailError('idempotency_conflict');
   const trimmed = value.trim();
@@ -1219,14 +1276,21 @@ export function mailRepository(
           );
           if (!linked.rows[0]) throw new MailError('invalid_link');
         }
+        // MAIL-FWD-01: the forwarding switches resolve their addresses here;
+        // an unconfigured switch refuses instead of dropping a copy.
+        const cc = await resolveForwardCc(tx, tenantId, {
+          accounting: input.forwardAccounting,
+          userIds: input.forwardUserIds,
+        });
         const account = await usableAccount(tx, input.accountId),
           messageId = randomUUID();
         await reviewed(tx).execute(sql`
           INSERT INTO mail_messages AS m
             (tenant_id,id,account_id,direction,folder,subject,body_text,
-             body_html,to_addresses,contact_id,event_id,send_state)
+             body_html,to_addresses,cc_addresses,contact_id,event_id,
+             send_state)
           VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
-                  ${subject},${text},${html || null},${to},
+                  ${subject},${text},${html || null},${to},${cc || ''},
                   ${input.contactId ?? null}::uuid,${input.eventId ?? null}::uuid,
                   'scheduled')`);
         await appendAudit(
@@ -1431,12 +1495,19 @@ export function mailRepository(
               bodyText: text || null,
             },
           );
+        // MAIL-FWD-01: the forwarding switches resolve their addresses here;
+        // an unconfigured switch refuses instead of dropping a copy.
+        const cc = await resolveForwardCc(tx, tenantId, {
+          accounting: input.forwardAccounting,
+          userIds: input.forwardUserIds,
+        });
         const inserted = (await reviewed(tx).execute(sql`
           INSERT INTO mail_messages AS m
             (tenant_id,id,account_id,direction,folder,subject,body_text,
-             body_html,to_addresses,contact_id,event_id)
+             body_html,to_addresses,cc_addresses,contact_id,event_id)
           VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
                   ${content.subject},${content.bodyText},${content.bodyHtml},${to},
+                  ${cc || ''},
                   ${document.contact_id}::uuid,${document.event_id}::uuid)
           RETURNING ${messageColumns}`)) as { rows: MessageQueryRow[] };
         // ATTACH-01a: the document itself travels only on request - removing
@@ -2260,6 +2331,7 @@ export function registerMailRoutes(
           'not_retryable',
           'not_final',
           'attachment_unavailable',
+          'forward_unavailable',
           'idempotency_conflict',
           'already_exists',
         ].includes(error.reason)
@@ -2440,6 +2512,12 @@ export function registerMailRoutes(
             contactId: nullableUuidParam,
             eventId: nullableUuidParam,
             accountId: nullableUuidParam,
+            forwardAccounting: { type: 'boolean' },
+            forwardUserIds: {
+              type: 'array',
+              maxItems: 5,
+              items: { type: 'string', format: 'uuid' },
+            },
           },
         },
         response: { 200: outboxSchema, 201: outboxSchema },
@@ -2481,6 +2559,12 @@ export function registerMailRoutes(
               items: { type: 'string', format: 'uuid' },
             },
             accountId: { type: 'string', format: 'uuid' },
+            forwardAccounting: { type: 'boolean' },
+            forwardUserIds: {
+              type: 'array',
+              maxItems: 5,
+              items: { type: 'string', format: 'uuid' },
+            },
           },
         },
         response: { 200: documentSendSchema, 201: documentSendSchema },

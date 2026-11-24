@@ -15,6 +15,7 @@ import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { decryptTelegramToken } from '../../packages/core/src/telegram.js';
+import { registerMailForwardSettingsRoutes } from '../../packages/core/src/mail-forward.js';
 import {
   claimMailOutboxJob,
   mailRepository,
@@ -274,6 +275,7 @@ beforeAll(async () => {
 
   app = Fastify();
   await registerAuth(app, pool, config);
+  registerMailForwardSettingsRoutes(app, pool, tenantId);
   registerMailRoutes(app, pool, tenantId, {
     store: mailStore,
     origin: config.origin,
@@ -2500,4 +2502,135 @@ test('the compose order covers its empty and linked corners', async () => {
   expect(message.body_text).toBe('');
   expect(message.contact_id).toBe(contactId);
   expect(message.event_id).toBe(eventId);
+});
+
+// MAIL-FWD-01: the forwarding switches resolve their addresses on the
+// server - from the stored accounting setting and this tenant's users.
+test('forwards outgoing mail to accounting and app users under the switches', async () => {
+  const repo = mailRepository(pool, tenantId, encryptionKey),
+    userId = randomUUID();
+  await pool.query('INSERT INTO users(tenant_id,id,email) VALUES($1,$2,$3)', [
+    tenantId,
+    userId,
+    'synthetic.user@example.invalid',
+  ]);
+  // The switch on, nothing configured: refused, never a dropped copy.
+  await expect(
+    repo.scheduleCompose(actorId, {
+      requestId: 'fictional-compose-forward-1',
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiver Weiterleitungs-Betreff',
+      forwardAccounting: true,
+    }),
+  ).rejects.toMatchObject({ reason: 'forward_unavailable' });
+  await pool.query(
+    'INSERT INTO mail_forward_settings(tenant_id,accounting_recipient)' +
+      ' VALUES($1,$2)',
+    [tenantId, 'synthetic.accounting@example.invalid'],
+  );
+  const { job } = await repo.scheduleCompose(actorId, {
+    requestId: 'fictional-compose-forward-2',
+    to: 'synthetic.contact@example.invalid',
+    subject: 'Fiktiver Weiterleitungs-Betreff',
+    forwardAccounting: true,
+    forwardUserIds: [userId],
+  });
+  const cc = (
+    await pool.query<{ cc_addresses: string }>(
+      'SELECT cc_addresses FROM mail_messages WHERE tenant_id=$1 AND id=$2',
+      [tenantId, job.messageId],
+    )
+  ).rows[0]!;
+  expect(cc.cc_addresses).toBe(
+    'synthetic.accounting@example.invalid,synthetic.user@example.invalid',
+  );
+  // A user id this tenant does not own refuses the whole order.
+  await expect(
+    repo.scheduleCompose(actorId, {
+      requestId: 'fictional-compose-forward-3',
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiver Weiterleitungs-Betreff',
+      forwardUserIds: [randomUUID()],
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_link' });
+});
+
+// MAIL-FWD-01: the accounting setting stores exactly one validated
+// address; an empty value only disables the switch.
+test('the accounting setting stores one validated address and clears it', async () => {
+  const anonymous = await app.inject({
+    method: 'GET',
+    url: '/api/v1/settings/mail-accounting',
+  });
+  expect(anonymous.statusCode).toBe(401);
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: '/api/v1/settings/mail-accounting',
+        payload: {
+          accountingRecipient: 'synthetic.accounting@example.invalid',
+        },
+      })
+    ).statusCode,
+  ).toBe(401);
+  const { headers, csrf } = await signedIn();
+  const put = (accountingRecipient: string) =>
+    app.inject({
+      method: 'PUT',
+      url: '/api/v1/settings/mail-accounting',
+      headers: { ...headers, ...csrf },
+      payload: { accountingRecipient },
+    });
+  expect((await put('synthetic.accounting@example.invalid')).statusCode).toBe(
+    204,
+  );
+  const saved = await app.inject({
+    url: '/api/v1/settings/mail-accounting',
+    headers,
+  });
+  expect(saved.json()).toEqual({
+    accountingRecipient: 'synthetic.accounting@example.invalid',
+  });
+  // The same address validation as every other recipient.
+  const refused = await put('not-an-address');
+  expect(refused.statusCode).toBe(400);
+  expect(refused.json().error).toBe('invalid_recipients');
+  // Clearing keeps the row and disables the switch honestly.
+  expect((await put('')).statusCode).toBe(204);
+  const cleared = await app.inject({
+    url: '/api/v1/settings/mail-accounting',
+    headers,
+  });
+  expect(cleared.json()).toEqual({ accountingRecipient: '' });
+});
+
+// MAIL-FWD-01: the quiet corners of the forwarding resolution.
+test('refuses a forwarding that cannot be fulfilled instead of dropping a copy', async () => {
+  const repo = mailRepository(pool, tenantId, encryptionKey);
+  // More than five users is not a forwarding any more.
+  await expect(
+    repo.scheduleCompose(actorId, {
+      requestId: 'fictional-compose-forward-many',
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiver Weiterleitungs-Betreff',
+      forwardUserIds: [
+        randomUUID(),
+        randomUUID(),
+        randomUUID(),
+        randomUUID(),
+        randomUUID(),
+        randomUUID(),
+      ],
+    }),
+  ).rejects.toMatchObject({ reason: 'forward_unavailable' });
+  // A malformed id is a broken link, not a missing user.
+  await expect(
+    repo.scheduleCompose(actorId, {
+      requestId: 'fictional-compose-forward-bad-id',
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiver Weiterleitungs-Betreff',
+      forwardUserIds: ['not-a-uuid'],
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_link' });
 });
