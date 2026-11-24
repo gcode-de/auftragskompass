@@ -6657,10 +6657,12 @@ test('the file input uploads chosen files like a drop', async () => {
 // durable order, and every refusal names its cause like the document mail.
 test('the event composes a free mail with a prefilled recipient', async () => {
   const { calls } = setup({ documents: [finalized] });
+  const onMailScheduled = vi.fn();
   render(
     <EventDocuments
       {...props}
       contactEmail="synthetic.contact@example.invalid"
+      onMailScheduled={onMailScheduled}
     />,
   );
   fireEvent.click(
@@ -6685,6 +6687,8 @@ test('the event composes a free mail with a prefilled recipient', async () => {
   await screen.findByText(
     'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
   );
+  // MAIL-STATUS-01: the mail list is told that a new order exists.
+  expect(onMailScheduled).toHaveBeenCalledTimes(1);
   const composeCalls = calls.filter(
     (call) => call.url === '/api/v1/mail/compose',
   );

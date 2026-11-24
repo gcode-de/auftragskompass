@@ -499,6 +499,52 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     ).rows[0]!;
     expect(job.state).toBe('pending');
 
+    // MAIL-STATUS-01: the event names the real state of the order, and a
+    // failure the worker records later shows its cause and a way out.
+    const mails = page.getByRole('region', { name: 'Mails' });
+    const mailRow = mails.getByRole('listitem').filter({
+      hasText: 'Erinnerung für Fictional Mail Recipient',
+    });
+    await expect(mailRow.getByText('In der Warteschlange')).toBeVisible();
+    await pool.query(
+      "UPDATE mail_outbox SET state='failed', last_error_code='attachment_unavailable' WHERE tenant_id=$1",
+      [tenantId],
+    );
+    await pool.query(
+      "UPDATE mail_messages SET send_state='failed' WHERE tenant_id=$1",
+      [tenantId],
+    );
+    await mails.getByRole('button', { name: 'Mails aktualisieren' }).click();
+    await expect(mailRow.getByText('Nicht gesendet')).toBeVisible();
+    await expect(
+      mailRow.getByText('Ein Anhang war beim Versand nicht lesbar', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(
+      mailRow.getByRole('button', { name: 'Erneut senden' }),
+    ).toBeVisible();
+    expect(
+      (await new AxeBuilder({ page }).include('.event-mails').analyze())
+        .violations,
+    ).toEqual([]);
+    await mails.screenshot({
+      path: 'tests/test-results/event-mails-failed-1280-light.png',
+    });
+    // The page-wide notice reads again when the operator returns to the app.
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('blur'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect(
+      page.getByRole('region', { name: '1 Mail wurde nicht zugestellt' }),
+    ).toBeVisible();
+    await page
+      .getByRole('region', { name: '1 Mail wurde nicht zugestellt' })
+      .screenshot({
+        path: 'tests/test-results/undelivered-mails-1280-light.png',
+      });
+
     // Visual acceptance: both themes and both sizes, dialog always usable.
     const themeToggle = (dark: boolean) =>
       page

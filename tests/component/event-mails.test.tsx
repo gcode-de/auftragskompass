@@ -53,7 +53,7 @@ test('a scheduled mail is followed until the worker settles it', async () => {
       }),
     ],
   ];
-  const fetcher = vi.fn(async (_url: string) =>
+  const fetcher = vi.fn<(url: string) => Promise<Response>>(async () =>
     Response.json(answers.shift() ?? []),
   );
   vi.stubGlobal('fetch', fetcher);
@@ -93,8 +93,7 @@ test('a failure turning up while the list is open is announced with its cause', 
     await vi.advanceTimersByTimeAsync(3000);
   });
   expect((await screen.findByRole('alert')).textContent).toBe(
-    'Mail „Fiktives Angebot“: Nicht gesendet. ' +
-      mailDeliveryFailureText('attachment_unavailable'),
+    'Mail „Fiktives Angebot“: Nicht gesendet. Die Ursache steht in der Liste.',
   );
 });
 

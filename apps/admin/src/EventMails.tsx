@@ -110,7 +110,7 @@ export function EventMails({
           setMessage(`Mail „${name}“ wurde gesendet.`);
         if (row.sendState === 'failed' || row.sendState === 'uncertain')
           setAlert(
-            `Mail „${name}“: ${stateLabels[row.sendState]}. ${mailDeliveryFailureText(row.sendErrorCode)}`,
+            `Mail „${name}“: ${stateLabels[row.sendState]}. Die Ursache steht in der Liste.`,
           );
       }
       previous.current = new Map(next.map((row) => [row.id, row.sendState]));
