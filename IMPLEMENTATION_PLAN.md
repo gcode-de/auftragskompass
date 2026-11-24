@@ -191,14 +191,41 @@ Branches nach dem Merge löschen.
   Mehrfach, Typ, Größe, Netzfehler, Datei-Wähler – von DeepSeek V4.1 Flash
   nach Vertrag geschrieben, von MiMo reviewt und selbst gelaufen), E2E
   mail-editor 1/1 inkl. echtem Datei-Drop und Listenzeile.
-- [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup**: allgemeine
-  und Event-Dokumente mit allen Funktionen und möglichst ähnlicher UI;
-  Grundlagen: `Bookitup_Funktionsinventar_vollstaendig.md`,
-  `docs/bookitup-ux-reference.md`, `docs/bookitup-parity/tasks-documents-mail.md`,
-  Screenshots in `~/Downloads/bookitup` (Rechnungserstellung/Aufgaben/
-  Ressourcen) und `Dokumente-2026-alle-arten-status.csv` (nur Struktur
-  übernehmen, keine echten Kundendaten). Vor Umsetzung in kleine
-  nummerierte Unter-Slices teilen.
+- [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup** *(23.11.2026
+  konkretisiert)*. **Belege:** die CSV `Dokumente-2026-alle-arten-status.csv`
+  ist eine reine Kopfzeile und belegt die Spaltenstruktur der globalen Liste
+  (Dokumentnummer, Dokumenttyp, Dokumentdatum, Kundenname, Dokumentensumme,
+  Buchungsstatus, erste/letzte Veranstaltung, Veranstaltungsart/-name,
+  Akzeptiert, Bezahlt – keine Kundendaten übernommen); die UX-Referenz §7
+  belegt Filter (Dokumentart, Datumsbereich, Status) und Tabelle
+  (Status/Event/Portal/aktionslos) mit Pagination; die Screenshots belegen
+  „Dokument bereitstellen" (an Buchhaltung senden / Online freigeben /
+  E-Mail an Kunde), den Rechnungsentwurf (Kopf-/Fußtext, Positionen,
+  Produktpicker) und „Ressource verknüpfen"; dazu DO-01…DO-13 und
+  RG-01…RG-09 des Funktionsinventars. Der Iststand (FilesPanel) hat
+  bereits Art/Status/Zahlung/Fälligkeit/Suche/PDF/Seitenzahl und die
+  Spalten Status/Dokument/Datum/Betrag/Fällig/Event/Zahlung/Aktionen.
+  **Unter-Slices:**
+  **DOCS-01 — Globale Dokumente wie in der CSV:** Spalten **Kundenname**
+  und **Akzeptiert** ergänzen (beide CSV-belegt), **Datumsbereich**-Filter
+  (Dokumentdatum von/bis – der von Bookitup benannte fehlende Filter) und
+  die Event-Spalte mit Art und Name; bestehende Filter, Suche,
+  Seitenzahl und PDF-Aktion bleiben unverändert. **Tests:** Integration
+  (API-Filter Datumsbereich), Component (Spalten/Filter), E2E-Ausschnitt.
+  Commit `feat: match the global documents table to bookitup`.
+  **DOCS-02 — „Dokument bereitstellen" am Event:** Aktionsbereich pro
+  Dokument mit den belegten Funktionen der Screenshots: „E-Mail an Kunde"
+  (vorhandener Mail-Dialog), „An Buchhaltung senden" (Mail-Dialog mit
+  vorbelegter Buchhaltungsadresse aus einer kleinen Einstellung) und
+  „Online freigeben" ehrlich als **nicht verfügbar** benannt (Kundenportal
+  KP-* = M5 bewusst zurückgestellt; keine unbelegte Gleichheit).
+  **Tests:** Component/E2E. Commit `feat: offer document delivery actions`.
+  **DOCS-03 — Positionen mit Ressourcen-Verknüpfung (PR-06):** die
+  Screenshots belegen „Ressource verknüpfen" an Positionen; Angebots-/
+  Rechnungspositionen können einer Ressource zugeordnet werden (Verknüpfung
+  im Editor sichtbar/änderbar, Umfang am vorhandenen Ressourcenmodell
+  klein halten). **Tests:** Component/Integration. Commit
+  `feat: link document positions to resources`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
