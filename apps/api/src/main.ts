@@ -35,6 +35,7 @@ import {
   registerMailRoutes,
   registerMailTemplateRoutes,
   registerInquiryEmailSettingsRoutes,
+  registerMailForwardSettingsRoutes,
 } from '@auftragskompass/core';
 try {
   const config = loadRuntimeConfig(process.env, (path) =>
@@ -127,6 +128,9 @@ try {
     // MAIL-NOTIFY-01: target addresses for the additional e-mail notification
     // of new website inquiries. It only stores addresses and a switch.
     registerInquiryEmailSettingsRoutes(app, pool, auth.tenantId);
+    // MAIL-FWD-01: the accounting address an outgoing mail can additionally
+    // be sent to. It only stores an address; the switches live per mail.
+    registerMailForwardSettingsRoutes(app, pool, auth.tenantId);
     registerAccessRoutes(app, pool, auth.tenantId, auth.mode ?? 'google');
     registerAuditRoutes(app, pool, auth.tenantId);
     registerMasterDataRoutes(app, pool, auth.tenantId);

@@ -533,6 +533,14 @@ export function EventDocuments({
     [composeSubject, setComposeSubject] = useState(''),
     [composeBody, setComposeBody] = useState(''),
     [composeRequestId, setComposeRequestId] = useState(''),
+    // MAIL-FWD-01: forwarding switches per mail; the addresses are resolved
+    // on the server from the setting and the tenant's own users.
+    [forwardAccounting, setForwardAccounting] = useState(false),
+    [forwardUserIds, setForwardUserIds] = useState<string[]>([]),
+    [forwardUsers, setForwardUsers] = useState<
+      Array<{ id: string; email: string }>
+    >([]),
+    [accountingRecipient, setAccountingRecipient] = useState(''),
     [mailRequestId, setMailRequestId] = useState(''),
     [mailUncertain, setMailUncertain] = useState(false),
     [mailPreview, setMailPreview] = useState<MailPreview | null>(null),
@@ -731,6 +739,44 @@ export function EventDocuments({
     composeTrigger.current = null;
     composeWasOpen.current = false;
   }, [composeOpen]);
+  // MAIL-FWD-01: the forwarding switches need the app users and the stored
+  // accounting address to name their targets honestly. A failure leaves the
+  // switches usable - the server refuses an unfilled forwarding.
+  useEffect(() => {
+    if (!mailSendId && !composeOpen) return;
+    let active = true;
+    void fetch('/api/v1/access')
+      .then((response) => (response.ok ? response.json() : []))
+      .then((rows) => {
+        if (!active) return;
+        const users = (Array.isArray(rows) ? rows : []) as Array<{
+          id: string;
+          email: string;
+          active: boolean;
+        }>;
+        setForwardUsers(
+          users
+            .filter((user) => user.active)
+            .map((user) => ({ id: user.id, email: user.email })),
+        );
+      })
+      .catch(() => undefined);
+    void fetch('/api/v1/settings/mail-accounting')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((value) => {
+        if (!active || !value) return;
+        setAccountingRecipient(
+          (
+            (value as { accountingRecipient?: string }).accountingRecipient ??
+            ''
+          ).trim(),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [mailSendId, composeOpen]);
   useEffect(() => {
     if (!mailSendId) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -2078,6 +2124,48 @@ export function EventDocuments({
   // freely correctable; the server validates the final address again.
   // MAIL-TPL-01c: the default subject is the automatic document subject; an
   // empty subject at send time keeps exactly this behaviour on the server.
+  // MAIL-FWD-01: the forwarding switches of both mail dialogs - one shared
+  // rendering so the two paths can never grow apart.
+  function forwardingControls() {
+    return (
+      <fieldset className="mail-forwarding">
+        <legend>Weiterleitung</legend>
+        <label>
+          <input
+            type="checkbox"
+            checked={forwardAccounting}
+            onChange={(event) =>
+              setForwardAccounting(event.currentTarget.checked)
+            }
+          />
+          Kopie an Buchhaltung
+          {accountingRecipient ? ` – ${accountingRecipient}` : ''}
+        </label>
+        {forwardUsers.length > 0 && (
+          <div role="group" aria-label="Kopie an App-User">
+            {forwardUsers.map((user) => (
+              <label key={user.id}>
+                <input
+                  type="checkbox"
+                  checked={forwardUserIds.includes(user.id)}
+                  onChange={(event) => {
+                    // The updater runs later: capture the flag first.
+                    const { checked } = event.currentTarget;
+                    setForwardUserIds((current) =>
+                      checked
+                        ? [...current, user.id]
+                        : current.filter((id) => id !== user.id),
+                    );
+                  }}
+                />
+                Kopie an {user.email}
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
+    );
+  }
   function defaultMailSubject(entry: DocumentRow) {
     return 'Dokument ' + (entry.number ?? '');
   }
@@ -2087,6 +2175,8 @@ export function EventDocuments({
     setMailTo(contactEmail?.trim() ?? '');
     setMailBody('');
     setMailBodyReplace((count) => count + 1);
+    setForwardAccounting(false);
+    setForwardUserIds([]);
     setMailSubject(defaultMailSubject(entry));
     setMailTemplateId('');
     setTemplateNotice('');
@@ -2151,6 +2241,8 @@ export function EventDocuments({
     setComposeTo(contactEmail?.trim() ?? '');
     setComposeSubject('');
     setComposeBody('');
+    setForwardAccounting(false);
+    setForwardUserIds([]);
     setComposeRequestId(crypto.randomUUID());
     setComposeOpen(true);
   }
@@ -2172,6 +2264,8 @@ export function EventDocuments({
           ...(composeBody.trim() ? { bodyHtml: composeBody } : {}),
           ...(contactId ? { contactId } : {}),
           ...(eventId ? { eventId } : {}),
+          forwardAccounting,
+          ...(forwardUserIds.length ? { forwardUserIds } : {}),
         }),
       });
       if (!reply.ok) {
@@ -2298,6 +2392,8 @@ export function EventDocuments({
         return 'Nur ein finalisiertes Dokument kann per E-Mail gesendet werden.';
       case 'attachment_unavailable':
         return 'Ein Anhang ist derzeit nicht verfügbar. Bitte die Anhänge prüfen; es wurde kein Auftrag angelegt.';
+      case 'forward_unavailable':
+        return 'Die Weiterleitung ist nicht eingerichtet. Bitte in den Einstellungen eine Buchhaltungs-Mail hinterlegen oder die Auswahl prüfen; es wurde nichts gesendet.';
       case 'invalid_recipients':
         return 'Bitte eine gültige Empfängeradresse eingeben.';
       case 'invalid_account':
@@ -2420,6 +2516,8 @@ export function EventDocuments({
           ...(mailFiles.length
             ? { fileIds: mailFiles.map((file) => file.libraryFileId) }
             : {}),
+          forwardAccounting,
+          ...(forwardUserIds.length ? { forwardUserIds } : {}),
         }),
       });
       if (!reply.ok) {
@@ -3862,6 +3960,7 @@ export function EventDocuments({
                       Auftrag.
                     </p>
                   )}
+                  {forwardingControls()}
                   <div className="document-actions">
                     <button
                       className="primary-action"
@@ -4092,6 +4191,7 @@ export function EventDocuments({
                       withPlaceholderPicker={false}
                     />
                   </div>
+                  {forwardingControls()}
                   <div className="document-actions">
                     <button
                       className="primary-action"

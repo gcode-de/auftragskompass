@@ -249,9 +249,20 @@ Branches nach dem Merge löschen.
   Ursprüngliche Fassung: zusätzlich zum
   Dokumentversand kann aus dem Event heraus eine neue Mail begonnen
   werden (derselbe Editor, dieselbe Vorschau, ohne Dokument).
-- [ ] **MAIL-FWD-01 — ausgehende Mails weiterleiten:** Optionen in den
+- [x] **MAIL-FWD-01 — ausgehende Mails weiterleiten (23.11.2026):**
+  Optionen in den
   Einstellungen für die Buchhaltungs-Mail und Schalter im Editor, um
   ausgehende Mails an App-User und/oder die Buchhaltung weiterzuleiten.
+  Umgesetzt: Einstellung `mail_forward_settings` (0076, nur die Adresse,
+  validiert wie jede Empfängeradresse); in beiden Mail-Dialogen ein
+  „Weiterleitung"-Bereich – „Kopie an Buchhaltung" (nennt die hinterlegte
+  Adresse) und „Kopie an <App-User>" je aktivem App-User. Die Schalter
+  reisen als `forwardAccounting`/`forwardUserIds`; jede Adresse wird
+  serverseitig aus Einstellung und eigenen Usern dieses Mandanten
+  gelöst (nie vom Client), eine unerfüllbare Weiterleitung verweigert
+  mit `forward_unavailable` statt eine Kopie still zu lassen. Die
+  Adressen landen als `cc_addresses`; Outbox-/Idempotenzverträge
+  unverändert. Integration 36/36, Component 161/161.
 
 - [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup** *(23.11.2026
   konkretisiert)*. **Belege:** die CSV `Dokumente-2026-alle-arten-status.csv`
