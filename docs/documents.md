@@ -233,9 +233,14 @@ sha256-Hash der PDF-Bytes mit Endung `.pdf`; derselbe Inhalt überschreibt sich
 also nie mit einem anderen. `snapshot_hash` ist der Hash des erzeugten HTML,
 `pdf_hash` benennt das Artefakt. Dateien werden mit Rechten `0600` geschrieben.
 
-Im Testbetrieb hängt `ak-test-documents.volume` am API-Container; im
-Compose-Betrieb das Volume `documents`. Das Image legt `/data` bereits dem
-Containerbenutzer gehörend an, damit ein frisches Volume nicht root gehört.
+Im Testbetrieb hängt `ak-test-documents.volume` am API- **und** am
+Worker-Container, im Compose-Betrieb das Volume `documents` an `api` und
+`worker`; beide setzen `AK_DOCUMENT_STORAGE=/data`. Die API schreibt die PDFs,
+der Worker liest sie als Mail-Anhang. Fehlt das Volume am Worker, endet jeder
+Versand mit Anhang in `mail_outbox` als `failed` mit
+`attachment_unavailable`, Mails ohne Anhang gehen weiter raus. Das Image legt
+`/data` bereits dem Containerbenutzer gehörend an, damit ein frisches Volume
+nicht root gehört.
 
 ## API
 

@@ -9,6 +9,7 @@ ContainerName=ak-test-worker
 Network=ak-test.network
 NetworkAlias=worker
 User=1000:1000
+Volume=ak-test-documents.volume:/data
 Secret=ak-test-db,type=mount,target=db_password,uid=1000,gid=1000,mode=0400
 Secret=ak-test-gateway-sync,type=mount,target=gateway_sync_keys,uid=1000,gid=1000,mode=0400
 Environment=AK_DB_HOST=database
@@ -17,6 +18,7 @@ Environment=AK_DB_USER=ak
 Environment=AK_DB_PASSWORD_FILE=/run/secrets/db_password
 Environment=AK_HOST=0.0.0.0
 Environment=AK_PORT=3001
+Environment=AK_DOCUMENT_STORAGE=/data
 Environment=AK_TIMEZONE=Europe/Berlin
 Environment=AK_BUILD_REVISION=REPLACE_REVISION
 Environment=AK_GATEWAY_ORIGIN=https://auftragskompass.samuelgesang.de
