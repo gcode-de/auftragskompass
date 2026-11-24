@@ -138,6 +138,28 @@ umgesetzt; Quill bleibt die dokumentierte Ausweichwahl.
   Allerweltsmeldung „Der Auftrag wurde nicht angelegt“ ist damit
   abgeschafft; die Ursache eines Fehlers ist ohne Log-Lesung benennbar.
 
+## Versandstatus (MAIL-STATUS-01)
+
+Ein Dialog bestätigt nur, dass der Auftrag in `mail_outbox` liegt; versendet
+wird später im Worker. Deshalb meldet er „Mail in der Warteschlange“ und nie
+„gesendet“. Den Ausgang zeigt die Eventakte unter Dateien im Bereich
+„Mails“: jede ausgehende Mail des Events mit Status in Worten (In der
+Warteschlange, Wird gesendet, Gesendet, Nicht gesendet, Zustellung unklar).
+Solange eine Mail unterwegs ist, liest die Liste alle 3 Sekunden neu,
+höchstens etwa zwei Minuten lang, und meldet das Ergebnis einmal.
+
+`GET /api/v1/mail/messages` und `GET /api/v1/mail/messages/:id` antworten
+dafür zusätzlich `sendErrorCode`, den Fehlercode des jüngsten
+Versandauftrags (`null` ohne Fehler). Jeder Worker-Code hat eine eigene
+Meldung, ein unbekannter wird wörtlich genannt. „Erneut senden“ gibt es nur
+bei `failed`: es ruft `POST /api/v1/mail/messages/:id/send` mit einem neuen
+Idempotenzschlüssel. Bei `uncertain` ist offen, ob die Mail ankam; ein
+Ein-Klick-Neuversand könnte sie verdoppeln und fehlt deshalb bewusst.
+
+Über allen Bereichen nennt ein Hinweis jede nicht zugestellte Mail
+(`failed`/`uncertain`) mit Link zu ihrem Event. Er liest beim Laden und bei
+jeder Rückkehr in die Anwendung neu.
+
 ## Grenzen (ehrlich)
 
 - Das Feld „Vorname“ ist (Stand dieses Slices) bewusst **nicht** Bestandteil des

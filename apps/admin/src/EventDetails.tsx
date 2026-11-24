@@ -1,6 +1,7 @@
 import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
 import { EventDocuments } from './EventDocuments.js';
+import { EventMails } from './EventMails.js';
 import { EventLibraryFiles } from './EventLibraryFiles.js';
 import {
   EventInlineEditor,
@@ -167,6 +168,8 @@ export function EventDetails({
 }) {
   const [area, setArea] = useState<Area>('details');
   const [editingDocument, setEditingDocument] = useState(false);
+  // MAIL-STATUS-01: raised by every send order so the mail list reloads.
+  const [mailRevision, setMailRevision] = useState(0);
   const wideRecord = useWideRecord();
   const heading = useRef<HTMLHeadingElement>(null),
     detailsPanel = useRef<HTMLDivElement>(null),
@@ -1335,8 +1338,16 @@ export function EventDetails({
               onEditingChange={setEditingDocument}
               recordRemoving={removing}
               onEditorProtectedChange={documentEditorProtectionChanged}
+              onMailScheduled={() => setMailRevision((value) => value + 1)}
             />
             <div hidden={editingDocument}>
+              <EventMails
+                key={'mails:' + data.event.id}
+                eventId={data.event.id}
+                csrfToken={csrfToken}
+                active={area === 'files'}
+                revision={mailRevision}
+              />
               <EventLibraryFiles
                 key={'library:' + data.event.id}
                 eventId={data.event.id}

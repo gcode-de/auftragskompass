@@ -211,6 +211,8 @@ export type MailMessageSummary = {
   threadKey: string | null;
   createdAt: string;
   sentAt: string | null;
+  // MAIL-STATUS-01: the error code of the latest send order, null otherwise.
+  sendErrorCode: string | null;
 };
 export type MailMessageDetail = MailMessageSummary & {
   bodyText: string;
@@ -601,6 +603,7 @@ type MessageQueryRow = {
   event_id: string | null;
   created_at: string;
   sent_at: string | null;
+  send_error_code?: string | null;
 };
 type OutboxQueryRow = {
   id: string;
@@ -629,6 +632,7 @@ function toSummary(row: MessageQueryRow): MailMessageSummary {
     threadKey: row.thread_key,
     createdAt: new Date(row.created_at).toISOString(),
     sentAt: row.sent_at ? new Date(row.sent_at).toISOString() : null,
+    sendErrorCode: row.send_error_code ?? null,
   };
 }
 function toDetail(
@@ -637,6 +641,7 @@ function toDetail(
 ): MailMessageDetail {
   return {
     ...toSummary(row),
+    sendErrorCode: outbox?.lastErrorCode ?? null,
     bodyText: row.body_text,
     bodyHtml: row.body_html,
     cc: row.cc_addresses,
@@ -1162,7 +1167,11 @@ export function mailRepository(
       if (filter.accountId !== undefined)
         conditions.push(sql`m.account_id=${filter.accountId}::uuid`);
       const result = (await reviewed(db).execute(sql`
-        SELECT ${messageColumns} FROM mail_messages m
+        SELECT ${messageColumns},
+               (SELECT o.last_error_code FROM mail_outbox o
+                 WHERE o.tenant_id=m.tenant_id AND o.message_id=m.id
+                 ORDER BY o.created_at DESC, o.id DESC LIMIT 1) AS send_error_code
+          FROM mail_messages m
          WHERE ${sql.join(conditions, sql` AND `)}
          ORDER BY m.created_at DESC, m.id DESC LIMIT 100`)) as {
         rows: MessageQueryRow[];
@@ -2140,6 +2149,7 @@ const summarySchema = {
     'threadKey',
     'createdAt',
     'sentAt',
+    'sendErrorCode',
   ],
   properties: {
     id: { type: 'string', format: 'uuid' },
@@ -2156,6 +2166,7 @@ const summarySchema = {
     threadKey: nullableText,
     createdAt: { type: 'string', format: 'date-time' },
     sentAt: nullableText,
+    sendErrorCode: nullableText,
   },
 } as const;
 const outboxSchema = {

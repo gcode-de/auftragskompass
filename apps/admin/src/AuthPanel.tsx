@@ -24,6 +24,7 @@ import { DocumentNumbersPanel } from './DocumentNumbersPanel.js';
 import { DocumentLayoutPanel } from './DocumentLayoutPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
 import { WebsiteInbox } from './WebsiteInbox.js';
+import { UndeliveredMailNotice } from './EventMails.js';
 import { MasterDataSettings } from './MasterDataPanel.js';
 import { PasswordPanel } from './PasswordPanel.js';
 import { AccessPanel } from './AccessPanel.js';
@@ -163,6 +164,7 @@ export function AuthPanel() {
               </div>
             }
           />
+          <UndeliveredMailNotice />
           <div
             className="workspace-page"
             hidden={route !== 'events' && route !== 'search'}

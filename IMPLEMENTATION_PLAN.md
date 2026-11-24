@@ -300,6 +300,45 @@ Branches nach dem Merge löschen.
   klein halten). **Tests:** Component/Integration. Commit
   `feat: link document positions to resources`.
 
+## Nutzauftrag 24.11.2026 (Versandstatus, Event-Mail, Signaturen)
+
+- [x] **MAIL-STATUS-01 — echter Versandstatus statt „vorgemerkt“
+  (24.11.2026):** Anlass: Dokument-Mails endeten im Worker als `failed`
+  (`attachment_unavailable`, fehlendes Volume), der Dialog meldete aber
+  Erfolg. Die Mail-Liste antwortet zusätzlich `sendErrorCode` (Fehlercode
+  des jüngsten Outbox-Auftrags, auch im Detail); keine Migration, keine neue
+  Route. Die Eventakte zeigt unter Dateien den Bereich „Mails“ (ausgehende
+  Mails des Events mit Status in Worten, Ursache je Worker-Code, „Erneut
+  senden“ bei `failed` über die vorhandene Send-Route mit neuem Schlüssel);
+  solange eine Mail in der Warteschlange ist, liest die Liste alle 3 s neu
+  (höchstens etwa 2 min, danach ehrlicher Hinweis) und meldet das Ergebnis
+  einmal als Status bzw. Alert. Die Dialoge melden nur noch „in der
+  Warteschlange“ und stoßen die Liste an. Jede Seite nennt nicht zugestellte
+  Mails (`failed`/`uncertain`) mit Link zum Event. `uncertain` bekommt
+  bewusst keinen Ein-Klick-Neuversand (Doppelversand). **Tests:**
+  Integration (Fehlercode in Liste/Detail nach Worker-Lauf), Component
+  (Polling bis Ergebnis, Alert bei Fehlschlag, Erneut senden mit CSRF und
+  Schlüssel, Ladefehler, leer/inaktiv, globaler Hinweis, eigene Texte je
+  Code). Commit `feat: show the real delivery state of event mails`.
+- [ ] **MAIL-EVENT-02 — freie Event-Mail mit Anhängen und Vorlagen:** der
+  Compose-Dialog erhält dieselben Anhangswege wie der Dokumentdialog
+  (Upload/Drop, Bibliothek, finale Event-Dokumente als eine entfernbare
+  Liste) und die Vorlagenübernahme samt Standardanhängen; `POST
+  /api/v1/mail/compose` akzeptiert `documentIds`/`fileIds` mit denselben
+  Prüfungen wie `scheduleDocumentSend`. **Tests:** Integration (Route über
+  HTTP, Ablehnung nicht verfügbarer Quellen, Replay), Component.
+  Commit `feat: attach files and templates to event mails`.
+- [ ] **MAIL-SIG-01 — Signaturen:** Einstellungen verwalten mehrere
+  Signaturen (Bezeichnung, Text im vorhandenen Mail-Editor, optional ein
+  Logo als PNG/JPEG über den Storage-Adapter mit Linkziel), genau eine ist
+  Standard. Das Logo steht als Baustein frei im Text und reist als
+  eingebettetes CID-Bild, nie als externer Verweis. Alle Mail-Dialoge
+  wählen die Standardsignatur vor, ein Auswahlfeld ersetzt sie durch eine
+  andere oder „Keine Signatur“. **Tests:** Migration/Integration (ein
+  Standard je Mandant, Logo-Bytes im Worker als Inline-Anhang),
+  Component (Einstellungen, Auswahl in den Dialogen). Commit
+  `feat: manage mail signatures`.
+
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
 - [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.

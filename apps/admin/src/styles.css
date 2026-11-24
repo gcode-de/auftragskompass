@@ -2439,6 +2439,42 @@ summary {
 .document-row strong {
   font-variant-numeric: tabular-nums;
 }
+/* MAIL-STATUS-01: every mail names its outcome in words; a failed one also
+carries the alert colour and its cause, never colour alone. */
+.event-mail-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.event-mail-state {
+  font-weight: 600;
+}
+.event-mail[data-state='failed'] .event-mail-state,
+.event-mail[data-state='uncertain'] .event-mail-state,
+.event-mail-error {
+  color: var(--alert-ink);
+}
+.event-mail-error {
+  max-width: 70ch;
+  margin: 0.5rem 0;
+}
+.workspace > .undelivered-mails {
+  box-shadow: none;
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--alert-ink);
+  border-radius: 0.65rem;
+  background: var(--alert-surface);
+}
+.undelivered-mails h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--alert-ink);
+}
+.undelivered-mails ul {
+  margin: 0.5rem 0 0;
+}
 .document-row span {
   color: var(--muted);
   font-size: 0.875rem;

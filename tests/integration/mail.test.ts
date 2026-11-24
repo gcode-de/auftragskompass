@@ -2343,6 +2343,59 @@ test('the mail can travel without its document and with additional documents', a
   ).toBe('0');
 });
 
+// MAIL-STATUS-01: the event's mail list names the real outcome of the latest
+// send order, so a failure in the worker is visible in the dialog's place.
+test('the mail list and detail carry the error code of a failed send', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const { headers, csrf } = await signedIn();
+  const scheduled = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/compose',
+    headers: { ...headers, ...csrf },
+    payload: {
+      requestId: 'fictional-status-key',
+      to: 'synthetic.contact@example.invalid',
+      subject: 'Fiktiver Statusbetreff',
+      eventId,
+    },
+  });
+  expect(scheduled.statusCode).toBe(201);
+  const messageId = scheduled.json().messageId as string;
+  const listed = async () =>
+    (
+      await app.inject({
+        url: '/api/v1/mail/messages?eventId=' + eventId,
+        headers,
+      })
+    )
+      .json()
+      .find((row: { id: string }) => row.id === messageId);
+  expect(await listed()).toMatchObject({
+    sendState: 'scheduled',
+    sendErrorCode: null,
+  });
+  const { createSender } = stubSender({
+    failed: 'provider_recipient_rejected',
+  });
+  await runMailOutboxPass(pool, () => {}, {
+    createSender,
+    key: encryptionKey,
+    store: mailStore,
+  });
+  expect(await listed()).toMatchObject({
+    sendState: 'failed',
+    sendErrorCode: 'provider_recipient_rejected',
+  });
+  const detail = await app.inject({
+    url: '/api/v1/mail/messages/' + messageId,
+    headers,
+  });
+  expect(detail.json()).toMatchObject({
+    sendState: 'failed',
+    sendErrorCode: 'provider_recipient_rejected',
+  });
+});
+
 // The route schema must carry the ATTACH-01a fields: Fastify silently strips
 // unknown body properties, so a missing entry dropped every extra document.
 test('the document send route carries the attachment choice through', async () => {
