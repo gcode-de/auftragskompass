@@ -2564,6 +2564,12 @@ export function registerMailRoutes(
             subject: { type: 'string', maxLength: 998 },
             bodyText: { type: 'string', maxLength: 20000 },
             bodyHtml: { type: 'string', maxLength: 200000 },
+            attachDocument: { type: 'boolean' },
+            documentIds: {
+              type: 'array',
+              maxItems: 10,
+              items: { type: 'string', format: 'uuid' },
+            },
             fileIds: {
               type: 'array',
               maxItems: 20,
