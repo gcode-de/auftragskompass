@@ -233,6 +233,7 @@ export function MailBodyEditor({
   disabled = false,
   label = 'Begleittext',
   replaceKey = 0,
+  withPlaceholderPicker = true,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -246,6 +247,12 @@ export function MailBodyEditor({
    * of the old picker-insert watch item).
    */
   replaceKey?: number;
+  /**
+   * MAIL-EVENT-01: a free mail has no document to resolve placeholders
+   * against, so its editor offers no placeholder picker - the tokens would
+   * travel out literally. Defaults to the document behaviour.
+   */
+  withPlaceholderPicker?: boolean;
 }) {
   // What this component last reported or was given; only an outside change
   // replaces the document, so typing is never overwritten.
@@ -489,68 +496,72 @@ export function MailBodyEditor({
       <EditorContent editor={editor} />
       {/* Explicit user requirement, same interaction as the document template
       picker (BKP015.10): a described choice and a separate insert action. */}
-      <div className="mail-placeholder-picker">
-        <button
-          ref={pickerToggle}
-          type="button"
-          className="secondary-action"
-          aria-expanded={pickerOpen}
-          aria-controls={panelId}
-          onClick={() => {
-            if (!pickerOpen && editor)
-              savedBodyPos.current = editor.state.selection.from;
-            setPickerOpen(!pickerOpen);
-          }}
-        >
-          {pickerOpen ? 'Platzhalterauswahl schließen' : 'Platzhalter einfügen'}
-        </button>
-        {pickerOpen && (
-          <div
-            id={panelId}
-            role="group"
-            aria-label="Platzhalter für den Begleittext"
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape') return;
-              event.stopPropagation();
-              setPickerOpen(false);
-              pickerToggle.current?.focus();
+      {withPlaceholderPicker && (
+        <div className="mail-placeholder-picker">
+          <button
+            ref={pickerToggle}
+            type="button"
+            className="secondary-action"
+            aria-expanded={pickerOpen}
+            aria-controls={panelId}
+            onClick={() => {
+              if (!pickerOpen && editor)
+                savedBodyPos.current = editor.state.selection.from;
+              setPickerOpen(!pickerOpen);
             }}
           >
-            <label>
-              Platzhalter
-              <select
-                value={selected}
-                aria-describedby={descriptionId}
-                onChange={(event) => {
-                  setSelected(event.currentTarget.value);
-                  setNotice('');
-                }}
-              >
-                <option value="">Platzhalter auswählen</option>
-                {mailPlaceholderOffers.map((offer) => (
-                  <option key={offer.name} value={offer.name}>
-                    {offer.label} — {offer.meaning}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p id={descriptionId}>
-              {chosen
-                ? chosen.description
-                : 'Wähle einen Platzhalter aus, um seine Bedeutung zu lesen.'}
-            </p>
-            <button
-              type="button"
-              className="secondary-action"
-              disabled={!chosen}
-              onClick={insertPlaceholder}
+            {pickerOpen
+              ? 'Platzhalterauswahl schließen'
+              : 'Platzhalter einfügen'}
+          </button>
+          {pickerOpen && (
+            <div
+              id={panelId}
+              role="group"
+              aria-label="Platzhalter für den Begleittext"
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape') return;
+                event.stopPropagation();
+                setPickerOpen(false);
+                pickerToggle.current?.focus();
+              }}
             >
-              Einfügen
-            </button>
-          </div>
-        )}
-        {notice && <p className="document-hint">{notice}</p>}
-      </div>
+              <label>
+                Platzhalter
+                <select
+                  value={selected}
+                  aria-describedby={descriptionId}
+                  onChange={(event) => {
+                    setSelected(event.currentTarget.value);
+                    setNotice('');
+                  }}
+                >
+                  <option value="">Platzhalter auswählen</option>
+                  {mailPlaceholderOffers.map((offer) => (
+                    <option key={offer.name} value={offer.name}>
+                      {offer.label} — {offer.meaning}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p id={descriptionId}>
+                {chosen
+                  ? chosen.description
+                  : 'Wähle einen Platzhalter aus, um seine Bedeutung zu lesen.'}
+              </p>
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={!chosen}
+                onClick={insertPlaceholder}
+              >
+                Einfügen
+              </button>
+            </div>
+          )}
+          {notice && <p className="document-hint">{notice}</p>}
+        </div>
+      )}
     </div>
   );
 }

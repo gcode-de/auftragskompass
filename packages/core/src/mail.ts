@@ -168,6 +168,18 @@ export type MailMessageInput = {
   contactId?: string | null;
   eventId?: string | null;
 };
+// MAIL-EVENT-01: a free mail composed at the event - no document, no
+// attachments, no placeholders. The request id plays the same idempotency
+// role as for the document send.
+export type MailComposeInput = {
+  requestId: string;
+  to: string;
+  subject?: string | null;
+  bodyHtml?: string | null;
+  contactId?: string | null;
+  eventId?: string | null;
+  accountId?: string | null;
+};
 export type MailOutboxRow = {
   id: string;
   messageId: string;
@@ -1158,6 +1170,88 @@ export function mailRepository(
         );
         await appendAudit(tx, tenantId, 'mail.send_scheduled', actorId, row.id);
         return { job: toOutbox(row), created: true };
+      });
+    },
+
+    // MAIL-EVENT-01: a free mail is one explicit gesture like the document
+    // send - the request id is the idempotency key, so a repeat or an
+    // unclear answer can never become a second order. The body runs through
+    // the same allowlist sanitizer and text derivation as the document
+    // mail; subject and addresses go through the same plain-text and
+    // address validation, so no header line can be split.
+    async scheduleCompose(
+      actorId: string,
+      input: MailComposeInput,
+    ): Promise<{ job: MailOutboxRow; created: boolean }> {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const key = `mail-compose:${idempotencyKeyOf(input.requestId)}`;
+        const existing = (await reviewed(tx).execute(sql`
+          SELECT ${outboxColumns} FROM mail_outbox o
+           WHERE o.tenant_id=${tenantId} AND o.idempotency_key=${key}`)) as {
+          rows: OutboxQueryRow[];
+        };
+        if (existing.rows[0])
+          return { job: toOutbox(existing.rows[0]), created: false };
+        const to = mailAddressList(input.to);
+        if (!to) throw new MailError('invalid_recipients');
+        const subject = plainText(input.subject ?? '', 998, 'invalid_subject');
+        if (!subject) throw new MailError('invalid_subject');
+        // The same sanitizer as the document mail: only the mail allowlist
+        // leaves the server, and the text alternative is derived here.
+        const html = sanitizeMailHtml(
+          htmlBody(input.bodyHtml, 200000, 'invalid_body'),
+        );
+        const text = mailBodyTextFromHtml(html);
+        // A contact or event of another tenant is not a link this tenant owns.
+        if (input.contactId) {
+          const linked = await tx.execute<{ id: string }>(
+            sql`SELECT id::text AS id FROM contacts
+                 WHERE tenant_id=${tenantId} AND id=${input.contactId}::uuid`,
+          );
+          if (!linked.rows[0]) throw new MailError('invalid_link');
+        }
+        if (input.eventId) {
+          const linked = await tx.execute<{ id: string }>(
+            sql`SELECT id::text AS id FROM events
+                 WHERE tenant_id=${tenantId} AND id=${input.eventId}::uuid`,
+          );
+          if (!linked.rows[0]) throw new MailError('invalid_link');
+        }
+        const account = await usableAccount(tx, input.accountId),
+          messageId = randomUUID();
+        await reviewed(tx).execute(sql`
+          INSERT INTO mail_messages AS m
+            (tenant_id,id,account_id,direction,folder,subject,body_text,
+             body_html,to_addresses,contact_id,event_id,send_state)
+          VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
+                  ${subject},${text},${html || null},${to},
+                  ${input.contactId ?? null}::uuid,${input.eventId ?? null}::uuid,
+                  'scheduled')`);
+        await appendAudit(
+          tx,
+          tenantId,
+          'mail.message_created',
+          actorId,
+          messageId,
+        );
+        const job = (await reviewed(tx).execute(sql`
+          INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
+          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
+          ON CONFLICT (tenant_id,idempotency_key) DO NOTHING
+          RETURNING ${outboxColumns}`)) as { rows: OutboxQueryRow[] };
+        // The tenant lock serialises this path; a conflict can only mean a
+        // request id that already belongs to another message.
+        if (!job.rows[0]) throw new MailError('idempotency_conflict');
+        await appendAudit(
+          tx,
+          tenantId,
+          'mail.send_scheduled',
+          actorId,
+          job.rows[0].id,
+        );
+        return { job: toOutbox(job.rows[0]), created: true };
       });
     },
 
@@ -2321,6 +2415,43 @@ export function registerMailRoutes(
           request.authSession!.userId,
           request.params.id,
         );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  // MAIL-EVENT-01: a free mail composed at the event - one gesture, one
+  // durable order, the same refusal codes as the document send. The reply
+  // is the outbox job; a repeat with the same request id answers the very
+  // same job.
+  app.post<{ Body: MailComposeInput }>(
+    '/api/v1/mail/compose',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['requestId', 'to'],
+          properties: {
+            requestId: { type: 'string', minLength: 1, maxLength: 200 },
+            to: { type: 'string', minLength: 3, maxLength: 4000 },
+            subject: { type: 'string', maxLength: 998 },
+            bodyHtml: { type: 'string', maxLength: 200000 },
+            contactId: nullableUuidParam,
+            eventId: nullableUuidParam,
+            accountId: nullableUuidParam,
+          },
+        },
+        response: { 200: outboxSchema, 201: outboxSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { job, created } = await repo.scheduleCompose(
+          request.authSession!.userId,
+          request.body,
+        );
+        return reply.code(created ? 201 : 200).send(job);
       } catch (error) {
         return failure(error, reply);
       }
