@@ -234,6 +234,7 @@ export function MailBodyEditor({
   label = 'Begleittext',
   replaceKey = 0,
   withPlaceholderPicker = true,
+  placeholderOffers = mailPlaceholderOffers,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -253,6 +254,13 @@ export function MailBodyEditor({
    * travel out literally. Defaults to the document behaviour.
    */
   withPlaceholderPicker?: boolean;
+  /** MAIL-SIG-01: the signature editor offers its own token (the logo). */
+  placeholderOffers?: readonly {
+    name: string;
+    label: string;
+    meaning: string;
+    description: string;
+  }[];
 }) {
   // What this component last reported or was given; only an outside change
   // replaces the document, so typing is never overwritten.
@@ -314,7 +322,7 @@ export function MailBodyEditor({
   useEffect(() => {
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
-  const chosen = mailPlaceholderOffers.find((offer) => offer.name === selected);
+  const chosen = placeholderOffers.find((offer) => offer.name === selected);
   function run(command: (editor: Editor) => boolean) {
     if (editor) command(editor);
   }
@@ -537,7 +545,7 @@ export function MailBodyEditor({
                   }}
                 >
                   <option value="">Platzhalter auswählen</option>
-                  {mailPlaceholderOffers.map((offer) => (
+                  {placeholderOffers.map((offer) => (
                     <option key={offer.name} value={offer.name}>
                       {offer.label} — {offer.meaning}
                     </option>

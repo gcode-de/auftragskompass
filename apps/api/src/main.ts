@@ -34,6 +34,7 @@ import {
   telegramKeyFromSecret,
   registerMailRoutes,
   registerMailTemplateRoutes,
+  registerMailSignatureRoutes,
   registerInquiryEmailSettingsRoutes,
   registerMailForwardSettingsRoutes,
 } from '@auftragskompass/core';
@@ -169,6 +170,8 @@ try {
     });
     // MAIL-TPL-01a: reusable mail templates for the settings.
     registerMailTemplateRoutes(app, pool, auth.tenantId);
+    // MAIL-SIG-01a: signatures with an optional logo in the document store.
+    registerMailSignatureRoutes(app, pool, auth.tenantId, documentStore);
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);
