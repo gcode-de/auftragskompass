@@ -437,6 +437,11 @@ async function validDocuments(
   return valid;
 }
 
+// MAIL-STATUS-01: the dialog only knows that the order exists - the outcome
+// is decided later by the worker and shown in the event's mail list.
+const queuedMessage =
+  'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.';
+
 // The event file is where an offer is born: it owns the contact and the date
 // that the template placeholders need.
 export function EventDocuments({
@@ -449,6 +454,7 @@ export function EventDocuments({
   recordRemoving = false,
   onEditingChange,
   onEditorProtectedChange,
+  onMailScheduled,
 }: {
   eventId: string;
   contactId: string | null;
@@ -461,6 +467,8 @@ export function EventDocuments({
   recordRemoving?: boolean;
   onEditingChange?: (editing: boolean) => void;
   onEditorProtectedChange?: (protectedEditor: boolean) => void;
+  // MAIL-STATUS-01: a send order exists; the mail list follows its outcome.
+  onMailScheduled?: () => void;
 }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
@@ -2274,7 +2282,8 @@ export function EventDocuments({
       }
       await reply.json();
       setComposeOpen(false);
-      setMessage('Mail als Auftrag vorgemerkt.');
+      setMessage(queuedMessage);
+      onMailScheduled?.();
     } catch {
       // The request id makes a retry safe: it can only reach the same order.
       setMessage(
@@ -2528,7 +2537,8 @@ export function EventDocuments({
       await reply.json();
       setMailSendId('');
       setMailRequestId('');
-      setMessage('Dokument als E-Mail-Auftrag vorgemerkt.');
+      setMessage(queuedMessage);
+      onMailScheduled?.();
       try {
         await load();
         setReloadWarning(false);

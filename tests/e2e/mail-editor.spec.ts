@@ -465,7 +465,9 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     // Send: one durable order, resolved and sanitized on the server.
     await dialog.getByRole('button', { name: 'Senden' }).click();
     await expect(
-      page.getByText('Dokument als E-Mail-Auftrag vorgemerkt.'),
+      page.getByText(
+        'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+      ),
     ).toBeVisible();
     const message = (
       await pool.query<{
