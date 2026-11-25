@@ -478,6 +478,10 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
   Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
   Commit `feat: capture cancellation reasons on events`.
+- [x] **QW8 — Commitplan-Stand C027–C085 nachgetragen:** Die veraltete
+  Sammelzeile „noch nicht implementiert“ ersetzt eine belegte Bereichstabelle
+  (umgesetzt über welche Slices, was offen ist); keine formale Abnahme.
+  Commit `docs: record the real state of the commit plan`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
@@ -2873,7 +2877,20 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] **E004.19 — `fix: align inquiry preview wording`**: Die interne Formularvorschau zeigt dieselbe Feldbeschriftung „Details zur Veranstaltung“ wie das öffentliche Widget; Schema, Feldname, Verarbeitung und Versand bleiben unverändert. Der Komponententest prüft alle acht Felder und die konkrete Beschriftung.
 - [x] **BKP013.3 — `style: place event actions in the record header`**: Die seltene Aktion „Event entfernen“ liegt in einem nativen, zunächst geschlossenen Menü im Eventkopf und bleibt in allen Eventbereichen erreichbar. Bestätigung, Dirty- und Versionsschutz bleiben unverändert. Komponententests prüfen Auffindbarkeit, Tastaturbedienung und die bestehenden Fehler- und Löschpfade; synthetische Ansichten in beiden Themes bei Mobil- und Desktopbreite prüfen.
 - [x] **C027.5 — `fix: return to events after removing a record`**: Nach bestätigter oder ungeklärter Entfernung wird der Aktenlink durch die Eventliste ersetzt, sodass ein Neuladen keine entfernte Akte erneut öffnet; die bestehenden Listenabgleiche und Hinweise bleiben erhalten. Komponententest prüft die Adresse nach Entfernung.
-- [ ] C027–C075 und C077–C085: noch nicht implementiert oder abgenommen
+- [ ] C027–C075 und C077–C085: als Commitfolge nicht abgenommen. Viele
+  Inhalte sind seither über eigene Slices (E…, BKP…, MAIL-…, DOC-…, QW…) und in
+  anderer Reihenfolge umgesetzt. Stand 25.11.2026 (QW8, aus Code und Doku
+  belegt; **keine** formale Meilensteinabnahme):
+
+  | Bereich | Umgesetzt (Beleg) | Offen |
+  | --- | --- | --- |
+  | M1 Abschluss (C027) | C001–C026, C027.1–C027.5 | Release-Markierung |
+  | M2 Anfragen (C028–C037) | Signierter Übergabevertrag (E004.3), getrennte Anfrage-API und Gateway (E004.6), Formular-Widget, lokale Übernahme mit automatischer Option statt Hold (E004.8–E004.14, H032), Telegram/Mail-Hinweis | Anonymisierte Verfügbarkeitsprojektion und -widget (C029–C031, C036), Branding-Einstellungen (C032), WordPress-Shortcode (C033), Release |
+  | M3 Kommunikation (C038–C046) | Dateiablage (C038), SMTP-Versand mit Outbox und Status (C039, MAIL-021, MAIL-STATUS-01), Vorlagen und Platzhalter (C043, MAIL-TPL-01), Anhänge und Signaturen (Teil C044, ATTACH-01, MAIL-SIG-01), Später senden (Teil C045, QW5) | IMAP-Abruf, Zuordnung, Posteingang (C040–C042), Entwürfe und Antworten (Rest C044), Nachfassen (Rest C045), Release |
+  | M4 Dokumente (C047–C056) | Vorlagen, Layout, PDF, Nummern, Angebote, Annahme, AB, Rechnungen, Anzahlung, Schlussrechnung, Korrektur, Zahlungen, offene Posten (C047–C055; DOC-…, BKP019, QW4, QW7) | Fachliche Gesamtabnahme mit echten Belegen, Release |
+  | M5 Verträge/Fragebögen (C057–C066) | – | vollständig |
+  | M6 Aufgaben/Absagen (C067–C073) | Absagegrund am Event (C071, QW2) | Aufgaben (C067–C070, vom Betreiber vorerst ausgeklammert), Auswertung (C072), Release |
+  | M7 Produktionsreife (C074–C085) | Minimalimport mit Prüfliste (Teil C074/C075, E003), verschlüsselte Sicherung und Zeitplanvorlage (Teil C078, E005.1/E005.2), Browserschutz (Teil C079, E005.15), Mengenprobe (Teil C081, E005.12/17), Oberflächenprüfung (Teil C082, E005.16), Störungsleitfaden (Teil C083, E005.21) | Offene Posten/Zähler-Import (C077), unabhängiges Sicherungsziel und Restore-Abnahme, vollständige Härtung und Mandantenprüfung (C079/C080), Migrationsprobe und Umstellung (C084), Release (C085) |
 
 ## 2. Qualitätsregeln
 
