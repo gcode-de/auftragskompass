@@ -137,7 +137,20 @@ test(
             .get('content-security-policy')
             ?.includes("frame-ancestors 'none'"),
         );
+        // The app shell is revalidated after every update; API and feeds
+        // keep their own caching.
+        const cache = response.headers.get('cache-control') ?? '';
+        if (path === '/' || path === '/missing-route')
+          assert.equal(cache, 'no-cache');
+        else assert.ok(!cache.includes('no-cache'), path);
       }
+      // Hashed assets keep the default caching: their name changes per build.
+      const shell = await (await fetch(`http://${adminAddress}/`)).text();
+      const assetPath = shell.match(/\/assets\/[^"]+\.js/)?.[0];
+      assert.ok(assetPath);
+      const asset = await fetch(`http://${adminAddress}${assetPath}`);
+      assert.equal(asset.status, 200);
+      assert.equal(asset.headers.get('cache-control'), null);
       const address = (await compose(project, ['port', 'api', '3000'])).trim();
       await compose(project, ['stop', 'worker']);
       const unavailable = await fetch(`http://${address}/health/ready`);
