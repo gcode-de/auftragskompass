@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  allocateTotalDiscount,
   applyTotalDiscount,
   assertTotalsConsistent,
   DocumentTotalsError,
@@ -695,6 +696,95 @@ describe('total document discount', () => {
         { grossMinor: Number.MAX_SAFE_INTEGER + 1 },
         { kind: 'amount', value: 0 },
       ),
+    );
+  });
+});
+
+// QW7: the document discount lowers every rate in proportion to its gross; the
+// shares always add up to the discount and every rate splits its reduced gross
+// like a gross position.
+describe('allocateTotalDiscount', () => {
+  const group = (taxBasisPoints: number, grossMinor: number) => ({
+    taxBasisPoints,
+    grossMinor,
+    netMinor: 0,
+    taxMinor: 0,
+  });
+
+  test('one rate takes the whole discount and recomputes net and tax', () => {
+    expect(allocateTotalDiscount([group(1900, 11900)], 1190)).toEqual({
+      taxGroups: [
+        {
+          taxBasisPoints: 1900,
+          discountMinor: 1190,
+          grossMinor: 10710,
+          netMinor: 9000,
+          taxMinor: 1710,
+        },
+      ],
+      netMinor: 9000,
+      taxMinor: 1710,
+      grossMinor: 10710,
+    });
+  });
+
+  test('mixed rates share the discount by gross and the shares add up', () => {
+    const result = allocateTotalDiscount(
+      [group(700, 10700), group(1900, 11900)],
+      1000,
+    );
+    // 10700/22600 of 1000 = 473.45..., 11900/22600 = 526.54...: the larger
+    // remainder gets the last unit.
+    expect(result.taxGroups.map((row) => row.discountMinor)).toEqual([
+      473, 527,
+    ]);
+    expect(result.grossMinor).toBe(22600 - 1000);
+    expect(result.netMinor + result.taxMinor).toBe(result.grossMinor);
+    expect(result.taxGroups[0]).toMatchObject({
+      grossMinor: 10227,
+      netMinor: 9558,
+      taxMinor: 669,
+    });
+  });
+
+  test('equal remainders go to the first rate, so the split is stable', () => {
+    expect(
+      allocateTotalDiscount(
+        [group(700, 100), group(1900, 100)],
+        1,
+      ).taxGroups.map((row) => row.discountMinor),
+    ).toEqual([1, 0]);
+  });
+
+  test('no discount, a whole discount and an empty document', () => {
+    expect(
+      allocateTotalDiscount([group(1900, 11900)], 0).taxGroups[0],
+    ).toMatchObject({ discountMinor: 0, netMinor: 10000, taxMinor: 1900 });
+    expect(allocateTotalDiscount([group(1900, 11900)], 11900)).toMatchObject({
+      netMinor: 0,
+      taxMinor: 0,
+      grossMinor: 0,
+    });
+    expect(allocateTotalDiscount([], 0)).toEqual({
+      taxGroups: [],
+      netMinor: 0,
+      taxMinor: 0,
+      grossMinor: 0,
+    });
+    expect(
+      allocateTotalDiscount([group(0, 0), group(1900, 1190)], 119).taxGroups,
+    ).toMatchObject([{ discountMinor: 0 }, { discountMinor: 119 }]);
+  });
+
+  test('a discount above the gross or a broken amount is refused', () => {
+    expect(() => allocateTotalDiscount([group(1900, 100)], 101)).toThrow(
+      DocumentTotalsError,
+    );
+    expect(() => allocateTotalDiscount([group(1900, 100)], -1)).toThrow(
+      DocumentTotalsError,
+    );
+    expect(() => allocateTotalDiscount([group(1900, 100)], 0.5)).toThrow(
+      DocumentTotalsError,
     );
   });
 });

@@ -155,6 +155,15 @@ export type DocumentTotalDiscount = {
   discountMinor: number;
   /** `gross - discountMinor`: the amount the document asks for. */
   payableMinor: number;
+  /**
+   * QW7: net and tax of every rate after its share of the discount; absent on
+   * a layout rendered before QW7, which then prints no breakdown.
+   */
+  taxGroups?: readonly {
+    taxBasisPoints: number;
+    netMinor: number;
+    taxMinor: number;
+  }[];
 };
 
 /**
@@ -406,6 +415,24 @@ ${taxRows}
   // The amount carries the sign of the document, like every printed magnitude,
   // and the one final payable line belongs to the settlement or correction block
   // when one exists, so the paper never shows two contradicting totals.
+  // QW7: below the deduction, net and tax of every rate after its share of the
+  // discount - the Entgeltminderung on paper. One rate needs no rate label on
+  // the net line.
+  const discountGroups = layout.totalDiscount?.taxGroups ?? [],
+    discountTaxRows = discountGroups
+      .map(
+        (group) =>
+          `      <tr><td>Netto nach Rabatt${
+            discountGroups.length > 1
+              ? ` (${percent(group.taxBasisPoints)} %)`
+              : ''
+          }</td><td>${formatMinorUnits(printed(group.netMinor))} €</td></tr>
+      <tr><td>Umsatzsteuer ${percent(group.taxBasisPoints)} % nach Rabatt</td><td>${formatMinorUnits(
+        printed(group.taxMinor),
+      )} €</td></tr>
+`,
+      )
+      .join('');
   const discountBlock = layout.totalDiscount
     ? `    <table class="totals">
       <tr><td>Gesamtrabatt${
@@ -415,13 +442,13 @@ ${taxRows}
       }</td><td>${formatMinorUnits(
         -printed(layout.totalDiscount.discountMinor),
       )} €</td></tr>
-${
-  settlement || reference
-    ? ''
-    : `      <tr><td>Zu zahlender Betrag</td><td>${formatMinorUnits(
-        printed(layout.totalDiscount.payableMinor),
-      )} €</td></tr>\n`
-}    </table>
+${discountTaxRows}${
+        settlement || reference
+          ? ''
+          : `      <tr><td>Zu zahlender Betrag</td><td>${formatMinorUnits(
+              printed(layout.totalDiscount.payableMinor),
+            )} €</td></tr>\n`
+      }    </table>
 `
     : '';
   const footer = [

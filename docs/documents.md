@@ -860,3 +860,21 @@ Finalisieren, jeweils mit Dokument-ID als `record_id`.
 - Netto-Preiseingabe mit eigenem explizitem Preismodell (kein stiller Wechsel bestehender Bruttowerte).
 - Status `sent`, `expired`, `accepted` und der Zurückziehen-Endpunkt.
 - Rechnungen, Anzahlungen und Korrekturen (C054).
+
+## Gesamtrabatt und Umsatzsteuer (QW7)
+
+Der kommentierte Gesamtrabatt (DOC-PRODUCT-01.5, Prozent oder Euro auf das
+Brutto) mindert den Zahlbetrag und ist eine Entgeltminderung im Sinn von
+§ 14 Abs. 4 Nr. 7/8 und § 17 UStG. Er wird anteilig auf die Steuersätze
+verteilt, im Verhältnis ihres Bruttoanteils: Jeder Satz erhält den ganzzahligen
+Anteil, verbleibende Cent gehen an die größten Bruchteile, bei Gleichstand an
+den zuerst gedruckten Satz. Je Satz wird das geminderte Brutto wie eine
+Bruttoposition in Netto und Steuer geteilt. Das PDF druckt unter
+„Gesamtrabatt“ je Satz „Netto nach Rabatt“ und „Umsatzsteuer x % nach Rabatt“,
+danach „Zu zahlender Betrag“.
+
+Die gespeicherten `netMinor`/`taxMinor`/`grossMinor` bleiben die
+Positionssummen; der Zahlbetrag (`gross − Rabatt`) und alle daraus
+abgeleiteten Forderungen sind unverändert. Fertige Belege bleiben, wie sie
+gedruckt wurden. Betreiberentscheidung vom 25.11.2026 („Anteilig je
+Steuersatz“); eine Bestätigung durch die Steuerberatung bleibt empfohlen.
