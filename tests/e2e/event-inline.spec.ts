@@ -514,6 +514,8 @@ test('event notes are added with formatting and removed after confirmation', asy
     'existing',
   );
   await expect(region.getByText('Übernommen')).toBeVisible();
+  // UI-BKP-04: the card's plus opens the composer.
+  await region.getByRole('button', { name: 'Notiz hinzufügen' }).click();
   const editor = region.getByRole('textbox', { name: 'Neue Notiz' });
   await editor.click();
   await page.keyboard.type('Rückruf morgen');
@@ -523,13 +525,13 @@ test('event notes are added with formatting and removed after confirmation', asy
     'aria-pressed',
     'true',
   );
-  await region.getByRole('button', { name: 'Notiz hinzufügen' }).click();
+  await region.getByRole('button', { name: 'Notiz speichern' }).click();
   await expect(region.getByText('Notiz hinzugefügt.')).toBeVisible();
   expect(posted[0]).toContain('<strong>Rückruf morgen</strong>');
   await expect(region.getByRole('listitem').first()).toContainText(
     'fictional@example.invalid',
   );
-  await expect(editor).toHaveText('');
+  await expect(editor).toHaveCount(0);
   for (const width of [320, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ['light', 'dark'] as const) {
@@ -546,7 +548,7 @@ test('event notes are added with formatting and removed after confirmation', asy
   }
   page.once('dialog', (dialog) => void dialog.accept());
   await region
-    .getByRole('button', { name: /^Löschen: Notiz vom / })
+    .getByRole('button', { name: /^Event-Notiz löschen: Notiz vom / })
     .first()
     .click();
   await expect(region.getByText('Notiz gelöscht.')).toBeVisible();

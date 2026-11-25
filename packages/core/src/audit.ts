@@ -62,7 +62,8 @@ export type AuditAction =
   | 'mail.signature_saved'
   | 'event_note.created'
   | 'event_note.removed'
-  | 'mail.send_cancelled';
+  | 'mail.send_cancelled'
+  | 'event_note.updated';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

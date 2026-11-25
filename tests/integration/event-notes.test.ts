@@ -328,3 +328,66 @@ test('the migration moves each non-empty single note into one note', async () =>
     await scratch.end();
   }
 });
+
+// UI-BKP-04: like Bookitup an older note stays editable; it keeps its time and
+// author, the edit is recorded and audited, and a removed or foreign note
+// cannot be changed.
+test('a note can be edited later and keeps its time and author', async () => {
+  const { headers, write } = await signedIn();
+  const event = await eventRepository(pool, tenantId).save(actorId, input);
+  const url = `/api/v1/events/${event.id}/notes`;
+  const [first] = (
+    await app.inject({
+      method: 'POST',
+      url,
+      headers: write,
+      payload: { bodyHtml: '<p>Erste Fassung</p>' },
+    })
+  ).json() as { id: string; createdAt: string; updatedAt: string | null }[];
+  expect(first!.updatedAt).toBeNull();
+  const edit = (
+    id: string,
+    bodyHtml: string,
+    extra: Record<string, string> = write,
+  ) =>
+    app.inject({
+      method: 'PUT',
+      url: `${url}/${id}`,
+      headers: extra,
+      payload: { bodyHtml },
+    });
+  const edited = await edit(
+    first!.id,
+    '<p>Zweite <strong>Fassung</strong></p><script>x()</script>',
+  );
+  expect(edited.statusCode).toBe(200);
+  const [after] = edited.json() as {
+    bodyHtml: string;
+    createdAt: string;
+    updatedAt: string | null;
+    author: string | null;
+  }[];
+  expect(after).toMatchObject({
+    bodyHtml: '<p>Zweite <strong>Fassung</strong></p>',
+    createdAt: first!.createdAt,
+    author: email,
+  });
+  expect(Date.parse(after!.updatedAt!)).not.toBeNaN();
+  expect((await edit(first!.id, '<p> </p>')).json()).toEqual({
+    error: 'empty_note',
+  });
+  expect((await edit(first!.id, '<p>x</p>', headers)).statusCode).toBe(403);
+  expect((await edit(randomUUID(), '<p>x</p>')).statusCode).toBe(404);
+  await app.inject({
+    method: 'DELETE',
+    url: `${url}/${first!.id}`,
+    headers: write,
+  });
+  expect((await edit(first!.id, '<p>x</p>')).statusCode).toBe(404);
+  const audit = await pool.query(
+    `SELECT count(*)::int AS n FROM audit_events
+      WHERE tenant_id=$1 AND action='event_note.updated' AND record_id=$2`,
+    [tenantId, first!.id],
+  );
+  expect(audit.rows[0].n).toBe(1);
+});
