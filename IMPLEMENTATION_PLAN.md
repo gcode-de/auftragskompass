@@ -478,6 +478,18 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
   Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
   Commit `feat: capture cancellation reasons on events`.
+- [x] **QW7 — Gesamtrabatt steuerlich anteilig (STEUER-BLOCKER):**
+  Betreiberentscheidung 25.11.2026 „Anteilig je Steuersatz“: Der Gesamtrabatt
+  ist eine Entgeltminderung und mindert jeden Steuersatz im Verhältnis seines
+  Bruttoanteils (Ganzzahlanteile, Rest nach größtem Bruchteil, Summe exakt
+  gleich dem Rabatt). Je Satz wird das geminderte Brutto wie eine
+  Bruttoposition in Netto und Steuer geteilt; das PDF zeigt unter dem Rabatt
+  „Netto nach Rabatt“ und „Umsatzsteuer x % nach Rabatt“. Zahlbetrag,
+  gespeicherte Positionssummen, Forderungen und fertige Belege bleiben
+  unverändert. Keine Migration. Steuerberatung zur Bestätigung empfohlen.
+  **Tests:** Unit (ein Satz, gemischte Sätze, Restverteilung, Grenzen,
+  Ablehnung, Druck je Satz, Snapshot), Component/E2E (Hinweistext).
+  Commit `fix: lower each tax rate by its share of the total discount`.
 - [x] **QW4 — Offene Posten über alle Events:** „Dateien“/„Dokumente“
   zeigen über der Liste eine Zeile „Offene Posten: n Rechnungen · Betrag offen
   · davon m überfällig (Betrag)“ mit „Offene anzeigen“ und „Überfällige
@@ -501,18 +513,6 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Screenshots 320/1280 hell/dunkel).
   Commit `feat: replace event notes with dated notes`.
 
-- [x] **QW7 — Gesamtrabatt steuerlich anteilig (STEUER-BLOCKER):**
-  Betreiberentscheidung 25.11.2026 „Anteilig je Steuersatz“: Der Gesamtrabatt
-  ist eine Entgeltminderung und mindert jeden Steuersatz im Verhältnis seines
-  Bruttoanteils (Ganzzahlanteile, Rest nach größtem Bruchteil, Summe exakt
-  gleich dem Rabatt). Je Satz wird das geminderte Brutto wie eine
-  Bruttoposition in Netto und Steuer geteilt; das PDF zeigt unter dem Rabatt
-  „Netto nach Rabatt“ und „Umsatzsteuer x % nach Rabatt“. Zahlbetrag,
-  gespeicherte Positionssummen, Forderungen und fertige Belege bleiben
-  unverändert. Keine Migration. Steuerberatung zur Bestätigung empfohlen.
-  **Tests:** Unit (ein Satz, gemischte Sätze, Restverteilung, Grenzen,
-  Ablehnung, Druck je Satz, Snapshot), Component/E2E (Hinweistext).
-  Commit `fix: lower each tax rate by its share of the total discount`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
