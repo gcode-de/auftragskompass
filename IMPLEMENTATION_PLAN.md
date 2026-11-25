@@ -470,9 +470,6 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
   Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
   Commit `feat: duplicate events from the record`.
-
-## Nutzauftrag 25.11.2026 (Quick Wins, Backend erlaubt)
-
 - [x] **QW2 — Absagegrund am Event (C071):** Beim Status „Abgesagt“ wählt
   die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
   zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
