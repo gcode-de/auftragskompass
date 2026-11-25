@@ -87,6 +87,11 @@ const referenceSidebar = `
   </nav>
 </aside>`;
 
+/** How far a colour leans blue: the blue channel above the red channel. */
+function blueness(value: string) {
+  const [r, , b] = (value.match(/\d+/g) ?? []).map(Number);
+  return b! - r!;
+}
 /** How far a colour leans green: the green channel above the red/blue mean. */
 function greenness(value: string) {
   const [r, g, b] = value
@@ -566,10 +571,11 @@ test('both themes keep a neutral reference surface readable at 390 and 1280', as
       greenness(measured.input.background),
       `${label}: field neutral`,
     ).toBeLessThanOrEqual(4);
+    // UI-BKP-01: the primary action carries the Bookitup blue.
     expect(
-      greenness(measured.primary.background),
+      blueness(measured.primary.background),
       `${label}: the primary action keeps the brand accent`,
-    ).toBeGreaterThanOrEqual(8);
+    ).toBeGreaterThanOrEqual(40);
     expect(measured.ring.style, `${label}: focus ring is drawn`).toBe('solid');
     expect(measured.ring.width, `${label}: focus ring width`).toBe('3px');
     expect(measured.ring.offset, `${label}: focus ring offset`).toBe('3px');

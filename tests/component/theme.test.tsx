@@ -143,8 +143,9 @@ function greenness(value: string) {
   return channels[1]! - (channels[0]! + channels[2]!) / 2;
 }
 
-test('neutral surfaces carry no green cast in either theme', () => {
-  // The canvases, panels and tints the reader works on every day.
+// UI-BKP-01: the Bookitup palette - neutral greys for every surface in both
+// themes, one blue for links, the primary action and the focus ring.
+test('neutral surfaces carry no colour cast in either theme', () => {
   for (const name of [
     'surface',
     'canvas',
@@ -152,37 +153,29 @@ test('neutral surfaces carry no green cast in either theme', () => {
     'table-surface',
     'status-surface',
     'hover-surface',
-    'selected-surface',
-    'selection',
     'disabled-surface',
+    'sidebar',
+    'sidebar-hover',
   ]) {
     const palette = themed(name);
     for (const theme of ['light', 'dark'] as const)
       expect(
-        greenness(palette[theme]),
+        Math.abs(greenness(palette[theme])),
         `--${name} (${theme}) stays neutral`,
-      ).toBeLessThanOrEqual(4);
-  }
-  for (const name of ['sidebar', 'sidebar-hover']) {
-    expect(
-      greenness(fixed(name)),
-      `--${name} is an anthracite`,
-    ).toBeLessThanOrEqual(4);
+      ).toBeLessThanOrEqual(6);
   }
 });
 
-test('the restrained green survives only as a tinted accent', () => {
-  // Removing every green would flatten the brand; these are the deliberate
-  // small accents: links/actions, the pressed nav row and the focus tint.
-  for (const name of ['accent', 'action', 'focus']) {
+test('the accent is the Bookitup blue in both themes', () => {
+  for (const name of ['accent', 'action', 'focus', 'status-inquiry']) {
     const palette = themed(name);
-    for (const theme of ['light', 'dark'] as const)
-      expect(
-        greenness(palette[theme]),
-        `--${name} (${theme}) keeps a green accent`,
-      ).toBeGreaterThanOrEqual(8);
+    for (const theme of ['light', 'dark'] as const) {
+      const [r, g, b] = [1, 3, 5].map((at) =>
+        parseInt(palette[theme].slice(at, at + 2), 16),
+      );
+      expect(b!, `--${name} (${theme}) leans blue`).toBeGreaterThan(r! + 40);
+      expect(b!, `--${name} (${theme}) leans blue`).toBeGreaterThan(g!);
+    }
   }
-  // The active navigation row is the one tinted surface left in the rail, and
-  // it stays a whisper rather than a green block.
-  expect(greenness(fixed('sidebar-active'))).toBeLessThanOrEqual(12);
+  expect(themed('accent').light).toBe('#1d5191');
 });
