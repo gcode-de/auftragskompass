@@ -270,6 +270,9 @@ export function MailBodyEditor({
       // SSR-safe: the first render carries no editor yet, so the toolbar's
       // inactive fallbacks are real code paths instead of dead branches.
       immediatelyRender: false,
+      // The admin CSP allows only its own stylesheet; the editor base rules
+      // live in styles.css instead of an injected <style> element.
+      injectCSS: false,
       extensions: mailExtensions,
       content: value,
       editable: !disabled,

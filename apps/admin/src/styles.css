@@ -2704,6 +2704,53 @@ carries the alert colour and its cause, never colour alone. */
   color: var(--action);
   background: var(--surface);
 }
+/* Tiptap's base rules, shipped here because the admin CSP refuses the
+   <style> element the editor would inject (injectCSS: false). */
+.ProseMirror {
+  position: relative;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0;
+}
+.ProseMirror [contenteditable='false'] {
+  white-space: normal;
+}
+.ProseMirror [contenteditable='false'] [contenteditable='true'],
+.ProseMirror pre {
+  white-space: pre-wrap;
+}
+img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+  margin: 0;
+}
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}
+.ProseMirror-gapcursor::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid currentColor;
+}
+.ProseMirror-hideselection *::selection {
+  background: transparent;
+}
+.ProseMirror-hideselection * {
+  caret-color: transparent;
+}
 .mail-body-editor {
   min-height: 7rem;
   padding: 0.6rem 0.7rem;

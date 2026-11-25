@@ -552,11 +552,11 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     ).rows[0]!;
     // The template subject arrived resolved from structured data.
     expect(message.subject).toBe('Erinnerung für Fictional Mail Recipient');
-    // ProseMirror keeps typed boundary spaces as non-breaking spaces in the
-    // HTML (marked `~` here); the text alternative normalizes them. Enter
-    // produced the second paragraph, Shift+Enter the plain line break.
+    // With the editor base rules in the stylesheet (white-space: break-spaces)
+    // typed spaces stay plain spaces; a non-breaking one would show as `~`.
+    // Enter produced the second paragraph, Shift+Enter the plain line break.
     expect(message.body_html.replace(/\u00a0/g, '~')).toBe(
-      '<p><strong>Hallo~Erika~{{package}}</strong></p>' +
+      '<p><strong>Hallo Erika {{package}}</strong></p>' +
         '<p><strong>Zweiter Absatz<br />Fortsetzung</strong></p>',
     );
     expect(message.body_text).toBe(
