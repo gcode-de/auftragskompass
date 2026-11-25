@@ -470,6 +470,16 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
   Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
   Commit `feat: duplicate events from the record`.
+- [x] **QW5 — Mail später senden:** Beide Mail-Dialoge haben „Senden am
+  (optional)“; der Versandauftrag wartet über sein vorhandenes
+  `next_attempt_at`. Die Event-Mails zeigen „Geplant für …“, fragen dafür
+  nicht ständig nach und bieten „Planung aufheben“, solange kein Worker den
+  Auftrag abgeholt hat; danach „Jetzt senden“. Migration 0081 nur für die
+  Audit-Aktion. **Tests:** Integration (Planung, Worker wartet, Liste und
+  Detail, ungültige Zeiten, Aufheben inkl. 403/404/409, erneut senden,
+  Dokumentversand), Component (Dialog, Nutzlast, Fehlertext, Liste, Aufheben,
+  kein Polling).
+  Commit `feat: send mails later`.
 - [x] **QW2 — Absagegrund am Event (C071):** Beim Status „Abgesagt“ wählt
   die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
   zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
@@ -500,16 +510,6 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
   Screenshots 320/1280 hell/dunkel).
   Commit `feat: replace event notes with dated notes`.
-- [x] **QW5 — Mail später senden:** Beide Mail-Dialoge haben „Senden am
-  (optional)“; der Versandauftrag wartet über sein vorhandenes
-  `next_attempt_at`. Die Event-Mails zeigen „Geplant für …“, fragen dafür
-  nicht ständig nach und bieten „Planung aufheben“, solange kein Worker den
-  Auftrag abgeholt hat; danach „Jetzt senden“. Migration 0081 nur für die
-  Audit-Aktion. **Tests:** Integration (Planung, Worker wartet, Liste und
-  Detail, ungültige Zeiten, Aufheben inkl. 403/404/409, erneut senden,
-  Dokumentversand), Component (Dialog, Nutzlast, Fehlertext, Liste, Aufheben,
-  kein Polling).
-  Commit `feat: send mails later`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
