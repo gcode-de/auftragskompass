@@ -93,7 +93,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // unique index for the one standard and one audit action.
   // MAIL-SIG-01b (0078) adds one tenant-bound table for the inline logo a
   // mail freezes; no existing row and no existing contract changes.
-  expect(applied.at(-1)!.name).toBe('0078_mail_inline_images.sql');
+  // QW3 (0080) adds the tenant-bound event notes, moves each non-empty single
+  // note into one note and widens the audit vocabulary by two actions.
+  expect(applied.at(-1)!.name).toBe('0080_event_notes.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

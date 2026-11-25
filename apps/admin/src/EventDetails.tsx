@@ -3,6 +3,7 @@ import { ResourceAssignments } from './ResourceAssignments.js';
 import { EventDocuments } from './EventDocuments.js';
 import { EventMails } from './EventMails.js';
 import { EventLibraryFiles } from './EventLibraryFiles.js';
+import { EventNotes } from './EventNotes.js';
 import {
   EventInlineEditor,
   canonicalEventRow,
@@ -10,7 +11,6 @@ import {
   validEventRow,
   type EventInlineHandle,
   type ConfirmedContact,
-  type EventInlineSaveState,
 } from './EventInlineEditor.js';
 import type { VenueChoice } from './venue.js';
 import type { ContactHit } from './ContactPicker.js';
@@ -111,16 +111,6 @@ function headSchedule(event: Detail['event']) {
         ' Uhr'
     : 'ab ' + clockText(event.startsAt, event.timeZone) + ' Uhr';
 }
-function safeNoteLink(value: string) {
-  try {
-    const url = new URL(value.trim());
-    return ['https:', 'http:', 'mailto:'].includes(url.protocol)
-      ? url.href
-      : '';
-  } catch {
-    return '';
-  }
-}
 function effectivePlace(event: Detail['event'], location: Detail['location']) {
   if (event.venueOverride)
     return (event.venue ?? '').trim().replace(/\s*\n\s*/g, ', ');
@@ -179,10 +169,6 @@ export function EventDetails({
     detailsPanel = useRef<HTMLDivElement>(null),
     resourcesPanel = useRef<HTMLDivElement>(null),
     filesPanel = useRef<HTMLDivElement>(null),
-    notesPanel = useRef<HTMLDivElement>(null),
-    notesEditor = useRef<HTMLDivElement>(null),
-    notesSelection = useRef<Range | null>(null),
-    notesComposing = useRef(false),
     activityPanel = useRef<HTMLDivElement>(null),
     mailsPanel = useRef<HTMLDivElement>(null),
     focusedArea = useRef<Area>('details'),
@@ -191,8 +177,6 @@ export function EventDetails({
     resourceMutation = useRef(false),
     metadataDirty = useRef(false),
     metadataEditorDirty = useRef(false),
-    notesDraftDirty = useRef(false),
-    notesActiveDraft = useRef(false),
     inline = useRef<EventInlineHandle>(null),
     // A reload replaces the form values. Both refs mark unsaved input so a
     // retry can never discard it silently.
@@ -214,19 +198,7 @@ export function EventDetails({
     [legacyBlocked, setLegacyBlocked] = useState(false),
     [resourceVersion, setResourceVersion] = useState<number | null>(null),
     [statusUncertain, setStatusUncertain] = useState(false),
-    [statusResourceCorrection, setStatusResourceCorrection] = useState(false),
-    [notesDraft, setNotesDraft] = useState(''),
-    [notesLimitReached, setNotesLimitReached] = useState(false),
-    [linkAddress, setLinkAddress] = useState(''),
-    [hasNotesSelection, setHasNotesSelection] = useState(false),
-    [notesSaveState, setNotesSaveState] = useState<EventInlineSaveState>({
-      status: 'idle',
-      error: '',
-      dirty: false,
-      notesHtml: '',
-      confirmedNotesHtml: '',
-      remoteNotesHtml: null,
-    });
+    [statusResourceCorrection, setStatusResourceCorrection] = useState(false);
   const statusUncertainRef = useRef(false),
     resourceUncertainRef = useRef(false),
     documentEditorProtected = useRef(false);
@@ -247,7 +219,7 @@ export function EventDetails({
     onRecordDirtyChange?.(hasRecordChanges());
   }
   function refreshMetadataDirty() {
-    const value = metadataEditorDirty.current || notesDraftDirty.current;
+    const value = metadataEditorDirty.current;
     metadataDirty.current = value;
     setLegacyBlocked(value);
     onRecordDirtyChange?.(hasRecordChanges());
@@ -255,133 +227,6 @@ export function EventDetails({
   function metadataChanged(value: boolean) {
     metadataEditorDirty.current = value;
     refreshMetadataDirty();
-  }
-  function notesSaveStateChanged(state: EventInlineSaveState) {
-    setNotesSaveState(state);
-    if (!notesActiveDraft.current) setNotesDraft(state.notesHtml);
-    if (state.status === 'idle' && !state.dirty && !notesActiveDraft.current) {
-      notesDraftDirty.current = false;
-      refreshMetadataDirty();
-    }
-  }
-  function discardNotesDraft(value: string) {
-    notesActiveDraft.current = false;
-    notesDraftDirty.current = false;
-    setNotesLimitReached(false);
-    setNotesDraft(value);
-    refreshMetadataDirty();
-  }
-  function rememberNotesSelection() {
-    const selection = window.getSelection();
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    if (
-      selection &&
-      range &&
-      notesEditor.current &&
-      rangeWithin(notesEditor.current, range)
-    ) {
-      notesSelection.current = range.cloneRange();
-      setHasNotesSelection(!selection.isCollapsed);
-    }
-  }
-  function rangeWithin(editor: HTMLElement, range: Range) {
-    return [range.startContainer, range.endContainer].every(
-      (node) => node === editor || editor.contains(node),
-    );
-  }
-  function updateNotesEditor(element: HTMLDivElement) {
-    const value = element.innerHTML;
-    if (value.length > 20000) {
-      element.innerHTML = notesDraft;
-      setNotesLimitReached(true);
-      return;
-    }
-    setNotesLimitReached(false);
-    notesActiveDraft.current = true;
-    notesDraftDirty.current = true;
-    setNotesDraft(value);
-    refreshMetadataDirty();
-  }
-  function notesLocked() {
-    return (
-      loading ||
-      busy ||
-      dirty.current ||
-      resourcesDirty.current ||
-      saving.current ||
-      resourceMutation.current ||
-      statusUncertainRef.current ||
-      resourceUncertainRef.current
-    );
-  }
-  function formatNotes(command: 'bold' | 'italic' | 'underline') {
-    const editor = notesEditor.current;
-    if (!editor) return;
-    editor.focus();
-    const selection = window.getSelection(),
-      range = notesSelection.current;
-    if (selection && range && rangeWithin(editor, range)) {
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-    document.execCommand(command);
-    rememberNotesSelection();
-    updateNotesEditor(editor);
-  }
-  function insertNotesLink() {
-    const href = safeNoteLink(linkAddress),
-      range = notesSelection.current,
-      editor = notesEditor.current;
-    if (!href || !range || !editor || !rangeWithin(editor, range)) return;
-    const selection = window.getSelection();
-    if (!selection) return;
-    editor.focus();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    const anchor = document.createElement('a');
-    anchor.setAttribute('href', href);
-    anchor.append(range.extractContents());
-    range.insertNode(anchor);
-    range.selectNodeContents(anchor);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    notesSelection.current = range.cloneRange();
-    updateNotesEditor(editor);
-  }
-  function insertNotesFragment(
-    fragment: DocumentFragment,
-    preferCurrent = false,
-  ) {
-    const editor = notesEditor.current;
-    if (!editor) return;
-    editor.focus();
-    const selection = window.getSelection(),
-      currentRange = selection?.rangeCount ? selection.getRangeAt(0) : null,
-      range =
-        (preferCurrent && currentRange && rangeWithin(editor, currentRange)
-          ? currentRange
-          : notesSelection.current) ?? currentRange;
-    if (!selection || !range || !rangeWithin(editor, range)) return;
-    selection.removeAllRanges();
-    selection.addRange(range);
-    range.deleteContents();
-    const last = fragment.lastChild;
-    range.insertNode(fragment);
-    if (last) range.setStartAfter(last);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    notesSelection.current = range.cloneRange();
-    updateNotesEditor(editor);
-  }
-  function cancelNoteInput() {
-    const value =
-      inline.current?.getNotesValue() ?? data?.event.notesHtml ?? '';
-    discardNotesDraft(value);
-    notesSelection.current = null;
-    setHasNotesSelection(false);
-    if (notesEditor.current) notesEditor.current.innerHTML = value;
-    notesEditor.current?.focus();
   }
   function legacyChanged() {
     onRecordDirtyChange?.(hasRecordChanges());
@@ -603,11 +448,6 @@ export function EventDetails({
       heading.current?.focus({ preventScroll: true });
     }
   }, [data?.event.id]);
-  useEffect(() => {
-    const editor = notesEditor.current;
-    if (editor && editor.innerHTML !== notesDraft)
-      editor.innerHTML = notesDraft;
-  }, [notesDraft]);
   // Switching the work area moves the keyboard focus into the chosen area.
   // Nothing is unmounted, so every draft keeps its value.
   useEffect(() => {
@@ -1052,8 +892,6 @@ export function EventDetails({
                       !resourceUncertainRef.current
                     }
                     onDirtyChange={metadataChanged}
-                    onSaveStateChange={notesSaveStateChanged}
-                    onNotesReset={discardNotesDraft}
                     onConfirmed={applyConfirmed}
                   />
                 </div>
@@ -1165,229 +1003,9 @@ export function EventDetails({
                     </svg>
                   </button>
                 </div>
-                {/* UI-PARITY-02/04: notes and logbook belong to the details
-                main column, like Bookitup's Notizen and Logbuch cards. */}
-                <div
-                  className="event-detail-section"
-                  role="region"
-                  aria-labelledby="event-panel-notes"
-                  tabIndex={-1}
-                  ref={notesPanel}
-                >
-                  <h4 id="event-panel-notes">Interne Notizen</h4>
-                  <div
-                    className="event-note-composer"
-                    onBlurCapture={(event) => {
-                      if (
-                        event.currentTarget.contains(
-                          event.relatedTarget as Node | null,
-                        ) ||
-                        !notesActiveDraft.current
-                      )
-                        return;
-                      notesActiveDraft.current = false;
-                      inline.current?.commitNotes(notesDraft);
-                    }}
-                    onKeyDownCapture={(event) => {
-                      if (
-                        event.key !== 'Escape' ||
-                        event.nativeEvent.isComposing
-                      )
-                        return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      cancelNoteInput();
-                    }}
-                  >
-                    <div
-                      className="event-note-toolbar"
-                      role="group"
-                      aria-label="Notizen formatieren"
-                    >
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        disabled={notesLocked()}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => formatNotes('bold')}
-                      >
-                        Fett
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        disabled={notesLocked()}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => formatNotes('italic')}
-                      >
-                        Kursiv
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        disabled={notesLocked()}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => formatNotes('underline')}
-                      >
-                        Unterstrichen
-                      </button>
-                      <details className="event-note-link">
-                        <summary>Link</summary>
-                        <label>
-                          Linkadresse
-                          <input
-                            value={linkAddress}
-                            onChange={(event) =>
-                              setLinkAddress(event.currentTarget.value)
-                            }
-                            placeholder="https://… oder mailto:…"
-                            disabled={notesLocked()}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="secondary-action"
-                          disabled={
-                            !safeNoteLink(linkAddress) ||
-                            !hasNotesSelection ||
-                            notesLocked()
-                          }
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={insertNotesLink}
-                        >
-                          Link einfügen
-                        </button>
-                      </details>
-                    </div>
-                    <div
-                      ref={notesEditor}
-                      role="textbox"
-                      aria-label="Interne Notizen"
-                      aria-multiline="true"
-                      aria-disabled={notesLocked()}
-                      contentEditable={!notesLocked()}
-                      data-placeholder="Interne Notizen …"
-                      className="event-note-editor"
-                      onMouseUp={rememberNotesSelection}
-                      onKeyUp={rememberNotesSelection}
-                      onCompositionStart={() => {
-                        notesComposing.current = true;
-                      }}
-                      onCompositionEnd={(event) => {
-                        notesComposing.current = false;
-                        updateNotesEditor(event.currentTarget);
-                      }}
-                      onInput={(event) => {
-                        if (!notesComposing.current)
-                          updateNotesEditor(event.currentTarget);
-                      }}
-                      onKeyDown={(event) => {
-                        if (
-                          event.key !== 'Enter' ||
-                          event.shiftKey ||
-                          event.nativeEvent.isComposing
-                        )
-                          return;
-                        const editor = event.currentTarget,
-                          selection = window.getSelection(),
-                          range = selection?.rangeCount
-                            ? selection.getRangeAt(0)
-                            : null;
-                        if (!selection || !range || !rangeWithin(editor, range))
-                          return;
-                        event.preventDefault();
-                        range.deleteContents();
-                        const breakNode = document.createElement('br');
-                        range.insertNode(breakNode);
-                        range.setStartAfter(breakNode);
-                        range.collapse(true);
-                        selection.removeAllRanges();
-                        selection.addRange(range);
-                        notesSelection.current = range.cloneRange();
-                        updateNotesEditor(editor);
-                      }}
-                      onPaste={(event) => {
-                        event.preventDefault();
-                        const text = event.clipboardData.getData('text/plain');
-                        if (notesLocked() || !text) return;
-                        const template = document.createElement('template');
-                        template.content.append(document.createTextNode(text));
-                        insertNotesFragment(template.content, true);
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        const text = event.dataTransfer.getData('text/plain');
-                        if (notesLocked() || !text) return;
-                        const template = document.createElement('template');
-                        template.content.append(document.createTextNode(text));
-                        insertNotesFragment(template.content, true);
-                      }}
-                    />
-                  </div>
-                  <p className="event-panel-hint">
-                    Einfügen als Text. Änderungen werden beim Verlassen
-                    gespeichert.
-                  </p>
-                  {notesLimitReached && (
-                    <p role="status">
-                      Die Notiz ist zu lang. Die letzte Änderung wurde nicht
-                      übernommen.
-                    </p>
-                  )}
-                  {notesSaveState.status === 'saving' && (
-                    <p role="status">Notizen werden gespeichert …</p>
-                  )}
-                  {/* UI-PARITY-02: a paused or checking save is announced once by
-            the event editor right above, which shares this save state. */}
-                  {notesSaveState.status === 'review' && (
-                    <div role="alert">
-                      <p>
-                        Der aktuelle Stand unterscheidet sich von deiner
-                        Eingabe.
-                      </p>
-                      <dl>
-                        <dt>Deine Eingabe</dt>
-                        <dd>
-                          Dein Entwurf bleibt erhalten, bis du einen Stand
-                          auswählst.
-                        </dd>
-                        <dt>Serverstand</dt>
-                        <dd>
-                          {notesSaveState.remoteNotesHtml ? (
-                            <div
-                              dangerouslySetInnerHTML={{
-                                __html: notesSaveState.remoteNotesHtml,
-                              }}
-                            />
-                          ) : (
-                            'Leer'
-                          )}
-                        </dd>
-                      </dl>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              'Deine ungespeicherten Änderungen verwerfen?',
-                            )
-                          )
-                            inline.current?.useRemote();
-                        }}
-                      >
-                        Serverstand übernehmen
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        onClick={() => inline.current?.reapply()}
-                      >
-                        Meine abgeschlossenen Änderungen anwenden
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {/* UI-PARITY-02/04, QW3: dated notes and the logbook belong to
+                the details main column, like Bookitup's Notizen and Logbuch. */}
+                <EventNotes eventId={data.event.id} csrfToken={csrfToken} />
                 <div
                   className="event-detail-section"
                   role="region"

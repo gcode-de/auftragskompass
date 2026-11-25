@@ -549,7 +549,7 @@ export function EventCreateDialog({
                   />
                 </label>
                 <label>
-                  Interne Notizen
+                  Erste Notiz
                   <textarea
                     name="notesHtml"
                     maxLength={20000}
@@ -560,7 +560,8 @@ export function EventCreateDialog({
                 <p id="event-create-notes-help">
                   Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
                   &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-                  href="https://…"&gt;Link&lt;/a&gt;.
+                  href="https://…"&gt;Link&lt;/a&gt;. Wird als datierte Notiz am
+                  Event abgelegt.
                 </p>
               </div>
             </details>

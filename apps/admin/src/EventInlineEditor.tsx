@@ -132,18 +132,8 @@ export type ConfirmedContact = {
   mobile: string;
   role: string;
 };
-export type EventInlineSaveState = {
-  status: 'idle' | 'saving' | 'paused' | 'checking' | 'review';
-  error: string;
-  dirty: boolean;
-  notesHtml: string;
-  confirmedNotesHtml: string;
-  remoteNotesHtml: string | null;
-};
 export type EventInlineHandle = {
   adoptExternal: (row: EventRow) => boolean;
-  commitNotes: (value: string) => void;
-  getNotesValue: () => string;
   reconcile: () => void;
   useRemote: () => void;
   reapply: () => void;
@@ -160,8 +150,6 @@ export const EventInlineEditor = forwardRef<
     locked: boolean;
     canEdit: () => boolean;
     onDirtyChange: (dirty: boolean) => void;
-    onSaveStateChange?: (state: EventInlineSaveState) => void;
-    onNotesReset?: (value: string) => void;
     onConfirmed: (
       row: EventRow,
       contact?: ContactHit,
@@ -180,19 +168,13 @@ export const EventInlineEditor = forwardRef<
     locked,
     canEdit,
     onDirtyChange,
-    onSaveStateChange,
-    onNotesReset,
     onConfirmed,
   },
   ref,
 ) {
   const suppressed = useRef(false),
-    dirtyCallback = useRef(onDirtyChange),
-    saveStateCallback = useRef(onSaveStateChange),
-    notesResetCallback = useRef(onNotesReset);
+    dirtyCallback = useRef(onDirtyChange);
   dirtyCallback.current = onDirtyChange;
-  saveStateCallback.current = onSaveStateChange;
-  notesResetCallback.current = onNotesReset;
   const [invalid, setInvalid] = useState<string>('');
   const [schedule, setSchedule] = useState(() => ({
     eventDate: event.eventDate ?? '',
@@ -378,7 +360,6 @@ export const EventInlineEditor = forwardRef<
     setScheduleKey((value) => value + 1);
     setScheduleError('');
     scheduleRevision.current += 1;
-    notesResetCallback.current?.(row.notesHtml);
   }
   useImperativeHandle(ref, () => ({
     adoptExternal: (row) => {
@@ -386,33 +367,10 @@ export const EventInlineEditor = forwardRef<
       scheduleSubmission.current = null;
       return save.adoptExternal(row);
     },
-    commitNotes: (value) => {
-      if (!canEdit()) return;
-      save.setField('notesHtml', value);
-      save.commitFields(['notesHtml']);
-    },
-    getNotesValue: () => save.values.notesHtml,
     reconcile: () => void save.reconcile(),
     useRemote,
     reapply: save.reapply,
   }));
-  useEffect(() => {
-    saveStateCallback.current?.({
-      status: save.status,
-      error: save.error,
-      dirty: save.dirty,
-      notesHtml: save.values.notesHtml,
-      confirmedNotesHtml: save.confirmed.notesHtml,
-      remoteNotesHtml: save.remote?.notesHtml ?? null,
-    });
-  }, [
-    save.status,
-    save.error,
-    save.dirty,
-    save.values.notesHtml,
-    save.confirmed,
-    save.remote,
-  ]);
   useEffect(() => {
     onDirtyChange(save.dirty || scheduleDirty.current);
   });

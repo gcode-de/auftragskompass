@@ -72,6 +72,9 @@ function classify(scope: Element) {
     if (control.closest('[hidden]')) continue;
     // The record's section navigation is a navigation, not an action tier.
     if (control.closest('.record-navigation')) continue;
+    // QW3: the shared text editor's format toggles (aria-pressed) are a
+    // formatting toolbar inside a field, not page actions with a tier.
+    if (control.closest('.mail-editor-toolbar')) continue;
     // Chrome of the shell itself: the sidebar drawer's own open/close and
     // collapse controls belong to the navigation, not to a page frame. Their
     // geometry is covered by the navigation and Chromium tests.

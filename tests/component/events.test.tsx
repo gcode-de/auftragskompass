@@ -1246,7 +1246,8 @@ test('the normal editor keeps advanced values in Weitere Angaben and preserves t
     (screen.getByLabelText('Eventbeschreibung') as HTMLTextAreaElement).value,
   ).toBe('Synthetic description');
   expect(
-    (screen.getByLabelText('Interne Notizen') as HTMLTextAreaElement).value,
+    (screen.getByLabelText(/^(Erste|Neue) Notiz$/) as HTMLTextAreaElement)
+      .value,
   ).toBe('<strong>Fictional</strong>');
   fireEvent.change(screen.getByLabelText('Eventname'), {
     target: { value: 'Synthetic edited name' },
@@ -1613,7 +1614,8 @@ test('duplicating an event preserves every advanced value for editing', async ()
     (screen.getByLabelText('Eventbeschreibung') as HTMLTextAreaElement).value,
   ).toBe('Synthetic description');
   expect(
-    (screen.getByLabelText('Interne Notizen') as HTMLTextAreaElement).value,
+    (screen.getByLabelText(/^(Erste|Neue) Notiz$/) as HTMLTextAreaElement)
+      .value,
   ).toBe('<strong>Fictional</strong>');
   expect(
     (screen.getByLabelText('Weitere Kontakte') as HTMLSelectElement).value,

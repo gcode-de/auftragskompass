@@ -442,6 +442,20 @@ Attrappen nachgebaut.
   Component (Reihenfolge, Aufbau), E2E-Screenshot mit echten Einträgen.
   Commit `feat: show the logbook as a timeline`.
 
+## Nutzauftrag 25.11.2026 (Quick Wins, Backend erlaubt)
+
+- [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
+  datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
+  Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
+  wie Bookitup“). Migration 0080 übernimmt jede vorhandene Notiz und leert das
+  alte Feld; `notesHtml` in der Event-API wird beim Schreiben zur Notiz,
+  Export führt alle Notizen. Der alte Rich-Text-Editor samt Autosave-Pfad
+  entfällt. **Tests:** Integration (API, Mandanten, Bereinigung, Grabstein,
+  Audit, Umwandlung, Idempotenz, Export, Migrationsumzug), Component
+  (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
+  Screenshots 320/1280 hell/dunkel).
+  Commit `feat: replace event notes with dated notes`.
+
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
 - [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.

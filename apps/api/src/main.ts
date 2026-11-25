@@ -17,6 +17,7 @@ import {
   registerContactRoutes,
   registerLocationRoutes,
   registerEventRoutes,
+  registerEventNoteRoutes,
   registerImportRoutes,
   registerCalendarFeedRoutes,
   registerInquiryPreviewRoute,
@@ -175,6 +176,7 @@ try {
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
     registerEventRoutes(app, pool, auth.tenantId);
+    registerEventNoteRoutes(app, pool, auth.tenantId);
     registerImportRoutes(app, pool, auth.tenantId);
     registerCalendarFeedRoutes(app, pool, auth.tenantId, auth.origin);
   }

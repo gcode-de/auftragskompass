@@ -23,6 +23,7 @@ import {
   contactRepository,
 } from '../../packages/core/src/contacts.js';
 import { registerLocationRoutes } from '../../packages/core/src/locations.js';
+import { registerEventNoteRoutes } from '../../packages/core/src/event-notes.js';
 import {
   registerEventRoutes,
   eventRepository,
@@ -189,6 +190,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     registerContactRoutes(app, pool, tenantId);
     registerLocationRoutes(app, pool, tenantId);
     registerEventRoutes(app, pool, tenantId);
+    registerEventNoteRoutes(app, pool, tenantId);
     registerDocumentTemplateRoutes(app, pool, tenantId);
     registerDocumentNumberRoutes(app, pool, tenantId);
     registerDocumentLayoutRoutes(app, pool, tenantId, storage, async () =>
