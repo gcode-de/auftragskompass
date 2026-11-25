@@ -377,7 +377,12 @@ export function renderDocumentHtml(input: DocumentRenderInput): string {
           discount,
         `${formatMinorUnits(line.unitPriceMinor)} €`,
         `${line.quantity} ${escapeHtml(line.unit)}`,
-        `${formatMinorUnits(computed.grossMinor)} €`,
+        // A row reads in its own price basis: a net unit price leads to the
+        // net line amount, a gross one to the gross amount. The tax is added
+        // only once, in the totals block below.
+        `${formatMinorUnits(
+          line.priceBasis === 'net' ? computed.netMinor : computed.grossMinor,
+        )} €`,
       ];
       return `    <tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`;
     }),
