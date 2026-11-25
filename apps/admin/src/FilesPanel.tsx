@@ -30,6 +30,8 @@ export const fileStates = [
 // into the payment state.
 export const filePayments = [
   ['', 'Alle Zahlungsstände'],
+  // QW4: every claim with money still owed - "Offen" and "Teilweise bezahlt".
+  ['open', 'Noch offen'],
   ['none', 'Offen'],
   ['partial', 'Teilweise bezahlt'],
   ['paid', 'Bezahlt'],
@@ -59,6 +61,8 @@ const kindList: readonly string[] = fileKinds
   paymentList: readonly string[] = filePayments
     .map(([value]) => value)
     .filter(Boolean);
+// A row answers one of the three derived states; `open` is a filter only.
+const rowPaymentStates: readonly string[] = ['none', 'partial', 'paid'];
 // The same labels the event file uses, so one document never appears under two
 // different names in two places.
 const paymentStateLabels: Record<string, string> = Object.fromEntries(
@@ -133,6 +137,24 @@ type FileRow = {
   openMinor: number | null;
   overdue: boolean | null;
 };
+type Receivables = {
+  count: number;
+  openMinor: number;
+  overdueCount: number;
+  overdueMinor: number;
+};
+function validReceivables(value: unknown): Receivables | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  return ['count', 'openMinor', 'overdueCount', 'overdueMinor'].every(
+    (key) =>
+      typeof row[key] === 'number' &&
+      Number.isSafeInteger(row[key]) &&
+      (row[key] as number) >= 0,
+  )
+    ? (row as Receivables)
+    : null;
+}
 type FileFilters = {
   q: string;
   kind: string;
@@ -268,7 +290,7 @@ function validRows(reply: unknown): FileRow[] | null {
       // instead of being displayed as an invented state.
       (entry.dueDate !== null && !dayPattern.test(String(entry.dueDate))) ||
       (entry.paymentState !== null &&
-        !paymentList.includes(String(entry.paymentState))) ||
+        !rowPaymentStates.includes(String(entry.paymentState))) ||
       (entry.openMinor !== null &&
         (typeof entry.openMinor !== 'number' ||
           !Number.isSafeInteger(entry.openMinor) ||
@@ -300,6 +322,8 @@ export function FilesPanel({
     [loading, setLoading] = useState(true),
     [failed, setFailed] = useState(false),
     [hasNext, setHasNext] = useState(false),
+    // QW4: the sum of what is still owed; `null` hides it (not loaded/failed).
+    [receivables, setReceivables] = useState<Receivables | null>(null),
     [filters, setFilters] = useState<FileFilters>(() =>
       readFilters(window.location.search),
     );
@@ -329,6 +353,7 @@ export function FilesPanel({
     try {
       // One extra row only decides whether a next page exists; it is never
       // counted as a total and never displayed.
+      void loadReceivables(current);
       const reply = await fetch(listRequest(window.location.search, pageSize));
       if (!reply.ok) throw Error('load');
       const parsed = validRows(await reply.json());
@@ -342,6 +367,16 @@ export function FilesPanel({
       if (current === sequence.current) setFailed(true);
     } finally {
       if (current === sequence.current) setLoading(false);
+    }
+  }
+  async function loadReceivables(current: number) {
+    try {
+      const reply = await fetch('/api/v1/documents/receivables');
+      const value: unknown = reply.ok ? await reply.json() : null;
+      if (current !== sequence.current) return;
+      setReceivables(validReceivables(value));
+    } catch {
+      if (current === sequence.current) setReceivables(null);
     }
   }
   // Only load while this page is the visible area. The panel stays mounted, so
@@ -724,6 +759,48 @@ export function FilesPanel({
           </>
         )}
         <div className="files-results">
+          {receivables && (
+            <div className="files-receivables">
+              {receivables.count ? (
+                <p>
+                  <strong>Offene Posten:</strong> {receivables.count}{' '}
+                  {receivables.count === 1 ? 'Rechnung' : 'Rechnungen'} ·{' '}
+                  {exactMinorUnits(receivables.openMinor)} € offen
+                  {receivables.overdueCount > 0 && (
+                    <>
+                      {' · davon '}
+                      <strong className="document-overdue">
+                        {receivables.overdueCount} überfällig
+                      </strong>{' '}
+                      ({exactMinorUnits(receivables.overdueMinor)} €)
+                    </>
+                  )}
+                </p>
+              ) : (
+                <p className="muted">Keine offenen Posten.</p>
+              )}
+              {receivables.count > 0 && (
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  onClick={() => apply({ df_payment: 'open', df_overdue: '' })}
+                >
+                  Offene anzeigen
+                </button>
+              )}
+              {receivables.overdueCount > 0 && (
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  onClick={() =>
+                    apply({ df_payment: 'open', df_overdue: 'true' })
+                  }
+                >
+                  Überfällige anzeigen
+                </button>
+              )}
+            </div>
+          )}
           {failed && (
             <div className="reload-warning">
               <p role="alert">
