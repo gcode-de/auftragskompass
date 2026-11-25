@@ -195,7 +195,10 @@ export function EventDetails({
     [loading, setLoading] = useState(true),
     [loadFailed, setLoadFailed] = useState(false),
     [refreshDeferred, setRefreshDeferred] = useState(false),
-    [reloadWarning, setReloadWarning] = useState(false);
+    [reloadWarning, setReloadWarning] = useState(false),
+    // QW2: the tenant's cancellation reasons and the status the form shows.
+    [reasons, setReasons] = useState<VenueChoice[]>([]),
+    [statusChoice, setStatusChoice] = useState<string | null>(null);
   const [metaBlocked, setMetaBlocked] = useState(false),
     [legacyBlocked, setLegacyBlocked] = useState(false),
     [resourceVersion, setResourceVersion] = useState<number | null>(null),
@@ -433,6 +436,19 @@ export function EventDetails({
     void load().catch(() => {});
   }, [id]);
   useEffect(() => {
+    // Without the list the record still saves; the reason picker offers only
+    // "no reason" and keeps a stored one.
+    void fetch('/api/v1/master-data/cancellation_reason')
+      .then((response) => (response.ok ? response.json() : []))
+      .then((rows: unknown) =>
+        setReasons(Array.isArray(rows) ? (rows as VenueChoice[]) : []),
+      )
+      .catch(() => setReasons([]));
+  }, []);
+  useEffect(() => {
+    setStatusChoice(null);
+  }, [data?.event.version, epoch]);
+  useEffect(() => {
     if (loading || loadFailed) return;
     if (loadedId.current === id && loadedVersion.current === revision) return;
     // A successful response that still carries an older version must not turn
@@ -480,7 +496,9 @@ export function EventDetails({
     setBusy(true);
     setMessage('');
     try {
-      const status = String(new FormData(form).get('status'));
+      const values = new FormData(form),
+        status = String(values.get('status')),
+        reason = String(values.get('cancellationReasonId') ?? '');
       const response = await fetch('/api/v1/events/' + id, {
         method: 'PUT',
         headers: {
@@ -491,6 +509,9 @@ export function EventDetails({
           ...eventInput(data!.event),
           version: data!.event.version,
           status,
+          ...(status === 'cancelled'
+            ? { cancellationReasonId: reason || null }
+            : {}),
         }),
       });
       if (!response.ok) {
@@ -700,7 +721,13 @@ export function EventDetails({
       : 'Noch offen';
   }
   const schedule = data ? headSchedule(data.event) : '',
-    place = data ? effectivePlace(data.event, data.location) : '';
+    place = data ? effectivePlace(data.event, data.location) : '',
+    cancellationReason =
+      data?.event.status === 'cancelled'
+        ? reasons.find(
+            (reason) => reason.id === data.event.cancellationReasonId,
+          )?.name
+        : undefined;
   return (
     <section
       className="event-record"
@@ -805,6 +832,11 @@ export function EventDetails({
               <span className="event-record-type">
                 {data.eventType?.name ?? 'Art offen'}
               </span>
+              {cancellationReason && (
+                <span className="event-record-reason">
+                  Grund: {cancellationReason}
+                </span>
+              )}
               <span className="event-record-place">{place || 'Ort offen'}</span>
               {(data.event.source ?? '').startsWith('Website:') && (
                 <span className="event-source-quiet">Website</span>
@@ -951,8 +983,9 @@ export function EventDetails({
                         <select
                           name="status"
                           defaultValue={data.event.status}
-                          onChange={() => {
+                          onChange={(event) => {
                             setStatusResourceCorrection(false);
+                            setStatusChoice(event.currentTarget.value);
                             dirty.current = true;
                             legacyChanged();
                           }}
@@ -964,6 +997,33 @@ export function EventDetails({
                           ))}
                         </select>
                       </label>
+                      {(statusChoice ?? data.event.status) === 'cancelled' && (
+                        <label>
+                          Absagegrund
+                          <select
+                            name="cancellationReasonId"
+                            defaultValue={data.event.cancellationReasonId ?? ''}
+                            onChange={() => {
+                              dirty.current = true;
+                              legacyChanged();
+                            }}
+                          >
+                            <option value="">Kein Grund angegeben</option>
+                            {reasons
+                              .filter(
+                                (reason) =>
+                                  reason.state === 'active' ||
+                                  reason.id === data.event.cancellationReasonId,
+                              )
+                              .map((reason) => (
+                                <option key={reason.id} value={reason.id}>
+                                  {reason.name}
+                                  {reason.state !== 'active' && ' (archiviert)'}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      )}
                       <button className="primary-action">
                         Status speichern
                       </button>

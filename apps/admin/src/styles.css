@@ -2360,7 +2360,8 @@ summary {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.event-record-place {
+.event-record-place,
+.event-record-reason {
   overflow-wrap: anywhere;
 }
 .event-record-actions > summary {

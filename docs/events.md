@@ -153,6 +153,28 @@ Admin-Sitzung ist erforderlich, Änderungen brauchen Origin und CSRF-Token. Fehl
 
 Der Ort ist eine Zusatzangabe der Buchung, kein Stammdatensatz. `venueOverride` bestimmt die wirksame Quelle: `true` zeigt ausschließlich `venue` (ein leerer Wert bedeutet bewusst „kein Ort“), `false` zeigt unverändert den Bestandsort aus `locationId` mit der bisherigen Formatierung. Beim Anlegen ohne `venue` bleiben beide Felder `null`/`false`; neue Buchungen senden keine `locationId`. Ein `PUT` ohne beide Eigenschaften erhält den gespeicherten Stand; nur ein tatsächlich geänderter `locationId` setzt `venueOverride` auf `false`, ohne den gespeicherten Freitext zu löschen. `venue` wird getrimmt, nicht geparst und nicht in Straße/PLZ/Ort zerlegt. Bestehende Locations, IDs und `/api/v1/locations` bleiben unverändert; die Oberfläche verwaltet sie nicht mehr. Migration `0032_event_venue.sql` ergänzt ausschließlich die beiden Spalten ohne Rückfüllung.
 
+## Absagegrund (QW2, C071)
+
+Ein Event im Status „Abgesagt“ kann genau einen Absagegrund aus den
+Stammdaten des eigenen Mandanten tragen (`cancellationReasonId`, UUID oder
+`null`). Die Eigenschaft ist in Schreibanfragen optional und in Antworten
+immer enthalten. Regeln:
+
+- Fehlt sie bei einem `PUT`, bleibt der gespeicherte Grund erhalten (z. B.
+  Inline-Bearbeitung, ältere Clients).
+- Ein Grund bei einem anderen Status als `cancelled` wird mit
+  `400 invalid_fields` abgelehnt; wechselt das Event den Status, wird der
+  Grund gelöscht.
+- Fremde, unbekannte, archivierte oder andersartige Stammdaten ergeben
+  `invalid_reference`. Ein nach der Auswahl archivierter Grund bleibt am Event
+  und ist dort weiter wählbar.
+
+Migration `0079_event_cancellation_reason.sql` ergänzt die nullable Spalte mit
+mandantengebundenem Fremdschlüssel auf Absagegründe und einer Prüfregel, die
+einen Grund nur bei abgesagten Events zulässt; bestehende Zeilen bleiben
+`NULL`. In der Akte erscheint beim Status „Abgesagt“ die Auswahl
+„Absagegrund“; der Kopf zeigt „Grund: …“.
+
 ## Referenzen, Notizen und Migration
 
 Migration `0011_events.sql` erzwingt Mandantengrenzen in zusammengesetzten Fremdschlüsseln, die richtige Stammdatenart für Eventart und Paket, höchstens einen Hauptkontakt und gültige Zeitintervalle. Neue Zuordnungen müssen aktiv sein. Bereits zugeordnete, inzwischen archivierte Daten bleiben am bestehenden Event bearbeitbar. Gleichzeitige Änderungen werden über Mandantensperre und Versionsprüfung serialisiert; Event, Kontaktzuordnungen und Audit-Eintrag werden gemeinsam gespeichert. Die Migration erweitert die erlaubten Audit-Aktionen; fachliche Aktivitätstexte folgen in C020.

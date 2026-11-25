@@ -470,6 +470,14 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
   Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
   Commit `feat: duplicate events from the record`.
+- [x] **QW2 — Absagegrund am Event (C071):** Beim Status „Abgesagt“ wählt
+  die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
+  zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
+  ohne Angabe bleibt der Grund), Migration 0079 mit Fremdschlüssel und
+  Status-Prüfregel. **Tests:** Integration (Speichern, Erhalten, Löschen beim
+  Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
+  Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
+  Commit `feat: capture cancellation reasons on events`.
 - [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
   datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
   Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen

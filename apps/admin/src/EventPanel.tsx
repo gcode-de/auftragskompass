@@ -71,6 +71,8 @@ export type EventRow = {
   timeZone: string;
   description: string;
   notesHtml: string;
+  // QW2: the reason of a cancelled event; absent on an older cached answer.
+  cancellationReasonId?: string | null;
   // BKP014.2: additive projection of the units the event holds. Absent on a
   // cached answer from before the field existed, which reads as no assignment.
   resources?: EventResources;
