@@ -2127,18 +2127,6 @@ summary {
 .event-list > li.event-card:has(> .event-row:not([hidden])) {
   padding-left: 2.25rem;
 }
-/* Long lists (500 events in the load check) skip layout and paint for cards
-   outside the viewport; the reserved height keeps the scrollbar honest. The
-   card holding the open record is left out: its containment would trap the
-   record's fixed mobile navigation. */
-.event-list > li.event-card:not(.event-card-open) {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 118px;
-}
-/* An open row menu floats beyond its card, so that card renders normally. */
-.event-list > li.event-card:has(> .event-row .row-menu[open]) {
-  content-visibility: visible;
-}
 /* The status bar: 5px, rounded, inside the card's padding like Bookitup's
    vertical divider. */
 .event-list > li.event-card:has(> .event-row:not([hidden]))::before {
@@ -2321,26 +2309,30 @@ summary {
 .row-menu {
   position: relative;
 }
-.row-menu > summary {
+.row-menu-toggle {
   display: inline-grid;
   place-items: center;
   width: 44px;
   height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-card);
+  background: transparent;
   color: var(--ink);
   cursor: pointer;
-  list-style: none;
+  align-self: center;
 }
-.row-menu > summary::-webkit-details-marker {
-  display: none;
-}
-.row-menu > summary:hover {
+.row-menu-toggle:hover:not(:disabled) {
   background: var(--hover-surface);
 }
-.row-menu > summary > span {
+.row-menu-toggle > span {
   font-size: 1.4rem;
   font-weight: 700;
   line-height: 1;
+}
+.row-menu:not([data-open]) > .row-menu-panel {
+  display: none;
 }
 .row-menu-panel {
   position: absolute;

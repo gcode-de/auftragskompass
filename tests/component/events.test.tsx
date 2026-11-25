@@ -739,7 +739,7 @@ test('event rows are direct links and their icon actions stay independent', asyn
   ] as const) {
     const action = screen.getByRole('button', { name });
     expect(action.textContent).toBe(text);
-    expect(action.closest('details.row-menu')).not.toBeNull();
+    expect(action.closest('.row-menu')).not.toBeNull();
   }
   fireEvent.click(
     screen.getByRole('button', { name: 'Event bearbeiten: Synthetic event' }),

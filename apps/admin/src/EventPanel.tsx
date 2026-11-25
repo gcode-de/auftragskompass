@@ -521,11 +521,32 @@ export function EventPanel({
     },
     [],
   );
+  // UI-BKP-02: one row menu at a time; Escape or a click elsewhere closes it.
+  const [openMenu, setOpenMenu] = useState('');
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = (event: Event) => {
+      if (
+        event instanceof KeyboardEvent
+          ? event.key === 'Escape'
+          : !(event.target as Element | null)?.closest?.('.row-menu')
+      )
+        setOpenMenu('');
+    };
+    document.addEventListener('keydown', close);
+    document.addEventListener('pointerdown', close);
+    return () => {
+      document.removeEventListener('keydown', close);
+      document.removeEventListener('pointerdown', close);
+    };
+  }, [openMenu]);
   // UI-BKP-02: a chosen row-menu action closes its menu again.
   function closeRowMenu(target: HTMLElement) {
-    const menu = target.closest('details');
-    menu?.removeAttribute('open');
-    return menu?.querySelector('summary') ?? target;
+    const toggle = target
+      .closest('.row-menu')
+      ?.querySelector<HTMLElement>('.row-menu-toggle');
+    setOpenMenu('');
+    return toggle ?? target;
   }
   // The list row and the open record copy an event the same way: archived
   // choices are dropped, a retired place survives as text.
@@ -1781,11 +1802,7 @@ export function EventPanel({
                     <li
                       key={row.id}
                       id={'event-' + row.id}
-                      className={
-                        detailId === row.id
-                          ? 'event-card event-card-open'
-                          : 'event-card'
-                      }
+                      className="event-card"
                       data-status={row.status}
                       hidden={showingDetail && row.id !== detailId}
                     >
@@ -1907,13 +1924,29 @@ export function EventPanel({
                             open action; the rarer actions sit behind one
                             quiet row menu instead of icons on every card. */}
                         <div className="event-actions">
-                          <details className="row-menu">
-                            <summary
+                          <div
+                            className="row-menu"
+                            data-open={openMenu === row.id ? 'true' : undefined}
+                          >
+                            <button
+                              type="button"
+                              className="icon-action tier-quiet-icon row-menu-toggle"
                               aria-label={`Weitere Aktionen: ${row.name}`}
                               title="Weitere Aktionen"
+                              aria-haspopup="true"
+                              aria-expanded={openMenu === row.id}
+                              onClick={() =>
+                                setOpenMenu((current) =>
+                                  current === row.id ? '' : row.id,
+                                )
+                              }
                             >
                               <span aria-hidden="true">⋯</span>
-                            </summary>
+                            </button>
+                            {/* A plain toggle instead of a native disclosure:
+                                500 cards with <details> broke the load budget.
+                                The panel stays in the DOM and is shown by CSS. */}
+
                             <div className="row-menu-panel">
                               <button
                                 type="button"
@@ -1959,7 +1992,7 @@ export function EventPanel({
                                 Event bearbeiten
                               </button>
                             </div>
-                          </details>
+                          </div>
                         </div>
                       </div>
                       {detailId === row.id && (
