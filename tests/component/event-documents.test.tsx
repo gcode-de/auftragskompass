@@ -7416,3 +7416,29 @@ test('the customer mail and closing return to the document row', async () => {
   expect(showModal).toHaveBeenCalled();
   Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
 });
+
+// UI-PARITY-02: the E-Mails area asks for a new mail; the dialog must open at
+// once, also while the documents are still loading.
+test('a requested free mail opens while the documents still load', async () => {
+  setup({ documents: [finalized] });
+  const loaded = globalThis.fetch;
+  vi.stubGlobal('fetch', (url: string, init?: RequestInit) =>
+    url.startsWith('/api/v1/documents')
+      ? new Promise<Response>(() => {})
+      : loaded(url, init),
+  );
+  const trigger = document.createElement('button');
+  document.body.append(trigger);
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+      composeRequest={{ id: 1, trigger }}
+    />,
+  );
+  expect(screen.getByText('Dateien werden geladen …')).toBeTruthy();
+  expect(
+    await screen.findByRole('dialog', { name: 'Neue Mail schreiben' }),
+  ).toBeTruthy();
+  trigger.remove();
+});
