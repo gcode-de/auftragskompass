@@ -426,7 +426,11 @@ async function signInScenario(
     // A network observer from the very first request, to prove no PDF is fetched.
     const pdfRequests: string[] = [];
     page.on('request', (request) => {
-      if (request.url().includes('/api/v1/documents/'))
+      // QW4: the receivables sum is no document read.
+      if (
+        request.url().includes('/api/v1/documents/') &&
+        !request.url().includes('/api/v1/documents/receivables')
+      )
         pdfRequests.push(request.url());
     });
     const loadedDocument = await page.goto(origin);
