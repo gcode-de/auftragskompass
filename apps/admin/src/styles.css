@@ -2371,6 +2371,10 @@ summary {
 .event-record-actions > summary {
   color: var(--quiet-ink);
 }
+/* The rare record actions sit in one wrapping row below their summary. */
+.event-record-actions > button {
+  margin: 0.5rem 0.5rem 0 0;
+}
 .event-record h3 {
   font-size: 1rem;
   margin-block: 1.33em;

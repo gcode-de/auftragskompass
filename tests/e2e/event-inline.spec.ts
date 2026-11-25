@@ -123,6 +123,15 @@ test('event details save fields on blur and Escape discards the current edit', a
   await editor.getByLabel('Eventart').focus();
   await expect.poll(() => writes.length).toBe(3);
   expect(writes[2]).toMatchObject({ primaryContactId: null, version: 3 });
+  // QW1: the record offers its own copy beside the removal.
+  await page.getByText('Weitere Eventaktionen').click();
+  await expect(
+    page.getByRole('button', { name: 'Event duplizieren' }),
+  ).toBeEnabled();
+  await page.locator('.event-record-head').screenshot({
+    path: test.info().outputPath('event-record-actions.png'),
+  });
+  await page.getByText('Weitere Eventaktionen').click();
   for (const width of [320, 1280, 1600]) {
     await page.setViewportSize({ width, height: 900 });
     expect(

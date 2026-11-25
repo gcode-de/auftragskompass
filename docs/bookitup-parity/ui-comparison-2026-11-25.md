@@ -57,7 +57,7 @@ Ressourcen; Stand 31.10. bis 24.11.2026).
 - **Senkrechte Aktennavigation links** mit „Event am …“ wie in Bookitup. Sie
   kostet Breite; das Dreispaltenraster der Details müsste auf deutlich breitere
   Bildschirme rücken. Braucht eine eigene Layoutabnahme.
-- **„Event duplizieren“** am unteren Ende der Aktennavigation (die Duplizieren-
-  Funktion existiert in der Eventliste; Platzierung in der Akte offen).
-- **Location-Karte mit „PRIMÄR“-Markierung** und **„Details anzeigen“** am
-  Kontakt: kleine Angleichungen der rechten Spalte.
+- ~~„Event duplizieren“ in der Akte~~ und ~~„Details anzeigen“ am Kontakt~~:
+  umgesetzt als QW1 (Aktion unter „Weitere Eventaktionen“, da die
+  Aktennavigation waagerecht ist). Die „PRIMÄR“-Marke am Ort entfällt
+  bewusst, weil ein Event genau einen Ort hat.
