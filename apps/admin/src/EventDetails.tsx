@@ -1165,6 +1165,252 @@ export function EventDetails({
                     </svg>
                   </button>
                 </div>
+                {/* UI-PARITY-02/04: notes and logbook belong to the details
+                main column, like Bookitup's Notizen and Logbuch cards. */}
+                <div
+                  className="event-detail-section"
+                  role="region"
+                  aria-labelledby="event-panel-notes"
+                  tabIndex={-1}
+                  ref={notesPanel}
+                >
+                  <h4 id="event-panel-notes">Interne Notizen</h4>
+                  <div
+                    className="event-note-composer"
+                    onBlurCapture={(event) => {
+                      if (
+                        event.currentTarget.contains(
+                          event.relatedTarget as Node | null,
+                        ) ||
+                        !notesActiveDraft.current
+                      )
+                        return;
+                      notesActiveDraft.current = false;
+                      inline.current?.commitNotes(notesDraft);
+                    }}
+                    onKeyDownCapture={(event) => {
+                      if (
+                        event.key !== 'Escape' ||
+                        event.nativeEvent.isComposing
+                      )
+                        return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      cancelNoteInput();
+                    }}
+                  >
+                    <div
+                      className="event-note-toolbar"
+                      role="group"
+                      aria-label="Notizen formatieren"
+                    >
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={notesLocked()}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => formatNotes('bold')}
+                      >
+                        Fett
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={notesLocked()}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => formatNotes('italic')}
+                      >
+                        Kursiv
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={notesLocked()}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => formatNotes('underline')}
+                      >
+                        Unterstrichen
+                      </button>
+                      <details className="event-note-link">
+                        <summary>Link</summary>
+                        <label>
+                          Linkadresse
+                          <input
+                            value={linkAddress}
+                            onChange={(event) =>
+                              setLinkAddress(event.currentTarget.value)
+                            }
+                            placeholder="https://… oder mailto:…"
+                            disabled={notesLocked()}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="secondary-action"
+                          disabled={
+                            !safeNoteLink(linkAddress) ||
+                            !hasNotesSelection ||
+                            notesLocked()
+                          }
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={insertNotesLink}
+                        >
+                          Link einfügen
+                        </button>
+                      </details>
+                    </div>
+                    <div
+                      ref={notesEditor}
+                      role="textbox"
+                      aria-label="Interne Notizen"
+                      aria-multiline="true"
+                      aria-disabled={notesLocked()}
+                      contentEditable={!notesLocked()}
+                      data-placeholder="Interne Notizen …"
+                      className="event-note-editor"
+                      onMouseUp={rememberNotesSelection}
+                      onKeyUp={rememberNotesSelection}
+                      onCompositionStart={() => {
+                        notesComposing.current = true;
+                      }}
+                      onCompositionEnd={(event) => {
+                        notesComposing.current = false;
+                        updateNotesEditor(event.currentTarget);
+                      }}
+                      onInput={(event) => {
+                        if (!notesComposing.current)
+                          updateNotesEditor(event.currentTarget);
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key !== 'Enter' ||
+                          event.shiftKey ||
+                          event.nativeEvent.isComposing
+                        )
+                          return;
+                        const editor = event.currentTarget,
+                          selection = window.getSelection(),
+                          range = selection?.rangeCount
+                            ? selection.getRangeAt(0)
+                            : null;
+                        if (!selection || !range || !rangeWithin(editor, range))
+                          return;
+                        event.preventDefault();
+                        range.deleteContents();
+                        const breakNode = document.createElement('br');
+                        range.insertNode(breakNode);
+                        range.setStartAfter(breakNode);
+                        range.collapse(true);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        notesSelection.current = range.cloneRange();
+                        updateNotesEditor(editor);
+                      }}
+                      onPaste={(event) => {
+                        event.preventDefault();
+                        const text = event.clipboardData.getData('text/plain');
+                        if (notesLocked() || !text) return;
+                        const template = document.createElement('template');
+                        template.content.append(document.createTextNode(text));
+                        insertNotesFragment(template.content, true);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const text = event.dataTransfer.getData('text/plain');
+                        if (notesLocked() || !text) return;
+                        const template = document.createElement('template');
+                        template.content.append(document.createTextNode(text));
+                        insertNotesFragment(template.content, true);
+                      }}
+                    />
+                  </div>
+                  <p className="event-panel-hint">
+                    Einfügen als Text. Änderungen werden beim Verlassen
+                    gespeichert.
+                  </p>
+                  {notesLimitReached && (
+                    <p role="status">
+                      Die Notiz ist zu lang. Die letzte Änderung wurde nicht
+                      übernommen.
+                    </p>
+                  )}
+                  {notesSaveState.status === 'saving' && (
+                    <p role="status">Notizen werden gespeichert …</p>
+                  )}
+                  {/* UI-PARITY-02: a paused or checking save is announced once by
+            the event editor right above, which shares this save state. */}
+                  {notesSaveState.status === 'review' && (
+                    <div role="alert">
+                      <p>
+                        Der aktuelle Stand unterscheidet sich von deiner
+                        Eingabe.
+                      </p>
+                      <dl>
+                        <dt>Deine Eingabe</dt>
+                        <dd>
+                          Dein Entwurf bleibt erhalten, bis du einen Stand
+                          auswählst.
+                        </dd>
+                        <dt>Serverstand</dt>
+                        <dd>
+                          {notesSaveState.remoteNotesHtml ? (
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: notesSaveState.remoteNotesHtml,
+                              }}
+                            />
+                          ) : (
+                            'Leer'
+                          )}
+                        </dd>
+                      </dl>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              'Deine ungespeicherten Änderungen verwerfen?',
+                            )
+                          )
+                            inline.current?.useRemote();
+                        }}
+                      >
+                        Serverstand übernehmen
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => inline.current?.reapply()}
+                      >
+                        Meine abgeschlossenen Änderungen anwenden
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div
+                  className="event-detail-section"
+                  role="region"
+                  aria-labelledby="event-panel-activity"
+                  tabIndex={-1}
+                  ref={activityPanel}
+                >
+                  <h4 id="event-panel-activity">Logbuch</h4>
+                  {!data.activities.length && <p>Noch keine Aktivitäten.</p>}
+                  <ol>
+                    {data.activities.map((activity) => (
+                      <li key={activity.id}>
+                        <time dateTime={activity.occurredAt}>
+                          {time(activity.occurredAt)}
+                        </time>{' '}
+                        {activity.description}
+                        {activity.eventVersion === null
+                          ? ' (Historischer Eintrag; frühere Details unbekannt)'
+                          : ''}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               </div>
               <aside className="event-detail-aside">
                 <details className="event-aside" open={wideRecord}>
@@ -1384,244 +1630,6 @@ export function EventDetails({
               active={area === 'mails'}
               revision={mailRevision}
             />
-          </div>
-          <div
-            className="event-record-panel"
-            role="region"
-            aria-labelledby="event-panel-notes"
-            tabIndex={-1}
-            ref={notesPanel}
-            hidden={area !== 'details'}
-          >
-            <h3 id="event-panel-notes">Interne Notizen</h3>
-            <div
-              className="event-note-composer"
-              onBlurCapture={(event) => {
-                if (
-                  event.currentTarget.contains(
-                    event.relatedTarget as Node | null,
-                  ) ||
-                  !notesActiveDraft.current
-                )
-                  return;
-                notesActiveDraft.current = false;
-                inline.current?.commitNotes(notesDraft);
-              }}
-              onKeyDownCapture={(event) => {
-                if (event.key !== 'Escape' || event.nativeEvent.isComposing)
-                  return;
-                event.preventDefault();
-                event.stopPropagation();
-                cancelNoteInput();
-              }}
-            >
-              <div
-                className="event-note-toolbar"
-                role="group"
-                aria-label="Notizen formatieren"
-              >
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={notesLocked()}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => formatNotes('bold')}
-                >
-                  Fett
-                </button>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={notesLocked()}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => formatNotes('italic')}
-                >
-                  Kursiv
-                </button>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={notesLocked()}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => formatNotes('underline')}
-                >
-                  Unterstrichen
-                </button>
-                <details className="event-note-link">
-                  <summary>Link</summary>
-                  <label>
-                    Linkadresse
-                    <input
-                      value={linkAddress}
-                      onChange={(event) =>
-                        setLinkAddress(event.currentTarget.value)
-                      }
-                      placeholder="https://… oder mailto:…"
-                      disabled={notesLocked()}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    disabled={
-                      !safeNoteLink(linkAddress) ||
-                      !hasNotesSelection ||
-                      notesLocked()
-                    }
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={insertNotesLink}
-                  >
-                    Link einfügen
-                  </button>
-                </details>
-              </div>
-              <div
-                ref={notesEditor}
-                role="textbox"
-                aria-label="Interne Notizen"
-                aria-multiline="true"
-                aria-disabled={notesLocked()}
-                contentEditable={!notesLocked()}
-                data-placeholder="Interne Notizen …"
-                className="event-note-editor"
-                onMouseUp={rememberNotesSelection}
-                onKeyUp={rememberNotesSelection}
-                onCompositionStart={() => {
-                  notesComposing.current = true;
-                }}
-                onCompositionEnd={(event) => {
-                  notesComposing.current = false;
-                  updateNotesEditor(event.currentTarget);
-                }}
-                onInput={(event) => {
-                  if (!notesComposing.current)
-                    updateNotesEditor(event.currentTarget);
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key !== 'Enter' ||
-                    event.shiftKey ||
-                    event.nativeEvent.isComposing
-                  )
-                    return;
-                  const editor = event.currentTarget,
-                    selection = window.getSelection(),
-                    range = selection?.rangeCount
-                      ? selection.getRangeAt(0)
-                      : null;
-                  if (!selection || !range || !rangeWithin(editor, range))
-                    return;
-                  event.preventDefault();
-                  range.deleteContents();
-                  const breakNode = document.createElement('br');
-                  range.insertNode(breakNode);
-                  range.setStartAfter(breakNode);
-                  range.collapse(true);
-                  selection.removeAllRanges();
-                  selection.addRange(range);
-                  notesSelection.current = range.cloneRange();
-                  updateNotesEditor(editor);
-                }}
-                onPaste={(event) => {
-                  event.preventDefault();
-                  const text = event.clipboardData.getData('text/plain');
-                  if (notesLocked() || !text) return;
-                  const template = document.createElement('template');
-                  template.content.append(document.createTextNode(text));
-                  insertNotesFragment(template.content, true);
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const text = event.dataTransfer.getData('text/plain');
-                  if (notesLocked() || !text) return;
-                  const template = document.createElement('template');
-                  template.content.append(document.createTextNode(text));
-                  insertNotesFragment(template.content, true);
-                }}
-              />
-            </div>
-            <p className="event-panel-hint">
-              Einfügen als Text. Änderungen werden beim Verlassen gespeichert.
-            </p>
-            {notesLimitReached && (
-              <p role="status">
-                Die Notiz ist zu lang. Die letzte Änderung wurde nicht
-                übernommen.
-              </p>
-            )}
-            {notesSaveState.status === 'saving' && (
-              <p role="status">Notizen werden gespeichert …</p>
-            )}
-            {/* UI-PARITY-02: a paused or checking save is announced once by
-            the event editor right above, which shares this save state. */}
-            {notesSaveState.status === 'review' && (
-              <div role="alert">
-                <p>Der aktuelle Stand unterscheidet sich von deiner Eingabe.</p>
-                <dl>
-                  <dt>Deine Eingabe</dt>
-                  <dd>
-                    Dein Entwurf bleibt erhalten, bis du einen Stand auswählst.
-                  </dd>
-                  <dt>Serverstand</dt>
-                  <dd>
-                    {notesSaveState.remoteNotesHtml ? (
-                      <div
-                        dangerouslySetInnerHTML={{
-                          __html: notesSaveState.remoteNotesHtml,
-                        }}
-                      />
-                    ) : (
-                      'Leer'
-                    )}
-                  </dd>
-                </dl>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        'Deine ungespeicherten Änderungen verwerfen?',
-                      )
-                    )
-                      inline.current?.useRemote();
-                  }}
-                >
-                  Serverstand übernehmen
-                </button>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  onClick={() => inline.current?.reapply()}
-                >
-                  Meine abgeschlossenen Änderungen anwenden
-                </button>
-              </div>
-            )}
-          </div>
-          <div
-            className="event-record-panel"
-            role="region"
-            aria-labelledby="event-panel-activity"
-            tabIndex={-1}
-            ref={activityPanel}
-            hidden={area !== 'details'}
-          >
-            <h3 id="event-panel-activity">Logbuch</h3>
-            {!data.activities.length && <p>Noch keine Aktivitäten.</p>}
-            <ol>
-              {data.activities.map((activity) => (
-                <li key={activity.id}>
-                  <time dateTime={activity.occurredAt}>
-                    {time(activity.occurredAt)}
-                  </time>{' '}
-                  {activity.description}
-                  {activity.eventVersion === null
-                    ? ' (Historischer Eintrag; frühere Details unbekannt)'
-                    : ''}
-                </li>
-              ))}
-            </ol>
           </div>
         </>
       )}

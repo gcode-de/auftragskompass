@@ -2360,7 +2360,8 @@ summary {
 }
 /* The work areas stay mounted behind `hidden`, so an area switch never throws
    an unsaved draft away; the chosen area receives the focus programmatically. */
-.event-record-panel:focus-visible {
+.event-record-panel:focus-visible,
+.event-detail-section:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
@@ -2381,6 +2382,7 @@ summary {
 }
 .event-detail-primary,
 .event-detail-overview,
+.event-detail-section,
 .event-aside-contact,
 .event-aside-location {
   min-width: 0;
@@ -2391,6 +2393,7 @@ summary {
 }
 .event-detail-primary > h4:first-child,
 .event-detail-overview > h4:first-child,
+.event-detail-section > h4:first-child,
 .event-aside-contact > h4:first-child,
 .event-aside-location > h4:first-child {
   margin-block-start: 0;
@@ -2425,6 +2428,24 @@ summary {
   }
   .event-detail-main {
     display: contents;
+  }
+  /* UI-PARITY-04: appointment and overview side by side, notes and logbook
+     below them across both, contact and place beside all of it - the
+     Bookitup record's centre and right columns. */
+  .event-detail-primary {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .event-detail-overview {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .event-detail-section {
+    grid-column: 1 / span 2;
+  }
+  .event-detail-aside {
+    grid-column: 3;
+    grid-row: 1 / span 3;
   }
 }
 .event-detail-primary > dl,

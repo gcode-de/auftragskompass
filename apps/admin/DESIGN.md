@@ -530,7 +530,7 @@ Optionale Positionen (DOC-OPTION-01): Positionsgruppen zeigen unter den Preisfel
 
 ### Bereiche der Eventakte (UI-PARITY-02, 25.11.2026)
 
-Die Eventakte folgt Bookitups Aktengliederung (Screenshots vom 31.10. und 24.11.2026, Bildbeobachtung, kein REA-Beleg): **Details · Ressourcen · Dateien · E-Mails**. Notizen und Logbuch stehen unter Details, wie bei Bookitup, und behalten ihre eigenen Regionen und Überschriften. „E-Mails“ beginnt mit der sekundären Aktion „Neue Mail schreiben“, darunter die Karte „Ausgehende Mails“ mit einer Ordnergruppe (`role="group"`, `aria-label="Ordner"`, `nav-action`-Knöpfe mit `aria-pressed`, aktiver Ordner fett) samt Anzahl je Ordner. Mobil bleibt die feste Bereichsleiste, jetzt mit vier gleich breiten Spalten.
+Die Eventakte folgt Bookitups Aktengliederung (Screenshots vom 31.10. und 24.11.2026, Bildbeobachtung, kein REA-Beleg): **Details · Ressourcen · Dateien · E-Mails**. Notizen und Logbuch stehen unter Details, wie bei Bookitup: seit UI-PARITY-04 als Karten (`.event-detail-section`, gleiches Kartenkleid wie Termin/Allgemein, eigene Region, h4) in der Hauptspalte, Kontakt und Ort bleiben daneben. Ab 90rem: Termin Spalte 1, Allgemein Spalte 2, die Abschnitte darunter über beide, Seitenleiste Spalte 3 über die volle Höhe. „E-Mails“ beginnt mit der sekundären Aktion „Neue Mail schreiben“, darunter die Karte „Ausgehende Mails“ mit einer Ordnergruppe (`role="group"`, `aria-label="Ordner"`, `nav-action`-Knöpfe mit `aria-pressed`, aktiver Ordner fett) samt Anzahl je Ordner. Mobil bleibt die feste Bereichsleiste, jetzt mit vier gleich breiten Spalten.
 
 ### Dokument bereitstellen (UI-PARITY-03, 25.11.2026)
 
