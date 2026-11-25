@@ -31,7 +31,7 @@
   --field-border: light-dark(#8c8c8c, #6b6e82);
   --filled-field: light-dark(#e2e2e2, #24252d);
   --focus: light-dark(#1d5191, #6ea8ec);
-  --status-surface: light-dark(#f1f1f1, #1a1b20);
+  --status-surface: light-dark(#f1f1f1, #24252c);
   --alert-surface: light-dark(#fff0f0, #3a1d1f);
   --alert-ink: light-dark(#c62f2d, #ff9c9a);
   --danger-ink: light-dark(#d23b39, #ff7a78);
@@ -1417,47 +1417,80 @@ time {
   padding: 0;
   margin: 0;
 }
+/* UI-BKP-04: Bookitup's notes - the card head carries the plus, each note
+   shows its time and an edit pen, the text sits in a quiet grey box and the
+   red "Event-Notiz löschen" link stands centred below it. */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.card-head > :is(h2, h3, h4),
+.event-record .card-head > h4 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
 .event-note-composer {
   display: grid;
   gap: 0.55rem;
   min-width: 0;
+  margin-top: 0.5rem;
 }
-.event-note-composer > .secondary-action {
-  justify-self: start;
+.event-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
-/* QW3: dated notes read like Bookitup's note cards - time and author quiet
-   above the text, a neutral divider between notes, no new card colour. */
 .event-note-list {
   list-style: none;
-  margin: 0.75rem 0 0;
+  margin: 0.5rem 0 0;
   padding: 0;
 }
 .event-note-list li {
+  display: grid;
+  gap: 0.35rem;
   margin: 0;
   padding: 0.75rem 0;
+}
+.event-note-list li + li {
   border-top: 1px solid var(--border);
 }
 .event-note-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.75rem;
+  justify-content: center;
+  gap: 0.25rem 0.5rem;
   margin: 0;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
-.event-note-meta .tertiary-action {
+.event-note-meta time {
+  color: var(--ink);
+  font-weight: 700;
+}
+.event-note-meta .icon-action {
   margin-inline-start: auto;
 }
 .event-note-body {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-field);
+  background: var(--status-surface);
   overflow-wrap: anywhere;
 }
 .event-note-body > :first-child {
-  margin-top: 0.35rem;
+  margin-top: 0;
 }
 .event-note-body > :last-child {
   margin-bottom: 0;
+}
+.tertiary-action.danger-link {
+  justify-self: center;
+  color: var(--danger-ink);
 }
 .contact-inline-conflicts dl {
   display: block;

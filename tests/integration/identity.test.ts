@@ -98,7 +98,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // QW3 (0080) adds the tenant-bound event notes, moves each non-empty single
   // note into one note and widens the audit vocabulary by two actions.
   // QW5 (0081) widens the audit vocabulary by the withdrawn planned send.
-  expect(applied.at(-1)!.name).toBe('0081_mail_send_later.sql');
+  // UI-BKP-04 (0082) records note edits and widens the audit vocabulary.
+  expect(applied.at(-1)!.name).toBe('0082_event_note_edits.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

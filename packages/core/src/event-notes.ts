@@ -17,6 +17,8 @@ export type EventNote = {
   bodyHtml: string;
   createdAt: string;
   author: string | null;
+  /** UI-BKP-04: when the note was last edited; null while unchanged. */
+  updatedAt: string | null;
 };
 export class EventNoteError extends Error {}
 
@@ -80,6 +82,7 @@ export function eventNoteRepository(pool: Pool, tenantId: string) {
               id: eventNotes.id,
               bodyHtml: eventNotes.bodyHtml,
               createdAt: eventNotes.createdAt,
+              updatedAt: eventNotes.updatedAt,
               author: users.email,
             })
             .from(eventNotes)
@@ -101,6 +104,7 @@ export function eventNoteRepository(pool: Pool, tenantId: string) {
           return rows.map((row) => ({
             ...row,
             createdAt: row.createdAt.toISOString(),
+            updatedAt: row.updatedAt?.toISOString() ?? null,
           }));
         },
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
@@ -119,6 +123,41 @@ export function eventNoteRepository(pool: Pool, tenantId: string) {
         await requireAdministrator(tx, tenantId, actorId);
         await liveEvent(tx, eventId);
         await insertEventNote(tx, tenantId, actorId, eventId, bodyHtml);
+      });
+    },
+    // UI-BKP-04: an existing note keeps its time and author; the text is
+    // replaced through the same allowlist and the edit is recorded.
+    async update(
+      actorId: string,
+      eventId: string,
+      noteId: string,
+      html: string,
+    ) {
+      let bodyHtml: string;
+      try {
+        bodyHtml = sanitizeNotes(html);
+      } catch {
+        throw new EventNoteError('invalid_note');
+      }
+      if (!noteHasText(bodyHtml)) throw new EventNoteError('empty_note');
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        await liveEvent(tx, eventId);
+        const [updated] = await tx
+          .update(eventNotes)
+          .set({ bodyHtml, updatedAt: new Date(), updatedBy: actorId })
+          .where(
+            and(
+              eq(eventNotes.tenantId, tenantId),
+              eq(eventNotes.eventId, eventId),
+              eq(eventNotes.id, noteId),
+              isNull(eventNotes.deletedAt),
+            ),
+          )
+          .returning({ id: eventNotes.id });
+        if (!updated) throw new EventNoteError('not_found');
+        await appendAudit(tx, tenantId, 'event_note.updated', actorId, noteId);
       });
     },
     async remove(actorId: string, eventId: string, noteId: string) {
@@ -155,12 +194,13 @@ export function registerEventNoteRoutes(
   const note = {
     type: 'object',
     additionalProperties: false,
-    required: ['id', 'bodyHtml', 'createdAt', 'author'],
+    required: ['id', 'bodyHtml', 'createdAt', 'author', 'updatedAt'],
     properties: {
       id,
       bodyHtml: { type: 'string' },
       createdAt: { type: 'string' },
       author: { type: ['string', 'null'] },
+      updatedAt: { type: ['string', 'null'] },
     },
   };
   const list = { type: 'array', items: note };
@@ -211,6 +251,41 @@ export function registerEventNoteRoutes(
           request.body.bodyHtml,
         );
         return reply.code(201).send(await repo.list(request.params.id));
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.put<{
+    Params: { id: string; noteId: string };
+    Body: { bodyHtml: string };
+  }>(
+    '/api/v1/events/:id/notes/:noteId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id', 'noteId'],
+          properties: { id, noteId: id },
+        },
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['bodyHtml'],
+          properties: { bodyHtml: { type: 'string', maxLength: 50000 } },
+        },
+        response: { 200: list },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await repo.update(
+          request.authSession!.userId,
+          request.params.id,
+          request.params.noteId,
+          request.body.bodyHtml,
+        );
+        return await repo.list(request.params.id);
       } catch (error) {
         return failure(error, reply);
       }

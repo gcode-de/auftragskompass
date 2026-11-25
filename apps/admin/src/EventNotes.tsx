@@ -10,6 +10,7 @@ type Note = {
   bodyHtml: string;
   createdAt: string;
   author: string | null;
+  updatedAt?: string | null;
 };
 const errors: Record<string, string> = {
   empty_note: 'Die Notiz ist leer.',
@@ -39,11 +40,22 @@ export function EventNotes({
     [draft, setDraft] = useState(''),
     [editorKey, setEditorKey] = useState(0),
     [busy, setBusy] = useState(false),
-    [message, setMessage] = useState('');
-  const draftRef = useRef('');
+    [message, setMessage] = useState(''),
+    // UI-BKP-04: Bookitup opens the composer from the card's plus and edits
+    // one note in place.
+    [composing, setComposing] = useState(false),
+    [editingId, setEditingId] = useState(''),
+    [editDraft, setEditDraft] = useState('');
+  const draftRef = useRef(''),
+    editRef = useRef('');
   draftRef.current = draft;
+  editRef.current = editingId ? editDraft : '';
   useEffect(
-    () => registerUnsavedChanges(() => hasText(draftRef.current), true),
+    () =>
+      registerUnsavedChanges(
+        () => hasText(draftRef.current) || hasText(editRef.current),
+        true,
+      ),
     [],
   );
   async function load() {
@@ -62,7 +74,7 @@ export function EventNotes({
   }, [eventId]);
   async function write(
     path: string,
-    method: 'POST' | 'DELETE',
+    method: 'POST' | 'PUT' | 'DELETE',
     done: string,
     body?: string,
   ) {
@@ -113,7 +125,19 @@ export function EventNotes({
     ) {
       setDraft('');
       setEditorKey((key) => key + 1);
+      setComposing(false);
     }
+  }
+  async function saveEdit(id: string) {
+    if (
+      await write(
+        '/' + id,
+        'PUT',
+        'Notiz gespeichert.',
+        JSON.stringify({ bodyHtml: editDraft }),
+      )
+    )
+      setEditingId('');
   }
   return (
     <div
@@ -122,25 +146,63 @@ export function EventNotes({
       aria-labelledby="event-panel-notes"
       tabIndex={-1}
     >
-      <h4 id="event-panel-notes">Notizen</h4>
-      <div className="event-note-composer">
-        <MailBodyEditor
-          label="Neue Notiz"
-          value={draft}
-          onChange={setDraft}
-          replaceKey={editorKey}
-          withPlaceholderPicker={false}
-          disabled={busy}
-        />
+      <div className="card-head">
+        <h4 id="event-panel-notes">Notizen</h4>
         <button
           type="button"
-          className="secondary-action"
-          disabled={busy || !hasText(draft)}
-          onClick={() => void add()}
+          className="icon-action tier-quiet-icon"
+          aria-label="Notiz hinzufügen"
+          title="Notiz hinzufügen"
+          aria-expanded={composing}
+          disabled={busy}
+          onClick={() => setComposing((open) => !open)}
         >
-          Notiz hinzufügen
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
         </button>
       </div>
+      {composing && (
+        <div className="event-note-composer">
+          <MailBodyEditor
+            label="Neue Notiz"
+            value={draft}
+            onChange={setDraft}
+            replaceKey={editorKey}
+            withPlaceholderPicker={false}
+            disabled={busy}
+          />
+          <div className="event-note-actions">
+            <button
+              type="button"
+              className="primary-action"
+              disabled={busy || !hasText(draft)}
+              onClick={() => void add()}
+            >
+              Notiz speichern
+            </button>
+            <button
+              type="button"
+              className="tertiary-action"
+              disabled={busy}
+              onClick={() => {
+                setComposing(false);
+                setDraft('');
+                setEditorKey((key) => key + 1);
+              }}
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
       <p role="status">{message}</p>
       {loadFailed ? (
         <div role="alert">
@@ -163,28 +225,88 @@ export function EventNotes({
             <li key={note.id}>
               <p className="event-note-meta">
                 <time dateTime={note.createdAt}>{when(note.createdAt)}</time>
-                <span>{note.author ?? 'Übernommen'}</span>
-                <button
-                  type="button"
-                  className="tertiary-action"
-                  disabled={busy}
-                  aria-label={'Löschen: Notiz vom ' + when(note.createdAt)}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        'Notiz löschen? Sie verschwindet aus der Akte; das Protokoll behält den Vorgang.',
-                      )
-                    )
-                      void write('/' + note.id, 'DELETE', 'Notiz gelöscht.');
-                  }}
-                >
-                  Löschen
-                </button>
+                <span>
+                  {note.author ?? 'Übernommen'}
+                  {note.updatedAt ? ' · bearbeitet' : ''}
+                </span>
+                {editingId !== note.id && (
+                  <button
+                    type="button"
+                    className="icon-action tier-quiet-icon"
+                    disabled={busy || Boolean(editingId)}
+                    aria-label={'Bearbeiten: Notiz vom ' + when(note.createdAt)}
+                    title="Notiz bearbeiten"
+                    onClick={() => {
+                      setEditDraft(note.bodyHtml);
+                      setEditingId(note.id);
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
+                )}
               </p>
-              <div
-                className="event-note-body"
-                dangerouslySetInnerHTML={{ __html: note.bodyHtml }}
-              />
+              {editingId === note.id ? (
+                <div className="event-note-composer">
+                  <MailBodyEditor
+                    label="Notiz bearbeiten"
+                    value={editDraft}
+                    onChange={setEditDraft}
+                    withPlaceholderPicker={false}
+                    disabled={busy}
+                  />
+                  <div className="event-note-actions">
+                    <button
+                      type="button"
+                      className="primary-action"
+                      disabled={busy || !hasText(editDraft)}
+                      onClick={() => void saveEdit(note.id)}
+                    >
+                      Änderungen speichern
+                    </button>
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      disabled={busy}
+                      onClick={() => setEditingId('')}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="event-note-body"
+                  dangerouslySetInnerHTML={{ __html: note.bodyHtml }}
+                />
+              )}
+              <button
+                type="button"
+                className="tertiary-action danger-link"
+                disabled={busy}
+                aria-label={
+                  'Event-Notiz löschen: Notiz vom ' + when(note.createdAt)
+                }
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Notiz löschen? Sie verschwindet aus der Akte; das Protokoll behält den Vorgang.',
+                    )
+                  )
+                    void write('/' + note.id, 'DELETE', 'Notiz gelöscht.');
+                }}
+              >
+                Event-Notiz löschen
+              </button>
             </li>
           ))}
         </ol>

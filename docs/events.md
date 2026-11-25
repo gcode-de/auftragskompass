@@ -195,6 +195,7 @@ API (Administrator, CSRF für Schreibzugriffe):
 | --- | --- |
 | `GET /api/v1/events/:id/notes` | `200` Liste `{ id, bodyHtml, createdAt, author }`, neueste zuerst; `404` fremdes, entferntes oder unbekanntes Event |
 | `POST /api/v1/events/:id/notes` `{ bodyHtml }` | `201` aktuelle Liste; `400 empty_note` ohne sichtbaren Text, `400 invalid_note` über 20.000 Zeichen nach Bereinigung, `404` |
+| `PUT /api/v1/events/:id/notes/:noteId` `{ bodyHtml }` | `200` aktuelle Liste; Zeitpunkt und Verfasser bleiben, `updatedAt` hält die Änderung fest (UI-BKP-04); `400 empty_note`/`invalid_note`, `404` |
 | `DELETE /api/v1/events/:id/notes/:noteId` | `200` aktuelle Liste; `404` unbekannte oder schon gelöschte Notiz |
 
 Löschen setzt einen Grabstein mit Zeitpunkt und Administrator; Audit-Aktionen
