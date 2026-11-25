@@ -541,7 +541,6 @@ Nach Bookitups Bereitstellen-Spalte (Screenshots vom 31.10./02.11.2026, Bildbeob
 
 Nach Bookitups Logbuch: neuester Eintrag zuerst, je Eintrag der Text und darunter das Datum in `muted` (`0.85rem`, `tabular-nums`). Links eine neutrale Kreismarke (`0.65rem`, 2px `quiet-ink`, Fläche `surface`) auf einer 2px-Linie in `border`, die beim letzten Eintrag endet. Keine Statusfarben in der Zeitleiste.
 
-
 ## Bookitup-Angleichung (UI-BKP, 25.11.2026)
 
 Gemessene Werte und Abweichungen stehen im
@@ -551,5 +550,12 @@ UI-BKP-01 gilt die Bookitup-Palette statt der früheren grünen Akzentfarbe
 abweichend: Tippflächen 44 px statt 36 px, Grautöne für Text und
 Bedienelementgrenzen auf WCAG AA abgedunkelt, Statustext auf getönten
 Filterzeilen in dunklerer Statusfarbe. Eventliste (UI-BKP-02): Karten ohne
-Aktionssymbole, Aktionen im ⋯-Zeilenmenü (`details.row-menu`), Status als
-Mehrfachauswahl mit Markierungsbalken und getönter Zeile.
+Aktionssymbole, Aktionen im ⋯-Zeilenmenü (`.row-menu`, ein Knopf mit per
+CSS verborgenem Panel, damit 500 Karten schnell bleiben), Status als
+Mehrfachauswahl mit Markierungsbalken und getönter Zeile. Dokumentübersicht
+(UI-BKP-05): Dokumentart als Listenzeilen, Status als Segmentschalter
+(`.files-segments`), Fristetikett `.files-due[data-tone]` (open/ok/late; „late“
+vollflächig rot mit Flächenfarbe als Schrift für AA in beiden Modi),
+Event-Pille `.files-event-pill[data-status]`, Zeilenmenü als natives Popover
+(`popover="auto"`, Anker über `--menu-anchor`), damit die scrollende Tabelle
+es nicht abschneidet; Licht-Ausblenden und Escape liefert der Browser.

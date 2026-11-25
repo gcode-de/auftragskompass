@@ -2437,6 +2437,11 @@ const oldListKeys = [
 const metadataKeys = [
   ...oldListKeys,
   'eventName',
+  // UI-BKP-05: the event pill's status and the offer deadline badge.
+  'eventStatus',
+  'offerStatus',
+  'validUntil',
+  'offerExpired',
   'issuedDate',
   'pdfAvailable',
   'dueDate',
@@ -2779,9 +2784,13 @@ test('the metadata projection adds event name, local date and PDF eligibility on
   expect(Object.keys(byId(meta, draft)!).sort()).toEqual(metadataKeys);
   expect(byId(meta, draft)).toMatchObject({
     eventName: 'Fictional Files Wedding',
+    eventStatus: 'option',
     issuedDate: '2031-05-02',
     pdfAvailable: false,
     grossMinor: 0,
+    // A draft carries no deadline yet.
+    validUntil: null,
+    offerExpired: false,
   });
   expect(byId(meta, finalWithPdf)).toMatchObject({
     issuedDate: '2031-05-02',
@@ -2795,7 +2804,10 @@ test('the metadata projection adds event name, local date and PDF eligibility on
   });
   // A foreign event is never named, even though the row already carries no
   // readable foreign data; the join stays tenant-scoped.
-  expect(byId(meta, orphan)).toMatchObject({ eventName: null });
+  expect(byId(meta, orphan)).toMatchObject({
+    eventName: null,
+    eventStatus: null,
+  });
   const serialised = JSON.stringify(meta);
   expect(serialised).not.toContain('a'.repeat(64));
   expect(serialised).not.toContain('snapshot');
@@ -3262,6 +3274,15 @@ async function listedOffer(scope: string, now: string, id: string) {
   ).list({ include: 'offer' })) as DocumentOfferRow[];
   return rows.find((row) => row.id === id)!;
 }
+// UI-BKP-05: the file index answers the same deadline from the same clock.
+async function indexedOffer(scope: string, now: string, id: string) {
+  const rows = await documentRepository(
+    pool,
+    scope,
+    dependencies({ now: () => new Date(now) }).deps,
+  ).list({ include: 'metadata' });
+  return rows.find((row) => row.id === id)!;
+}
 
 test('finalizing an offer freezes exactly the deadline the PDF prints', async () => {
   const scope = randomUUID(),
@@ -3289,6 +3310,15 @@ test('finalizing an offer freezes exactly the deadline the PDF prints', async ()
     validUntil: '2030-11-09',
     offerExpired: true,
   });
+  for (const [now, offerExpired] of [
+    ['2030-11-09T22:59:59Z', false],
+    ['2030-11-09T23:00:00Z', true],
+  ] as const)
+    expect(await indexedOffer(scope, now, offer.id)).toMatchObject({
+      offerStatus: null,
+      validUntil: '2030-11-09',
+      offerExpired,
+    });
   expect(await offerState(scope, offer.id)).toEqual(frozen);
 });
 

@@ -561,6 +561,19 @@ Gesamtrahmen bleiben vorerst aus.
   (Bearbeiten, leer, CSRF, unbekannt, gelöscht, Audit), Component (Plus,
   Bearbeiten, Abbrechen, Löschen), E2E (Ablauf mit Screenshots).
   Commit `feat: edit event notes like bookitup`.
+- [x] **UI-BKP-05 — Dokumentübersicht wie Bookitup:** Filterspalte mit
+  gefülltem Suchfeld, Dokumentart als Einzelauswahl in Listenzeilen, Status
+  als Segmentschalter; Tabelle flach mit Zebra und 2-px-Kopflinie, Frist als
+  farbiges Etikett („Gültig bis …“/„Fällig …“: grau laufend, grün
+  angenommen/bezahlt, rot abgelaufen/überfällig), Event als Pille mit
+  Statuspunkt, Zeilenaktionen (PDF, Im Event öffnen) im ⋯-Menü als natives
+  Popover mit Anker-Positionierung. `include=metadata` liefert dafür
+  zusätzlich `eventStatus`, `offerStatus`, `validUntil`, `offerExpired`.
+  „Dateien“ der Akte und der Dialog „Vorlage wählen“ folgen getrennt.
+  **Tests:** Integration (neue Felder, Ablauf am Tagesende), Component
+  (Etikett-Töne, Pille, Popover, Filterknöpfe, kaputte Felder), E2E (Look
+  hell/dunkel mit axe, Menü unter dem Knopf, 390 px; Auth-Ablauf angepasst).
+  Commit `feat: shape the document overview like bookitup`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 

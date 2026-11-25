@@ -431,6 +431,13 @@ export type DocumentListRow = {
 export type DocumentMetadataRow = DocumentListRow & {
   /** Tenant-scoped event name; null while unlinked or for a foreign id. */
   eventName: string | null;
+  /** UI-BKP-05: the linked event's status code for the pill dot; null like the name. */
+  eventStatus: string | null;
+  /** UI-BKP-05: the offer deadline of the index, the same values the offer
+   * projection answers; `null`/`false` for every other row. */
+  offerStatus: OfferStatus | null;
+  validUntil: string | null;
+  offerExpired: boolean;
   /** `issued_at` as a tenant-local plain date, the same basis as the filters. */
   issuedDate: string;
   /** Exactly the eligibility of `GET /api/v1/documents/:id/pdf`. */
@@ -2261,6 +2268,13 @@ export function documentRepository(
           ...columns,
           pdfHash: documents.pdfHash,
           eventName: sql<string | null>`${events.name}`.as('event_name'),
+          eventStatus: sql<string | null>`${events.status}`.as('event_status'),
+          offerStatus: sql<string | null>`documents.offer_status`.as(
+            'offer_status',
+          ),
+          validUntil: sql<
+            string | null
+          >`to_char(documents.valid_until, 'YYYY-MM-DD')`.as('valid_until'),
           // BKP019.e: the file index filters by due day and payment state, so it
           // must also show them - from the same three expressions the filters
           // use, never from a second derivation.
@@ -2291,6 +2305,8 @@ export function documentRepository(
           claimMinor: claimGross,
           paidMinor,
           overdueNow,
+          offerStatus,
+          validUntil,
           ...row
         }) => {
           // The payment axis exists only where a claim exists. Every other row
@@ -2305,6 +2321,14 @@ export function documentRepository(
             // RG-07: the frozen due day, answered for every row so no reader has
             // to guess a shape.
             dueDate: dueDate ?? null,
+            offerStatus: (offerStatus as OfferStatus | null) ?? null,
+            validUntil: validUntil ?? null,
+            offerExpired: offerExpired(
+              validUntil ?? null,
+              (offerStatus as OfferStatus | null) ?? null,
+              at,
+              zone,
+            ),
             issuedDate: Temporal.Instant.fromEpochMilliseconds(
               row.issuedAt.getTime(),
             )
@@ -4393,6 +4417,10 @@ export function registerDocumentRoutes(
                   required: [
                     ...listRow.required,
                     'eventName',
+                    'eventStatus',
+                    'offerStatus',
+                    'validUntil',
+                    'offerExpired',
                     'issuedDate',
                     'pdfAvailable',
                     // BKP019.e: the index fields the file page filters and shows.
@@ -4404,6 +4432,10 @@ export function registerDocumentRoutes(
                   properties: {
                     ...listRow.properties,
                     eventName: nullableText,
+                    eventStatus: nullableText,
+                    offerStatus: offerFields.offerStatus,
+                    validUntil: offerFields.validUntil,
+                    offerExpired: offerFields.offerExpired,
                     issuedDate: {
                       type: 'string',
                       pattern: '^\\d{4}-\\d{2}-\\d{2}$',

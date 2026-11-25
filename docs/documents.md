@@ -9,11 +9,11 @@ vorab als PDF ansehen; finale PDFs können heruntergeladen werden.
 
 ## Lebenszyklus
 
-| Zustand | Bedeutung | Nummer | Snapshot/PDF |
-|---|---|---|---|
-| `draft` | bearbeitbarer Snapshot, Angebot auch ohne Vorlage | keine | keiner |
-| `final` | finalisiert, unveränderbar | eindeutig je Mandant | HTML-Hash und PDF-Hash gesetzt |
-| `withdrawn` | zurückgezogen (Domänenregel vorhanden, noch kein Endpunkt) | keine | keiner |
+| Zustand     | Bedeutung                                                  | Nummer               | Snapshot/PDF                   |
+| ----------- | ---------------------------------------------------------- | -------------------- | ------------------------------ |
+| `draft`     | bearbeitbarer Snapshot, Angebot auch ohne Vorlage          | keine                | keiner                         |
+| `final`     | finalisiert, unveränderbar                                 | eindeutig je Mandant | HTML-Hash und PDF-Hash gesetzt |
+| `withdrawn` | zurückgezogen (Domänenregel vorhanden, noch kein Endpunkt) | keine                | keiner                         |
 
 Die Übersicht `GET /api/v1/documents` liefert die Kopfdaten ohne Positionen und
 Hashes, neueste zuerst, und lässt sich nach Event, Art und Zustand filtern.
@@ -244,21 +244,21 @@ nicht root gehört.
 
 ## API
 
-| Route | Erfolg | Fehler |
-|---|---|---|
-| `POST /api/v1/documents` | `201` Dokument | `400` ungültige Positionen/Vorlage, `404` fremde Referenz |
-| `PUT /api/v1/documents/:id/draft` | `200` aktualisierter Angebotsentwurf | `400` Inhalt/Version, `404`, `409` Konflikt oder falscher Zustand |
-| `GET /api/v1/documents/:id/preview` | `200` Vorschau-PDF, `no-store` | `400` fehlender Inhalt, `404`, `409` falscher Zustand, `500` Renderfehler |
-| `POST /api/v1/documents/:id/finalize` | `200` finales Dokument | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler |
-| `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`, optional `q`, `from`/`to`, `limit`, `offset`, `include=metadata`) | `400` ungültiger Filter |
-| `GET /api/v1/documents/receivables` | `200` `{ count, openMinor, overdueCount, overdueMinor }`: alle finalen Rechnungen und Anzahlungsrechnungen mit offenem Betrag, Summe des noch Offenen, davon überfällig (QW4) | `401`/`403` |
-| `GET /api/v1/documents/:id` | `200` Dokument | `404` |
-| `GET /api/v1/documents/:id/pdf` | `200` PDF (`application/pdf`) | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler |
-| `GET /api/v1/document-layout` | `200` gespeichertes Layout | `404` noch nicht eingerichtet |
-| `POST /api/v1/document-layout` | `201` bewusst angelegtes Layout | `400` ungültige Felder, `409` bereits vorhanden |
-| `PUT /api/v1/document-layout` | `200` aktualisiertes Layout | `400` ungültige Felder/Version, `404`, `409` Versionskonflikt |
-| `POST /api/v1/document-layout/preview` | `200` fiktive PDF-Vorschau der übergebenen Werte, `no-store` | `400` ungültige Felder, `403` fehlende Berechtigung, `404` fehlendes referenziertes Logo, `500` neutrale Speicher-/Renderfehler |
-| `PUT /api/v1/document-layout/logo` | `200` Layout mit Logo | `400` falsche Bildbytes, `404` kein Layout, `413` zu groß, `415` fremder Typ |
+| Route                                  | Erfolg                                                                                                                                                                        | Fehler                                                                                                                          |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/documents`               | `201` Dokument                                                                                                                                                                | `400` ungültige Positionen/Vorlage, `404` fremde Referenz                                                                       |
+| `PUT /api/v1/documents/:id/draft`      | `200` aktualisierter Angebotsentwurf                                                                                                                                          | `400` Inhalt/Version, `404`, `409` Konflikt oder falscher Zustand                                                               |
+| `GET /api/v1/documents/:id/preview`    | `200` Vorschau-PDF, `no-store`                                                                                                                                                | `400` fehlender Inhalt, `404`, `409` falscher Zustand, `500` Renderfehler                                                       |
+| `POST /api/v1/documents/:id/finalize`  | `200` finales Dokument                                                                                                                                                        | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler                                            |
+| `GET /api/v1/documents`                | `200` Liste (Filter `eventId`, `kind`, `state`, optional `q`, `from`/`to`, `limit`, `offset`, `include=metadata`)                                                             | `400` ungültiger Filter                                                                                                         |
+| `GET /api/v1/documents/receivables`    | `200` `{ count, openMinor, overdueCount, overdueMinor }`: alle finalen Rechnungen und Anzahlungsrechnungen mit offenem Betrag, Summe des noch Offenen, davon überfällig (QW4) | `401`/`403`                                                                                                                     |
+| `GET /api/v1/documents/:id`            | `200` Dokument                                                                                                                                                                | `404`                                                                                                                           |
+| `GET /api/v1/documents/:id/pdf`        | `200` PDF (`application/pdf`)                                                                                                                                                 | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler                                                     |
+| `GET /api/v1/document-layout`          | `200` gespeichertes Layout                                                                                                                                                    | `404` noch nicht eingerichtet                                                                                                   |
+| `POST /api/v1/document-layout`         | `201` bewusst angelegtes Layout                                                                                                                                               | `400` ungültige Felder, `409` bereits vorhanden                                                                                 |
+| `PUT /api/v1/document-layout`          | `200` aktualisiertes Layout                                                                                                                                                   | `400` ungültige Felder/Version, `404`, `409` Versionskonflikt                                                                   |
+| `POST /api/v1/document-layout/preview` | `200` fiktive PDF-Vorschau der übergebenen Werte, `no-store`                                                                                                                  | `400` ungültige Felder, `403` fehlende Berechtigung, `404` fehlendes referenziertes Logo, `500` neutrale Speicher-/Renderfehler |
+| `PUT /api/v1/document-layout/logo`     | `200` Layout mit Logo                                                                                                                                                         | `400` falsche Bildbytes, `404` kein Layout, `413` zu groß, `415` fremder Typ                                                    |
 
 Alle Routen verlangen eine angemeldete Betreiberberechtigung, die
 CSRF-Prüfung gilt wie bei den übrigen schreibenden Endpunkten. Jede Abfrage ist
@@ -378,6 +378,10 @@ Pagination, neueste zuerst (`issued_at` absteigend, dann `id` absteigend).
   als lokales `YYYY-MM-DD`) und `pdfAvailable`. `pdfAvailable` folgt exakt der
   PDF-Route: `final` **und** Nummer **und** pdf-Hash. Hashes, Snapshot-HTML und
   Ablageschlüssel verlassen den Server nicht.
+  Seit UI-BKP-05 außerdem `eventStatus` (Statuscode des verknüpften Events,
+  sonst `null`) sowie `offerStatus`, `validUntil` und `offerExpired` mit
+  denselben Werten wie `include=offer` (andere Zeilen: `null`/`false`). Die
+  Übersicht zeigt daraus die Fristetiketten und den Statuspunkt der Event-Pille.
 - `issued_at` ist das Dokumentdatum (Entwurf: Anlagezeitpunkt, final:
   Ausgabezeitpunkt). Ein `created_at` existiert nicht, deshalb filtern und
   sortieren Liste und Oberfläche ausschließlich über dieses Feld.
