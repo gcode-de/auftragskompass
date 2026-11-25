@@ -49,6 +49,7 @@ import {
 import { chromiumPdfRenderer } from '../../packages/core/src/document-pdf.js';
 import { registerDocumentRoutes } from '../../packages/core/src/documents.js';
 import { registerCalendarFeedRoutes } from '../../packages/core/src/calendar-feeds.js';
+import { nginxHeaders } from '../helpers/nginx-headers.js';
 
 const login = 'fictional.offer@example.invalid';
 const password = 'Fictional password 123!';
@@ -68,13 +69,7 @@ async function offerDraftScenario(browser: Browser) {
 
   const app = Fastify();
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
-  const adminHeaders = Object.fromEntries(
-    [
-      ...nginx.matchAll(
-        /add_header ([\w-]+) (?:"([^"]+)"|([^;$ ][^; ]*)) always;/g,
-      ),
-    ].map((match) => [match[1]!, match[2] ?? match[3]!]),
-  );
+  const adminHeaders = nginxHeaders(nginx);
   execFileSync(
     'openssl',
     [
@@ -113,7 +108,7 @@ async function offerDraftScenario(browser: Browser) {
           });
           res.writeHead(result.statusCode, {
             ...result.headers,
-            ...adminHeaders,
+            ...adminHeaders(req.url!),
           });
           res.end(result.rawPayload);
           return;
@@ -123,7 +118,7 @@ async function offerDraftScenario(browser: Browser) {
         );
         res.writeHead(result.status, {
           'content-type': result.headers.get('content-type')!,
-          ...adminHeaders,
+          ...adminHeaders(req.url!),
         });
         res.end(Buffer.from(await result.arrayBuffer()));
       })().catch(() => {

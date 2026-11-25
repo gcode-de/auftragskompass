@@ -493,6 +493,54 @@ test('direct record links hide list controls and an unknown link never keeps an 
   expect(screen.getByRole('button', { name: 'Event anlegen' })).toBeTruthy();
 });
 
+// QW1: the record copies itself like the list row does and links each
+// contact to its own record.
+test('the open record duplicates its event and links its contacts', async () => {
+  window.history.replaceState(null, '', '/#event-synthetic');
+  const base = mocker();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, options?: RequestInit) =>
+      url === '/api/v1/events/synthetic'
+        ? Response.json({
+            event: row,
+            contacts: [
+              {
+                id: 'fictional-contact',
+                name: 'Fiktive Person',
+                contactPerson: '',
+                email: '',
+                phone: '',
+                mobile: '',
+                role: 'primary',
+              },
+            ],
+            location: null,
+            eventType: null,
+            package: null,
+            activities: [],
+          })
+        : base(url, options),
+    ),
+  );
+  render(<EventPanel csrfToken="csrf" />);
+  await screen.findByRole('heading', { name: 'Event: Synthetic event' });
+  expect(
+    screen
+      .getByRole('link', { name: 'Details anzeigen: Fiktive Person' })
+      .getAttribute('href'),
+  ).toBe('#contact-fictional-contact');
+  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
+  fireEvent.click(screen.getByRole('button', { name: 'Event duplizieren' }));
+  const copy = await screen.findByRole('dialog', { name: /Neues Event/ });
+  expect(
+    (within(copy).getByLabelText('Eventname') as HTMLInputElement).value,
+  ).toBe('Synthetic event (Kopie)');
+  expect(
+    (within(copy).getByLabelText('Eventstatus') as HTMLSelectElement).value,
+  ).toBe('inquiry');
+});
+
 test('confirmed event removal refreshes both lists and reports refresh failures', async () => {
   window.history.replaceState(null, '', '/#event-synthetic');
   vi.stubGlobal(

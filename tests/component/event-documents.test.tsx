@@ -7335,8 +7335,16 @@ test('a final document is delivered from one view with preview and actions', asy
   const view = await screen.findByRole('dialog', {
     name: 'Dokument bereitstellen',
   });
-  // The admin policy forbids framing, so the preview opens in its own tab.
-  const preview = within(view).getByRole('link', { name: 'Vorschau öffnen' });
+  // nginx lets the admin frame only this PDF route: the preview is embedded,
+  // and the new tab stays for printing.
+  expect(
+    within(view)
+      .getByTitle('Vorschau Angebot AN-2030-0001')
+      .getAttribute('src'),
+  ).toBe('/api/v1/documents/' + finalized.id + '/pdf');
+  const preview = within(view).getByRole('link', {
+    name: 'In neuem Tab öffnen',
+  });
   expect(preview.getAttribute('href')).toBe(
     '/api/v1/documents/' + finalized.id + '/pdf',
   );

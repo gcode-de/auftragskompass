@@ -4013,10 +4013,15 @@ export function EventDocuments({
                 <p>
                   {kindName(entry)} {entry.number}
                 </p>
-                {/* The admin policy forbids framing (frame-ancestors 'none'),
-                    so the preview opens the frozen PDF in its own tab, where
-                    the browser also prints it. */}
+                {/* nginx lets the admin frame only this PDF route, so the
+                    frozen document shows beside its actions. The new tab
+                    stays for printing and for browsers without a viewer. */}
                 <div className="document-deliver-layout">
+                  <iframe
+                    className="document-deliver-preview"
+                    title={'Vorschau ' + kindName(entry) + ' ' + entry.number}
+                    src={'/api/v1/documents/' + entry.id + '/pdf'}
+                  />
                   <ul className="document-deliver-actions">
                     <li>
                       <a
@@ -4025,11 +4030,10 @@ export function EventDocuments({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Vorschau öffnen
+                        In neuem Tab öffnen
                       </a>
                       <span className="document-card-hint">
-                        Öffnet das PDF in einem neuen Tab; dort lässt es sich
-                        auch drucken.
+                        Dort lässt sich das PDF auch drucken.
                       </span>
                     </li>
                     <li>

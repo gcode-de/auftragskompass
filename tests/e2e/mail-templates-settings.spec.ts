@@ -20,6 +20,7 @@ import {
 } from '../../packages/core/src/mail-templates.js';
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 import { registerMailSignatureRoutes } from '../../packages/core/src/mail-signatures.js';
+import { nginxHeaders } from '../helpers/nginx-headers.js';
 
 // MAIL-TPL-01b: the mail template settings in real Chromium against the real
 // routes - open the area, create a template with a placeholder, save it, axe
@@ -44,13 +45,7 @@ test('mail templates are managed in the settings in Chromium', async ({
 
   const app = Fastify();
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
-  const adminHeaders = Object.fromEntries(
-    [
-      ...nginx.matchAll(
-        /add_header ([\w-]+) (?:"([^"]+)"|([^;$ ][^; ]*)) always;/g,
-      ),
-    ].map((match) => [match[1]!, match[2] ?? match[3]!]),
-  );
+  const adminHeaders = nginxHeaders(nginx);
   execFileSync(
     'openssl',
     [
@@ -89,7 +84,7 @@ test('mail templates are managed in the settings in Chromium', async ({
           });
           res.writeHead(result.statusCode, {
             ...result.headers,
-            ...adminHeaders,
+            ...adminHeaders(req.url!),
           });
           res.end(result.rawPayload);
           return;
@@ -99,7 +94,7 @@ test('mail templates are managed in the settings in Chromium', async ({
         );
         res.writeHead(result.status, {
           'content-type': result.headers.get('content-type')!,
-          ...adminHeaders,
+          ...adminHeaders(req.url!),
         });
         res.end(Buffer.from(await result.arrayBuffer()));
       })().catch(() => {

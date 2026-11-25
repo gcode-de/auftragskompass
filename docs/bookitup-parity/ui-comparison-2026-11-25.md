@@ -27,18 +27,14 @@ Ressourcen; Stand 31.10. bis 24.11.2026).
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | UI-PARITY-01 | Einstellungen in Gruppen: E-Mail (Vorlagen, Ein- & Ausgangsserver, Signatur), Dokumente (Vorlagen, Produkte, Layout, Nummernkreise), Integrationen | Gleiche Reihenfolge und Gruppen, Bookitup-Bezeichnungen wo zutreffend, Signatur als eigene Seite; Gruppen dauerhaft offen statt einklappbar (kein Extraklick); mobil Bereichswähler mit `<optgroup>` |
 | UI-PARITY-02 | Eventakte: Details, Ressourcen, Dateien, E-Mails mit Ordnern                                                                                       | Genau diese vier Bereiche; Notizen und Logbuch unter Details; E-Mails mit „Neue Mail schreiben“ und Ordnern Alle/Geplant/Fehlgeschlagen/Gesendet aus dem Versandstatus                               |
-| UI-PARITY-03 | „Dokument bereitstellen“: an Buchhaltung senden, E-Mail an Kunden, Herunterladen, Drucken, Online freigeben                                        | Zeilenaktion „Bereitstellen“ mit Vorschau (neuer Tab, dort Drucken), Buchhaltung, Kunde, Download; Online-Freigabe ehrlich als nicht verfügbar benannt                                               |
+| UI-PARITY-03 | „Dokument bereitstellen“: an Buchhaltung senden, E-Mail an Kunden, Herunterladen, Drucken, Online freigeben                                        | Zeilenaktion „Bereitstellen“ mit eingebetteter Vorschau (UI-PARITY-06, Tab zum Drucken), Buchhaltung, Kunde, Download; Online-Freigabe ehrlich als nicht verfügbar benannt                        |
 | UI-PARITY-04 | Notizen und Logbuch in der Mittelspalte, Kontakte/Location rechts                                                                                  | Notizen und Logbuch als Karten in der Hauptspalte, Kontakt und Ort daneben                                                                                                                           |
 | UI-PARITY-05 | Logbuch als Zeitleiste, neuester Eintrag oben                                                                                                      | Zeitleiste mit neutralen Marken, neuester Eintrag zuerst, Datum gedämpft darunter                                                                                                                    |
+| UI-PARITY-06 | Eingebettete PDF-Vorschau im Bereitstellen-Dialog                                                                                                  | PDF als iframe neben der Aktionsspalte; Framing nur für die Dokument-PDF-Route vom eigenen Ursprung, alles andere bleibt `DENY` (Entscheidung des Betreibers)                                        |
 | MAIL-SIG-01  | E-Mail-Signatur mit Logo                                                                                                                           | Mehrere Signaturen, Standard, Auswahl in jedem Mail-Dialog, Logo als eingebettetes Bild (enthält Backend, eigener Auftrag vom 24.11.)                                                                |
 
 ## Bewusst anders als Bookitup
 
-- **Eingebettete PDF-Vorschau:** Die Admin-Sicherheitsrichtlinie verbietet
-  Framing (`frame-ancestors 'none'`, `X-Frame-Options DENY`, `default-src
-'none'` ohne `frame-src`). Die Vorschau öffnet deshalb im neuen Tab. Eine
-  Lockerung nur für PDF-Antworten gleicher Herkunft wäre möglich, ist aber
-  eine Sicherheitsentscheidung des Betreibers.
 - **Einklappbare Einstellungsgruppen:** dauerhaft offen (behutsame
   Vereinfachung).
 - **Blaue Akzentfarbe:** Die neutrale Palette mit zurückgenommenem Grün
@@ -61,7 +57,7 @@ Ressourcen; Stand 31.10. bis 24.11.2026).
 - **Senkrechte Aktennavigation links** mit „Event am …“ wie in Bookitup. Sie
   kostet Breite; das Dreispaltenraster der Details müsste auf deutlich breitere
   Bildschirme rücken. Braucht eine eigene Layoutabnahme.
-- **„Event duplizieren“** am unteren Ende der Aktennavigation (die Duplizieren-
-  Funktion existiert in der Eventliste; Platzierung in der Akte offen).
-- **Location-Karte mit „PRIMÄR“-Markierung** und **„Details anzeigen“** am
-  Kontakt: kleine Angleichungen der rechten Spalte.
+- ~~„Event duplizieren“ in der Akte~~ und ~~„Details anzeigen“ am Kontakt~~:
+  umgesetzt als QW1 (Aktion unter „Weitere Eventaktionen“, da die
+  Aktennavigation waagerecht ist). Die „PRIMÄR“-Marke am Ort entfällt
+  bewusst, weil ein Event genau einen Ort hat.

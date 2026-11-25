@@ -14,6 +14,12 @@ eigenen Schutz. Es sind weder externe Dienste noch neue UI-Abhängigkeiten nöti
 - `frame-ancestors 'none'` und `X-Frame-Options: DENY`: Die Admin-App wird nicht
   in fremde oder eigene Frames eingebettet. Ein späteres WordPress-Widget bleibt
   ein getrenntes öffentliches Produkt und benötigt einen eigenen Vertrag.
+- **Einzige Ausnahme (UI-PARITY-06):** das eingefrorene Dokument-PDF
+  `/api/v1/documents/:id/pdf` erhält `frame-ancestors 'self'` und
+  `X-Frame-Options: SAMEORIGIN`, damit der Dialog „Dokument bereitstellen“ es
+  eingebettet zeigt. Die Admin-Richtlinie erlaubt dafür `frame-src 'self'`.
+  Fremde Ursprünge dürfen auch dieses PDF nicht rahmen; alle anderen Pfade
+  bleiben bei `'none'`/`DENY`. Beide Werte kommen aus `map $uri`-Blöcken.
 - `Referrer-Policy: no-referrer`: Navigation überträgt keine Seitenadresse als
   Referrer. `X-Content-Type-Options: nosniff` bleibt erhalten.
 

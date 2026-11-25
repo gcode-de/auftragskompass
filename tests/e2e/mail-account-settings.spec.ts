@@ -15,6 +15,7 @@ import { bootstrapAccess } from '../../packages/core/src/access.js';
 import { bootstrapPassword } from '../../packages/core/src/password-access.js';
 import { registerAuth } from '../../packages/core/src/auth.js';
 import { registerMailRoutes } from '../../packages/core/src/mail.js';
+import { nginxHeaders } from '../helpers/nginx-headers.js';
 
 // MAIL-ACCOUNT-01: the sending account settings in real Chromium - create,
 // change without a password, secret never visible, axe clean. Synthetic
@@ -41,13 +42,7 @@ test('the sending account settings create and change an account in Chromium', as
 
   const app = Fastify();
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
-  const adminHeaders = Object.fromEntries(
-    [
-      ...nginx.matchAll(
-        /add_header ([\w-]+) (?:"([^"]+)"|([^;$ ][^; ]*)) always;/g,
-      ),
-    ].map((match) => [match[1]!, match[2] ?? match[3]!]),
-  );
+  const adminHeaders = nginxHeaders(nginx);
   execFileSync(
     'openssl',
     [
@@ -86,7 +81,7 @@ test('the sending account settings create and change an account in Chromium', as
           });
           res.writeHead(result.statusCode, {
             ...result.headers,
-            ...adminHeaders,
+            ...adminHeaders(req.url!),
           });
           res.end(result.rawPayload);
           return;
@@ -96,7 +91,7 @@ test('the sending account settings create and change an account in Chromium', as
         );
         res.writeHead(result.status, {
           'content-type': result.headers.get('content-type')!,
-          ...adminHeaders,
+          ...adminHeaders(req.url!),
         });
         res.end(Buffer.from(await result.arrayBuffer()));
       })().catch(() => {
