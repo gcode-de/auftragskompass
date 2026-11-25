@@ -47,6 +47,7 @@ import { registerDocumentTemplateRoutes } from '../../packages/core/src/document
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 import { StorageError } from '../../packages/core/src/storage.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
+import { nginxHeaders } from '../helpers/nginx-headers.js';
 async function openOfferPicker(scope: Locator) {
   if (!(await scope.getByLabel('Vorlage').isVisible()))
     await scope.getByText('Dokument anlegen', { exact: true }).click();
@@ -94,13 +95,7 @@ async function signInScenario(
 
   const app = Fastify();
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
-  const adminHeaders = Object.fromEntries(
-    [
-      ...nginx.matchAll(
-        /add_header ([\w-]+) (?:"([^"]+)"|([^;$ ][^; ]*)) always;/g,
-      ),
-    ].map((match) => [match[1]!, match[2] ?? match[3]!]),
-  );
+  const adminHeaders = nginxHeaders(nginx);
   execFileSync(
     'openssl',
     [
@@ -154,7 +149,7 @@ async function signInScenario(
           });
           res.writeHead(result.statusCode, {
             ...result.headers,
-            ...adminHeaders,
+            ...adminHeaders(req.url!),
           });
           res.end(result.rawPayload);
         } else {
@@ -165,7 +160,7 @@ async function signInScenario(
           );
           res.writeHead(result.status, {
             'content-type': result.headers.get('content-type')!,
-            ...adminHeaders,
+            ...adminHeaders(req.url!),
           });
           res.end(Buffer.from(await result.arrayBuffer()));
         }

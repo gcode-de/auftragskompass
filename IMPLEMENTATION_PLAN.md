@@ -441,6 +441,19 @@ Attrappen nachgebaut.
   Die API-Reihenfolge bleibt unverändert, nur die Anzeige dreht. **Tests:**
   Component (Reihenfolge, Aufbau), E2E-Screenshot mit echten Einträgen.
   Commit `feat: show the logbook as a timeline`.
+- [x] **UI-PARITY-06 — Eingebettete PDF-Vorschau (25.11.2026, Entscheidung
+  des Betreibers „Einbetten erlauben“):** der Dialog „Dokument bereitstellen“
+  zeigt das eingefrorene PDF wie Bookitup direkt neben den Aktionen; „Vorschau
+  öffnen“ heißt jetzt „In neuem Tab öffnen“ (Drucken, Browser ohne
+  PDF-Anzeige). Nginx erlaubt das Rahmen nur für `/api/v1/documents/:id/pdf`
+  und nur vom eigenen Ursprung (`map $uri`), die Admin-CSP erhält
+  `frame-src 'self'`; alle anderen Pfade bleiben `DENY`/`'none'`. Die
+  Browsertests übernehmen die Header jetzt pfadgenau aus der
+  Nginx-Konfiguration (`tests/helpers/nginx-headers.ts`). Keine API-Änderung.
+  **Tests:** Workspace (Map-Vertrag, Route-Regex positiv/negativ), Component
+  (iframe-Titel/-Quelle, Tab-Link), E2E (gerahmte PDF-Antwort mit
+  `SAMEORIGIN`, keine Frame-Ablehnung). Commit `feat: embed the document
+  preview in the delivery dialog`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
