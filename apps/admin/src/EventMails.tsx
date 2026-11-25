@@ -15,6 +15,8 @@ type MailRow = {
   createdAt: string;
   sentAt: string | null;
   sendErrorCode: string | null;
+  // QW5: a planned order's time; null when it is due or already gone.
+  scheduledFor?: string | null;
 };
 
 const pollMs = 3000,
@@ -22,7 +24,8 @@ const pollMs = 3000,
   maxPolls = 40;
 
 const stateLabels: Record<MailRow['sendState'], string> = {
-  none: 'Entwurf',
+  // QW5: an outgoing message without an order is a withdrawn planned send.
+  none: 'Nicht gesendet',
   scheduled: 'In der Warteschlange',
   sending: 'Wird gesendet',
   sent: 'Gesendet',
@@ -60,6 +63,9 @@ export function mailDeliveryFailureText(code: string | null): string {
 
 const inFlight = (row: MailRow) =>
   row.sendState === 'scheduled' || row.sendState === 'sending';
+// QW5: a planned mail waits on purpose - the list does not poll for it.
+const planned = (row: MailRow) =>
+  row.sendState === 'scheduled' && Boolean(row.scheduledFor);
 
 // UI-PARITY-02: Bookitup's mail folders that exist here, derived from the
 // stored send state; an inbox, drafts and a trash do not exist yet.
@@ -147,7 +153,7 @@ export function EventMails({
     void load();
   }, [active, eventId, revision]);
 
-  const waiting = rows.some(inFlight);
+  const waiting = rows.some((row) => inFlight(row) && !planned(row));
   const [folder, setFolder] =
     useState<(typeof folders)[number]['value']>('all');
   const shown = rows.filter(
@@ -170,6 +176,33 @@ export function EventMails({
     },
     () => busy !== '',
   );
+
+  async function unschedule(row: MailRow) {
+    if (busy) return;
+    setBusy(row.id);
+    setMessage('');
+    setAlert('');
+    try {
+      const reply = await fetch(
+        '/api/v1/mail/messages/' + row.id + '/unschedule',
+        { method: 'POST', headers: { 'x-csrf-token': csrfToken } },
+      );
+      if (!reply.ok) {
+        setAlert(
+          'Die Planung konnte nicht aufgehoben werden; die Mail ist vielleicht schon unterwegs. Bitte die Liste aktualisieren.',
+        );
+        return;
+      }
+      setMessage('Planung aufgehoben. Die Mail wird nicht gesendet.');
+      await load();
+    } catch {
+      setAlert(
+        'Der Ausgang ist unklar. Bitte die Liste aktualisieren, bevor du es erneut versuchst.',
+      );
+    } finally {
+      setBusy('');
+    }
+  }
 
   async function resend(row: MailRow) {
     if (busy) return;
@@ -255,7 +288,9 @@ export function EventMails({
                   </div>
                 </div>
                 <strong className="event-mail-state">
-                  {stateLabels[row.sendState]}
+                  {planned(row)
+                    ? 'Geplant für ' + dateText(row.scheduledFor!)
+                    : stateLabels[row.sendState]}
                 </strong>
               </div>
               {(row.sendState === 'failed' ||
@@ -264,14 +299,28 @@ export function EventMails({
                   {mailDeliveryFailureText(row.sendErrorCode)}
                 </p>
               )}
-              {row.sendState === 'failed' && (
+              {(row.sendState === 'failed' || row.sendState === 'none') && (
                 <button
                   type="button"
                   className="secondary-action"
                   disabled={busy !== ''}
                   onClick={() => void resend(row)}
                 >
-                  {busy === row.id ? 'Wird eingereiht …' : 'Erneut senden'}
+                  {busy === row.id
+                    ? 'Wird eingereiht …'
+                    : row.sendState === 'none'
+                      ? 'Jetzt senden'
+                      : 'Erneut senden'}
+                </button>
+              )}
+              {planned(row) && (
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  disabled={busy !== ''}
+                  onClick={() => void unschedule(row)}
+                >
+                  Planung aufheben
                 </button>
               )}
             </li>

@@ -304,3 +304,64 @@ test('the folders filter the mails by their delivery state', async () => {
   fireEvent.click(within(folders).getByRole('button', { name: 'Geplant (0)' }));
   expect(screen.getByText('Keine Mail in diesem Ordner.')).toBeTruthy();
 });
+
+// QW5: a planned mail names its time, is not polled and can be withdrawn;
+// the withdrawn draft can then be sent at once.
+test('a planned mail shows its time and its planning can be withdrawn', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let state: 'scheduled' | 'none' = 'scheduled';
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.endsWith('/unschedule')) {
+      state = 'none';
+      return new Response(null, { status: 204 });
+    }
+    if (url.endsWith('/send')) return Response.json({}, { status: 201 });
+    void options;
+    return Response.json([
+      mail({
+        sendState: state,
+        scheduledFor: state === 'scheduled' ? '2030-10-28T08:00:00.000Z' : null,
+      }),
+    ]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventMails eventId={eventId} csrfToken="csrf" active revision={0} />);
+  expect(await screen.findByText(/^Geplant für /)).toBeTruthy();
+  const loads = fetcher.mock.calls.length;
+  await act(async () => {
+    vi.advanceTimersByTime(10000);
+  });
+  expect(fetcher.mock.calls.length).toBe(loads);
+  fireEvent.click(screen.getByRole('button', { name: 'Planung aufheben' }));
+  expect(
+    await screen.findByText(
+      'Planung aufgehoben. Die Mail wird nicht gesendet.',
+    ),
+  ).toBeTruthy();
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/mail/messages/66666666-6666-4666-8666-666666666666/unschedule',
+    { method: 'POST', headers: { 'x-csrf-token': 'csrf' } },
+  );
+  expect(screen.getByText('Nicht gesendet')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Jetzt senden' }));
+  expect(
+    await screen.findByText('Mail erneut in der Warteschlange.'),
+  ).toBeTruthy();
+});
+
+test('a refused or unclear withdrawal is named', async () => {
+  const fetcher = vi.fn(async (url: string) => {
+    if (url.endsWith('/unschedule'))
+      return Response.json({ error: 'not_scheduled' }, { status: 409 });
+    return Response.json([mail({ scheduledFor: '2030-10-28T08:00:00.000Z' })]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventMails eventId={eventId} csrfToken="csrf" active revision={0} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Planung aufheben' }),
+  );
+  expect(await screen.findByText(/vielleicht schon unterwegs/)).toBeTruthy();
+  fetcher.mockRejectedValueOnce(new Error('offline'));
+  fireEvent.click(screen.getByRole('button', { name: 'Planung aufheben' }));
+  expect(await screen.findByText(/Der Ausgang ist unklar/)).toBeTruthy();
+});

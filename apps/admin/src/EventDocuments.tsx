@@ -442,6 +442,9 @@ async function validDocuments(
 // is decided later by the worker and shown in the event's mail list.
 const queuedMessage =
   'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.';
+// QW5: a planned mail waits on purpose until its time.
+const plannedMessage =
+  'Mail geplant. Bis zum Sendezeitpunkt lässt sie sich im Bereich „E-Mails“ wieder aufheben.';
 
 // The event file is where an offer is born: it owns the contact and the date
 // that the template placeholders need.
@@ -574,6 +577,8 @@ export function EventDocuments({
       { id: string; name: string; isDefault: boolean }[]
     >([]),
     [mailSignatureId, setMailSignatureId] = useState(''),
+    // QW5: send later - the local date and time, empty sends at once.
+    [mailSendAt, setMailSendAt] = useState(''),
     [mailTemplateId, setMailTemplateId] = useState(''),
     [mailTemplateBusy, setMailTemplateBusy] = useState(false),
     [templateNotice, setTemplateNotice] = useState(''),
@@ -2415,6 +2420,22 @@ export function EventDocuments({
       </label>
     );
   }
+  // QW5: one optional time for both mail dialogs; empty means send now.
+  function sendLaterControl() {
+    return (
+      <label>
+        Senden am (optional)
+        <input
+          type="datetime-local"
+          value={mailSendAt}
+          onChange={(event) => setMailSendAt(event.target.value)}
+        />
+      </label>
+    );
+  }
+  function sendAtPayload() {
+    return mailSendAt ? { sendAt: new Date(mailSendAt).toISOString() } : {};
+  }
   function forwardingControls() {
     return (
       <fieldset className="mail-forwarding">
@@ -2463,6 +2484,7 @@ export function EventDocuments({
   function loadMailChoices() {
     // The standard signature is preselected; a failed list offers none.
     setMailSignatureId('');
+    setMailSendAt('');
     void fetch('/api/v1/mail-signatures')
       .then(async (response) => {
         if (!response.ok) throw Error('load');
@@ -2598,6 +2620,7 @@ export function EventDocuments({
           ...(mailSignatureId && mailSignatureId !== 'none'
             ? { signatureId: mailSignatureId }
             : {}),
+          ...sendAtPayload(),
         }),
       });
       if (!reply.ok) {
@@ -2606,7 +2629,7 @@ export function EventDocuments({
       }
       await reply.json();
       setComposeOpen(false);
-      setMessage(queuedMessage);
+      setMessage(mailSendAt ? plannedMessage : queuedMessage);
       onMailScheduled?.();
     } catch {
       // The request id makes a retry safe: it can only reach the same order.
@@ -2732,6 +2755,8 @@ export function EventDocuments({
         return 'Bitte eine gültige Empfängeradresse eingeben.';
       case 'invalid_account':
         return 'Es ist kein aktives E-Mail-Konto eingerichtet.';
+      case 'invalid_send_at':
+        return 'Der Sendezeitpunkt muss in der Zukunft und höchstens ein Jahr entfernt liegen. Die Eingaben bleiben erhalten.';
       case 'missing_placeholder':
         return 'Ein Platzhalter hat für diese Mail keinen Wert. Betrag und Dokumentlink gibt es nur beim Dokumentversand, Kontakt- und Eventwerte nur mit zugeordnetem Kontakt bzw. Event. Bitte den Platzhalter entfernen; die Eingaben bleiben erhalten.';
       case 'invalid_content':
@@ -2861,6 +2886,7 @@ export function EventDocuments({
             : {}),
           forwardAccounting,
           ...(forwardUserIds.length ? { forwardUserIds } : {}),
+          ...sendAtPayload(),
         }),
       });
       if (!reply.ok) {
@@ -2870,7 +2896,7 @@ export function EventDocuments({
       await reply.json();
       setMailSendId('');
       setMailRequestId('');
-      setMessage(queuedMessage);
+      setMessage(mailSendAt ? plannedMessage : queuedMessage);
       onMailScheduled?.();
       try {
         await load();
@@ -4233,12 +4259,13 @@ export function EventDocuments({
                   )}
                   {signatureControl()}
                   {forwardingControls()}
+                  {sendLaterControl()}
                   <div className="document-actions">
                     <button
                       className="primary-action"
                       disabled={busy !== '' || mailUncertain}
                     >
-                      Senden
+                      {mailSendAt ? 'Senden planen' : 'Senden'}
                     </button>
                     <button
                       type="button"
@@ -4386,12 +4413,13 @@ export function EventDocuments({
               </div>
               {signatureControl()}
               {forwardingControls()}
+              {sendLaterControl()}
               <div className="document-actions">
                 <button
                   className="primary-action"
                   disabled={busy !== '' || composeTo.trim() === ''}
                 >
-                  Senden
+                  {mailSendAt ? 'Senden planen' : 'Senden'}
                 </button>
                 <button
                   type="button"

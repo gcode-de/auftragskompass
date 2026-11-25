@@ -6708,6 +6708,66 @@ test('the event composes a free mail with a prefilled recipient', async () => {
   ).toBeTruthy();
 });
 
+// QW5: send later - the chosen local time travels as an instant, the button
+// and the confirmation say that the mail is planned.
+test('a free mail can be planned for later', async () => {
+  const { calls } = setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.change(within(dialog).getByLabelText('Senden am (optional)'), {
+    target: { value: '2031-01-15T09:30' },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Senden planen' }),
+  );
+  await screen.findByText(/^Mail geplant\./);
+  const [compose] = calls.filter((call) => call.url === '/api/v1/mail/compose');
+  expect((compose!.body as { sendAt: string }).sendAt).toBe(
+    new Date('2031-01-15T09:30').toISOString(),
+  );
+});
+
+test('a refused planned time is named and keeps the dialog open', async () => {
+  setup({
+    documents: [finalized],
+    compose: () => Response.json({ error: 'invalid_send_at' }, { status: 400 }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  fireEvent.change(within(dialog).getByLabelText('Senden am (optional)'), {
+    target: { value: '2020-01-15T09:30' },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Senden planen' }),
+  );
+  expect(
+    (await screen.findAllByText(/Der Sendezeitpunkt muss in der Zukunft/))[0],
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('dialog', { name: 'Neue Mail schreiben' }),
+  ).toBeTruthy();
+});
+
 test('a refused free mail names its cause and keeps the dialog open', async () => {
   setup({
     documents: [finalized],

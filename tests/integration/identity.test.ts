@@ -97,7 +97,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // existing rows keep NULL and every other contract stays unchanged.
   // QW3 (0080) adds the tenant-bound event notes, moves each non-empty single
   // note into one note and widens the audit vocabulary by two actions.
-  expect(applied.at(-1)!.name).toBe('0080_event_notes.sql');
+  // QW5 (0081) widens the audit vocabulary by the withdrawn planned send.
+  expect(applied.at(-1)!.name).toBe('0081_mail_send_later.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(

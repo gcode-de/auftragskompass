@@ -87,7 +87,26 @@ export type MailErrorReason =
   // MAIL-EVENT-02: a free mail has no document, so a placeholder only a
   // document (or a missing contact/event value) can fill is refused.
   | 'missing_placeholder'
+  // QW5: a planned send time that is not a future time within a year.
+  | 'invalid_send_at'
+  // QW5: only a planned order that no worker has picked up can be withdrawn.
+  | 'not_scheduled'
   | 'idempotency_conflict';
+/** QW5: a planned send time is a future instant at most a year ahead. */
+export function sendAtOf(
+  value: string | null | undefined,
+  now = new Date(),
+): string | null {
+  if (value === undefined || value === null) return null;
+  const at = Date.parse(value);
+  if (
+    !Number.isFinite(at) ||
+    at <= now.getTime() ||
+    at > now.getTime() + 366 * 86400000
+  )
+    throw new MailError('invalid_send_at');
+  return new Date(at).toISOString();
+}
 export class MailError extends Error {
   constructor(readonly reason: MailErrorReason) {
     super('Mail rejected');
@@ -192,6 +211,8 @@ export type MailComposeInput = {
   fileIds?: readonly string[];
   // MAIL-SIG-01b: the chosen signature; absent or null sends none.
   signatureId?: string | null;
+  // QW5: send later - an ISO instant; absent or null sends at once.
+  sendAt?: string | null;
 };
 export type MailOutboxRow = {
   id: string;
@@ -221,6 +242,8 @@ export type MailMessageSummary = {
   sentAt: string | null;
   // MAIL-STATUS-01: the error code of the latest send order, null otherwise.
   sendErrorCode: string | null;
+  // QW5: when a planned order will be sent; null once it is due or sent.
+  scheduledFor: string | null;
 };
 export type MailMessageDetail = MailMessageSummary & {
   bodyText: string;
@@ -276,6 +299,8 @@ export type MailDocumentSendInput = {
   forwardUserIds?: readonly string[];
   /** MAIL-SIG-01b: the chosen signature; absent or null sends none. */
   signatureId?: string | null;
+  /** QW5: send later - an ISO instant; absent or null sends at once. */
+  sendAt?: string | null;
 };
 // MAIL-EDITOR-01: the read-only twin of a document send. It runs the very
 // same checks and content assembly and stores nothing.
@@ -615,6 +640,7 @@ type MessageQueryRow = {
   created_at: string;
   sent_at: string | null;
   send_error_code?: string | null;
+  scheduled_for?: string | null;
 };
 type OutboxQueryRow = {
   id: string;
@@ -644,6 +670,9 @@ function toSummary(row: MessageQueryRow): MailMessageSummary {
     createdAt: new Date(row.created_at).toISOString(),
     sentAt: row.sent_at ? new Date(row.sent_at).toISOString() : null,
     sendErrorCode: row.send_error_code ?? null,
+    scheduledFor: row.scheduled_for
+      ? new Date(row.scheduled_for).toISOString()
+      : null,
   };
 }
 function toDetail(
@@ -653,6 +682,11 @@ function toDetail(
   return {
     ...toSummary(row),
     sendErrorCode: outbox?.lastErrorCode ?? null,
+    scheduledFor:
+      outbox?.state === 'pending' &&
+      Date.parse(outbox.nextAttemptAt) > Date.now()
+        ? outbox.nextAttemptAt
+        : null,
     bodyText: row.body_text,
     bodyHtml: row.body_html,
     cc: row.cc_addresses,
@@ -1406,7 +1440,11 @@ export function mailRepository(
         SELECT ${messageColumns},
                (SELECT o.last_error_code FROM mail_outbox o
                  WHERE o.tenant_id=m.tenant_id AND o.message_id=m.id
-                 ORDER BY o.created_at DESC, o.id DESC LIMIT 1) AS send_error_code
+                 ORDER BY o.created_at DESC, o.id DESC LIMIT 1) AS send_error_code,
+               (SELECT o.next_attempt_at FROM mail_outbox o
+                 WHERE o.tenant_id=m.tenant_id AND o.message_id=m.id
+                   AND o.state='pending' AND o.next_attempt_at > now()
+                 ORDER BY o.created_at DESC, o.id DESC LIMIT 1) AS scheduled_for
           FROM mail_messages m
          WHERE ${sql.join(conditions, sql` AND `)}
          ORDER BY m.created_at DESC, m.id DESC LIMIT 100`)) as {
@@ -1483,6 +1521,35 @@ export function mailRepository(
         );
         await appendAudit(tx, tenantId, 'mail.send_scheduled', actorId, row.id);
         return { job: toOutbox(row), created: true };
+      });
+    },
+
+    // QW5: withdraw a planned order before any worker picked it up. The job
+    // goes, the message stays as an unsent draft that can be sent again.
+    async unschedule(actorId: string, messageId: string) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const removed = await tx.execute<{ id: string }>(
+          sql`DELETE FROM mail_outbox
+               WHERE tenant_id=${tenantId} AND message_id=${messageId}::uuid
+                 AND state='pending' AND attempts=0
+                 AND next_attempt_at > now()
+           RETURNING id::text AS id`,
+        );
+        const job = removed.rows[0];
+        if (!job) {
+          const exists = await tx.execute(
+            sql`SELECT 1 FROM mail_messages
+                 WHERE tenant_id=${tenantId} AND id=${messageId}::uuid`,
+          );
+          throw new MailError(exists.rows[0] ? 'not_scheduled' : 'not_found');
+        }
+        await tx.execute(
+          sql`UPDATE mail_messages SET send_state='none', updated_at=now()
+               WHERE tenant_id=${tenantId} AND id=${messageId}::uuid`,
+        );
+        await appendAudit(tx, tenantId, 'mail.send_cancelled', actorId, job.id);
       });
     },
 
@@ -1600,8 +1667,10 @@ export function mailRepository(
           messageId,
         );
         const job = (await reviewed(tx).execute(sql`
-          INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
-          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
+          INSERT INTO mail_outbox AS o
+            (tenant_id,id,message_id,idempotency_key,next_attempt_at)
+          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key},
+                  coalesce(${sendAtOf(input.sendAt)}::timestamptz, now()))
           ON CONFLICT (tenant_id,idempotency_key) DO NOTHING
           RETURNING ${outboxColumns}`)) as { rows: OutboxQueryRow[] };
         // The tenant lock serialises this path; a conflict can only mean a
@@ -1749,8 +1818,10 @@ export function mailRepository(
         await insertAttachments(tx, messageId, extraDocuments, files);
         await insertInline(tx, messageId, signature?.inline);
         const job = (await reviewed(tx).execute(sql`
-          INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
-          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
+          INSERT INTO mail_outbox AS o
+            (tenant_id,id,message_id,idempotency_key,next_attempt_at)
+          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key},
+                  coalesce(${sendAtOf(input.sendAt)}::timestamptz, now()))
           ON CONFLICT (tenant_id,idempotency_key) DO NOTHING
           RETURNING ${outboxColumns}`)) as { rows: OutboxQueryRow[] };
         // The tenant lock serialises this path; a conflict can only mean a
@@ -2378,6 +2449,7 @@ const summarySchema = {
     'createdAt',
     'sentAt',
     'sendErrorCode',
+    'scheduledFor',
   ],
   properties: {
     id: { type: 'string', format: 'uuid' },
@@ -2395,8 +2467,13 @@ const summarySchema = {
     createdAt: { type: 'string', format: 'date-time' },
     sentAt: nullableText,
     sendErrorCode: nullableText,
+    scheduledFor: nullableText,
   },
 } as const;
+// QW5: an ISO instant or null; the repository checks it is a future time.
+const sendAtSchema = {
+  anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+};
 const outboxSchema = {
   type: 'object',
   additionalProperties: false,
@@ -2584,6 +2661,7 @@ export function registerMailRoutes(
           'forward_unavailable',
           'idempotency_conflict',
           'already_exists',
+          'not_scheduled',
         ].includes(error.reason)
       )
         return reply.code(409).send({ error: error.reason });
@@ -2726,6 +2804,19 @@ export function registerMailRoutes(
       }
     },
   );
+  // QW5: withdraw a planned send that no worker has picked up yet.
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/mail/messages/:id/unschedule',
+    { schema: { params } },
+    async (request, reply) => {
+      try {
+        await repo.unschedule(request.authSession!.userId, request.params.id);
+        return reply.code(204).send();
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   // MAIL-021-B: the deliberate way out of `uncertain`. No provider is contacted
   // here - the job simply becomes claimable again as the very same job.
   app.post<{ Params: { id: string } }>(
@@ -2779,6 +2870,7 @@ export function registerMailRoutes(
               items: { type: 'string', format: 'uuid' },
             },
             signatureId: { type: 'string', format: 'uuid' },
+            sendAt: sendAtSchema,
           },
         },
         response: { 200: outboxSchema, 201: outboxSchema },
@@ -2833,6 +2925,7 @@ export function registerMailRoutes(
               maxItems: 5,
               items: { type: 'string', format: 'uuid' },
             },
+            sendAt: sendAtSchema,
           },
         },
         response: { 200: documentSendSchema, 201: documentSendSchema },
