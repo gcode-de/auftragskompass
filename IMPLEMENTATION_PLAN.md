@@ -470,9 +470,6 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
   Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
   Commit `feat: duplicate events from the record`.
-
-## Nutzauftrag 25.11.2026 (Quick Wins, Backend erlaubt)
-
 - [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
   datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
   Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
