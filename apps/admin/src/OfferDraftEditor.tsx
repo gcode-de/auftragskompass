@@ -2063,12 +2063,13 @@ export function OfferDraftEditor({
             <fieldset className="offer-draft-group">
               <legend>Summen und Hinweise</legend>
               {/* Like Bookitup's totals box: net and tax first, the gross
-                  amount last - a net offer reads net until the final line. */}
+                  amount last - a net offer reads net until the final line.
+                  The detail was validated as safe integers on load. */}
               <p className="offer-draft-subtotal">
-                Netto: {exactMinorUnits(detail.netMinor) ?? '—'} €
+                Netto: {exactMinorUnits(detail.netMinor)} €
               </p>
               <p className="offer-draft-subtotal">
-                Umsatzsteuer: {exactMinorUnits(detail.taxMinor) ?? '—'} €
+                Umsatzsteuer: {exactMinorUnits(detail.taxMinor)} €
               </p>
               <p className="offer-draft-total">
                 Gespeicherter Gesamtbetrag:{' '}
