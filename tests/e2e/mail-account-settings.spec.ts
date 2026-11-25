@@ -157,7 +157,7 @@ test('the sending account settings create and change an account in Chromium', as
       exact: true,
     });
     await settingsNavigation
-      .getByRole('link', { name: 'E-Mail-Versand', exact: true })
+      .getByRole('link', { name: 'Ein- & Ausgangsserver', exact: true })
       .click();
     await expect(page).toHaveURL(/#settings-mail$/);
     const section = page.getByRole('region', { name: 'E-Mail-Versand' });

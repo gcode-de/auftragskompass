@@ -199,7 +199,7 @@ test('mail templates are managed in the settings in Chromium', async ({
       exact: true,
     });
     await settingsNavigation
-      .getByRole('link', { name: 'E-Mail-Vorlagen', exact: true })
+      .getByRole('link', { name: 'Vorlagen', exact: true })
       .click();
     await expect(page).toHaveURL(/#settings-mail-templates$/);
     const section = page.getByRole('region', { name: 'E-Mail-Vorlagen' });
@@ -286,6 +286,11 @@ test('mail templates are managed in the settings in Chromium', async ({
 
     // MAIL-SIG-01a: a signature with an uploaded logo, shown back as image.
     await page.setViewportSize({ width: 1280, height: 900 });
+    // UI-PARITY-01: the signature has its own page under E-Mail.
+    await page
+      .getByRole('navigation', { name: 'Einstellungen' })
+      .getByRole('link', { name: 'Signatur', exact: true })
+      .click();
     const signatures = page.getByRole('region', { name: 'E-Mail-Signaturen' });
     await signatures.getByRole('button', { name: 'Signatur anlegen' }).click();
     await signatures.getByLabel('Bezeichnung').fill('Fiktive Signatur');

@@ -144,7 +144,7 @@ test('resolves deep links, settings and browser history without losing search', 
   expect(window.location.search).toBe('?q=Fictional');
 });
 
-test('settings navigation has a labeled fourteen-option select synced with legacy hashes and history', async () => {
+test('settings navigation groups its areas like Bookitup in links and select', async () => {
   window.history.replaceState(null, '', '/?q=Fictional#resources');
   render(<SettingsNavigation />);
   const settingsNavigation = screen.getByRole('navigation', {
@@ -153,29 +153,58 @@ test('settings navigation has a labeled fourteen-option select synced with legac
   const select = within(settingsNavigation).getByRole('combobox', {
     name: 'Einstellungsbereich',
   }) as HTMLSelectElement;
-  expect(select.options).toHaveLength(15);
+  expect(select.options).toHaveLength(16);
   expect(select.value).toBe('#settings-resources');
+  // UI-PARITY-01: every option keeps its own hash; groups are optgroups.
   expect(
     Array.from(select.options).map((option) => [
+      option.parentElement instanceof HTMLOptGroupElement
+        ? option.parentElement.label
+        : '',
       option.textContent,
       option.value,
     ]),
   ).toEqual([
-    ['Stammdaten', '#settings'],
-    ['Ressourcen', '#settings-resources'],
-    ['Produkte', '#settings-products'],
-    ['Kalender-Abos', '#settings-calendar'],
-    ['Telegram', '#settings-telegram'],
-    ['E-Mail-Versand', '#settings-mail'],
-    ['E-Mail-Vorlagen', '#settings-mail-templates'],
-    ['Datenimport', '#import-review'],
-    ['Datenexport', '#settings-export'],
-    ['Website-Formular', '#settings-inquiry'],
-    ['Website-Eingänge', '#settings-website'],
-    ['Dokumentvorlagen', '#settings-templates'],
-    ['Dokumentlayout', '#settings-document-layout'],
-    ['Nummernkreise', '#settings-numbers'],
-    ['Konto & Zugriff', '#settings-security'],
+    ['', 'Stammdaten', '#settings'],
+    ['Integrationen', 'Kalender-Abos', '#settings-calendar'],
+    ['Integrationen', 'Telegram', '#settings-telegram'],
+    ['Integrationen', 'Website-Formular', '#settings-inquiry'],
+    ['Integrationen', 'Website-Eingänge', '#settings-website'],
+    ['', 'Ressourcen', '#settings-resources'],
+    ['E-Mail', 'Vorlagen', '#settings-mail-templates'],
+    ['E-Mail', 'Ein- & Ausgangsserver', '#settings-mail'],
+    ['E-Mail', 'Signatur', '#settings-mail-signatures'],
+    ['Dokumente', 'Dokument-Vorlagen', '#settings-templates'],
+    ['Dokumente', 'Produkte', '#settings-products'],
+    ['Dokumente', 'Dokument-Layout', '#settings-document-layout'],
+    ['Dokumente', 'Nummernkreise', '#settings-numbers'],
+    ['Daten', 'Datenimport', '#import-review'],
+    ['Daten', 'Datenexport', '#settings-export'],
+    ['', 'Passwort & Account', '#settings-security'],
+  ]);
+  // The link column shows the same groups as named, always open groups.
+  expect(
+    Array.from(
+      settingsNavigation.querySelectorAll<HTMLElement>(
+        '.settings-navigation-group',
+      ),
+    ).map((group) => [
+      group.getAttribute('aria-label'),
+      within(group)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ]),
+  ).toEqual([
+    [
+      'Integrationen',
+      ['Kalender-Abos', 'Telegram', 'Website-Formular', 'Website-Eingänge'],
+    ],
+    ['E-Mail', ['Vorlagen', 'Ein- & Ausgangsserver', 'Signatur']],
+    [
+      'Dokumente',
+      ['Dokument-Vorlagen', 'Produkte', 'Dokument-Layout', 'Nummernkreise'],
+    ],
+    ['Daten', ['Datenimport', 'Datenexport']],
   ]);
 
   fireEvent.change(select, { target: { value: '#settings-document-layout' } });

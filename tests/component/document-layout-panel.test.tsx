@@ -1341,7 +1341,7 @@ test('document layout has a dedicated active settings route', () => {
   expect(isSettingsRoute('document-layout')).toBe(true);
   expect(
     screen
-      .getByRole('link', { name: 'Dokumentlayout' })
+      .getByRole('link', { name: 'Dokument-Layout' })
       .getAttribute('aria-current'),
   ).toBe('page');
 });

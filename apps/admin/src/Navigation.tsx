@@ -62,29 +62,58 @@ const links = [
   ],
   ['settings', 'Einstellungen', 'M4 7h16M4 17h16M8 4v6m8 4v6'],
 ] as const;
-const settingsLinks = [
-  ['settings', 'Stammdaten'],
-  ['settings-resources', 'Ressourcen'],
-  ['settings-products', 'Produkte'],
-  ['settings-calendar', 'Kalender-Abos'],
-  ['settings-telegram', 'Telegram'],
-  ['settings-mail', 'E-Mail-Versand'],
-  ['settings-mail-templates', 'E-Mail-Vorlagen'],
-  ['import-review', 'Datenimport'],
-  ['settings-export', 'Datenexport'],
-  ['settings-inquiry', 'Website-Formular'],
-  ['settings-website', 'Website-Eingänge'],
-  ['settings-templates', 'Dokumentvorlagen'],
-  ['settings-document-layout', 'Dokumentlayout'],
-  ['settings-numbers', 'Nummernkreise'],
-  ['settings-security', 'Konto & Zugriff'],
-] as const;
+// UI-PARITY-01: the settings follow Bookitup's grouping (observed
+// 24.11.2026): single areas and named groups that open on their own page.
+// Labels name what AuftragsKompass actually offers, not Bookitup's extras.
+type SettingsLink = readonly [hash: string, label: string];
+const settingsGroups: readonly (
+  | { label: null; links: readonly SettingsLink[] }
+  | { label: string; links: readonly SettingsLink[] }
+)[] = [
+  { label: null, links: [['settings', 'Stammdaten']] },
+  {
+    label: 'Integrationen',
+    links: [
+      ['settings-calendar', 'Kalender-Abos'],
+      ['settings-telegram', 'Telegram'],
+      ['settings-inquiry', 'Website-Formular'],
+      ['settings-website', 'Website-Eingänge'],
+    ],
+  },
+  { label: null, links: [['settings-resources', 'Ressourcen']] },
+  {
+    label: 'E-Mail',
+    links: [
+      ['settings-mail-templates', 'Vorlagen'],
+      ['settings-mail', 'Ein- & Ausgangsserver'],
+      ['settings-mail-signatures', 'Signatur'],
+    ],
+  },
+  {
+    label: 'Dokumente',
+    links: [
+      ['settings-templates', 'Dokument-Vorlagen'],
+      ['settings-products', 'Produkte'],
+      ['settings-document-layout', 'Dokument-Layout'],
+      ['settings-numbers', 'Nummernkreise'],
+    ],
+  },
+  {
+    label: 'Daten',
+    links: [
+      ['import-review', 'Datenimport'],
+      ['settings-export', 'Datenexport'],
+    ],
+  },
+  { label: null, links: [['settings-security', 'Passwort & Account']] },
+];
 export type WorkspaceRoute =
   | (typeof links)[number][0]
   | 'subscriptions'
   | 'telegram'
   | 'mail'
   | 'mail-templates'
+  | 'mail-signatures'
   | 'import'
   | 'security'
   | 'inquiry'
@@ -102,6 +131,7 @@ export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'telegram',
   'mail',
   'mail-templates',
+  'mail-signatures',
   'import',
   'security',
   'export',
@@ -122,6 +152,7 @@ const settingsHashes = {
   telegram: 'settings-telegram',
   mail: 'settings-mail',
   'mail-templates': 'settings-mail-templates',
+  'mail-signatures': 'settings-mail-signatures',
   import: 'import-review',
   security: 'settings-security',
   export: 'settings-export',
@@ -148,6 +179,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'settings-telegram') return 'telegram';
   if (hash === 'settings-mail') return 'mail';
   if (hash === 'settings-mail-templates') return 'mail-templates';
+  if (hash === 'settings-mail-signatures') return 'mail-signatures';
   if (hash === 'settings-inquiry') return 'inquiry';
   if (hash === 'settings-export') return 'export';
   if (hash === 'settings-security') return 'security';
@@ -198,15 +230,33 @@ export function SettingsNavigation() {
   return (
     <nav className="settings-navigation" aria-label="Einstellungen">
       <div className="settings-navigation-links">
-        {settingsLinks.map(([hash, label]) => (
-          <a
-            key={hash}
-            href={'#' + hash}
-            aria-current={hash === current ? 'page' : undefined}
-          >
-            {label}
-          </a>
-        ))}
+        {settingsGroups.map((group) => {
+          const links = group.links.map(([hash, label]) => (
+            <a
+              key={hash}
+              href={'#' + hash}
+              aria-current={hash === current ? 'page' : undefined}
+            >
+              {label}
+            </a>
+          ));
+          if (!group.label) return links;
+          // Simplified from Bookitup's folding groups: always open, so no
+          // area costs an extra click; the heading still names the group.
+          return (
+            <div
+              key={group.label}
+              className="settings-navigation-group"
+              role="group"
+              aria-label={group.label}
+            >
+              <span className="settings-navigation-group-label">
+                {group.label}
+              </span>
+              {links}
+            </div>
+          );
+        })}
       </div>
       <label className="settings-navigation-select">
         Einstellungsbereich
@@ -217,11 +267,20 @@ export function SettingsNavigation() {
             window.location.hash = event.target.value;
           }}
         >
-          {settingsLinks.map(([hash, label]) => (
-            <option key={hash} value={'#' + hash}>
-              {label}
-            </option>
-          ))}
+          {settingsGroups.map((group) => {
+            const options = group.links.map(([hash, label]) => (
+              <option key={hash} value={'#' + hash}>
+                {label}
+              </option>
+            ));
+            return group.label ? (
+              <optgroup key={group.label} label={group.label}>
+                {options}
+              </optgroup>
+            ) : (
+              options
+            );
+          })}
         </select>
       </label>
     </nav>

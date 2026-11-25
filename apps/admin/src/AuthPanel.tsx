@@ -230,6 +230,8 @@ export function AuthPanel() {
             </div>
             <div hidden={route !== 'mail-templates'}>
               <MailTemplatesPanel csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'mail-signatures'}>
               <MailSignaturesPanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'import'}>
