@@ -157,3 +157,15 @@ beauftragte öffentliche Repository-Sichtbarkeit; es wurde kein Entwicklertoken 
 Am 20.10.2026 wurde zusätzlich geprüft, dass der installierte Updater exakt dem
 Skriptstand mit `branch`-Unterstützung entspricht, die UX-Branch konfiguriert ist
 und ein Timer-Lauf `current` meldet.
+
+## Neue Version im Browser sichtbar machen
+
+Ein erfolgreiches Update tauscht die Container sofort aus. Damit Browser und
+vorgeschaltete Proxys danach nicht die vorherige Oberfläche weiterzeigen,
+liefert nginx die App-Shell (`/`, `index.html` und alle App-Routen) mit
+`Cache-Control: no-cache` aus: jede Anfrage fragt beim Server nach, ob sich die
+Seite geändert hat (ETag), und lädt dann die neuen, per Inhalts-Hash benannten
+Skripte. Diese Assets unter `/assets/` sowie API, Anmeldung und Feeds behalten
+ihr eigenes Caching. Ob eine Version läuft, zeigt die Revision neben dem
+Seitentitel bzw. `AK_BUILD_REVISION` in den Quadlets.
+

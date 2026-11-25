@@ -33,3 +33,13 @@ test('admin responses enforce local resources and reject framing and inline scri
   assert.ok(!policy.includes('unsafe-inline'));
   assert.ok(!policy.includes('unsafe-eval'));
 });
+
+test('the app shell is revalidated after an update, assets and API keep theirs', () => {
+  const config = readFileSync('infrastructure/nginx.conf', 'utf8');
+  assert.match(config, /add_header Cache-Control \$ak_cache_control always;/);
+  const map = config.match(/map \$uri \$ak_cache_control \{([^}]+)\}/)?.[1];
+  assert.ok(map);
+  assert.match(map, /default "no-cache";/);
+  assert.match(map, /~\^\/assets\/ "";/);
+  assert.match(map, /~\^\/\(api\|auth\|feeds\)\/ "";/);
+});
