@@ -254,3 +254,53 @@ test('every worker failure code has its own wording', () => {
   for (const text of texts) expect(text).not.toMatch(/^Fehlercode/);
   expect(mailDeliveryFailureText(null)).toBe('Ohne Fehlercode.');
 });
+
+// UI-PARITY-02: Bookitup's folders, derived from the stored send state.
+test('the folders filter the mails by their delivery state', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json([
+        mail({
+          id: 'a1111111-1111-4111-8111-111111111111',
+          subject: 'Unterwegs',
+          sendState: 'sent',
+          sentAt: '2030-10-26T10:00:05.000Z',
+        }),
+        mail({
+          id: 'a2222222-2222-4222-8222-222222222222',
+          subject: 'Klappte nicht',
+          sendState: 'failed',
+          sendErrorCode: 'provider_timeout',
+        }),
+        mail({
+          id: 'a3333333-3333-4333-8333-333333333333',
+          subject: 'Unklar',
+          sendState: 'uncertain',
+          sendErrorCode: 'provider_uncertain',
+        }),
+      ]),
+    ),
+  );
+  render(<EventMails eventId={eventId} csrfToken="csrf" active revision={0} />);
+  const folders = await screen.findByRole('group', { name: 'Ordner' });
+  await screen.findByText('Unterwegs');
+  expect(
+    within(folders)
+      .getAllByRole('button')
+      .map((button) => button.textContent),
+  ).toEqual(['Alle (3)', 'Geplant (0)', 'Fehlgeschlagen (2)', 'Gesendet (1)']);
+  fireEvent.click(
+    within(folders).getByRole('button', { name: 'Fehlgeschlagen (2)' }),
+  );
+  expect(
+    within(folders)
+      .getByRole('button', { name: 'Fehlgeschlagen (2)' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(screen.queryByText('Unterwegs')).toBeNull();
+  expect(screen.getByText('Klappte nicht')).toBeTruthy();
+  expect(screen.getByText('Unklar')).toBeTruthy();
+  fireEvent.click(within(folders).getByRole('button', { name: 'Geplant (0)' }));
+  expect(screen.getByText('Keine Mail in diesem Ordner.')).toBeTruthy();
+});

@@ -61,6 +61,24 @@ export function mailDeliveryFailureText(code: string | null): string {
 const inFlight = (row: MailRow) =>
   row.sendState === 'scheduled' || row.sendState === 'sending';
 
+// UI-PARITY-02: Bookitup's mail folders that exist here, derived from the
+// stored send state; an inbox, drafts and a trash do not exist yet.
+const folders = [
+  { value: 'all', label: 'Alle', match: () => true },
+  { value: 'queued', label: 'Geplant', match: inFlight },
+  {
+    value: 'failed',
+    label: 'Fehlgeschlagen',
+    match: (row: MailRow) =>
+      row.sendState === 'failed' || row.sendState === 'uncertain',
+  },
+  {
+    value: 'sent',
+    label: 'Gesendet',
+    match: (row: MailRow) => row.sendState === 'sent',
+  },
+] as const;
+
 function dateText(value: string) {
   return new Date(value).toLocaleString('de-DE', {
     dateStyle: 'medium',
@@ -130,6 +148,11 @@ export function EventMails({
   }, [active, eventId, revision]);
 
   const waiting = rows.some(inFlight);
+  const [folder, setFolder] =
+    useState<(typeof folders)[number]['value']>('all');
+  const shown = rows.filter(
+    folders.find((entry) => entry.value === folder)!.match,
+  );
   useEffect(() => {
     if (!active || !waiting || polls.current >= maxPolls) return;
     const timer = window.setTimeout(() => {
@@ -185,7 +208,20 @@ export function EventMails({
       className="document-card event-mails"
       aria-labelledby="event-mails-heading"
     >
-      <h4 id="event-mails-heading">Mails</h4>
+      <h4 id="event-mails-heading">Ausgehende Mails</h4>
+      <div className="event-mail-folders" role="group" aria-label="Ordner">
+        {folders.map((entry) => (
+          <button
+            key={entry.value}
+            type="button"
+            className="nav-action"
+            aria-pressed={folder === entry.value}
+            onClick={() => setFolder(entry.value)}
+          >
+            {entry.label} ({rows.filter(entry.match).length})
+          </button>
+        ))}
+      </div>
       {message && <p role="status">{message}</p>}
       {alert && <p role="alert">{alert}</p>}
       {failed && (
@@ -204,9 +240,12 @@ export function EventMails({
           Noch keine Mail zu diesem Event gesendet.
         </p>
       )}
-      {rows.length > 0 && (
+      {rows.length > 0 && !shown.length && (
+        <p className="document-card-hint">Keine Mail in diesem Ordner.</p>
+      )}
+      {shown.length > 0 && (
         <ul className="document-list">
-          {rows.map((row) => (
+          {shown.map((row) => (
             <li key={row.id} className="event-mail" data-state={row.sendState}>
               <div className="document-row">
                 <div>

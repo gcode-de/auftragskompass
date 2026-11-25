@@ -2469,6 +2469,15 @@ summary {
 }
 /* MAIL-STATUS-01: every mail names its outcome in words; a failed one also
 carries the alert colour and its cause, never colour alone. */
+.event-mail-folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.5rem;
+}
+.event-mail-folders [aria-pressed='true'] {
+  font-weight: 700;
+}
 .event-mail-meta {
   display: block;
   color: var(--muted);
@@ -3105,9 +3114,9 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
     margin: 0;
     padding: 0.5rem 0.5rem max(0.5rem, env(safe-area-inset-bottom));
     display: grid;
-    /* BKP013.1: five work areas stay on one row so no area is hidden behind a
-       sideways scroll; the labels may hyphenate instead of overflowing. */
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* BKP013.1, UI-PARITY-02: the four work areas stay on one row so no area
+       is hidden behind a sideways scroll; labels may wrap instead of overflowing. */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     background: var(--surface);
     border-top: 1px solid var(--border);
   }

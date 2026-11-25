@@ -468,7 +468,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     await dialog.getByRole('button', { name: 'Senden' }).click();
     await expect(
       page.getByText(
-        'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+        'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
       ),
     ).toBeVisible();
     const message = (
@@ -503,7 +503,12 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
 
     // MAIL-STATUS-01: the event names the real state of the order, and a
     // failure the worker records later shows its cause and a way out.
-    const mails = page.getByRole('region', { name: 'Mails' });
+    // UI-PARITY-02: the outgoing mail lives in the record's E-Mails area.
+    const recordAreas = page.getByRole('navigation', {
+      name: 'Bereiche des Events',
+    });
+    await recordAreas.getByRole('button', { name: 'E-Mails' }).click();
+    const mails = page.getByRole('region', { name: 'Ausgehende Mails' });
     const mailRow = mails.getByRole('listitem').filter({
       hasText: 'Erinnerung für Fictional Mail Recipient',
     });
@@ -546,6 +551,10 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       .screenshot({
         path: 'tests/test-results/undelivered-mails-1280-light.png',
       });
+    await page.getByRole('region', { name: 'E-Mails' }).screenshot({
+      path: 'tests/test-results/event-mails-area-1280-light.png',
+    });
+    await recordAreas.getByRole('button', { name: 'Dateien' }).click();
 
     // Visual acceptance: both themes and both sizes, dialog always usable.
     const themeToggle = (dark: boolean) =>

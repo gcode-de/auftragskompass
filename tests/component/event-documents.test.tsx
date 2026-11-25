@@ -5681,7 +5681,7 @@ test('the mail dialog prefills the contact address and keeps it correctable', as
   fireEvent.click(within(dialog).getByRole('button', { name: 'Einfügen' }));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const requests = calls.filter(
     (call) => call.url === '/api/v1/mail/document-send',
@@ -5782,7 +5782,7 @@ test('a double click sends one order, and an unclear outcome blocks until the li
   await waitFor(() => expect(send).toHaveProperty('disabled', false));
   fireEvent.click(send);
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const repeated = calls.filter(
     (call) => call.url === '/api/v1/mail/document-send',
@@ -6312,7 +6312,7 @@ test('applying a template fills subject and body and guards dirty drafts', async
   // The send carries the subject; the template itself is never modified.
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const requests = calls.filter(
     (call) => call.url === '/api/v1/mail/document-send',
@@ -6372,7 +6372,7 @@ test('a removed standard attachment does not travel and the rest stays', async (
   expect(within(dialog).getByText('Zweite Datei')).toBeTruthy();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const requests = calls.filter(
     (call) => call.url === '/api/v1/mail/document-send',
@@ -6445,7 +6445,7 @@ test('the attachment list names every source and each removal asks first', async
   expect(within(dialog).getByText('Fictional Datei')).toBeTruthy();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const requests = calls.filter(
     (call) => call.url === '/api/v1/mail/document-send',
@@ -6691,7 +6691,7 @@ test('the event composes a free mail with a prefilled recipient', async () => {
   });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   // MAIL-STATUS-01: the mail list is told that a new order exists.
   expect(onMailScheduled).toHaveBeenCalledTimes(1);
@@ -6783,7 +6783,7 @@ test('a composed body travels as html and an unclear outcome keeps the dialog', 
   fail = false;
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const second = calls.filter((call) => call.url === '/api/v1/mail/compose');
   expect(second).toHaveLength(2);
@@ -6826,7 +6826,7 @@ test('a free mail without body sends no bodyHtml and the dialog cancels cleanly'
   });
   fireEvent.click(within(reopened).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const composeCalls = calls.filter(
     (call) => call.url === '/api/v1/mail/compose',
@@ -6858,7 +6858,7 @@ test('the compose dialog works without contact data and locks during the order',
   fireEvent.click(send);
   fireEvent.click(send);
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const composeCalls = calls.filter(
     (call) => call.url === '/api/v1/mail/compose',
@@ -6903,7 +6903,7 @@ test('the mail dialog forwards to accounting and app users under its switches', 
   );
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const sent = calls.filter(
     (call) => call.url === '/api/v1/mail/document-send',
@@ -6972,7 +6972,7 @@ test('a failed forwarding list load leaves both dialogs usable', async () => {
   fireEvent.click(within(dialog).getByText(/Kopie an Buchhaltung/));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const sent = calls.filter(
     (call) => call.url === '/api/v1/mail/document-send',
@@ -7013,7 +7013,7 @@ test('odd forwarding answers invent nothing and a toggled user is omitted', asyn
   expect(within(dialog).queryByText(/@example\.invalid/)).toBeNull();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const sent = calls.filter((call) => call.url === '/api/v1/mail/compose');
   expect(sent[0]!.body).toMatchObject({ forwardAccounting: false });
@@ -7041,7 +7041,7 @@ test('a toggled-off app user is omitted from the forwarding', async () => {
   fireEvent.click(userSwitch);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const sent = calls.filter((call) => call.url === '/api/v1/mail/compose');
   expect(sent[0]!.body).not.toHaveProperty('forwardUserIds');
@@ -7144,7 +7144,7 @@ test('the free event mail applies a template and carries chosen attachments', as
   );
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const request = calls.find((call) => call.url === '/api/v1/mail/compose')!;
   expect(request.body).toMatchObject({
@@ -7249,7 +7249,7 @@ test('the document mail preselects the standard signature and can send none', as
   fireEvent.change(choice, { target: { value: 'none' } });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   const send = calls.find((call) => call.url === '/api/v1/mail/document-send')!;
   expect(send.body).not.toHaveProperty('signatureId');
@@ -7279,7 +7279,7 @@ test('the free mail sends the signature chosen instead of the standard', async (
   });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   expect(
     calls.find((call) => call.url === '/api/v1/mail/compose')!.body,
@@ -7311,7 +7311,7 @@ test('without any signature the dialog offers no choice and sends none', async (
   });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Senden' }));
   await screen.findByText(
-    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.',
+    'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.',
   );
   expect(
     calls.find((call) => call.url === '/api/v1/mail/compose')!.body,

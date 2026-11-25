@@ -122,9 +122,8 @@ test('event details collect contacts, venue, notes and activities and save statu
     screen.getByRole('link', { name: '030 000000' }).getAttribute('href'),
   ).toBe('tel:030000000');
   expect(screen.getByText('Fictional venue')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Logbuch' }));
+  // UI-PARITY-02: the logbook belongs to the details like in Bookitup.
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'booked' },
   });
@@ -488,26 +487,29 @@ test('shows one record section and retains the selected section on a refreshed e
   await screen.findByRole('heading', {
     name: 'Event: Synthetic detail event',
   });
-  expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  // UI-PARITY-02: notes and logbook stand under the details like in
+  // Bookitup; another area hides all three.
+  expect(screen.getByRole('heading', { name: 'Logbuch' })).toBeTruthy();
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole('textbox', { name: 'Interne Notizen' }).textContent,
+    ).toContain('Fictional note'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
   expect(
     screen.queryByRole('combobox', { name: 'Status des Events' }),
   ).toBeNull();
-  expect(
-    screen.getByRole('textbox', { name: 'Interne Notizen' }).textContent,
-  ).toContain('Fictional note');
+  expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
   view.rerender(<EventDetails {...props} revision={2} />);
   await vi.waitFor(() =>
     expect(
       screen
-        .getByRole('button', { name: 'Notizen' })
+        .getByRole('button', { name: 'Ressourcen' })
         .getAttribute('aria-current'),
     ).toBe('location'),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Logbuch' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   expect(screen.getByText(/Event angelegt\./)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
-  expect(screen.queryByRole('heading', { name: 'Logbuch' })).toBeNull();
 });
 
 test('internal notes save on blur and Escape discards the next draft without a PUT', async () => {
@@ -542,7 +544,7 @@ test('internal notes save on blur and Escape discards the next draft without a P
     name: 'Event: Synthetic detail event',
     level: 2,
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
 
   const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
   fireEvent.input(editor, {
@@ -2050,7 +2052,7 @@ test('active notes draft survives conflict, reconciliation and reapply', async (
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   const notes = screen.getByRole('textbox', {
     name: 'Interne Notizen',
   }) as HTMLDivElement;
@@ -2116,7 +2118,7 @@ test('Escape keeps submitted and queued notes while discarding the current draft
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   const notes = screen.getByRole('textbox', {
     name: 'Interne Notizen',
   }) as HTMLDivElement;
@@ -2159,7 +2161,7 @@ test('empty clipboard and drop data preserve notes and locked notes reject inser
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
   const selectAll = () => {
     const range = document.createRange();
@@ -2181,7 +2183,7 @@ test('empty clipboard and drop data preserve notes and locked notes reject inser
   fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   expect(editor.getAttribute('aria-disabled')).toBe('true');
   selectAll();
   fireEvent.paste(editor, {
@@ -2225,7 +2227,7 @@ test('notes formatting and safe links preserve the selected existing text', asyn
     await screen.findByRole('heading', {
       name: 'Event: Synthetic detail event',
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
     expect(editor.innerHTML).toBe('<strong>Fictional note</strong>');
     fireEvent.change(screen.getByLabelText('Linkadresse'), {
@@ -2299,7 +2301,7 @@ test('notes paste inserts plain text, Enter inserts a break, and oversize input 
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  fireEvent.click(screen.getByRole('button', { name: 'Notizen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
   editor.focus();
   const original = editor.innerHTML;

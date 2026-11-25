@@ -393,11 +393,21 @@ Attrappen nachgebaut.
   **Tests:** Component (Gruppen in Links und Auswahl, Reihenfolge,
   Hashes), E2E (Grenze 1099/1100, Signatur-Seite, Linknamen).
   Commit `feat: group the settings like bookitup`.
-- [ ] **UI-PARITY-02 — „E-Mails“ als eigener Bereich der Eventakte:**
-  Bookitup führt in der Eventakte „E-Mails“ mit Ordnern (Entwürfe, Geplant,
-  Fehlgeschlagen, Gesendet …). Der Bereich „Mails“ (MAIL-STATUS-01) wandert
-  aus „Dateien“ in einen eigenen Aktenbereich mit Ordnerfilter aus dem
-  vorhandenen `sendState`; „Neue Mail schreiben“ steht dort. Keine neue API.
+- [x] **UI-PARITY-02 — Bereiche der Eventakte wie Bookitup (25.11.2026):**
+  Bookitups Eventakte führt Details (mit Notizen und Logbuch), Ressourcen,
+  Dateien und E-Mails mit Ordnern. Die Akte hat jetzt genau diese vier
+  Bereiche: Notizen und Logbuch stehen unter Details (keine Logikänderung,
+  nur Sichtbarkeit; die doppelte Pausiert-/Lade-Meldung der Notizen entfällt,
+  weil der Eventeditor darüber denselben Speicherzustand meldet). „E-Mails“
+  enthält „Neue Mail schreiben“ und die ausgehenden Mails (MAIL-STATUS-01)
+  mit den Ordnern Alle/Geplant/Fehlgeschlagen/Gesendet aus dem vorhandenen
+  `sendState`; Posteingang, Entwürfe und Papierkorb gibt es fachlich noch
+  nicht und werden nicht vorgetäuscht. Der Compose-Dialog rendert per Portal,
+  damit er auch aus dem E-Mails-Bereich öffnet. Mobil vier statt fünf
+  Spalten. Keine API-Änderung. **Tests:** Component (Bereichsliste, Dialog
+  aus E-Mails, Ordnerfilter, Notizen unter Details, Fokus), E2E (Status im
+  E-Mails-Bereich, mobile Leiste, Notizen/Logbuch-Wege).
+  Commit `feat: shape the event record areas like bookitup`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 

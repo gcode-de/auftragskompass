@@ -50,18 +50,16 @@ type Detail = {
     description: string;
   }[];
 };
-// BKP013.1: the event file is one record with a stable head and five focused
-// work areas. Details holds the main information, Ressourcen keeps the existing
-// atomic assignment surface, Dateien owns the documents, Notizen and Logbuch
-// stay directly reachable. There is deliberately no mail area while no mail
-// module exists.
-type Area = 'details' | 'resources' | 'files' | 'notes' | 'activity';
+// BKP013.1, UI-PARITY-02: the event file is one record with a stable head and
+// the work areas of Bookitup's event record (observed 31.10./24.11.2026):
+// Details also holds the notes and the logbook, Ressourcen keeps the atomic
+// assignment surface, Dateien owns the documents and E-Mails the event's mail.
+type Area = 'details' | 'resources' | 'files' | 'mails';
 const areas: { value: Area; label: string }[] = [
   { value: 'details', label: 'Details' },
   { value: 'resources', label: 'Ressourcen' },
   { value: 'files', label: 'Dateien' },
-  { value: 'notes', label: 'Notizen' },
-  { value: 'activity', label: 'Logbuch' },
+  { value: 'mails', label: 'E-Mails' },
 ];
 const correctableStatusConflicts = new Set([
   'import_review_required',
@@ -170,6 +168,12 @@ export function EventDetails({
   const [editingDocument, setEditingDocument] = useState(false);
   // MAIL-STATUS-01: raised by every send order so the mail list reloads.
   const [mailRevision, setMailRevision] = useState(0);
+  // UI-PARITY-02: "Neue Mail schreiben" in the E-Mails area opens the
+  // compose dialog the documents own.
+  const [composeRequest, setComposeRequest] = useState<{
+    id: number;
+    trigger: HTMLElement;
+  } | null>(null);
   const wideRecord = useWideRecord();
   const heading = useRef<HTMLHeadingElement>(null),
     detailsPanel = useRef<HTMLDivElement>(null),
@@ -180,6 +184,7 @@ export function EventDetails({
     notesSelection = useRef<Range | null>(null),
     notesComposing = useRef(false),
     activityPanel = useRef<HTMLDivElement>(null),
+    mailsPanel = useRef<HTMLDivElement>(null),
     focusedArea = useRef<Area>('details'),
     loadSequence = useRef(0),
     saving = useRef(false),
@@ -612,8 +617,7 @@ export function EventDetails({
       details: detailsPanel,
       resources: resourcesPanel,
       files: filesPanel,
-      notes: notesPanel,
-      activity: activityPanel,
+      mails: mailsPanel,
     }[area];
     panel.current?.focus({ preventScroll: true });
   }, [area]);
@@ -1339,15 +1343,9 @@ export function EventDetails({
               recordRemoving={removing}
               onEditorProtectedChange={documentEditorProtectionChanged}
               onMailScheduled={() => setMailRevision((value) => value + 1)}
+              composeRequest={composeRequest}
             />
             <div hidden={editingDocument}>
-              <EventMails
-                key={'mails:' + data.event.id}
-                eventId={data.event.id}
-                csrfToken={csrfToken}
-                active={area === 'files'}
-                revision={mailRevision}
-              />
               <EventLibraryFiles
                 key={'library:' + data.event.id}
                 eventId={data.event.id}
@@ -1359,10 +1357,41 @@ export function EventDetails({
           <div
             className="event-record-panel"
             role="region"
+            aria-labelledby="event-panel-mails"
+            tabIndex={-1}
+            ref={mailsPanel}
+            hidden={area !== 'mails'}
+          >
+            <h3 id="event-panel-mails">E-Mails</h3>
+            <button
+              type="button"
+              className="secondary-action"
+              aria-haspopup="dialog"
+              disabled={editingDocument || removing}
+              onClick={(event) =>
+                setComposeRequest({
+                  id: Date.now(),
+                  trigger: event.currentTarget,
+                })
+              }
+            >
+              Neue Mail schreiben
+            </button>
+            <EventMails
+              key={'mails:' + data.event.id}
+              eventId={data.event.id}
+              csrfToken={csrfToken}
+              active={area === 'mails'}
+              revision={mailRevision}
+            />
+          </div>
+          <div
+            className="event-record-panel"
+            role="region"
             aria-labelledby="event-panel-notes"
             tabIndex={-1}
             ref={notesPanel}
-            hidden={area !== 'notes'}
+            hidden={area !== 'details'}
           >
             <h3 id="event-panel-notes">Interne Notizen</h3>
             <div
@@ -1523,21 +1552,8 @@ export function EventDetails({
             {notesSaveState.status === 'saving' && (
               <p role="status">Notizen werden gespeichert …</p>
             )}
-            {notesSaveState.status === 'paused' && (
-              <div role="alert">
-                <p>{notesSaveState.error}</p>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  onClick={() => inline.current?.reconcile()}
-                >
-                  Aktuellen Stand laden
-                </button>
-              </div>
-            )}
-            {notesSaveState.status === 'checking' && (
-              <p role="status">Aktueller Stand wird geladen …</p>
-            )}
+            {/* UI-PARITY-02: a paused or checking save is announced once by
+            the event editor right above, which shares this save state. */}
             {notesSaveState.status === 'review' && (
               <div role="alert">
                 <p>Der aktuelle Stand unterscheidet sich von deiner Eingabe.</p>
@@ -1589,7 +1605,7 @@ export function EventDetails({
             aria-labelledby="event-panel-activity"
             tabIndex={-1}
             ref={activityPanel}
-            hidden={area !== 'activity'}
+            hidden={area !== 'details'}
           >
             <h3 id="event-panel-activity">Logbuch</h3>
             {!data.activities.length && <p>Noch keine Aktivitäten.</p>}

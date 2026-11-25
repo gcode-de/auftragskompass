@@ -472,7 +472,7 @@ test('event notes preserve formatting and safely paste before saving on blur', a
     }),
   );
   await page.goto('/#event-' + id);
-  await page.getByRole('button', { name: 'Notizen', exact: true }).click();
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   const editor = page.getByRole('textbox', { name: 'Interne Notizen' });
   await expect(editor.locator('strong')).toHaveText('existing');
   await expect(editor.locator('a')).toHaveAttribute(
