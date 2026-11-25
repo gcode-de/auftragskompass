@@ -527,3 +527,7 @@ Infotext wandert mit der Position. Eigenständige Textzeilen sind ebenfalls
 verschiebbar. Speichern übernimmt die Reihenfolge.
 
 Optionale Positionen (DOC-OPTION-01): Positionsgruppen zeigen unter den Preisfeldern die native Checkbox „Optionale Position“ mit mindestens 44 px Trefferfläche. Ihr Zustand wird zusammen mit der Position gespeichert und verschoben. Die Summe zeigt den gespeicherten Serverwert.
+
+### Bereiche der Eventakte (UI-PARITY-02, 25.11.2026)
+
+Die Eventakte folgt Bookitups Aktengliederung (Screenshots vom 31.10. und 24.11.2026, Bildbeobachtung, kein REA-Beleg): **Details · Ressourcen · Dateien · E-Mails**. Notizen und Logbuch stehen unter Details, wie bei Bookitup, und behalten ihre eigenen Regionen und Überschriften. „E-Mails“ beginnt mit der sekundären Aktion „Neue Mail schreiben“, darunter die Karte „Ausgehende Mails“ mit einer Ordnergruppe (`role="group"`, `aria-label="Ordner"`, `nav-action`-Knöpfe mit `aria-pressed`, aktiver Ordner fett) samt Anzahl je Ordner. Mobil bleibt die feste Bereichsleiste, jetzt mit vier gleich breiten Spalten.

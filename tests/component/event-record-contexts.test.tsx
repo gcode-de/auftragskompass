@@ -198,13 +198,7 @@ test('the record head keeps date, title and status in every work area', async ()
     expect(within(head).getByText('Option')).toBeTruthy();
   };
   headChecks();
-  for (const name of [
-    'Dateien',
-    'Ressourcen',
-    'Notizen',
-    'Logbuch',
-    'Details',
-  ]) {
+  for (const name of ['Dateien', 'Ressourcen', 'E-Mails', 'Details']) {
     fireEvent.click(tab(name));
     headChecks();
   }
@@ -262,7 +256,9 @@ test('the files area labels every document by its actual kind', async () => {
   expect(within(invoices).queryByText('AN-2030-0007')).toBeNull();
 });
 
-test('the record offers no mail area beside the documented send action', async () => {
+// UI-PARITY-02: Bookitup's event record areas, including E-Mails with
+// the event's outgoing mail and the new-mail action.
+test('the record offers the Bookitup areas including E-Mails', async () => {
   mockRecord();
   const { panel, area, tab } = await open();
   const navigation = within(panel).getByRole('navigation', {
@@ -272,28 +268,22 @@ test('the record offers no mail area beside the documented send action', async (
     within(navigation)
       .getAllByRole('button')
       .map((button) => button.textContent),
-  ).toEqual(['Details', 'Ressourcen', 'Dateien', 'Notizen', 'Logbuch']);
-  // MAIL-DOC-01 (PR #68) ships the row action "Per E-Mail senden" on
-  // finalized documents. That action is not a mail area. The former
-  // whole-panel text check raced the document fetch (the rows render after
-  // open() returns and flipped the check run to run), so wait for the settled
-  // record and pin every mail affordance to exactly the documented action.
-  fireEvent.click(tab('Dateien'));
-  const files = area('Dateien');
-  await within(files).findByRole('region', { name: 'Angebote' });
-  await within(files).findByText('AN-2030-0007');
-  const mailButtons = within(panel).queryAllByRole('button', {
-    name: /e-?mail/i,
-  });
-  expect(mailButtons.length).toBeGreaterThan(0);
-  for (const button of mailButtons)
-    expect(button.getAttribute('aria-label')).toMatch(/per e-mail senden$/i);
-  expect(within(panel).queryAllByRole('link', { name: /e-?mail/i })).toEqual(
-    [],
+  ).toEqual(['Details', 'Ressourcen', 'Dateien', 'E-Mails']);
+  fireEvent.click(tab('E-Mails'));
+  const mails = area('E-Mails');
+  expect(
+    within(mails).getByRole('button', { name: 'Neue Mail schreiben' }),
+  ).toBeTruthy();
+  expect(
+    within(mails).getByRole('region', { name: 'Ausgehende Mails' }),
+  ).toBeTruthy();
+  // The new mail opens the compose dialog although the files area is hidden.
+  fireEvent.click(
+    within(mails).getByRole('button', { name: 'Neue Mail schreiben' }),
   );
-  expect(within(panel).queryAllByRole('region', { name: /e-?mail/i })).toEqual(
-    [],
-  );
+  expect(
+    await screen.findByRole('dialog', { name: 'Neue Mail schreiben' }),
+  ).toBeTruthy();
 });
 
 test('a dirty status or resource draft survives every work area switch', async () => {
@@ -308,14 +298,13 @@ test('a dirty status or resource draft survives every work area switch', async (
     exact: true,
   })) as HTMLInputElement;
   fireEvent.change(start, { target: { value: '2026-10-18T18:00' } });
-  for (const name of ['Dateien', 'Notizen', 'Logbuch', 'Details', 'Dateien'])
+  for (const name of ['Dateien', 'E-Mails', 'Details', 'Dateien'])
     fireEvent.click(tab(name));
   fireEvent.click(tab('Ressourcen'));
   expect(start.value).toBe('2026-10-18T18:00');
   fireEvent.click(tab('Details'));
   expect(status.value).toBe('inquiry');
-  // The notes keep their own reachable area instead of being folded away.
-  fireEvent.click(tab('Notizen'));
+  // The notes stand under the details, like in Bookitup.
   expect(
     within(area('Interne Notizen')).getByRole('textbox', {
       name: 'Interne Notizen',
@@ -381,8 +370,8 @@ test('the chosen work area receives the keyboard focus', async () => {
   const { area, tab } = await open();
   fireEvent.click(tab('Dateien'));
   expect(document.activeElement).toBe(area('Dateien'));
-  fireEvent.click(tab('Notizen'));
-  expect(document.activeElement).toBe(area('Interne Notizen'));
+  fireEvent.click(tab('E-Mails'));
+  expect(document.activeElement).toBe(area('E-Mails'));
 });
 
 test('an incomplete website event is a normal open state, not an error area', async () => {

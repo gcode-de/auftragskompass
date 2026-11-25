@@ -4343,7 +4343,7 @@ async function signInScenario(
       await openRecord
         .getByRole('combobox', { name: 'Status des Events', exact: true })
         .selectOption('option');
-      for (const area of ['Dateien', 'Notizen', 'Logbuch', 'Details'])
+      for (const area of ['Dateien', 'E-Mails', 'Details'])
         await openRecord
           .getByRole('button', { name: area, exact: true })
           .click();
@@ -4420,7 +4420,7 @@ async function signInScenario(
       const areaBar = narrowRecord.getByRole('navigation', {
         name: 'Bereiche des Events',
       });
-      await expect(areaBar.getByRole('button')).toHaveCount(5);
+      await expect(areaBar.getByRole('button')).toHaveCount(4);
       expect((await areaBar.boundingBox())!.height).toBeLessThan(100);
       const aside = narrowRecord.locator('details.event-aside');
       await expect(aside).not.toHaveAttribute('open', '');
@@ -4449,7 +4449,7 @@ async function signInScenario(
         name: /Synthetic browser event/,
       })
       .click();
-    await events.getByRole('button', { name: 'Notizen', exact: true }).click();
+    await events.getByRole('button', { name: 'Details', exact: true }).click();
     await expect(
       events
         .getByRole('textbox', { name: 'Interne Notizen' })
@@ -4470,7 +4470,7 @@ async function signInScenario(
     await expect(
       events.getByText('Eventstatus gespeichert.', { exact: true }),
     ).toBeVisible();
-    await record.getByRole('button', { name: 'Logbuch', exact: true }).click();
+    await record.getByRole('button', { name: 'Details', exact: true }).click();
     await expect(
       record.getByText(/Status von Anfrage auf Option geändert/),
     ).toBeVisible();
@@ -4922,7 +4922,7 @@ async function signInScenario(
     await expect(
       record.getByText('Ressourcen und Termin gespeichert.', { exact: true }),
     ).toBeVisible();
-    await record.getByRole('button', { name: 'Logbuch', exact: true }).click();
+    await record.getByRole('button', { name: 'Details', exact: true }).click();
     await expect(
       record.getByText(/Ressourcenzuordnung und Dispositionszeitraum geändert/),
     ).toBeVisible();
@@ -5654,7 +5654,7 @@ async function signInScenario(
       });
       await dispositionStart.fill('2030-10-27T16:30');
       await currentRecord
-        .getByRole('button', { name: 'Notizen', exact: true })
+        .getByRole('button', { name: 'Details', exact: true })
         .click();
       await expect(dispositionStart).not.toBeVisible();
       await currentRecord
@@ -6407,7 +6407,7 @@ async function signInScenario(
     ).toBe('0');
     await audit('website-option-event');
     await websiteRecord
-      .getByRole('button', { name: 'Logbuch', exact: true })
+      .getByRole('button', { name: 'Details', exact: true })
       .click();
     await expect(
       websiteRecord.getByRole('listitem').filter({

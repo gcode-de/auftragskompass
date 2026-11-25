@@ -19,13 +19,13 @@ gzip-komprimierte JS-Ausgabe ohne React (das ohnehin im Admin-Bundle liegt),
 Stand der Pakete 21.11.2026. Zusätzlich gilt der gemessene Wert von Quill
 inklusive seiner Pflicht-Stylesheet-Datei.
 
-| Kandidat | Lizenz | Wartung (npm-Stand 21.11.2026) | Bundle (min+gzip, gemessen) | Barrierefreiheit (offizielle Doku) | Sanitizing-Zusammenspiel |
-| --- | --- | --- | --- | --- | --- |
-| **TipTap 3** (ProseMirror) | MIT (alle genutzten Pakete; Pro-Cloud-Features sind bezahlt und nicht genutzt) | sehr aktiv, `@tiptap/*` 3.35.0 am 20.11.2026 veröffentlicht | 129 KB (schlanke Extensions) / 133 KB (StarterKit) | eigener offizieller Leitfaden „How to make your editor accessible“ (Headless: Werkzeugleiste liegt bei uns) | Ausgabe ist semantisches HTML `p/br/strong/em/u/ul/ol/li/a` und deckt sich 1:1 mit der Mail-Allowlist |
-| **Lexical 0.53** (Meta) | MIT | aktiv, Veröffentlichung 28.10.2026 | 136 KB | in der aktuellen Doku keine auffindbare eigene Barrierefreiheitsseite (Stand 21.11.2026, zwei Dokumentationspfade geprüft) | HTML-Export über `$generateHtmlFromNodes`, zusätzliche Attribute/Rahmen, mehr Verdrahtungsaufwand |
-| **Plate 53** (Slate) | MIT | aktiv, 30.10.2026 | 178 KB | keine eigene a11y-Doku; Dokumentation setzt eine eigene Komponentenschicht (Leafs, Kit-Registry) voraus | Ausgabe Slate-spezifisch, Kit-Aufbau nötig |
-| **Quill 2.0.3** | BSD-3-Clause | zuletzt 30.11.2024, seitdem kein Release | **65 KB** (plus 4 KB CSS, Pflicht-Stylesheet) | keine offizielle a11y-Doku | eigene Blot-Ausgabe, semantisch nach Konfiguration, CSS-Klassen nötig |
-| vorhandener `contentEditable`-Bau (Event-Notizen, `document.execCommand`) | – | – | 0 KB neu | – | `document.execCommand` ist veraltet (MDN), Eigenentwicklung für Auswahl/Links |
+| Kandidat                                                                  | Lizenz                                                                         | Wartung (npm-Stand 21.11.2026)                              | Bundle (min+gzip, gemessen)                        | Barrierefreiheit (offizielle Doku)                                                                                         | Sanitizing-Zusammenspiel                                                                              |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **TipTap 3** (ProseMirror)                                                | MIT (alle genutzten Pakete; Pro-Cloud-Features sind bezahlt und nicht genutzt) | sehr aktiv, `@tiptap/*` 3.35.0 am 20.11.2026 veröffentlicht | 129 KB (schlanke Extensions) / 133 KB (StarterKit) | eigener offizieller Leitfaden „How to make your editor accessible“ (Headless: Werkzeugleiste liegt bei uns)                | Ausgabe ist semantisches HTML `p/br/strong/em/u/ul/ol/li/a` und deckt sich 1:1 mit der Mail-Allowlist |
+| **Lexical 0.53** (Meta)                                                   | MIT                                                                            | aktiv, Veröffentlichung 28.10.2026                          | 136 KB                                             | in der aktuellen Doku keine auffindbare eigene Barrierefreiheitsseite (Stand 21.11.2026, zwei Dokumentationspfade geprüft) | HTML-Export über `$generateHtmlFromNodes`, zusätzliche Attribute/Rahmen, mehr Verdrahtungsaufwand     |
+| **Plate 53** (Slate)                                                      | MIT                                                                            | aktiv, 30.10.2026                                           | 178 KB                                             | keine eigene a11y-Doku; Dokumentation setzt eine eigene Komponentenschicht (Leafs, Kit-Registry) voraus                    | Ausgabe Slate-spezifisch, Kit-Aufbau nötig                                                            |
+| **Quill 2.0.3**                                                           | BSD-3-Clause                                                                   | zuletzt 30.11.2024, seitdem kein Release                    | **65 KB** (plus 4 KB CSS, Pflicht-Stylesheet)      | keine offizielle a11y-Doku                                                                                                 | eigene Blot-Ausgabe, semantisch nach Konfiguration, CSS-Klassen nötig                                 |
+| vorhandener `contentEditable`-Bau (Event-Notizen, `document.execCommand`) | –                                                                              | –                                                           | 0 KB neu                                           | –                                                                                                                          | `document.execCommand` ist veraltet (MDN), Eigenentwicklung für Auswahl/Links                         |
 
 **Auswahl: TipTap 3 mit schmaler Extension-Liste** (Document, Paragraph, Text,
 Bold, Italic, Underline, Strike, Heading 2/3, Blockquote, BulletList,
@@ -49,17 +49,17 @@ Verbindlich ist die vorhandene Projektsyntax der
 unterstützt dieselben acht Namen und ergänzt **einen** neuen, klar benannten
 Platzhalter:
 
-| Platzhalter | Bedeutung | Auflösung |
-| --- | --- | --- |
-| `{{contact}}` | Kontaktname | `contacts.name` |
+| Platzhalter            | Bedeutung                             | Auflösung                                                             |
+| ---------------------- | ------------------------------------- | --------------------------------------------------------------------- |
+| `{{contact}}`          | Kontaktname                           | `contacts.name`                                                       |
 | `{{contactFirstName}}` | **Kontakt-Vorname** (Kontakt_Vorname) | ausschließlich das eigene Feld `contacts.first_name` (Migration 0073) |
-| `{{event}}` | Eventname | `events.name` |
-| `{{date}}` | Eventdatum | `events.event_date`, formatiert in der Mandantenzeitzone |
-| `{{location}}` | wirksamer Ort | Freitext bei `venue_override`, sonst der Bestandsname |
-| `{{eventType}}` | Eventart | Stammdaten |
-| `{{package}}` | Paket | Stammdaten |
-| `{{total}}` | Bruttosumme des Dokuments | exakte Positionsensumme, `formatMinorUnits` |
-| `{{documentLink}}` | Dokumentlink | Admin-Origin + `/#document-<id>` |
+| `{{event}}`            | Eventname                             | `events.name`                                                         |
+| `{{date}}`             | Eventdatum                            | `events.event_date`, formatiert in der Mandantenzeitzone              |
+| `{{location}}`         | wirksamer Ort                         | Freitext bei `venue_override`, sonst der Bestandsname                 |
+| `{{eventType}}`        | Eventart                              | Stammdaten                                                            |
+| `{{package}}`          | Paket                                 | Stammdaten                                                            |
+| `{{total}}`            | Bruttosumme des Dokuments             | exakte Positionsensumme, `formatMinorUnits`                           |
+| `{{documentLink}}`     | Dokumentlink                          | Admin-Origin + `/#document-<id>`                                      |
 
 `{{contactFirstName}}` löst **nie** aus dem vollständigen Namen auf: fehlt das
 eigene Feld, bleibt der Platzhalter stehen. Das Feld ist in Kontakt anlegen/
@@ -160,8 +160,9 @@ Eventwerte nur mit zugeordnetem Kontakt bzw. Event.
 
 Ein Dialog bestätigt nur, dass der Auftrag in `mail_outbox` liegt; versendet
 wird später im Worker. Deshalb meldet er „Mail in der Warteschlange“ und nie
-„gesendet“. Den Ausgang zeigt die Eventakte unter Dateien im Bereich
-„Mails“: jede ausgehende Mail des Events mit Status in Worten (In der
+„gesendet“. Den Ausgang zeigt die Eventakte im Bereich „E-Mails“ (seit UI-PARITY-02
+ein eigener Aktenbereich mit den Ordnern Alle, Geplant, Fehlgeschlagen und
+Gesendet): jede ausgehende Mail des Events mit Status in Worten (In der
 Warteschlange, Wird gesendet, Gesendet, Nicht gesendet, Zustellung unklar).
 Solange eine Mail unterwegs ist, liest die Liste alle 3 Sekunden neu,
 höchstens etwa zwei Minuten lang, und meldet das Ergebnis einmal.

@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Temporal } from '@js-temporal/polyfill';
 import { OfferDraftEditor } from './OfferDraftEditor.js';
 import { MailBodyEditor } from './MailBodyEditor.js';
@@ -440,7 +441,7 @@ async function validDocuments(
 // MAIL-STATUS-01: the dialog only knows that the order exists - the outcome
 // is decided later by the worker and shown in the event's mail list.
 const queuedMessage =
-  'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „Mails“.';
+  'Mail in der Warteschlange. Den Versandstatus zeigt der Bereich „E-Mails“.';
 
 // The event file is where an offer is born: it owns the contact and the date
 // that the template placeholders need.
@@ -455,6 +456,7 @@ export function EventDocuments({
   onEditingChange,
   onEditorProtectedChange,
   onMailScheduled,
+  composeRequest = null,
 }: {
   eventId: string;
   contactId: string | null;
@@ -469,6 +471,9 @@ export function EventDocuments({
   onEditorProtectedChange?: (protectedEditor: boolean) => void;
   // MAIL-STATUS-01: a send order exists; the mail list follows its outcome.
   onMailScheduled?: () => void;
+  // UI-PARITY-02: the event's E-Mails area asks for a new free mail; the
+  // trigger gets the focus back when the dialog closes.
+  composeRequest?: { id: number; trigger: HTMLElement } | null;
 }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
@@ -734,6 +739,10 @@ export function EventDocuments({
     mailTrigger.current = null;
     mailDialogWasOpen.current = false;
   }, [mailSendId]);
+  useEffect(() => {
+    if (composeRequest) openCompose(composeRequest.trigger);
+    // Only a new request opens the dialog, never a re-render.
+  }, [composeRequest?.id]);
   // MAIL-EVENT-01: the compose dialog uses the same native dialog mechanics.
   useEffect(() => {
     if (!composeOpen) return;
@@ -4249,95 +4258,99 @@ export function EventDocuments({
             >
               Neue Mail schreiben
             </button>
-            {composeOpen && (
-              <dialog
-                ref={composeDialog}
-                className="form-dialog mail-compose-dialog"
-                aria-labelledby="mail-compose-heading"
-                aria-modal="true"
-                onCancel={(event) => {
-                  event.preventDefault();
-                  if (busy === '') setComposeOpen(false);
-                }}
-              >
-                <h4 id="mail-compose-heading">Neue Mail schreiben</h4>
-                <p>
-                  Eventkontakt:{' '}
-                  {contactId
-                    ? contactName?.trim() || 'Zugeordneter Kontakt'
-                    : 'Kein Hauptkontakt zugeordnet'}
-                </p>
-                {message && <p role="alert">{message}</p>}
-                <form
-                  onSubmit={(event) => {
+            {/* UI-PARITY-02: a portal, so the dialog also opens from the
+            E-Mails area while the files area is hidden. */}
+            {composeOpen &&
+              createPortal(
+                <dialog
+                  ref={composeDialog}
+                  className="form-dialog mail-compose-dialog"
+                  aria-labelledby="mail-compose-heading"
+                  aria-modal="true"
+                  onCancel={(event) => {
                     event.preventDefault();
-                    void sendCompose();
+                    if (busy === '') setComposeOpen(false);
                   }}
                 >
-                  <label>
-                    An
-                    <input
-                      ref={composeToField}
-                      value={composeTo}
-                      onChange={(event) =>
-                        setComposeTo(event.currentTarget.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    Betreff
-                    <input
-                      value={composeSubject}
-                      onChange={(event) =>
-                        setComposeSubject(event.currentTarget.value)
-                      }
-                    />
-                  </label>
-                  {mailAttachmentControls(
-                    null,
-                    () =>
-                      void applyMailTemplate(
-                        composeBody.trim() !== '' ||
-                          composeSubject.trim() !== '',
-                        (subject, body) => {
-                          setComposeSubject(subject);
-                          setComposeBody(body);
-                          setComposeReplace((count) => count + 1);
-                        },
-                      ),
-                  )}
-                  <div className="mail-editor-field" {...dropZoneProps()}>
-                    <span className="mail-editor-label">Text (optional)</span>
-                    <MailBodyEditor
-                      value={composeBody}
-                      onChange={setComposeBody}
-                      replaceKey={composeReplace}
-                      disabled={busy !== ''}
-                      label="Text (optional)"
-                      withPlaceholderPicker={false}
-                    />
-                  </div>
-                  {signatureControl()}
-                  {forwardingControls()}
-                  <div className="document-actions">
-                    <button
-                      className="primary-action"
-                      disabled={busy !== '' || composeTo.trim() === ''}
-                    >
-                      Senden
-                    </button>
-                    <button
-                      type="button"
-                      className="tertiary-action"
-                      disabled={busy !== ''}
-                      onClick={() => setComposeOpen(false)}
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
-                </form>
-              </dialog>
-            )}
+                  <h4 id="mail-compose-heading">Neue Mail schreiben</h4>
+                  <p>
+                    Eventkontakt:{' '}
+                    {contactId
+                      ? contactName?.trim() || 'Zugeordneter Kontakt'
+                      : 'Kein Hauptkontakt zugeordnet'}
+                  </p>
+                  {message && <p role="alert">{message}</p>}
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void sendCompose();
+                    }}
+                  >
+                    <label>
+                      An
+                      <input
+                        ref={composeToField}
+                        value={composeTo}
+                        onChange={(event) =>
+                          setComposeTo(event.currentTarget.value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      Betreff
+                      <input
+                        value={composeSubject}
+                        onChange={(event) =>
+                          setComposeSubject(event.currentTarget.value)
+                        }
+                      />
+                    </label>
+                    {mailAttachmentControls(
+                      null,
+                      () =>
+                        void applyMailTemplate(
+                          composeBody.trim() !== '' ||
+                            composeSubject.trim() !== '',
+                          (subject, body) => {
+                            setComposeSubject(subject);
+                            setComposeBody(body);
+                            setComposeReplace((count) => count + 1);
+                          },
+                        ),
+                    )}
+                    <div className="mail-editor-field" {...dropZoneProps()}>
+                      <span className="mail-editor-label">Text (optional)</span>
+                      <MailBodyEditor
+                        value={composeBody}
+                        onChange={setComposeBody}
+                        replaceKey={composeReplace}
+                        disabled={busy !== ''}
+                        label="Text (optional)"
+                        withPlaceholderPicker={false}
+                      />
+                    </div>
+                    {signatureControl()}
+                    {forwardingControls()}
+                    <div className="document-actions">
+                      <button
+                        className="primary-action"
+                        disabled={busy !== '' || composeTo.trim() === ''}
+                      >
+                        Senden
+                      </button>
+                      <button
+                        type="button"
+                        className="tertiary-action"
+                        disabled={busy !== ''}
+                        onClick={() => setComposeOpen(false)}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </form>
+                </dialog>,
+                document.body,
+              )}
             {createDialogOpen && (
               <dialog
                 ref={createDialog}
