@@ -342,7 +342,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     // The documents of the event live in its "Dateien" area.
     await page.getByRole('button', { name: 'Dateien', exact: true }).click();
 
-    // UI-PARITY-03: the delivery view shows the real PDF beside its actions.
+    // UI-PARITY-03: the delivery view gathers every way to hand the PDF out.
     await page
       .getByRole('button', { name: `Angebot ${number} bereitstellen` })
       .click();
@@ -351,9 +351,9 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     });
     await expect(deliver).toBeVisible();
     const previewSrc = (await deliver
-      .getByTitle(`Vorschau Angebot ${number}`)
-      .getAttribute('src'))!;
-    // The iframe asks the same origin the app uses; so does this check.
+      .getByRole('link', { name: 'Vorschau öffnen' })
+      .getAttribute('href'))!;
+    // The new tab asks the same origin the app uses; so does this check.
     expect(
       await page.evaluate(
         async (src) => (await fetch(src)).headers.get('content-type'),
@@ -364,9 +364,6 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       (
         await new AxeBuilder({ page })
           .include('.document-deliver-dialog')
-          // The headless PDF frame is an empty document; its page-level
-          // rules say nothing about the dialog. The frame title is checked.
-          .disableRules(['landmark-one-main', 'page-has-heading-one'])
           .analyze()
       ).violations,
     ).toEqual([]);

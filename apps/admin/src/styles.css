@@ -1501,21 +1501,10 @@ time {
   border-radius: 1rem;
   box-shadow: 0 1.5rem 4rem #0b120f40;
 }
-.form-dialog.document-deliver-dialog {
-  /* UI-PARITY-03: the preview needs room; actions sit beside it. */
-  width: min(100%, 64rem);
-}
 .document-deliver-layout {
   display: grid;
   gap: 1.25rem;
   grid-template-columns: minmax(0, 1fr);
-}
-.document-deliver-preview {
-  width: 100%;
-  height: min(45dvh, 40rem);
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
-  background: var(--canvas);
 }
 .document-deliver-actions {
   list-style: none;
@@ -1546,14 +1535,6 @@ time {
 }
 .document-deliver-actions a.secondary-action:hover {
   background: var(--hover-surface);
-}
-@media (min-width: 900px) {
-  .document-deliver-layout {
-    grid-template-columns: minmax(0, 1.7fr) minmax(14rem, 1fr);
-  }
-  .document-deliver-preview {
-    height: min(65dvh, 44rem);
-  }
 }
 .event-create-header,
 .form-dialog-header {

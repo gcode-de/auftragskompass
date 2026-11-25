@@ -611,7 +611,6 @@ export function EventDocuments({
     deliverDialog = useRef<HTMLDialogElement>(null),
     deliverTrigger = useRef<HTMLElement | null>(null),
     deliverWasOpen = useRef(false),
-    deliverPreview = useRef<HTMLIFrameElement>(null),
     mailTrigger = useRef<HTMLElement | null>(null),
     mailDialogWasOpen = useRef(false),
     mailRecipient = useRef<HTMLInputElement>(null),
@@ -4014,14 +4013,25 @@ export function EventDocuments({
                 <p>
                   {kindName(entry)} {entry.number}
                 </p>
+                {/* The admin policy forbids framing (frame-ancestors 'none'),
+                    so the preview opens the frozen PDF in its own tab, where
+                    the browser also prints it. */}
                 <div className="document-deliver-layout">
-                  <iframe
-                    ref={deliverPreview}
-                    className="document-deliver-preview"
-                    title={'Vorschau ' + kindName(entry) + ' ' + entry.number}
-                    src={'/api/v1/documents/' + entry.id + '/pdf'}
-                  />
                   <ul className="document-deliver-actions">
+                    <li>
+                      <a
+                        className="secondary-action"
+                        href={'/api/v1/documents/' + entry.id + '/pdf'}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Vorschau öffnen
+                      </a>
+                      <span className="document-card-hint">
+                        Öffnet das PDF in einem neuen Tab; dort lässt es sich
+                        auch drucken.
+                      </span>
+                    </li>
                     <li>
                       <button
                         type="button"
@@ -4066,17 +4076,6 @@ export function EventDocuments({
                       >
                         Herunterladen
                       </a>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="secondary-action"
-                        onClick={() =>
-                          deliverPreview.current?.contentWindow?.print()
-                        }
-                      >
-                        Drucken
-                      </button>
                     </li>
                     <li>
                       <span className="document-card-hint">
