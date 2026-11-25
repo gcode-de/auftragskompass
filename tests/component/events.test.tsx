@@ -527,7 +527,7 @@ test('the open record duplicates its event and links its contacts', async () => 
   await screen.findByRole('heading', { name: 'Event: Synthetic event' });
   expect(
     screen
-      .getByRole('link', { name: 'Kontaktdetails anzeigen: Fiktive Person' })
+      .getByRole('link', { name: 'Details anzeigen: Fiktive Person' })
       .getAttribute('href'),
   ).toBe('#contact-fictional-contact');
   fireEvent.click(screen.getByText('Weitere Eventaktionen'));

@@ -1451,9 +1451,7 @@ export function EventDetails({
                             ' (Kontaktdaten noch nicht geladen)'}{' '}
                           <a
                             href={'#contact-' + person.id}
-                            aria-label={
-                              'Kontaktdetails anzeigen: ' + person.name
-                            }
+                            aria-label={'Details anzeigen: ' + person.name}
                           >
                             Details anzeigen
                           </a>{' '}
