@@ -1391,47 +1391,42 @@ time {
   gap: 0.55rem;
   min-width: 0;
 }
-.event-note-toolbar {
+.event-note-composer > .secondary-action {
+  justify-self: start;
+}
+/* QW3: dated notes read like Bookitup's note cards - time and author quiet
+   above the text, a neutral divider between notes, no new card colour. */
+.event-note-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+.event-note-list li {
+  margin: 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+.event-note-meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
-  gap: 0.4rem;
-}
-.event-note-link summary {
-  min-height: 44px;
-  display: flex;
   align-items: center;
-  cursor: pointer;
-}
-.event-note-link[open] {
-  flex: 1 1 14rem;
-}
-.event-note-toolbar button {
-  align-self: end;
-}
-.event-note-editor {
-  min-height: 9rem;
-  max-width: 100%;
-  padding: 0.7rem;
-  border: 1px solid var(--field-border);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  color: inherit;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-.event-note-editor:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-.event-note-editor[contenteditable='false'] {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-.event-note-editor:empty::before {
-  content: attr(data-placeholder);
+  gap: 0.25rem 0.75rem;
+  margin: 0;
   color: var(--muted);
-  pointer-events: none;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.event-note-meta .tertiary-action {
+  margin-inline-start: auto;
+}
+.event-note-body {
+  overflow-wrap: anywhere;
+}
+.event-note-body > :first-child {
+  margin-top: 0.35rem;
+}
+.event-note-body > :last-child {
+  margin-bottom: 0;
 }
 .contact-inline-conflicts dl {
   display: block;
@@ -2708,6 +2703,53 @@ carries the alert colour and its cause, never colour alone. */
   border-color: var(--action);
   color: var(--action);
   background: var(--surface);
+}
+/* Tiptap's base rules, shipped here because the admin CSP refuses the
+   <style> element the editor would inject (injectCSS: false). */
+.ProseMirror {
+  position: relative;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0;
+}
+.ProseMirror [contenteditable='false'] {
+  white-space: normal;
+}
+.ProseMirror [contenteditable='false'] [contenteditable='true'],
+.ProseMirror pre {
+  white-space: pre-wrap;
+}
+img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+  margin: 0;
+}
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}
+.ProseMirror-gapcursor::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid currentColor;
+}
+.ProseMirror-hideselection *::selection {
+  background: transparent;
+}
+.ProseMirror-hideselection * {
+  caret-color: transparent;
 }
 .mail-body-editor {
   min-height: 7rem;

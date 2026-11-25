@@ -35,6 +35,7 @@ import {
 } from '../../packages/core/src/access.js';
 import { registerAccessRoutes } from '../../packages/core/src/access-routes.js';
 import { registerEventRoutes } from '../../packages/core/src/events.js';
+import { registerEventNoteRoutes } from '../../packages/core/src/event-notes.js';
 import { registerLocationRoutes } from '../../packages/core/src/locations.js';
 import { registerContactRoutes } from '../../packages/core/src/contacts.js';
 import { registerProductRoutes } from '../../packages/core/src/products.js';
@@ -230,6 +231,7 @@ async function signInScenario(
     registerContactRoutes(app, pool, config.tenantId);
     registerLocationRoutes(app, pool, config.tenantId);
     registerEventRoutes(app, pool, config.tenantId);
+    registerEventNoteRoutes(app, pool, config.tenantId);
     // H035: the Dateien area reads the real, protected document list; the steps
     // below intercept its metadata request with synthetic rows instead of
     // touching any document, PDF or storage key.
@@ -4166,7 +4168,7 @@ async function signInScenario(
       events.getByLabel('Eventbeginn', { exact: true }),
     ).toBeHidden();
     await expect(events.getByLabel('Ort / Adresse')).toBeHidden();
-    await expect(events.getByLabel('Interne Notizen')).toBeHidden();
+    await expect(events.getByLabel('Erste Notiz')).toBeHidden();
     await expect(
       events.getByRole('combobox', { name: 'Eventart', exact: true }),
     ).toBeVisible();
@@ -4186,7 +4188,7 @@ async function signInScenario(
       .getByLabel('Ort / Adresse')
       .fill('Synthetic Browser Hall\nSide entrance');
     await events
-      .getByLabel('Interne Notizen')
+      .getByLabel('Erste Notiz')
       .fill(
         '<strong>Fictional browser note</strong><script>window.syntheticBad=true</script>',
       );
@@ -4453,8 +4455,8 @@ async function signInScenario(
     await events.getByRole('button', { name: 'Details', exact: true }).click();
     await expect(
       events
-        .getByRole('textbox', { name: 'Interne Notizen' })
-        .locator('strong'),
+        .getByRole('region', { name: 'Notizen', exact: true })
+        .locator('.event-note-body strong'),
     ).toHaveText('Fictional browser note');
     expect(
       await page.evaluate(() => Object.hasOwn(window, 'syntheticBad')),

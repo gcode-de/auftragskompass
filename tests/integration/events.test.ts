@@ -417,7 +417,16 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
       notesHtml: '<script>bad()</script><p>Safe</p>',
     });
     expect(created.statusCode).toBe(201);
-    expect(created.json().notesHtml).toBe('<p>Safe</p>');
+    // QW3: the sanitized note becomes the event's first dated note.
+    expect(created.json().notesHtml).toBe('');
+    expect(
+      (
+        await pool.query(
+          'SELECT body_html FROM event_notes WHERE event_id=$1',
+          [created.json().id],
+        )
+      ).rows,
+    ).toEqual([{ body_html: '<p>Safe</p>' }]);
     expect(created.json()).not.toHaveProperty('tenantId');
     const listed = await app.inject({ url: '/api/v1/events', cookies });
     expect(listed.json().timeZone).toBe('Europe/Berlin');
@@ -545,9 +554,17 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
       });
     const savedNotes = await notesPut(noteEvent.json().id, 1);
     expect(savedNotes.statusCode).toBe(200);
-    expect(savedNotes.json()).toMatchObject({
-      version: 2,
-      notesHtml: '<p>Fictional <strong>safe</strong><a>link</a></p>',
+    // QW3: the sanitized text becomes a dated note; the field stays empty.
+    expect(savedNotes.json()).toMatchObject({ version: 2, notesHtml: '' });
+    expect(
+      (
+        await pool.query(
+          'SELECT body_html FROM event_notes WHERE event_id=$1',
+          [noteEvent.json().id],
+        )
+      ).rows,
+    ).toContainEqual({
+      body_html: '<p>Fictional <strong>safe</strong><a>link</a></p>',
     });
     const detailNotes = await app.inject({
       url: '/api/v1/events/' + noteEvent.json().id,
@@ -581,7 +598,7 @@ test('event API validates schedule, prevents unauthenticated access and rolls ba
     expect(
       (await eventRepository(pool, foreignTenant).detail(foreignEvent.id))
         .event,
-    ).toMatchObject({ version: 1, notesHtml: simple.notesHtml });
+    ).toMatchObject({ version: 1, notesHtml: '' });
 
     const update = (id: string, version: number) =>
       app.inject({

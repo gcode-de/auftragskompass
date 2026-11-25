@@ -59,13 +59,9 @@ Ressourcenformular geprüft werden. Die direkte Bearbeitung ändert dabei keine
 Ressourcenzuweisung. Bei Ablehnung bleibt der Entwurf für den Serverabgleich
 erhalten; die ausdrückliche Übernahme des Serverstands verwirft ihn.
 
-Interne Notizen können im Notizenbereich direkt bearbeitet werden. Der Editor
-zeigt vorhandene Formatierungen, bietet Fett, Kursiv, Unterstreichen und Links
-und fügt Inhalte aus der Zwischenablage als Text ein. Ein Verlassen des
-gesamten Editors speichert über dieselbe versionierte Event-Warteschlange;
-Escape verwirft nur den aktuellen ungesendeten Entwurf. Der Server bereinigt
-das gespeicherte HTML weiterhin. Konflikte und unklare Antworten erfordern
-einen ausdrücklichen Abgleich; aktive Entwürfe bleiben dabei erhalten.
+Notizen sind seit QW3 datierte Einträge wie in Bookitup (siehe
+[Datierte Notizen](#datierte-notizen-qw3)); der frühere Einzeltext-Editor
+entfällt.
 
 Weitere Kontaktrollen und Status sind weiterhin über
 die vorhandenen vollständigen Formulare bearbeitbar.
@@ -184,6 +180,38 @@ einen Grund nur bei abgesagten Events zulässt; bestehende Zeilen bleiben
 Migration `0011_events.sql` erzwingt Mandantengrenzen in zusammengesetzten Fremdschlüsseln, die richtige Stammdatenart für Eventart und Paket, höchstens einen Hauptkontakt und gültige Zeitintervalle. Neue Zuordnungen müssen aktiv sein. Bereits zugeordnete, inzwischen archivierte Daten bleiben am bestehenden Event bearbeitbar. Gleichzeitige Änderungen werden über Mandantensperre und Versionsprüfung serialisiert; Event, Kontaktzuordnungen und Audit-Eintrag werden gemeinsam gespeichert. Die Migration erweitert die erlaubten Audit-Aktionen; fachliche Aktivitätstexte folgen in C020.
 
 Notizen unterstützen Absätze, Umbrüche, Fett/Kursiv/Unterstreichen, Listen und Links. Im MVP werden diese im Textfeld als einfaches HTML eingegeben, die gespeicherte Vorschau wird am Event angezeigt. Der Server bereinigt sie mit `sanitize-html`: nur die genannten Elemente und Linkattribute `href`/`title`, nur HTTP(S)/mailto, keine Skripte, Bilder, Frames, Styles oder Eventhandler. Ein visueller Editor ist noch nicht Bestandteil dieses Schritts. Sicherheitsregeln folgen der [Bibliotheksdokumentation](https://github.com/apostrophecms/apostrophe/tree/main/packages/sanitize-html); Zeitumrechnung nutzt [Temporal](https://github.com/js-temporal/temporal-polyfill).
+
+## Datierte Notizen (QW3)
+
+Unter Details steht „Notizen“: oben der gemeinsame Texteditor (Fett, Kursiv,
+Listen, Links; ohne Platzhalter) mit „Notiz hinzufügen“, darunter alle
+Notizen, die neueste zuerst, mit Zeitpunkt, Verfasser (E-Mail des
+Administrators, bei übernommenen Altnotizen „Übernommen“) und „Löschen“ nach
+Rückfrage. Ein nicht gesendeter Entwurf schützt vor dem Verlassen der Akte.
+
+API (Administrator, CSRF für Schreibzugriffe):
+
+| Route | Antwort |
+| --- | --- |
+| `GET /api/v1/events/:id/notes` | `200` Liste `{ id, bodyHtml, createdAt, author }`, neueste zuerst; `404` fremdes, entferntes oder unbekanntes Event |
+| `POST /api/v1/events/:id/notes` `{ bodyHtml }` | `201` aktuelle Liste; `400 empty_note` ohne sichtbaren Text, `400 invalid_note` über 20.000 Zeichen nach Bereinigung, `404` |
+| `DELETE /api/v1/events/:id/notes/:noteId` | `200` aktuelle Liste; `404` unbekannte oder schon gelöschte Notiz |
+
+Löschen setzt einen Grabstein mit Zeitpunkt und Administrator; Audit-Aktionen
+`event_note.created` und `event_note.removed`. Das Feld `notesHtml` der
+Event-API bleibt im Vertrag, ist in Antworten aber leer: Ein mitgesendeter
+Text (Anlegedialog „Erste Notiz“, Bearbeitungsformular „Neue Notiz“, Import,
+ältere Clients) wird bereinigt als datierte Notiz abgelegt; eine gleichlautende
+lebende Notiz wird nicht wiederholt, damit Importläufe idempotent bleiben. Der
+CSV-Export führt in `notesHtml` alle lebenden Notizen, älteste zuerst.
+
+Migration `0080_event_notes.sql` legt `event_notes` mandantengebunden an,
+übernimmt jede nicht leere Einzelnotiz als eine Notiz (Zeitpunkt der
+Migration, Verfasser unbekannt) und leert danach `events.notes_html`. Der
+Umzug ist nur über ein Backup rückgängig zu machen; die Betreiberentscheidung
+vom 25.11.2026 („Ersetzen wie Bookitup“) liegt vor. Die Notiz-Bereinigung
+erlaubt zusätzlich `s`, `h2`, `h3` und `blockquote`, weil der gemeinsame
+Editor sie erzeugt.
 
 ## Eventexport (E005.3)
 

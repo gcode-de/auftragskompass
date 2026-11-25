@@ -23,6 +23,7 @@ import {
   contactRepository,
 } from '../../packages/core/src/contacts.js';
 import { registerLocationRoutes } from '../../packages/core/src/locations.js';
+import { registerEventNoteRoutes } from '../../packages/core/src/event-notes.js';
 import {
   registerEventRoutes,
   eventRepository,
@@ -184,6 +185,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     registerContactRoutes(app, pool, tenantId);
     registerLocationRoutes(app, pool, tenantId);
     registerEventRoutes(app, pool, tenantId);
+    registerEventNoteRoutes(app, pool, tenantId);
     registerDocumentTemplateRoutes(app, pool, tenantId);
     registerDocumentNumberRoutes(app, pool, tenantId);
     registerDocumentLayoutRoutes(app, pool, tenantId, storage, async () =>
@@ -564,11 +566,11 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     ).rows[0]!;
     // The template subject arrived resolved from structured data.
     expect(message.subject).toBe('Erinnerung für Fictional Mail Recipient');
-    // ProseMirror keeps typed boundary spaces as non-breaking spaces in the
-    // HTML (marked `~` here); the text alternative normalizes them. Enter
-    // produced the second paragraph, Shift+Enter the plain line break.
+    // With the editor base rules in the stylesheet (white-space: break-spaces)
+    // typed spaces stay plain spaces; a non-breaking one would show as `~`.
+    // Enter produced the second paragraph, Shift+Enter the plain line break.
     expect(message.body_html.replace(/\u00a0/g, '~')).toBe(
-      '<p><strong>Hallo~Erika~{{package}}</strong></p>' +
+      '<p><strong>Hallo Erika {{package}}</strong></p>' +
         '<p><strong>Zweiter Absatz<br />Fortsetzung</strong></p>',
     );
     expect(message.body_text).toBe(
