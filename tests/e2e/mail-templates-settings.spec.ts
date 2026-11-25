@@ -46,7 +46,9 @@ test('mail templates are managed in the settings in Chromium', async ({
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
   const adminHeaders = Object.fromEntries(
     [
-      ...nginx.matchAll(/add_header ([\w-]+) (?:"([^"]+)"|([^; ]+)) always;/g),
+      ...nginx.matchAll(
+        /add_header ([\w-]+) (?:"([^"]+)"|([^;$ ][^; ]*)) always;/g,
+      ),
     ].map((match) => [match[1]!, match[2] ?? match[3]!]),
   );
   execFileSync(
