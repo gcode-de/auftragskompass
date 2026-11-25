@@ -84,6 +84,9 @@ test('event details save fields on blur and Escape discards the current edit', a
     name: 'Eventstammdaten direkt bearbeiten',
   });
   const name = editor.getByLabel('Eventname');
+  // The record must have loaded before editing: Escape restores the loaded
+  // value, and typing earlier raced the load on slower CI runners.
+  await expect(name).toHaveValue('Synthetic event');
   await name.fill('Discard');
   await name.press('Escape');
   await expect(name).toHaveValue('Synthetic event');
