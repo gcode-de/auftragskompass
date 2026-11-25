@@ -196,6 +196,18 @@ export const events = pgTable('events', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   deletedBy: uuid('deleted_by'),
 });
+export const eventNotes = pgTable('event_notes', {
+  tenantId: uuid('tenant_id').notNull(),
+  id: uuid('id').notNull(),
+  eventId: uuid('event_id').notNull(),
+  bodyHtml: text('body_html').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  createdBy: uuid('created_by'),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedBy: uuid('deleted_by'),
+});
 export const eventContacts = pgTable('event_contacts', {
   tenantId: uuid('tenant_id').notNull(),
   eventId: uuid('event_id').notNull(),

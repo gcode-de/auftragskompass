@@ -419,11 +419,13 @@ test('event record edits a date-only schedule with Escape and versioned blur sav
   }
 });
 
-test('event notes preserve formatting and safely paste before saving on blur', async ({
+// QW3: dated notes - the shared rich editor writes a note, the list shows it
+// newest first with time and author, and a confirmed removal takes it out.
+test('event notes are added with formatting and removed after confirmation', async ({
   page,
 }) => {
   const id = '88888888-8888-4888-8888-888888888888';
-  let event = {
+  const event = {
     id,
     version: 1,
     name: 'Synthetic notes event',
@@ -441,18 +443,41 @@ test('event notes preserve formatting and safely paste before saving on blur', a
     additionalContactIds: [],
     source: '',
     description: '',
-    notesHtml:
-      '<p>Fictional <strong>existing</strong> <a href="https://example.invalid">link</a></p>',
+    notesHtml: '',
   };
-  const writes: Record<string, unknown>[] = [];
+  let notes = [
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      bodyHtml:
+        '<p>Fictional <strong>existing</strong> <a href="https://example.invalid">link</a></p>',
+      createdAt: '2026-11-20T09:00:00Z',
+      author: null as string | null,
+    },
+  ];
+  const posted: string[] = [];
   await page.route('**/api/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === `/api/v1/events/${id}` && route.request().method() === 'PUT') {
-      const input = route.request().postDataJSON();
-      writes.push(input);
-      event = { ...event, ...input, version: event.version + 1 };
-      return route.fulfill({ json: event });
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === `/api/v1/events/${id}/notes` && request.method() === 'POST') {
+      const { bodyHtml } = request.postDataJSON() as { bodyHtml: string };
+      posted.push(bodyHtml);
+      notes = [
+        {
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          bodyHtml,
+          createdAt: '2026-11-25T10:00:00Z',
+          author: 'fictional@example.invalid',
+        },
+        ...notes,
+      ];
+      return route.fulfill({ status: 201, json: notes });
     }
+    if (path.startsWith(`/api/v1/events/${id}/notes/`)) {
+      notes = notes.filter((note) => !path.endsWith(note.id));
+      return route.fulfill({ json: notes });
+    }
+    if (path === `/api/v1/events/${id}/notes`)
+      return route.fulfill({ json: notes });
     if (path === `/api/v1/events/${id}`)
       return route.fulfill({
         json: {
@@ -484,79 +509,34 @@ test('event notes preserve formatting and safely paste before saving on blur', a
     }),
   );
   await page.goto('/#event-' + id);
-  await page.getByRole('button', { name: 'Details', exact: true }).click();
-  const editor = page.getByRole('textbox', { name: 'Interne Notizen' });
-  await expect(editor.locator('strong')).toHaveText('existing');
-  await expect(editor.locator('a')).toHaveAttribute(
-    'href',
-    'https://example.invalid',
+  const region = page.getByRole('region', { name: 'Notizen', exact: true });
+  await expect(region.locator('.event-note-body strong')).toHaveText(
+    'existing',
   );
-  await editor.focus();
-  await page.keyboard.press('End');
-  await page.keyboard.type(' discarded');
-  await page.keyboard.press('Escape');
-  await expect(editor).not.toContainText('discarded');
-  expect(writes).toHaveLength(0);
-  await editor.focus();
-  await page.keyboard.press('End');
-  await page.keyboard.type(' text');
-  await page.keyboard.press('Shift+ArrowLeft');
-  await page.keyboard.press('Shift+ArrowLeft');
-  await page.keyboard.press('Shift+ArrowLeft');
-  await page.keyboard.press('Shift+ArrowLeft');
-  await page.getByRole('button', { name: 'Fett', exact: true }).focus();
-  await page.keyboard.press('Enter');
-  await expect(editor.locator('strong, b').last()).toHaveText('text');
-  await editor.focus();
-  await page.keyboard.press('End');
-  for (let index = 0; index < 4; index++)
-    await page.keyboard.press('Shift+ArrowLeft');
-  const linkDisclosure = page.getByText('Link', { exact: true });
-  await linkDisclosure.focus();
-  await page.keyboard.press('Enter');
-  const accessibility = await new AxeBuilder({ page })
-    .include('[aria-labelledby="event-panel-notes"]')
-    .analyze();
-  expect(accessibility.violations).toEqual([]);
-  await page.getByLabel('Linkadresse').fill('https://fictional.invalid');
-  await page.getByRole('button', { name: 'Link einfügen' }).focus();
-  await page.keyboard.press('Enter');
-  await expect(editor.locator('a').last()).toHaveAttribute(
-    'href',
-    'https://fictional.invalid/',
+  await expect(region.getByText('Übernommen')).toBeVisible();
+  const editor = region.getByRole('textbox', { name: 'Neue Notiz' });
+  await editor.click();
+  await page.keyboard.type('Rückruf morgen');
+  await editor.press('ControlOrMeta+a');
+  await region.getByRole('button', { name: 'Fett' }).click();
+  await expect(region.getByRole('button', { name: 'Fett' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
   );
-  expect(writes).toHaveLength(0);
-  await editor.focus();
-  await page.keyboard.press('End');
-  await editor.evaluate((node) => {
-    const clipboard = new DataTransfer();
-    clipboard.setData('text/plain', '<img src=x onerror=alert(1)>');
-    clipboard.setData('text/html', '<img src=x onerror=alert(1)>');
-    node.dispatchEvent(
-      new ClipboardEvent('paste', {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: clipboard,
-      }),
-    );
-  });
-  await expect(editor.locator('img')).toHaveCount(0);
-  await expect(editor).toContainText('<img src=x onerror=alert(1)>');
-  await linkDisclosure.focus();
-  await page.keyboard.press('Enter');
-  await page.getByRole('button', { name: /modus aktivieren/i }).click();
-  await expect.poll(() => writes.length).toBe(1);
-  expect(String(writes[0]?.notesHtml)).toContain('&lt;img');
-  expect(String(writes[0]?.notesHtml)).toContain('existing');
-  expect(String(writes[0]?.notesHtml)).toContain('https://example.invalid');
-  await expect(editor).toContainText('<img src=x onerror=alert(1)>');
+  await region.getByRole('button', { name: 'Notiz hinzufügen' }).click();
+  await expect(region.getByText('Notiz hinzugefügt.')).toBeVisible();
+  expect(posted[0]).toContain('<strong>Rückruf morgen</strong>');
+  await expect(region.getByRole('listitem').first()).toContainText(
+    'fictional@example.invalid',
+  );
+  await expect(editor).toHaveText('');
   for (const width of [320, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ['light', 'dark'] as const) {
       if ((await page.locator('html').getAttribute('data-theme')) !== theme)
         await page.getByRole('button', { name: /modus aktivieren/i }).click();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      await page.getByRole('region', { name: 'Interne Notizen' }).screenshot({
+      await region.screenshot({
         path: test.info().outputPath(`event-notes-${width}-${theme}.png`),
       });
       expect(
@@ -564,4 +544,11 @@ test('event notes preserve formatting and safely paste before saving on blur', a
       ).toBeLessThanOrEqual(width + 1);
     }
   }
+  page.once('dialog', (dialog) => void dialog.accept());
+  await region
+    .getByRole('button', { name: /^Löschen: Notiz vom / })
+    .first()
+    .click();
+  await expect(region.getByText('Notiz gelöscht.')).toBeVisible();
+  await expect(region.getByRole('listitem')).toHaveCount(1);
 });

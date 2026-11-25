@@ -18,6 +18,7 @@ import {
 import { registerAuth, digest } from './packages/core/dist/auth.js';
 import { contactRepository } from './packages/core/dist/contacts.js';
 import { eventRepository } from './packages/core/dist/events.js';
+import { eventNoteRepository } from './packages/core/dist/event-notes.js';
 import { productRepository } from './packages/core/dist/products.js';
 import { resourceRepository } from './packages/core/dist/resources.js';
 import { receiveWebsiteInquiry } from './packages/core/dist/website-inquiries.js';
@@ -206,7 +207,14 @@ try {
     assert.equal(events[0].status, 'booked');
     const detail = await eventRepository(pool, tenant).detail(events[0].id);
     assert.equal(detail.contacts[0].id, people[0].id);
-    assert.equal(detail.event.notesHtml, '<p>Fictional restored note</p>');
+    // QW3: the note sent with the event lives on as a dated note.
+    assert.equal(detail.event.notesHtml, '');
+    assert.deepEqual(
+      (await eventNoteRepository(pool, tenant).list(events[0].id)).map(
+        (note) => note.bodyHtml,
+      ),
+      ['<p>Fictional restored note</p>'],
+    );
     const original = (
       await pool.query(
         'SELECT payload,event_id,contact_id FROM website_inquiries WHERE tenant_id=$1 AND id=$2',

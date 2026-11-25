@@ -297,7 +297,7 @@ test('advanced values survive collapsing and expanding without autosave', async 
   fireEvent.change(screen.getByLabelText('Eventbeschreibung'), {
     target: { value: 'Synthetic description' },
   });
-  fireEvent.change(screen.getByLabelText('Interne Notizen'), {
+  fireEvent.change(screen.getByLabelText('Erste Notiz'), {
     target: { value: '<strong>Fictional</strong>' },
   });
   fireEvent.change(screen.getByLabelText('Fotobox-Paket'), {
@@ -317,7 +317,7 @@ test('advanced values survive collapsing and expanding without autosave', async 
     (screen.getByLabelText('Eventbeschreibung') as HTMLTextAreaElement).value,
   ).toBe('Synthetic description');
   expect(
-    (screen.getByLabelText('Interne Notizen') as HTMLTextAreaElement).value,
+    (screen.getByLabelText('Erste Notiz') as HTMLTextAreaElement).value,
   ).toBe('<strong>Fictional</strong>');
   expect(
     (screen.getByLabelText('Fotobox-Paket') as HTMLSelectElement).value,

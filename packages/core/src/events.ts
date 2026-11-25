@@ -33,6 +33,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import sanitizeHtml from 'sanitize-html';
 import {
   events,
+  eventNotes,
   importPromises,
   eventContacts,
   tenants,
@@ -46,6 +47,7 @@ import {
 } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
+import { insertEventNote, noteHasText } from './event-notes.js';
 import { eventStatuses } from './master-data.js';
 import {
   effectiveVenue,
@@ -104,6 +106,10 @@ export function sanitizeNotes(value: string) {
       'em',
       'i',
       'u',
+      's',
+      'h2',
+      'h3',
+      'blockquote',
       'ul',
       'ol',
       'li',
@@ -635,11 +641,33 @@ export function eventRepository(pool: Connection, tenantId: string) {
             .select({ id: contacts.id, name: contacts.name })
             .from(contacts)
             .where(eq(contacts.tenantId, tenantId));
+          // QW3: the export keeps every live note in the notes column,
+          // oldest first, so a data exit loses none of them.
+          const notes = await tx
+            .select({
+              eventId: eventNotes.eventId,
+              bodyHtml: eventNotes.bodyHtml,
+            })
+            .from(eventNotes)
+            .where(
+              and(
+                eq(eventNotes.tenantId, tenantId),
+                isNull(eventNotes.deletedAt),
+              ),
+            )
+            .orderBy(asc(eventNotes.createdAt), asc(eventNotes.id));
+          const notesByEvent = new Map<string, string[]>();
+          for (const note of notes)
+            notesByEvent.set(note.eventId, [
+              ...(notesByEvent.get(note.eventId) ?? []),
+              note.bodyHtml,
+            ]);
           const kindNames = new Map(kinds.map((row) => [row.id, row.name]));
           const venueNames = new Map(venues.map((row) => [row.id, row.name]));
           const contactNames = new Map(people.map((row) => [row.id, row.name]));
           return rows.map((row) => ({
             ...row,
+            notesHtml: (notesByEvent.get(row.id) ?? []).join('\n'),
             eventTypeName: kindNames.get(row.eventTypeId ?? '') ?? '',
             packageName: kindNames.get(row.packageId ?? '') ?? '',
             // Effective place: a free-form booking exports its own text and no
@@ -929,7 +957,9 @@ export function eventRepository(pool: Connection, tenantId: string) {
               cancellationReasonId,
               name: input.name.trim(),
               timeZone,
-              notesHtml: sanitizeNotes(input.notesHtml),
+              // QW3: the single field only carries a new note in; the dated
+              // notes are the source.
+              notesHtml: '',
               startsAt: input.startsAt ? new Date(input.startsAt) : null,
               endsAt: input.endsAt ? new Date(input.endsAt) : null,
               version: (old?.version ?? 0) + 1,
@@ -960,6 +990,25 @@ export function eventRepository(pool: Connection, tenantId: string) {
                 role: contactId === primaryContactId ? 'primary' : 'additional',
               })),
             );
+          // QW3: notes sent with the event (create dialog, import, older
+          // clients) become one dated note; an identical live note is not
+          // repeated, so a re-run import stays idempotent.
+          const note = sanitizeNotes(input.notesHtml);
+          if (noteHasText(note)) {
+            const [same] = await tx
+              .select({ id: eventNotes.id })
+              .from(eventNotes)
+              .where(
+                and(
+                  eq(eventNotes.tenantId, tenantId),
+                  eq(eventNotes.eventId, eventId),
+                  eq(eventNotes.bodyHtml, note),
+                  isNull(eventNotes.deletedAt),
+                ),
+              );
+            if (!same)
+              await insertEventNote(tx, tenantId, actorId, eventId, note);
+          }
           if (assignments)
             await assignEventResources(
               tx,

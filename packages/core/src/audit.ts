@@ -59,7 +59,9 @@ export type AuditAction =
   // traceable; the audit row never carries any secret.
   | 'mail.account_saved'
   | 'mail.template_saved'
-  | 'mail.signature_saved';
+  | 'mail.signature_saved'
+  | 'event_note.created'
+  | 'event_note.removed';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,

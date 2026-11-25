@@ -95,7 +95,9 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // mail freezes; no existing row and no existing contract changes.
   // QW2 (0079) adds one nullable cancellation reason reference to events;
   // existing rows keep NULL and every other contract stays unchanged.
-  expect(applied.at(-1)!.name).toBe('0079_event_cancellation_reason.sql');
+  // QW3 (0080) adds the tenant-bound event notes, moves each non-empty single
+  // note into one note and widens the audit vocabulary by two actions.
+  expect(applied.at(-1)!.name).toBe('0080_event_notes.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(
