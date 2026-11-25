@@ -798,3 +798,60 @@ test('the derivation function answers the four boundaries alone', () => {
     false,
   );
 });
+
+// QW4: the receivables answer and the `open` filter read the same claim/paid
+// and lateness expressions as the rows - a paid claim and a non-claim are in
+// neither, a partly paid one counts with what is still owed.
+test('receivables sum what is still owed and the open filter lists exactly those claims', async () => {
+  const s = await scenario();
+  expect(await s.repo.receivables()).toEqual({
+    count: 0,
+    openMinor: 0,
+    overdueCount: 0,
+    overdueMinor: 0,
+  });
+  const first = await invoiceChain(s),
+    late = await invoiceFrom(
+      s,
+      first.confirmation.id,
+      first.confirmation.version,
+      0,
+    ),
+    second = await invoiceChain(s),
+    later = await invoiceFrom(
+      s,
+      second.confirmation.id,
+      second.confirmation.version,
+      30,
+    ),
+    third = await invoiceChain(s),
+    paid = await invoiceFrom(
+      s,
+      third.confirmation.id,
+      third.confirmation.version,
+      0,
+    );
+  s.setClock('2031-03-12T10:00:00Z');
+  await s.payments.record(s.actor, late.id, {
+    receivedOn: '2031-03-12',
+    amountMinor: 10000,
+    method: 'cash',
+  });
+  await s.payments.record(s.actor, paid.id, {
+    receivedOn: '2031-03-12',
+    amountMinor: paid.grossMinor,
+    method: 'cash',
+  });
+  const lateOpen = late.grossMinor - 10000;
+  expect(await s.repo.receivables()).toEqual({
+    count: 2,
+    openMinor: lateOpen + later.grossMinor,
+    overdueCount: 1,
+    overdueMinor: lateOpen,
+  });
+  const open = await s.repo.list({ include: 'metadata', payment: 'open' });
+  expect(open.map((row) => row.id).sort()).toEqual([late.id, later.id].sort());
+  await expect(
+    s.repo.list({ payment: 'owed' as 'open' }),
+  ).rejects.toMatchObject({ message: expect.anything() });
+});
