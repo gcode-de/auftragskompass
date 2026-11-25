@@ -92,6 +92,14 @@ function shimDialog() {
   });
 }
 
+// UI-BKP-02: the pressed state of one booking-status toggle.
+function pressed(name: string, scope: HTMLElement = document.body) {
+  return within(
+    within(scope).getAllByRole('group', { name: 'Buchungsstatus' })[0]!,
+  )
+    .getByRole('button', { name })
+    .getAttribute('aria-pressed');
+}
 function sheet() {
   return document.querySelector<HTMLDialogElement>(
     'dialog.event-filter-drawer',
@@ -130,7 +138,7 @@ test('the filter groups form one context column left of the results', async () =
       if (child.classList.contains('event-quick-filters')) return 'anfragen';
       if (child.classList.contains('date-presets')) return 'zeitraum';
       if (child.classList.contains('custom-range')) return 'eigener-zeitraum';
-      if (child.querySelector('[name="status"]')) return 'status';
+      if (child.classList.contains('status-choices')) return 'status';
       if (child.querySelector('[name="eventTypeId"]')) return 'art';
       if (child.classList.contains('event-filter-actions')) return 'aktionen';
       return 'unbekannt';
@@ -158,7 +166,9 @@ test('the filter groups form one context column left of the results', async () =
       .getAttribute('aria-current'),
   ).toBe('page');
   // The existing controls keep their labels and their meanings.
-  expect(within(context).getByLabelText('Filterstatus')).toBeTruthy();
+  expect(
+    within(context).getByRole('group', { name: 'Buchungsstatus' }),
+  ).toBeTruthy();
   expect(within(context).getByLabelText('Filtereventart')).toBeTruthy();
   expect(
     within(context)
@@ -280,9 +290,9 @@ test('both presentations read the same applied filter state', async () => {
       screen.getByRole('region', { name: 'Events' }).getAttribute('aria-busy'),
     ).toBe('false'),
   );
-  expect(
-    (screen.getByLabelText('Filterstatus') as HTMLSelectElement).value,
-  ).toBe('inquiry');
+  // UI-BKP-02: an old single-status link selects exactly that status.
+  expect(pressed('Anfrage')).toBe('true');
+  expect(pressed('Gebucht')).toBe('false');
   expect((screen.getByLabelText('Filter von') as HTMLInputElement).value).toBe(
     '2026-10-01',
   );
@@ -301,9 +311,8 @@ test('both presentations read the same applied filter state', async () => {
   expect(
     (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
   ).toBe('Synthetic');
-  expect(
-    (screen.getByLabelText('Filterstatus') as HTMLSelectElement).value,
-  ).toBe('inquiry');
+  expect(pressed('Anfrage', sheet())).toBe('true');
+  expect(pressed('Gebucht', sheet())).toBe('false');
   expect((screen.getByLabelText('Filter von') as HTMLInputElement).value).toBe(
     '2026-10-01',
   );
@@ -495,14 +504,16 @@ test('the sheet keeps one draft across search, preset, sort and quick filter', a
       within(sheet()).getByRole('group', { name: 'Schnellfilter' }),
     ).getByRole('button', { name: /^Anfragen/ }),
   );
-  fireEvent.change(screen.getByLabelText('Filterstatus'), {
-    target: { value: 'booked' },
-  });
+  fireEvent.click(
+    within(
+      within(sheet()).getByRole('group', { name: 'Buchungsstatus' }),
+    ).getByRole('button', { name: 'Gebucht' }),
+  );
   // Every mixed choice stays in the one draft; none of them wrote the URL.
   expect(search.value).toBe('Synthetic mixed draft');
-  expect(
-    (screen.getByLabelText('Filterstatus') as HTMLSelectElement).value,
-  ).toBe('booked');
+  // The quick filter chose Anfrage only; Gebucht joined it in the draft.
+  expect(pressed('Gebucht', sheet())).toBe('true');
+  expect(pressed('Anfrage', sheet())).toBe('true');
   expect((screen.getByLabelText('Filter von') as HTMLInputElement).value).toBe(
     '',
   );
@@ -643,9 +654,9 @@ test('the in-sheet reset clears the draft without a history entry', async () => 
   expect(
     (screen.getByLabelText('Events suchen') as HTMLInputElement).value,
   ).toBe('');
-  expect(
-    (screen.getByLabelText('Filterstatus') as HTMLSelectElement).value,
-  ).toBe('');
+  // The emptied draft is the default choice again.
+  expect(pressed('Anfrage', sheet())).toBe('true');
+  expect(pressed('Gebucht', sheet())).toBe('true');
   expect(screen.getByTestId('active-filter-count').textContent).toBe('2');
   // Only the completion applies the emptied draft — still one entry.
   fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
@@ -678,7 +689,7 @@ test('the desktop column keeps writing each choice immediately', async () => {
     ).getByRole('button', { name: /^Anfragen/ }),
   );
   expect(pushes).toHaveBeenCalledTimes(3);
-  expect(new URLSearchParams(window.location.search).get('status')).toBe(
+  expect(new URLSearchParams(window.location.search).get('statuses')).toBe(
     'inquiry',
   );
   fireEvent.click(

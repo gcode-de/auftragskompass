@@ -527,6 +527,31 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   (umgesetzt über welche Slices, was offen ist); keine formale Abnahme.
   Commit `docs: record the real state of the commit plan`.
 
+## Nutzauftrag 25.11.2026 (UI wie Bookitup, Laufzeitabgleich)
+
+Grundlage: [Laufzeitabgleich](docs/bookitup-parity/ui-runtime-2026-11-25.md).
+Vom Betreiber gewählt: Gestaltungswerte, Eventliste, Notizen bearbeiten,
+Dokumentübersicht, Eventakte. Dokumenteditor, Mail zweispaltig und
+Gesamtrahmen bleiben vorerst aus.
+
+- [x] **UI-BKP-01 — Bookitup-Palette und Grundbausteine:** Nunito Sans lokal,
+  14-px-Fließtext, helle Fläche `#fbfbfb` mit weißen Karten, ein Blau
+  (`#1d5191`) für Links, Primäraktion und Fokus, helle Navigation, Bookitups
+  Statusfarben, Kartenradius 10, Feldradius 4, kleine graue Feldbeschriftungen,
+  Dialoge mit Verlaufsstreifen; Formulargruppen ohne eigenen Rahmen. Grautöne
+  unter WCAG AA sind abgedunkelt, Tippflächen bleiben 44 px. Hell und dunkel.
+  Commit `style: adopt the Bookitup palette, type and base components`.
+- [x] **UI-BKP-02 — Eventliste wie Bookitup:** graue Monatsbänder, weiße
+  Karten mit Schatten und 5-px-Statusbalken, Datumsblock mit Trenner,
+  Eventart nur wenn gesetzt, Ort mit Pin; Bearbeiten/Duplizieren im
+  ⋯-Zeilenmenü statt als Symbole. Filterspalte als helle Kontextspalte mit
+  Markierungsbalken; Buchungsstatus als Mehrfachauswahl (URL `statuses`,
+  clientseitig), Annulliert und Nicht verfügbar standardmäßig aus; ein alter
+  `status`-Link wählt genau diesen Status. **Tests:** Component (Filter,
+  Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
+  Statusauswahl, 390 px; Auth-Ablauf angepasst).
+  Commit `feat: shape the event list like bookitup`.
+
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
 - [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.

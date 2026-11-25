@@ -4072,6 +4072,26 @@ async function signInScenario(
       await expect(card.locator('.event-date-label')).toHaveText(month);
       await expect(card.locator('.event-time')).toHaveText(time);
     };
+    // UI-BKP-02: edit and duplicate sit behind the card's row menu.
+    const editEvent = async () => {
+      await events
+        .getByLabel('Weitere Aktionen: Synthetic browser event')
+        .click();
+      await events
+        .getByRole('button', {
+          name: 'Event bearbeiten: Synthetic browser event',
+        })
+        .click();
+    };
+    // UI-BKP-02: the booking-status multi-select; cancelled starts hidden.
+    const ensureStatus = async (label: string) => {
+      const choice = events
+        .getByRole('group', { name: 'Buchungsstatus' })
+        .getByRole('button', { name: label, exact: true });
+      if ((await choice.getAttribute('aria-pressed')) !== 'true')
+        await choice.click();
+      await expect(choice).toHaveAttribute('aria-pressed', 'true');
+    };
     // A real tab return refreshes the list without a manual control. Stammdaten
     // created earlier must be available in the create dialog afterwards.
     let eventListRequests = 0;
@@ -4202,11 +4222,10 @@ async function signInScenario(
     await expect(
       events.getByRole('link', { name: /Synthetic browser event/ }),
     ).toContainText('Synthetic Browser Hall');
-    const editIcon = events.getByRole('button', {
-      name: 'Event bearbeiten: Synthetic browser event',
-    });
-    await expect(editIcon).toHaveAttribute('title', 'Event bearbeiten');
-    await expect(editIcon).toHaveText('');
+    const editIcon = events.getByLabel(
+      'Weitere Aktionen: Synthetic browser event',
+    );
+    await expect(editIcon).toHaveAttribute('title', 'Weitere Aktionen');
     const editBox = await editIcon.boundingBox();
     expect(editBox!.width).toBeGreaterThanOrEqual(44);
     expect(editBox!.height).toBeGreaterThanOrEqual(44);
@@ -4287,9 +4306,7 @@ async function signInScenario(
       await expect(card.locator('a')).toHaveCount(1);
       expect(await card.locator('a button').count()).toBe(0);
       await expect(
-        card.getByRole('button', {
-          name: 'Event bearbeiten: Synthetic browser event',
-        }),
+        card.getByLabel('Weitere Aktionen: Synthetic browser event'),
       ).toBeVisible();
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
@@ -4807,21 +4824,14 @@ async function signInScenario(
       contacts.getByRole('region', { name: 'Kontakt-Details' }),
     ).toBeVisible();
     await navigate('Events');
-    await events
-      .getByRole('button', {
-        name: 'Event bearbeiten: Synthetic browser event',
-      })
-      .click();
+    await editEvent();
     await events.getByLabel('Eventstatus').selectOption('cancelled');
     await events.getByRole('button', { name: 'Event speichern' }).click();
+    await ensureStatus('Annulliert');
     await expectEventCard('16', 'Fr / Okt');
     // Real DST change: 16.10. is CEST, 16.11. is CET. The browser only edits
     // wall-clock fields; the instant must follow the tenant timezone.
-    await events
-      .getByRole('button', {
-        name: 'Event bearbeiten: Synthetic browser event',
-      })
-      .click();
+    await editEvent();
     // The business date is read-only while a start exists: it follows the
     // local start day instead of silently ignoring a second date input.
     await expect(events.getByLabel('Eventdatum')).toHaveAttribute(
@@ -4834,11 +4844,7 @@ async function signInScenario(
     await expect(events.getByLabel(/UTC-Versatz/)).toHaveCount(0);
     await events.getByRole('button', { name: 'Event speichern' }).click();
     await expectEventCard('16', 'Mo / Nov');
-    await events
-      .getByRole('button', {
-        name: 'Event bearbeiten: Synthetic browser event',
-      })
-      .click();
+    await editEvent();
     await expect(events.getByLabel('Eventbeginn')).toHaveValue(
       /^2026-11-16T18:00/,
     );
@@ -5156,11 +5162,9 @@ async function signInScenario(
     await events.getByText('Eigener Zeitraum', { exact: true }).click();
     await events.getByLabel('Filter von').fill('2026-10-16');
     await events.getByLabel('Filter bis').fill('2026-10-16');
-    await events
-      .getByRole('combobox', { name: 'Filterstatus', exact: true })
-      .selectOption('cancelled');
+    await ensureStatus('Annulliert');
     await events.getByRole('button', { name: 'Events filtern' }).click();
-    await expect(page).toHaveURL(/status=cancelled/);
+    await expect(page).toHaveURL(/statuses=[^&]*cancelled/);
     await expectEventCard('16', 'Fr / Okt');
     // The column is the desktop frame, the compact access with its sheet the
     // narrow one; both read the same applied filter, and neither overflows.
@@ -5413,7 +5417,7 @@ async function signInScenario(
     await events.getByRole('button', { name: 'Dieser Monat' }).click();
     await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
     await expect(page).toHaveURL(/to=\d{4}-\d{2}-\d{2}/);
-    await expect(page).toHaveURL(/status=cancelled/);
+    await expect(page).toHaveURL(/statuses=[^&]*cancelled/);
     await expect(
       events.getByRole('button', { name: 'Dieser Monat' }),
     ).toHaveAttribute('aria-pressed', 'true');
@@ -5435,7 +5439,7 @@ async function signInScenario(
       .getByRole('group', { name: 'Schnellfilter' })
       .getByRole('button', { name: /^Anfragen/ })
       .click();
-    await expect(page).toHaveURL(/status=inquiry/);
+    await expect(page).toHaveURL(/statuses=inquiry(&|$)/);
     await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
     await expect(
       events
@@ -5451,17 +5455,19 @@ async function signInScenario(
     // Two history entries were added (preset, then quick filter); the earlier
     // custom range is still three steps back. Back returns through them.
     await page.goBack();
-    await expect(page).not.toHaveURL(/status=inquiry/);
+    await expect(page).not.toHaveURL(/statuses=inquiry(&|$)/);
     await expect(page).toHaveURL(/from=\d{4}-\d{2}-01/);
-    await expect(page).toHaveURL(/status=cancelled/);
+    await expect(page).toHaveURL(/statuses=[^&]*cancelled/);
     await page.goBack();
     await page.goBack();
     await expectEventCard('16', 'Fr / Okt');
     await page.reload();
     await expect(events.getByLabel('Filter von')).toHaveValue('2026-10-16');
     await expect(
-      events.getByRole('combobox', { name: 'Filterstatus', exact: true }),
-    ).toHaveValue('cancelled');
+      events
+        .getByRole('group', { name: 'Buchungsstatus' })
+        .getByRole('button', { name: 'Annulliert', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     // The month heading names its own count in muted text.
     await expect(
       events.getByRole('heading', { name: /Oktober 2026 · \d+ Events?/ }),

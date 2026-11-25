@@ -39,6 +39,8 @@ import {
   monthGroups,
   type FilterCounts,
   type PresetId,
+  selectedStatuses,
+  statusesParam,
 } from './event-filters.js';
 type Choice = VenueChoice;
 // BKP007.3: the six event filter values exist twice by design. The applied
@@ -519,6 +521,12 @@ export function EventPanel({
     },
     [],
   );
+  // UI-BKP-02: a chosen row-menu action closes its menu again.
+  function closeRowMenu(target: HTMLElement) {
+    const menu = target.closest('details');
+    menu?.removeAttribute('open');
+    return menu?.querySelector('summary') ?? target;
+  }
   // The list row and the open record copy an event the same way: archived
   // choices are dropped, a retired place survives as text.
   const duplicateEvent = (row: EventRow) => {
@@ -903,9 +911,17 @@ export function EventPanel({
   // The undated sort is a view of the loaded list; dates and the other filters
   // already went to the server.
   const undatedOnly = filters.get('undated') === 'true',
-    shown = undatedOnly
-      ? rows.filter((row) => !row.eventDate || row.id === detailId)
-      : rows,
+    // UI-BKP-02: the status multi-select is a view of the loaded list.
+    statusView = selectedStatuses(
+      urlSearch,
+      statuses.map((entry) => entry.code),
+    ),
+    shown = rows.filter(
+      (row) =>
+        row.id === detailId ||
+        ((!undatedOnly || !row.eventDate) &&
+          (!statuses.length || statusView.has(row.status))),
+    ),
     activeCriteria = activeFilterCriteria(urlSearch),
     groups = monthGroups(
       shown.map((row) => ({
@@ -970,7 +986,7 @@ export function EventPanel({
     // The sort choice is its own control, so a submitted custom range is
     // always chronological.
     const values: Record<string, string> = { undated: '' };
-    for (const key of ['q', 'status', 'eventTypeId', 'from', 'to'])
+    for (const key of ['q', 'eventTypeId', 'from', 'to'])
       values[key] = [data.get(key)].filter(Boolean).join('');
     updateUrlSearch(values);
     if (filterDrawer.current?.open) closeFilters();
@@ -1025,6 +1041,7 @@ export function EventPanel({
             Events suchen
             <input
               ref={filterSearch}
+              placeholder="Events durchsuchen"
               name="q"
               maxLength={200}
               value={drafting ? values.q : undefined}
@@ -1078,7 +1095,12 @@ export function EventPanel({
               sets `status` and keeps date range, search and event type. It
               belongs beside the sort choice but stays outside that group. */}
           {(() => {
-            const selected = values.status === 'inquiry';
+            const codes = statuses.map((entry) => entry.code),
+              current = selectedStatuses(
+                '?' + new URLSearchParams(values).toString(),
+                codes,
+              ),
+              selected = current.size === 1 && current.has('inquiry');
             return (
               <div
                 className="event-quick-filters"
@@ -1093,7 +1115,12 @@ export function EventPanel({
                       : 'secondary-action quick-filter'
                   }
                   aria-pressed={selected}
-                  onClick={() => choose({ status: selected ? '' : 'inquiry' })}
+                  onClick={() =>
+                    choose({
+                      status: '',
+                      statuses: selected ? '' : 'inquiry',
+                    })
+                  }
                 >
                   Anfragen
                   <span className="event-count" data-testid="inquiry-count">
@@ -1167,26 +1194,47 @@ export function EventPanel({
               />
             </label>
           </details>
-          <label>
-            Filterstatus
-            <select
-              name="status"
-              value={drafting ? values.status : undefined}
-              defaultValue={drafting ? undefined : values.status}
-              onChange={
-                drafting
-                  ? (event) => choose({ status: event.currentTarget.value })
-                  : undefined
-              }
-            >
-              <option value="">Alle Status</option>
-              {statuses.map((status) => (
-                <option key={status.code} value={status.code}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* UI-BKP-02: Bookitup's booking status - every status a toggle
+              with its colour marker; cancelled and unavailable start off. */}
+          {(() => {
+            const codes = statuses.map((entry) => entry.code),
+              current = selectedStatuses(
+                '?' + new URLSearchParams(values).toString(),
+                codes,
+              );
+            return (
+              <div
+                className="status-choices"
+                role="group"
+                aria-label="Buchungsstatus"
+              >
+                <p className="filter-heading">Buchungsstatus</p>
+                {statuses.map((entry) => {
+                  const on = current.has(entry.code);
+                  return (
+                    <button
+                      key={entry.code}
+                      type="button"
+                      className="tertiary-action status-choice"
+                      data-status={entry.code}
+                      aria-pressed={on}
+                      onClick={() => {
+                        const next = new Set(current);
+                        if (on) next.delete(entry.code);
+                        else next.add(entry.code);
+                        choose({
+                          status: '',
+                          statuses: statusesParam(next, codes),
+                        });
+                      }}
+                    >
+                      {entry.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
           <label>
             Filtereventart
             <select
@@ -1794,7 +1842,18 @@ export function EventPanel({
                               />
                               {cardStatus(row)}
                             </span>
-                            <span className="event-type">{cardType(row)}</span>
+                            <span
+                              className="event-type"
+                              data-empty={
+                                types.some(
+                                  (type) => type.id === row.eventTypeId,
+                                )
+                                  ? undefined
+                                  : 'true'
+                              }
+                            >
+                              {cardType(row)}
+                            </span>
                             <span className="event-title">{row.name}</span>
                             <span className="event-place">
                               {cardPlace(row)}
@@ -1840,64 +1899,71 @@ export function EventPanel({
                             </span>
                           </span>
                         </a>
+                        {/* UI-BKP-02: like Bookitup, the card itself is the
+                            open action; the rarer actions sit behind one
+                            quiet row menu instead of icons on every card. */}
                         <div className="event-actions">
-                          <button
-                            type="button"
-                            className="icon-action tier-quiet-icon"
-                            disabled={busy || editing}
-                            aria-label={`Event duplizieren: ${row.name}`}
-                            title="Event duplizieren"
-                            onClick={() => duplicateEvent(row)}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
+                          <details className="row-menu">
+                            <summary
+                              aria-label={`Weitere Aktionen: ${row.name}`}
+                              title="Weitere Aktionen"
                             >
-                              <path d="M9 9h10v10H9zM5 15H3V3h12v2" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-action tier-quiet-icon"
-                            disabled={busy}
-                            aria-label={`Event bearbeiten: ${row.name}`}
-                            title="Event bearbeiten"
-                            onClick={(event) => {
-                              editReturnFocus.current = event.currentTarget;
-                              setCreating(false);
-                              setCreateInitial(null);
-                              // A new editing context always starts on the event.
-                              setView('event');
-                              setVenue(
-                                initialVenueText(
-                                  row,
-                                  locations.find(
-                                    (choice) => choice.id === row.locationId,
-                                  ),
-                                ),
-                              );
-                              setVenueEdited(false);
-                              setDraft(row);
-                              setEditing(true);
-                            }}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                            </svg>
-                          </button>
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                aria-hidden="true"
+                              >
+                                <circle cx="5" cy="12" r="1.7" />
+                                <circle cx="12" cy="12" r="1.7" />
+                                <circle cx="19" cy="12" r="1.7" />
+                              </svg>
+                            </summary>
+                            <div className="row-menu-panel">
+                              <button
+                                type="button"
+                                className="tertiary-action"
+                                disabled={busy || editing}
+                                aria-label={`Event duplizieren: ${row.name}`}
+                                onClick={(event) => {
+                                  closeRowMenu(event.currentTarget);
+                                  duplicateEvent(row);
+                                }}
+                              >
+                                Event duplizieren
+                              </button>
+                              <button
+                                type="button"
+                                className="tertiary-action"
+                                disabled={busy}
+                                aria-label={`Event bearbeiten: ${row.name}`}
+                                onClick={(event) => {
+                                  // Focus returns to the menu button, which
+                                  // stays visible while the menu is closed.
+                                  editReturnFocus.current = closeRowMenu(
+                                    event.currentTarget,
+                                  );
+                                  setCreating(false);
+                                  setCreateInitial(null);
+                                  // A new editing context always starts on the event.
+                                  setView('event');
+                                  setVenue(
+                                    initialVenueText(
+                                      row,
+                                      locations.find(
+                                        (choice) =>
+                                          choice.id === row.locationId,
+                                      ),
+                                    ),
+                                  );
+                                  setVenueEdited(false);
+                                  setDraft(row);
+                                  setEditing(true);
+                                }}
+                              >
+                                Event bearbeiten
+                              </button>
+                            </div>
+                          </details>
                         </div>
                       </div>
                       {detailId === row.id && (

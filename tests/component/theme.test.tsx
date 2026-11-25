@@ -129,14 +129,6 @@ function themed(name: string) {
   return { light: pair![1]!.toLowerCase(), dark: pair![2]!.toLowerCase() };
 }
 
-function fixed(name: string) {
-  const raw = new RegExp(`--${name}\\s*:\\s*([^;]+);`).exec(rootBlock)?.[1];
-  expect(raw, `token --${name}`).toBeTruthy();
-  const value = /^(#[0-9a-f]{6})$/i.exec(raw!.trim());
-  expect(value, `--${name} is a plain colour`).not.toBeNull();
-  return value![1]!.toLowerCase();
-}
-
 /** How far a colour leans green: the green channel above the red/blue mean. */
 function greenness(value: string) {
   const channels = [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
