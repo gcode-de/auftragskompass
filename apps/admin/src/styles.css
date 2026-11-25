@@ -2127,6 +2127,18 @@ summary {
 .event-list > li.event-card:has(> .event-row:not([hidden])) {
   padding-left: 2.25rem;
 }
+/* Long lists (500 events in the load check) skip layout and paint for cards
+   outside the viewport; the reserved height keeps the scrollbar honest. The
+   card holding the open record is left out: its containment would trap the
+   record's fixed mobile navigation. */
+.event-list > li.event-card:not(.event-card-open) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 118px;
+}
+/* An open row menu floats beyond its card, so that card renders normally. */
+.event-list > li.event-card:has(> .event-row .row-menu[open]) {
+  content-visibility: visible;
+}
 /* The status bar: 5px, rounded, inside the card's padding like Bookitup's
    vertical divider. */
 .event-list > li.event-card:has(> .event-row:not([hidden]))::before {
@@ -2325,9 +2337,10 @@ summary {
 .row-menu > summary:hover {
   background: var(--hover-surface);
 }
-.row-menu > summary svg {
-  width: 1.25rem;
-  height: 1.25rem;
+.row-menu > summary > span {
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
 }
 .row-menu-panel {
   position: absolute;

@@ -1781,7 +1781,11 @@ export function EventPanel({
                     <li
                       key={row.id}
                       id={'event-' + row.id}
-                      className="event-card"
+                      className={
+                        detailId === row.id
+                          ? 'event-card event-card-open'
+                          : 'event-card'
+                      }
                       data-status={row.status}
                       hidden={showingDetail && row.id !== detailId}
                     >
@@ -1908,15 +1912,7 @@ export function EventPanel({
                               aria-label={`Weitere Aktionen: ${row.name}`}
                               title="Weitere Aktionen"
                             >
-                              <svg
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                                aria-hidden="true"
-                              >
-                                <circle cx="5" cy="12" r="1.7" />
-                                <circle cx="12" cy="12" r="1.7" />
-                                <circle cx="19" cy="12" r="1.7" />
-                              </svg>
+                              <span aria-hidden="true">⋯</span>
                             </summary>
                             <div className="row-menu-panel">
                               <button
