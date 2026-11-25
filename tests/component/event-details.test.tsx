@@ -2501,3 +2501,66 @@ test.each(['server', 'malformed', 'offline'])(
     );
   },
 );
+
+// UI-PARITY-04: the notes card moved into the details column; its toolbar,
+// drop and key paths are pinned here instead of only in Chromium.
+test('notes toolbar, drop and key paths keep working in the details column', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options?: RequestInit) =>
+      options?.method === 'PUT'
+        ? Response.json({
+            ...event,
+            ...JSON.parse(String(options.body)),
+            version: 2,
+          })
+        : Response.json(detail),
+    ),
+  );
+  const exec = vi.fn(() => true);
+  Object.defineProperty(document, 'execCommand', {
+    configurable: true,
+    value: exec,
+  });
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="synthetic"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  const editor = screen.getByRole('textbox', { name: 'Interne Notizen' });
+  const notes = screen.getByRole('region', { name: 'Interne Notizen' });
+  editor.focus();
+  // Every format button keeps the editor selection on mouse down.
+  for (const name of ['Fett', 'Kursiv', 'Unterstrichen']) {
+    const button = within(notes).getByRole('button', { name });
+    expect(fireEvent.mouseDown(button)).toBe(false);
+  }
+  fireEvent.click(within(notes).getByRole('button', { name: 'Fett' }));
+  fireEvent.click(within(notes).getByRole('button', { name: 'Unterstrichen' }));
+  // An ordinary key and an Enter without a selection change nothing.
+  window.getSelection()!.removeAllRanges();
+  const before = editor.innerHTML;
+  fireEvent.keyDown(editor, { key: 'a' });
+  fireEvent.keyDown(editor, { key: 'Enter' });
+  expect(editor.innerHTML).toBe(before);
+  // A dropped text arrives as plain text, never as markup.
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  window.getSelection()!.addRange(range);
+  fireEvent.drop(editor, {
+    dataTransfer: { getData: () => '<b>Fiktiver Drop</b>' },
+  });
+  expect(editor.textContent).toContain('<b>Fiktiver Drop</b>');
+  expect(editor.querySelector('b')).toBeNull();
+  // Focus moving inside the card is no blur of the notes.
+  fireEvent.blur(editor, {
+    relatedTarget: within(notes).getByRole('button', { name: 'Fett' }),
+  });
+  Reflect.deleteProperty(document, 'execCommand');
+});

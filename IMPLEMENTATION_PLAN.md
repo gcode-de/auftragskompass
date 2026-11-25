@@ -408,6 +408,15 @@ Attrappen nachgebaut.
   aus E-Mails, Ordnerfilter, Notizen unter Details, Fokus), E2E (Status im
   E-Mails-Bereich, mobile Leiste, Notizen/Logbuch-Wege).
   Commit `feat: shape the event record areas like bookitup`.
+- [x] **UI-PARITY-04 — Notizen und Logbuch in der Hauptspalte (25.11.2026):**
+  wie Bookitups Mittelspalte stehen „Interne Notizen“ und „Logbuch“ jetzt als
+  Karten in der Hauptspalte der Details (h4 wie Termin/Allgemein), Kontakt
+  und Ort bleiben rechts daneben, statt dass beide Abschnitte nach
+  UI-PARITY-02 in voller Breite unter allen Spalten stehen. Im
+  Dreispaltenraster ab 90rem werden Termin/Allgemein/Abschnitte/Seitenleiste
+  ausdrücklich platziert. Nur Markup-Ort und CSS. **Tests:** Component
+  (unverändert grün), E2E (Spaltengeometrie 320/1280/1600, axe).
+  Commit `feat: keep notes and logbook in the details column`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
