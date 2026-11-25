@@ -21,6 +21,7 @@ import {
   type DocumentLayoutInput,
 } from '../../packages/core/src/document-layouts.js';
 import { chromiumPdfRenderer } from '../../packages/core/src/document-pdf.js';
+import { nginxHeaders } from '../helpers/nginx-headers.js';
 
 const login = 'fictional.layout@example.invalid';
 const username = 'fictional.layout';
@@ -62,13 +63,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
 
   const app = Fastify();
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
-  const adminHeaders = Object.fromEntries(
-    [
-      ...nginx.matchAll(
-        /add_header ([\w-]+) (?:"([^"]+)"|([^;$ ][^; ]*)) always;/g,
-      ),
-    ].map((match) => [match[1]!, match[2] ?? match[3]!]),
-  );
+  const adminHeaders = nginxHeaders(nginx);
   execFileSync(
     'openssl',
     [
@@ -136,7 +131,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
             relayedPdfLength = result.rawPayload.length;
           res.writeHead(result.statusCode, {
             ...result.headers,
-            ...adminHeaders,
+            ...adminHeaders(req.url!),
           });
           res.end(result.rawPayload);
           return;
@@ -146,7 +141,7 @@ test('document layout setup, preview, conflict recovery, and persistence work in
         );
         res.writeHead(result.status, {
           'content-type': result.headers.get('content-type')!,
-          ...adminHeaders,
+          ...adminHeaders(req.url!),
         });
         res.end(Buffer.from(await result.arrayBuffer()));
       })().catch(() => {

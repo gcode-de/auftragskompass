@@ -49,6 +49,7 @@ import {
 } from '../../packages/core/src/mail-templates.js';
 import { registerLibraryFileRoutes } from '../../packages/core/src/library-files.js';
 import { registerMailSignatureRoutes } from '../../packages/core/src/mail-signatures.js';
+import { nginxHeaders } from '../helpers/nginx-headers.js';
 
 // MAIL-EDITOR-01: the formatted document mail in real Chromium against the
 // real routes - compose with formatting and placeholders, preview the actual
@@ -74,13 +75,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
 
   const app = Fastify();
   const nginx = await readFile('infrastructure/nginx.conf', 'utf8');
-  const adminHeaders = Object.fromEntries(
-    [
-      ...nginx.matchAll(
-        /add_header ([\w-]+) (?:"([^"]+)"|([^;$ ][^; ]*)) always;/g,
-      ),
-    ].map((match) => [match[1]!, match[2] ?? match[3]!]),
-  );
+  const adminHeaders = nginxHeaders(nginx);
   execFileSync(
     'openssl',
     [
@@ -119,7 +114,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
           });
           res.writeHead(result.statusCode, {
             ...result.headers,
-            ...adminHeaders,
+            ...adminHeaders(req.url!),
           });
           res.end(result.rawPayload);
           return;
@@ -129,7 +124,7 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
         );
         res.writeHead(result.status, {
           'content-type': result.headers.get('content-type')!,
-          ...adminHeaders,
+          ...adminHeaders(req.url!),
         });
         res.end(Buffer.from(await result.arrayBuffer()));
       })().catch(() => {
@@ -347,6 +342,16 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     await page.getByRole('button', { name: 'Dateien', exact: true }).click();
 
     // UI-PARITY-03: the delivery view gathers every way to hand the PDF out.
+    // The embedded preview is the one route nginx lets the admin frame; a
+    // refused frame shows up as a console error.
+    const frameErrors: string[] = [];
+    page.on('console', (message) => {
+      if (/Refused to (display|frame)/.test(message.text()))
+        frameErrors.push(message.text());
+    });
+    const framed = page.waitForResponse((response) =>
+      /\/api\/v1\/documents\/[^/]+\/pdf$/.test(response.url()),
+    );
     await page
       .getByRole('button', { name: `Angebot ${number} bereitstellen` })
       .click();
@@ -354,8 +359,20 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       name: 'Dokument bereitstellen',
     });
     await expect(deliver).toBeVisible();
+    const frame = await framed;
+    expect(frame.headers()['x-frame-options']).toBe('SAMEORIGIN');
+    expect(frame.headers()['content-security-policy']).toContain(
+      "frame-ancestors 'self'",
+    );
+    await expect(
+      deliver.getByTitle(`Vorschau Angebot ${number}`),
+    ).toHaveAttribute('src', new URL(frame.url()).pathname);
+    await expect(deliver.locator('iframe')).toHaveAccessibleName(
+      `Vorschau Angebot ${number}`,
+    );
+    expect(frameErrors).toEqual([]);
     const previewSrc = (await deliver
-      .getByRole('link', { name: 'Vorschau öffnen' })
+      .getByRole('link', { name: 'In neuem Tab öffnen' })
       .getAttribute('href'))!;
     // The new tab asks the same origin the app uses; so does this check.
     expect(
@@ -364,10 +381,13 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
         previewSrc,
       ),
     ).toContain('application/pdf');
+    // The frame holds the browser's PDF viewer, not our markup, so axe skips
+    // it; its accessible name is asserted above instead.
     expect(
       (
         await new AxeBuilder({ page })
           .include('.document-deliver-dialog')
+          .exclude('.document-deliver-preview')
           .analyze()
       ).violations,
     ).toEqual([]);

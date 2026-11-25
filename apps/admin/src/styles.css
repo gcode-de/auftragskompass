@@ -1501,6 +1501,28 @@ time {
   gap: 1.25rem;
   grid-template-columns: minmax(0, 1fr);
 }
+/* The preview takes the room; the actions keep a narrow column beside it,
+   as in Bookitup's delivery view. */
+.form-dialog.document-deliver-dialog {
+  width: min(100%, 64rem);
+}
+.document-deliver-preview {
+  width: 100%;
+  height: min(70dvh, 48rem);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+@media (min-width: 48rem) {
+  .document-deliver-layout {
+    grid-template-columns: minmax(0, 1fr) 15rem;
+  }
+}
+@media (max-width: 47.99rem) {
+  .document-deliver-preview {
+    height: 60dvh;
+  }
+}
 .document-deliver-actions {
   list-style: none;
   margin: 0;
@@ -2343,6 +2365,10 @@ summary {
 }
 .event-record-actions > summary {
   color: var(--quiet-ink);
+}
+/* The rare record actions sit in one wrapping row below their summary. */
+.event-record-actions > button {
+  margin: 0.5rem 0.5rem 0 0;
 }
 .event-record h3 {
   font-size: 1rem;

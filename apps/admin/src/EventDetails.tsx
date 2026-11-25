@@ -130,6 +130,7 @@ export function EventDetails({
   statuses,
   onChanged,
   onEdit,
+  onDuplicate,
   onClose,
   onRemoved,
   types = [],
@@ -145,6 +146,7 @@ export function EventDetails({
   statuses: { code: string; label: string }[];
   onChanged: (message?: string) => Promise<void>;
   onEdit: (event: EventRow) => void;
+  onDuplicate?: (event: EventRow) => void;
   onClose: () => void;
   onRemoved?: (message?: string) => void;
   types?: VenueChoice[];
@@ -810,6 +812,18 @@ export function EventDetails({
             </p>
             <details className="event-record-actions">
               <summary>Weitere Eventaktionen</summary>
+              {/* A copy starts from the stored record, so unsaved edits block
+                  it instead of being silently left out. */}
+              {onDuplicate && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={busy || loading || hasRecordChanges()}
+                  onClick={() => onDuplicate(data.event)}
+                >
+                  Event duplizieren
+                </button>
+              )}
               <button
                 type="button"
                 className="secondary-action"
@@ -1053,6 +1067,12 @@ export function EventDetails({
                           : {person.name} {person.contactPerson}
                           {person.detailsUnavailable &&
                             ' (Kontaktdaten noch nicht geladen)'}{' '}
+                          <a
+                            href={'#contact-' + person.id}
+                            aria-label={'Details anzeigen: ' + person.name}
+                          >
+                            Details anzeigen
+                          </a>{' '}
                           {person.email && (
                             <a
                               href={
