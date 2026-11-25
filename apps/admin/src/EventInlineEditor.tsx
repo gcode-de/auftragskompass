@@ -83,6 +83,7 @@ export function canonicalEventRow(row: EventRow): EventRow {
     id: row.id,
     version: row.version,
     timeZone: row.timeZone,
+    cancellationReasonId: row.cancellationReasonId ?? null,
   };
 }
 export function validEventRow(

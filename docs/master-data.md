@@ -37,7 +37,6 @@ Die Prüfung der sieben synthetischen, zusätzlich angelegten Eventarten sowie
 historischer Verweise erfolgt in PostgreSQL. Chromium prüft Paket anlegen und
 archivieren nach echtem Browser-Login mit synthetischem OIDC-Provider.
 
-
 ## Absagegründe (C013)
 
 Die gemeinsame Stammdatenoberfläche verwaltet auch Absagegründe mit denselben
@@ -46,4 +45,4 @@ ergänzt pro vorhandenem und künftigem Mandanten acht aktive Startwerte: Termin
 Zubehör nicht verfügbar, Preis, keine Rückmeldung, anderer Anbieter, Kunde abgesagt,
 Termin verschoben und Sonstiges. Änderungen in der Oberfläche bleiben bei Neustarts
 bestehen. Archivierte Gründe erhalten ihre ID; vorhandene Referenzen bleiben lesbar.
-Die Zuordnung zu Events und die Auswertung folgen in den dafür vorgesehenen Slices.
+Die Zuordnung zu Events ist umgesetzt ([Absagegrund](events.md#absagegrund-qw2-c071)); die Auswertung (C072) folgt.
