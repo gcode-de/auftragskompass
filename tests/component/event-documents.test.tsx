@@ -7367,6 +7367,15 @@ test('a final document is delivered from one view with preview and actions', asy
 });
 
 test('the customer mail and closing return to the document row', async () => {
+  // A real browser's modal path: showModal exists and opens the dialog.
+  // jsdom has none, so it is defined for this test and removed again.
+  const showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: showModal,
+  });
   setup({
     documents: [finalized],
     mailAccounting: () => Response.json({ accountingRecipient: '' }),
@@ -7403,4 +7412,6 @@ test('the customer mail and closing return to the document row', async () => {
     'value',
     'synthetic.contact@example.invalid',
   );
+  expect(showModal).toHaveBeenCalled();
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
 });

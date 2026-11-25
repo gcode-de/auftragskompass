@@ -4028,9 +4028,10 @@ export function EventDocuments({
                         className="secondary-action"
                         disabled={!accountingRecipient}
                         onClick={() => {
-                          const trigger = deliverTrigger.current;
+                          // The row action opened this view, so it is set.
+                          const trigger = deliverTrigger.current!;
                           setDeliverId('');
-                          openMailSend(entry, trigger ?? document.body);
+                          openMailSend(entry, trigger);
                           setMailTo(accountingRecipient);
                         }}
                       >
@@ -4048,9 +4049,10 @@ export function EventDocuments({
                         type="button"
                         className="secondary-action"
                         onClick={() => {
-                          const trigger = deliverTrigger.current;
+                          // The row action opened this view, so it is set.
+                          const trigger = deliverTrigger.current!;
                           setDeliverId('');
-                          openMailSend(entry, trigger ?? document.body);
+                          openMailSend(entry, trigger);
                         }}
                       >
                         E-Mail an Kunden
