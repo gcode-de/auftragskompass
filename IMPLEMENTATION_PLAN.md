@@ -470,6 +470,36 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
   Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
   Commit `feat: duplicate events from the record`.
+- [x] **QW2 — Absagegrund am Event (C071):** Beim Status „Abgesagt“ wählt
+  die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
+  zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
+  ohne Angabe bleibt der Grund), Migration 0079 mit Fremdschlüssel und
+  Status-Prüfregel. **Tests:** Integration (Speichern, Erhalten, Löschen beim
+  Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
+  Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
+  Commit `feat: capture cancellation reasons on events`.
+- [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
+  datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
+  Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
+  wie Bookitup“). Migration 0080 übernimmt jede vorhandene Notiz und leert das
+  alte Feld; `notesHtml` in der Event-API wird beim Schreiben zur Notiz,
+  Export führt alle Notizen. Der alte Rich-Text-Editor samt Autosave-Pfad
+  entfällt. **Tests:** Integration (API, Mandanten, Bereinigung, Grabstein,
+  Audit, Umwandlung, Idempotenz, Export, Migrationsumzug), Component
+  (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
+  Screenshots 320/1280 hell/dunkel).
+  Commit `feat: replace event notes with dated notes`.
+- [x] **QW4 — Offene Posten über alle Events:** „Dateien“/„Dokumente“
+  zeigen über der Liste eine Zeile „Offene Posten: n Rechnungen · Betrag offen
+  · davon m überfällig (Betrag)“ mit „Offene anzeigen“ und „Überfällige
+  anzeigen“; der Zahlungsfilter kennt zusätzlich „Noch offen“ (offen oder
+  teilweise bezahlt). Neue Route `GET /api/v1/documents/receivables` und
+  Filterwert `payment=open` lesen dieselben Forderungs-, Zahlungs- und
+  Verzugsausdrücke wie die Liste. **Tests:** Integration (Summen, Verzug,
+  bezahlt/kein Anspruch ausgeschlossen, Filter, Route), Component (Zeile,
+  Kurzwege, leer, ungültige Antwort), E2E (Zeile, Tastaturreihenfolge,
+  Spaltenausrichtung, Screenshots).
+  Commit `feat: show open receivables across events`.
 - [x] **QW5 — Mail später senden:** Beide Mail-Dialoge haben „Senden am
   (optional)“; der Versandauftrag wartet über sein vorhandenes
   `next_attempt_at`. Die Event-Mails zeigen „Geplant für …“, fragen dafür
@@ -480,14 +510,6 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Dokumentversand), Component (Dialog, Nutzlast, Fehlertext, Liste, Aufheben,
   kein Polling).
   Commit `feat: send mails later`.
-- [x] **QW2 — Absagegrund am Event (C071):** Beim Status „Abgesagt“ wählt
-  die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
-  zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
-  ohne Angabe bleibt der Grund), Migration 0079 mit Fremdschlüssel und
-  Status-Prüfregel. **Tests:** Integration (Speichern, Erhalten, Löschen beim
-  Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
-  Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
-  Commit `feat: capture cancellation reasons on events`.
 - [x] **QW7 — Gesamtrabatt steuerlich anteilig (STEUER-BLOCKER):**
   Betreiberentscheidung 25.11.2026 „Anteilig je Steuersatz“: Der Gesamtrabatt
   ist eine Entgeltminderung und mindert jeden Steuersatz im Verhältnis seines
@@ -500,33 +522,10 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   **Tests:** Unit (ein Satz, gemischte Sätze, Restverteilung, Grenzen,
   Ablehnung, Druck je Satz, Snapshot), Component/E2E (Hinweistext).
   Commit `fix: lower each tax rate by its share of the total discount`.
-- [x] **QW4 — Offene Posten über alle Events:** „Dateien“/„Dokumente“
-  zeigen über der Liste eine Zeile „Offene Posten: n Rechnungen · Betrag offen
-  · davon m überfällig (Betrag)“ mit „Offene anzeigen“ und „Überfällige
-  anzeigen“; der Zahlungsfilter kennt zusätzlich „Noch offen“ (offen oder
-  teilweise bezahlt). Neue Route `GET /api/v1/documents/receivables` und
-  Filterwert `payment=open` lesen dieselben Forderungs-, Zahlungs- und
-  Verzugsausdrücke wie die Liste. **Tests:** Integration (Summen, Verzug,
-  bezahlt/kein Anspruch ausgeschlossen, Filter, Route), Component (Zeile,
-  Kurzwege, leer, ungültige Antwort), E2E (Zeile, Tastaturreihenfolge,
-  Spaltenausrichtung, Screenshots).
-  Commit `feat: show open receivables across events`.
-- [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
-  datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
-  Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
-  wie Bookitup“). Migration 0080 übernimmt jede vorhandene Notiz und leert das
-  alte Feld; `notesHtml` in der Event-API wird beim Schreiben zur Notiz,
-  Export führt alle Notizen. Der alte Rich-Text-Editor samt Autosave-Pfad
-  entfällt. **Tests:** Integration (API, Mandanten, Bereinigung, Grabstein,
-  Audit, Umwandlung, Idempotenz, Export, Migrationsumzug), Component
-  (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
-  Screenshots 320/1280 hell/dunkel).
-  Commit `feat: replace event notes with dated notes`.
 - [x] **QW8 — Commitplan-Stand C027–C085 nachgetragen:** Die veraltete
   Sammelzeile „noch nicht implementiert“ ersetzt eine belegte Bereichstabelle
   (umgesetzt über welche Slices, was offen ist); keine formale Abnahme.
   Commit `docs: record the real state of the commit plan`.
-
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
