@@ -556,6 +556,8 @@ export function EventDocuments({
       Array<{ id: string; email: string }>
     >([]),
     [accountingRecipient, setAccountingRecipient] = useState(''),
+    // UI-PARITY-03: the one finalized document whose delivery view is open.
+    [deliverId, setDeliverId] = useState(''),
     [mailRequestId, setMailRequestId] = useState(''),
     [mailUncertain, setMailUncertain] = useState(false),
     [mailPreview, setMailPreview] = useState<MailPreview | null>(null),
@@ -606,6 +608,9 @@ export function EventDocuments({
     // MAIL-DOC-01: the dialog, its trigger and its first field. Closing returns
     // the focus to the row action instead of the top of the page.
     mailDialog = useRef<HTMLDialogElement>(null),
+    deliverDialog = useRef<HTMLDialogElement>(null),
+    deliverTrigger = useRef<HTMLElement | null>(null),
+    deliverWasOpen = useRef(false),
     mailTrigger = useRef<HTMLElement | null>(null),
     mailDialogWasOpen = useRef(false),
     mailRecipient = useRef<HTMLInputElement>(null),
@@ -768,7 +773,7 @@ export function EventDocuments({
   // accounting address to name their targets honestly. A failure leaves the
   // switches usable - the server refuses an unfilled forwarding.
   useEffect(() => {
-    if (!mailSendId && !composeOpen) return;
+    if (!mailSendId && !composeOpen && !deliverId) return;
     let active = true;
     void fetch('/api/v1/access')
       .then((response) => (response.ok ? response.json() : []))
@@ -801,7 +806,26 @@ export function EventDocuments({
     return () => {
       active = false;
     };
-  }, [mailSendId, composeOpen]);
+  }, [mailSendId, composeOpen, deliverId]);
+  // UI-PARITY-03: the delivery view uses the same native dialog mechanics and
+  // hands the focus back to its row action.
+  useEffect(() => {
+    if (deliverId) {
+      const dialog = deliverDialog.current;
+      if (!dialog) return;
+      if (typeof dialog.showModal !== 'function')
+        dialog.setAttribute('open', '');
+      else if (!dialog.open) dialog.showModal();
+      deliverWasOpen.current = true;
+      return;
+    }
+    if (!deliverWasOpen.current) return;
+    deliverWasOpen.current = false;
+    const trigger = deliverTrigger.current;
+    deliverTrigger.current = null;
+    // A follow-up mail dialog takes the focus itself.
+    if (!mailSendId && trigger?.isConnected) trigger.focus();
+  }, [deliverId]);
   useEffect(() => {
     if (!mailSendId) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -3341,6 +3365,29 @@ export function EventDocuments({
                   {finalizeAction(entry)}
                 </>
               )}
+              {/* UI-PARITY-03: Bookitup's "Dokument bereitstellen" - the
+                  preview beside every way to hand the final document out. */}
+              {entry.state === 'final' && (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={busy !== '' || recordRemoving}
+                  aria-haspopup="dialog"
+                  aria-label={
+                    kindName(entry) +
+                    ' ' +
+                    (entry.number ?? '') +
+                    ' bereitstellen'
+                  }
+                  onClick={(event) => {
+                    setMessage('');
+                    deliverTrigger.current = event.currentTarget;
+                    setDeliverId(entry.id);
+                  }}
+                >
+                  Bereitstellen
+                </button>
+              )}
               {entry.state === 'final' && (
                 <a
                   className="document-download"
@@ -3949,6 +3996,106 @@ export function EventDocuments({
                   </fieldset>
                 </form>
               )}
+            {deliverId === entry.id && (
+              <dialog
+                ref={deliverDialog}
+                className="form-dialog document-deliver-dialog"
+                aria-labelledby={'deliver-heading-' + entry.id}
+                aria-modal="true"
+                onCancel={(event) => {
+                  event.preventDefault();
+                  setDeliverId('');
+                }}
+              >
+                <h4 id={'deliver-heading-' + entry.id}>
+                  Dokument bereitstellen
+                </h4>
+                <p>
+                  {kindName(entry)} {entry.number}
+                </p>
+                {/* The admin policy forbids framing (frame-ancestors 'none'),
+                    so the preview opens the frozen PDF in its own tab, where
+                    the browser also prints it. */}
+                <div className="document-deliver-layout">
+                  <ul className="document-deliver-actions">
+                    <li>
+                      <a
+                        className="secondary-action"
+                        href={'/api/v1/documents/' + entry.id + '/pdf'}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Vorschau öffnen
+                      </a>
+                      <span className="document-card-hint">
+                        Öffnet das PDF in einem neuen Tab; dort lässt es sich
+                        auch drucken.
+                      </span>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={!accountingRecipient}
+                        onClick={() => {
+                          // The row action opened this view, so it is set.
+                          const trigger = deliverTrigger.current!;
+                          setDeliverId('');
+                          openMailSend(entry, trigger);
+                          setMailTo(accountingRecipient);
+                        }}
+                      >
+                        An Buchhaltung senden
+                      </button>
+                      {!accountingRecipient && (
+                        <span className="document-card-hint">
+                          Unter Einstellungen → E-Mail → Ein- &amp;
+                          Ausgangsserver eine Buchhaltungs-Mail hinterlegen.
+                        </span>
+                      )}
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => {
+                          // The row action opened this view, so it is set.
+                          const trigger = deliverTrigger.current!;
+                          setDeliverId('');
+                          openMailSend(entry, trigger);
+                        }}
+                      >
+                        E-Mail an Kunden
+                      </button>
+                    </li>
+                    <li>
+                      <a
+                        className="secondary-action"
+                        href={'/api/v1/documents/' + entry.id + '/pdf'}
+                        download
+                      >
+                        Herunterladen
+                      </a>
+                    </li>
+                    <li>
+                      <span className="document-card-hint">
+                        Online freigeben gibt es noch nicht: das Kundenportal
+                        ist bewusst zurückgestellt.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="document-actions">
+                  <button
+                    type="button"
+                    className="tertiary-action"
+                    onClick={() => setDeliverId('')}
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </dialog>
+            )}
             {/* MAIL-DOC-01: the compact dialog of exactly one finalized document.
                 It carries a recipient, an optional cover text and the frozen PDF
                 it names - no attachment picker and no second order per click. */}

@@ -408,6 +408,23 @@ Attrappen nachgebaut.
   aus E-Mails, Ordnerfilter, Notizen unter Details, Fokus), E2E (Status im
   E-Mails-Bereich, mobile Leiste, Notizen/Logbuch-Wege).
   Commit `feat: shape the event record areas like bookitup`.
+- [x] **UI-PARITY-03 — „Dokument bereitstellen“ (setzt DOCS-02 um,
+  25.11.2026):** jedes finale Dokument hat die Zeilenaktion
+  „Bereitstellen“. Sie öffnet wie Bookitups Bereitstellen-Spalte einen
+  Dialog mit „Vorschau öffnen“ (das unveränderte PDF in einem neuen Tab, dort
+  auch Drucken), „An Buchhaltung senden“ (vorhandener Mail-Dialog mit der
+  hinterlegten Buchhaltungsadresse als Empfänger; ohne Adresse deaktiviert
+  mit Hinweis, wo sie gepflegt wird), „E-Mail an Kunden“ (vorhandener
+  Dialog) und „Herunterladen“ (Link mit `download`). Bookitups eingebettete
+  Vorschau ist hier bewusst **nicht** übernommen: die Admin-Richtlinie
+  verbietet Framing (`frame-ancestors 'none'`, `X-Frame-Options DENY`), eine
+  Lockerung nur für gleiche Herkunft wäre eine eigene Sicherheitsentscheidung
+  des Betreibers. „Online freigeben“ wird ehrlich als noch nicht verfügbar
+  benannt (Kundenportal zurückgestellt). Keine API-Änderung. **Tests:**
+  Component (Vorschau-Link, Download, Buchhaltung mit/ohne Adresse,
+  Kundenmail, Fokusrückgabe, Browser-Dialogpfad), E2E (echtes PDF über die
+  Route, axe, 1280/320 ohne Überlauf). Commit `feat: deliver a document from
+  one view`.
 - [x] **UI-PARITY-04 — Notizen und Logbuch in der Hauptspalte (25.11.2026):**
   wie Bookitups Mittelspalte stehen „Interne Notizen“ und „Logbuch“ jetzt als
   Karten in der Hauptspalte der Details (h4 wie Termin/Allgemein), Kontakt
