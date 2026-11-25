@@ -739,7 +739,7 @@ test('event rows are direct links and their icon actions stay independent', asyn
   ] as const) {
     const action = screen.getByRole('button', { name });
     expect(action.textContent).toBe(text);
-    expect(action.closest('details.row-menu')).not.toBeNull();
+    expect(action.closest('.row-menu')).not.toBeNull();
   }
   fireEvent.click(
     screen.getByRole('button', { name: 'Event bearbeiten: Synthetic event' }),
@@ -4094,4 +4094,37 @@ test('removed events can be restored without silently restoring old bookings', a
     await screen.findByRole('link', { name: /Synthetic event/ }),
   ).toBeTruthy();
   expect(removedRows).toHaveLength(0);
+});
+
+// UI-BKP-02: one row menu at a time; the toggle, Escape and a click outside
+// close it, and choosing an action closes it too.
+test('the row menu opens one at a time and closes on Escape or outside', async () => {
+  vi.stubGlobal('fetch', mocker());
+  render(<EventPanel csrfToken="csrf" />);
+  const toggle = await screen.findByRole('button', {
+    name: 'Weitere Aktionen: Synthetic event',
+  });
+  const menu = toggle.closest('.row-menu')!;
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(menu.hasAttribute('data-open')).toBe(true);
+  // A click inside the menu keeps it open.
+  fireEvent.pointerDown(menu);
+  expect(menu.hasAttribute('data-open')).toBe(true);
+  fireEvent.keyDown(document, { key: 'Enter' });
+  expect(menu.hasAttribute('data-open')).toBe(true);
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(menu.hasAttribute('data-open')).toBe(false);
+  fireEvent.click(toggle);
+  fireEvent.pointerDown(document.body);
+  expect(menu.hasAttribute('data-open')).toBe(false);
+  fireEvent.click(toggle);
+  fireEvent.click(toggle);
+  expect(menu.hasAttribute('data-open')).toBe(false);
+  fireEvent.click(toggle);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Event duplizieren: Synthetic event' }),
+  );
+  expect(menu.hasAttribute('data-open')).toBe(false);
 });

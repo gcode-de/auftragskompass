@@ -91,14 +91,19 @@ test('the event list reads like Bookitup in both themes', async ({ page }) => {
     await card.evaluate((el) => getComputedStyle(el, '::before').width),
   ).toBe('5px');
   // The card shows no action icons; the actions sit behind the row menu.
-  await expect(card.getByRole('button')).toHaveCount(0);
+  await expect(card.getByRole('button')).toHaveCount(1);
   await card.getByLabel('Weitere Aktionen: Fiktive Firmenfeier').click();
   await expect(
     card.getByRole('button', {
       name: 'Event duplizieren: Fiktive Firmenfeier',
     }),
   ).toBeVisible();
-  await card.getByLabel('Weitere Aktionen: Fiktive Firmenfeier').click();
+  await page.keyboard.press('Escape');
+  await expect(
+    card.getByRole('button', {
+      name: 'Event duplizieren: Fiktive Firmenfeier',
+    }),
+  ).toHaveCount(0);
   for (const theme of ['light', 'dark'] as const) {
     if ((await page.locator('html').getAttribute('data-theme')) !== theme)
       await page.getByRole('button', { name: /modus aktivieren/i }).click();
