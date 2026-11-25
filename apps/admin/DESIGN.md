@@ -534,7 +534,7 @@ Die Eventakte folgt Bookitups Aktengliederung (Screenshots vom 31.10. und 24.11.
 
 ### Dokument bereitstellen (UI-PARITY-03, 25.11.2026)
 
-Nach Bookitups Bereitstellen-Spalte (Screenshots vom 31.10./02.11.2026, Bildbeobachtung): die Zeilenaktion „Bereitstellen“ eines finalen Dokuments öffnet einen Formulardialog mit einer Aktionsspalte: Vorschau öffnen · An Buchhaltung senden · E-Mail an Kunden · Herunterladen, alle `secondary-action` mit 44px, Links im gleichen Knopfkleid. Hinweise (Vorschau im neuen Tab inklusive Drucken, fehlende Buchhaltungsadresse, Online-Freigabe nicht verfügbar) stehen in `muted` direkt an der Aktion. Keine eingebettete PDF-Vorschau: die Admin-Richtlinie verbietet Framing.
+Nach Bookitups Bereitstellen-Spalte (Screenshots vom 31.10./02.11.2026, Bildbeobachtung): die Zeilenaktion „Bereitstellen“ eines finalen Dokuments öffnet einen Formulardialog mit einer Aktionsspalte: Vorschau öffnen · An Buchhaltung senden · E-Mail an Kunden · Herunterladen, alle `secondary-action` mit 44px, Links im gleichen Knopfkleid. Hinweise (Vorschau im neuen Tab inklusive Drucken, fehlende Buchhaltungsadresse, Online-Freigabe nicht verfügbar) stehen in `muted` direkt an der Aktion. Seit UI-PARITY-06 steht das eingefrorene PDF als beschriftetes `iframe` („Vorschau <Art> <Nummer>“, Rahmen `--border`, Höhe `min(70dvh, 48rem)`, mobil `60dvh`) links, die Aktionsspalte ab `48rem` mit `15rem` rechts daneben, darunter einspaltig; der Dialog wächst dafür auf `min(100%, 64rem)`. „In neuem Tab öffnen“ bleibt als erste Aktion für Drucken und Browser ohne PDF-Anzeige. Nur diese PDF-Route darf vom eigenen Ursprung gerahmt werden.
 
 ### Logbuch als Zeitleiste (UI-PARITY-05, 25.11.2026)
 
