@@ -531,3 +531,7 @@ Optionale Positionen (DOC-OPTION-01): Positionsgruppen zeigen unter den Preisfel
 ### Bereiche der Eventakte (UI-PARITY-02, 25.11.2026)
 
 Die Eventakte folgt Bookitups Aktengliederung (Screenshots vom 31.10. und 24.11.2026, Bildbeobachtung, kein REA-Beleg): **Details · Ressourcen · Dateien · E-Mails**. Notizen und Logbuch stehen unter Details, wie bei Bookitup, und behalten ihre eigenen Regionen und Überschriften. „E-Mails“ beginnt mit der sekundären Aktion „Neue Mail schreiben“, darunter die Karte „Ausgehende Mails“ mit einer Ordnergruppe (`role="group"`, `aria-label="Ordner"`, `nav-action`-Knöpfe mit `aria-pressed`, aktiver Ordner fett) samt Anzahl je Ordner. Mobil bleibt die feste Bereichsleiste, jetzt mit vier gleich breiten Spalten.
+
+### Dokument bereitstellen (UI-PARITY-03, 25.11.2026)
+
+Nach Bookitups Vorschauseite (Screenshots vom 31.10./02.11.2026, Bildbeobachtung): die Zeilenaktion „Bereitstellen“ eines finalen Dokuments öffnet einen breiteren Formulardialog (`min(100%, 64rem)`) mit der PDF-Vorschau links (`1.7fr`, Rand `border`, Radius `0.65rem`, Höhe `min(65dvh, 44rem)`) und einer Aktionsspalte rechts (`minmax(14rem, 1fr)`): An Buchhaltung senden · E-Mail an Kunden · Herunterladen · Drucken, alle `secondary-action` mit 44px, der Download als echter Link im gleichen Knopfkleid. Hinweise (fehlende Buchhaltungsadresse, Online-Freigabe nicht verfügbar) stehen in `muted` direkt an der Aktion. Unter 900px stapeln Vorschau (`45dvh`) und Aktionen.

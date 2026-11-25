@@ -342,6 +342,54 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
     // The documents of the event live in its "Dateien" area.
     await page.getByRole('button', { name: 'Dateien', exact: true }).click();
 
+    // UI-PARITY-03: the delivery view shows the real PDF beside its actions.
+    await page
+      .getByRole('button', { name: `Angebot ${number} bereitstellen` })
+      .click();
+    const deliver = page.getByRole('dialog', {
+      name: 'Dokument bereitstellen',
+    });
+    await expect(deliver).toBeVisible();
+    const previewSrc = (await deliver
+      .getByTitle(`Vorschau Angebot ${number}`)
+      .getAttribute('src'))!;
+    // The iframe asks the same origin the app uses; so does this check.
+    expect(
+      await page.evaluate(
+        async (src) => (await fetch(src)).headers.get('content-type'),
+        previewSrc,
+      ),
+    ).toContain('application/pdf');
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .include('.document-deliver-dialog')
+          // The headless PDF frame is an empty document; its page-level
+          // rules say nothing about the dialog. The frame title is checked.
+          .disableRules(['landmark-one-main', 'page-has-heading-one'])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await deliver.screenshot({
+      path: 'tests/test-results/document-deliver-1280-light.png',
+    });
+    await page.setViewportSize({ width: 320, height: 720 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await deliver.screenshot({
+      path: 'tests/test-results/document-deliver-320-light.png',
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await deliver.getByRole('button', { name: 'E-Mail an Kunden' }).click();
+    await expect(deliver).toBeHidden();
+    await page
+      .getByRole('dialog', { name: 'Dokument per E-Mail senden' })
+      .getByRole('button', { name: 'Abbrechen' })
+      .click();
+
     const sendAction = page.getByRole('button', {
       name: `Angebot ${number} per E-Mail senden`,
     });

@@ -408,6 +408,20 @@ Attrappen nachgebaut.
   aus E-Mails, Ordnerfilter, Notizen unter Details, Fokus), E2E (Status im
   E-Mails-Bereich, mobile Leiste, Notizen/Logbuch-Wege).
   Commit `feat: shape the event record areas like bookitup`.
+- [x] **UI-PARITY-03 — „Dokument bereitstellen“ (setzt DOCS-02 um,
+  25.11.2026):** jedes finale Dokument hat die Zeilenaktion
+  „Bereitstellen“. Sie öffnet wie Bookitups Vorschauseite einen Dialog mit
+  dem echten PDF (vorhandene PDF-Route im iframe) neben den Aktionen „An
+  Buchhaltung senden“ (vorhandener Mail-Dialog mit der hinterlegten
+  Buchhaltungsadresse als Empfänger; ohne Adresse deaktiviert mit Hinweis,
+  wo sie gepflegt wird), „E-Mail an Kunden“ (vorhandener Dialog),
+  „Herunterladen“ (Link mit `download`) und „Drucken“ (Druck des
+  Vorschau-Frames). „Online freigeben“ wird ehrlich als noch nicht
+  verfügbar benannt (Kundenportal zurückgestellt), kein Scheinknopf. Keine
+  API-Änderung. **Tests:** Component (Vorschauquelle, Download, Buchhaltung
+  mit/ohne Adresse, Kundenmail, Fokusrückgabe), E2E (echtes PDF über die
+  Route, axe, 1280/320 ohne Überlauf). Commit `feat: deliver a document from
+  one view`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
