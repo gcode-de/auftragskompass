@@ -7317,3 +7317,102 @@ test('without any signature the dialog offers no choice and sends none', async (
     calls.find((call) => call.url === '/api/v1/mail/compose')!.body,
   ).not.toHaveProperty('signatureId');
 });
+
+// UI-PARITY-03: Bookitup's "Dokument bereitstellen" - preview and every
+// delivery way of a finalized document in one view.
+test('a final document is delivered from one view with preview and actions', async () => {
+  setup({ documents: [finalized] });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 bereitstellen',
+  });
+  fireEvent.click(trigger);
+  const view = await screen.findByRole('dialog', {
+    name: 'Dokument bereitstellen',
+  });
+  // The admin policy forbids framing, so the preview opens in its own tab.
+  const preview = within(view).getByRole('link', { name: 'Vorschau öffnen' });
+  expect(preview.getAttribute('href')).toBe(
+    '/api/v1/documents/' + finalized.id + '/pdf',
+  );
+  expect(preview.getAttribute('target')).toBe('_blank');
+  expect(
+    within(view)
+      .getByRole('link', { name: 'Herunterladen' })
+      .hasAttribute('download'),
+  ).toBe(true);
+  expect(
+    within(view).getByText(/Online freigeben gibt es noch nicht/),
+  ).toBeTruthy();
+  // The stored accounting address enables the accounting send.
+  const accounting = within(view).getByRole('button', {
+    name: 'An Buchhaltung senden',
+  });
+  await waitFor(() => expect(accounting).toHaveProperty('disabled', false));
+  fireEvent.click(accounting);
+  const mail = await screen.findByRole('dialog', {
+    name: 'Dokument per E-Mail senden',
+  });
+  expect(within(mail).getByLabelText('Empfänger')).toHaveProperty(
+    'value',
+    'synthetic.accounting@example.invalid',
+  );
+  expect(
+    screen.queryByRole('dialog', { name: 'Dokument bereitstellen' }),
+  ).toBeNull();
+});
+
+test('the customer mail and closing return to the document row', async () => {
+  // A real browser's modal path: showModal exists and opens the dialog.
+  // jsdom has none, so it is defined for this test and removed again.
+  const showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: showModal,
+  });
+  setup({
+    documents: [finalized],
+    mailAccounting: () => Response.json({ accountingRecipient: '' }),
+  });
+  render(
+    <EventDocuments
+      {...props}
+      contactEmail="synthetic.contact@example.invalid"
+    />,
+  );
+  const trigger = await screen.findByRole('button', {
+    name: 'Angebot AN-2030-0001 bereitstellen',
+  });
+  fireEvent.click(trigger);
+  let view = await screen.findByRole('dialog', {
+    name: 'Dokument bereitstellen',
+  });
+  // Without an accounting address the action says where to set one.
+  expect(
+    within(view).getByRole('button', { name: 'An Buchhaltung senden' }),
+  ).toHaveProperty('disabled', true);
+  expect(within(view).getByText(/Buchhaltungs-Mail hinterlegen/)).toBeTruthy();
+  fireEvent.click(within(view).getByRole('button', { name: 'Schließen' }));
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  fireEvent.click(trigger);
+  view = await screen.findByRole('dialog', { name: 'Dokument bereitstellen' });
+  fireEvent.click(
+    within(view).getByRole('button', { name: 'E-Mail an Kunden' }),
+  );
+  const mail = await screen.findByRole('dialog', {
+    name: 'Dokument per E-Mail senden',
+  });
+  expect(within(mail).getByLabelText('Empfänger')).toHaveProperty(
+    'value',
+    'synthetic.contact@example.invalid',
+  );
+  expect(showModal).toHaveBeenCalled();
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
+});

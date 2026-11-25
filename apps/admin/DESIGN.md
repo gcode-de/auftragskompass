@@ -532,6 +532,10 @@ Optionale Positionen (DOC-OPTION-01): Positionsgruppen zeigen unter den Preisfel
 
 Die Eventakte folgt Bookitups Aktengliederung (Screenshots vom 31.10. und 24.11.2026, Bildbeobachtung, kein REA-Beleg): **Details · Ressourcen · Dateien · E-Mails**. Notizen und Logbuch stehen unter Details, wie bei Bookitup: seit UI-PARITY-04 als Karten (`.event-detail-section`, gleiches Kartenkleid wie Termin/Allgemein, eigene Region, h4) in der Hauptspalte, Kontakt und Ort bleiben daneben. Ab 90rem: Termin Spalte 1, Allgemein Spalte 2, die Abschnitte darunter über beide, Seitenleiste Spalte 3 über die volle Höhe. „E-Mails“ beginnt mit der sekundären Aktion „Neue Mail schreiben“, darunter die Karte „Ausgehende Mails“ mit einer Ordnergruppe (`role="group"`, `aria-label="Ordner"`, `nav-action`-Knöpfe mit `aria-pressed`, aktiver Ordner fett) samt Anzahl je Ordner. Mobil bleibt die feste Bereichsleiste, jetzt mit vier gleich breiten Spalten.
 
+### Dokument bereitstellen (UI-PARITY-03, 25.11.2026)
+
+Nach Bookitups Bereitstellen-Spalte (Screenshots vom 31.10./02.11.2026, Bildbeobachtung): die Zeilenaktion „Bereitstellen“ eines finalen Dokuments öffnet einen Formulardialog mit einer Aktionsspalte: Vorschau öffnen · An Buchhaltung senden · E-Mail an Kunden · Herunterladen, alle `secondary-action` mit 44px, Links im gleichen Knopfkleid. Hinweise (Vorschau im neuen Tab inklusive Drucken, fehlende Buchhaltungsadresse, Online-Freigabe nicht verfügbar) stehen in `muted` direkt an der Aktion. Keine eingebettete PDF-Vorschau: die Admin-Richtlinie verbietet Framing.
+
 ### Logbuch als Zeitleiste (UI-PARITY-05, 25.11.2026)
 
 Nach Bookitups Logbuch: neuester Eintrag zuerst, je Eintrag der Text und darunter das Datum in `muted` (`0.85rem`, `tabular-nums`). Links eine neutrale Kreismarke (`0.65rem`, 2px `quiet-ink`, Fläche `surface`) auf einer 2px-Linie in `border`, die beim letzten Eintrag endet. Keine Statusfarben in der Zeitleiste.
