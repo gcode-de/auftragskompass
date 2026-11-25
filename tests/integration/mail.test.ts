@@ -19,9 +19,11 @@ import { decryptTelegramToken } from '../../packages/core/src/telegram.js';
 import { registerMailForwardSettingsRoutes } from '../../packages/core/src/mail-forward.js';
 import {
   claimMailOutboxJob,
+  MailError,
   mailRepository,
   registerMailRoutes,
   runMailOutboxPass,
+  sendAtOf,
   startMailOutbox,
 } from '../../packages/core/src/mail.js';
 import { escapeMailHtmlText } from '../../packages/core/src/mail-content.js';
@@ -3027,4 +3029,137 @@ test('a document mail of an event with type and package resolves its placeholder
   });
   expect(preview.bodyText).toBe('Fiktive Eventart - Fiktives Paket');
   expect(preview.missing).toEqual([]);
+});
+
+// QW5: send later. The planned time is the job's next attempt, so no worker
+// picks it up early; until then it can be withdrawn and sent again.
+test('a planned mail waits for its time, shows it and can be withdrawn', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const { headers, csrf } = await signedIn();
+  const write = { ...headers, ...csrf };
+  const sendAt = new Date(Date.now() + 2 * 86400000).toISOString();
+  const compose = (requestId: string, when: unknown) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/mail/compose',
+      headers: write,
+      payload: {
+        requestId,
+        to: 'synthetic.contact@example.invalid',
+        subject: 'Fiktiver geplanter Betreff',
+        eventId,
+        sendAt: when,
+      },
+    });
+  for (const when of [
+    new Date(Date.now() - 60000).toISOString(),
+    new Date(Date.now() + 400 * 86400000).toISOString(),
+  ])
+    expect((await compose('fictional-late-' + when, when)).json()).toEqual({
+      error: 'invalid_send_at',
+    });
+  expect((await compose('fictional-bad', 'tomorrow')).statusCode).toBe(400);
+
+  const planned = await compose('fictional-planned', sendAt);
+  expect(planned.statusCode).toBe(201);
+  expect(planned.json().nextAttemptAt).toBe(sendAt);
+  const messageId = planned.json().messageId as string;
+  const listed = async () =>
+    (
+      await app.inject({
+        url: '/api/v1/mail/messages?eventId=' + eventId,
+        headers,
+      })
+    )
+      .json()
+      .find((row: { id: string }) => row.id === messageId);
+  expect(await listed()).toMatchObject({
+    sendState: 'scheduled',
+    scheduledFor: sendAt,
+  });
+  expect(
+    (
+      await app.inject({
+        url: '/api/v1/mail/messages/' + messageId,
+        headers,
+      })
+    ).json().scheduledFor,
+  ).toBe(sendAt);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    expect(await claimMailOutboxJob(client)).toBeNull();
+    await client.query('ROLLBACK');
+  } finally {
+    client.release();
+  }
+
+  const unschedule = (id: string, extra = {}) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/mail/messages/' + id + '/unschedule',
+      headers: { ...write, ...extra },
+    });
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/mail/messages/' + messageId + '/unschedule',
+        headers,
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect((await unschedule(messageId)).statusCode).toBe(204);
+  expect(await listed()).toMatchObject({
+    sendState: 'none',
+    scheduledFor: null,
+  });
+  expect((await unschedule(messageId)).json()).toEqual({
+    error: 'not_scheduled',
+  });
+  expect((await unschedule(randomUUID())).statusCode).toBe(404);
+  const audit = await pool.query(
+    `SELECT count(*)::int AS n FROM audit_events
+      WHERE tenant_id=$1 AND action='mail.send_cancelled'`,
+    [tenantId],
+  );
+  expect(audit.rows[0].n).toBe(1);
+  // The withdrawn draft can be sent again as an ordinary order.
+  const again = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/messages/' + messageId + '/send',
+    headers: write,
+    payload: { idempotencyKey: 'fictional-again' },
+  });
+  expect(again.statusCode).toBe(201);
+  // An order that is due now cannot be withdrawn any more.
+  expect((await unschedule(messageId)).json()).toEqual({
+    error: 'not_scheduled',
+  });
+});
+
+test('a planned document mail keeps its planned time', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const { headers, csrf } = await signedIn();
+  const sendAt = new Date(Date.now() + 86400000).toISOString();
+  const reply = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send',
+    headers: { ...headers, ...csrf },
+    payload: {
+      documentId: finalDocumentId,
+      requestId: 'fictional-route-planned',
+      to: 'synthetic.contact@example.invalid',
+      bodyText: 'Geplanter Versand.',
+      sendAt,
+    },
+  });
+  expect(reply.statusCode).toBe(201);
+  const job = await pool.query<{ next_attempt_at: Date }>(
+    'SELECT next_attempt_at FROM mail_outbox WHERE tenant_id=$1 AND message_id=$2',
+    [tenantId, reply.json().messageId],
+  );
+  expect(job.rows[0]!.next_attempt_at.toISOString()).toBe(sendAt);
+  expect(sendAtOf(null)).toBeNull();
+  expect(() => sendAtOf('not a time')).toThrow(MailError);
 });

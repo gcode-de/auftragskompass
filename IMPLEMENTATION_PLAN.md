@@ -470,6 +470,16 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
   Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
   Commit `feat: duplicate events from the record`.
+- [x] **QW5 — Mail später senden:** Beide Mail-Dialoge haben „Senden am
+  (optional)“; der Versandauftrag wartet über sein vorhandenes
+  `next_attempt_at`. Die Event-Mails zeigen „Geplant für …“, fragen dafür
+  nicht ständig nach und bieten „Planung aufheben“, solange kein Worker den
+  Auftrag abgeholt hat; danach „Jetzt senden“. Migration 0081 nur für die
+  Audit-Aktion. **Tests:** Integration (Planung, Worker wartet, Liste und
+  Detail, ungültige Zeiten, Aufheben inkl. 403/404/409, erneut senden,
+  Dokumentversand), Component (Dialog, Nutzlast, Fehlertext, Liste, Aufheben,
+  kein Polling).
+  Commit `feat: send mails later`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 

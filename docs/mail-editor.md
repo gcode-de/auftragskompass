@@ -179,6 +179,26 @@ Ein-Klick-Neuversand könnte sie verdoppeln und fehlt deshalb bewusst.
 (`failed`/`uncertain`) mit Link zu ihrem Event. Er liest beim Laden und bei
 jeder Rückkehr in die Anwendung neu.
 
+## Später senden (QW5)
+
+Beide Mail-Dialoge (Dokumentversand und freie Event-Mail) haben das optionale
+Feld „Senden am“ (lokales Datum und Uhrzeit). Ist es gesetzt, heißt der Knopf
+„Senden planen“; die Anfrage trägt `sendAt` als ISO-Zeitpunkt. Der Server
+nimmt nur einen Zeitpunkt in der Zukunft und höchstens ein Jahr entfernt an
+(sonst `400 invalid_send_at`) und setzt ihn als `next_attempt_at` des
+Versandauftrags. Der Worker holt den Auftrag also nicht vorher ab. Es gibt
+keine neue Spalte.
+
+Die Liste der Event-Mails zeigt „Geplant für …“ (`scheduledFor` in Liste und
+Detail, `null`, sobald fällig) und fragt für geplante Mails nicht im
+3-Sekunden-Takt nach. „Planung aufheben“ ruft
+`POST /api/v1/mail/messages/:id/unschedule`: Nur ein noch nicht abgeholter,
+in der Zukunft geplanter Auftrag wird entfernt (`204`). Sonst kommt
+`409 not_scheduled` oder `404`. Die Mail bleibt als „Nicht gesendet“ stehen
+und lässt sich mit „Jetzt senden“ als gewöhnlicher Auftrag erneut einreihen.
+Migration `0081_mail_send_later.sql` ergänzt nur die Audit-Aktion
+`mail.send_cancelled`.
+
 ## Grenzen (ehrlich)
 
 - Das Feld „Vorname“ ist (Stand dieses Slices) bewusst **nicht** Bestandteil des
