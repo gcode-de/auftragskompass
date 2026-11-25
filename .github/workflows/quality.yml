@@ -4,9 +4,12 @@ on:
   pull_request:
 permissions:
   contents: read
+# A newer push supersedes an older run on a feature branch. On main every
+# merge gets its own run (grouped by commit), because the auto-updater
+# deploys only a green head and quick merges must not cancel each other.
 concurrency:
-  group: quality-${{ github.ref }}
-  cancel-in-progress: true
+  group: quality-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   quality:
     runs-on: ubuntu-24.04
