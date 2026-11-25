@@ -119,8 +119,13 @@ function sheet() {
   )!;
 }
 
-function urlsOf(fetcher: ReturnType<typeof pageFetcher>) {
-  return fetcher.mock.calls.map((call) => String(call[0]));
+// QW4: the receivables sum is its own request beside every list load; the
+// list assertions below look at the list requests only.
+const receivablesUrl = '/api/v1/documents/receivables';
+function urlsOf(fetcher: { mock: { calls: unknown[][] } }) {
+  return fetcher.mock.calls
+    .map((call) => String(call[0]))
+    .filter((url) => url !== receivablesUrl);
 }
 
 test('the panel asks the server for the whole filtered result, never a client-filtered page', async () => {
@@ -175,7 +180,8 @@ test('the panel asks the server for the whole filtered result, never a client-fi
 
 test('filter changes reset pagination atomically and the extra row only means hasMore', async () => {
   let requests = 0;
-  const fetcher = vi.fn(async () => {
+  const fetcher = vi.fn(async (url: string) => {
+    if (url === receivablesUrl) return new Response(null, { status: 503 });
     requests++;
     // First page reports a 26th row: there is more. The second page is short.
     return Response.json(
@@ -404,11 +410,12 @@ test('an empty result is distinguished from an error and the reset only clears i
 
 test('a slow older response never overwrites a newer one', async () => {
   const resolvers: ((rows: unknown[]) => void)[] = [];
-  const fetcher = vi.fn(
-    () =>
-      new Promise<Response>((resolve) => {
-        resolvers.push((rows) => resolve(Response.json(rows)));
-      }),
+  const fetcher = vi.fn((url: string) =>
+    url === receivablesUrl
+      ? Promise.resolve(new Response(null, { status: 503 }))
+      : new Promise<Response>((resolve) => {
+          resolvers.push((rows) => resolve(Response.json(rows)));
+        }),
   );
   vi.stubGlobal('fetch', fetcher);
   render(<FilesPanel />);
@@ -429,17 +436,17 @@ test('returning to the tab refreshes once and hidden panels do not request repea
   vi.stubGlobal('fetch', fetcher);
   render(<FilesPanel />);
   await screen.findByText('Angebot · Entwurf');
-  const before = fetcher.mock.calls.length;
+  const before = urlsOf(fetcher).length;
   await act(async () => {
     window.dispatchEvent(new Event('focus'));
   });
-  await waitFor(() => expect(fetcher.mock.calls.length).toBe(before + 1));
+  await waitFor(() => expect(urlsOf(fetcher).length).toBe(before + 1));
   await act(async () => {
     window.dispatchEvent(new Event('focus'));
   });
   // The same transition does not trigger a second request.
   await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(fetcher.mock.calls.length).toBe(before + 1);
+  expect(urlsOf(fetcher).length).toBe(before + 1);
 });
 
 test('filter and pager actions are quiet, named and reachable by keyboard', async () => {
@@ -555,28 +562,27 @@ test('an invalid event id never becomes a link anywhere in the table', async () 
 
 test('returning focus during a running request does not start a second load', async () => {
   let resolveFirst: ((rows: unknown[]) => void) | undefined;
-  const fetcher = vi.fn(
-    () =>
-      new Promise<Response>((resolve) => {
-        resolveFirst = (rows) => resolve(Response.json(rows));
-      }),
+  const fetcher = vi.fn((url: string) =>
+    url === receivablesUrl
+      ? Promise.resolve(new Response(null, { status: 503 }))
+      : new Promise<Response>((resolve) => {
+          resolveFirst = (rows) => resolve(Response.json(rows));
+        }),
   );
   vi.stubGlobal('fetch', fetcher);
   render(<FilesPanel />);
-  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(urlsOf(fetcher)).toHaveLength(1));
   await act(async () => {
     window.dispatchEvent(new Event('focus'));
   });
   await new Promise((resolve) => setTimeout(resolve, 20));
   // The busy guard swallows the return while the first GET is still open.
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(urlsOf(fetcher)).toHaveLength(1);
   await act(async () => resolveFirst!([draft]));
   await screen.findByText('Angebot · Entwurf');
   // Every list request is a plain GET on the metadata route.
-  for (const call of fetcher.mock.calls)
-    expect(String((call as unknown[])[0])).toMatch(
-      /^\/api\/v1\/documents\?include=metadata&/,
-    );
+  for (const url of urlsOf(fetcher))
+    expect(url).toMatch(/^\/api\/v1\/documents\?include=metadata&/);
 });
 
 test('the pager disables the previous action on the first page', async () => {
@@ -984,4 +990,67 @@ test('the table reads in the observed column order', async () => {
   const row = screen.getByText('Rechnung RE-2031-0001').closest('tr')!;
   const cells = within(row).getAllByRole('cell');
   expect(cells[0]!.textContent).toBe('Finalisiert');
+});
+
+// QW4: the receivables line sums what is still owed and leads into the open
+// and the late claims through the existing filters.
+test('the receivables line sums open claims and leads into them', async () => {
+  const fetcher = vi.fn(async (url: string) =>
+    url === receivablesUrl
+      ? Response.json({
+          count: 2,
+          openMinor: 123456,
+          overdueCount: 1,
+          overdueMinor: 50000,
+        })
+      : Response.json([draft]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<FilesPanel />);
+  const line = await screen.findByText(/Offene Posten:/);
+  expect(line.closest('p')!.textContent).toBe(
+    'Offene Posten: 2 Rechnungen · 1.234,56 € offen · davon 1 überfällig (500,00 €)',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Überfällige anzeigen' }));
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&overdue=true&payment=open')),
+  );
+  expect(
+    (screen.getByLabelText('Zahlungsstand') as HTMLSelectElement).value,
+  ).toBe('open');
+  fireEvent.click(screen.getByRole('button', { name: 'Offene anzeigen' }));
+  await waitFor(() =>
+    expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&payment=open')),
+  );
+});
+
+test('no open claim says so and a broken receivables answer hides the line', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === receivablesUrl
+        ? Response.json({
+            count: 0,
+            openMinor: 0,
+            overdueCount: 0,
+            overdueMinor: 0,
+          })
+        : Response.json([draft]),
+    ),
+  );
+  render(<FilesPanel />);
+  expect(await screen.findByText('Keine offenen Posten.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Offene anzeigen' })).toBeNull();
+  cleanup();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === receivablesUrl
+        ? Response.json({ count: -1 })
+        : Response.json([draft]),
+    ),
+  );
+  render(<FilesPanel />);
+  await screen.findByText('Angebot · Entwurf');
+  expect(screen.queryByText(/Offene Posten|Keine offenen Posten/)).toBeNull();
 });
