@@ -25,6 +25,10 @@ Explizite neue Vorgaben:
 
 [Lieferworkflow und Statusmatrix](delivery-workflow.md): drei getrennte Zustände IMPLEMENTIERT / VISUELL ABGENOMMEN / IM TESTBETRIEB AUSGELIEFERT mit SHA und Beleg; genau ein Auslieferungsweg in den Testbetrieb, kein Produktiv-Cutover.
 
+**UI-Abgleich vom 25.11.2026:** Was aus den aktuellen Screenshots umgesetzt
+wurde, was bewusst anders ist und was offen bleibt, steht in
+[UI-Abgleich mit Bookitup](ui-comparison-2026-11-25.md).
+
 ## Lesereihenfolge für einen neuen Agenten
 
 **Neue Ressourcenbeobachtung vom 01.11.2026:** Das zuvor eingeschränkte
@@ -47,16 +51,16 @@ Der [fertige Übergabeprompt](hermes-handoff.md) enthält MiMo-Koordination, kla
 
 **R001** ist ausschließlich diese Analyse/Dokumentation. **BKP001–BKP030 sind offene Arbeitspakete**, keine fertigen Features. Sie bilden keine zweite konkurrierende Commitfolge: vor Start wird genau ein BKP-Ticket mit seinem Scope und Abnahmetest im Implementierungsplan aktiviert. Ein Paket mit mehreren notwendigen vertikalen Schritten wird dort in Unter-Slices aufgeteilt; nicht als riesigen Sammelcommit umsetzen.
 
-| Reihenfolge | Tickets | Zweck / Abhängigkeit |
-| --- | --- | --- |
-| Sofortige Fehler | BKP001 | Falsche Wochentagszuordnung; unabhängig von neuem Design |
-| Website-Verhalten | BKP002 → BKP003 → BKP004 | Kontaktlose Option, faire Wiederholung, danach Ausnahmebereich entfernen |
-| Lesbarkeit / Bediennähe | BKP005, BKP006, BKP007 | Neutrale Tokens, Sidebar-Schalter, Filterspalte/Drawer |
-| Mobiler Kalender | BKP008 | Nach BKP001; Grid + lesbare Tagesdetails, keine verlorenen Events |
-| Verwaltungsabläufe | BKP009–BKP014 | Ressourcen, Produkte, Kontakte, Event-Details und Liste |
-| Dokumente | BKP015–BKP019 | Vorlagenverwaltung, editierbarer Entwurf, freie Anlage, Layout, Lebenszyklus |
-| Dateien und Kommunikation | BKP020–BKP025 | Sichere Bibliothek, Mail-Datenkern, Postfach, Editor, Vorlagen, Versandplanung |
-| Weitere Parität | BKP026–BKP030 | Aufgaben, Verträge/Fragebögen, konfigurierbare Formulare, Auswertungen, Gesamtprüfung |
+| Reihenfolge               | Tickets                  | Zweck / Abhängigkeit                                                                  |
+| ------------------------- | ------------------------ | ------------------------------------------------------------------------------------- |
+| Sofortige Fehler          | BKP001                   | Falsche Wochentagszuordnung; unabhängig von neuem Design                              |
+| Website-Verhalten         | BKP002 → BKP003 → BKP004 | Kontaktlose Option, faire Wiederholung, danach Ausnahmebereich entfernen              |
+| Lesbarkeit / Bediennähe   | BKP005, BKP006, BKP007   | Neutrale Tokens, Sidebar-Schalter, Filterspalte/Drawer                                |
+| Mobiler Kalender          | BKP008                   | Nach BKP001; Grid + lesbare Tagesdetails, keine verlorenen Events                     |
+| Verwaltungsabläufe        | BKP009–BKP014            | Ressourcen, Produkte, Kontakte, Event-Details und Liste                               |
+| Dokumente                 | BKP015–BKP019            | Vorlagenverwaltung, editierbarer Entwurf, freie Anlage, Layout, Lebenszyklus          |
+| Dateien und Kommunikation | BKP020–BKP025            | Sichere Bibliothek, Mail-Datenkern, Postfach, Editor, Vorlagen, Versandplanung        |
+| Weitere Parität           | BKP026–BKP030            | Aufgaben, Verträge/Fragebögen, konfigurierbare Formulare, Auswertungen, Gesamtprüfung |
 
 Die Reihenfolge innerhalb unabhängiger UI-Arbeiten darf ein Agent begründet wählen. Mailversand hängt zwingend von dauerhaftem Mailkern/Outbox und sicheren Anhängen ab. Keine toten Menüpunkte oder Scheinbuttons für erst geplante Funktionen einbauen. Ausstehende Ressourcenmodul-/Mobilbeobachtungen stehen in BKP030; sie sind keine erfundenen Bookitup-Verträge.
 
