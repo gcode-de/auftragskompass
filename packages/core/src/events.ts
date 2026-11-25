@@ -69,6 +69,8 @@ export type EventInput = {
   endsAt: string | null;
   description: string;
   notesHtml: string;
+  // QW2: optional so writers that do not know it keep the stored reason.
+  cancellationReasonId?: string | null;
 };
 export type EventFilters = {
   q?: string;
@@ -839,6 +841,36 @@ export function eventRepository(pool: Connection, tenantId: string) {
             )
               throw new EventError('invalid_reference');
           }
+          // QW2: a reason belongs to a cancelled event only. A write without
+          // the field keeps the stored reason; leaving the status clears it.
+          if (input.status !== 'cancelled' && input.cancellationReasonId)
+            throw new EventError('invalid_fields');
+          const cancellationReasonId =
+            input.status !== 'cancelled'
+              ? null
+              : input.cancellationReasonId === undefined
+                ? (old?.cancellationReasonId ?? null)
+                : input.cancellationReasonId;
+          if (
+            cancellationReasonId &&
+            cancellationReasonId !== old?.cancellationReasonId
+          ) {
+            const [row] = await tx
+              .select()
+              .from(masterData)
+              .where(
+                and(
+                  eq(masterData.tenantId, tenantId),
+                  eq(masterData.id, cancellationReasonId),
+                ),
+              );
+            if (
+              !row ||
+              row.kind !== 'cancellation_reason' ||
+              row.state !== 'active'
+            )
+              throw new EventError('invalid_reference');
+          }
           if (input.locationId) {
             const [row] = await tx
               .select()
@@ -894,6 +926,7 @@ export function eventRepository(pool: Connection, tenantId: string) {
               ...fields,
               venue: venueState.venue,
               venueOverride: venueState.venueOverride,
+              cancellationReasonId,
               name: input.name.trim(),
               timeZone,
               notesHtml: sanitizeNotes(input.notesHtml),
@@ -1022,6 +1055,11 @@ export const eventVenueFields = {
   venue: { type: ['string', 'null'], maxLength: venueMaxLength },
   venueOverride: { type: 'boolean' },
 };
+// QW2: additive like the venue fields; rows always carry it, requests may
+// leave it out.
+export const eventCancellationFields = {
+  cancellationReasonId: nullableId,
+};
 export const resourceAssignmentSchema = {
   type: 'object',
   additionalProperties: false,
@@ -1111,6 +1149,7 @@ export function registerEventRoutes(
       required: [
         ...Object.keys(fields),
         ...Object.keys(eventVenueFields),
+        ...Object.keys(eventCancellationFields),
         'id',
         'version',
         'timeZone',
@@ -1118,6 +1157,7 @@ export function registerEventRoutes(
       properties: {
         ...fields,
         ...eventVenueFields,
+        ...eventCancellationFields,
         id: { type: 'string', format: 'uuid' },
         version,
         timeZone: { type: 'string' },
@@ -1587,7 +1627,11 @@ export function registerEventRoutes(
           type: 'object',
           additionalProperties: false,
           required: Object.keys(fields),
-          properties: { ...fields, ...eventVenueFields },
+          properties: {
+            ...fields,
+            ...eventVenueFields,
+            ...eventCancellationFields,
+          },
         },
         response: { 201: row },
       },
@@ -1621,6 +1665,7 @@ export function registerEventRoutes(
           properties: {
             ...fields,
             ...eventVenueFields,
+            ...eventCancellationFields,
             version,
             assignments: {
               type: 'array',
