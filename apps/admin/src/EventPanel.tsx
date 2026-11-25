@@ -517,6 +517,41 @@ export function EventPanel({
     },
     [],
   );
+  // The list row and the open record copy an event the same way: archived
+  // choices are dropped, a retired place survives as text.
+  const duplicateEvent = (row: EventRow) => {
+    const active = (choices: Choice[], id: string | null) =>
+      choices.some((choice) => choice.id === id && choice.state === 'active')
+        ? id
+        : null;
+    const duplicatePrimary = active(contacts, row.primaryContactId),
+      legacyPlace = locations.find((choice) => choice.id === row.locationId),
+      copyLegacy = legacyPlace?.state === 'active' ? row.locationId : null;
+    openCreate({
+      ...row,
+      name: row.name.slice(0, 192) + ' (Kopie)',
+      status: 'inquiry',
+      timeZone,
+      eventDate: row.startsAt
+        ? localDateTime(row.startsAt, timeZone).slice(0, 10)
+        : row.eventDate,
+      eventTypeId: active(types, row.eventTypeId),
+      packageId: active(packages, row.packageId),
+      locationId: copyLegacy,
+      // An archived legacy place cannot be referenced by
+      // a new booking; keep what the operator sees as text.
+      venue: row.venueOverride
+        ? row.venue
+        : !copyLegacy && legacyPlace
+          ? legacyPlaceText(legacyPlace)
+          : null,
+      venueOverride: row.venueOverride || Boolean(!copyLegacy && legacyPlace),
+      primaryContactId: duplicatePrimary,
+      additionalContactIds: row.additionalContactIds.filter(
+        (id) => id !== duplicatePrimary && active(contacts, id),
+      ),
+    });
+  };
   useEffect(() => {
     const changed = () => {
       const id = window.location.hash.slice(1);
@@ -1810,62 +1845,7 @@ export function EventPanel({
                             disabled={busy || editing}
                             aria-label={`Event duplizieren: ${row.name}`}
                             title="Event duplizieren"
-                            onClick={() => {
-                              const active = (
-                                choices: Choice[],
-                                id: string | null,
-                              ) =>
-                                choices.some(
-                                  (choice) =>
-                                    choice.id === id &&
-                                    choice.state === 'active',
-                                )
-                                  ? id
-                                  : null;
-                              const duplicatePrimary = active(
-                                  contacts,
-                                  row.primaryContactId,
-                                ),
-                                legacyPlace = locations.find(
-                                  (choice) => choice.id === row.locationId,
-                                ),
-                                copyLegacy =
-                                  legacyPlace?.state === 'active'
-                                    ? row.locationId
-                                    : null;
-                              openCreate({
-                                ...row,
-                                name: row.name.slice(0, 192) + ' (Kopie)',
-                                status: 'inquiry',
-                                timeZone,
-                                eventDate: row.startsAt
-                                  ? localDateTime(row.startsAt, timeZone).slice(
-                                      0,
-                                      10,
-                                    )
-                                  : row.eventDate,
-                                eventTypeId: active(types, row.eventTypeId),
-                                packageId: active(packages, row.packageId),
-                                locationId: copyLegacy,
-                                // An archived legacy place cannot be referenced by
-                                // a new booking; keep what the operator sees as text.
-                                venue: row.venueOverride
-                                  ? row.venue
-                                  : !copyLegacy && legacyPlace
-                                    ? legacyPlaceText(legacyPlace)
-                                    : null,
-                                venueOverride:
-                                  row.venueOverride ||
-                                  Boolean(!copyLegacy && legacyPlace),
-                                primaryContactId: duplicatePrimary,
-                                additionalContactIds:
-                                  row.additionalContactIds.filter(
-                                    (id) =>
-                                      id !== duplicatePrimary &&
-                                      active(contacts, id),
-                                  ),
-                              });
-                            }}
+                            onClick={() => duplicateEvent(row)}
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -1968,6 +1948,7 @@ export function EventPanel({
                               setMessage(message);
                               deferRecordList();
                             }}
+                            onDuplicate={duplicateEvent}
                             onEdit={(event) => {
                               setCreating(false);
                               setCreateInitial(null);

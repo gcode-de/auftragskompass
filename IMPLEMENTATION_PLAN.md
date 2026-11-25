@@ -442,6 +442,22 @@ Attrappen nachgebaut.
   Component (Reihenfolge, Aufbau), E2E-Screenshot mit echten Einträgen.
   Commit `feat: show the logbook as a timeline`.
 
+## Nutzauftrag 25.11.2026 (Quick Wins, Backend erlaubt)
+
+Priorisierte Angleichungen aus dem Stand-Abgleich vom 25.11.2026, der Reihe
+nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
+
+- [x] **QW1 — Akte: „Event duplizieren“ und Kontaktdetails:** „Weitere
+  Eventaktionen“ im Aktenkopf bietet „Event duplizieren“ mit derselben
+  Kopierlogik wie die Listenzeile (archivierte Auswahlen entfallen, ein
+  stillgelegter Ort bleibt als Text, Status Anfrage); bei offenen Änderungen
+  gesperrt, weil die Kopie vom gespeicherten Stand ausgeht. Jeder Kontakt in
+  „Kontakt und Ort“ verlinkt mit „Details anzeigen“ seine Kontaktakte. Eine
+  „PRIMÄR“-Marke am Ort entfällt bewusst: ein Event hat genau einen Ort.
+  Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
+  Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
+  Commit `feat: duplicate events from the record`.
+
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
 - [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.
