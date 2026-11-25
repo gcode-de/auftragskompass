@@ -3863,6 +3863,22 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
 .files-results {
   min-width: 0;
 }
+/* QW4: one quiet line of what is still owed above the list, with the two
+   shortcuts into the open and the late claims. */
+.files-receivables {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.files-receivables p {
+  margin: 0;
+  flex: 1 1 18rem;
+}
 .files-filter-access {
   display: flex;
   flex-wrap: wrap;

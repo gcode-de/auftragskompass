@@ -251,6 +251,7 @@ nicht root gehört.
 | `GET /api/v1/documents/:id/preview` | `200` Vorschau-PDF, `no-store` | `400` fehlender Inhalt, `404`, `409` falscher Zustand, `500` Renderfehler |
 | `POST /api/v1/documents/:id/finalize` | `200` finales Dokument | `400` fehlende Nummer/Inhalt, `404`, `409` bereits final, `500` Render-/Ablagefehler |
 | `GET /api/v1/documents` | `200` Liste (Filter `eventId`, `kind`, `state`, optional `q`, `from`/`to`, `limit`, `offset`, `include=metadata`) | `400` ungültiger Filter |
+| `GET /api/v1/documents/receivables` | `200` `{ count, openMinor, overdueCount, overdueMinor }`: alle finalen Rechnungen und Anzahlungsrechnungen mit offenem Betrag, Summe des noch Offenen, davon überfällig (QW4) | `401`/`403` |
 | `GET /api/v1/documents/:id` | `200` Dokument | `404` |
 | `GET /api/v1/documents/:id/pdf` | `200` PDF (`application/pdf`) | `404` Entwurf, fremdes Dokument oder fehlendes Artefakt, `500` Ablagefehler |
 | `GET /api/v1/document-layout` | `200` gespeichertes Layout | `404` noch nicht eingerichtet |
