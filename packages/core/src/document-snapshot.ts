@@ -1,4 +1,5 @@
 import {
+  allocateTotalDiscount,
   applyTotalDiscount,
   DocumentTotalsError,
   documentTotals,
@@ -103,7 +104,8 @@ export function buildDocumentSnapshot(input: SnapshotInput): DocumentSnapshot {
       ),
       // DOC-PRODUCT-01.5: one discount for the whole document, resolved here so
       // the block and the returned payable amount are the same arithmetic. The
-      // stored net/tax/gross stay the position sums.
+      // stored net/tax/gross stay the position sums; the print adds net and tax
+      // after the discount per rate (QW7).
       discount = applyTotalDiscount(totals, input.totalDiscount ?? null),
       html = renderDocumentHtml({
         layout: {
@@ -118,6 +120,11 @@ export function buildDocumentSnapshot(input: SnapshotInput): DocumentSnapshot {
                     : {}),
                   discountMinor: discount.discountMinor,
                   payableMinor: discount.payableMinor,
+                  // QW7: the discount lowers net and tax of every rate.
+                  taxGroups: allocateTotalDiscount(
+                    totals.taxGroups,
+                    discount.discountMinor,
+                  ).taxGroups,
                 },
               }
             : {}),

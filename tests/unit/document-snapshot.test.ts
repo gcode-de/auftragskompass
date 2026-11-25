@@ -173,6 +173,13 @@ describe('buildDocumentSnapshot', () => {
     expect(discounted.html).toContain(
       '<tr><td>Zu zahlender Betrag</td><td>179,10 €</td></tr>',
     );
+    // QW7: 179,10 € at 19 % is 150,50 € net and 28,60 € tax after the discount.
+    expect(discounted.html).toContain(
+      '<tr><td>Netto nach Rabatt</td><td>150,50 €</td></tr>',
+    );
+    expect(discounted.html).toContain(
+      '<tr><td>Umsatzsteuer 19 % nach Rabatt</td><td>28,60 €</td></tr>',
+    );
     expect(discounted.hash).not.toBe(plain.hash);
   });
   test('refuses a total discount above the gross instead of printing a zero', () => {

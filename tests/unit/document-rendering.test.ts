@@ -447,6 +447,46 @@ describe('renderDocumentHtml', () => {
       expect(styles(html)).toBe(styles(renderDocumentHtml(base)));
     });
 
+    test('prints net and tax after the discount per rate (QW7)', () => {
+      const one = renderDocumentHtml({
+        ...discounted,
+        layout: {
+          ...discounted.layout,
+          totalDiscount: {
+            ...discounted.layout.totalDiscount,
+            taxGroups: [
+              { taxBasisPoints: 1900, netMinor: 15126, taxMinor: 2874 },
+            ],
+          },
+        },
+      });
+      expect(one).toContain(
+        '      <tr><td>Netto nach Rabatt</td><td>151,26 €</td></tr>',
+      );
+      expect(one).toContain(
+        '      <tr><td>Umsatzsteuer 19 % nach Rabatt</td><td>28,74 €</td></tr>',
+      );
+      const two = renderDocumentHtml({
+        ...discounted,
+        layout: {
+          ...discounted.layout,
+          totalDiscount: {
+            ...discounted.layout.totalDiscount,
+            taxGroups: [
+              { taxBasisPoints: 700, netMinor: 1000, taxMinor: 70 },
+              { taxBasisPoints: 1900, netMinor: 2000, taxMinor: 380 },
+            ],
+          },
+        },
+      });
+      expect(two).toContain('<td>Netto nach Rabatt (7 %)</td><td>10,00 €</td>');
+      expect(two).toContain(
+        '<td>Umsatzsteuer 19 % nach Rabatt</td><td>3,80 €</td>',
+      );
+      // Without a breakdown (a layout rendered before QW7) nothing is added.
+      expect(renderDocumentHtml(discounted)).not.toContain('nach Rabatt');
+    });
+
     test('keeps a document without a discount byte-identical', () => {
       expect(renderDocumentHtml({ ...base })).toBe(renderDocumentHtml(base));
       expect(renderDocumentHtml(base)).not.toContain('Gesamtrabatt');

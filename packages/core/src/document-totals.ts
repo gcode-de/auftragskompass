@@ -178,9 +178,8 @@ export function assertTotalsConsistent(totals: DocumentTotals): void {
 
 // DOC-PRODUCT-01.5: one discount for the whole document. It is deliberately not
 // a line: the position sums, the tax groups and the stored net/tax/gross stay
-// exactly what the positions say, and only the amount the document asks for
-// shrinks. No tax is redistributed or recalculated - that would invent a tax
-// rule nobody agreed on. A rate is basis points (1000 = 10 %), an amount is
+// exactly what the positions say, and the amount the document asks for
+// shrinks. How the tax follows the discount is `allocateTotalDiscount` (QW7). A rate is basis points (1000 = 10 %), an amount is
 // minor units, and neither is ever clamped: a deduction above the gross is a
 // typing mistake, exactly like a discount above its line.
 export type TotalDiscount =
@@ -217,6 +216,77 @@ export function applyTotalDiscount(
   // typed amount can overshoot - and it is refused, never clamped to zero.
   if (payableMinor < 0) throw new DocumentTotalsError('invalid');
   return { discountMinor, payableMinor };
+}
+
+// QW7 (Betreiberentscheidung 25.11.2026): the document discount is an
+// Entgeltminderung, so it lowers the taxable amount of every rate in
+// proportion to that rate's share of the gross (§ 14 Abs. 4 Nr. 7/8, § 17 UStG).
+// The gross shares are whole minor units: each rate first gets the floor of its
+// exact share, the remaining units go to the largest remainders, so the shares
+// always add up to the discount. Per rate the reduced gross is split into net
+// and tax with the same rounding as a gross position. The payable amount stays
+// `gross - discount`; only the printed tax breakdown follows the discount.
+export type DiscountedTaxGroup = TaxGroup & { discountMinor: number };
+export type AllocatedDiscount = {
+  taxGroups: DiscountedTaxGroup[];
+  netMinor: number;
+  taxMinor: number;
+  grossMinor: number;
+};
+
+export function allocateTotalDiscount(
+  taxGroups: readonly TaxGroup[],
+  discountMinor: number,
+): AllocatedDiscount {
+  const discount = BigInt(safe(discountMinor));
+  const grosses = taxGroups.map((group) => BigInt(safe(group.grossMinor)));
+  const total = grosses.reduce((sum, gross) => sum + gross, 0n);
+  if (discount < 0n || discount > total)
+    throw new DocumentTotalsError('invalid');
+  const shares = grosses.map((gross) =>
+    total === 0n ? 0n : (discount * gross) / total,
+  );
+  let rest = discount - shares.reduce((sum, share) => sum + share, 0n);
+  const order = grosses
+    .map((gross, index) => ({
+      index,
+      remainder: total === 0n ? 0n : (discount * gross) % total,
+    }))
+    .sort((a, b) =>
+      a.remainder === b.remainder
+        ? a.index - b.index
+        : a.remainder > b.remainder
+          ? -1
+          : 1,
+    );
+  for (const { index } of order) {
+    if (rest === 0n) break;
+    shares[index]! += 1n;
+    rest -= 1n;
+  }
+  let netMinor = 0n,
+    taxMinor = 0n,
+    grossMinor = 0n;
+  const groups = taxGroups.map((group, index) => {
+    const gross = grosses[index]! - shares[index]!,
+      net = roundedRatio(gross * 10000n, BigInt(10000 + group.taxBasisPoints));
+    netMinor += net;
+    taxMinor += gross - net;
+    grossMinor += gross;
+    return {
+      taxBasisPoints: group.taxBasisPoints,
+      discountMinor: safeMinor(shares[index]!),
+      netMinor: safeMinor(net),
+      taxMinor: safeMinor(gross - net),
+      grossMinor: safeMinor(gross),
+    };
+  });
+  return {
+    taxGroups: groups,
+    netMinor: safeMinor(netMinor),
+    taxMinor: safeMinor(taxMinor),
+    grossMinor: safeMinor(grossMinor),
+  };
 }
 
 // Deliberately not Intl: a document must render identically everywhere.

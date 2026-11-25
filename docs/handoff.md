@@ -410,6 +410,7 @@ Abschnitt beschreibt den aktuellen Stand.
   Bookitup-Screenshots/PDFs; die eigene App läuft in isoliertem
   Chromium/Playwright mit synthetischen Daten, Screenshot-Abnahme erfolgt per
   Vision-Tool (DOM/axe allein gelten nicht als visuelle Abnahme).
+- **Aufgelöst 25.11.2026 (QW7):** Der Gesamtrabatt mindert jetzt jeden Steuersatz anteilig (Betreiberentscheidung „Anteilig je Steuersatz“); das PDF weist Netto und Umsatzsteuer nach Rabatt je Satz aus. Bestätigung durch die Steuerberatung bleibt empfohlen. Ursprünglicher Befund:
 - **STEUER-BLOCKER Gesamtrabatt (20.11.2026):** Die Semantik „mindert nur den
   Zahlbetrag, Netto/Steuer unverändert“ ist für echte Preisnachlässe
   zweifelhaft (§ 14 Abs. 4 Nr. 7/8 UStG: Entgelt/Entgeltminderung und Steuer-

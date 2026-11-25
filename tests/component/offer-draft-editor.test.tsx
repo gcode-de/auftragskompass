@@ -2905,7 +2905,7 @@ test('a draft without a total discount offers the deliberate "Kein" state and se
   expect(within(group).queryByLabelText('Gesamtrabatt in Euro')).toBeNull();
   expect(
     within(group).getByText(
-      'Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und Steuer bleiben unverändert.',
+      'Der Gesamtrabatt mindert den Zahlbetrag und wird anteilig auf die Steuersätze verteilt; das PDF zeigt Netto und Umsatzsteuer nach Rabatt.',
     ),
   ).toBeTruthy();
   expect(screen.getByText(/Gespeicherter Gesamtbetrag: 249,00/)).toBeTruthy();

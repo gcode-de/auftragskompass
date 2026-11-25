@@ -2053,8 +2053,9 @@ export function OfferDraftEditor({
                 </label>
               )}
               <p className="document-hint">
-                Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und
-                Steuer bleiben unverändert.
+                Der Gesamtrabatt mindert den Zahlbetrag und wird anteilig auf
+                die Steuersätze verteilt; das PDF zeigt Netto und Umsatzsteuer
+                nach Rabatt.
               </p>
             </fieldset>
             {/* EDITOR-LAYOUT-01: the stored sum and the hints that belong to it

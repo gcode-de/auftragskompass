@@ -461,7 +461,7 @@ async function offerDraftScenario(browser: Browser) {
     ).toHaveCount(0);
     await expect(
       totalDiscount.getByText(
-        'Der Gesamtrabatt mindert den Zahlbetrag; Positionssummen und Steuer bleiben unverändert.',
+        'Der Gesamtrabatt mindert den Zahlbetrag und wird anteilig auf die Steuersätze verteilt; das PDF zeigt Netto und Umsatzsteuer nach Rabatt.',
       ),
     ).toBeVisible();
     // A narrow editor can be embedded in a wide viewport.
