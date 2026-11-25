@@ -489,6 +489,17 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Kurzwege, leer, ungültige Antwort), E2E (Zeile, Tastaturreihenfolge,
   Spaltenausrichtung, Screenshots).
   Commit `feat: show open receivables across events`.
+- [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
+  datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
+  Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
+  wie Bookitup“). Migration 0080 übernimmt jede vorhandene Notiz und leert das
+  alte Feld; `notesHtml` in der Event-API wird beim Schreiben zur Notiz,
+  Export führt alle Notizen. Der alte Rich-Text-Editor samt Autosave-Pfad
+  entfällt. **Tests:** Integration (API, Mandanten, Bereinigung, Grabstein,
+  Audit, Umwandlung, Idempotenz, Export, Migrationsumzug), Component
+  (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
+  Screenshots 320/1280 hell/dunkel).
+  Commit `feat: replace event notes with dated notes`.
 
 - [x] **QW7 — Gesamtrabatt steuerlich anteilig (STEUER-BLOCKER):**
   Betreiberentscheidung 25.11.2026 „Anteilig je Steuersatz“: Der Gesamtrabatt

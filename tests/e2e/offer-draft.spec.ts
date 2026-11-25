@@ -33,6 +33,7 @@ import {
   contactRepository,
 } from '../../packages/core/src/contacts.js';
 import { registerLocationRoutes } from '../../packages/core/src/locations.js';
+import { registerEventNoteRoutes } from '../../packages/core/src/event-notes.js';
 import {
   registerEventRoutes,
   eventRepository,
@@ -215,6 +216,7 @@ async function offerDraftScenario(browser: Browser) {
     registerContactRoutes(app, pool, tenantId);
     registerLocationRoutes(app, pool, tenantId);
     registerEventRoutes(app, pool, tenantId);
+    registerEventNoteRoutes(app, pool, tenantId);
     registerDocumentTemplateRoutes(app, pool, tenantId);
     registerDocumentNumberRoutes(app, pool, tenantId);
     const renderPdf = chromiumPdfRenderer({
