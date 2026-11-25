@@ -3445,6 +3445,11 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
     grid-column: span 2;
   }
 }
+.offer-draft-subtotal {
+  margin: 0.25rem 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .offer-draft-total {
   font-weight: 650;
   font-variant-numeric: tabular-nums;
