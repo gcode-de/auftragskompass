@@ -59,6 +59,17 @@ function server(initial: unknown[]) {
       notes = [{ ...newer, bodyHtml }, ...notes];
       return Response.json(notes, { status: 201 });
     }
+    if (options?.method === 'PUT') {
+      const { bodyHtml } = JSON.parse(String(options.body)) as {
+        bodyHtml: string;
+      };
+      notes = notes.map((note) =>
+        url.endsWith((note as { id: string }).id)
+          ? { ...(note as object), bodyHtml, updatedAt: '2026-11-26T09:00:00Z' }
+          : note,
+      );
+      return Response.json(notes);
+    }
     if (options?.method === 'DELETE') {
       notes = notes.filter(
         (note) => !url.endsWith((note as { id: string }).id),
@@ -78,7 +89,10 @@ test('notes list newest first, a note is added and the composer empties', async 
   expect(await within(region).findByText('Notiz')).toBeTruthy();
   expect(within(region).getByText('Übernommen')).toBeTruthy();
 
-  const add = screen.getByRole('button', { name: 'Notiz hinzufügen' });
+  // UI-BKP-04: the card's plus opens the composer, like Bookitup.
+  expect(screen.queryByLabelText('Neue Notiz')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Notiz hinzufügen' }));
+  const add = screen.getByRole('button', { name: 'Notiz speichern' });
   expect(add).toHaveProperty('disabled', true);
   fireEvent.change(screen.getByLabelText('Neue Notiz'), {
     target: { value: '<p>Kunde ruft zurück</p>' },
@@ -97,10 +111,46 @@ test('notes list newest first, a note is added and the composer empties', async 
   const items = within(region).getAllByRole('listitem');
   expect(items[0]!.textContent).toContain('Kunde ruft zurück');
   expect(items[0]!.textContent).toContain('notes.owner@example.invalid');
-  expect(
-    (screen.getByLabelText('Neue Notiz') as HTMLTextAreaElement).value,
-  ).toBe('');
+  // A saved note closes the composer again.
+  expect(screen.queryByLabelText('Neue Notiz')).toBeNull();
   expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('an older note is edited in place and cancelling keeps it', async () => {
+  const fetcher = server([newer, older]);
+  render(<EventNotes eventId="event-1" csrfToken="csrf" />);
+  const [, editOlder] = await screen.findAllByRole('button', {
+    name: /^Bearbeiten: Notiz vom /,
+  });
+  fireEvent.click(editOlder!);
+  const field = screen.getByLabelText(
+    'Notiz bearbeiten',
+  ) as HTMLTextAreaElement;
+  expect(field.value).toBe(older.bodyHtml);
+  fireEvent.change(field, { target: { value: '<p>Neu formuliert</p>' } });
+  expect(hasUnsavedChanges()).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+  expect(screen.queryByLabelText('Notiz bearbeiten')).toBeNull();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  fireEvent.click(
+    screen.getAllByRole('button', { name: /^Bearbeiten: Notiz vom / })[1]!,
+  );
+  fireEvent.change(screen.getByLabelText('Notiz bearbeiten'), {
+    target: { value: '<p>Neu formuliert</p>' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+  await screen.findByText('Notiz gespeichert.');
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/events/event-1/notes/note-old',
+    expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ bodyHtml: '<p>Neu formuliert</p>' }),
+    }),
+  );
+  const items = screen.getAllByRole('listitem');
+  expect(items[1]!.textContent).toContain('Neu formuliert');
+  expect(items[1]!.textContent).toContain('bearbeitet');
+  expect(screen.queryByLabelText('Notiz bearbeiten')).toBeNull();
 });
 
 test('deleting asks first and a refused or failed write keeps the draft', async () => {
@@ -109,13 +159,15 @@ test('deleting asks first and a refused or failed write keeps the draft', async 
   vi.stubGlobal('confirm', confirm);
   render(<EventNotes eventId="event-1" csrfToken="csrf" />);
   const [remove] = await screen.findAllByRole('button', {
-    name: /^Löschen: Notiz vom /,
+    name: /^Event-Notiz löschen: Notiz vom /,
   });
   fireEvent.click(remove!);
   expect(confirm).toHaveBeenCalledOnce();
   expect(fetcher).toHaveBeenCalledTimes(1);
   confirm.mockReturnValue(true);
-  fireEvent.click(screen.getAllByRole('button', { name: /^Löschen:/ })[0]!);
+  fireEvent.click(
+    screen.getAllByRole('button', { name: /^Event-Notiz löschen:/ })[0]!,
+  );
   await screen.findByText('Notiz gelöscht.');
   expect(fetcher).toHaveBeenCalledWith(
     '/api/v1/events/event-1/notes/note-new',
@@ -123,20 +175,21 @@ test('deleting asks first and a refused or failed write keeps the draft', async 
   );
   expect(screen.getAllByRole('listitem')).toHaveLength(1);
 
+  fireEvent.click(screen.getByRole('button', { name: 'Notiz hinzufügen' }));
   fireEvent.change(screen.getByLabelText('Neue Notiz'), {
     target: { value: '<p>zu lang</p>' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Notiz hinzufügen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Notiz speichern' }));
   await screen.findByText('Die Notiz ist zu lang.');
   expect(
     (screen.getByLabelText('Neue Notiz') as HTMLTextAreaElement).value,
   ).toBe('<p>zu lang</p>');
 
   fetcher.mockRejectedValueOnce(new Error('offline'));
-  fireEvent.click(screen.getByRole('button', { name: 'Notiz hinzufügen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Notiz speichern' }));
   await screen.findByText(/Verbindung fehlgeschlagen/);
   fetcher.mockResolvedValueOnce(new Response('', { status: 500 }));
-  fireEvent.click(screen.getByRole('button', { name: 'Notiz hinzufügen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Notiz speichern' }));
   await screen.findByText(/konnte nicht gespeichert werden/);
 });
 

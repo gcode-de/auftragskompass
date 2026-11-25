@@ -551,6 +551,16 @@ Gesamtrahmen bleiben vorerst aus.
   Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
   Statusauswahl, 390 px; Auth-Ablauf angepasst).
   Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-04 — Notizen wie Bookitup bearbeiten:** Das Plus im Kartenkopf
+  öffnet den Editor; jede Notiz zeigt Zeitpunkt (fett) und Verfasser, einen
+  Bearbeiten-Stift, den Text in grauer Box und darunter rot „Event-Notiz
+  löschen“. Auch ältere Notizen sind bearbeitbar: neue Route
+  `PUT /api/v1/events/:id/notes/:noteId`, Zeitpunkt und Verfasser bleiben,
+  „· bearbeitet“ zeigt die Änderung; Migration 0082 (`updated_at`,
+  `updated_by`, Audit `event_note.updated`). **Tests:** Integration
+  (Bearbeiten, leer, CSRF, unbekannt, gelöscht, Audit), Component (Plus,
+  Bearbeiten, Abbrechen, Löschen), E2E (Ablauf mit Screenshots).
+  Commit `feat: edit event notes like bookitup`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 

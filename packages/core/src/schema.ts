@@ -207,6 +207,8 @@ export const eventNotes = pgTable('event_notes', {
   createdBy: uuid('created_by'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   deletedBy: uuid('deleted_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+  updatedBy: uuid('updated_by'),
 });
 export const eventContacts = pgTable('event_contacts', {
   tenantId: uuid('tenant_id').notNull(),
