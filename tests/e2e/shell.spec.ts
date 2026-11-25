@@ -87,6 +87,11 @@ const referenceSidebar = `
   </nav>
 </aside>`;
 
+/** How far a colour leans blue: the blue channel above the red channel. */
+function blueness(value: string) {
+  const [r, , b] = (value.match(/\d+/g) ?? []).map(Number);
+  return b! - r!;
+}
 /** How far a colour leans green: the green channel above the red/blue mean. */
 function greenness(value: string) {
   const [r, g, b] = value
@@ -345,6 +350,7 @@ test('event months and cards keep their hierarchy across themes and widths', asy
           month2: getComputedStyle(h2).backgroundColor,
           month3: getComputedStyle(h3).backgroundColor,
           card: getComputedStyle(card).backgroundColor,
+          cardShadow: getComputedStyle(card).boxShadow,
           cardText: getComputedStyle(card).color,
           monthText: getComputedStyle(h2).color,
           countText: getComputedStyle(count).color,
@@ -357,7 +363,11 @@ test('event months and cards keep their hierarchy across themes and widths', asy
         };
       });
       expect(values.month2).toBe(values.month3);
-      expect(values.card).not.toBe(values.panel);
+      // UI-BKP-02: like Bookitup a white card on a white panel still stands
+      // apart through its shadow.
+      expect(values.card !== values.panel || values.cardShadow !== 'none').toBe(
+        true,
+      );
       expect(contrast(values.cardText, values.card)).toBeGreaterThanOrEqual(
         4.5,
       );
@@ -566,10 +576,11 @@ test('both themes keep a neutral reference surface readable at 390 and 1280', as
       greenness(measured.input.background),
       `${label}: field neutral`,
     ).toBeLessThanOrEqual(4);
+    // UI-BKP-01: the primary action carries the Bookitup blue.
     expect(
-      greenness(measured.primary.background),
+      blueness(measured.primary.background),
       `${label}: the primary action keeps the brand accent`,
-    ).toBeGreaterThanOrEqual(8);
+    ).toBeGreaterThanOrEqual(40);
     expect(measured.ring.style, `${label}: focus ring is drawn`).toBe('solid');
     expect(measured.ring.width, `${label}: focus ring width`).toBe('3px');
     expect(measured.ring.offset, `${label}: focus ring offset`).toBe('3px');

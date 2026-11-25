@@ -646,11 +646,14 @@ test('event list, editor and filter block share one primary action', async () =>
   expect(
     screen.getByRole('button', { name: 'Event anlegen' }).getAttribute('class'),
   ).toContain('tier-primary-icon');
+  // UI-BKP-02: edit and duplicate are quiet text actions in the row menu.
   for (const name of [
     'Event bearbeiten: Synthetic event',
     'Event duplizieren: Synthetic event',
   ])
-    iconTier(within(section).getByRole('button', { name }), name);
+    expect(tier(within(section).getByRole('button', { name })), name).toBe(
+      'tertiary-action',
+    );
 
   fireEvent.click(
     screen.getByRole('button', { name: 'Event bearbeiten: Synthetic event' }),

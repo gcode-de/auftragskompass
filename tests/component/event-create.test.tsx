@@ -436,7 +436,10 @@ test('an open edit draft blocks create and duplicate, then focus survives cancel
   });
   fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
   await waitFor(() => expect(document.activeElement).not.toBe(document.body));
-  expect(document.activeElement).toBe(edit);
+  // UI-BKP-02: focus returns to the row menu that held the edit action.
+  expect(document.activeElement).toBe(
+    edit.closest('details')!.querySelector('summary'),
+  );
   expect(posts).toHaveLength(0);
   fireEvent.click(create);
   expect(
@@ -487,7 +490,10 @@ test('focus returns to the surviving edit trigger after a confirmed edit save', 
   await screen.findByText('Event gespeichert.');
   await waitFor(() => expect(document.activeElement).not.toBe(document.body));
   expect(document.activeElement).toBe(
-    screen.getByRole('button', { name: /Event bearbeiten: Synthetic/ }),
+    screen
+      .getByRole('button', { name: /Event bearbeiten: Synthetic/ })
+      .closest('details')!
+      .querySelector('summary'),
   );
 });
 test('a failed pending create keeps the dialog open and closeable', async () => {

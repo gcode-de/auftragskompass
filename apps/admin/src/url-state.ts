@@ -4,6 +4,9 @@ export const emptyEventFilters = {
   from: '',
   to: '',
   status: '',
+  // UI-BKP-02: the booking-status multi-select, a client-side view of the
+  // loaded list; never sent to the API.
+  statuses: '',
   eventTypeId: '',
   undated: '',
 };
@@ -41,6 +44,7 @@ export function eventQuery(search: string) {
   const source = new URLSearchParams(search),
     result = new URLSearchParams();
   for (const key of Object.keys(emptyEventFilters)) {
+    if (key === 'statuses') continue;
     const value = source.get(key);
     if (value) result.set(key, value);
   }

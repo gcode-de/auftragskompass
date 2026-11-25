@@ -1,8 +1,11 @@
 :root {
+  /* UI-BKP-01: Bookitup's type - Nunito Sans (self-hosted, variable) for the
+     whole admin, 14px/21px body text like the reference. */
   font-family:
+    'Nunito Sans Variable',
+    'Nunito Sans',
     system-ui,
     -apple-system,
-    BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
   font-synthesis: none;
@@ -10,66 +13,81 @@
   color-scheme: light dark;
   color: var(--ink);
   background: var(--canvas);
-  /* BKP005: neutral surfaces in both themes. The dark theme is a warm
-     anthracite instead of the former green-black; the green survives as one
-     restrained accent for links, the single primary action and the active
-     navigation row. Contrast values are checked in the component and
-     Chromium tests. */
-  --surface: light-dark(#ffffff, #1e1d1b);
-  --canvas: light-dark(#f5f4f1, #141312);
-  --ink: light-dark(#20211f, #e8e4df);
-  --muted: light-dark(#5d5c58, #b0aaa2);
-  --accent: light-dark(#3d6b58, #9dc1af);
-  --border: light-dark(#dbd8d2, #3b3833);
-  --action-ink: light-dark(#ffffff, #12201b);
-  --action-hover: light-dark(#2f5749, #b2d2c1);
-  --hover-surface: light-dark(#efede8, #2a2825);
-  --field-surface: light-dark(#fbfaf8, #191817);
-  --field-border: light-dark(#8f8a82, #7d776f);
-  --focus: light-dark(#20695a, #9fd3ba);
-  --status-surface: light-dark(#f1efec, #242220);
-  --alert-surface: light-dark(#fdf0ed, #3d2523);
-  --alert-ink: light-dark(#a3312a, #f6bcb2);
-  --table-surface: light-dark(#f3f1ed, #242220);
-  --selection: light-dark(#dcd9d3, #3a3733);
-  --selection-ink: light-dark(#1d1c1a, #f0ece7);
-  --selected-surface: light-dark(#eeece7, #302d29);
-  --selected-ink: light-dark(#33544a, #e8e4df);
-  --disabled-surface: light-dark(#e9e6e0, #262421);
-  --disabled-ink: light-dark(#6b665f, #a9a29a);
-  /* The rail is anthracite in both themes; its active row is the only tinted
-     surface left in the navigation and stays a desaturated green. */
-  --sidebar: #1b1a18;
-  --sidebar-ink: #eae6e0;
-  --sidebar-link: #c6c1ba;
-  --sidebar-muted: #a8a29a;
-  --sidebar-active: #2f3a34;
-  --sidebar-hover: #2a2825;
-  --sidebar-focus: #cfd8d0;
-  --sidebar-selected-ink: #ffffff;
-  --menu-close-border: #6f6a63;
-  --backdrop: #0b0a09aa;
-  --scrim: light-dark(#1b1a1866, #0b0a09cc);
+  /* UI-BKP-01: the palette measured in Bookitup on 25.11.2026 (light and
+     dark, docs/bookitup-parity/ui-runtime-2026-11-25.md). One blue for links,
+     the primary action and the active navigation; white cards on a near-white
+     canvas, thin grey borders and soft shadows instead of nested frames. Small
+     greys are darkened where the reference falls below WCAG AA. */
+  --surface: light-dark(#ffffff, #141517);
+  --canvas: light-dark(#fbfbfb, #0c0d0f);
+  --ink: light-dark(#282828, #d5d7e0);
+  --muted: light-dark(#666666, #9a9db0);
+  --accent: light-dark(#1d5191, #6ea8ec);
+  --border: light-dark(#e2e2e2, #2b2c3d);
+  --action-ink: light-dark(#ffffff, #ffffff);
+  --action-hover: light-dark(#1a4983, #2a64ab);
+  --hover-surface: light-dark(#f1f1f1, #1e1f24);
+  --field-surface: light-dark(#ffffff, #1a1b20);
+  --field-border: light-dark(#8c8c8c, #6b6e82);
+  --filled-field: light-dark(#e2e2e2, #24252d);
+  --focus: light-dark(#1d5191, #6ea8ec);
+  --status-surface: light-dark(#f1f1f1, #1a1b20);
+  --alert-surface: light-dark(#fff0f0, #3a1d1f);
+  --alert-ink: light-dark(#c62f2d, #ff9c9a);
+  --danger-ink: light-dark(#d23b39, #ff7a78);
+  --table-surface: light-dark(#f7f7f7, #1a1b20);
+  --selection: light-dark(#dfe7f1, #23324a);
+  --selection-ink: light-dark(#1a1a1a, #f0f2f8);
+  --selected-surface: light-dark(#e8eef4, #1d2a3d);
+  --selected-ink: light-dark(#1a4983, #9cc4f4);
+  --disabled-surface: light-dark(#ececec, #1e1f24);
+  --disabled-ink: light-dark(#5e5e5e, #9a9db0);
+  --section-band: light-dark(#f1f1f1, #050509);
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.05), 0 1px 2px rgb(0 0 0 / 0.1);
+  --shadow-aside: 0 0 8px rgb(0 0 0 / 0.15);
+  --shadow-dialog:
+    0 1px 3px rgb(0 0 0 / 0.05), 0 28px 23px -7px rgb(0 0 0 / 0.05),
+    0 12px 12px -7px rgb(0 0 0 / 0.04);
+  --radius-card: 10px;
+  --radius-field: 4px;
+  --brand-stripe: linear-gradient(88deg, #ff6b69 0%, #ffba5e 100%);
+  /* The navigation rail follows the theme like Bookitup's: white with a grey
+     hover in light, near-black in dark; the active row is the blue tint. */
+  --sidebar: light-dark(#ffffff, #141517);
+  --sidebar-ink: light-dark(#282828, #e8eaf2);
+  --sidebar-link: light-dark(#282828, #d5d7e0);
+  --sidebar-muted: light-dark(#6e6e6e, #9a9db0);
+  --sidebar-active: light-dark(#e8eef4, #1d2a3d);
+  --sidebar-hover: light-dark(#f1f1f1, #1e1f24);
+  --sidebar-focus: light-dark(#1d5191, #6ea8ec);
+  --sidebar-selected-ink: light-dark(#1a4983, #9cc4f4);
+  --menu-close-border: light-dark(#8c8c8c, #6b6e82);
+  --backdrop: rgb(40 40 40 / 0.55);
+  --scrim: light-dark(rgb(40 40 40 / 0.4), rgb(0 0 0 / 0.7));
   --calendar-ink: #111827;
-  /* BKP014.1: one calm tone per event status for the card stripe and dot. The
-     status name is always written out beside the marker, so colour is only the
-     second cue. Cancelled/blocked/unavailable share the quiet grey tone. */
-  --status-inquiry: light-dark(#6b665f, #a9a29a);
-  --status-option: light-dark(#8a5a12, #e0b45c);
-  --status-booked: light-dark(#2f5749, #9dc1af);
-  --status-hold: light-dark(#6a4b8a, #c9aee6);
-  --status-cancelled: light-dark(#8f8a82, #7d776f);
-  --status-blocked: light-dark(#8f8a82, #7d776f);
-  --status-unavailable: light-dark(#8f8a82, #7d776f);
-  --status-conflict: light-dark(#a3312a, #f6bcb2);
-  /* H036: one action hierarchy for every surface. The accent stays reserved
-     for the single primary action of a section; secondary and tertiary
-     actions share a text-ink that is readable on every light or dark
-     surface. */
-  --action: light-dark(#3d6b58, #9dc1af);
-  --action-border: light-dark(#3d6b58, #b2d2c1);
-  --quiet-ink: light-dark(#33544a, #cdc7bf);
-  --quiet-action-border: light-dark(#8f8a82, #757067);
+  /* UI-BKP-01: Bookitup's booking colours. The bar/marker carries the tone;
+     text on a tinted row uses the darker ink variant for AA contrast. */
+  --status-inquiry: light-dark(#1d5191, #6ea8ec);
+  --status-option: #fda632;
+  --status-booked: light-dark(#4ebf46, #66e06f);
+  --status-hold: #fda632;
+  --status-cancelled: #b7b7b7;
+  --status-blocked: #b7b7b7;
+  --status-unavailable: #b7b7b7;
+  --status-conflict: light-dark(#d23b39, #ff7a78);
+  --status-inquiry-surface: light-dark(#e8eef4, #1d2a3d);
+  --status-option-surface: light-dark(#fff6eb, #33270f);
+  --status-booked-surface: light-dark(#edf9ed, #16301a);
+  --status-inquiry-ink: light-dark(#1d5191, #9cc4f4);
+  --status-option-ink: light-dark(#9a5a00, #ffc677);
+  --status-booked-ink: light-dark(#2e7d28, #8fe796);
+  /* H036: one action hierarchy for every surface. The blue is reserved for
+     the single primary action; secondary and tertiary actions share a
+     text-ink readable on every surface. */
+  --action: light-dark(#1d5191, #2a64ab);
+  --action-border: light-dark(#1d5191, #6ea8ec);
+  --quiet-ink: light-dark(#1d5191, #9cc4f4);
+  --quiet-action-border: light-dark(#8c8c8c, #6b6e82);
   --layer-sticky: 5;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -85,6 +103,8 @@
 }
 body {
   margin: 0;
+  /* Bookitup's 14px body text; rem stays 16px so every spacing token holds. */
+  font-size: 0.875rem;
 }
 a {
   color: var(--accent);
@@ -122,10 +142,9 @@ section {
 .login-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 1rem;
-  padding: 1.5rem;
-  margin: 1.5rem 0;
-  box-shadow: 0 0.25rem 1rem #20304408;
+  border-radius: var(--radius-card);
+  padding: 1rem;
+  margin: 1rem 0;
 }
 .workspace > section {
   overflow-x: auto;
@@ -209,27 +228,37 @@ form {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
 }
+/* UI-BKP-01: a form group is spacing, not another frame - Bookitup's cards
+   hold their fields directly. The legend reads like a small section title. */
 fieldset {
   min-inline-size: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   align-items: start;
-  gap: 1rem;
-  padding: 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  gap: 0.75rem 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   margin: 0;
-  background: var(--field-surface);
+  background: transparent;
 }
 legend {
-  font-weight: 650;
-  padding: 0 0.4rem;
+  font-weight: 700;
+  padding: 0 0 0.5rem;
 }
+/* Bookitup's field label: small, medium weight, grey, directly above. */
 label {
   display: grid;
-  gap: 0.35rem;
-  font-weight: 550;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--muted);
   min-width: 0;
+}
+label > :is(input, select, textarea, div, span) {
+  font-size: 0.875rem;
+  color: var(--ink);
 }
 fieldset > p,
 fieldset > fieldset,
@@ -271,7 +300,9 @@ label:has(input[type='radio']) {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  font-size: 0.875rem;
   font-weight: 400;
+  color: var(--ink);
   min-height: 44px;
 }
 
@@ -289,11 +320,11 @@ textarea {
   display: block;
   width: 100%;
   min-height: 44px;
-  padding: 0.6rem 0.7rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--field-border);
-  border-radius: 0.4rem;
-  color: inherit;
-  background: var(--surface);
+  border-radius: var(--radius-field);
+  color: var(--ink);
+  background: var(--field-surface);
 }
 input[type='checkbox'],
 input[type='radio'] {
@@ -313,10 +344,10 @@ select[multiple] {
 }
 button {
   min-height: 44px;
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--accent);
-  border-radius: 0.4rem;
-  background: var(--accent);
+  padding: 0.5rem 1.125rem;
+  border: 1px solid var(--action);
+  border-radius: var(--radius-field);
+  background: var(--action);
   color: var(--action-ink);
   font-weight: 600;
   cursor: pointer;
@@ -1484,17 +1515,23 @@ time {
   overflow-y: auto;
   background: var(--scrim);
 }
+/* UI-BKP-01: Bookitup's dialog - white, radius 10, the warm brand stripe
+   along the top edge (a transparent top border filled by a second
+   background), soft layered shadow. */
 .event-create-dialog,
 .form-dialog {
   width: min(100%, 38rem);
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: 1.25rem;
   color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  box-shadow: 0 1.5rem 4rem #0b120f40;
+  border: 0;
+  border-top: 10px solid transparent;
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    var(--brand-stripe) border-box;
+  box-shadow: var(--shadow-dialog);
 }
 .document-deliver-layout {
   display: grid;
@@ -1787,32 +1824,85 @@ time {
   background: transparent;
   gap: 0.75rem;
 }
-/* A view is a real route, so it is a quiet link row, not a switch. */
+/* UI-BKP-02: Bookitup's filter column - every choice is a quiet list row;
+   the chosen one gets a 5px rounded marker and bold text (never colour
+   alone). Views are real routes, so they stay links. */
 .event-view-choice {
   position: static;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+  display: grid;
+  gap: 0;
   margin: 0;
   padding: 0;
   background: transparent;
   border: 0;
   box-shadow: none;
 }
-.event-view-choice a {
-  min-height: 44px;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid transparent;
-  border-radius: 0.4rem;
-  color: var(--quiet-ink);
-  font-size: 0.9rem;
-  font-weight: 500;
+.event-view-choice::before {
+  content: 'Ansicht';
+  display: block;
+  padding: 0 0 0.4rem 0.6rem;
+  color: var(--ink);
+  font-size: 0.875rem;
 }
-.event-view-choice a[aria-current='page'] {
-  border-color: var(--quiet-action-border);
-  background: var(--selected-surface);
-  color: var(--selected-ink);
-  font-weight: 650;
+:is(
+  .event-view-choice a,
+  .event-sorting label,
+  .date-presets .date-preset,
+  .event-quick-filters .quick-filter,
+  .status-choice
+) {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 0.75rem 0 2.75rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 400;
+  text-decoration: none;
+  text-align: left;
+  align-self: stretch;
+}
+:is(
+  .event-view-choice a,
+  .event-sorting label,
+  .date-presets .date-preset,
+  .event-quick-filters .quick-filter,
+  .status-choice
+):hover {
+  background: var(--hover-surface);
+}
+:is(
+  .event-view-choice a[aria-current='page'],
+  .event-sorting label.sort-choice-active,
+  .date-presets .date-preset-active,
+  .event-quick-filters .quick-filter-active,
+  .status-choice[aria-pressed='true']
+)::before {
+  content: '';
+  position: absolute;
+  left: 1.25rem;
+  top: 50%;
+  width: 5px;
+  height: 20px;
+  border-radius: 25px;
+  background: var(--ink);
+  transform: translateY(-50%);
+}
+:is(
+  .event-view-choice a[aria-current='page'],
+  .event-sorting label.sort-choice-active,
+  .date-presets .date-preset-active,
+  .event-quick-filters .quick-filter-active
+) {
+  font-weight: 700;
+  text-decoration: none;
 }
 .event-filter-actions {
   display: flex;
@@ -1869,15 +1959,21 @@ time {
   .event-layout:has(> .event-context[hidden]) > .event-results {
     grid-column: 1;
   }
+  /* UI-BKP-02: the filter column is Bookitup's light context column -
+     no frame, the surface colour and a hairline to the list. */
   .event-context {
-    padding: 1rem 1.1rem;
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    background: var(--field-surface);
+    padding: 0 0 1rem;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface);
   }
-  .event-context legend {
-    color: var(--muted);
-    font-size: 0.9rem;
+  .event-context > form > fieldset > legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }
 summary {
@@ -1887,10 +1983,8 @@ summary {
   font-weight: 600;
   color: var(--accent);
 }
-/* H041: the sort choice, the quick date presets and the counters of the
-   bookitup list filters. None of them relies on colour alone: the selected
-   row keeps weight and border, the active preset keeps a 2px border. */
-/* These flat groups must not inherit the form-fieldset grid. */
+/* H041/UI-BKP-02: sort, presets and counters as Bookitup's rows; the
+   radio stays for keyboard and screen readers but is visually hidden. */
 .event-sorting,
 .custom-range {
   border: 0;
@@ -1901,113 +1995,105 @@ summary {
 }
 .event-sorting {
   display: grid;
-  gap: 0.15rem;
+  gap: 0;
 }
-.event-sorting legend {
-  padding: 0;
-  margin-bottom: 0.25rem;
-  font-weight: 600;
-}
-.event-sorting label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
+.event-sorting legend,
+.filter-heading {
+  padding: 0 0 0.4rem 0.6rem;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.875rem;
   font-weight: 400;
 }
-.event-sorting label.sort-choice-active {
-  font-weight: 700;
-}
 .event-sorting input[type='radio'] {
-  width: 1.1rem;
-  height: 1.1rem;
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
   margin: 0;
-  accent-color: var(--action);
+}
+.event-sorting label:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
 }
 .event-count {
-  min-width: 1.75rem;
-  padding: 0 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  margin-left: auto;
+  min-width: 1.5rem;
+  padding: 0;
+  border: 0;
   color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.sort-choice-active .event-count {
-  border-color: var(--quiet-action-border);
-  color: var(--quiet-ink);
-}
-.event-quick-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.event-quick-filters,
+.date-presets,
+.status-choices {
+  display: grid;
+  gap: 0;
   margin: 0 0 0.75rem;
 }
-.event-quick-filters .quick-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 44px;
-  padding-inline: 0.9rem;
-  border: 1px solid transparent;
-  font-weight: 500;
-}
-/* Selected quick filter: border, weight and underline, never colour alone. */
-.event-quick-filters .quick-filter-active {
-  border-width: 2px;
-  border-color: var(--quiet-action-border);
+/* Booking status: a coloured marker and a tinted row when chosen, like
+   Bookitup; the text keeps AA contrast through the darker status ink. */
+.status-choice[aria-pressed='true'] {
   font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
 }
-.event-quick-filters .quick-filter-active .event-count {
-  border-color: var(--quiet-action-border);
-  color: var(--quiet-ink);
+.status-choice[data-status='inquiry'][aria-pressed='true'] {
+  background: var(--status-inquiry-surface);
+  color: var(--status-inquiry-ink);
 }
-.date-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0 0 0.75rem;
+.status-choice[data-status='option'][aria-pressed='true'] {
+  background: var(--status-option-surface);
+  color: var(--status-option-ink);
 }
-.date-presets .date-preset {
-  padding-inline: 0.9rem;
-  border: 1px solid transparent;
+.status-choice[data-status='booked'][aria-pressed='true'] {
+  background: var(--status-booked-surface);
+  color: var(--status-booked-ink);
 }
-.date-presets .date-preset-active {
-  border-width: 2px;
-  border-color: var(--quiet-action-border);
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+.status-choice[data-status='inquiry']::before {
+  background: var(--status-inquiry);
+}
+.status-choice[data-status='option']::before {
+  background: var(--status-option);
+}
+.status-choice[data-status='booked']::before {
+  background: var(--status-booked);
 }
 .custom-range {
   border: 0;
   margin: 0 0 0.5rem;
 }
 .custom-range > summary {
-  padding-inline: 0;
-  font-weight: 600;
-  color: var(--quiet-ink);
+  padding-inline: 0.6rem;
+  font-weight: 400;
+  color: var(--ink);
 }
+/* UI-BKP-02: Bookitup's event list - a grey month band (radius 10, 18px
+   bold month, small count), white cards with a soft shadow, a 5px status bar
+   at the left edge, the date block (weekday, big day, month) behind a thin
+   divider, the event type small above the bold title and the place with a
+   pin. Actions live behind the row menu, not as icons on every card. */
 .event-month {
-  margin-top: 2rem;
+  margin-top: 1.25rem;
 }
 .event-month > :is(h2, h3) {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.75rem;
-  font-size: 1.1rem;
-  margin: 0;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  background: var(--table-surface);
+  gap: 1rem;
+  min-height: 50px;
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border-radius: var(--radius-card);
+  background: var(--section-band);
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
 }
 .event-month > :is(h2, h3) span {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 400;
   color: var(--muted);
 }
@@ -2017,29 +2103,39 @@ summary {
 .event-list {
   list-style: none;
   padding: 0;
+  margin: 0;
   display: grid;
-  gap: 0.6rem;
+  gap: 1rem;
 }
 .event-list > li {
-  padding: 1.25rem 0;
+  padding: 1rem 0;
   margin: 0;
   border-bottom: 1px solid var(--border);
 }
-/* BKP014.1: one calm card per event. The status stripe and the written status
-   name sit on the same card; the date column stays the left anchor. */
 .event-card,
 .event-record-head {
-  --event-status-tone: var(--muted);
+  --event-status-tone: var(--status-cancelled);
 }
 .event-list > li.event-card {
-  padding: 1rem 0 1rem 0.85rem;
-  border-inline-start: 3px solid var(--event-status-tone);
+  position: relative;
+  padding: 1rem;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 .event-list > li.event-card:has(> .event-row:not([hidden])) {
-  padding-right: 0.85rem;
-  border-bottom: 0;
-  border-radius: 0.5rem;
-  background: var(--field-surface);
+  padding-left: 2.25rem;
+}
+/* The status bar: 5px, rounded, inside the card's padding like Bookitup's
+   vertical divider. */
+.event-list > li.event-card:has(> .event-row:not([hidden]))::before {
+  content: '';
+  position: absolute;
+  inset: 1rem auto 1rem 1rem;
+  width: 5px;
+  border-radius: var(--radius-card);
+  background: var(--event-status-tone);
 }
 :is(.event-card, .event-record-head)[data-status='inquiry'] {
   --event-status-tone: var(--status-inquiry);
@@ -2068,106 +2164,130 @@ summary {
 .event-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: center;
   gap: 1rem;
 }
 .event-summary {
   display: grid;
-  grid-template-columns: 3.5rem minmax(0, 1fr);
-  align-items: start;
-  gap: 0.35rem 1rem;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.25rem 1.25rem;
   min-width: 0;
-  min-height: 44px;
+  min-height: 70px;
   color: inherit;
   text-decoration: none;
-  border-radius: 0.35rem;
+  border-radius: var(--radius-field);
 }
-/* The day number is the dominant figure; weekday and month stay small. */
+/* Weekday - day - month in one line like Bookitup ("SA 12 DEZ"), the day
+   dominant; a thin divider closes the block. */
 .event-date {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.1rem;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: 'day label';
+  align-items: center;
+  justify-content: center;
+  gap: 0 0.4rem;
+  align-self: stretch;
+  padding-right: 1rem;
+  border-right: 1px solid var(--border);
   min-width: 0;
   font-variant-numeric: tabular-nums;
 }
 .event-date-day {
-  font-size: 1.65rem;
+  grid-area: day;
+  white-space: nowrap;
+  font-size: 2rem;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1;
 }
 .event-date-label {
+  grid-area: label;
   font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
 }
 .event-body {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.2rem;
   min-width: 0;
 }
+/* Status and type share the small grey line above the title; the bar carries
+   the colour, the written status keeps it readable without colour. */
 .event-status {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 700;
   color: var(--muted);
 }
 .event-status-mark {
-  flex: none;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 999px;
-  background: var(--event-status-tone);
+  display: none;
 }
 .event-type {
   font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 700;
   color: var(--muted);
 }
-/* Full titles wrap instead of being clipped; there is no ellipsis here. */
+.event-type:empty,
+.event-type[data-empty] {
+  display: none;
+}
 .event-title {
   display: block;
-  font-weight: 650;
-  font-size: 1.05rem;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.15;
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* The place with Bookitup's pin; the icon is a mask over currentColor so it
+   follows both themes. */
 .event-place {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
   color: var(--muted);
   font-size: 0.875rem;
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+.event-place:not(:empty)::before {
+  content: '';
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.1rem;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z'/%3E%3Ccircle cx='12' cy='10' r='2'/%3E%3C/svg%3E")
+    center / contain no-repeat;
 }
 .event-meta {
   display: flex;
   flex-wrap: wrap;
   column-gap: 0.75rem;
   row-gap: 0.1rem;
-  margin-top: 0.15rem;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+}
+.event-meta:empty {
+  display: none;
 }
 .event-time {
   font-variant-numeric: tabular-nums;
 }
-/* A quiet origin label: the automatic website option stays an ordinary row. */
 .event-source-quiet {
   display: inline-block;
-  padding: 0.05rem 0.4rem;
-  border: 1px solid var(--quiet-action-border);
-  border-radius: 0.3rem;
-  color: var(--quiet-ink);
+  padding: 0 0.4rem;
+  border-radius: var(--radius-field);
+  background: var(--status-surface);
+  color: var(--muted);
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
 }
 .event-summary:hover .event-title,
@@ -2181,7 +2301,64 @@ summary {
 }
 .event-actions {
   display: flex;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.25rem;
+}
+/* UI-BKP-02: the row menu - one quiet "more" button; its actions open in a
+   small floating panel like Bookitup's ⋯ menus. */
+.row-menu {
+  position: relative;
+}
+.row-menu > summary {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-card);
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+.row-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.row-menu > summary:hover {
+  background: var(--hover-surface);
+}
+.row-menu > summary svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.row-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: var(--layer-sticky);
+  display: grid;
+  min-width: 13rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-dialog);
+}
+.row-menu-panel > button {
+  justify-content: flex-start;
+  align-self: stretch;
+  min-height: 40px;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+.row-menu-panel > button:hover:not(:disabled) {
+  background: var(--hover-surface);
+}
+.row-menu-panel > button.danger {
+  color: var(--danger-ink);
 }
 .section-heading {
   display: flex;
@@ -2259,8 +2436,8 @@ summary {
   padding: 0;
   flex: 0 0 auto;
   background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-card);
   color: var(--accent);
 }
 .icon-action svg {
@@ -4263,4 +4440,37 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
   .documents-workspace .files-table tbody th {
     min-width: 8rem;
   }
+}
+/* UI-BKP-02: like Bookitup the event list sits directly on the canvas -
+   the month bands and cards are the only surfaces, no outer panel. */
+.workspace-page > section#events,
+.workspace > section#events {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+/* UI-BKP-02: Bookitup's filter search - a filled grey field without frame,
+   the magnifier inside, the label only for screen readers. */
+.event-context .event-filter-form > fieldset > label:first-of-type {
+  position: relative;
+  margin: 0 0.6rem 0.5rem;
+  font-size: 0;
+}
+.event-context .event-filter-form > fieldset > label:first-of-type::before {
+  content: '';
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.9rem;
+  width: 1rem;
+  height: 1rem;
+  background: var(--muted);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.event-context .event-filter-form > fieldset > label:first-of-type > input {
+  padding-left: 2.25rem;
+  border-color: transparent;
+  background: var(--filled-field);
+  font-size: 0.875rem;
 }

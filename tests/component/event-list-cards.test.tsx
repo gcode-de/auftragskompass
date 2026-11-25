@@ -210,7 +210,8 @@ test('a row has exactly one primary link and no nested button', async () => {
   for (const action of [edit, duplicate]) {
     expect(card.contains(action)).toBe(true);
     expect(action.closest('a')).toBeNull();
-    expect(action.getAttribute('class')).toContain('tier-quiet-icon');
+    // UI-BKP-02: the rarer actions sit in the row menu, not on the card.
+    expect(action.closest('details.row-menu')).not.toBeNull();
   }
   // The open action names itself; the whole card is the one target.
   expect(link.textContent?.startsWith('Öffnen: ')).toBe(true);

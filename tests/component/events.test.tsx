@@ -89,6 +89,9 @@ function showForms() {
   fireEvent.click(screen.getByRole('button', { name: 'Event anlegen' }));
 }
 test('events create without date, retain formatted notes and edit/cancel with version checks', async () => {
+  // UI-BKP-02: the event is cancelled on the way, so the view shows that
+  // status too (cancelled events are hidden by default).
+  window.history.replaceState(null, '', '/?statuses=inquiry,cancelled,booked');
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
@@ -223,6 +226,7 @@ test('duplicating an event creates a new inquiry and does not update its source'
 });
 
 test('event copies retain active references and require new choices for archived records', async () => {
+  window.history.replaceState(null, '', '/?statuses=inquiry,cancelled,booked');
   const fetcher = mocker([], {
     status: 'cancelled',
     eventTypeId: 'fictional-option',
@@ -724,14 +728,18 @@ test('event rows are direct links and their icon actions stay independent', asyn
       name: 'Eventakte öffnen: Synthetic event',
     }),
   ).toBeNull();
-  for (const [name, title] of [
-    ['Event anlegen', 'Event anlegen'],
+  // UI-BKP-02: the create glyph keeps its title; edit and duplicate are named
+  // text actions inside the row menu.
+  const create = screen.getByRole('button', { name: 'Event anlegen' });
+  expect(create.getAttribute('title')).toBe('Event anlegen');
+  expect(create.textContent).toBe('');
+  for (const [name, text] of [
     ['Event bearbeiten: Synthetic event', 'Event bearbeiten'],
     ['Event duplizieren: Synthetic event', 'Event duplizieren'],
   ] as const) {
     const action = screen.getByRole('button', { name });
-    expect(action.getAttribute('title')).toBe(title);
-    expect(action.textContent).toBe('');
+    expect(action.textContent).toBe(text);
+    expect(action.closest('details.row-menu')).not.toBeNull();
   }
   fireEvent.click(
     screen.getByRole('button', { name: 'Event bearbeiten: Synthetic event' }),
@@ -2674,12 +2682,10 @@ test('the inquiry quick filter sets only the status and keeps the date range', a
   window.dispatchEvent(new PopStateEvent('popstate'));
   await vi.waitFor(() =>
     expect(
-      (
-        screen.getByRole('combobox', {
-          name: 'Filterstatus',
-        }) as HTMLSelectElement
-      ).value,
-    ).toBe(''),
+      within(screen.getByRole('group', { name: 'Buchungsstatus' }))
+        .getByRole('button', { name: 'Anfrage' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true'),
   );
   const requests = screen.getByRole('button', { name: /^Anfragen/ });
   expect(requests.getAttribute('aria-pressed')).toBe('false');
@@ -2687,7 +2693,10 @@ test('the inquiry quick filter sets only the status and keeps the date range', a
   fireEvent.click(requests);
   expect(pushes.mock.calls.length - before).toBe(1);
   const search = new URLSearchParams(window.location.search);
-  expect(search.get('status')).toBe('inquiry');
+  // UI-BKP-02: the quick filter chooses the inquiry status in the
+  // multi-select; the status view is client-side, the request keeps the rest.
+  expect(search.get('statuses')).toBe('inquiry');
+  expect(search.get('status')).toBeNull();
   expect(search.get('from')).toBe('2026-10-01');
   expect(search.get('to')).toBe('2026-10-31');
   expect(search.get('q')).toBe('browser');
@@ -2700,14 +2709,10 @@ test('the inquiry quick filter sets only the status and keeps the date range', a
         .getAttribute('aria-pressed'),
     ).toBe('true'),
   );
-  // The counters answer the filters already applied, then follow the status.
-  await vi.waitFor(() =>
-    expect(
-      fetcher.mock.calls.filter(([url]) =>
-        String(url).includes('status=inquiry'),
-      ),
-    ).not.toHaveLength(0),
-  );
+  // The status view never reaches the API.
+  expect(
+    fetcher.mock.calls.filter(([url]) => String(url).includes('statuses=')),
+  ).toHaveLength(0);
   // The sort group holds only the two sort choices and hears no inquiry row.
   const sortGroup = screen.getByRole('group', { name: 'Sortieren' });
   const radios = within(sortGroup).getAllByRole('radio');
@@ -2745,7 +2750,7 @@ test('the inquiry quick filter toggles off on a bare url', async () => {
   );
   expect(window.location.search).toBe('');
   fireEvent.click(screen.getByRole('button', { name: /^Anfragen/ }));
-  expect(window.location.search).toBe('?status=inquiry');
+  expect(window.location.search).toBe('?statuses=inquiry');
   await vi.waitFor(() =>
     expect(
       screen

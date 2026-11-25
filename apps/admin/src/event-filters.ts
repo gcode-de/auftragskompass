@@ -79,7 +79,7 @@ export const emptyFilterCounts: FilterCounts = { undated: 0, inquiries: 0 };
 const filterCriteria = [
   ['q'],
   ['from', 'to', 'undated'],
-  ['status'],
+  ['status', 'statuses'],
   ['eventTypeId'],
 ] as const;
 
@@ -106,4 +106,35 @@ export function monthGroups<T extends { eventDate: string | null }>(rows: T[]) {
       entries,
       count: entries.length,
     }));
+}
+
+// UI-BKP-02: Bookitup's booking-status filter is a multi-select whose default
+// leaves cancelled and unavailable events out. The URL keeps only a choice
+// that differs from that default; an old single `status` link still works.
+export const hiddenByDefault = ['cancelled', 'unavailable'];
+export function selectedStatuses(search: string, codes: readonly string[]) {
+  const params = new URLSearchParams(search),
+    listed = params.get('statuses'),
+    single = params.get('status');
+  if (listed)
+    return new Set(
+      listed === 'none'
+        ? []
+        : listed.split(',').filter((code) => codes.includes(code)),
+    );
+  if (single && codes.includes(single)) return new Set([single]);
+  return new Set(codes.filter((code) => !hiddenByDefault.includes(code)));
+}
+export function statusesParam(
+  selected: ReadonlySet<string>,
+  codes: readonly string[],
+) {
+  const defaults = codes.filter((code) => !hiddenByDefault.includes(code));
+  const chosen = codes.filter((code) => selected.has(code));
+  if (
+    chosen.length === defaults.length &&
+    chosen.every((code) => defaults.includes(code))
+  )
+    return '';
+  return chosen.length ? chosen.join(',') : 'none';
 }
