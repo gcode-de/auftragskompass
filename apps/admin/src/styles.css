@@ -4221,31 +4221,40 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
   min-width: 44px;
   min-height: 44px;
 }
+/* UI-BKP-05: Bookitup's document table - a 2px rule under the head, 50px
+   rows without lines and a light zebra straight on the flat workspace, the
+   deadline as a coloured badge and
+   the event as a pill with its status dot. */
 .files-table-shell {
+  /* Positioned, so the visually hidden column labels stay inside the scroll
+     box instead of widening the page. */
+  position: relative;
   overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
 }
 .files-table {
   width: 100%;
   min-width: 40rem;
   border-collapse: collapse;
-  font-size: 0.9rem;
 }
 .files-table caption {
   text-align: left;
 }
 .files-table th,
 .files-table td {
-  padding: 0.5rem 0.75rem;
+  height: 50px;
+  padding: 7px 10px;
   text-align: left;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
+  vertical-align: middle;
 }
 .files-table thead th {
-  color: var(--muted);
-  font-weight: 600;
+  height: auto;
+  border-bottom: 2px solid var(--border);
+  color: var(--ink);
+  font-weight: 400;
   white-space: nowrap;
+}
+.files-table tbody tr:nth-child(even) {
+  background: var(--hover-surface);
 }
 .files-table tbody th {
   font-weight: 600;
@@ -4257,27 +4266,169 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
 .files-table .muted {
   color: var(--muted);
 }
-/* The leading state and the due day read as compact marks, so the row is
-   scanned from left to right instead of read as eight equal text columns. */
 .files-state {
   display: inline-block;
   padding: 0.1rem 0.45rem;
-  border: 1px solid var(--border);
   border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.8rem;
+  background: var(--status-surface);
+  color: var(--ink);
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 .files-due {
   display: inline-block;
-  padding: 0.05rem 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-field);
+  background: var(--status-surface);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.files-table td:last-child {
-  white-space: nowrap;
+.files-due[data-tone='ok'] {
+  background: var(--status-booked-surface);
+  color: var(--status-booked-ink);
+}
+/* Solid red with the page surface as ink keeps AA in both themes. */
+.files-due[data-tone='late'] {
+  background: var(--danger-ink);
+  color: var(--surface);
+}
+.files-event-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 14rem;
+  min-height: 28px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+.files-event-pill:hover {
+  background: var(--hover-surface);
+}
+.files-event-pill::before {
+  content: '';
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--status-cancelled);
+}
+.files-event-pill[data-status='inquiry']::before {
+  background: var(--status-inquiry);
+}
+.files-event-pill[data-status='option']::before {
+  background: var(--status-option);
+}
+.files-event-pill[data-status='booked']::before {
+  background: var(--status-booked);
+}
+.files-menu-cell {
+  width: 44px;
+  text-align: right;
+}
+.files-menu-cell .row-menu-toggle {
+  anchor-name: var(--menu-anchor);
+}
+/* The ⋯ menu is a native popover: light dismiss and Escape come from the
+   browser, the anchor keeps it under its toggle and flips it near the edge. */
+.files-row-menu {
+  position-anchor: var(--menu-anchor);
+  position-area: bottom span-left;
+  position-try-fallbacks: flip-block;
+  inset: auto;
+  margin: 0.25rem 0 0;
+  min-width: 13rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-dialog);
+}
+.files-row-menu:popover-open {
+  display: grid;
+}
+.files-row-menu > :is(a, span) {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-field);
+  color: var(--ink);
+  text-decoration: none;
+}
+.files-row-menu > a:hover {
+  background: var(--hover-surface);
+}
+.files-row-menu > span {
+  color: var(--muted);
+}
+/* UI-BKP-05: the search as Bookitup's filled field with the magnifier; the
+   input keeps its accessible name, the placeholder shows it. */
+.files-filter-form > fieldset:first-child > label {
+  position: relative;
+  font-size: 0;
+}
+.files-filter-form > fieldset:first-child > label::before {
+  content: '';
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.875rem;
+  width: 1rem;
+  height: 1rem;
+  background: var(--muted);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.files-filter-form > fieldset:first-child > label > input {
+  padding-left: 2.25rem;
+  border-color: transparent;
+  background: var(--filled-field);
+  font-size: 0.875rem;
+}
+/* UI-BKP-05: the document kinds as list rows with the accent marker, the
+   state as one segmented switch. */
+.files-kind-choices {
+  gap: 0;
+}
+.files-kind-choice[aria-pressed='true'] {
+  font-weight: 700;
+  background: var(--status-inquiry-surface);
+  color: var(--status-inquiry-ink);
+}
+.files-kind-choice::before {
+  background: var(--accent);
+}
+.files-segments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-field);
+  background: var(--filled-field);
+}
+.files-segments > button {
+  min-height: 40px;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  padding: 0 0.4rem;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.files-segments > button[aria-pressed='true'] {
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  font-weight: 700;
 }
 @media (min-width: 1280px) {
   .files-layout {
@@ -4338,10 +4489,6 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
 }
 .documents-workspace .files-subtitle:first-child {
   margin-bottom: 0.5rem;
-}
-.documents-workspace .files-table-shell {
-  border: 0;
-  border-radius: 0;
 }
 .documents-workspace .files-table :is(th, td) {
   vertical-align: middle;

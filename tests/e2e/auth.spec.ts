@@ -861,14 +861,26 @@ async function signInScenario(
     await expect(
       files.getByRole('button', { name: 'Vorherige Seite' }),
     ).toBeDisabled();
+    // UI-BKP-05: the row actions open from the ⋯ popover and close on Escape.
+    const rowMenu = files.getByRole('button', {
+      name: 'Weitere Aktionen: Rechnung RE-2031-0001',
+    });
+    await rowMenu.click();
     await expect(
       files.getByRole('link', { name: 'Rechnung RE-2031-0001 als PDF öffnen' }),
     ).toHaveAttribute(
       'href',
       '/api/v1/documents/88888888-8888-4888-8888-888888888888/pdf',
     );
+    await page.keyboard.press('Escape');
+    await expect(
+      files.getByRole('link', { name: 'Rechnung RE-2031-0001 als PDF öffnen' }),
+    ).toHaveCount(0);
     expect(filesRequested.some((url) => url.includes('/pdf'))).toBe(false);
-    await files.getByLabel('Dokumentart').selectOption('invoice');
+    await files
+      .getByRole('group', { name: 'Dokumentart' })
+      .getByRole('button', { name: 'Rechnung', exact: true })
+      .click();
     await expect
       .poll(() => filesRequested.at(-1) ?? '')
       .toContain('kind=invoice');
@@ -929,6 +941,7 @@ async function signInScenario(
     await expect
       .poll(() => filesRequested.at(-1) ?? '')
       .not.toContain('payment=');
+    await rowMenu.click();
     const pdfLink = files.getByRole('link', {
       name: 'Rechnung RE-2031-0001 als PDF öffnen',
     });
@@ -1044,8 +1057,14 @@ async function signInScenario(
       page.getByRole('dialog', { name: 'Dateifilter' }),
     ).toBeVisible();
     expect(page.url()).toBe(urlBeforeSheet);
-    await files.getByLabel('Dokumentart').selectOption('invoice');
-    await files.getByLabel('Status').selectOption('draft');
+    await files
+      .getByRole('group', { name: 'Dokumentart' })
+      .getByRole('button', { name: 'Rechnung', exact: true })
+      .click();
+    await files
+      .getByRole('group', { name: 'Status' })
+      .getByRole('button', { name: 'Entwurf' })
+      .click();
     expect(page.url()).toBe(urlBeforeSheet);
     await files.getByRole('button', { name: 'Ergebnisse anzeigen' }).click();
     await expect(page.getByRole('dialog', { name: 'Dateifilter' })).toHaveCount(
@@ -2954,7 +2973,11 @@ async function signInScenario(
     await page.goBack();
     await expect(page).toHaveURL(filesUrlBefore);
     await expect(files.getByText('Angebot · Entwurf')).toBeVisible();
-    await expect(files.getByLabel('Dokumentart')).toHaveValue('');
+    await expect(
+      files
+        .getByRole('group', { name: 'Dokumentart' })
+        .getByRole('button', { name: 'Alle Arten' }),
+    ).toHaveAttribute('aria-pressed', 'true');
     // The document list never downloaded a PDF on its own.
     expect(pdfRequests).toEqual([]);
     await pool.query(

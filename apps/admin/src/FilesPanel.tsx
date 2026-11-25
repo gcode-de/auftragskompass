@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useAutoRefresh } from './auto-refresh.js';
 import {
   eventTargetHref,
@@ -128,6 +128,12 @@ type FileRow = {
   issuedAt: string;
   issuedDate: string;
   eventName: string | null;
+  // UI-BKP-05: display-only facts for the event pill and the deadline badge.
+  // An older answer without them reads as "no status, no deadline".
+  eventStatus?: string | null;
+  offerStatus?: string | null;
+  validUntil?: string | null;
+  offerExpired?: boolean;
   grossMinor: number;
   pdfAvailable: boolean;
   // BKP019.e: the derived payment facts of the index. `null` is the honest value
@@ -295,7 +301,12 @@ function validRows(reply: unknown): FileRow[] | null {
         (typeof entry.openMinor !== 'number' ||
           !Number.isSafeInteger(entry.openMinor) ||
           entry.openMinor < 0)) ||
-      (entry.overdue !== null && typeof entry.overdue !== 'boolean')
+      (entry.overdue !== null && typeof entry.overdue !== 'boolean') ||
+      (entry.eventStatus != null && typeof entry.eventStatus !== 'string') ||
+      (entry.validUntil != null &&
+        !dayPattern.test(String(entry.validUntil))) ||
+      (entry.offerExpired !== undefined &&
+        typeof entry.offerExpired !== 'boolean')
     )
       return null;
     rows.push(entry as FileRow);
@@ -308,6 +319,30 @@ function dateText(day: string) {
   return `${date}.${month}.${year}`;
 }
 
+// UI-BKP-05: Bookitup's deadline badge - grey while running, green once the
+// offer is accepted or the claim paid, red when it lapsed or is overdue.
+function deadline(
+  row: FileRow,
+): { text: string; day: string; tone: string } | null {
+  if (row.kind === 'offer' && row.validUntil)
+    return {
+      text: 'Gültig bis',
+      day: row.validUntil,
+      tone:
+        row.offerStatus === 'accepted'
+          ? 'ok'
+          : row.offerExpired
+            ? 'late'
+            : 'open',
+    };
+  if (row.dueDate)
+    return {
+      text: 'Fällig',
+      day: row.dueDate,
+      tone: row.paymentState === 'paid' ? 'ok' : row.overdue ? 'late' : 'open',
+    };
+  return null;
+}
 export function FilesPanel({
   active = true,
   revision = 0,
@@ -333,7 +368,7 @@ export function FilesPanel({
   const wide = useWideFileFilters(),
     drawer = useRef<HTMLDialogElement>(null),
     trigger = useRef<HTMLButtonElement>(null),
-    firstField = useRef<HTMLSelectElement>(null),
+    firstField = useRef<HTMLButtonElement>(null),
     [open, setOpen] = useState(false),
     [draft, setDraft] = useState<FileFilters | null>(null),
     // The quiet group stays folded unless it is in use; it is opened by a
@@ -496,6 +531,7 @@ export function FilesPanel({
             <input
               type="search"
               aria-label="Dokumente durchsuchen"
+              placeholder="Dokumente durchsuchen"
               aria-describedby="files-search-hint"
               maxLength={100}
               value={values.q}
@@ -506,20 +542,22 @@ export function FilesPanel({
             Nummer, Kunde oder Betreff
           </small>
         </fieldset>
-        <fieldset className="files-filter-group">
+        {/* UI-BKP-05: Bookitup's single choice as list rows, the chosen one
+            tinted with its marker - the same rows as the event status. */}
+        <fieldset className="files-filter-group files-kind-choices">
           <legend>Dokumentart</legend>
-          <select
-            ref={mobile ? firstField : undefined}
-            aria-label="Dokumentart"
-            value={values.kind}
-            onChange={(event) => chooseOne('kind', event.target.value)}
-          >
-            {fileKinds.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          {fileKinds.map(([value, label], index) => (
+            <button
+              key={value}
+              ref={mobile && index === 0 ? firstField : undefined}
+              type="button"
+              className="tertiary-action status-choice files-kind-choice"
+              aria-pressed={values.kind === value}
+              onClick={() => chooseOne('kind', value)}
+            >
+              {label}
+            </button>
+          ))}
         </fieldset>
         <fieldset className="files-filter-group">
           <legend>Datumsbereich</legend>
@@ -540,19 +578,22 @@ export function FilesPanel({
             />
           </label>
         </fieldset>
+        {/* UI-BKP-05: the state as one segmented switch. */}
         <fieldset className="files-filter-group">
           <legend>Status</legend>
-          <select
-            aria-label="Status"
-            value={values.state}
-            onChange={(event) => chooseOne('state', event.target.value)}
-          >
+          <div className="files-segments">
             {fileStates.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+              <button
+                key={value}
+                type="button"
+                className="tertiary-action"
+                aria-pressed={values.state === value}
+                onClick={() => chooseOne('state', value)}
+              >
+                {value ? label : 'Alle'}
+              </button>
             ))}
-          </select>
+          </div>
         </fieldset>
         {/* The quiet subgroup: same four axes, folded away until one is used. */}
         <details
@@ -845,15 +886,18 @@ export function FilesPanel({
                     <th scope="col">Dokument</th>
                     <th scope="col">Datum</th>
                     <th scope="col">Betrag</th>
-                    <th scope="col">Fällig</th>
+                    <th scope="col">Frist</th>
                     <th scope="col">Event</th>
                     <th scope="col">Zahlung</th>
-                    <th scope="col">Aktionen</th>
+                    <th scope="col">
+                      <span className="sr-only">Aktionen</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => {
-                    const href = eventHref(row.eventId);
+                  {rows.map((row, index) => {
+                    const href = eventHref(row.eventId),
+                      due = deadline(row);
                     return (
                       <tr key={row.id} id={'file-' + row.id}>
                         <td>
@@ -872,10 +916,11 @@ export function FilesPanel({
                         </td>
                         {/* BKP019.e: the frozen due day, never a guessed one. */}
                         <td>
-                          {row.dueDate ? (
-                            <span className="files-due">
-                              <time dateTime={row.dueDate}>
-                                {dateText(row.dueDate)}
+                          {due ? (
+                            <span className="files-due" data-tone={due.tone}>
+                              {due.text}{' '}
+                              <time dateTime={due.day}>
+                                {dateText(due.day)}
                               </time>
                             </span>
                           ) : (
@@ -884,7 +929,13 @@ export function FilesPanel({
                         </td>
                         <td className="files-event-cell">
                           {href ? (
-                            <a href={href}>{row.eventName ?? 'Event öffnen'}</a>
+                            <a
+                              className="files-event-pill"
+                              data-status={row.eventStatus ?? undefined}
+                              href={href}
+                            >
+                              {row.eventName ?? 'Event öffnen'}
+                            </a>
                           ) : (
                             <span className="muted">Kein Event</span>
                           )}
@@ -912,21 +963,49 @@ export function FilesPanel({
                             <span className="muted">—</span>
                           )}
                         </td>
-                        <td>
-                          {row.pdfAvailable ? (
-                            <a
-                              href={'/api/v1/documents/' + row.id + '/pdf'}
-                              target="_blank"
-                              rel="noreferrer"
-                              aria-label={rowName(row) + ' als PDF öffnen'}
-                            >
-                              PDF öffnen
-                            </a>
-                          ) : row.state === 'draft' ? (
-                            <span className="muted">Als Entwurf im Event</span>
-                          ) : (
-                            <span className="muted">Keine PDF</span>
-                          )}
+                        {/* UI-BKP-05: the row actions behind Bookitup's ⋯ menu,
+                            a native popover in the top layer so the scrolling
+                            table shell never clips it; anchored to its toggle. */}
+                        <td
+                          className="files-menu-cell"
+                          style={
+                            {
+                              '--menu-anchor': '--file-menu-' + index,
+                            } as CSSProperties
+                          }
+                        >
+                          <button
+                            type="button"
+                            className="icon-action tier-quiet-icon row-menu-toggle"
+                            popoverTarget={'file-menu-' + row.id}
+                            aria-label={'Weitere Aktionen: ' + rowName(row)}
+                            title="Weitere Aktionen"
+                          >
+                            <span aria-hidden="true">⋯</span>
+                          </button>
+                          <div
+                            id={'file-menu-' + row.id}
+                            popover="auto"
+                            className="files-row-menu"
+                          >
+                            {row.pdfAvailable ? (
+                              <a
+                                href={'/api/v1/documents/' + row.id + '/pdf'}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={rowName(row) + ' als PDF öffnen'}
+                              >
+                                PDF öffnen
+                              </a>
+                            ) : (
+                              <span className="muted">
+                                {row.state === 'draft'
+                                  ? 'Als Entwurf im Event'
+                                  : 'Keine PDF'}
+                              </span>
+                            )}
+                            {href && <a href={href}>Im Event öffnen</a>}
+                          </div>
                         </td>
                       </tr>
                     );

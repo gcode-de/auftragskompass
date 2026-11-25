@@ -14,7 +14,33 @@ import {
   updateUrlSearch,
 } from '../../apps/admin/src/url-state.js';
 import { clickLink } from '../helpers/click-link.js';
-import { exactMinorUnits } from '../../apps/admin/src/FilesPanel.js';
+import {
+  exactMinorUnits,
+  fileKinds,
+  fileStates,
+} from '../../apps/admin/src/FilesPanel.js';
+
+// UI-BKP-05: Dokumentart is a row choice and Status a segmented switch, so a
+// filter is chosen by its button and read back from the pressed one.
+const filterOptions = {
+  Dokumentart: fileKinds,
+  Status: fileStates,
+} as const;
+function filterButtons(group: keyof typeof filterOptions) {
+  return within(screen.getByRole('group', { name: group })).getAllByRole(
+    'button',
+  );
+}
+function choose(group: keyof typeof filterOptions, value: string) {
+  const index = filterOptions[group].findIndex(([code]) => code === value);
+  fireEvent.click(filterButtons(group)[index]!);
+}
+function chosen(group: keyof typeof filterOptions) {
+  const index = filterButtons(group).findIndex(
+    (button) => button.getAttribute('aria-pressed') === 'true',
+  );
+  return filterOptions[group][index]![0];
+}
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -142,15 +168,11 @@ test('the panel asks the server for the whole filtered result, never a client-fi
   expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   expect(urlsOf(fetcher)).toEqual([listUrl()]);
 
-  fireEvent.change(screen.getByLabelText('Dokumentart'), {
-    target: { value: 'invoice' },
-  });
+  choose('Dokumentart', 'invoice');
   await waitFor(() =>
     expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&kind=invoice')),
   );
-  fireEvent.change(screen.getByLabelText('Status'), {
-    target: { value: 'final' },
-  });
+  choose('Status', 'final');
   await waitFor(() =>
     expect(urlsOf(fetcher).at(-1)).toBe(listUrl('&kind=invoice&state=final')),
   );
@@ -210,9 +232,7 @@ test('filter changes reset pagination atomically and the extra row only means ha
       ).disabled,
     ).toBe(true),
   );
-  fireEvent.change(screen.getByLabelText('Status'), {
-    target: { value: 'draft' },
-  });
+  choose('Status', 'draft');
   await waitFor(() =>
     expect(urlsOf(fetcher as never).at(-1)).toBe(
       '/api/v1/documents?include=metadata&limit=26&offset=0&state=draft',
@@ -305,7 +325,11 @@ test('rows show honest metadata, a real PDF link only when eligible and a native
   expect(within(draftRow).getByText('01.05.2031')).toBeTruthy();
   expect(within(draftRow).getByText('0,00 €')).toBeTruthy();
   // A draft offers no PDF and links to its real event instead.
-  expect(within(draftRow).queryByRole('link', { name: /PDF/ })).toBeNull();
+  // The row actions sit in a closed native popover, which jsdom hides from
+  // the accessibility tree; the opening itself is covered in the browser.
+  expect(
+    within(draftRow).queryByRole('link', { name: /PDF/, hidden: true }),
+  ).toBeNull();
   const eventLink = within(draftRow).getByRole('link', {
     name: 'Fictional Wedding',
   });
@@ -318,6 +342,7 @@ test('rows show honest metadata, a real PDF link only when eligible and a native
     .closest('tr')!;
   const pdf = within(finalRowElement).getByRole('link', {
     name: 'Rechnung RE-2031-0001 als PDF öffnen',
+    hidden: true,
   });
   expect(pdf.getAttribute('href')).toBe(
     '/api/v1/documents/44444444-4444-4444-8444-444444444444/pdf',
@@ -344,16 +369,12 @@ test('a failed request keeps the last good rows and reports the applied filter s
   render(<FilesPanel />);
   await screen.findByText('Angebot · Entwurf');
   fail = true;
-  fireEvent.change(screen.getByLabelText('Status'), {
-    target: { value: 'final' },
-  });
+  choose('Status', 'final');
   const alert = await screen.findByRole('alert');
   expect(alert.textContent).toContain('letzte Stand');
   // The old row stays visible, but the controls show the requested filter.
   expect(screen.getAllByText('Angebot · Entwurf').length).toBeGreaterThan(0);
-  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(
-    'final',
-  );
+  expect(chosen('Status')).toBe('final');
   fail = false;
   fetcher.mockImplementation(async () => Response.json([]));
   fireEvent.click(screen.getByRole('button', { name: 'Dateien erneut laden' }));
@@ -420,9 +441,7 @@ test('a slow older response never overwrites a newer one', async () => {
   vi.stubGlobal('fetch', fetcher);
   render(<FilesPanel />);
   await waitFor(() => expect(resolvers).toHaveLength(1));
-  fireEvent.change(screen.getByLabelText('Status'), {
-    target: { value: 'final' },
-  });
+  choose('Status', 'final');
   await waitFor(() => expect(resolvers).toHaveLength(2));
   await act(async () => resolvers[1]!([finalRow]));
   await screen.findByText('Rechnung RE-2031-0001');
@@ -791,12 +810,86 @@ test('a row shows its due day, the payment state and a late badge only when late
   ).toHaveLength(1);
 });
 
+// UI-BKP-05: Bookitup's deadline badge and the event pill with its dot.
+test('the deadline badge colours the running, settled and lapsed deadline', async () => {
+  const offer = (id: string, number: string, extra: object) => ({
+    ...draft,
+    id,
+    number,
+    state: 'final',
+    validUntil: '2031-05-20',
+    offerStatus: null,
+    offerExpired: false,
+    eventStatus: 'booked',
+    ...extra,
+  });
+  vi.stubGlobal(
+    'fetch',
+    pageFetcher({
+      '*': [
+        offer('71111111-1111-4111-8111-111111111111', 'AN-1', {}),
+        offer('72222222-2222-4222-8222-222222222222', 'AN-2', {
+          offerStatus: 'accepted',
+        }),
+        offer('73333333-3333-4333-8333-333333333333', 'AN-3', {
+          offerExpired: true,
+        }),
+        finalRow,
+        partialInvoice,
+        paidInvoice,
+      ],
+    }),
+  );
+  render(<FilesPanel />);
+  await screen.findByText('Angebot AN-1');
+  const badgeOf = (name: string) =>
+    screen.getByText(name).closest('tr')!.querySelector('.files-due')!;
+  expect(badgeOf('Angebot AN-1').textContent).toBe('Gültig bis 20.05.2031');
+  expect(badgeOf('Angebot AN-1').getAttribute('data-tone')).toBe('open');
+  expect(badgeOf('Angebot AN-2').getAttribute('data-tone')).toBe('ok');
+  expect(badgeOf('Angebot AN-3').getAttribute('data-tone')).toBe('late');
+  expect(badgeOf('Rechnung RE-2031-0001').textContent).toBe(
+    'Fällig 16.05.2031',
+  );
+  expect(badgeOf('Rechnung RE-2031-0001').getAttribute('data-tone')).toBe(
+    'open',
+  );
+  expect(badgeOf('Rechnung RE-2031-0002').getAttribute('data-tone')).toBe(
+    'late',
+  );
+  expect(badgeOf('Rechnung RE-2031-0003').getAttribute('data-tone')).toBe('ok');
+  // The pill carries the event status for its dot; an older row has none.
+  const pill = within(
+    screen.getByText('Angebot AN-1').closest('tr')!,
+  ).getByRole('link', { name: 'Fictional Wedding' });
+  expect(pill.className).toBe('files-event-pill');
+  expect(pill.getAttribute('data-status')).toBe('booked');
+  expect(
+    within(screen.getByText('Rechnung RE-2031-0001').closest('tr')!)
+      .getByRole('link', { name: 'Fictional Wedding' })
+      .hasAttribute('data-status'),
+  ).toBe(false);
+  // The row menu is a popover anchored to its own toggle.
+  const toggle = screen.getByRole('button', {
+    name: 'Weitere Aktionen: Angebot AN-1',
+  });
+  const menu = document.getElementById(toggle.getAttribute('popovertarget')!)!;
+  expect(menu.getAttribute('popover')).toBe('auto');
+  expect(
+    within(menu).getByRole('link', { name: 'Im Event öffnen', hidden: true }),
+  ).toBeTruthy();
+});
+
 test('a metadata row without the payment facts is refused instead of guessed', async () => {
   for (const broken of [
     [{ ...finalRow, dueDate: undefined }],
     [{ ...finalRow, paymentState: 'unknown' }],
     [{ ...finalRow, overdue: 'yes' }],
     [{ ...finalRow, openMinor: -1 }],
+    // UI-BKP-05: the display-only facts are optional, never malformed.
+    [{ ...finalRow, validUntil: 'soon' }],
+    [{ ...finalRow, eventStatus: 7 }],
+    [{ ...finalRow, offerExpired: 'no' }],
   ]) {
     const fetcher = vi.fn(async () => Response.json(broken));
     vi.stubGlobal('fetch', fetcher);
@@ -837,9 +930,11 @@ test('the desktop frame keeps the filter groups in a quiet context column left o
   expect(legends).toEqual(['Dokumentart', 'Datumsbereich', 'Status']);
   // The wall is gone: four controls are offered before the quiet group, and the
   // four payment axes live inside the folded subgroup.
+  // UI-BKP-05: kinds and states are buttons now, so the fields are the search
+  // and the date range only.
   expect(
     context.querySelectorAll('fieldset select, fieldset input'),
-  ).toHaveLength(5);
+  ).toHaveLength(3);
   const quiet = context.querySelector<HTMLDetailsElement>(
     'details.files-filter-quiet',
   )!;
@@ -880,7 +975,7 @@ test('the narrow frame offers one compact access and one draft sheet', async () 
   expect(screen.getByTestId('file-filter-count').textContent).toBe('2');
   expect(document.querySelector('.files-context')).toBeNull();
   expect(sheet().open).toBe(false);
-  expect(screen.queryByLabelText('Dokumentart')).toBeNull();
+  expect(screen.queryByRole('group', { name: 'Dokumentart' })).toBeNull();
   // The list is readable before any filter interaction.
   expect(await screen.findByText('Angebot · Entwurf')).toBeTruthy();
   expect(urlsOf(fetcher)[0]).toBe(listUrl('&kind=invoice&state=final'));
@@ -890,15 +985,9 @@ test('the narrow frame offers one compact access and one draft sheet', async () 
   expect(sheet().open).toBe(true);
   expect(trigger.getAttribute('aria-expanded')).toBe('true');
   // The draft starts from the applied URL, never from an invented default.
-  expect(
-    (screen.getByLabelText('Dokumentart') as HTMLSelectElement).value,
-  ).toBe('invoice');
-  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(
-    'final',
-  );
-  fireEvent.change(screen.getByLabelText('Status'), {
-    target: { value: 'draft' },
-  });
+  expect(chosen('Dokumentart')).toBe('invoice');
+  expect(chosen('Status')).toBe('final');
+  choose('Status', 'draft');
   fireEvent.change(screen.getByLabelText('Zahlungsstand'), {
     target: { value: 'paid' },
   });
@@ -937,9 +1026,7 @@ test('cancel, escape and the in-sheet reset discard the draft and return focus',
   trigger.focus();
   const pushes = vi.spyOn(window.history, 'pushState');
   fireEvent.click(trigger);
-  fireEvent.change(screen.getByLabelText('Status'), {
-    target: { value: 'draft' },
-  });
+  choose('Status', 'draft');
   // Escape is the browser's cancel event; the panel turns it into one close.
   fireEvent(sheet(), new Event('cancel'));
   expect(pushes).not.toHaveBeenCalled();
@@ -949,22 +1036,18 @@ test('cancel, escape and the in-sheet reset discard the draft and return focus',
   expect(document.activeElement).toBe(trigger);
   // The explicit cancel button follows the same path and keeps the focus.
   fireEvent.click(trigger);
-  fireEvent.change(screen.getByLabelText('Status'), {
-    target: { value: 'draft' },
-  });
+  choose('Status', 'draft');
   fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
   expect(pushes).not.toHaveBeenCalled();
   expect(window.location.search).toBe('?df_state=final');
   expect(document.activeElement).toBe(trigger);
   // Reopening proves the draft died with the sheet.
   fireEvent.click(trigger);
-  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(
-    'final',
-  );
+  expect(chosen('Status')).toBe('final');
   // The sheet's reset clears its own draft only; nothing is written yet.
   fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
   expect(pushes).not.toHaveBeenCalled();
-  expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('');
+  expect(chosen('Status')).toBe('');
   fireEvent.click(screen.getByRole('button', { name: 'Ergebnisse anzeigen' }));
   expect(pushes).toHaveBeenCalledTimes(1);
   expect(window.location.search).toBe('');
@@ -981,7 +1064,7 @@ test('the table reads in the observed column order', async () => {
     'Dokument',
     'Datum',
     'Betrag',
-    'Fällig',
+    'Frist',
     'Event',
     'Zahlung',
     'Aktionen',
