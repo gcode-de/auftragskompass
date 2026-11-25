@@ -2564,3 +2564,49 @@ test('notes toolbar, drop and key paths keep working in the details column', asy
   });
   Reflect.deleteProperty(document, 'execCommand');
 });
+
+// UI-PARITY-05: Bookitup's logbook lists the newest entry first, the text
+// above its date.
+test('the logbook shows the newest entry first with its date below', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({
+        ...detail,
+        activities: [
+          {
+            ...detail.activities[0],
+            id: 'activity-old',
+            eventVersion: 1,
+            description: 'Älterer Eintrag.',
+            occurredAt: '2030-10-01T10:00:00.000Z',
+          },
+          {
+            ...detail.activities[0],
+            id: 'activity-new',
+            eventVersion: 2,
+            description: 'Neuerer Eintrag.',
+            occurredAt: '2030-10-02T10:00:00.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="synthetic"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  const logbook = await screen.findByRole('region', { name: 'Logbuch' });
+  const entries = within(logbook).getAllByRole('listitem');
+  expect(entries.map((entry) => entry.firstChild?.textContent)).toEqual([
+    'Neuerer Eintrag.',
+    'Älterer Eintrag.',
+  ]);
+  expect(entries[0]!.lastElementChild?.tagName).toBe('TIME');
+});

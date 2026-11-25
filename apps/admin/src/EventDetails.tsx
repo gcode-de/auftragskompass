@@ -1397,16 +1397,20 @@ export function EventDetails({
                 >
                   <h4 id="event-panel-activity">Logbuch</h4>
                   {!data.activities.length && <p>Noch keine Aktivitäten.</p>}
-                  <ol>
-                    {data.activities.map((activity) => (
+                  {/* UI-PARITY-05: a timeline like Bookitup's logbook - the
+                      newest entry first, what happened above when it did. */}
+                  <ol className="event-logbook">
+                    {[...data.activities].reverse().map((activity) => (
                       <li key={activity.id}>
+                        <span>
+                          {activity.description}
+                          {activity.eventVersion === null
+                            ? ' (Historischer Eintrag; frühere Details unbekannt)'
+                            : ''}
+                        </span>
                         <time dateTime={activity.occurredAt}>
                           {time(activity.occurredAt)}
-                        </time>{' '}
-                        {activity.description}
-                        {activity.eventVersion === null
-                          ? ' (Historischer Eintrag; frühere Details unbekannt)'
-                          : ''}
+                        </time>
                       </li>
                     ))}
                   </ol>

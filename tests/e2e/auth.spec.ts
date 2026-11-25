@@ -4476,6 +4476,10 @@ async function signInScenario(
     await expect(
       record.getByText(/Status von Anfrage auf Option geändert/),
     ).toBeVisible();
+    // UI-PARITY-05: the logbook reads as a timeline.
+    await record
+      .getByRole('region', { name: 'Logbuch' })
+      .screenshot({ path: 'tests/test-results/event-logbook-timeline.png' });
     // BKP013.2: a confirmed create is stored data. Its row has to stay
     // reachable when the following list read fails, so an operator never loses
     // a draft that already exists — and the retry only re-reads. Both answers

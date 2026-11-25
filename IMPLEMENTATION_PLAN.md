@@ -434,6 +434,13 @@ Attrappen nachgebaut.
   ausdrücklich platziert. Nur Markup-Ort und CSS. **Tests:** Component
   (unverändert grün), E2E (Spaltengeometrie 320/1280/1600, axe).
   Commit `feat: keep notes and logbook in the details column`.
+- [x] **UI-PARITY-05 — Logbuch als Zeitleiste (25.11.2026):** wie Bookitups
+  Logbuch steht der neueste Eintrag oben, der Text über seinem Datum, jeder
+  Eintrag mit neutraler Markierung auf einer verbindenden Linie (keine
+  Farbe als einziges Signal, Datum `muted` mit Ziffern in Tabellenbreite).
+  Die API-Reihenfolge bleibt unverändert, nur die Anzeige dreht. **Tests:**
+  Component (Reihenfolge, Aufbau), E2E-Screenshot mit echten Einträgen.
+  Commit `feat: show the logbook as a timeline`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 

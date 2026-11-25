@@ -2360,6 +2360,45 @@ summary {
 }
 /* The work areas stay mounted behind `hidden`, so an area switch never throws
    an unsaved draft away; the chosen area receives the focus programmatically. */
+/* UI-PARITY-05: the logbook as a quiet timeline - a neutral marker per
+   entry on one connecting line, the date below the text in muted figures. */
+.event-logbook {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+.event-logbook li {
+  position: relative;
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0 0 1rem 1.75rem;
+}
+.event-logbook li::before {
+  content: '';
+  position: absolute;
+  left: 0.3rem;
+  top: 0.35rem;
+  width: 0.65rem;
+  height: 0.65rem;
+  border: 2px solid var(--quiet-ink);
+  border-radius: 50%;
+  background: var(--surface);
+}
+.event-logbook li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(0.3rem + 0.325rem - 1px);
+  top: 1.2rem;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.event-logbook time {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
 .event-record-panel:focus-visible,
 .event-detail-section:focus-visible {
   outline: 3px solid var(--focus);
