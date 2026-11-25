@@ -585,7 +585,7 @@ export function EventDetails({
       return;
     if (
       !window.confirm(
-        'Event entfernen? Aktive Ressourcen werden freigegeben. Finale Dokumente und Historie bleiben erhalten. Das Event kann später wiederhergestellt werden; frühere Buchungen werden dabei nicht reaktiviert.',
+        'Event löschen? Aktive Ressourcen werden freigegeben. Finale Dokumente und Historie bleiben erhalten. Das Event kann später wiederhergestellt werden; frühere Buchungen werden dabei nicht reaktiviert.',
       )
     )
       return;
@@ -808,48 +808,72 @@ export function EventDetails({
       )}
       {loading && <p>Event-Details werden geladen …</p>}
       {data && (
-        <>
-          <header className="event-record-head" data-status={data.event.status}>
-            <p className="event-record-when">
-              <span className="event-record-date">
-                {data.event.eventDate
-                  ? plainDateText(data.event.eventDate)
-                  : 'ohne Datum'}
-              </span>
-              {schedule && (
-                <span className="event-record-time">{schedule}</span>
-              )}
-            </p>
-            <h2 ref={heading} tabIndex={-1}>
-              Event: {data.event.name}
-            </h2>
-            <p className="event-record-facts">
-              <span className="event-status">
-                <span className="event-status-mark" aria-hidden="true" />
-                {statuses.find((status) => status.code === data.event.status)
-                  ?.label ?? data.event.status}
-              </span>
-              <span className="event-record-type">
-                {data.eventType?.name ?? 'Art offen'}
-              </span>
-              {cancellationReason && (
-                <span className="event-record-reason">
-                  Grund: {cancellationReason}
+        <div className="event-record-layout">
+          {/* UI-BKP-03: Bookitup's record column - the head, the areas as a
+              vertical list and the rare actions as quiet links at its foot. */}
+          <div className="event-record-side">
+            <header
+              className="event-record-head"
+              data-status={data.event.status}
+            >
+              <p className="event-record-when">
+                <span className="event-record-date">
+                  {data.event.eventDate
+                    ? plainDateText(data.event.eventDate)
+                    : 'ohne Datum'}
                 </span>
-              )}
-              <span className="event-record-place">{place || 'Ort offen'}</span>
-              {(data.event.source ?? '').startsWith('Website:') && (
-                <span className="event-source-quiet">Website</span>
-              )}
-            </p>
-            <details className="event-record-actions">
-              <summary>Weitere Eventaktionen</summary>
+                {schedule && (
+                  <span className="event-record-time">{schedule}</span>
+                )}
+              </p>
+              <h2 ref={heading} tabIndex={-1}>
+                Event: {data.event.name}
+              </h2>
+              <p className="event-record-facts">
+                <span className="event-status">
+                  <span className="event-status-mark" aria-hidden="true" />
+                  {statuses.find((status) => status.code === data.event.status)
+                    ?.label ?? data.event.status}
+                </span>
+                <span className="event-record-type">
+                  {data.eventType?.name ?? 'Art offen'}
+                </span>
+                {cancellationReason && (
+                  <span className="event-record-reason">
+                    Grund: {cancellationReason}
+                  </span>
+                )}
+                <span className="event-record-place">
+                  {place || 'Ort offen'}
+                </span>
+                {(data.event.source ?? '').startsWith('Website:') && (
+                  <span className="event-source-quiet">Website</span>
+                )}
+              </p>
+            </header>
+            <nav className="record-navigation" aria-label="Bereiche des Events">
+              {areas.map((entry) => (
+                <button
+                  key={entry.value}
+                  type="button"
+                  className="nav-action"
+                  aria-current={area === entry.value ? 'location' : undefined}
+                  onClick={() => {
+                    setArea(entry.value);
+                    heading.current?.scrollIntoView?.();
+                  }}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </nav>
+            <div className="event-record-actions">
               {/* A copy starts from the stored record, so unsaved edits block
-                  it instead of being silently left out. */}
+                it instead of being silently left out. */}
               {onDuplicate && (
                 <button
                   type="button"
-                  className="secondary-action"
+                  className="tertiary-action"
                   disabled={busy || loading || hasRecordChanges()}
                   onClick={() => onDuplicate(data.event)}
                 >
@@ -858,482 +882,469 @@ export function EventDetails({
               )}
               <button
                 type="button"
-                className="secondary-action"
+                className="tertiary-action danger-link"
                 disabled={
                   busy || loading || editingDocument || hasRecordChanges()
                 }
                 onClick={() => void removeEvent()}
               >
-                Event entfernen
+                Event löschen
               </button>
-            </details>
-          </header>
-          <nav className="record-navigation" aria-label="Bereiche des Events">
-            {areas.map((entry) => (
-              <button
-                key={entry.value}
-                type="button"
-                className="nav-action"
-                aria-current={area === entry.value ? 'location' : undefined}
-                onClick={() => {
-                  setArea(entry.value);
-                  heading.current?.scrollIntoView?.();
-                }}
-              >
-                {entry.label}
-              </button>
-            ))}
-          </nav>
-          <div
-            className="event-record-panel"
-            role="region"
-            aria-labelledby="event-panel-details"
-            tabIndex={-1}
-            ref={detailsPanel}
-            hidden={area !== 'details'}
-          >
-            <h3 id="event-panel-details">Details</h3>
-            <div className="event-detail-layout">
-              <div className="event-detail-main">
-                <div className="event-detail-primary">
-                  <h4>Termin</h4>
-                  <dl>
-                    <dt>Datum</dt>
-                    <dd>
-                      {data.event.eventDate
-                        ? data.event.eventDate.split('-').reverse().join('.')
-                        : 'Ohne Datum'}
-                    </dd>
-                    {/* H037: a date-only booking says so; a real midnight start
-                      keeps its genuine clock time from the stored timestamp. */}
-                    <dt>Beginn</dt>
-                    <dd>
-                      {data.event.startsAt
-                        ? time(data.event.startsAt)
-                        : 'Tagesbuchung, ohne Uhrzeit'}
-                    </dd>
-                    <dt>Ende</dt>
-                    <dd>
-                      {data.event.endsAt
-                        ? time(data.event.endsAt)
-                        : 'Ohne Uhrzeit'}
-                    </dd>
-                  </dl>
-                  <EventInlineEditor
-                    ref={inline}
-                    key={'inline:' + data.event.id}
-                    event={data.event}
-                    csrfToken={csrfToken}
-                    types={types}
-                    packages={packages}
-                    locations={locations}
-                    contacts={data.contacts}
-                    locked={metaBlocked || loading}
-                    canEdit={() =>
-                      !dirty.current &&
-                      !resourcesDirty.current &&
-                      !saving.current &&
-                      !resourceMutation.current &&
-                      !statusUncertainRef.current &&
-                      !resourceUncertainRef.current
-                    }
-                    onDirtyChange={metadataChanged}
-                    onConfirmed={applyConfirmed}
-                  />
-                </div>
-                <div className="event-detail-overview">
-                  <h4>Allgemein</h4>
-                  <dl>
-                    <dt>Eventart</dt>
-                    <dd>{data.eventType?.name ?? 'Noch offen'}</dd>
-                    <dt>Fotobox-Paket</dt>
-                    <dd>{data.package?.name ?? 'Noch offen'}</dd>
-                    <dt>Anfragequelle</dt>
-                    <dd>{data.event.source || 'Noch offen'}</dd>
-                    <dt>Beschreibung</dt>
-                    <dd>{data.event.description || 'Keine Beschreibung'}</dd>
-                  </dl>
-                  {data.websiteInquiryAvailable && (
-                    <WebsiteInquiry
-                      key={id}
-                      eventId={id}
-                      timeZone={data.event.timeZone}
-                    />
-                  )}
-                  <form
-                    key={data.event.version + ':' + epoch}
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void saveStatus(event.currentTarget);
-                    }}
-                  >
-                    <fieldset
-                      disabled={
-                        busy ||
-                        loading ||
-                        statusUncertain ||
-                        resourceUncertainRef.current ||
-                        legacyBlocked ||
-                        resourcesDirty.current
-                      }
-                    >
-                      <legend>Status ändern</legend>
-                      <label>
-                        Status des Events
-                        <select
-                          name="status"
-                          defaultValue={data.event.status}
-                          onChange={(event) => {
-                            setStatusResourceCorrection(false);
-                            setStatusChoice(event.currentTarget.value);
-                            dirty.current = true;
-                            legacyChanged();
-                          }}
+            </div>
+          </div>
+          <div className="event-record-body">
+            <div
+              className="event-record-panel"
+              role="region"
+              aria-labelledby="event-panel-details"
+              tabIndex={-1}
+              ref={detailsPanel}
+              hidden={area !== 'details'}
+            >
+              <h3 id="event-panel-details">Details</h3>
+              <div className="event-detail-layout">
+                <div className="event-detail-main">
+                  <div className="event-detail-overview">
+                    <div className="card-head">
+                      <h4>Allgemein</h4>
+                      <button
+                        type="button"
+                        className="icon-action tier-quiet-icon"
+                        aria-label={`Stammdaten bearbeiten: ${data.event.name}`}
+                        title="Event bearbeiten"
+                        disabled={busy || loading}
+                        onClick={() => {
+                          if (
+                            hasRecordChanges() &&
+                            !window.confirm(
+                              'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
+                            )
+                          )
+                            return;
+                          onEdit(data.event);
+                        }}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
                         >
-                          {statuses.map((status) => (
-                            <option key={status.code} value={status.code}>
-                              {status.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {(statusChoice ?? data.event.status) === 'cancelled' && (
+                          <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    </div>
+                    {data.websiteInquiryAvailable && (
+                      <WebsiteInquiry
+                        key={id}
+                        eventId={id}
+                        timeZone={data.event.timeZone}
+                      />
+                    )}
+                    <form
+                      key={data.event.version + ':' + epoch}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void saveStatus(event.currentTarget);
+                      }}
+                    >
+                      <fieldset
+                        disabled={
+                          busy ||
+                          loading ||
+                          statusUncertain ||
+                          resourceUncertainRef.current ||
+                          legacyBlocked ||
+                          resourcesDirty.current
+                        }
+                      >
+                        <legend>Status ändern</legend>
                         <label>
-                          Absagegrund
+                          Status des Events
                           <select
-                            name="cancellationReasonId"
-                            defaultValue={data.event.cancellationReasonId ?? ''}
-                            onChange={() => {
+                            name="status"
+                            defaultValue={data.event.status}
+                            onChange={(event) => {
+                              setStatusResourceCorrection(false);
+                              setStatusChoice(event.currentTarget.value);
                               dirty.current = true;
                               legacyChanged();
                             }}
                           >
-                            <option value="">Kein Grund angegeben</option>
-                            {reasons
-                              .filter(
-                                (reason) =>
-                                  reason.state === 'active' ||
-                                  reason.id === data.event.cancellationReasonId,
-                              )
-                              .map((reason) => (
-                                <option key={reason.id} value={reason.id}>
-                                  {reason.name}
-                                  {reason.state !== 'active' && ' (archiviert)'}
-                                </option>
-                              ))}
+                            {statuses.map((status) => (
+                              <option key={status.code} value={status.code}>
+                                {status.label}
+                              </option>
+                            ))}
                           </select>
                         </label>
-                      )}
-                      <button className="primary-action">
-                        Status speichern
-                      </button>
-                    </fieldset>
-                  </form>
-                  {statusResourceCorrection && (
-                    <button
-                      type="button"
-                      className="secondary-action"
-                      disabled={
-                        busy ||
-                        loading ||
-                        metadataDirty.current ||
-                        resourcesDirty.current ||
-                        resourceMutation.current ||
-                        statusUncertainRef.current ||
-                        resourceUncertainRef.current
-                      }
-                      onClick={discardStatusDraftAndCorrectResources}
-                    >
-                      Statusentwurf verwerfen und Ressourcen korrigieren
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="icon-action tier-quiet-icon"
-                    aria-label={`Stammdaten bearbeiten: ${data.event.name}`}
-                    title="Event bearbeiten"
-                    disabled={busy || loading}
-                    onClick={() => {
-                      if (
-                        hasRecordChanges() &&
-                        !window.confirm(
-                          'Bereich trotz ungespeicherter Eingaben verlassen? Laufende Speicherungen werden fortgesetzt.',
-                        )
-                      )
-                        return;
-                      onEdit(data.event);
-                    }}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                  </button>
-                </div>
-                {/* UI-PARITY-02/04, QW3: dated notes and the logbook belong to
-                the details main column, like Bookitup's Notizen and Logbuch. */}
-                <EventNotes eventId={data.event.id} csrfToken={csrfToken} />
-                <div
-                  className="event-detail-section"
-                  role="region"
-                  aria-labelledby="event-panel-activity"
-                  tabIndex={-1}
-                  ref={activityPanel}
-                >
-                  <h4 id="event-panel-activity">Logbuch</h4>
-                  {!data.activities.length && <p>Noch keine Aktivitäten.</p>}
-                  {/* UI-PARITY-05: a timeline like Bookitup's logbook - the
-                      newest entry first, what happened above when it did. */}
-                  <ol className="event-logbook">
-                    {[...data.activities].reverse().map((activity) => (
-                      <li key={activity.id}>
-                        <span>
-                          {activity.description}
-                          {activity.eventVersion === null
-                            ? ' (Historischer Eintrag; frühere Details unbekannt)'
-                            : ''}
-                        </span>
-                        <time dateTime={activity.occurredAt}>
-                          {time(activity.occurredAt)}
-                        </time>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              </div>
-              <aside className="event-detail-aside">
-                <details className="event-aside" open={wideRecord}>
-                  <summary>Kontakt und Ort</summary>
-                  <section className="event-aside-contact">
-                    <h4>Kontakt</h4>
-                    {/* A missing link is a normal open state of an option, not an
-                      error and not a blocking step before the event exists. */}
-                    {!data.contacts.some(
-                      (person) => person.role === 'primary',
-                    ) && <p>Kontakt noch offen.</p>}
-                    <ul>
-                      {data.contacts.map((person) => (
-                        <li key={person.id}>
-                          {person.role === 'primary'
-                            ? 'Hauptkontakt'
-                            : 'Weiterer Kontakt'}
-                          : {person.name} {person.contactPerson}
-                          {person.detailsUnavailable &&
-                            ' (Kontaktdaten noch nicht geladen)'}{' '}
-                          <a
-                            href={'#contact-' + person.id}
-                            aria-label={'Details anzeigen: ' + person.name}
-                          >
-                            Details anzeigen
-                          </a>{' '}
-                          {person.email && (
-                            <a
-                              href={
-                                'mailto:' + encodeURIComponent(person.email)
+                        {(statusChoice ?? data.event.status) ===
+                          'cancelled' && (
+                          <label>
+                            Absagegrund
+                            <select
+                              name="cancellationReasonId"
+                              defaultValue={
+                                data.event.cancellationReasonId ?? ''
                               }
+                              onChange={() => {
+                                dirty.current = true;
+                                legacyChanged();
+                              }}
                             >
-                              {person.email}
-                            </a>
-                          )}{' '}
-                          {[person.phone, person.mobile]
-                            .filter(Boolean)
-                            .map((number, index) => (
-                              <a
-                                key={index}
-                                href={'tel:' + number.replace(/[^+0-9]/g, '')}
-                              >
-                                {number}{' '}
-                              </a>
-                            ))}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                  <section className="event-aside-location">
-                    <h4>Ort / Adresse</h4>
-                    {data.event.venueOverride ? (
-                      data.event.venue?.trim() ? (
-                        <p className="event-venue">{data.event.venue}</p>
-                      ) : (
-                        <p>Kein Veranstaltungsort hinterlegt.</p>
-                      )
-                    ) : data.location ? (
-                      <>
-                        <p>{data.location.name}</p>
-                        <p>
-                          {[
-                            data.location.street,
-                            data.location.postalCode,
-                            data.location.city,
-                            data.location.country,
-                          ]
-                            .filter(Boolean)
-                            .join(', ')}
-                        </p>
-                      </>
-                    ) : (
-                      <p>Ort offen.</p>
+                              <option value="">Kein Grund angegeben</option>
+                              {reasons
+                                .filter(
+                                  (reason) =>
+                                    reason.state === 'active' ||
+                                    reason.id ===
+                                      data.event.cancellationReasonId,
+                                )
+                                .map((reason) => (
+                                  <option key={reason.id} value={reason.id}>
+                                    {reason.name}
+                                    {reason.state !== 'active' &&
+                                      ' (archiviert)'}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                        )}
+                        <button className="primary-action">
+                          Status speichern
+                        </button>
+                      </fieldset>
+                    </form>
+                    {statusResourceCorrection && (
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        disabled={
+                          busy ||
+                          loading ||
+                          metadataDirty.current ||
+                          resourcesDirty.current ||
+                          resourceMutation.current ||
+                          statusUncertainRef.current ||
+                          resourceUncertainRef.current
+                        }
+                        onClick={discardStatusDraftAndCorrectResources}
+                      >
+                        Statusentwurf verwerfen und Ressourcen korrigieren
+                      </button>
                     )}
-                  </section>
-                </details>
-              </aside>
+                  </div>
+                  <div className="event-detail-primary">
+                    <h4>Zeitplan</h4>
+                    <dl>
+                      <dt>Datum</dt>
+                      <dd>
+                        {data.event.eventDate
+                          ? data.event.eventDate.split('-').reverse().join('.')
+                          : 'Ohne Datum'}
+                      </dd>
+                      {/* H037: a date-only booking says so; a real midnight start
+                      keeps its genuine clock time from the stored timestamp. */}
+                      <dt>Beginn</dt>
+                      <dd>
+                        {data.event.startsAt
+                          ? time(data.event.startsAt)
+                          : 'Tagesbuchung, ohne Uhrzeit'}
+                      </dd>
+                      <dt>Ende</dt>
+                      <dd>
+                        {data.event.endsAt
+                          ? time(data.event.endsAt)
+                          : 'Ohne Uhrzeit'}
+                      </dd>
+                    </dl>
+                    <EventInlineEditor
+                      ref={inline}
+                      key={'inline:' + data.event.id}
+                      event={data.event}
+                      csrfToken={csrfToken}
+                      types={types}
+                      packages={packages}
+                      locations={locations}
+                      contacts={data.contacts}
+                      locked={metaBlocked || loading}
+                      canEdit={() =>
+                        !dirty.current &&
+                        !resourcesDirty.current &&
+                        !saving.current &&
+                        !resourceMutation.current &&
+                        !statusUncertainRef.current &&
+                        !resourceUncertainRef.current
+                      }
+                      onDirtyChange={metadataChanged}
+                      onConfirmed={applyConfirmed}
+                    />
+                  </div>
+                  <div className="event-detail-stack">
+                    {/* UI-PARITY-02/04, QW3: dated notes and the logbook belong to
+                the details main column, like Bookitup's Notizen and Logbuch. */}
+                    <EventNotes eventId={data.event.id} csrfToken={csrfToken} />
+                    <div
+                      className="event-detail-section"
+                      role="region"
+                      aria-labelledby="event-panel-activity"
+                      tabIndex={-1}
+                      ref={activityPanel}
+                    >
+                      <h4 id="event-panel-activity">Logbuch</h4>
+                      {!data.activities.length && (
+                        <p>Noch keine Aktivitäten.</p>
+                      )}
+                      {/* UI-PARITY-05: a timeline like Bookitup's logbook - the
+                      newest entry first, what happened above when it did. */}
+                      <ol className="event-logbook">
+                        {[...data.activities].reverse().map((activity) => (
+                          <li key={activity.id}>
+                            <span>
+                              {activity.description}
+                              {activity.eventVersion === null
+                                ? ' (Historischer Eintrag; frühere Details unbekannt)'
+                                : ''}
+                            </span>
+                            <time dateTime={activity.occurredAt}>
+                              {time(activity.occurredAt)}
+                            </time>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+                <aside className="event-detail-aside">
+                  <details className="event-aside" open={wideRecord}>
+                    <summary>Kontakt und Ort</summary>
+                    <section className="event-aside-contact">
+                      <h4>Kontakt</h4>
+                      {/* A missing link is a normal open state of an option, not an
+                      error and not a blocking step before the event exists. */}
+                      {!data.contacts.some(
+                        (person) => person.role === 'primary',
+                      ) && <p>Kontakt noch offen.</p>}
+                      <ul>
+                        {data.contacts.map((person) => (
+                          <li key={person.id}>
+                            {person.role === 'primary'
+                              ? 'Hauptkontakt'
+                              : 'Weiterer Kontakt'}
+                            : {person.name} {person.contactPerson}
+                            {person.detailsUnavailable &&
+                              ' (Kontaktdaten noch nicht geladen)'}{' '}
+                            <a
+                              href={'#contact-' + person.id}
+                              aria-label={'Details anzeigen: ' + person.name}
+                            >
+                              Details anzeigen
+                            </a>{' '}
+                            {person.email && (
+                              <a
+                                href={
+                                  'mailto:' + encodeURIComponent(person.email)
+                                }
+                              >
+                                {person.email}
+                              </a>
+                            )}{' '}
+                            {[person.phone, person.mobile]
+                              .filter(Boolean)
+                              .map((number, index) => (
+                                <a
+                                  key={index}
+                                  href={'tel:' + number.replace(/[^+0-9]/g, '')}
+                                >
+                                  {number}{' '}
+                                </a>
+                              ))}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                    <section className="event-aside-location">
+                      <h4>Ort / Adresse</h4>
+                      {data.event.venueOverride ? (
+                        data.event.venue?.trim() ? (
+                          <p className="event-venue">{data.event.venue}</p>
+                        ) : (
+                          <p>Kein Veranstaltungsort hinterlegt.</p>
+                        )
+                      ) : data.location ? (
+                        <>
+                          <p>{data.location.name}</p>
+                          <p>
+                            {[
+                              data.location.street,
+                              data.location.postalCode,
+                              data.location.city,
+                              data.location.country,
+                            ]
+                              .filter(Boolean)
+                              .join(', ')}
+                          </p>
+                        </>
+                      ) : (
+                        <p>Ort offen.</p>
+                      )}
+                    </section>
+                  </details>
+                </aside>
+              </div>
             </div>
-          </div>
-          <div
-            className="event-record-panel"
-            role="region"
-            aria-labelledby="event-panel-resources"
-            tabIndex={-1}
-            ref={resourcesPanel}
-            hidden={area !== 'resources'}
-          >
-            <h3 id="event-panel-resources">Ressourcen</h3>
-            <ResourceAssignments
-              key={
-                data.event.id +
-                ':' +
-                (resourceVersion ?? data.event.version) +
-                ':' +
-                epoch
-              }
-              event={data.event}
-              csrfToken={csrfToken}
-              onDirtyChange={(value) => {
-                resourcesDirty.current = value;
-                legacyChanged();
-              }}
-              locked={
-                legacyBlocked ||
-                dirty.current ||
-                saving.current ||
-                statusUncertain
-              }
-              canMutate={() =>
-                !metadataDirty.current &&
-                !dirty.current &&
-                !saving.current &&
-                !resourceMutation.current &&
-                !statusUncertainRef.current &&
-                !resourceUncertainRef.current
-              }
-              onUnconfirmedChange={(value) => {
-                resourceUncertainRef.current = value;
-                legacyChanged();
-              }}
-              onMutationChange={(value) => {
-                resourceMutation.current = value;
-                if (!value && loadedVersion.current !== null)
-                  setResourceVersion(loadedVersion.current);
-                legacyChanged();
-              }}
-              onConfirmed={(row) => {
-                adoptExternal(row);
-                onResourceConfirmed?.(row);
-                setMessage('Ressourcen und Termin gespeichert.');
-              }}
-              onReconcile={async () => {
-                if (!(await load(true))) throw Error('reload not adopted');
-                await onChanged('Serverstand aktualisiert.');
-                setEpoch((current) => current + 1);
-              }}
-              onChanged={async () => {
-                try {
-                  if (!(await load(true))) throw Error('reload not adopted');
-                  await onChanged('Ressourcen und Termin gespeichert.');
-                } catch (error) {
-                  setReloadWarning(true);
-                  throw error;
+            <div
+              className="event-record-panel"
+              role="region"
+              aria-labelledby="event-panel-resources"
+              tabIndex={-1}
+              ref={resourcesPanel}
+              hidden={area !== 'resources'}
+            >
+              <h3 id="event-panel-resources">Ressourcen</h3>
+              <ResourceAssignments
+                key={
+                  data.event.id +
+                  ':' +
+                  (resourceVersion ?? data.event.version) +
+                  ':' +
+                  epoch
                 }
-              }}
-            />
-          </div>
-          <div
-            className="event-record-panel"
-            role="region"
-            aria-labelledby="event-panel-files"
-            tabIndex={-1}
-            ref={filesPanel}
-            hidden={area !== 'files'}
-          >
-            <h3 id="event-panel-files" hidden={editingDocument}>
-              Dateien
-            </h3>
-            <p className="event-panel-hint" hidden={editingDocument}>
-              Dokumente dieses Events, nach ihrer Art getrennt. Was hier fehlt,
-              ist noch nicht angelegt.
-            </p>
-            <EventDocuments
-              key={'documents:' + data.event.id}
-              eventId={data.event.id}
-              contactId={data.event.primaryContactId}
-              contactName={
-                data.contacts.find(
-                  (contact) => contact.id === data.event.primaryContactId,
-                )?.name ?? null
-              }
-              // MAIL-DOC-01: the same stored contact that names the event also
-              // prefills the recipient; without an address the field stays empty.
-              contactEmail={
-                data.contacts.find(
-                  (contact) => contact.id === data.event.primaryContactId,
-                )?.email ?? null
-              }
-              timeZone={data.event.timeZone}
-              csrfToken={csrfToken}
-              onEditingChange={setEditingDocument}
-              recordRemoving={removing}
-              onEditorProtectedChange={documentEditorProtectionChanged}
-              onMailScheduled={() => setMailRevision((value) => value + 1)}
-              composeRequest={composeRequest}
-            />
-            <div hidden={editingDocument}>
-              <EventLibraryFiles
-                key={'library:' + data.event.id}
+                event={data.event}
+                csrfToken={csrfToken}
+                onDirtyChange={(value) => {
+                  resourcesDirty.current = value;
+                  legacyChanged();
+                }}
+                locked={
+                  legacyBlocked ||
+                  dirty.current ||
+                  saving.current ||
+                  statusUncertain
+                }
+                canMutate={() =>
+                  !metadataDirty.current &&
+                  !dirty.current &&
+                  !saving.current &&
+                  !resourceMutation.current &&
+                  !statusUncertainRef.current &&
+                  !resourceUncertainRef.current
+                }
+                onUnconfirmedChange={(value) => {
+                  resourceUncertainRef.current = value;
+                  legacyChanged();
+                }}
+                onMutationChange={(value) => {
+                  resourceMutation.current = value;
+                  if (!value && loadedVersion.current !== null)
+                    setResourceVersion(loadedVersion.current);
+                  legacyChanged();
+                }}
+                onConfirmed={(row) => {
+                  adoptExternal(row);
+                  onResourceConfirmed?.(row);
+                  setMessage('Ressourcen und Termin gespeichert.');
+                }}
+                onReconcile={async () => {
+                  if (!(await load(true))) throw Error('reload not adopted');
+                  await onChanged('Serverstand aktualisiert.');
+                  setEpoch((current) => current + 1);
+                }}
+                onChanged={async () => {
+                  try {
+                    if (!(await load(true))) throw Error('reload not adopted');
+                    await onChanged('Ressourcen und Termin gespeichert.');
+                  } catch (error) {
+                    setReloadWarning(true);
+                    throw error;
+                  }
+                }}
+              />
+            </div>
+            <div
+              className="event-record-panel"
+              role="region"
+              aria-labelledby="event-panel-files"
+              tabIndex={-1}
+              ref={filesPanel}
+              hidden={area !== 'files'}
+            >
+              <h3 id="event-panel-files" hidden={editingDocument}>
+                Dateien
+              </h3>
+              <p className="event-panel-hint" hidden={editingDocument}>
+                Dokumente dieses Events, nach ihrer Art getrennt. Was hier
+                fehlt, ist noch nicht angelegt.
+              </p>
+              <EventDocuments
+                key={'documents:' + data.event.id}
+                eventId={data.event.id}
+                contactId={data.event.primaryContactId}
+                contactName={
+                  data.contacts.find(
+                    (contact) => contact.id === data.event.primaryContactId,
+                  )?.name ?? null
+                }
+                // MAIL-DOC-01: the same stored contact that names the event also
+                // prefills the recipient; without an address the field stays empty.
+                contactEmail={
+                  data.contacts.find(
+                    (contact) => contact.id === data.event.primaryContactId,
+                  )?.email ?? null
+                }
+                timeZone={data.event.timeZone}
+                csrfToken={csrfToken}
+                onEditingChange={setEditingDocument}
+                recordRemoving={removing}
+                onEditorProtectedChange={documentEditorProtectionChanged}
+                onMailScheduled={() => setMailRevision((value) => value + 1)}
+                composeRequest={composeRequest}
+              />
+              <div hidden={editingDocument}>
+                <EventLibraryFiles
+                  key={'library:' + data.event.id}
+                  eventId={data.event.id}
+                  csrfToken={csrfToken}
+                  active={area === 'files'}
+                />
+              </div>
+            </div>
+            <div
+              className="event-record-panel"
+              role="region"
+              aria-labelledby="event-panel-mails"
+              tabIndex={-1}
+              ref={mailsPanel}
+              hidden={area !== 'mails'}
+            >
+              <h3 id="event-panel-mails">E-Mails</h3>
+              <button
+                type="button"
+                className="secondary-action"
+                aria-haspopup="dialog"
+                disabled={editingDocument || removing}
+                onClick={(event) =>
+                  setComposeRequest({
+                    id: Date.now(),
+                    trigger: event.currentTarget,
+                  })
+                }
+              >
+                Neue Mail schreiben
+              </button>
+              <EventMails
+                key={'mails:' + data.event.id}
                 eventId={data.event.id}
                 csrfToken={csrfToken}
-                active={area === 'files'}
+                active={area === 'mails'}
+                revision={mailRevision}
               />
             </div>
           </div>
-          <div
-            className="event-record-panel"
-            role="region"
-            aria-labelledby="event-panel-mails"
-            tabIndex={-1}
-            ref={mailsPanel}
-            hidden={area !== 'mails'}
-          >
-            <h3 id="event-panel-mails">E-Mails</h3>
-            <button
-              type="button"
-              className="secondary-action"
-              aria-haspopup="dialog"
-              disabled={editingDocument || removing}
-              onClick={(event) =>
-                setComposeRequest({
-                  id: Date.now(),
-                  trigger: event.currentTarget,
-                })
-              }
-            >
-              Neue Mail schreiben
-            </button>
-            <EventMails
-              key={'mails:' + data.event.id}
-              eventId={data.event.id}
-              csrfToken={csrfToken}
-              active={area === 'mails'}
-              revision={mailRevision}
-            />
-          </div>
-        </>
+        </div>
       )}
     </section>
   );

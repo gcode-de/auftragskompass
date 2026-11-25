@@ -2104,12 +2104,19 @@ test('event actions stay compact and available in each section', async () => {
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  const menu = screen.getByText('Weitere Eventaktionen').closest('details')!;
-  expect(menu.open).toBe(false);
+  // UI-BKP-03: the rare actions are quiet links at the foot of the record
+  // column, after the areas, and stay there in every area.
+  const actions = document.querySelector('.event-record-actions')!;
+  expect(
+    actions.compareDocumentPosition(
+      screen.getByRole('navigation', { name: 'Bereiche des Events' }),
+    ) & Node.DOCUMENT_POSITION_PRECEDING,
+  ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Ressourcen' }));
-  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
-  expect(menu.open).toBe(true);
-  expect(screen.getByRole('button', { name: 'Event entfernen' })).toBeTruthy();
+  const remove = within(actions as HTMLElement).getByRole('button', {
+    name: 'Event löschen',
+  });
+  expect(remove.className).toContain('danger-link');
 });
 
 test('event removal is confirmed, versioned and refuses unsaved drafts', async () => {
@@ -2142,8 +2149,7 @@ test('event removal is confirmed, versioned and refuses unsaved drafts', async (
     );
   details();
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
-  const remove = screen.getByRole('button', { name: 'Event entfernen' });
+  const remove = screen.getByRole('button', { name: 'Event löschen' });
   fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'booked' },
   });
@@ -2151,8 +2157,7 @@ test('event removal is confirmed, versioned and refuses unsaved drafts', async (
   cleanup();
   details();
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
-  const cleanRemove = screen.getByRole('button', { name: 'Event entfernen' });
+  const cleanRemove = screen.getByRole('button', { name: 'Event löschen' });
   expect((cleanRemove as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(cleanRemove);
   fireEvent.click(cleanRemove);
@@ -2197,8 +2202,7 @@ test('a missing event after a removal attempt keeps the record open for reconcil
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
-  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
-  fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Event löschen' }));
   await screen.findByText(
     'Event konnte nicht entfernt werden. Serverstand prüfen.',
   );
@@ -2240,8 +2244,7 @@ test.each(['server', 'malformed', 'offline'])(
     await screen.findByRole('heading', {
       name: 'Event: Synthetic detail event',
     });
-    fireEvent.click(screen.getByText('Weitere Eventaktionen'));
-    fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Event löschen' }));
     await waitFor(() =>
       expect(onRemoved).toHaveBeenCalledWith(expect.stringMatching(/unklar/)),
     );
