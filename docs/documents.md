@@ -879,3 +879,12 @@ Positionssummen; der Zahlbetrag (`gross − Rabatt`) und alle daraus
 abgeleiteten Forderungen sind unverändert. Fertige Belege bleiben, wie sie
 gedruckt wurden. Betreiberentscheidung vom 25.11.2026 („Anteilig je
 Steuersatz“); eine Bestätigung durch die Steuerberatung bleibt empfohlen.
+
+## Zeilenbeträge in der Preisgrundlage der Position (25.11.2026)
+
+Jede Positionszeile im PDF liest sich in ihrer eigenen Preisgrundlage: Ist der
+Einzelpreis netto erfasst, steht rechts der Netto-Zeilenbetrag, bei einem
+Bruttopreis der Bruttobetrag. Die Umsatzsteuer kommt nur einmal im
+Summenblock dazu, der mit „Brutto“ endet. Bisher stand rechts immer der
+Bruttobetrag, auch neben einem Nettopreis. Fertige Belege behalten ihr
+gespeichertes PDF.

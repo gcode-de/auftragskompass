@@ -335,9 +335,10 @@ describe('renderDocumentHtml', () => {
         },
       ],
     });
-    // The printed unit price is the stored net, the row and the block stay gross.
+    // A net row reads net from unit price to line amount; the tax is added
+    // only once, in the totals block, which ends with the gross sum.
     expect(html).toContain(
-      '<td>199,00 €</td><td>1 Stück</td><td>236,81 €</td>',
+      '<td>199,00 €</td><td>1 Stück</td><td>199,00 €</td>',
     );
     expect(html).toContain('<td>Netto</td><td>199,00 €</td>');
     expect(html).toContain('<td>Umsatzsteuer 19 %</td><td>37,81 €</td>');
@@ -346,6 +347,36 @@ describe('renderDocumentHtml', () => {
     const styles = (markup: string) =>
       markup.slice(markup.indexOf('<style>'), markup.indexOf('</style>'));
     expect(styles(html)).toBe(styles(renderDocumentHtml(base)));
+  });
+  test('a mixed document prints every row in its own price basis', () => {
+    const html = renderDocumentHtml({
+      ...base,
+      lines: [
+        {
+          ...line,
+          quantity: 3,
+          unitPriceMinor: 10000,
+          priceBasis: 'net',
+          description: 'Fictional net day',
+          unit: 'Stück',
+        },
+        {
+          ...line,
+          unitPriceMinor: 11900,
+          priceBasis: 'gross',
+          description: 'Fictional gross item',
+          unit: 'Stück',
+        },
+      ],
+    });
+    expect(html).toContain(
+      '<td>100,00 €</td><td>3 Stück</td><td>300,00 €</td>',
+    );
+    expect(html).toContain(
+      '<td>119,00 €</td><td>1 Stück</td><td>119,00 €</td>',
+    );
+    expect(html).toContain('<td>Netto</td><td>400,00 €</td>');
+    expect(html).toContain('<td>Brutto</td><td>476,00 €</td>');
   });
   test('prints an amount discount in place of the percentage, without a new style', () => {
     const html = renderDocumentHtml({
