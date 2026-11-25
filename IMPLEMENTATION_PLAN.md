@@ -442,6 +442,17 @@ Attrappen nachgebaut.
   Component (Reihenfolge, Aufbau), E2E-Screenshot mit echten Einträgen.
   Commit `feat: show the logbook as a timeline`.
 
+## Nutzauftrag 25.11.2026 (Quick Wins, Backend erlaubt)
+
+- [x] **QW2 — Absagegrund am Event (C071):** Beim Status „Abgesagt“ wählt
+  die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
+  zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
+  ohne Angabe bleibt der Grund), Migration 0079 mit Fremdschlüssel und
+  Status-Prüfregel. **Tests:** Integration (Speichern, Erhalten, Löschen beim
+  Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
+  Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
+  Commit `feat: capture cancellation reasons on events`.
+
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
 - [x] **DOC-OPTION-01 — `feat: support optional document positions`**: Positionen in Dokumententwürfen als optional markieren. Im PDF „Optional:“ vor dem Titel und bei der Summe einen Hinweis anzeigen; optionale Positionen samt Rabatten und Steuern nicht in Netto-, Steuer- oder Bruttosummen aufnehmen. Auswahl und Infotexte speichern, in Folgebelegen erhalten und bestehende finale PDFs unverändert lassen. Abnahme mit gemischten Steuersätzen und Rabatten, Preisen, Vorschau/PDF, Mandanten- und Versionsschutz und fehlenden regulären Positionen.

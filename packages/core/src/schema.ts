@@ -191,6 +191,7 @@ export const events = pgTable('events', {
   timeZone: text('time_zone').notNull(),
   description: text('description').notNull(),
   notesHtml: text('notes_html').notNull(),
+  cancellationReasonId: uuid('cancellation_reason_id'),
   version: integer('version').notNull().default(1),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   deletedBy: uuid('deleted_by'),
