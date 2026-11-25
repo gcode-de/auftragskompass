@@ -534,7 +534,6 @@ test('the open record duplicates its event and links its contacts', async () => 
       .getByRole('link', { name: 'Details anzeigen: Fiktive Person' })
       .getAttribute('href'),
   ).toBe('#contact-fictional-contact');
-  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
   fireEvent.click(screen.getByRole('button', { name: 'Event duplizieren' }));
   const copy = await screen.findByRole('dialog', { name: /Neues Event/ });
   expect(
@@ -581,8 +580,7 @@ test('confirmed event removal refreshes both lists and reports refresh failures'
   );
   render(<EventPanel csrfToken="csrf" />);
   await screen.findByRole('heading', { name: 'Event: Synthetic event' });
-  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
-  fireEvent.click(screen.getByRole('button', { name: 'Event entfernen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Event löschen' }));
   await screen.findByText(/Listenaktualisierung fehlgeschlagen/);
   expect(
     screen.queryByRole('heading', { name: 'Event: Synthetic event' }),

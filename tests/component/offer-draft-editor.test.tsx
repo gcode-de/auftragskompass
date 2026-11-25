@@ -2173,8 +2173,7 @@ test('the document editor guards event removal, closing and browser navigation',
     />,
   );
   await screen.findByRole('heading', { name: 'Event: Fiktives Event' });
-  fireEvent.click(screen.getByText('Weitere Eventaktionen'));
-  const remove = screen.getByRole('button', { name: 'Event entfernen' });
+  const remove = screen.getByRole('button', { name: 'Event löschen' });
   expect(remove).toHaveProperty('disabled', false);
   fireEvent.click(screen.getByRole('button', { name: 'Dateien' }));
   fireEvent.click(

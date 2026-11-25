@@ -45,9 +45,9 @@ Nutzeranweisung; Gesamtrabatt weiterhin steuerlich nicht freigegeben.
 Reihenfolge: MAIL-ACCOUNT-01 (A, aktiv), dann MAIL-EDITOR-01 (B), dann
 MAIL-TPL-01+ (C); details below.
 
-- [x] **EDITOR-VISUAL-02 — Positionsaktionen als Zeilenmenü (B37-Abweichung 1)** *(GOAL 21.11.2026; **abgeschlossen 21.11.2026**, `feat: move position actions into a row menu`; PARITY-REST-Teil)*: Die vier Einzelaktionen der Positionskopfzeile im Dokumenteditor (aufwärts, abwärts, entfernen, „Als Produkt“) werden in **EIN** kompaktes Menü am Zeilenende zusammengefasst – Menüknopf „Aktionen für Position N“ (≥44 px, tier-quiet-icon) mit den Einträgen „Nach oben schieben“, „Nach unten schieben“, „Als Produkt speichern“, „Position entfernen“. **Belegte Referenzdetails (vor Implementierung dokumentiert):** Bookitup führt je Position ein Menü mit mindestens „als Produkt speichern“ und „nach unten schieben“ (manuelle Nutzerbeobachtung 20.11.2026, B37-Abweichung 1); die heutige Dateibild-Sichtprüfung der eigenen 320-px-Screenshots (B39) belegt die Mängel der heutigen Form: vier unbeschriftete Kleinsymbole, dort schwer einzuordnen; B15 zeigt Zeilenenden der Referenz mit Stift/Papierkorb – die Löschform im Dokumenteditor-Menü ist daher eigene GOAL-Auslegung (nicht beobachtet), die beobachteten Menüeinträge bleiben wörtlich. **Erhalten (Verträge):** Entfernen-Bestätigung (Abbruch behält Position + Fokus), Sortieransagen (DOC-ORDER-02), Drag & Drop und Tastaturwege (DOC-ORDER-01), „Als Produkt“-Schutz (genau ein POST je Geste, In-flight-Sperre, nur lesender Bestandsabgleich; zugänglicher Name „<Position> als Produkt speichern“), Tab-Reihenfolge Aktionen vor Feldern (jetzt ein Knopf), Brutto/Netto-Schalter (EDITOR-VISUAL-01) unverändert außerhalb des Menüs, mobiles Akkordion (EDITOR-MOBILE-01) unverändert, Menüknopf bleibt außerhalb sichtbar. **Keine** fachliche Logik, keine Berechnung, keine API/Migration; Vorlageneditor bleibt unverändert (kein konkurrierender Weg). **Abnahmekriterien:** RED zuerst (Component-Verträge Menü/Bestätigung/Fokus-Rückgabe/Sortieransage/Produkt-Schutz), component/unit grün ohne Abschwächung bestehender Assertions, typecheck/lint/format/docs/build; gezielte E2E (offer-draft) inkl. Tastaturbedienung des Menüs bei 320/1440 und axe; echte Vorher-/Nachher-Bilder (Desktop/Mobil, Hell/Dunkel) mit Dateibild-Vision angesehen und gegen B15/B17/B25 gehalten (Nachweis in B39); Tastatur, Barrierefreiheit und bestehende Bedienung erhalten; bei Konflikt Verständlichkeit/Zugänglichkeit vor pixelgenau. Implementierung als begrenzte Delegation an DeepSeek V4.1 Flash, Koordination/Review MiMo V2.6 Pro, keine parallelen Änderungen derselben Dateien. **Bewusst nicht in diesem Slice:** Positions-Gesamt-Zeile (Bookitup-Spalte „Gesamt“, B15/B17 + Nutzerbeobachtung 20.11. – guter nächster Kandidat, erfordert aber eine Entscheidung über den Client-Rechenweg, s. B39), Kopf-/Breiten-/Typografie-/Abstandsangleichung ohne belegte Referenz, Vorlageneditor. **Abgenommen (21.11.2026):** Implementierung als begrenzte Delegation an DeepSeek V4.1 Flash (`hermes -z -m deepseek-v4.1-flash --provider opencode-go`, Marker-Probe bestätigt; Koordination/Review MiMo V2.6 Pro, kein paralleles Ändern derselben Dateien); RED beobachtet (12 Component-Fehler fehlender Menü-Toggle/Gruppe) → grün: offer-draft-editor.test.tsx 70/70 (1 neu: Doppelauslöser = genau ein POST), component 1034/1034, unit 360/360, typecheck/lint/format/docs/workspace/build grün (MiMo selbst verifiziert); E2E volle Suite 52/52 lokal in echtem Chromium/PostgreSQL – erster Lauf 51 grün + 1 Testcontainers-Infra-Flake („Port not bound“), die gezielte Wiederholung deckte einen echten Test-Locator-Fehler der Delegation auf (Fokus-Assertion nach dem Verschieben griff auf die umnummerierte falsche Zeile – MiMo-Review-Fix in offer-draft.spec.ts, begründeter Locator), danach volle Suite 52/52 grün. Impeccable-Detektor über die geänderten UI-Ziele: kein neuer echter Befund (Warnung `side-tab` styles.css:1956 = vorbestehender Datei-Drift an unberührter Zeile; Advisory-Werte Altbestand). **Visuelle Abnahme (Dateibild-Vision ohne Bildschirmaufnahme):** 8 Vorher/Nachher-Paare der Positionskopfzeile (320/390/768/1440 + 22rem-Container, hell/dunkel) gegen den Main-Stand angesehen: überall genau die beabsichtigte Änderung (vier Einzel-Icons → ein Dreipunkt-Menüknopf), keine abgeschnittenen Beschriftungen, kein Überlauf, keine Überlappung; der Offen-Zustand des Menüs ist in den Suite-Bildern nicht sichtbar (geschlossener Zustand) und nur über Component-/E2E-/axe-Verträge abgenommen – ehrlich offen vermerkt. **Ehrliche Grenzen:** die zugänglichen Namen der Schiebe-/Entfernen-Einträge heißen jetzt „<Position> nach oben schieben“/„<Position>: Position entfernen“ (sichtbarer Text muss im Namen stecken – axe-Vorfall 21.11.); Fokus nach Abbruch/Entfernen-Bestätigung liegt auf dem Menüknopf statt auf dem alten Entfernen-Icon; Informationszeilen zeigen drei Menüeinträge ohne Produkt (wie bisher ohne Produkt-Icon); „Position entfernen“ im Menü ist eigene Auslegung; das Menü öffnet in der Zeile (kein Overlay).
+- [x] **EDITOR-VISUAL-02 — Positionsaktionen als Zeilenmenü (B37-Abweichung 1)** _(GOAL 21.11.2026; **abgeschlossen 21.11.2026**, `feat: move position actions into a row menu`; PARITY-REST-Teil)_: Die vier Einzelaktionen der Positionskopfzeile im Dokumenteditor (aufwärts, abwärts, entfernen, „Als Produkt“) werden in **EIN** kompaktes Menü am Zeilenende zusammengefasst – Menüknopf „Aktionen für Position N“ (≥44 px, tier-quiet-icon) mit den Einträgen „Nach oben schieben“, „Nach unten schieben“, „Als Produkt speichern“, „Position entfernen“. **Belegte Referenzdetails (vor Implementierung dokumentiert):** Bookitup führt je Position ein Menü mit mindestens „als Produkt speichern“ und „nach unten schieben“ (manuelle Nutzerbeobachtung 20.11.2026, B37-Abweichung 1); die heutige Dateibild-Sichtprüfung der eigenen 320-px-Screenshots (B39) belegt die Mängel der heutigen Form: vier unbeschriftete Kleinsymbole, dort schwer einzuordnen; B15 zeigt Zeilenenden der Referenz mit Stift/Papierkorb – die Löschform im Dokumenteditor-Menü ist daher eigene GOAL-Auslegung (nicht beobachtet), die beobachteten Menüeinträge bleiben wörtlich. **Erhalten (Verträge):** Entfernen-Bestätigung (Abbruch behält Position + Fokus), Sortieransagen (DOC-ORDER-02), Drag & Drop und Tastaturwege (DOC-ORDER-01), „Als Produkt“-Schutz (genau ein POST je Geste, In-flight-Sperre, nur lesender Bestandsabgleich; zugänglicher Name „<Position> als Produkt speichern“), Tab-Reihenfolge Aktionen vor Feldern (jetzt ein Knopf), Brutto/Netto-Schalter (EDITOR-VISUAL-01) unverändert außerhalb des Menüs, mobiles Akkordion (EDITOR-MOBILE-01) unverändert, Menüknopf bleibt außerhalb sichtbar. **Keine** fachliche Logik, keine Berechnung, keine API/Migration; Vorlageneditor bleibt unverändert (kein konkurrierender Weg). **Abnahmekriterien:** RED zuerst (Component-Verträge Menü/Bestätigung/Fokus-Rückgabe/Sortieransage/Produkt-Schutz), component/unit grün ohne Abschwächung bestehender Assertions, typecheck/lint/format/docs/build; gezielte E2E (offer-draft) inkl. Tastaturbedienung des Menüs bei 320/1440 und axe; echte Vorher-/Nachher-Bilder (Desktop/Mobil, Hell/Dunkel) mit Dateibild-Vision angesehen und gegen B15/B17/B25 gehalten (Nachweis in B39); Tastatur, Barrierefreiheit und bestehende Bedienung erhalten; bei Konflikt Verständlichkeit/Zugänglichkeit vor pixelgenau. Implementierung als begrenzte Delegation an DeepSeek V4.1 Flash, Koordination/Review MiMo V2.6 Pro, keine parallelen Änderungen derselben Dateien. **Bewusst nicht in diesem Slice:** Positions-Gesamt-Zeile (Bookitup-Spalte „Gesamt“, B15/B17 + Nutzerbeobachtung 20.11. – guter nächster Kandidat, erfordert aber eine Entscheidung über den Client-Rechenweg, s. B39), Kopf-/Breiten-/Typografie-/Abstandsangleichung ohne belegte Referenz, Vorlageneditor. **Abgenommen (21.11.2026):** Implementierung als begrenzte Delegation an DeepSeek V4.1 Flash (`hermes -z -m deepseek-v4.1-flash --provider opencode-go`, Marker-Probe bestätigt; Koordination/Review MiMo V2.6 Pro, kein paralleles Ändern derselben Dateien); RED beobachtet (12 Component-Fehler fehlender Menü-Toggle/Gruppe) → grün: offer-draft-editor.test.tsx 70/70 (1 neu: Doppelauslöser = genau ein POST), component 1034/1034, unit 360/360, typecheck/lint/format/docs/workspace/build grün (MiMo selbst verifiziert); E2E volle Suite 52/52 lokal in echtem Chromium/PostgreSQL – erster Lauf 51 grün + 1 Testcontainers-Infra-Flake („Port not bound“), die gezielte Wiederholung deckte einen echten Test-Locator-Fehler der Delegation auf (Fokus-Assertion nach dem Verschieben griff auf die umnummerierte falsche Zeile – MiMo-Review-Fix in offer-draft.spec.ts, begründeter Locator), danach volle Suite 52/52 grün. Impeccable-Detektor über die geänderten UI-Ziele: kein neuer echter Befund (Warnung `side-tab` styles.css:1956 = vorbestehender Datei-Drift an unberührter Zeile; Advisory-Werte Altbestand). **Visuelle Abnahme (Dateibild-Vision ohne Bildschirmaufnahme):** 8 Vorher/Nachher-Paare der Positionskopfzeile (320/390/768/1440 + 22rem-Container, hell/dunkel) gegen den Main-Stand angesehen: überall genau die beabsichtigte Änderung (vier Einzel-Icons → ein Dreipunkt-Menüknopf), keine abgeschnittenen Beschriftungen, kein Überlauf, keine Überlappung; der Offen-Zustand des Menüs ist in den Suite-Bildern nicht sichtbar (geschlossener Zustand) und nur über Component-/E2E-/axe-Verträge abgenommen – ehrlich offen vermerkt. **Ehrliche Grenzen:** die zugänglichen Namen der Schiebe-/Entfernen-Einträge heißen jetzt „<Position> nach oben schieben“/„<Position>: Position entfernen“ (sichtbarer Text muss im Namen stecken – axe-Vorfall 21.11.); Fokus nach Abbruch/Entfernen-Bestätigung liegt auf dem Menüknopf statt auf dem alten Entfernen-Icon; Informationszeilen zeigen drei Menüeinträge ohne Produkt (wie bisher ohne Produkt-Icon); „Position entfernen“ im Menü ist eigene Auslegung; das Menü öffnet in der Zeile (kein Overlay).
 
-- [x] **CI-MAILFLAKE-01 — `test: wait out event record loads and pin the mail contract`** *(Hotfix 21.11.2026)*: Der Main-Lauf zu `f231677` (EDITOR-VISUAL-02) war in `quality` rot, derselbe Stand in beiden PR-Läufen grün – zwei latente Test-Races: (1) der Vertrag „keine Mailfläche“ der Eventakte (`event-record-contexts.test.tsx`) traf mit `/\bE-Mails?\b/i` den Gesamttext der Akte und stolperte je nach Lauf über die seit MAIL-DOC-01 (PR #68) legitime Zeilenaktion „Per E-Mail senden“ (Dokumentzeilen rendern asynchron nach `open()`; lokal 3 von 5 Läufen rot reproduziert) – Vertrag wahrheitsgemäß präzisiert statt Text-Regex: die Bereichs-Navigation bleibt ohne Mailfläche, jeder mail-benannte Knopf ist exakt die dokumentierte Senden-Aktion (aria-Label „… per E-Mail senden“), keine mail-benannten Links/Regionen; (2) drei `getByRole`-Stellen in `events.test.tsx` griffen in die noch ladende Record-Shell (im Voll-Lauf beobachtet) – `findByRole` statt Rennen, Assertions unverändert. Nur zwei Testdateien, keine Produktänderung, keine abgeschwächte Assertion; nachher 6/6 Einzelläufe der betroffenen Datei sowie 3× volle Component-Suite 1034/1034 grün, format/lint/typecheck grün; PR #73 (`856277e`) nach grüner CI gemergt; Main-CI zu `eecd278` inkl. Images grün. **Nebenbefund:** MAIL-DOC-01 wurde bereits über PR #68 (`a7db577`) auf main gemergt; der Plan-Eintrag MAIL-DOC-01 ist noch offen und von der Mail-Sitzung ehrlich zu dokumentieren (Abnahmestand dort nicht geprüft).
+- [x] **CI-MAILFLAKE-01 — `test: wait out event record loads and pin the mail contract`** _(Hotfix 21.11.2026)_: Der Main-Lauf zu `f231677` (EDITOR-VISUAL-02) war in `quality` rot, derselbe Stand in beiden PR-Läufen grün – zwei latente Test-Races: (1) der Vertrag „keine Mailfläche“ der Eventakte (`event-record-contexts.test.tsx`) traf mit `/\bE-Mails?\b/i` den Gesamttext der Akte und stolperte je nach Lauf über die seit MAIL-DOC-01 (PR #68) legitime Zeilenaktion „Per E-Mail senden“ (Dokumentzeilen rendern asynchron nach `open()`; lokal 3 von 5 Läufen rot reproduziert) – Vertrag wahrheitsgemäß präzisiert statt Text-Regex: die Bereichs-Navigation bleibt ohne Mailfläche, jeder mail-benannte Knopf ist exakt die dokumentierte Senden-Aktion (aria-Label „… per E-Mail senden“), keine mail-benannten Links/Regionen; (2) drei `getByRole`-Stellen in `events.test.tsx` griffen in die noch ladende Record-Shell (im Voll-Lauf beobachtet) – `findByRole` statt Rennen, Assertions unverändert. Nur zwei Testdateien, keine Produktänderung, keine abgeschwächte Assertion; nachher 6/6 Einzelläufe der betroffenen Datei sowie 3× volle Component-Suite 1034/1034 grün, format/lint/typecheck grün; PR #73 (`856277e`) nach grüner CI gemergt; Main-CI zu `eecd278` inkl. Images grün. **Nebenbefund:** MAIL-DOC-01 wurde bereits über PR #68 (`a7db577`) auf main gemergt; der Plan-Eintrag MAIL-DOC-01 ist noch offen und von der Mail-Sitzung ehrlich zu dokumentieren (Abnahmestand dort nicht geprüft).
 
 **Referenz (manuelle Beobachtung des Nutzers, 20.11.2026, KEIN REA-Beleg):**
 Bookitup-Produktzeile mit zugehörigem Infotext und Optional-Checkbox; oben
@@ -60,52 +60,52 @@ des Nutzers nicht; keine gespeicherten Logins automatisch ausprobieren oder
 umgehen – vorhandene Beobachtungen/Sicherungen verwenden, bei Bedarf nach
 Freigabe fragen. Keine echten Kundenaktionen.
 
-- [x] **EDITOR-VISUAL-01 — Dokumenteditor-Erscheinungsbild an Bookitup angleichen** *(abgeschlossen 21.11.2026, `style: align the position header with the bookitup editor look`; kleiner abgeschlossener Darstellungsslice, PARITY-REST-Teil)*: Basierend auf den belegten visuellen Beobachtungen (B37-Vergleichsprotokoll, B15/B17/B25, manuelle Nutzerbeobachtung 20.11.2026) genau die wichtigsten dokumentierten sichtbaren Unterschiede angleichen, ohne Funktionalität oder Berechnungen umzubauen: **(1)** Brutto/Netto wie beobachtet als Schalter oben an der Positionszeile (statt „Preisbasis“-Select neben dem Preis; gleiche Semantik, andere Stelle/Form – B37-Abweichung 2) – als `role="radiogroup"` „Preisbasis“ mit nativen Radios „Brutto“/„Netto“ zwischen Positionstitel und Aktionsgruppe, nur an Preispositionen; Speichermodell, `priceLabel()`, `valueFieldsInvalid()` und alle Beträge unverändert; das mobile Akkordion (EDITOR-MOBILE-01) hält fünf Felder, der Schalter bleibt außerhalb sichtbar. **(2)** Produkt-Icon der Positionsaktionen nicht mehr als Zahnrad lesbar (offener Feinschliff-Befund EDITOR-ACTIONS-01): Lucide-`package-plus`-Geometrie, zugänglicher Name unverändert. **Bewusst nicht in diesem Slice:** Positions-Menü-Form (B37-Abweichung 1 – eigenständige Interaktionsänderung), Vorlageneditor (behält sein „Preisbasis“-Select), Kopf-/Breiten-/Typografie-/Abstandsangleichung ohne belegte Referenz. **Abgenommen (21.11.2026):** Implementierung als klar begrenzte Delegation an DeepSeek V4.1 Flash (`hermes -z -m deepseek-v4.1-flash --provider opencode-go`, Koordination/Review MiMo V2.6 Pro, kein paralleles Ändern derselben Dateien); RED beobachtet (8 Component-Fehler inkl. fehlender radiogroup) → grün: component 1033/1033 (69 in offer-draft-editor.test.tsx, 1 neu), unit 360/360, typecheck/lint/format/docs/build grün; E2E volle Suite 52/52 lokal in echtem Chromium/PostgreSQL (vier Locator-Stellen in offer-draft.spec.ts begründet auf Radio-Assertions umgestellt, Werte-Assertions inhaltsgleich, template-product-price.spec.ts unberührt); Impeccable-Detektor: nur bekannter Advisory `0.85rem` in der neuen CSS-Zeile (Bestandsmuster), kein neuer echter Befund. **Visuelle Abnahme nachgeholt (21.11.2026, GOAL-Folgesitzung):** alle archivierten Vorher-/Nachher-Paare mit einem Dateibild-Vision-Werkzeug tatsächlich angesehen (lokales Qwen-VL via llama.cpp, ohne Bildschirmaufnahme; im Archiv fanden sich 35 gleichnamige Paare der offer-draft-Suite – die Planung nannte 25; alle 35 angesehen): Brutto/Netto-Schalter im Positionskopf und `package-plus`-Icon in allen betroffenen Breiten/Themes (320/390/768/1280, hell/dunkel, 22rem) bestätigt, „Preisbasis“-Select durchgehend verschwunden, unbetroffene Ansichten (Rechnungskopf, Blanko-Dialoge, Angebotserstellung) pixelidentisch; gemeldete „Beschnitte“ („Beschreibung“/„Infotext“) gezielt nachgeprüft und als Bildausschnitt-Artefakte enttarnt (keine UI-Mängel), 1440 px ohne Clipping/Überlappung. Auch B15/B17/B25 tatsächlich angesehen (Layout-Details B39). Grenzen ehrlich: lokales Vision-Modell, keine REA-Evidence; Bookitup-Gleichheit weiterhin nicht behauptet für Kopf/Breiten/Typografie/Abstände.
+- [x] **EDITOR-VISUAL-01 — Dokumenteditor-Erscheinungsbild an Bookitup angleichen** _(abgeschlossen 21.11.2026, `style: align the position header with the bookitup editor look`; kleiner abgeschlossener Darstellungsslice, PARITY-REST-Teil)_: Basierend auf den belegten visuellen Beobachtungen (B37-Vergleichsprotokoll, B15/B17/B25, manuelle Nutzerbeobachtung 20.11.2026) genau die wichtigsten dokumentierten sichtbaren Unterschiede angleichen, ohne Funktionalität oder Berechnungen umzubauen: **(1)** Brutto/Netto wie beobachtet als Schalter oben an der Positionszeile (statt „Preisbasis“-Select neben dem Preis; gleiche Semantik, andere Stelle/Form – B37-Abweichung 2) – als `role="radiogroup"` „Preisbasis“ mit nativen Radios „Brutto“/„Netto“ zwischen Positionstitel und Aktionsgruppe, nur an Preispositionen; Speichermodell, `priceLabel()`, `valueFieldsInvalid()` und alle Beträge unverändert; das mobile Akkordion (EDITOR-MOBILE-01) hält fünf Felder, der Schalter bleibt außerhalb sichtbar. **(2)** Produkt-Icon der Positionsaktionen nicht mehr als Zahnrad lesbar (offener Feinschliff-Befund EDITOR-ACTIONS-01): Lucide-`package-plus`-Geometrie, zugänglicher Name unverändert. **Bewusst nicht in diesem Slice:** Positions-Menü-Form (B37-Abweichung 1 – eigenständige Interaktionsänderung), Vorlageneditor (behält sein „Preisbasis“-Select), Kopf-/Breiten-/Typografie-/Abstandsangleichung ohne belegte Referenz. **Abgenommen (21.11.2026):** Implementierung als klar begrenzte Delegation an DeepSeek V4.1 Flash (`hermes -z -m deepseek-v4.1-flash --provider opencode-go`, Koordination/Review MiMo V2.6 Pro, kein paralleles Ändern derselben Dateien); RED beobachtet (8 Component-Fehler inkl. fehlender radiogroup) → grün: component 1033/1033 (69 in offer-draft-editor.test.tsx, 1 neu), unit 360/360, typecheck/lint/format/docs/build grün; E2E volle Suite 52/52 lokal in echtem Chromium/PostgreSQL (vier Locator-Stellen in offer-draft.spec.ts begründet auf Radio-Assertions umgestellt, Werte-Assertions inhaltsgleich, template-product-price.spec.ts unberührt); Impeccable-Detektor: nur bekannter Advisory `0.85rem` in der neuen CSS-Zeile (Bestandsmuster), kein neuer echter Befund. **Visuelle Abnahme nachgeholt (21.11.2026, GOAL-Folgesitzung):** alle archivierten Vorher-/Nachher-Paare mit einem Dateibild-Vision-Werkzeug tatsächlich angesehen (lokales Qwen-VL via llama.cpp, ohne Bildschirmaufnahme; im Archiv fanden sich 35 gleichnamige Paare der offer-draft-Suite – die Planung nannte 25; alle 35 angesehen): Brutto/Netto-Schalter im Positionskopf und `package-plus`-Icon in allen betroffenen Breiten/Themes (320/390/768/1280, hell/dunkel, 22rem) bestätigt, „Preisbasis“-Select durchgehend verschwunden, unbetroffene Ansichten (Rechnungskopf, Blanko-Dialoge, Angebotserstellung) pixelidentisch; gemeldete „Beschnitte“ („Beschreibung“/„Infotext“) gezielt nachgeprüft und als Bildausschnitt-Artefakte enttarnt (keine UI-Mängel), 1440 px ohne Clipping/Überlappung. Auch B15/B17/B25 tatsächlich angesehen (Layout-Details B39). Grenzen ehrlich: lokales Vision-Modell, keine REA-Evidence; Bookitup-Gleichheit weiterhin nicht behauptet für Kopf/Breiten/Typografie/Abstände.
 
-- [x] **DOC-RG04-01 — Pflichtangaben: Steuernummer/USt-IdNr auf Rechnungen** *(abgeschlossen 21.11.2026, `feat: print the tax number on documents`)*: Rechnungen müssen die in Deutschland erforderlichen Pflichtangaben abbilden KÖNNEN. Geprüfter Ist-Stand: Empfängername/-anschrift und Absendername/-anschrift werden gedruckt, Nummernkreis/Datum/Positionen/Steuerzeilen bestehen (RG-05/06/07 erfüllt); **es fehlt die Steuernummer oder USt-IdNr des leistenden Unternehmers** (§ 14 Abs. 4 Nr. 2). Umsetzung: optionales Feld „Steuernummer / USt-IdNr“ im Dokumentlayout (additive Migration, nur Daten), in Einstellungen → Dokumentlayout pflegbar, im Belegkopf/Fußbereich druckbar (wie Bankverbindungsmuster: nur wenn gesetzt, sonst bytegleich – Goldwächter!). Abnahme: Integration (Speichern/Laden, Druck nur wenn gesetzt, bytegleich ohne Wert, Umbrüche/escaping wie Bankverbindung), Component (Einstellungsfeld), Vorschau/PDF; **keine Rechts-/Steuerabnahme – „abbilden können“**. Vorhandene Layout-/Versionsschutzverträge erhalten. **Abgenommen (21.11.2026):** RED beobachtet (unit 2, component 2, integration 3, LSP-Typfehler), danach grün: unit 341/341, component 1020/1020, Integration layouts+dates+documents+identity 217/217 (Goldhashes unverändert), geldbezogene Integration 54/54, typecheck/lint/format grün; PR #56 (`3ff4c93`) nach grüner CI. Ehrliche Grenzen: Freitext ohne Formatprüfung (bewusst, wie Bankverbindung); Druck auf allen Belegarten (Layout-Ebene); keine Rechts-/Steuerabnahme – „abbilden können“.
+- [x] **DOC-RG04-01 — Pflichtangaben: Steuernummer/USt-IdNr auf Rechnungen** _(abgeschlossen 21.11.2026, `feat: print the tax number on documents`)_: Rechnungen müssen die in Deutschland erforderlichen Pflichtangaben abbilden KÖNNEN. Geprüfter Ist-Stand: Empfängername/-anschrift und Absendername/-anschrift werden gedruckt, Nummernkreis/Datum/Positionen/Steuerzeilen bestehen (RG-05/06/07 erfüllt); **es fehlt die Steuernummer oder USt-IdNr des leistenden Unternehmers** (§ 14 Abs. 4 Nr. 2). Umsetzung: optionales Feld „Steuernummer / USt-IdNr“ im Dokumentlayout (additive Migration, nur Daten), in Einstellungen → Dokumentlayout pflegbar, im Belegkopf/Fußbereich druckbar (wie Bankverbindungsmuster: nur wenn gesetzt, sonst bytegleich – Goldwächter!). Abnahme: Integration (Speichern/Laden, Druck nur wenn gesetzt, bytegleich ohne Wert, Umbrüche/escaping wie Bankverbindung), Component (Einstellungsfeld), Vorschau/PDF; **keine Rechts-/Steuerabnahme – „abbilden können“**. Vorhandene Layout-/Versionsschutzverträge erhalten. **Abgenommen (21.11.2026):** RED beobachtet (unit 2, component 2, integration 3, LSP-Typfehler), danach grün: unit 341/341, component 1020/1020, Integration layouts+dates+documents+identity 217/217 (Goldhashes unverändert), geldbezogene Integration 54/54, typecheck/lint/format grün; PR #56 (`3ff4c93`) nach grüner CI. Ehrliche Grenzen: Freitext ohne Formatprüfung (bewusst, wie Bankverbindung); Druck auf allen Belegarten (Layout-Ebene); keine Rechts-/Steuerabnahme – „abbilden können“.
 
-- [x] **EDITOR-ACTIONS-01 — Positionsaktionen als Icon-Gruppe** *(abgeschlossen 21.11.2026, `feat: group position actions in the position header`)*: Vier benannte Icon-Knöpfe (aufwärts/abwärts/entfernen/„Als Produkt“) in der Positions-Kopfzeile neben „Position N“ (44 px, tier-quiet-icon), Textknöpfe entfallen; **Entfernen fragt bewusst nach** (Abbruch behält Position + Fokus). Bestehende Sortier-/Produkt-/Fokusverträge erhalten; begründete Locatoren-Anpassungen (interne Gruppe „Aktionen dieser Zeile“, Vorlagen-Knopf „Position N entfernen“), Tab-Reihenfolge Aktionen vor Feldern. **Abgenommen (21.11.2026):** RED beobachtet (10 Component-Fehler), danach grün: component 996/996, unit 338/338, E2E volle Suite 50/50 (inkl. Rückfrage und Tastaturwalks), typecheck/lint/format/build grün; PR #47 (`fff7c49`) nach grüner CI. Sichtprüfung per Vision: Icon-Gruppe bei 1440 px eindeutig bestätigt (beide Themes); bei 320 belegen E2E-Assertions die Gruppe (Artefakt zeigt nur Feldbereich – ehrlich vermerkt). Visueller Feinschliff notiert: Produkt-Icon liest sich als Zahnrad (klareres Symbol bevorzugt). DESIGN.md ergänzt.
+- [x] **EDITOR-ACTIONS-01 — Positionsaktionen als Icon-Gruppe** _(abgeschlossen 21.11.2026, `feat: group position actions in the position header`)_: Vier benannte Icon-Knöpfe (aufwärts/abwärts/entfernen/„Als Produkt“) in der Positions-Kopfzeile neben „Position N“ (44 px, tier-quiet-icon), Textknöpfe entfallen; **Entfernen fragt bewusst nach** (Abbruch behält Position + Fokus). Bestehende Sortier-/Produkt-/Fokusverträge erhalten; begründete Locatoren-Anpassungen (interne Gruppe „Aktionen dieser Zeile“, Vorlagen-Knopf „Position N entfernen“), Tab-Reihenfolge Aktionen vor Feldern. **Abgenommen (21.11.2026):** RED beobachtet (10 Component-Fehler), danach grün: component 996/996, unit 338/338, E2E volle Suite 50/50 (inkl. Rückfrage und Tastaturwalks), typecheck/lint/format/build grün; PR #47 (`fff7c49`) nach grüner CI. Sichtprüfung per Vision: Icon-Gruppe bei 1440 px eindeutig bestätigt (beide Themes); bei 320 belegen E2E-Assertions die Gruppe (Artefakt zeigt nur Feldbereich – ehrlich vermerkt). Visueller Feinschliff notiert: Produkt-Icon liest sich als Zahnrad (klareres Symbol bevorzugt). DESIGN.md ergänzt.
 
-- [x] **PRODUCTS-DELETE-01 — Produkt löschen mit Bestätigung** *(abgeschlossen 21.11.2026, `feat: delete a product with confirmation`)*: DELETE /api/v1/products/:id (Admin/CSRF/Mandant/Version) löscht nur ungenutzte Produkte; bei Referenzen (document_lines inkl. finaler Belege, Vorlagenpositionen) 409 `product_in_use` mit Archivierungshinweis – keine Null-Setzungen; FK-Verletzung wird als derselbe 409 übersetzt (zweite Verteidigungsebene, getestet). UI: Zeilenaktion „Löschen“ mit Bestätigungsdialog (Name, Abbrechen/Escape behält alles), unklarer Ausgang ohne Blind-Wiederholung; Archivweg unverändert. Audit ehrlich: Migration 0064 additiv (0052-Muster) um `product.deleted` erweitert. **Abgenommen (21.11.2026):** RED beobachtet (Component 6, Integration 3), danach grün: component 1004/1004, unit 338/338, Integration products 6/6 + documents/templates 185/185, typecheck/lint/format/build grün; PR #49 (`b19466f`) nach grüner CI. Ehrlich notiert: archivierte unreferenzierte Produkte sind löschbar (Referenz ist die Schutzregel); keine Sperre gegen gleichzeitige Dokumentanlage (schließt der getestete FK); E2E nicht nötig (additive Aktion).
+- [x] **PRODUCTS-DELETE-01 — Produkt löschen mit Bestätigung** _(abgeschlossen 21.11.2026, `feat: delete a product with confirmation`)_: DELETE /api/v1/products/:id (Admin/CSRF/Mandant/Version) löscht nur ungenutzte Produkte; bei Referenzen (document_lines inkl. finaler Belege, Vorlagenpositionen) 409 `product_in_use` mit Archivierungshinweis – keine Null-Setzungen; FK-Verletzung wird als derselbe 409 übersetzt (zweite Verteidigungsebene, getestet). UI: Zeilenaktion „Löschen“ mit Bestätigungsdialog (Name, Abbrechen/Escape behält alles), unklarer Ausgang ohne Blind-Wiederholung; Archivweg unverändert. Audit ehrlich: Migration 0064 additiv (0052-Muster) um `product.deleted` erweitert. **Abgenommen (21.11.2026):** RED beobachtet (Component 6, Integration 3), danach grün: component 1004/1004, unit 338/338, Integration products 6/6 + documents/templates 185/185, typecheck/lint/format/build grün; PR #49 (`b19466f`) nach grüner CI. Ehrlich notiert: archivierte unreferenzierte Produkte sind löschbar (Referenz ist die Schutzregel); keine Sperre gegen gleichzeitige Dokumentanlage (schließt der getestete FK); E2E nicht nötig (additive Aktion).
 
-- [ ] **EDITOR-MOBILE-01 — mobiles Akkordion für die Preisfelder** *(Nutzerwunsch 21.11.2026; **implementiert via PR #51 (`2a5719f`), visuelle Abnahme OFFEN**)*: Unterhalb 44rem fasst ein natives `<details>` je Position Menge, Einheit, Einzelpreis (inkl. Preisbasis), Steuer, Rabattart und Rabatt zusammen; Summary „Preis und Rabatt“ mit Wertvorschau, Start zu, `aria-invalid` erzwingt offen, kein Remount (Node-Identität getestet), breite Ansichten unverändert (nur Summary ausgeblendet). **Funktional abgenommen:** RED 2 Component-Fehler → component 1012/1012 (8 neu), E2E offer-draft 1/1 + template-product-price 15/15 (1 neu), volle Suite des Koordinators 51/51, typecheck/lint/format/docs grün; begründete E2E-Locatoren-Anpassungen; DESIGN.md ergänzt. Ehrliche Grenzen: viewportbasiertes Schwellwert (22rem-Editor im breiten Viewport faltet nicht – dort unverändertes Verhalten); Vorlageneditor nutzt die Speicher-Validierung für das erzwungene Offen. **Visuelle Abnahme offen:** Bildschirm während der Abnahme gesperrt (kein Umgehen); nach Entsperren Screenshots beider Themes ansehen und diesen Eintrag abschließen.
+- [ ] **EDITOR-MOBILE-01 — mobiles Akkordion für die Preisfelder** _(Nutzerwunsch 21.11.2026; **implementiert via PR #51 (`2a5719f`), visuelle Abnahme OFFEN**)_: Unterhalb 44rem fasst ein natives `<details>` je Position Menge, Einheit, Einzelpreis (inkl. Preisbasis), Steuer, Rabattart und Rabatt zusammen; Summary „Preis und Rabatt“ mit Wertvorschau, Start zu, `aria-invalid` erzwingt offen, kein Remount (Node-Identität getestet), breite Ansichten unverändert (nur Summary ausgeblendet). **Funktional abgenommen:** RED 2 Component-Fehler → component 1012/1012 (8 neu), E2E offer-draft 1/1 + template-product-price 15/15 (1 neu), volle Suite des Koordinators 51/51, typecheck/lint/format/docs grün; begründete E2E-Locatoren-Anpassungen; DESIGN.md ergänzt. Ehrliche Grenzen: viewportbasiertes Schwellwert (22rem-Editor im breiten Viewport faltet nicht – dort unverändertes Verhalten); Vorlageneditor nutzt die Speicher-Validierung für das erzwungene Offen. **Visuelle Abnahme offen:** Bildschirm während der Abnahme gesperrt (kein Umgehen); nach Entsperren Screenshots beider Themes ansehen und diesen Eintrag abschließen.
 
-- [ ] **EDITOR-PICKER-01 — Produkt-Mehrfachauswahl im Modal** *(Nutzerwunsch 21.11.2026, Bookitup-Vorbild; **implementiert via PR #53 (`c637923`), visuelle Abnahme OFFEN**)*: „Produkt hinzufügen“ öffnet das gemeinsame Modal „Produkt auswählen“ mit Suchleiste (Name/Beschreibung), Mehrfachauswahl (Checkboxen, ≥ 44 px) und den beobachteten Aktionen: „Hinzufügen“ unten mittig (ein Schub für alle gewählten, in Katalogreihenfolge, deaktiviert bei leerer Auswahl), „Schließen“ X oben rechts; Escape/Backdrop schließen ohne Anlage und verwerfen die Auswahl, Fokus zurück zum Auslöser, danach Fokus auf die erste neue Beschreibung. Einzelweg im Dokumenteditor ersetzt; im Vorlageneditor bleibt das Positions-Select erhalten (kein konkurrierender Weg). **Funktional abgenommen:** RED 12 Component-Fehler → component 1018/1018, unit 338/338, E2E template 16/16 (neu: Modal bei 320/390/768/1440 ohne Overflow, axe) + offer-draft 1/1, volle Suite des Koordinators 52/52, typecheck/lint/format grün; DESIGN.md (BKP016.4) aktualisiert. Ehrliche Grenzen: Positions-Obergrenze als Guard implementiert aber ungetestet; kein inert im Hintergrund (wie vorhandene Dialoge); Reihenfolge = Katalogliste. **Visuelle Abnahme offen:** Bildschirm gesperrt (kein Umgehen); nach Entsperren Modalscreenshots ansehen, Bookitup-Abgleich dokumentieren, dann diesen Eintrag abschließen.
+- [ ] **EDITOR-PICKER-01 — Produkt-Mehrfachauswahl im Modal** _(Nutzerwunsch 21.11.2026, Bookitup-Vorbild; **implementiert via PR #53 (`c637923`), visuelle Abnahme OFFEN**)_: „Produkt hinzufügen“ öffnet das gemeinsame Modal „Produkt auswählen“ mit Suchleiste (Name/Beschreibung), Mehrfachauswahl (Checkboxen, ≥ 44 px) und den beobachteten Aktionen: „Hinzufügen“ unten mittig (ein Schub für alle gewählten, in Katalogreihenfolge, deaktiviert bei leerer Auswahl), „Schließen“ X oben rechts; Escape/Backdrop schließen ohne Anlage und verwerfen die Auswahl, Fokus zurück zum Auslöser, danach Fokus auf die erste neue Beschreibung. Einzelweg im Dokumenteditor ersetzt; im Vorlageneditor bleibt das Positions-Select erhalten (kein konkurrierender Weg). **Funktional abgenommen:** RED 12 Component-Fehler → component 1018/1018, unit 338/338, E2E template 16/16 (neu: Modal bei 320/390/768/1440 ohne Overflow, axe) + offer-draft 1/1, volle Suite des Koordinators 52/52, typecheck/lint/format grün; DESIGN.md (BKP016.4) aktualisiert. Ehrliche Grenzen: Positions-Obergrenze als Guard implementiert aber ungetestet; kein inert im Hintergrund (wie vorhandene Dialoge); Reihenfolge = Katalogliste. **Visuelle Abnahme offen:** Bildschirm gesperrt (kein Umgehen); nach Entsperren Modalscreenshots ansehen, Bookitup-Abgleich dokumentieren, dann diesen Eintrag abschließen.
 
-- [x] **EDITOR-LAYOUT-01 — ruhiges responsives Dokumenteditor-Formular** *(VORRANG, Nutzauftrag 20.11.2026; **abgeschlossen 21.11.2026**, `feat: group the document editor into a responsive form` + `fix: keep position descriptions fully visible`)*: Der Dokumenteditor ist zu eng (nebeneinander gequetschte Felder, abgeschnittene Beschriftungen). Formular in sinnvolle Gruppen gliedern (Kopfdaten, Positionen, Gesamtrabatt, Summen/Hinweise); Labels und Werte vollständig sichtbar; bei Platzmangel umbrechen bzw. untereinander anordnen statt quetschen. Für den Positions- und Gesamtrabatt jeweils EIN Zahlenfeld mit kompaktem Prozent-/Euro-Umschalter statt zwei Zahlenfeldern; vorhandene Werte und exakte Berechnung müssen erhalten bleiben (Wechsel darf keine Werte verfälschen). Abnahme: Maus, Tastatur und Touch; 320/390/768/1440 px; beide Themes; **echte Chromium-Screenshots mit synthetischen Daten, die mit einem Bild-/Vision-Tool tatsächlich angesehen werden – DOM- und axe-Prüfungen allein sind keine visuelle Abnahme**; Vergleich mit den vorhandenen Bookitup-Screenshots/PDFs (nur privat, nichts davon ins Repo), Abweichungen dokumentieren. Keine echten Dokumente ändern; bestehende Verträge, Speicher-/Konfliktlogik und Goldwächter erhalten. **Stand:** funktional abgenommen (RED 5 Component-Fehler → component 967/967, unit 334/334, E2E 15/15 bei 320/390/768/1440 × light/dark, typecheck/lint/format grün; neues DiscountField speichert beide Werte unverfälscht; DESIGN.md angeglichen; einmaliger nicht reproduzierbarer Component-Fehlschlag in einem Vorlauf, danach 4× grün – ehrlich notiert). **Visuelle Abnahme (21.11.2026, nach Freigabe der Bildschirmaufnahme) bestanden:** echte Chromium-Screenshots (320/390/768/1440, 22rem-Container, beide Themes, Gesamtrabatt-Block) mit dem Vision-Werkzeug tatsächlich angesehen – vollständige Labels, ein Rabattfeld mit Prozent-/Euro-Umschalter, umbruchende Gruppen; ein Befund „Beschreibungswert bei 320 px abgeschnitten“ wurde behoben (zweizeiliges Feld) und nachgeprüft. Bookitup-Abgleich siehe Beobachtung B37 in docs/bookitup-parity/observations.md (strukturell deckungsgleich, drei dokumentierte Abweichungen; direkte Gegenansicht B15/B25 nach Rechnerentsperrung als Rest notiert).
+- [x] **EDITOR-LAYOUT-01 — ruhiges responsives Dokumenteditor-Formular** _(VORRANG, Nutzauftrag 20.11.2026; **abgeschlossen 21.11.2026**, `feat: group the document editor into a responsive form` + `fix: keep position descriptions fully visible`)_: Der Dokumenteditor ist zu eng (nebeneinander gequetschte Felder, abgeschnittene Beschriftungen). Formular in sinnvolle Gruppen gliedern (Kopfdaten, Positionen, Gesamtrabatt, Summen/Hinweise); Labels und Werte vollständig sichtbar; bei Platzmangel umbrechen bzw. untereinander anordnen statt quetschen. Für den Positions- und Gesamtrabatt jeweils EIN Zahlenfeld mit kompaktem Prozent-/Euro-Umschalter statt zwei Zahlenfeldern; vorhandene Werte und exakte Berechnung müssen erhalten bleiben (Wechsel darf keine Werte verfälschen). Abnahme: Maus, Tastatur und Touch; 320/390/768/1440 px; beide Themes; **echte Chromium-Screenshots mit synthetischen Daten, die mit einem Bild-/Vision-Tool tatsächlich angesehen werden – DOM- und axe-Prüfungen allein sind keine visuelle Abnahme**; Vergleich mit den vorhandenen Bookitup-Screenshots/PDFs (nur privat, nichts davon ins Repo), Abweichungen dokumentieren. Keine echten Dokumente ändern; bestehende Verträge, Speicher-/Konfliktlogik und Goldwächter erhalten. **Stand:** funktional abgenommen (RED 5 Component-Fehler → component 967/967, unit 334/334, E2E 15/15 bei 320/390/768/1440 × light/dark, typecheck/lint/format grün; neues DiscountField speichert beide Werte unverfälscht; DESIGN.md angeglichen; einmaliger nicht reproduzierbarer Component-Fehlschlag in einem Vorlauf, danach 4× grün – ehrlich notiert). **Visuelle Abnahme (21.11.2026, nach Freigabe der Bildschirmaufnahme) bestanden:** echte Chromium-Screenshots (320/390/768/1440, 22rem-Container, beide Themes, Gesamtrabatt-Block) mit dem Vision-Werkzeug tatsächlich angesehen – vollständige Labels, ein Rabattfeld mit Prozent-/Euro-Umschalter, umbruchende Gruppen; ein Befund „Beschreibungswert bei 320 px abgeschnitten“ wurde behoben (zweizeiliges Feld) und nachgeprüft. Bookitup-Abgleich siehe Beobachtung B37 in docs/bookitup-parity/observations.md (strukturell deckungsgleich, drei dokumentierte Abweichungen; direkte Gegenansicht B15/B25 nach Rechnerentsperrung als Rest notiert).
 
-- [x] **DOC-PRODUCT-01.3 — Brutto/Netto-Preisgrundlage pro Position** *(abgeschlossen 20.11.2026, `feat: support gross and net position prices` + `feat: choose the price basis per document position`)*: Jede Dokumentposition trägt eine ausdrückliche Preisgrundlage Brutto oder Netto (additive Migration 0061; vorhandene Zeilen bleiben bedeutungsgleich Brutto). Exakte Minor-Unit-Arithmetik: Netto-Basis rechnet Rabatt auf Netto und Steuer darauf (Brutto = Netto + Steuer), Brutto-Basis behält die heutige Formel (Rabatt auf Brutto, Steuer extrahiert). Produktübernahme übernimmt die Produkt-Preisgrundlage ohne Umrechnung (Umrechnungshelfer samt Fehlerpfad entfernt); Vorlagen- und Folgebelege tragen die Grundlage mit; Produktstamm und finale Dokumente/PDFs bleiben unverändert (Goldwächter unangetastet). Menge multipliziert korrekt; optionale Positionen bleiben sichtbar markiert und aus Netto/Steuer/Brutto ausgeschlossen. Abnahme: Unit-/Integrationstests beide Grundlagen inkl. 0/19 % Steuer, Rundungsgrenzen und Rabattwechselwirkung; Editor mit wählbarer Grundlage (Select „Preisbasis“) und korrekten Summen (Desktop/Mobil, Hell/Dunkel); Speichern/Neuladen/Folgebelege; Mandanten-/Versionsschutz; bestehende finale PDFs unverändert. **Abgenommen (20.11.2026):** RED beobachtet (Kern: Unit 8 + Integration 14 rot gegen Altstand per git stash; UI: Component 5+5 rot; E2E: 3 rot), danach grün: unit 305/305, component 955/955, documents-Integration 166/166, layouts/dates/templates 44/44, Coverage-Lauf 1792/1792 (global 96,51 % Zeilen, geändert 19/19 Zeilen, 28/28 Zweige), E2E template-product-price + offer-draft 15/15 in echtem Chromium/PostgreSQL inkl. Theme-/Breiten-/Axe-Matrix, auth.spec.ts 3/3. PR #27 (Kern) und #28 (UI) nach grüner CI (Quality+Browser; ein Runner-`ERR_NETWORK_CHANGED`-Flake via gezieltem Re-Run verifiziert) nach main gemergt (`151ef23`, `b90e8cf`); Main-CI zu `151ef23` inkl. Images grün. Live-Auslieferung von hier nicht verifizierbar (Host unerreichbar). Ehrlich notiert: Request-Hash der Vorlagen-Idempotenz enthält künftig priceBasis (alte In-Flight-Wiederholungen über den Deployzeitpunkt hinweg würden als abweichender Auftrag behandelt); Maximalpreis-Nettoposition wird unverändert übernommen und erst bei der Speicherarithmetik abgelehnt (bewusst); Preisbasis-Select ist nicht Teil der 6-Feld-Geometriemessung (Axe/Overflow decken es ab).
+- [x] **DOC-PRODUCT-01.3 — Brutto/Netto-Preisgrundlage pro Position** _(abgeschlossen 20.11.2026, `feat: support gross and net position prices` + `feat: choose the price basis per document position`)_: Jede Dokumentposition trägt eine ausdrückliche Preisgrundlage Brutto oder Netto (additive Migration 0061; vorhandene Zeilen bleiben bedeutungsgleich Brutto). Exakte Minor-Unit-Arithmetik: Netto-Basis rechnet Rabatt auf Netto und Steuer darauf (Brutto = Netto + Steuer), Brutto-Basis behält die heutige Formel (Rabatt auf Brutto, Steuer extrahiert). Produktübernahme übernimmt die Produkt-Preisgrundlage ohne Umrechnung (Umrechnungshelfer samt Fehlerpfad entfernt); Vorlagen- und Folgebelege tragen die Grundlage mit; Produktstamm und finale Dokumente/PDFs bleiben unverändert (Goldwächter unangetastet). Menge multipliziert korrekt; optionale Positionen bleiben sichtbar markiert und aus Netto/Steuer/Brutto ausgeschlossen. Abnahme: Unit-/Integrationstests beide Grundlagen inkl. 0/19 % Steuer, Rundungsgrenzen und Rabattwechselwirkung; Editor mit wählbarer Grundlage (Select „Preisbasis“) und korrekten Summen (Desktop/Mobil, Hell/Dunkel); Speichern/Neuladen/Folgebelege; Mandanten-/Versionsschutz; bestehende finale PDFs unverändert. **Abgenommen (20.11.2026):** RED beobachtet (Kern: Unit 8 + Integration 14 rot gegen Altstand per git stash; UI: Component 5+5 rot; E2E: 3 rot), danach grün: unit 305/305, component 955/955, documents-Integration 166/166, layouts/dates/templates 44/44, Coverage-Lauf 1792/1792 (global 96,51 % Zeilen, geändert 19/19 Zeilen, 28/28 Zweige), E2E template-product-price + offer-draft 15/15 in echtem Chromium/PostgreSQL inkl. Theme-/Breiten-/Axe-Matrix, auth.spec.ts 3/3. PR #27 (Kern) und #28 (UI) nach grüner CI (Quality+Browser; ein Runner-`ERR_NETWORK_CHANGED`-Flake via gezieltem Re-Run verifiziert) nach main gemergt (`151ef23`, `b90e8cf`); Main-CI zu `151ef23` inkl. Images grün. Live-Auslieferung von hier nicht verifizierbar (Host unerreichbar). Ehrlich notiert: Request-Hash der Vorlagen-Idempotenz enthält künftig priceBasis (alte In-Flight-Wiederholungen über den Deployzeitpunkt hinweg würden als abweichender Auftrag behandelt); Maximalpreis-Nettoposition wird unverändert übernommen und erst bei der Speicherarithmetik abgelehnt (bewusst); Preisbasis-Select ist nicht Teil der 6-Feld-Geometriemessung (Axe/Overflow decken es ab).
 
-- [x] **DOC-PRODUCT-01.4 — Positionsrabatt in Euro oder Prozent** *(abgeschlossen 20.11.2026, `feat: discount a position by a fixed amount or a rate` + `feat: choose percent or euro for a position discount`)*: Je Position Festbetrag (Minor Units) oder Prozent wählbar; exakte Berechnung (Festbetrag zieht exakt von der Positionsgrundlage Menge × Einzelpreis in der gespeicherten Preisbasis ab und ersetzt den Prozentsatz, Prozent wie heute), Betrag über der Zeilensumme wird abgelehnt (kein Clamping), revisionssichere Speicherung (Migration 0062, NULL = Prozentmodus) und Übertragung in Folgebelege/Vorlagen. Druck „Rabatt <Betrag> €“ statt Prozentzeile; Dokumente ohne Betragsrabatt bytegleich. Zusätzlich geschlossen: die DOC-PRODUCT-01.3-Lücke des Vorlagen-Preview-Endpunkts (lehnte priceBasis ab) samt Regressionstest. **Abgenommen (20.11.2026):** RED beobachtet (Kern Unit 10 + Integration 5 rot per git stash; UI Component 8 rot; E2E 3 rot gegen zurückgenommene App-Dateien), danach grün: unit 319/319, component 960/960 (+5), documents 170/170 + layouts 13/13 (inkl. Preview-Regression 400→200), dates/templates/payments 49/49, Changed-Code 24/26 Zeilen / 19/20 Zweige, E2E offer-draft + template-product-price + auth 18/18 in echtem Chromium/PostgreSQL (Save-Payload null vs. 450, DB-Spalte, PDF „Rabatt 10 %“/„Rabatt 4,50 €“, Theme-/Breiten-/Axe-Matrix). PR #30 (`d660a16`) und #31 (`435fe93`) nach grüner CI (Quality+Browser, beide Läufe) nach main gemergt. Ehrlich notiert: Euro-Betrag 0,00 € wird gespeichert/gedruckt (0 ≠ null; „kein Rabatt“ = Prozentmodus – bewusst keine zweite Client-Semantik); Vorlagenpanel-PUT hat bislang discountAmountMinor verworfen (Datenverlust, in #31 behoben); Request-Hash der Vorlagen-Idempotenz enthält discountAmountMinor (Deploy-Fenster-Nebenwirkung wie bei 01.3); deaktiviertes Zweitfeld ist nicht focusierbar (E2E-Tastaturwalk filtert auf aktivierte Controls).
+- [x] **DOC-PRODUCT-01.4 — Positionsrabatt in Euro oder Prozent** _(abgeschlossen 20.11.2026, `feat: discount a position by a fixed amount or a rate` + `feat: choose percent or euro for a position discount`)_: Je Position Festbetrag (Minor Units) oder Prozent wählbar; exakte Berechnung (Festbetrag zieht exakt von der Positionsgrundlage Menge × Einzelpreis in der gespeicherten Preisbasis ab und ersetzt den Prozentsatz, Prozent wie heute), Betrag über der Zeilensumme wird abgelehnt (kein Clamping), revisionssichere Speicherung (Migration 0062, NULL = Prozentmodus) und Übertragung in Folgebelege/Vorlagen. Druck „Rabatt <Betrag> €“ statt Prozentzeile; Dokumente ohne Betragsrabatt bytegleich. Zusätzlich geschlossen: die DOC-PRODUCT-01.3-Lücke des Vorlagen-Preview-Endpunkts (lehnte priceBasis ab) samt Regressionstest. **Abgenommen (20.11.2026):** RED beobachtet (Kern Unit 10 + Integration 5 rot per git stash; UI Component 8 rot; E2E 3 rot gegen zurückgenommene App-Dateien), danach grün: unit 319/319, component 960/960 (+5), documents 170/170 + layouts 13/13 (inkl. Preview-Regression 400→200), dates/templates/payments 49/49, Changed-Code 24/26 Zeilen / 19/20 Zweige, E2E offer-draft + template-product-price + auth 18/18 in echtem Chromium/PostgreSQL (Save-Payload null vs. 450, DB-Spalte, PDF „Rabatt 10 %“/„Rabatt 4,50 €“, Theme-/Breiten-/Axe-Matrix). PR #30 (`d660a16`) und #31 (`435fe93`) nach grüner CI (Quality+Browser, beide Läufe) nach main gemergt. Ehrlich notiert: Euro-Betrag 0,00 € wird gespeichert/gedruckt (0 ≠ null; „kein Rabatt“ = Prozentmodus – bewusst keine zweite Client-Semantik); Vorlagenpanel-PUT hat bislang discountAmountMinor verworfen (Datenverlust, in #31 behoben); Request-Hash der Vorlagen-Idempotenz enthält discountAmountMinor (Deploy-Fenster-Nebenwirkung wie bei 01.3); deaktiviertes Zweitfeld ist nicht focusierbar (E2E-Tastaturwalk filtert auf aktivierte Controls).
 
-- [x] **DOC-PRODUCT-01.5 — kommentierter Gesamtrabatt** *(technisch implementiert über PR #33 `68376ee` (Kern) und PR #34 (UI); STEUER-BLOCKER am 25.11.2026 durch QW7 aufgelöst: anteilige Entgeltminderung je Steuersatz nach Betreiberentscheidung)*: Unter den Positionen ein Gesamtrabatt in Prozent oder Euro mit freier Anmerkung; wirkt mit exakter Minor-Unit-Arithmetik auf die Dokumentsumme, Steuerausweis dokumentiert (keine erfundene Steuerlogik); in Vorschau/PDF sichtbar, in Folgebelege übertragen, revisionssicher gespeichert. Abnahme: Berechnungs- und Rundungstests, Anmerkung leer/lang/escaped, Kombination mit Positions-Rabatten und optionalen Positionen, Mobilansicht, Mandanten-/Versionsschutz. **Technisch abgenommen:** RED beobachtet (Integration 15/16 rot, UI Component 8 rot, E2E rot), grün: document-total-discount 16/16, Integration gesamt 550/550, unit 334/334, component 965/965, Coverage 1844/1844, Changed 69/70 Zeilen/107/114 Zweige, E2E offer-draft grün (Zahlbetrags-/Forderungsregel via eine SQL-Formel inkl. c3.2-Verrechnung und Überzahlungsguard belegt). **STEUER-BLOCKER (Prüfung 20.11.2026 gegen amtliche Texte):** Die gewählte Semantik „Gesamtrabatt mindert nur den Zahlbetrag, Netto-/Steuergruppen bleiben unverändert“ ist für einen echten Preisnachlass zweifelhaft: § 14 Abs. 4 Satz 1 Nr. 7/8 UStG verlangt das nach Steuersätzen aufgeschlüsselte Entgelt (§ 10) samt vereinbarter Entgeltminderung und den auf das Entgelt entfallenden Steuerbetrag; § 17 Abs. 1 UStG ordnet bei geänderter Bemessungsgrundlage eine Steuerberichtigung an. Die Zurechnung eines dokumentweiten Rabatts auf gemischte Steuersätze ist gesetzlich nicht eindeutig gelöst; eine BMF-Klärung/Beratung ist einzuholen. **Bis zur Klärung: keine echten Rechnungen mit Gesamtrabatt erstellen oder versenden, keine Produktionsreife behaupten; die Funktion bleibt technisch/geprüft, aber nicht freigegeben.** Ergebnis der Beratung in diesem Eintrag nachtragen; ggf. Semantik auf steuerkonforme Verteilung umstellen oder die Funktion bis dahin nicht anbieten.
+- [x] **DOC-PRODUCT-01.5 — kommentierter Gesamtrabatt** _(technisch implementiert über PR #33 `68376ee` (Kern) und PR #34 (UI); STEUER-BLOCKER am 25.11.2026 durch QW7 aufgelöst: anteilige Entgeltminderung je Steuersatz nach Betreiberentscheidung)_: Unter den Positionen ein Gesamtrabatt in Prozent oder Euro mit freier Anmerkung; wirkt mit exakter Minor-Unit-Arithmetik auf die Dokumentsumme, Steuerausweis dokumentiert (keine erfundene Steuerlogik); in Vorschau/PDF sichtbar, in Folgebelege übertragen, revisionssicher gespeichert. Abnahme: Berechnungs- und Rundungstests, Anmerkung leer/lang/escaped, Kombination mit Positions-Rabatten und optionalen Positionen, Mobilansicht, Mandanten-/Versionsschutz. **Technisch abgenommen:** RED beobachtet (Integration 15/16 rot, UI Component 8 rot, E2E rot), grün: document-total-discount 16/16, Integration gesamt 550/550, unit 334/334, component 965/965, Coverage 1844/1844, Changed 69/70 Zeilen/107/114 Zweige, E2E offer-draft grün (Zahlbetrags-/Forderungsregel via eine SQL-Formel inkl. c3.2-Verrechnung und Überzahlungsguard belegt). **STEUER-BLOCKER (Prüfung 20.11.2026 gegen amtliche Texte):** Die gewählte Semantik „Gesamtrabatt mindert nur den Zahlbetrag, Netto-/Steuergruppen bleiben unverändert“ ist für einen echten Preisnachlass zweifelhaft: § 14 Abs. 4 Satz 1 Nr. 7/8 UStG verlangt das nach Steuersätzen aufgeschlüsselte Entgelt (§ 10) samt vereinbarter Entgeltminderung und den auf das Entgelt entfallenden Steuerbetrag; § 17 Abs. 1 UStG ordnet bei geänderter Bemessungsgrundlage eine Steuerberichtigung an. Die Zurechnung eines dokumentweiten Rabatts auf gemischte Steuersätze ist gesetzlich nicht eindeutig gelöst; eine BMF-Klärung/Beratung ist einzuholen. **Bis zur Klärung: keine echten Rechnungen mit Gesamtrabatt erstellen oder versenden, keine Produktionsreife behaupten; die Funktion bleibt technisch/geprüft, aber nicht freigegeben.** Ergebnis der Beratung in diesem Eintrag nachtragen; ggf. Semantik auf steuerkonforme Verteilung umstellen oder die Funktion bis dahin nicht anbieten.
 
-- [x] **DOC-PRODUCT-01.6 — Position als Produkt speichern** *(abgeschlossen 21.11.2026, `feat: save a document position as a product`)*: Positions-Aktionszeile (wie beobachtet) mit „Als Produkt speichern“ legt aus der Position einen Produktstammsatz an (Name, Einheit, Preis/Grundlage, Steuer; Beschreibung aus dem Infotext; Menge/Rabatt bewusst keine Stammmdaten). Sicherer Umgang mit Mehrfachklick und unklarer Netzwerkantwort: genau eine Anlage je Geste (In-flight-Sperre), kein blindes Wiederholen, nur lesender Bestandsabgleich („Bestand prüfen“) vor erneuter Anlage, nach Fund gesperrt; bestehender Produkt-POST inkl. CSRF/Validierung, keine neue API/Migration. **Abgenommen (21.11.2026):** RED beobachtet (fehlende Aktion), danach grün: component 988/988 (18+2+1 neu; neue Komponente 99,02 % Zeilen), unit 334/334, E2E offer-draft + template-product-price 15/15 (echter Produktstamm, Doppelklick = genau ein POST, unklarer Ausgang → Bestandsprüfung → Wiederanlage, Produktliste korrekt), typecheck/lint/format grün, DESIGN.md ergänzt. Ehrlich notiert: keine DB-Unique-Garantie gegen Doppelanlage über Gesten hinweg (bewusst ohne Migration); Maximalpreis lehnt der Server ab; Vorlagen-E2E nutzt API-Stubs (Komponententest deckt ab); ein Parallel-Lauf-Flake, seriell grün.
+- [x] **DOC-PRODUCT-01.6 — Position als Produkt speichern** _(abgeschlossen 21.11.2026, `feat: save a document position as a product`)_: Positions-Aktionszeile (wie beobachtet) mit „Als Produkt speichern“ legt aus der Position einen Produktstammsatz an (Name, Einheit, Preis/Grundlage, Steuer; Beschreibung aus dem Infotext; Menge/Rabatt bewusst keine Stammmdaten). Sicherer Umgang mit Mehrfachklick und unklarer Netzwerkantwort: genau eine Anlage je Geste (In-flight-Sperre), kein blindes Wiederholen, nur lesender Bestandsabgleich („Bestand prüfen“) vor erneuter Anlage, nach Fund gesperrt; bestehender Produkt-POST inkl. CSRF/Validierung, keine neue API/Migration. **Abgenommen (21.11.2026):** RED beobachtet (fehlende Aktion), danach grün: component 988/988 (18+2+1 neu; neue Komponente 99,02 % Zeilen), unit 334/334, E2E offer-draft + template-product-price 15/15 (echter Produktstamm, Doppelklick = genau ein POST, unklarer Ausgang → Bestandsprüfung → Wiederanlage, Produktliste korrekt), typecheck/lint/format grün, DESIGN.md ergänzt. Ehrlich notiert: keine DB-Unique-Garantie gegen Doppelanlage über Gesten hinweg (bewusst ohne Migration); Maximalpreis lehnt der Server ab; Vorlagen-E2E nutzt API-Stubs (Komponententest deckt ab); ein Parallel-Lauf-Flake, seriell grün.
 
-- [x] **DOC-EVENTINFO-01 — Eventbezeichnung, Ort und Datum im Dokument** *(abgeschlossen 21.11.2026, `feat: print the event on a document`)*: Dokumente enthalten bekannte Eventbezeichnung, Ort und Datum passend zur beobachteten Bookitup-Vorlage (Zeile „für das Event … am … in …“ unter der Überschrift; beobachtet ist nur die Datumsform „für das Event am TT.MM.JJJJ“, Name/Ort sind begründete GOAL-Auslegung); fehlende Angaben bleiben ausgelassen statt erfunden, ohne jeden Eventwert entfällt die Zeile bytegleich. Bestehende Platzhalter und Drucklayout erhalten; gespeicherte Snapshots/Final-PDFs unverändert. **Abgenommen (21.11.2026):** RED beobachtet (3 Unit-Fehler), danach grün: unit 338/338, integration 552/552, typecheck/lint/format grün; PR #41 (`658d58c`) nach grüner CI gemergt. Goldwächter: documents.test.ts:298–308 unberührt; drei Hash-Pins in document-dates.test.ts notwendig/aussagenerhalten angepasst (Eventzeile bei Eventverknüpfung), Beleg: unterdrückte Einfügung reproduziert exakt die alten Hashes.
+- [x] **DOC-EVENTINFO-01 — Eventbezeichnung, Ort und Datum im Dokument** _(abgeschlossen 21.11.2026, `feat: print the event on a document`)_: Dokumente enthalten bekannte Eventbezeichnung, Ort und Datum passend zur beobachteten Bookitup-Vorlage (Zeile „für das Event … am … in …“ unter der Überschrift; beobachtet ist nur die Datumsform „für das Event am TT.MM.JJJJ“, Name/Ort sind begründete GOAL-Auslegung); fehlende Angaben bleiben ausgelassen statt erfunden, ohne jeden Eventwert entfällt die Zeile bytegleich. Bestehende Platzhalter und Drucklayout erhalten; gespeicherte Snapshots/Final-PDFs unverändert. **Abgenommen (21.11.2026):** RED beobachtet (3 Unit-Fehler), danach grün: unit 338/338, integration 552/552, typecheck/lint/format grün; PR #41 (`658d58c`) nach grüner CI gemergt. Goldwächter: documents.test.ts:298–308 unberührt; drei Hash-Pins in document-dates.test.ts notwendig/aussagenerhalten angepasst (Eventzeile bei Eventverknüpfung), Beleg: unterdrückte Einfügung reproduziert exakt die alten Hashes.
 
-- [x] **DOC-CREATE-02-Rest — Schlussrechnung und Korrektur im Dialog** *(abgeschlossen 21.11.2026, `feat: offer final invoices and corrections in the document dialog`)*: Für Schlussrechnung und Korrektur sind zulässige Quellbelege und Versionen im Event-Dokumentdialog auswählbar (Schlussrechnung nur aus finaler Bestätigung ohne vorhandene Rechnung; Korrektur aus finalisierten Belegen inkl. Anzahlungsrechnung, Richtung Gutschrift/Lastschrift); bestehende Status-, Mandanten-, CSRF-, Nummern- und Unveränderlichkeitsschutzregeln erhalten, unklare Antwort sperrt bis Listenabgleich, keine erfundene Dubletten-Heuristik. Die früheren Inline-Wege sind im einheitlichen Dialog aufgegangen (5 Alt-Tests aussagenerhalten auf Dialogbedienung umgestellt). **Abgenommen (21.11.2026):** RED beobachtet (14 Component-Fehler), danach grün: component 993/993, unit 338/338, E2E volle Suite 50/50 (drei auth-Flüsse auf Dialog umgestellt), typecheck/lint/format grün; PR #45 (`f5ebf49`) nach grüner CI; DESIGN.md (Dialogvertrag) ergänzt.
+- [x] **DOC-CREATE-02-Rest — Schlussrechnung und Korrektur im Dialog** _(abgeschlossen 21.11.2026, `feat: offer final invoices and corrections in the document dialog`)_: Für Schlussrechnung und Korrektur sind zulässige Quellbelege und Versionen im Event-Dokumentdialog auswählbar (Schlussrechnung nur aus finaler Bestätigung ohne vorhandene Rechnung; Korrektur aus finalisierten Belegen inkl. Anzahlungsrechnung, Richtung Gutschrift/Lastschrift); bestehende Status-, Mandanten-, CSRF-, Nummern- und Unveränderlichkeitsschutzregeln erhalten, unklare Antwort sperrt bis Listenabgleich, keine erfundene Dubletten-Heuristik. Die früheren Inline-Wege sind im einheitlichen Dialog aufgegangen (5 Alt-Tests aussagenerhalten auf Dialogbedienung umgestellt). **Abgenommen (21.11.2026):** RED beobachtet (14 Component-Fehler), danach grün: component 993/993, unit 338/338, E2E volle Suite 50/50 (drei auth-Flüsse auf Dialog umgestellt), typecheck/lint/format grün; PR #45 (`f5ebf49`) nach grüner CI; DESIGN.md (Dialogvertrag) ergänzt.
 
-- [x] **DOC-DEPOSIT-FIX-01 — Schlussrechnungs-/Anzahlungs-Grenzfall** *(abgeschlossen 21.11.2026, `fix: never settle a final invoice above its own payable`)*: Eine Schlussrechnung ohne optionale Positionen konnte nach Auftragskorrektur trotz zu hoher Anzahlungen einen negativen Zahlbetrag ergeben. **Gemessener Mechanismus:** Der Guard `deposits_exceed_order` prüfte „Abzug > eigener Zahlbetrag der Rechnung“ nur im Zweig mit optionalen Positionen; Lastschriften auf die Bestätigung erhöhten den Auftragsanspruch und kaschierten die Überverrechnung (Reproduktion: 1.690,00 €-Auftrag, Anzahlungen 1.800,00 €, Lastschrift +310,00 € → „Zu zahlender Betrag −110,00 €“; zweiter Weg ohne Korrektur: handgekürzter Entwurf). **Korrektur (rückwärtsverträglich, ohne Migration):** der Zahlbetrag der Rechnung ist eine unbedingte zweite Obergrenze des Verrechnungsbetrags; zu hohe Anzahlungen werden weiterhin mit 409 abgelehnt, kein Clamping/keine Umbuchung; bereits finalisierte Belege unverändert. Fachliche Folge bewusst: eine Lastschrift allein legitimiert keine Überverrechnung mehr (Rechnung des korrigierten Betrags oder Gutschrift auf die Anzahlung). **Abgenommen (21.11.2026):** RED beobachtet (2 Reproduktionstests), danach grün: documents+payments 194/194, geldbezogene Integration 264/264, Integration gesamt 556/556, unit 338/338, typecheck/lint/format grün; PR #43 nach grüner CI. Bewusst geänderte Alt-Erwartung („Lastschrift heilt 1-Cent-Überverrechnung“, kodierte den Fehler; alte `toContain`-Assertion deckte das Minus nicht ab) – im PR zur Abnahme gestellt und angenommen; Grenztests exakt/1 Cent, Kombinationsfälle und bestehende Korrekturpfade durch Regressionen geschützt. docs/documents.md korrigiert. Ehrliche Grenze: die Vorschau eines nicht finalisierten Entwurfs kann negativ zeigen (nicht mehr finalisierbar); ausgestellte Belege sind garantiert nie negativ.
+- [x] **DOC-DEPOSIT-FIX-01 — Schlussrechnungs-/Anzahlungs-Grenzfall** _(abgeschlossen 21.11.2026, `fix: never settle a final invoice above its own payable`)_: Eine Schlussrechnung ohne optionale Positionen konnte nach Auftragskorrektur trotz zu hoher Anzahlungen einen negativen Zahlbetrag ergeben. **Gemessener Mechanismus:** Der Guard `deposits_exceed_order` prüfte „Abzug > eigener Zahlbetrag der Rechnung“ nur im Zweig mit optionalen Positionen; Lastschriften auf die Bestätigung erhöhten den Auftragsanspruch und kaschierten die Überverrechnung (Reproduktion: 1.690,00 €-Auftrag, Anzahlungen 1.800,00 €, Lastschrift +310,00 € → „Zu zahlender Betrag −110,00 €“; zweiter Weg ohne Korrektur: handgekürzter Entwurf). **Korrektur (rückwärtsverträglich, ohne Migration):** der Zahlbetrag der Rechnung ist eine unbedingte zweite Obergrenze des Verrechnungsbetrags; zu hohe Anzahlungen werden weiterhin mit 409 abgelehnt, kein Clamping/keine Umbuchung; bereits finalisierte Belege unverändert. Fachliche Folge bewusst: eine Lastschrift allein legitimiert keine Überverrechnung mehr (Rechnung des korrigierten Betrags oder Gutschrift auf die Anzahlung). **Abgenommen (21.11.2026):** RED beobachtet (2 Reproduktionstests), danach grün: documents+payments 194/194, geldbezogene Integration 264/264, Integration gesamt 556/556, unit 338/338, typecheck/lint/format grün; PR #43 nach grüner CI. Bewusst geänderte Alt-Erwartung („Lastschrift heilt 1-Cent-Überverrechnung“, kodierte den Fehler; alte `toContain`-Assertion deckte das Minus nicht ab) – im PR zur Abnahme gestellt und angenommen; Grenztests exakt/1 Cent, Kombinationsfälle und bestehende Korrekturpfade durch Regressionen geschützt. docs/documents.md korrigiert. Ehrliche Grenze: die Vorschau eines nicht finalisierten Entwurfs kann negativ zeigen (nicht mehr finalisierbar); ausgestellte Belege sind garantiert nie negativ.
 
-- [x] **MAIL-021-A — Dauerhafter Mailkern (Datenmodell und Outbox)** *(abgeschlossen 21.11.2026, `feat: add the durable mail core and outbox`)* *(GOAL-Priorität 3, erster E-Mail-Slice; Bestandscheck 21.11.2026: keinerlei Mail-Infrastruktur vorhanden – nur generische Worker-/Job-Muster sind wiederverwendbar)*: tenant-/accountgebundene Nachrichten-/Thread-/Outbox-Daten (BKP021.a/c), Migration(en) additiv, Repository-Verträge, sichere Providerkonfiguration nach vorhandenem Telegram-Muster (KEIN Passwort in API-GET/Logs/UI-Fehlern, Secrets außerhalb Git), Worker-Grundlage mit idempotenten Jobs und Audit. **Ausschließlich synthetische Tests/Mocks; kein echter Versand, keine echten Zugangsdaten, keine echten Nachrichten.** **Abgenommen (21.11.2026):** Migration 0067 (mail_accounts/mail_messages/mail_outbox; Audit mail.* additiv), idempotente Outbox (gleicher Key = derselbe Auftrag auch parallel, partieller Unique „höchstens ein offener Auftrag je Nachricht“, Forward-only-Zustände, uncertain terminal), Worker-Claim mit Lease (FOR UPDATE SKIP LOCKED, Doppelclaim/Neustart getestet), Secrets im vorhandenen AES-GCM-Telegram-Muster (fail-closed), ohne Adapter ehrlich failed/provider_missing (nie „gesendet“). RED beobachtet → unit 345/345 (mail 4/4), mail-Integration 10/10, identity+telegram 6/6, typecheck/lint/format grün, mail.ts 96,1 %/84,1 %; PR #60 (`0bb4424`) nach grüner CI. Ehrliche Grenzen: kein schema-Spiegel (reviewed SQL wie document_payments), keine SMTP-/IMAP-/UI-/Anhangs-/Sanitizing-Teile (Folgeslices); periodische provider_missing-Warnung ohne Adapter; Konto-Anlage bisher nur per Repository.
-- [x] **MAIL-021-B — SMTP-Outbox-Versand** *(abgeschlossen 21.11.2026, `feat: send outbox mail through smtp`)*: MailSender-Adapter (sent/uncertain/definitiv fehlgeschlagen mit geschlossenem redigiertem Kodesatz, Migration 0068 erweitert die Vokabulare additiv), Worker-Versuch genau einmal an `sending` gebunden, Retry-Route nur aus `uncertain` (sonst 409), nodemailer 10.6.1 begründet + smtp-server nur devDependency für echten Mock-SMTP-Abnahme. **Abgenommen (21.11.2026):** RED beobachtet → unit 354/354, Integration mail+mail-smtp+identity 27/27, volle Integration 592/592, typecheck/lint/format/build grün; PR #62 (`f5cc42c`) nach grüner CI. Fälle inkl. Abbruch vor/nach DATA, Zertifikatsablehnung ohne Bypass, Doppelclaim (5 Pässe = 1 Sendung), Lease-Neustart, Redaktion. Ehrliche Offenheiten: Konto-Anlage/Key-Datei im Betrieb; TLS-Test am abgelaufenen Mock-Zertifikat (bewusst laut fehlend). **Härtung siehe MAIL-021-B2.**
-- [x] **MAIL-021-B2 — TLS-Pflicht bei Anmeldung (Härtung)** *(abgeschlossen 21.11.2026, `fix: require tls whenever mail credentials are configured`)*: `requireTLS` bei konfigurierten Zugangsdaten erzwingen (Passwort nie im Klartext auf der Leine; ohne Zugangsdaten bleibt ein lokales Relay ohne TLS möglich). Voraussetzung: echtes TLS-Fixture in den Tests (selbstsigniertes Testzertifikat + CA-Weg, Zertifikatsprüfung NICHT abschwächen) – die authentifizierten Erfolgstests müssen über echtes TLS laufen; ein Test belegt: Server ohne STARTTLS + Zugangsdaten → kein Versand, kein AUTH auf der Leine. Danach die übrigen Klartext-Mock-Tests ohne Zugangsdaten lassen oder TLS-fähig machen. **Abgenommen (21.11.2026):** requireTLS bei Zugangsdaten (Port 465 bleibt secure); neuer geschlossener Code `provider_tls_required` (Migration 0069 additiv) mit eigener Betriebsbotschaft; echtes TLS-Fixture (openssl-Wegwerfzertifikat pro Lauf, Test-CA ausschließlich testseitig injiziert, Zertifikatsprüfung nirgends abgeschwächt). Leak-Beweis: vor der Regel nahm der Klartext-Mock Passwort+Nachricht an (authAttempts 1), nachher 0/0 und provider_tls_required. Danach grün: unit 356/356, mail-smtp 10/10 (authentifizierte Fälle über echtes STARTTLS), mail+identity 28/28, typecheck/lint/format/build grün; PR #64 (`e8d0e1f`) nach grüner CI. Ehrliche Grenzen: openssl-CLI im Testlauf vorausgesetzt (fehlt sie, sichtbarer Fehlschlag); nodemailer als Root-devDependency (gleiche Version, gleicher Modulgraph); provider_tls_required läuft mit Backoff weiter bis zur Behebung.
-- [x] **MAIL-NOTIFY-01 — Website-Anfragebenachrichtigung per E-Mail** *(abgeschlossen 21.11.2026, `feat: notify about website inquiries by email`)*: neue Website-Anfragen zusätzlich zu Telegram per E-Mail an eine konfigurierte Zieladresse benachrichtigen (auf MAIL-021-B; bestehende Telegram-Zustellung unverändert; synthetische Tests). **Abgenommen (21.11.2026):** Einstellungen (Migration 0070, Zieladressen + Ein/Aus, keine Zugangsdaten), genau ein Mail-Auftrag je neuem dauerhaft angenommenem Eingang (Idempotenzschlüssel + Unique, Replays bleiben 1/1/1), Absender = erstes aktives Mailkonto (ohne Konto ehrlich kein Auftrag), Inhalt = Telegram-Textmaß + Anfrage-ID; Telegram unverändert und unabhängig (Doppel-Sendung ausgeschlossen, getestet). RED beobachtet → unit 360/360, component 1027/1027, gezielte Integration 153/12 Dateien, typecheck/lint/format/build grün; PR #66 (`8e8c086`) nach grüner CI. Ehrliche Grenzen: stillschweigend kein Auftrag ohne aktives Konto (Panel benannt); Navigationslabel „Telegram“ mit E-Mail-Abschnitt darunter; kein DELETE-Endpunkt; kein voller Coverage-Lauf.
-- [x] **MAIL-DOC-01 — Dokumente als Anhang senden** *(abgeschlossen 21.11.2026, `feat: send a finalized document as a mail attachment`, PR #68 `0ad9324` gemergt 08:28; **Plan-/Handoff-Status war bis 21.11.2026 Abend veraltet und ist anhand von Code und Tests korrigiert**)*: Dokumente bewusst ausgewählt als Anhang an Kunden/Buchhaltung senden (auf MAIL-021-B; Anhänge nur geprüft/autorisiert; bestehende Datei- und Dokumentverträge erhalten; kein echter Versand ohne Nutzeranweisung). **Tatsächlicher Stand (Code geprüft 21.11.2026):** `scheduleDocumentSend` in `mail.ts` (idempotente Geste `document-send:<doc>:<requestId>`, nur finale nummerierte Belege, Anhang = Referenz auf den eingefrorenen PDF-Artefakt per `mail_attachments`, Bytes nie in der DB), Route `POST /api/v1/mail/document-send`, Zeilenaktion „Per E-Mail senden“ in `EventDocuments.tsx`, Worker-Versand mit Anhang aus dem Content-Addressed-Store (`prepareMailAttempt` liest pro Versuch neu; unlesbarer Anhang = definitiv nicht gesendet), Migration 0071 (mail_attachments + Audit `mail.document_send_scheduled` + Fehlercode `attachment_unavailable`). Vertrag „keine Mailfläche neben der dokumentierten Senden-Aktion“ in `event-record-contexts.test.tsx` präzisiert (CI-MAILFLAKE-01). Tests: mail.test.ts/mail-smtp.test.ts/identity.test.ts erweitert; Main-CI zu `eecd278` und `1482043` grün. Ehrliche Grenzen: Kontoanlage/Key-Datei im Betrieb weiterhin offen (siehe MAIL-ACCOUNT-01), kein echter Versand ohne Nutzeranweisung.
-- [x] **MAIL-ACCOUNT-01 — Einstellungen für das Versandkonto (GOAL A)** *(GOAL 21.11.2026 Abendsitzung; Bestandscheck 21.11.2026: Mailkern/Outbox/SMTP-Adapter/Dokumentanhang/Anfragebenachrichtigung vorhanden, aber **keine** Konten-HTTP-Routen und **keine** SMTP-Kontoeinstellungen im Frontend – `listAccounts`/`saveAccount` nur repository-intern, `saveAccount` nur INSERT, kein Absendername/-adresse, keine Transportverschlüsselungswahl)*: Nutzer kann in den Einstellungen Absendername, Absenderadresse, SMTP-Host, SMTP-Port, Transportverschlüsselung (STARTTLS/SSL-TLS/Ohne), Benutzername und Passwort einrichten, das Konto aktivieren/deaktivieren und sicher ändern. **Umsetzung:** additive Migration (Absendername/-adresse, `smtp_security` auf `mail_accounts`; Audit-Vokabular erweitert), Repository-Update-Pfad (leeres/fehlendes Passwort überschreibt ein vorhandenes Secret **nie**, nur ein nichtleeres ersetzt es; `hasSecret`-Flag statt Secret-Rückgabe), neue Routen `GET/POST/PUT /api/v1/mail/accounts[/:id]` mit bestehendem Admin-/Mandanten-/CSRF-Schutz und geschlossenen neutralen Fehlercodes, Key wie beim Telegram-Muster (`AK_TELEGRAM_ENCRYPTION_KEY_FILE`, ohne Key 503 `encryption_unavailable`, nie Klartext in DB/Logs/Audit), SMTP-Sender erweitert um explizite Transportverschlüsselung (STARTTLS erzwungen bei Zugangsdaten = MAIL-021-B2-Vertrag erhalten, Zertifikatsprüfung nie abschwächen, „Ohne“ nur ohne Benutzername) und Absenderidentität (Anzeige im From-Header, Umschlagadresse unverändert), Worker/Outbox-Verträge unverändert. UI: neuer Einstellungsbereich „E-Mail-Versand“ (Kontoliste + Anlage-/Bearbeitenformular, Statuszeile aktiv/inaktiv/Secret gesetzt, Passwortfeld leer = unverändert, Validierung/Fehler/Ladezustände zugänglich `role=status/alert`, Tastatur, 320–1440, axe). **Sicherheitsprüfungen:** kein Secret in Antworten/Logs/Audit/Testsnapshots, TLS- und SSRF-Grenzen der bestehenden Implementierung prüfen und in docs/mail-accounts.md dokumentieren (Betriebs-Secret/Schlüsselstatus verständlich, keine Secrets im Chat, keine Schlüsselrotation ohne Autorisierung). **Abnahmekriterien:** RED zuerst; Integration (Repository + Routen: Secret nie in der Antwort, leeres Passwort behält Secret, Anlage ohne Secret bei enabled → Fehler, Konflikt/409, Mandanten-/Rollen-/CSRF-Fälle, 503 ohne Key), Unit (Sender-Mapping), Component (Panel inkl. Fehler-/Ladezustände), betroffene E2E/axe; format/lint/typecheck/build; Changed-Code-Coverage ≥80 % Zeilen/Zweige; synthetische Daten, **kein echter Versand, keine echten Providerzugangsdaten** – falls kein echtes Providerkonto vorliegt: Oberfläche + synthetische Tests fertigstellen und fehlende Angaben melden. Docs: `docs/mail-accounts.md`, `.env.example`-Korrektur (Mailkommentar war veraltet), Plan/Übergabe. GitHub Flow: Branch `codex/mail-account-01` von main, ein Commit, PR erst bei allen grünen Checks mergen, danach Main-CI inkl. Images + Live/Updater prüfen, Branch löschen. **Abgenommen (21.11.2026):** RED sauber per `git stash` des Kerns beobachtet (7/7 neue Konten-Integrationstests fehlgeschlagen – fehlende Update-/Routen-/Neufeld-Verträge), danach grün: `mail-accounts.test.ts` 7/7 (Secret nie in Antwort/DB-Klartext, leeres/fehlendes Passwort behält Ciphertext unverändert, nichtleeres ersetzt, Enable ohne Secret → `secret_required`, `invalid_sender`/`invalid_security` inkl. Header-Name `<>"\` und „Ohne“+Benutzername, Mandantenisolation/`already_exists`/`not_found`, CSRF 403, 401, 503 ohne Key ohne Speicherung, 403 ohne Membership); Mail-Gesamtumfeld `mail`+`mail-smtp`+`identity`+`inquiry-email-notification` 45/45 (eine Adapter-Assertion aussagenerhalten um `security` erweitert, Migrations-Erwartung 0072); unit 16/16, davon 5 neue Sender-Mapping-/From-Header-Fälle als **klar abgegrenzte Delegation an DeepSeek V4.1 Flash** (`hermes -z -m deepseek-v4.1-flash --provider opencode-go`, Promptdatei wegen CLI-Quoting; Review durch MiMo: Verträge korrekt, nur Importzeile bestehender Tests erweitert, eigener Lauf 16/16); component 31/31 (4 neue Panel-Fälle + Navigation 14 Bereiche); fokussierter E2E `mail-account-settings.spec.ts` 1/1 in echtem Chromium (echter Login, Anlage mit Secret im POST, Bearbeiten ohne Passwort → PUT ohne `secret`-Schlüssel, keine API-Antwort enthält das Secret, axe 0 Verstöße im Panel, Geometrie 1280/320 ohne horizontalen Überlauf); **volle lokale E2E-Suite 53 Tests: 52 grün**, der eine Fehlschlag war der bewusst geänderte Zählvertrag `document-layout.spec.ts` (Einstellungsbereiche 13→14) – gezielte Wiederholung danach grün (voller Zweitlauf bewusst unterlassen, Nutzerhinweis 29.10.). Gates: format/lint/typecheck/docs/workspace/build grün (`check:quality` bis auf den **vorbestehend** roten Ops-Fall weiter unten durchgelaufen), globale Coverage 95,90 % Zeilen / 94,28 % Statements / 95,36 % Funktionen / 90,73 % Zweige, Changed-Code-Coverage gegen `origin/main` vor dem Push gemessen: 133/157 Zeilen (84,7 %) und 128/146 Zweige (87,7 %) – beide ≥80 %). **Visuelle Abnahme:** Impeccable-Detektor `[]` über MailAccountSettingsPanel/Navigation/AuthPanel; Dateibild-Vision (lokales Qwen-VL via llama.cpp, nichts verlässt das Gerät) über die echten Panel-Screenshots 1280/320: alle Feldbeschriftungen vollständig, kein Überlauf, keine Überlappung; Bilder unter `tests/test-results/mail-account-settings-*.png`. **Ehrlich notiert:** `tests/ops/test_run_backup.py::test_child_file_limit_preserves_the_disk_reserve` ist lokal rot und **auf unverändertem `origin/main` identisch rot** (umgebungsabhängig, Linux-CI grün) – nicht angetastet, kein Slice-Zusammenhang; kein echter Versand und keine echten Providerzugangsdaten (wie beauftragt); für echten Versand fehlen SMTP-Host/-Port, Benutzername/Passwort, erlaubte Absenderadresse, TLS-Art (docs/mail-accounts.md); Betriebs-Schlüsselstatus live geprüft (CT 114: `/run/secrets/telegram_key` in API und Worker vorhanden, Modus 400, 64 Zeichen – Inhalte nie angezeigt), damit sind Kontenänderungen live möglich; `requireMember` der Mail-Routen ist tatsächlich ein Administratorcheck; SSRF bewusst ohne Allow-Liste (lokales Relay), Grenze dokumentiert; der Speicherpfad für `smtpSecurity='starttls'` als Default bedeutet für hypothetische Altzeilen mit Port 465 STARTTLS statt SMTPS (real existieren keine Altzeilen, die UI sendet stets einen expliziten Wert).
-- [x] **MAIL-EDITOR-01 — Formatierter Dokument-Mail-Editor mit Platzhaltern (GOAL B, aktiv nach MAIL-ACCOUNT-01)** *(GOAL 21.11.2026 Abendsitzung; aktiviert 21.11.2026 mit konkreten Kriterien)*: E-Mail zum Dokumentversand (Zeilenaktion „Per E-Mail senden“, MAIL-DOC-01) mit echter Formatierung (fett/kursiv/unterstrichen, Absätze, Listen, Links) und zugänglicher Einfügeauswahl für Platzhalter. **Verbindliche Platzhaltersyntax = die vorhandene des Projekts** (docs/documents.md): `{{contact}}`, `{{event}}`, `{{date}}`, `{{location}}`, `{{eventType}}`, `{{package}}`, `{{total}}`, `{{documentLink}}` – keine erfundenen Namen; unbekannte Platzhalter bleiben ungültiger Inhalt (`invalid_content`), fehlende Werte transparent statt ersetzt; Einfügewerkzeuge nach dem bestehenden BKP015.10-Muster (Klartextbeschreibung je Platzhalter + „Einfügen“ an der Cursorposition, Auswahl verändert allein nichts). **Editorbibliothek:** vor Coding eine dokumentierte Bewertung (offizielle Doku, Lizenz, Bundlegröße, Accessibility, Sanitizing-Zusammenspiel, Maintenance) der Kandidaten TipTap, Plate, Lexical, Quill 2 und des vorhandenen contentEditable-Baus (EventDetails-Notizen, `document.execCommand` ist veraltet); Ergebnis und Begründung in docs festhalten; nur „klein und wartbar“ gewinnt, sonst kleinster tragfähiger Weg mit Begründung. **Sicherheit:** Mail-HTML serverseitig strikt bereinigen (vorhandener `sanitize-html`-Pfad `sanitizeNotes` in `packages/core/src/events.ts` als Muster, Mail-Allowlist: p/br/strong/em/u/ul/ol/li/a mit eingeschränktem href – keine Bilder, kein Style, keine Skripte; XSS-Fälle als Tests), Textalternative (`bodyText`) serverseitig erzeugen, keine Header-Injection (Betreff bleibt `plainText`), Versand weiterhin ausschließlich Outbox/idempotent, **kein automatischer Kundenversand**. **Abnahmekriterien:** RED zuerst; Unit (Platzhalter-Auflösung inkl. fehlender Werte, Sanitize-Allowlist inkl. Angriffsfälle), Integration (gespeichertes Body-HTML ist stets bereinigt, Textalternative korrekt, bestehende MAIL-DOC-01-/Outbox-Verträge unverändert), Component (Toolbar/Formatierung/Platzhalterauswahl zugänglich, Tastatur, `role=status/alert`), fokussierter E2E (Formatieren + Platzhalter einfügen + Versandauftrag mit synthetischen Daten, axe 0, 320/1280 beide Themes, visuelle Abnahme), volle Gates + Changed-Code-Coverage ≥80 %; bestehende Vorlagen-/Platzhalterverträge unverändert. GitHub Flow wie MAIL-ACCOUNT-01. Danach MAIL-TPL-01.
-  **Entscheidung 21.11.2026 (Editorbibliothek):** TipTap 3 mit schmaler Extension-Liste; Bewertung (TipTap/Plate/Lexical/Quill 2/contentEditable) mit selbst gemessenen Bundlegrößen, Lizenzen, Wartungs- und A11y-Befund in [docs/mail-editor.md](docs/mail-editor.md). Ergänzt wird genau ein neuer Platzhalter `{{contactFirstName}}` (Kontakt-Vorname) aus eigenem Feld `contacts.first_name` (Migration, nie aus dem vollen Namen geraten); fehlende Werte bleiben sichtbar, unbekannte sind `invalid_content`. Betreff bleibt der automatische Plain-Text-Dokumentbetreff (Betreff mit Platzhaltern erst mit MAIL-TPL-01).
-  **Lieferstruktur:** auf dem Branch `codex/mail-editor-01` drei fokussierte Teilcommits dieses einen Slices (01a Kontakt-Vorname als rückwärtskompatible Vorbereitung, 01b Mail-Body-Sicherheit/Platzhalter/Vorschau serverseitig, 01c Editor-Oberfläche), ein PR, Merge erst nach allen grünen Checks; bewusste Abweichung vom Ein-Commit-Muster zugunsten kleiner vollständiger Änderungen (Nutzeranweisung 21.11.2026).
-  **Abgenommen (21.11.2026, Nachtsitzung):** geliefert als die drei Teilcommits der Lieferstruktur. **01a** `feat: keep the contact first name as its own field`: Migration 0073 `contacts.first_name` (optional, keep-on-absent wie H034, immer in Antworten, DB-CHECK ≤200), „Vorname“ in Dialog/Inline-Bearbeitung/Kontaktakte (leere Werte ohne Zeile), strukturierte Übernahme des Formular-Vornamens bei neuen Website-Kontakten, altes Importschema bleibt gültig; RED beobachtet (3 neue Komponententests + 2 Integrationsprüfungen fehlgeschlagen), danach grün; Bewertung in docs/mail-editor.md, Vertrag in docs/contacts.md. **01b** `feat: resolve and sanitize document mail content`: `mail-content.ts` (Sanitize-Allowlist p/br/strong/em/u/ul/ol/li/a mit href-Schemata http/https/mailto, Textalternative mit Listenzählung/„Text (URL)“/NBSP→Leerzeichen, `{{…}}`-Assert gegen die neun Namen inkl. `{{contactFirstName}}` – jede andere `{{…}}`-Stelle ist `invalid_content`, `mailPlaceholderValues` ausschließlich aus strukturierten Feldern), `scheduleDocumentSend` mit `bodyHtml`/`bodyText` (exklusiv) und serverseitiger Auflösung/Bereinigung/Derivierung, Preview-Route `POST /api/v1/mail/document-send/preview` (identische Assembly, keine Persistenz, kein Audit); mail-content unit 21/21 (inkl. Angriffsfälle), Mail-Integration 25/25 mit echten DB-Rows. **01c** `feat: compose document mail in a formatted editor`: TipTap-3-`MailBodyEditor` (Toolbar Fett/Kursiv/Unterstrichen/Aufzählung/Nummerierung/Link mit `aria-pressed`, Linkzeile mit Ziel und Escape, BKP015.10-Platzhalterpicker „Einfügen“ am Cursor mit Fokusverbleib im Text), Vorschau mit Betreff, aufgelöstem Ergebnis, fehlenden Namen und Textalternativ-Fallback; EventDocuments sendet `bodyHtml`; Fokusfalle von TipTap v3 (`setOptions` bei Options-Churn) über stabile `deps` gelöst und kommentiert; jsdom-Shim `tests/component-setup.ts` für ProseMirror-Geometrie. **Gates:** unit 386, component 1046 (140 in event-documents, davon 7 Mail-Editor-Fälle), Integration inkl. Mail-Familie 25/25, volle Suite 2049/2049 grün (Statements 94,25 %, Zweige 90,57 %, Funktionen 95,44 %, Zeilen 95,89 %), Changed-Code-Coverage 01c: 80/80 Zeilen (100 %), 55/64 Zweige (85,9 %) – beide ≥80 %, die9 unbelegten Zweige sind defensive Null-Editor-Fälle; E2E `mail-editor.spec.ts` 1/1 in echtem Chromium (echtes Tippen, Fett-Auswahl, `{{contactFirstName}}`+`{{package}}` aus der Auswahl, echte Vorschau „Erika“ und sichtbares fehlendes `{{package}}`, axe 0, 320/1280 beide Themes ohne Body-Überlauf, DB-Rows body_html/body_text wie erwartet, outbox `pending`); Impeccable-Detektor über MailBodyEditor/EventDocuments `[]`, styles.css nur bestehende file-weite Hinweise (eigener Block ohne Befund); lokale Qwen-VL-Bildprüfung (llama.cpp, nichts verlässt das Gerät) aller vier Dialog-Screenshots: Beschriftungen, kein Überlauf, Toolbar, Picker und Vorschau bestätigt, ein Hinweis auf lange Eingabewerte, die im nativen Feld abgeschnitten werden. **Ehrliche Grenzen:** `firstName` fehlt weiterhin im `contacts.csv`-Export (Datenschnitt offen); Betreff nicht editierbar (kommt mit MAIL-TPL-01); `{{documentLink}}` bleibt ohne konfiguriertes Admin-Origin sichtbar ohne Wert; die PR-Gesamtzahlen (Bereich `a44bd88`→`4e93a5d`) sind 239/252 geänderte Zeilen (94,8 %) und 183/226 Zweige (81,0 %) – beide ≥80 %.
+- [x] **MAIL-021-A — Dauerhafter Mailkern (Datenmodell und Outbox)** _(abgeschlossen 21.11.2026, `feat: add the durable mail core and outbox`)_ _(GOAL-Priorität 3, erster E-Mail-Slice; Bestandscheck 21.11.2026: keinerlei Mail-Infrastruktur vorhanden – nur generische Worker-/Job-Muster sind wiederverwendbar)_: tenant-/accountgebundene Nachrichten-/Thread-/Outbox-Daten (BKP021.a/c), Migration(en) additiv, Repository-Verträge, sichere Providerkonfiguration nach vorhandenem Telegram-Muster (KEIN Passwort in API-GET/Logs/UI-Fehlern, Secrets außerhalb Git), Worker-Grundlage mit idempotenten Jobs und Audit. **Ausschließlich synthetische Tests/Mocks; kein echter Versand, keine echten Zugangsdaten, keine echten Nachrichten.** **Abgenommen (21.11.2026):** Migration 0067 (mail_accounts/mail_messages/mail_outbox; Audit mail.* additiv), idempotente Outbox (gleicher Key = derselbe Auftrag auch parallel, partieller Unique „höchstens ein offener Auftrag je Nachricht“, Forward-only-Zustände, uncertain terminal), Worker-Claim mit Lease (FOR UPDATE SKIP LOCKED, Doppelclaim/Neustart getestet), Secrets im vorhandenen AES-GCM-Telegram-Muster (fail-closed), ohne Adapter ehrlich failed/provider_missing (nie „gesendet“). RED beobachtet → unit 345/345 (mail 4/4), mail-Integration 10/10, identity+telegram 6/6, typecheck/lint/format grün, mail.ts 96,1 %/84,1 %; PR #60 (`0bb4424`) nach grüner CI. Ehrliche Grenzen: kein schema-Spiegel (reviewed SQL wie document_payments), keine SMTP-/IMAP-/UI-/Anhangs-/Sanitizing-Teile (Folgeslices); periodische provider_missing-Warnung ohne Adapter; Konto-Anlage bisher nur per Repository.
+- [x] **MAIL-021-B — SMTP-Outbox-Versand** _(abgeschlossen 21.11.2026, `feat: send outbox mail through smtp`)_: MailSender-Adapter (sent/uncertain/definitiv fehlgeschlagen mit geschlossenem redigiertem Kodesatz, Migration 0068 erweitert die Vokabulare additiv), Worker-Versuch genau einmal an `sending` gebunden, Retry-Route nur aus `uncertain` (sonst 409), nodemailer 10.6.1 begründet + smtp-server nur devDependency für echten Mock-SMTP-Abnahme. **Abgenommen (21.11.2026):** RED beobachtet → unit 354/354, Integration mail+mail-smtp+identity 27/27, volle Integration 592/592, typecheck/lint/format/build grün; PR #62 (`f5cc42c`) nach grüner CI. Fälle inkl. Abbruch vor/nach DATA, Zertifikatsablehnung ohne Bypass, Doppelclaim (5 Pässe = 1 Sendung), Lease-Neustart, Redaktion. Ehrliche Offenheiten: Konto-Anlage/Key-Datei im Betrieb; TLS-Test am abgelaufenen Mock-Zertifikat (bewusst laut fehlend). **Härtung siehe MAIL-021-B2.**
+- [x] **MAIL-021-B2 — TLS-Pflicht bei Anmeldung (Härtung)** _(abgeschlossen 21.11.2026, `fix: require tls whenever mail credentials are configured`)_: `requireTLS` bei konfigurierten Zugangsdaten erzwingen (Passwort nie im Klartext auf der Leine; ohne Zugangsdaten bleibt ein lokales Relay ohne TLS möglich). Voraussetzung: echtes TLS-Fixture in den Tests (selbstsigniertes Testzertifikat + CA-Weg, Zertifikatsprüfung NICHT abschwächen) – die authentifizierten Erfolgstests müssen über echtes TLS laufen; ein Test belegt: Server ohne STARTTLS + Zugangsdaten → kein Versand, kein AUTH auf der Leine. Danach die übrigen Klartext-Mock-Tests ohne Zugangsdaten lassen oder TLS-fähig machen. **Abgenommen (21.11.2026):** requireTLS bei Zugangsdaten (Port 465 bleibt secure); neuer geschlossener Code `provider_tls_required` (Migration 0069 additiv) mit eigener Betriebsbotschaft; echtes TLS-Fixture (openssl-Wegwerfzertifikat pro Lauf, Test-CA ausschließlich testseitig injiziert, Zertifikatsprüfung nirgends abgeschwächt). Leak-Beweis: vor der Regel nahm der Klartext-Mock Passwort+Nachricht an (authAttempts 1), nachher 0/0 und provider_tls_required. Danach grün: unit 356/356, mail-smtp 10/10 (authentifizierte Fälle über echtes STARTTLS), mail+identity 28/28, typecheck/lint/format/build grün; PR #64 (`e8d0e1f`) nach grüner CI. Ehrliche Grenzen: openssl-CLI im Testlauf vorausgesetzt (fehlt sie, sichtbarer Fehlschlag); nodemailer als Root-devDependency (gleiche Version, gleicher Modulgraph); provider_tls_required läuft mit Backoff weiter bis zur Behebung.
+- [x] **MAIL-NOTIFY-01 — Website-Anfragebenachrichtigung per E-Mail** _(abgeschlossen 21.11.2026, `feat: notify about website inquiries by email`)_: neue Website-Anfragen zusätzlich zu Telegram per E-Mail an eine konfigurierte Zieladresse benachrichtigen (auf MAIL-021-B; bestehende Telegram-Zustellung unverändert; synthetische Tests). **Abgenommen (21.11.2026):** Einstellungen (Migration 0070, Zieladressen + Ein/Aus, keine Zugangsdaten), genau ein Mail-Auftrag je neuem dauerhaft angenommenem Eingang (Idempotenzschlüssel + Unique, Replays bleiben 1/1/1), Absender = erstes aktives Mailkonto (ohne Konto ehrlich kein Auftrag), Inhalt = Telegram-Textmaß + Anfrage-ID; Telegram unverändert und unabhängig (Doppel-Sendung ausgeschlossen, getestet). RED beobachtet → unit 360/360, component 1027/1027, gezielte Integration 153/12 Dateien, typecheck/lint/format/build grün; PR #66 (`8e8c086`) nach grüner CI. Ehrliche Grenzen: stillschweigend kein Auftrag ohne aktives Konto (Panel benannt); Navigationslabel „Telegram“ mit E-Mail-Abschnitt darunter; kein DELETE-Endpunkt; kein voller Coverage-Lauf.
+- [x] **MAIL-DOC-01 — Dokumente als Anhang senden** _(abgeschlossen 21.11.2026, `feat: send a finalized document as a mail attachment`, PR #68 `0ad9324` gemergt 08:28; **Plan-/Handoff-Status war bis 21.11.2026 Abend veraltet und ist anhand von Code und Tests korrigiert**)_: Dokumente bewusst ausgewählt als Anhang an Kunden/Buchhaltung senden (auf MAIL-021-B; Anhänge nur geprüft/autorisiert; bestehende Datei- und Dokumentverträge erhalten; kein echter Versand ohne Nutzeranweisung). **Tatsächlicher Stand (Code geprüft 21.11.2026):** `scheduleDocumentSend` in `mail.ts` (idempotente Geste `document-send:<doc>:<requestId>`, nur finale nummerierte Belege, Anhang = Referenz auf den eingefrorenen PDF-Artefakt per `mail_attachments`, Bytes nie in der DB), Route `POST /api/v1/mail/document-send`, Zeilenaktion „Per E-Mail senden“ in `EventDocuments.tsx`, Worker-Versand mit Anhang aus dem Content-Addressed-Store (`prepareMailAttempt` liest pro Versuch neu; unlesbarer Anhang = definitiv nicht gesendet), Migration 0071 (mail_attachments + Audit `mail.document_send_scheduled` + Fehlercode `attachment_unavailable`). Vertrag „keine Mailfläche neben der dokumentierten Senden-Aktion“ in `event-record-contexts.test.tsx` präzisiert (CI-MAILFLAKE-01). Tests: mail.test.ts/mail-smtp.test.ts/identity.test.ts erweitert; Main-CI zu `eecd278` und `1482043` grün. Ehrliche Grenzen: Kontoanlage/Key-Datei im Betrieb weiterhin offen (siehe MAIL-ACCOUNT-01), kein echter Versand ohne Nutzeranweisung.
+- [x] **MAIL-ACCOUNT-01 — Einstellungen für das Versandkonto (GOAL A)** _(GOAL 21.11.2026 Abendsitzung; Bestandscheck 21.11.2026: Mailkern/Outbox/SMTP-Adapter/Dokumentanhang/Anfragebenachrichtigung vorhanden, aber **keine** Konten-HTTP-Routen und **keine** SMTP-Kontoeinstellungen im Frontend – `listAccounts`/`saveAccount` nur repository-intern, `saveAccount` nur INSERT, kein Absendername/-adresse, keine Transportverschlüsselungswahl)_: Nutzer kann in den Einstellungen Absendername, Absenderadresse, SMTP-Host, SMTP-Port, Transportverschlüsselung (STARTTLS/SSL-TLS/Ohne), Benutzername und Passwort einrichten, das Konto aktivieren/deaktivieren und sicher ändern. **Umsetzung:** additive Migration (Absendername/-adresse, `smtp_security` auf `mail_accounts`; Audit-Vokabular erweitert), Repository-Update-Pfad (leeres/fehlendes Passwort überschreibt ein vorhandenes Secret **nie**, nur ein nichtleeres ersetzt es; `hasSecret`-Flag statt Secret-Rückgabe), neue Routen `GET/POST/PUT /api/v1/mail/accounts[/:id]` mit bestehendem Admin-/Mandanten-/CSRF-Schutz und geschlossenen neutralen Fehlercodes, Key wie beim Telegram-Muster (`AK_TELEGRAM_ENCRYPTION_KEY_FILE`, ohne Key 503 `encryption_unavailable`, nie Klartext in DB/Logs/Audit), SMTP-Sender erweitert um explizite Transportverschlüsselung (STARTTLS erzwungen bei Zugangsdaten = MAIL-021-B2-Vertrag erhalten, Zertifikatsprüfung nie abschwächen, „Ohne“ nur ohne Benutzername) und Absenderidentität (Anzeige im From-Header, Umschlagadresse unverändert), Worker/Outbox-Verträge unverändert. UI: neuer Einstellungsbereich „E-Mail-Versand“ (Kontoliste + Anlage-/Bearbeitenformular, Statuszeile aktiv/inaktiv/Secret gesetzt, Passwortfeld leer = unverändert, Validierung/Fehler/Ladezustände zugänglich `role=status/alert`, Tastatur, 320–1440, axe). **Sicherheitsprüfungen:** kein Secret in Antworten/Logs/Audit/Testsnapshots, TLS- und SSRF-Grenzen der bestehenden Implementierung prüfen und in docs/mail-accounts.md dokumentieren (Betriebs-Secret/Schlüsselstatus verständlich, keine Secrets im Chat, keine Schlüsselrotation ohne Autorisierung). **Abnahmekriterien:** RED zuerst; Integration (Repository + Routen: Secret nie in der Antwort, leeres Passwort behält Secret, Anlage ohne Secret bei enabled → Fehler, Konflikt/409, Mandanten-/Rollen-/CSRF-Fälle, 503 ohne Key), Unit (Sender-Mapping), Component (Panel inkl. Fehler-/Ladezustände), betroffene E2E/axe; format/lint/typecheck/build; Changed-Code-Coverage ≥80 % Zeilen/Zweige; synthetische Daten, **kein echter Versand, keine echten Providerzugangsdaten** – falls kein echtes Providerkonto vorliegt: Oberfläche + synthetische Tests fertigstellen und fehlende Angaben melden. Docs: `docs/mail-accounts.md`, `.env.example`-Korrektur (Mailkommentar war veraltet), Plan/Übergabe. GitHub Flow: Branch `codex/mail-account-01` von main, ein Commit, PR erst bei allen grünen Checks mergen, danach Main-CI inkl. Images + Live/Updater prüfen, Branch löschen. **Abgenommen (21.11.2026):** RED sauber per `git stash` des Kerns beobachtet (7/7 neue Konten-Integrationstests fehlgeschlagen – fehlende Update-/Routen-/Neufeld-Verträge), danach grün: `mail-accounts.test.ts` 7/7 (Secret nie in Antwort/DB-Klartext, leeres/fehlendes Passwort behält Ciphertext unverändert, nichtleeres ersetzt, Enable ohne Secret → `secret_required`, `invalid_sender`/`invalid_security` inkl. Header-Name `<>"\` und „Ohne“+Benutzername, Mandantenisolation/`already_exists`/`not_found`, CSRF 403, 401, 503 ohne Key ohne Speicherung, 403 ohne Membership); Mail-Gesamtumfeld `mail`+`mail-smtp`+`identity`+`inquiry-email-notification` 45/45 (eine Adapter-Assertion aussagenerhalten um `security` erweitert, Migrations-Erwartung 0072); unit 16/16, davon 5 neue Sender-Mapping-/From-Header-Fälle als **klar abgegrenzte Delegation an DeepSeek V4.1 Flash** (`hermes -z -m deepseek-v4.1-flash --provider opencode-go`, Promptdatei wegen CLI-Quoting; Review durch MiMo: Verträge korrekt, nur Importzeile bestehender Tests erweitert, eigener Lauf 16/16); component 31/31 (4 neue Panel-Fälle + Navigation 14 Bereiche); fokussierter E2E `mail-account-settings.spec.ts` 1/1 in echtem Chromium (echter Login, Anlage mit Secret im POST, Bearbeiten ohne Passwort → PUT ohne `secret`-Schlüssel, keine API-Antwort enthält das Secret, axe 0 Verstöße im Panel, Geometrie 1280/320 ohne horizontalen Überlauf); **volle lokale E2E-Suite 53 Tests: 52 grün**, der eine Fehlschlag war der bewusst geänderte Zählvertrag `document-layout.spec.ts` (Einstellungsbereiche 13→14) – gezielte Wiederholung danach grün (voller Zweitlauf bewusst unterlassen, Nutzerhinweis 29.10.). Gates: format/lint/typecheck/docs/workspace/build grün (`check:quality` bis auf den **vorbestehend** roten Ops-Fall weiter unten durchgelaufen), globale Coverage 95,90 % Zeilen / 94,28 % Statements / 95,36 % Funktionen / 90,73 % Zweige, Changed-Code-Coverage gegen `origin/main` vor dem Push gemessen: 133/157 Zeilen (84,7 %) und 128/146 Zweige (87,7 %) – beide ≥80 %). **Visuelle Abnahme:** Impeccable-Detektor `[]` über MailAccountSettingsPanel/Navigation/AuthPanel; Dateibild-Vision (lokales Qwen-VL via llama.cpp, nichts verlässt das Gerät) über die echten Panel-Screenshots 1280/320: alle Feldbeschriftungen vollständig, kein Überlauf, keine Überlappung; Bilder unter `tests/test-results/mail-account-settings-*.png`. **Ehrlich notiert:** `tests/ops/test_run_backup.py::test_child_file_limit_preserves_the_disk_reserve` ist lokal rot und **auf unverändertem `origin/main` identisch rot** (umgebungsabhängig, Linux-CI grün) – nicht angetastet, kein Slice-Zusammenhang; kein echter Versand und keine echten Providerzugangsdaten (wie beauftragt); für echten Versand fehlen SMTP-Host/-Port, Benutzername/Passwort, erlaubte Absenderadresse, TLS-Art (docs/mail-accounts.md); Betriebs-Schlüsselstatus live geprüft (CT 114: `/run/secrets/telegram_key` in API und Worker vorhanden, Modus 400, 64 Zeichen – Inhalte nie angezeigt), damit sind Kontenänderungen live möglich; `requireMember` der Mail-Routen ist tatsächlich ein Administratorcheck; SSRF bewusst ohne Allow-Liste (lokales Relay), Grenze dokumentiert; der Speicherpfad für `smtpSecurity='starttls'` als Default bedeutet für hypothetische Altzeilen mit Port 465 STARTTLS statt SMTPS (real existieren keine Altzeilen, die UI sendet stets einen expliziten Wert).
+- [x] **MAIL-EDITOR-01 — Formatierter Dokument-Mail-Editor mit Platzhaltern (GOAL B, aktiv nach MAIL-ACCOUNT-01)** _(GOAL 21.11.2026 Abendsitzung; aktiviert 21.11.2026 mit konkreten Kriterien)_: E-Mail zum Dokumentversand (Zeilenaktion „Per E-Mail senden“, MAIL-DOC-01) mit echter Formatierung (fett/kursiv/unterstrichen, Absätze, Listen, Links) und zugänglicher Einfügeauswahl für Platzhalter. **Verbindliche Platzhaltersyntax = die vorhandene des Projekts** (docs/documents.md): `{{contact}}`, `{{event}}`, `{{date}}`, `{{location}}`, `{{eventType}}`, `{{package}}`, `{{total}}`, `{{documentLink}}` – keine erfundenen Namen; unbekannte Platzhalter bleiben ungültiger Inhalt (`invalid_content`), fehlende Werte transparent statt ersetzt; Einfügewerkzeuge nach dem bestehenden BKP015.10-Muster (Klartextbeschreibung je Platzhalter + „Einfügen“ an der Cursorposition, Auswahl verändert allein nichts). **Editorbibliothek:** vor Coding eine dokumentierte Bewertung (offizielle Doku, Lizenz, Bundlegröße, Accessibility, Sanitizing-Zusammenspiel, Maintenance) der Kandidaten TipTap, Plate, Lexical, Quill 2 und des vorhandenen contentEditable-Baus (EventDetails-Notizen, `document.execCommand` ist veraltet); Ergebnis und Begründung in docs festhalten; nur „klein und wartbar“ gewinnt, sonst kleinster tragfähiger Weg mit Begründung. **Sicherheit:** Mail-HTML serverseitig strikt bereinigen (vorhandener `sanitize-html`-Pfad `sanitizeNotes` in `packages/core/src/events.ts` als Muster, Mail-Allowlist: p/br/strong/em/u/ul/ol/li/a mit eingeschränktem href – keine Bilder, kein Style, keine Skripte; XSS-Fälle als Tests), Textalternative (`bodyText`) serverseitig erzeugen, keine Header-Injection (Betreff bleibt `plainText`), Versand weiterhin ausschließlich Outbox/idempotent, **kein automatischer Kundenversand**. **Abnahmekriterien:** RED zuerst; Unit (Platzhalter-Auflösung inkl. fehlender Werte, Sanitize-Allowlist inkl. Angriffsfälle), Integration (gespeichertes Body-HTML ist stets bereinigt, Textalternative korrekt, bestehende MAIL-DOC-01-/Outbox-Verträge unverändert), Component (Toolbar/Formatierung/Platzhalterauswahl zugänglich, Tastatur, `role=status/alert`), fokussierter E2E (Formatieren + Platzhalter einfügen + Versandauftrag mit synthetischen Daten, axe 0, 320/1280 beide Themes, visuelle Abnahme), volle Gates + Changed-Code-Coverage ≥80 %; bestehende Vorlagen-/Platzhalterverträge unverändert. GitHub Flow wie MAIL-ACCOUNT-01. Danach MAIL-TPL-01.
+      **Entscheidung 21.11.2026 (Editorbibliothek):** TipTap 3 mit schmaler Extension-Liste; Bewertung (TipTap/Plate/Lexical/Quill 2/contentEditable) mit selbst gemessenen Bundlegrößen, Lizenzen, Wartungs- und A11y-Befund in [docs/mail-editor.md](docs/mail-editor.md). Ergänzt wird genau ein neuer Platzhalter `{{contactFirstName}}` (Kontakt-Vorname) aus eigenem Feld `contacts.first_name` (Migration, nie aus dem vollen Namen geraten); fehlende Werte bleiben sichtbar, unbekannte sind `invalid_content`. Betreff bleibt der automatische Plain-Text-Dokumentbetreff (Betreff mit Platzhaltern erst mit MAIL-TPL-01).
+      **Lieferstruktur:** auf dem Branch `codex/mail-editor-01` drei fokussierte Teilcommits dieses einen Slices (01a Kontakt-Vorname als rückwärtskompatible Vorbereitung, 01b Mail-Body-Sicherheit/Platzhalter/Vorschau serverseitig, 01c Editor-Oberfläche), ein PR, Merge erst nach allen grünen Checks; bewusste Abweichung vom Ein-Commit-Muster zugunsten kleiner vollständiger Änderungen (Nutzeranweisung 21.11.2026).
+      **Abgenommen (21.11.2026, Nachtsitzung):** geliefert als die drei Teilcommits der Lieferstruktur. **01a** `feat: keep the contact first name as its own field`: Migration 0073 `contacts.first_name` (optional, keep-on-absent wie H034, immer in Antworten, DB-CHECK ≤200), „Vorname“ in Dialog/Inline-Bearbeitung/Kontaktakte (leere Werte ohne Zeile), strukturierte Übernahme des Formular-Vornamens bei neuen Website-Kontakten, altes Importschema bleibt gültig; RED beobachtet (3 neue Komponententests + 2 Integrationsprüfungen fehlgeschlagen), danach grün; Bewertung in docs/mail-editor.md, Vertrag in docs/contacts.md. **01b** `feat: resolve and sanitize document mail content`: `mail-content.ts` (Sanitize-Allowlist p/br/strong/em/u/ul/ol/li/a mit href-Schemata http/https/mailto, Textalternative mit Listenzählung/„Text (URL)“/NBSP→Leerzeichen, `{{…}}`-Assert gegen die neun Namen inkl. `{{contactFirstName}}` – jede andere `{{…}}`-Stelle ist `invalid_content`, `mailPlaceholderValues` ausschließlich aus strukturierten Feldern), `scheduleDocumentSend` mit `bodyHtml`/`bodyText` (exklusiv) und serverseitiger Auflösung/Bereinigung/Derivierung, Preview-Route `POST /api/v1/mail/document-send/preview` (identische Assembly, keine Persistenz, kein Audit); mail-content unit 21/21 (inkl. Angriffsfälle), Mail-Integration 25/25 mit echten DB-Rows. **01c** `feat: compose document mail in a formatted editor`: TipTap-3-`MailBodyEditor` (Toolbar Fett/Kursiv/Unterstrichen/Aufzählung/Nummerierung/Link mit `aria-pressed`, Linkzeile mit Ziel und Escape, BKP015.10-Platzhalterpicker „Einfügen“ am Cursor mit Fokusverbleib im Text), Vorschau mit Betreff, aufgelöstem Ergebnis, fehlenden Namen und Textalternativ-Fallback; EventDocuments sendet `bodyHtml`; Fokusfalle von TipTap v3 (`setOptions` bei Options-Churn) über stabile `deps` gelöst und kommentiert; jsdom-Shim `tests/component-setup.ts` für ProseMirror-Geometrie. **Gates:** unit 386, component 1046 (140 in event-documents, davon 7 Mail-Editor-Fälle), Integration inkl. Mail-Familie 25/25, volle Suite 2049/2049 grün (Statements 94,25 %, Zweige 90,57 %, Funktionen 95,44 %, Zeilen 95,89 %), Changed-Code-Coverage 01c: 80/80 Zeilen (100 %), 55/64 Zweige (85,9 %) – beide ≥80 %, die9 unbelegten Zweige sind defensive Null-Editor-Fälle; E2E `mail-editor.spec.ts` 1/1 in echtem Chromium (echtes Tippen, Fett-Auswahl, `{{contactFirstName}}`+`{{package}}` aus der Auswahl, echte Vorschau „Erika“ und sichtbares fehlendes `{{package}}`, axe 0, 320/1280 beide Themes ohne Body-Überlauf, DB-Rows body_html/body_text wie erwartet, outbox `pending`); Impeccable-Detektor über MailBodyEditor/EventDocuments `[]`, styles.css nur bestehende file-weite Hinweise (eigener Block ohne Befund); lokale Qwen-VL-Bildprüfung (llama.cpp, nichts verlässt das Gerät) aller vier Dialog-Screenshots: Beschriftungen, kein Überlauf, Toolbar, Picker und Vorschau bestätigt, ein Hinweis auf lange Eingabewerte, die im nativen Feld abgeschnitten werden. **Ehrliche Grenzen:** `firstName` fehlt weiterhin im `contacts.csv`-Export (Datenschnitt offen); Betreff nicht editierbar (kommt mit MAIL-TPL-01); `{{documentLink}}` bleibt ohne konfiguriertes Admin-Origin sichtbar ohne Wert; die PR-Gesamtzahlen (Bereich `a44bd88`→`4e93a5d`) sind 239/252 geänderte Zeilen (94,8 %) und 183/226 Zweige (81,0 %) – beide ≥80 %.
 - [x] **MAIL-TPL-01 — E-Mail-Vorlagen mit Standardanhängen (GOAL C, danach, ggf. mehrere kleine Slices)**: Vorlagen in den Einstellungen anlegen/bearbeiten/wählen/archivieren; Betreff + formatierter Inhalt mit denselben Platzhaltern; Vorschau mit synthetischen Daten; Standard-Dateianhänge aus sicher vorhandenen Dateien wählbar (wie Bookitup aus beobachteter Nutzung – nur belegte Parität behaupten), beim Versand pro Mail sichtbar/änderbar; Mandanten-/Berechtigungsprüfung, stabile Referenz/Version; keine Kunden-/Mailinhalte ins Repo; fehlende/entfernte Dateien vor Versand transparent. Plan + Abnahmekriterien vor Slice-Start unten konkretisieren.
-  **Konkretisierung 21.11.2026 (vor Slice-Start), Lieferung als drei nummerierte Teilslices auf eigenen `codex/`-Branches:**
-  **MAIL-TPL-01a — Vorlagendaten und Routen:** additive Migration `mail_templates` (tenant_id, id, name ≤120, subject ≤998 als `plainText` mit Platzhaltern, `body_html` serverseitig bereinigt wie MAIL-EDITOR-01, state active/inactive/archived, version, Zeitstempel); Repository + Routen `GET/POST/PUT /api/v1/mail-templates[/:id]` mit bestehendem Admin-/Mandanten-/CSRF-Schutz, `{{…}}`-Assert gegen dieselben neun Namen, Betreffauflösung ohne Steuerzeichen (keine Header-Injection), Archivieren als sichtbarer Zustandswechsel (keine Löschung), 409 bei Version/Archivkonflikten; Vorschau-Route mit rein synthetischen Beispielwerten (analog Dokumentlayout-Vorschau, `example.invalid`, „VORSCHAU“) – eine fiktive Vorschau ohne Kontakt/Datum erfindet nichts. **Tests:** Unit (Vorlagen-Render inkl. fehlender Werte), Integration (Routen, Archiv, Version, Mandantenisolation, CSRF), RED zuerst. Commit `feat: keep reusable mail templates`. **01a abgenommen (21.11.2026, Nacht):** Migration 0074 (`mail_templates` + Audit `mail.template_saved`), `packages/core/src/mail-templates.ts` mit `mailTemplateFields` (Validierung/Sanitizing/`{{…}}`-Assert), `previewMailTemplate` (feste Beispielwerte, in [docs/mail-templates.md](docs/mail-templates.md) tabelliert) und Routen `GET/POST/PUT /api/v1/mail-templates[/:id]` + `POST /api/v1/mail-templates/preview` (Admin/Mandant/CSRF, 404 not_found / 409 conflict / 400 invalid_*; Schemafehler generisch); `resolveMailSubject` in `mail-content.ts` bringt Werte auf eine Zeile (keine Header-Injection). Unit mail-templates 5/5 und mail-content 22/22, Integration mail-templates 4/4 + identity (Migrationspin 0074), typecheck/lint/format/workspace/docs grün.
-  **MAIL-TPL-01b — Vorlagen in den Einstellungen pflegen:** eigener Einstellungsbereich „E-Mail-Vorlagen“ (Liste Name/Zustand, Anlegen/Bearbeiten/Archivieren; bewusst kein Duplizieren im Plan-Entry), Editor mit `MailBodyEditor` + Betrefffeld + Platzhalterpicker + Vorschau mit synthetischen Daten; Zählvertrag der Einstellungsbereiche (`document-layout.spec.ts` 14→15) bewusst anpassen. **Tests:** Component (Formular/Archiv/Lade-/Fehlerzustände), E2E-Ausschnitt, axe. Commit `feat: manage mail templates in the settings`. **01b abgenommen (21.11.2026, Nacht):** Einstellungsbereich „E-Mail-Vorlagen“ (`#settings-mail-templates`; Zählvertrag der Einstellungsbereiche 14→15 bewusst angepasst), `MailTemplatesPanel` mit Liste/Zustandslabel, Anlegen/Bearbeiten/Archivieren über die Zustandsauswahl, `MailBodyEditor` + Platzhalterpicker + Beispielvorschau mit benannten fehlenden Werten; „Abbrechen“ kehrt ohne Schreibvorgang zur Liste zurück (eigener Regressionstest – genau diesen Fehler fand der E2E-Lauf vorab). `MailBodyEditor` übernimmt spät eintreffende externe Inhalte einmalig, ohne Tippen zu überschreiben (Detailabruf der Vorlage). Component mail-templates-panel 12/12, volle Component-Suite 1058/1058, unit 391/391, E2E `mail-templates-settings.spec.ts` 1/1 in echtem Chromium (Listen-/Editorflow mit Detailabruf, Platzhalter aus der Auswahl, Speichern, Beispielvorschau, axe 0, 1280/320 ohne Überlauf); format/lint/typecheck/build grün; Changed-Code-Coverage 127/129 Zeilen (98,4 %) und 61/68 Zweige (89,7 %).
-  **MAIL-TPL-01c — Aus Vorlage senden: Betreff und Inhalt** *(22.11.2026 von 01c abgeteilt, „kleine vollständige Änderungen“)*: im Dokument-Mail-Dialog eine Auswahl „Aus Vorlage“ (nur aktive Vorlagen; die Auswahl allein ändert nichts) mit Übernehmen-Aktion; Betreff und Inhalt landen im danach voll editierbaren Entwurf (Änderungen an der Vorlage ändern weder Entwurf noch gesendete Mails), ein schmutziger Entwurf fragt per `window.confirm` vor dem Ersetzen (Hausmuster). Der Dialog erhält ein sichtbares Betrefffeld (Standard „Dokument <Nummer>“); `scheduleDocumentSend` und die Vorschau akzeptieren optional `subject` (plainText ≤998, Platzhalter, serverseitig über `resolveMailSubject` aufgelöst – keine Header-Injection; fehlender/leerer Betreff behält den automatischen Dokumentbetreff, alte Aufrufe unverändert). **Tests:** Vorlagenwahl/Dirty-Schutz/Betreffauflösung inkl. Zeilenumbruch-Versuch/Outbox-Verträge unverändert; Unit, Integration, Component und E2E-Ausschnitt. Commit `feat: apply mail templates to document mails`. **01c abgenommen (22.11.2026):** `scheduleDocumentSend` und die Vorschau akzeptieren optional `subject` (plainText ≤998, `{{…}}`-Assert, serverseitig `resolveMailSubject` – Werte eine Zeile, getestet mit mehrzeiligem Venue; aufgelöster Betreff >998 oder mit Steuerzeichen → `invalid_subject`; leerer/fehlender Betreff behält den automatischen Dokumentbetreff, alte Aufrufe unverändert). Der Dialog erhält Betrefffeld (Standard „Dokument <Nummer>“) und die Auswahl „Aus Vorlage“ (nur aktive; Auswahl allein ändert nichts) mit „Übernehmen“: Betreff/Inhalt werden einmalig in den voll editierbaren Entwurf kopiert, ein schmutziger Entwurf fragt per `window.confirm` (Hausmuster), die Vorlage wird nie geschrieben. Component 141/141 (neu: Vorlagenannahme/Dirty-Schutz/„Übernehmen“ sendet `subject`, kein PUT), Integration mail 26/26 (Betreffauflösung inkl. Zeilenumbruch-Versuch, `invalid_content`, Defaultbetreff, Vorschau), E2E `mail-editor.spec.ts` 1/1 (Vorlagenannahme im echten Dialog, Vorschau „Erinnerung für Fictional Mail Recipient“, DB-Betreff aufgelöst); unit 391/391, format/lint/typecheck/build grün. Ehrliche Grenze: Standard-Dateianhänge folgen in 01d.
-  **MAIL-TPL-01d — Standard-Dateianhänge: Daten und Sendeweg** *(22.11.2026 weiter geteilt, „kleine vollständige Änderungen“)*: additive Migration `mail_template_attachments` (Vorlage → Bibliotheksdatei) und `mail_file_attachments` (Mail → Bibliotheksdatei; der bestehende Vertrag `mail_attachments` mit seinem „nur finale Dokumente“-Trigger bleibt bytegleich unverändert) samt eigenem Trigger „nur `state='available'` und aktueller Prüfstand“; die Vorlage speichert/antwortet ihre `attachmentFileIds` (nur existierende, verfügbare Dateien); `scheduleDocumentSend` akzeptiert `fileIds`, prüft jede Datei erneut (fehlende/archivierte Datei = ganze Auftrag wird mit `attachment_unavailable` abgelehnt, nie stillschweigend weggelassen) und der Worker liest beide Anhangtabellen pro Versuch neu; der Dialog zeigt die Standardanhänge der übernommenen Vorlage sichtbar/entfernbar und benennt fehlende Dateien vor dem Versand. **Tests:** Migration/Trigger, Anlage/Update der Vorlagenanhänge, Sendeweg mit/ohne Dateien, fehlende/archivierte Datei, Worker-Lesepfad, Idempotenz, Outbox unverändert. Commit `feat: attach library files to document mails`. **01d abgenommen (22.11.2026):** Migration 0075 (`mail_template_attachments` + `mail_file_attachments` mit Verfügbarkeits-Triggern; der Vertrag `mail_attachments` von 0071 bleibt bytegleich); `mail-templates.ts` speichert/antwortet `attachmentFileIds` (keep-on-absent, höchstens 20, erneute Verfügbarkeitsprüfung + Trigger, `attachment_unavailable` statt Weglassen); `scheduleDocumentSend` akzeptiert `fileIds`, friert je Datei Speicherschlüssel/Hash/Größe ein, `mail_file_attachments` (Server-erzeugter Dateiname aus `display_name`), der Worker liest beide Anhangtabellen pro Versuch neu und verifiziert den SHA-256 (beschädigt/ersetzt = `attachment_unavailable`), Antworten und Replays nennen `files`; der Dialog zeigt die Standardanhänge sichtbar/entfernbar und sendet die Verbleibenden. Integration mail 27/27 + mail-templates 6/6 + identity (Migrationspin 0075) – inkl. Worker-Bytes-Beleg, Rollback ohne Nachricht bei fehlender Datei, Replays mit identischen Dateien; Component 142/142 (Anhang sichtbar/reisend/entfernbar). Ehrliche Grenze: die Anhangswahl in den Einstellungen folgt in 01e. Beobachtungspunkt (23.11.2026 geschlossen): die Picker-Einfügung landete nach Leerzeichen/Fokusverlust gelegentlich an falscher Stelle – Ursache war ein Render-Rennschild im Inhalts-Sync von `MailBodyEditor` (veralteter Prop-Wert überschrieb getippten Text); mit dem Guard gegen den zuletzt gesehenen Prop behoben (ATTACH-01b).
-  **MAIL-TPL-01e — Anhänge in den Einstellungen wählen:** in „E-Mail-Vorlagen“ die wählbaren Dateien aus der vorhandenen Bibliothek (nur verfügbare) pro Vorlage auswählen/entfernen; Zustände ehrlich (keine Datei/keine Auswahl), Zählverträge unverändert. **Tests:** Component/UX, betroffene E2E, axe. Commit `feat: choose template attachments in the settings`. **01e abgenommen (23.11.2026):** „Standard-Anhänge“ in „E-Mail-Vorlagen“: die Auswahl zeigt die verfügbaren Bibliotheksdateien (Name/Medientyp/Größe) als Checkboxen; eine nicht mehr verfügbare, aber noch gewählte Datei bleibt benannt und einzeln entfernbar (Zustände ehrlich, „Keine verfügbaren Dateien in der Bibliothek.“); jede Speicherung sendet die Gesamtmenge `attachmentFileIds`, `attachment_unavailable` wird verständlich benannt. Component mail-templates-panel 14/14 (inkl. Auswahl/Entfernen und Abweisung mit Namensnennung), volle Component-Suite 1062/1062, unit 391/391, E2E `mail-templates-settings.spec.ts` 1/1 (Auswahl → Speichern → erneutes Öffnen zeigt die Wahl; axe im bestehenden Abschnitt ohne Befund); format/lint/typecheck/docs/workspace grün. **Damit ist MAIL-TPL-01 vollständig.**
-  **Gesamtabnahme:** Mandanten-/Rollen-/CSRF-Fälle in jedem Slice; dieselben neun Platzhalter und dieselbe Formatierung wie MAIL-EDITOR-01; keine echten Mail-/Kundeninhalte im Repo, ausschließlich synthetische Daten; pro Slice volle schnelle Gates + betroffene Integration/E2E und Changed-Code-Coverage ≥80 %.
+      **Konkretisierung 21.11.2026 (vor Slice-Start), Lieferung als drei nummerierte Teilslices auf eigenen `codex/`-Branches:**
+      **MAIL-TPL-01a — Vorlagendaten und Routen:** additive Migration `mail_templates` (tenant_id, id, name ≤120, subject ≤998 als `plainText` mit Platzhaltern, `body_html` serverseitig bereinigt wie MAIL-EDITOR-01, state active/inactive/archived, version, Zeitstempel); Repository + Routen `GET/POST/PUT /api/v1/mail-templates[/:id]` mit bestehendem Admin-/Mandanten-/CSRF-Schutz, `{{…}}`-Assert gegen dieselben neun Namen, Betreffauflösung ohne Steuerzeichen (keine Header-Injection), Archivieren als sichtbarer Zustandswechsel (keine Löschung), 409 bei Version/Archivkonflikten; Vorschau-Route mit rein synthetischen Beispielwerten (analog Dokumentlayout-Vorschau, `example.invalid`, „VORSCHAU“) – eine fiktive Vorschau ohne Kontakt/Datum erfindet nichts. **Tests:** Unit (Vorlagen-Render inkl. fehlender Werte), Integration (Routen, Archiv, Version, Mandantenisolation, CSRF), RED zuerst. Commit `feat: keep reusable mail templates`. **01a abgenommen (21.11.2026, Nacht):** Migration 0074 (`mail_templates` + Audit `mail.template_saved`), `packages/core/src/mail-templates.ts` mit `mailTemplateFields` (Validierung/Sanitizing/`{{…}}`-Assert), `previewMailTemplate` (feste Beispielwerte, in [docs/mail-templates.md](docs/mail-templates.md) tabelliert) und Routen `GET/POST/PUT /api/v1/mail-templates[/:id]` + `POST /api/v1/mail-templates/preview` (Admin/Mandant/CSRF, 404 not_found / 409 conflict / 400 invalid_*; Schemafehler generisch); `resolveMailSubject` in `mail-content.ts` bringt Werte auf eine Zeile (keine Header-Injection). Unit mail-templates 5/5 und mail-content 22/22, Integration mail-templates 4/4 + identity (Migrationspin 0074), typecheck/lint/format/workspace/docs grün.
+      **MAIL-TPL-01b — Vorlagen in den Einstellungen pflegen:** eigener Einstellungsbereich „E-Mail-Vorlagen“ (Liste Name/Zustand, Anlegen/Bearbeiten/Archivieren; bewusst kein Duplizieren im Plan-Entry), Editor mit `MailBodyEditor` + Betrefffeld + Platzhalterpicker + Vorschau mit synthetischen Daten; Zählvertrag der Einstellungsbereiche (`document-layout.spec.ts` 14→15) bewusst anpassen. **Tests:** Component (Formular/Archiv/Lade-/Fehlerzustände), E2E-Ausschnitt, axe. Commit `feat: manage mail templates in the settings`. **01b abgenommen (21.11.2026, Nacht):** Einstellungsbereich „E-Mail-Vorlagen“ (`#settings-mail-templates`; Zählvertrag der Einstellungsbereiche 14→15 bewusst angepasst), `MailTemplatesPanel` mit Liste/Zustandslabel, Anlegen/Bearbeiten/Archivieren über die Zustandsauswahl, `MailBodyEditor` + Platzhalterpicker + Beispielvorschau mit benannten fehlenden Werten; „Abbrechen“ kehrt ohne Schreibvorgang zur Liste zurück (eigener Regressionstest – genau diesen Fehler fand der E2E-Lauf vorab). `MailBodyEditor` übernimmt spät eintreffende externe Inhalte einmalig, ohne Tippen zu überschreiben (Detailabruf der Vorlage). Component mail-templates-panel 12/12, volle Component-Suite 1058/1058, unit 391/391, E2E `mail-templates-settings.spec.ts` 1/1 in echtem Chromium (Listen-/Editorflow mit Detailabruf, Platzhalter aus der Auswahl, Speichern, Beispielvorschau, axe 0, 1280/320 ohne Überlauf); format/lint/typecheck/build grün; Changed-Code-Coverage 127/129 Zeilen (98,4 %) und 61/68 Zweige (89,7 %).
+      **MAIL-TPL-01c — Aus Vorlage senden: Betreff und Inhalt** _(22.11.2026 von 01c abgeteilt, „kleine vollständige Änderungen“)_: im Dokument-Mail-Dialog eine Auswahl „Aus Vorlage“ (nur aktive Vorlagen; die Auswahl allein ändert nichts) mit Übernehmen-Aktion; Betreff und Inhalt landen im danach voll editierbaren Entwurf (Änderungen an der Vorlage ändern weder Entwurf noch gesendete Mails), ein schmutziger Entwurf fragt per `window.confirm` vor dem Ersetzen (Hausmuster). Der Dialog erhält ein sichtbares Betrefffeld (Standard „Dokument <Nummer>“); `scheduleDocumentSend` und die Vorschau akzeptieren optional `subject` (plainText ≤998, Platzhalter, serverseitig über `resolveMailSubject` aufgelöst – keine Header-Injection; fehlender/leerer Betreff behält den automatischen Dokumentbetreff, alte Aufrufe unverändert). **Tests:** Vorlagenwahl/Dirty-Schutz/Betreffauflösung inkl. Zeilenumbruch-Versuch/Outbox-Verträge unverändert; Unit, Integration, Component und E2E-Ausschnitt. Commit `feat: apply mail templates to document mails`. **01c abgenommen (22.11.2026):** `scheduleDocumentSend` und die Vorschau akzeptieren optional `subject` (plainText ≤998, `{{…}}`-Assert, serverseitig `resolveMailSubject` – Werte eine Zeile, getestet mit mehrzeiligem Venue; aufgelöster Betreff >998 oder mit Steuerzeichen → `invalid_subject`; leerer/fehlender Betreff behält den automatischen Dokumentbetreff, alte Aufrufe unverändert). Der Dialog erhält Betrefffeld (Standard „Dokument <Nummer>“) und die Auswahl „Aus Vorlage“ (nur aktive; Auswahl allein ändert nichts) mit „Übernehmen“: Betreff/Inhalt werden einmalig in den voll editierbaren Entwurf kopiert, ein schmutziger Entwurf fragt per `window.confirm` (Hausmuster), die Vorlage wird nie geschrieben. Component 141/141 (neu: Vorlagenannahme/Dirty-Schutz/„Übernehmen“ sendet `subject`, kein PUT), Integration mail 26/26 (Betreffauflösung inkl. Zeilenumbruch-Versuch, `invalid_content`, Defaultbetreff, Vorschau), E2E `mail-editor.spec.ts` 1/1 (Vorlagenannahme im echten Dialog, Vorschau „Erinnerung für Fictional Mail Recipient“, DB-Betreff aufgelöst); unit 391/391, format/lint/typecheck/build grün. Ehrliche Grenze: Standard-Dateianhänge folgen in 01d.
+      **MAIL-TPL-01d — Standard-Dateianhänge: Daten und Sendeweg** _(22.11.2026 weiter geteilt, „kleine vollständige Änderungen“)_: additive Migration `mail_template_attachments` (Vorlage → Bibliotheksdatei) und `mail_file_attachments` (Mail → Bibliotheksdatei; der bestehende Vertrag `mail_attachments` mit seinem „nur finale Dokumente“-Trigger bleibt bytegleich unverändert) samt eigenem Trigger „nur `state='available'` und aktueller Prüfstand“; die Vorlage speichert/antwortet ihre `attachmentFileIds` (nur existierende, verfügbare Dateien); `scheduleDocumentSend` akzeptiert `fileIds`, prüft jede Datei erneut (fehlende/archivierte Datei = ganze Auftrag wird mit `attachment_unavailable` abgelehnt, nie stillschweigend weggelassen) und der Worker liest beide Anhangtabellen pro Versuch neu; der Dialog zeigt die Standardanhänge der übernommenen Vorlage sichtbar/entfernbar und benennt fehlende Dateien vor dem Versand. **Tests:** Migration/Trigger, Anlage/Update der Vorlagenanhänge, Sendeweg mit/ohne Dateien, fehlende/archivierte Datei, Worker-Lesepfad, Idempotenz, Outbox unverändert. Commit `feat: attach library files to document mails`. **01d abgenommen (22.11.2026):** Migration 0075 (`mail_template_attachments` + `mail_file_attachments` mit Verfügbarkeits-Triggern; der Vertrag `mail_attachments` von 0071 bleibt bytegleich); `mail-templates.ts` speichert/antwortet `attachmentFileIds` (keep-on-absent, höchstens 20, erneute Verfügbarkeitsprüfung + Trigger, `attachment_unavailable` statt Weglassen); `scheduleDocumentSend` akzeptiert `fileIds`, friert je Datei Speicherschlüssel/Hash/Größe ein, `mail_file_attachments` (Server-erzeugter Dateiname aus `display_name`), der Worker liest beide Anhangtabellen pro Versuch neu und verifiziert den SHA-256 (beschädigt/ersetzt = `attachment_unavailable`), Antworten und Replays nennen `files`; der Dialog zeigt die Standardanhänge sichtbar/entfernbar und sendet die Verbleibenden. Integration mail 27/27 + mail-templates 6/6 + identity (Migrationspin 0075) – inkl. Worker-Bytes-Beleg, Rollback ohne Nachricht bei fehlender Datei, Replays mit identischen Dateien; Component 142/142 (Anhang sichtbar/reisend/entfernbar). Ehrliche Grenze: die Anhangswahl in den Einstellungen folgt in 01e. Beobachtungspunkt (23.11.2026 geschlossen): die Picker-Einfügung landete nach Leerzeichen/Fokusverlust gelegentlich an falscher Stelle – Ursache war ein Render-Rennschild im Inhalts-Sync von `MailBodyEditor` (veralteter Prop-Wert überschrieb getippten Text); mit dem Guard gegen den zuletzt gesehenen Prop behoben (ATTACH-01b).
+      **MAIL-TPL-01e — Anhänge in den Einstellungen wählen:** in „E-Mail-Vorlagen“ die wählbaren Dateien aus der vorhandenen Bibliothek (nur verfügbare) pro Vorlage auswählen/entfernen; Zustände ehrlich (keine Datei/keine Auswahl), Zählverträge unverändert. **Tests:** Component/UX, betroffene E2E, axe. Commit `feat: choose template attachments in the settings`. **01e abgenommen (23.11.2026):** „Standard-Anhänge“ in „E-Mail-Vorlagen“: die Auswahl zeigt die verfügbaren Bibliotheksdateien (Name/Medientyp/Größe) als Checkboxen; eine nicht mehr verfügbare, aber noch gewählte Datei bleibt benannt und einzeln entfernbar (Zustände ehrlich, „Keine verfügbaren Dateien in der Bibliothek.“); jede Speicherung sendet die Gesamtmenge `attachmentFileIds`, `attachment_unavailable` wird verständlich benannt. Component mail-templates-panel 14/14 (inkl. Auswahl/Entfernen und Abweisung mit Namensnennung), volle Component-Suite 1062/1062, unit 391/391, E2E `mail-templates-settings.spec.ts` 1/1 (Auswahl → Speichern → erneutes Öffnen zeigt die Wahl; axe im bestehenden Abschnitt ohne Befund); format/lint/typecheck/docs/workspace grün. **Damit ist MAIL-TPL-01 vollständig.**
+      **Gesamtabnahme:** Mandanten-/Rollen-/CSRF-Fälle in jedem Slice; dieselben neun Platzhalter und dieselbe Formatierung wie MAIL-EDITOR-01; keine echten Mail-/Kundeninhalte im Repo, ausschließlich synthetische Daten; pro Slice volle schnelle Gates + betroffene Integration/E2E und Changed-Code-Coverage ≥80 %.
 - [ ] **MAIL-LATER — IMAP-Postfach/Planung** (BKP022/BKP025 der Parität): erst nach MAIL-ACCOUNT-01/MAIL-EDITOR-01/MAIL-TPL-01.
 
 - [ ] **PARITY-REST — weitere Bookitup-Parität und Designsystem** (GOAL-Priorität 4): kleine belegte Paritätsslices in UI/UX/Logik; Designsystem aus bestehenden Tokens/Komponenten konsolidieren, mobil/Desktop und Hell/Dunkel prüfen; kein dekorativer Redesign-Großumbau, keine neue Abstraktion ohne Bedarf.
@@ -125,252 +125,253 @@ Funktionen und möglichst ähnlicher UI (Belege: Screenshots
 Umsetzung bevorzugt per DeepSeek-V4.1-Flash-Subagents; GitHub Flow,
 Branches nach dem Merge löschen.
 
-- [x] **E2E-HARDENING — fehlgeschlagener GitHub-Run** *(23.11.2026, erledigt
-  als `fix: absorb e2e teardown connection noise`, PR #88)*: der rote
-  Browser-Lauf stammte aus dem Teardown (Testkörper war längst fertig –
-  Trace-Beweis), nicht aus dem Test; ein letzter pg-Fehler einer sterbenden
-  Testcontainer-Verbindung ließ `pool.end()` im `finally` ablehnen. Dasselbe
-  Signaturbild wurde zuvor als „Flake“ am document-layout-Spec notiert. Alle
-  sieben container-basierten E2E-Specs hören jetzt auf Idle-Verbindungsfehler
-  (Aufräum-Rauschen, nie ein Testergebnis; abgewartete Queries lehnen weiter
-  dort, wo Tests hinschauen), entleeren den Pool und stoppen den Container
-  ohne Ablehnung; die beiden Specs ohne `app.close()` schließen die App vor
-  dem Entleeren. Lokal 3/3 der betroffenen Specs grün; Main-CI des Merges
-  ist der Nachweis.
+- [x] **E2E-HARDENING — fehlgeschlagener GitHub-Run** _(23.11.2026, erledigt
+      als `fix: absorb e2e teardown connection noise`, PR #88)_: der rote
+      Browser-Lauf stammte aus dem Teardown (Testkörper war längst fertig –
+      Trace-Beweis), nicht aus dem Test; ein letzter pg-Fehler einer sterbenden
+      Testcontainer-Verbindung ließ `pool.end()` im `finally` ablehnen. Dasselbe
+      Signaturbild wurde zuvor als „Flake“ am document-layout-Spec notiert. Alle
+      sieben container-basierten E2E-Specs hören jetzt auf Idle-Verbindungsfehler
+      (Aufräum-Rauschen, nie ein Testergebnis; abgewartete Queries lehnen weiter
+      dort, wo Tests hinschauen), entleeren den Pool und stoppen den Container
+      ohne Ablehnung; die beiden Specs ohne `app.close()` schließen die App vor
+      dem Entleeren. Lokal 3/3 der betroffenen Specs grün; Main-CI des Merges
+      ist der Nachweis.
 - [ ] **EDITOR-02 — Editor-Upgrade: Icons, Werkzeuge, Enter/Shift+Enter**:
-  TinyMCE-Prüfung dokumentiert (docs/mail-editor.md; Ergebnis: kein Tausch –
-  Lizenz GPL/proprietär für ein öffentliches Repo, ≈1,24 MB Assets gegen
-  129 KB gzip, Inline-Styles kollidieren mit dem Sanitizing; TipTap bleibt).
-  Icon-Leiste im Hausstil (24×24-Stroke, Lucide-Geometrie, `aria-label`/
-  `title`/`aria-pressed`) mit Fett/Kursiv/Unterstrichen/Durchgestrichen/
-  Überschrift 2/Überschrift 3/Zitat/Aufzählung/Nummerierung/Link/
-  Rückgängig/Wiederholen; `@tiptap/extension-hard-break` für Shift+Enter
-  (`<br>` im selben Absatz, ohne Abstand) bei Enter = neuer Absatz mit
-  Abstand; Allowlist serverseitig um `h2`,`h3`,`s`,`blockquote` erweitert
-  (Sanitize + Textalternative mit „> “-Zitatmarken), Angriffsfälle erweitert.
-  **Tests:** Unit (neue Tags/Textalternative), Component (Icon-Leiste/aria/
-  Zustände), E2E (Enter/Shift+Enter gegen die echte Textalternative, Icons,
-  axe 0, 320/1280 beide Themes). Commit `feat: upgrade the mail editor
-  toolbar and line breaks`.
-- [ ] **ATTACH-01 — Spontane Anhänge im Mail-Dialog** *(23.11.2026 in 01a/01b
-  geteilt, „kleine vollständige Änderungen“)*.
-  **ATTACH-01a — Anhänge sichtbar/entfernbar, drei Quellen:** der Mail-Dialog
-  zeigt alle Anhänge als eine Liste mit Lösch-Icon, Löschen erst nach
-  Bestätigung (`window.confirm`, Hausmuster) – ausdrücklich **auch** das
-  ursprüngliche Dokument (z. B. Angebot), dessen Entfernen möglich ist;
-  Quellen sind das Hauptdokument, vorhandene Event-Dokumente (finale,
-  auswählbar) und Bibliotheksdateien (auch die Standardanhänge der
-  Vorlage). Serverseitig additiv: `attachDocument` (Standard true) und
-  `documentIds` (weitere Event-Dokumente) in `scheduleDocumentSend`;
-  Antwort `attachment` wird nullable (nur bei mitgesendetem Hauptdokument),
-  `files` unverändert; jede Datei/jedes Dokument wird erneut geprüft
-  (fehlend/archiviert/nicht final = ganze Auftrag abgelehnt, nie
-  stillschweigend weggelassen); Worker/Outbox unverändert. **Tests:**
-  Integration (ohne Hauptdokument, Zusatzdokumente, abgelehnte Quellen,
-  Replay identisch), Component (Liste/Icons/Bestätigung/drei Quellen).
-  Commit `feat: list and choose mail attachments in the composer`. **01a abgenommen (23.11.2026):** eine benannte Anhängeliste im Mail-Dialog – Hauptdokument, weitere Event-Dokumente und Bibliotheksdateien – jedes Entfernen fragt per `window.confirm` zuerst, ausdrücklich auch das ursprüngliche Dokument; zwei Picker ergänzen finale Event-Dokumente und verfügbare Bibliotheksdateien, die Vorlagen-Standardanhänge reihen sich in dieselbe Liste. Serverseitig additiv: `scheduleDocumentSend` akzeptiert `attachDocument` (Standard true) und `documentIds`; jede Datei/jedes Dokument wird erneut geprüft (nicht verfügbar/nicht final = ganzer Auftrag abgelehnt), Worker/Outbox unverändert, Antwort `attachment` nullable (Geste-Dokument = Hauptanhang, Replays identisch). Integration mail 29/29 (ohne Hauptdokument, Zusatzdokumente im Worker, Ablehnung ohne Nachricht, Replay mit `attachDocument: true` bleibt dokumentfrei), Component 144/144 (Liste/Icons/Bestätigung ja-nein/drei Quellen), E2E-Paar grün; Changed-Code 68/74 Zeilen (91,9 %) und 46/51 Zweige (90,2 %). **Korrektur 24.11.2026:** das Routenschema von `POST /api/v1/mail/document-send` kannte `attachDocument`/`documentIds` nicht, Fastify entfernte beide still – Zusatzdokumente reisten nie, das Hauptdokument immer; Schema ergänzt (`documentIds` höchstens 10 wie im Repository), Routen-Integrationstest belegt die Wahl über HTTP.
-  **ATTACH-01b — Drop-Zone und Upload:** Drop-Zone auf dem Textbereich für
-  eine oder mehrere Dateien (Upload in die Bibliothek über die vorhandene
-  Upload-API, Base64-JSON-Vertrag), zusätzlich ein beschrifteter
-  Datei-Wähler als tastaturbedienbare Alternative (Barrierefreiheit);
-  Fehler/Zustände ehrlich (Laden, abgelehnt, zu groß), neue Dateien
-  erscheinen in der Anhängeliste. **Tests:** Upload/Erfolg/Fehler,
-  Mehrfachauswahl, Zustände. Commit `feat: attach dropped files to mails`. **01b abgenommen (23.11.2026):**
-  Drop-Zone auf dem Textbereich und beschrifteter Datei-Wähler (Tastaturpfad);
-  Upload über die vorhandene Bibliotheks-API mit denselben Helfern und
-  Fehlermeldungen wie die Dateien-Fläche, Mehrfachauswahl, ehrliche Zustände
-  (Laden, Erfolg benannt, Typ abgelehnt, zu groß, unklarer Stand). Im echten
-  Chromium belegt, dass Drop-Ereignisse die Editorfläche überhaupt erreichen –
-  ProseMirror verschluckt sie auf dem eigenen Ziel, die Zone hört deshalb in
-  der **Capture-Phase**; interne Text-Dropes ohne Dateien bleiben unberührt.
-  Zugleich zwei echte Produktfehler gefunden und behoben: (1) ein
-  Render-Rennschild im Inhalts-Sync überschrieb getippten Text und setzte die
-  Cursorposition (Wurzel des oben geschlossenen Beobachtungspunkts); (2)
-  fehlende Routen im E2E-Harness ließen den echten Upload scheitern – beide
-  über den E2E-Beweis geführt. Component 150/150 (sechs neue Fälle: Drop,
-  Mehrfach, Typ, Größe, Netzfehler, Datei-Wähler – von DeepSeek V4.1 Flash
-  nach Vertrag geschrieben, von MiMo reviewt und selbst gelaufen), E2E
-  mail-editor 1/1 inkl. echtem Datei-Drop und Listenzeile.
+      TinyMCE-Prüfung dokumentiert (docs/mail-editor.md; Ergebnis: kein Tausch –
+      Lizenz GPL/proprietär für ein öffentliches Repo, ≈1,24 MB Assets gegen
+      129 KB gzip, Inline-Styles kollidieren mit dem Sanitizing; TipTap bleibt).
+      Icon-Leiste im Hausstil (24×24-Stroke, Lucide-Geometrie, `aria-label`/
+      `title`/`aria-pressed`) mit Fett/Kursiv/Unterstrichen/Durchgestrichen/
+      Überschrift 2/Überschrift 3/Zitat/Aufzählung/Nummerierung/Link/
+      Rückgängig/Wiederholen; `@tiptap/extension-hard-break` für Shift+Enter
+      (`<br>` im selben Absatz, ohne Abstand) bei Enter = neuer Absatz mit
+      Abstand; Allowlist serverseitig um `h2`,`h3`,`s`,`blockquote` erweitert
+      (Sanitize + Textalternative mit „> “-Zitatmarken), Angriffsfälle erweitert.
+      **Tests:** Unit (neue Tags/Textalternative), Component (Icon-Leiste/aria/
+      Zustände), E2E (Enter/Shift+Enter gegen die echte Textalternative, Icons,
+      axe 0, 320/1280 beide Themes). Commit `feat: upgrade the mail editor
+toolbar and line breaks`.
+- [ ] **ATTACH-01 — Spontane Anhänge im Mail-Dialog** _(23.11.2026 in 01a/01b
+      geteilt, „kleine vollständige Änderungen“)_.
+      **ATTACH-01a — Anhänge sichtbar/entfernbar, drei Quellen:** der Mail-Dialog
+      zeigt alle Anhänge als eine Liste mit Lösch-Icon, Löschen erst nach
+      Bestätigung (`window.confirm`, Hausmuster) – ausdrücklich **auch** das
+      ursprüngliche Dokument (z. B. Angebot), dessen Entfernen möglich ist;
+      Quellen sind das Hauptdokument, vorhandene Event-Dokumente (finale,
+      auswählbar) und Bibliotheksdateien (auch die Standardanhänge der
+      Vorlage). Serverseitig additiv: `attachDocument` (Standard true) und
+      `documentIds` (weitere Event-Dokumente) in `scheduleDocumentSend`;
+      Antwort `attachment` wird nullable (nur bei mitgesendetem Hauptdokument),
+      `files` unverändert; jede Datei/jedes Dokument wird erneut geprüft
+      (fehlend/archiviert/nicht final = ganze Auftrag abgelehnt, nie
+      stillschweigend weggelassen); Worker/Outbox unverändert. **Tests:**
+      Integration (ohne Hauptdokument, Zusatzdokumente, abgelehnte Quellen,
+      Replay identisch), Component (Liste/Icons/Bestätigung/drei Quellen).
+      Commit `feat: list and choose mail attachments in the composer`. **01a abgenommen (23.11.2026):** eine benannte Anhängeliste im Mail-Dialog – Hauptdokument, weitere Event-Dokumente und Bibliotheksdateien – jedes Entfernen fragt per `window.confirm` zuerst, ausdrücklich auch das ursprüngliche Dokument; zwei Picker ergänzen finale Event-Dokumente und verfügbare Bibliotheksdateien, die Vorlagen-Standardanhänge reihen sich in dieselbe Liste. Serverseitig additiv: `scheduleDocumentSend` akzeptiert `attachDocument` (Standard true) und `documentIds`; jede Datei/jedes Dokument wird erneut geprüft (nicht verfügbar/nicht final = ganzer Auftrag abgelehnt), Worker/Outbox unverändert, Antwort `attachment` nullable (Geste-Dokument = Hauptanhang, Replays identisch). Integration mail 29/29 (ohne Hauptdokument, Zusatzdokumente im Worker, Ablehnung ohne Nachricht, Replay mit `attachDocument: true` bleibt dokumentfrei), Component 144/144 (Liste/Icons/Bestätigung ja-nein/drei Quellen), E2E-Paar grün; Changed-Code 68/74 Zeilen (91,9 %) und 46/51 Zweige (90,2 %). **Korrektur 24.11.2026:** das Routenschema von `POST /api/v1/mail/document-send` kannte `attachDocument`/`documentIds` nicht, Fastify entfernte beide still – Zusatzdokumente reisten nie, das Hauptdokument immer; Schema ergänzt (`documentIds` höchstens 10 wie im Repository), Routen-Integrationstest belegt die Wahl über HTTP.
+      **ATTACH-01b — Drop-Zone und Upload:** Drop-Zone auf dem Textbereich für
+      eine oder mehrere Dateien (Upload in die Bibliothek über die vorhandene
+      Upload-API, Base64-JSON-Vertrag), zusätzlich ein beschrifteter
+      Datei-Wähler als tastaturbedienbare Alternative (Barrierefreiheit);
+      Fehler/Zustände ehrlich (Laden, abgelehnt, zu groß), neue Dateien
+      erscheinen in der Anhängeliste. **Tests:** Upload/Erfolg/Fehler,
+      Mehrfachauswahl, Zustände. Commit `feat: attach dropped files to mails`. **01b abgenommen (23.11.2026):**
+      Drop-Zone auf dem Textbereich und beschrifteter Datei-Wähler (Tastaturpfad);
+      Upload über die vorhandene Bibliotheks-API mit denselben Helfern und
+      Fehlermeldungen wie die Dateien-Fläche, Mehrfachauswahl, ehrliche Zustände
+      (Laden, Erfolg benannt, Typ abgelehnt, zu groß, unklarer Stand). Im echten
+      Chromium belegt, dass Drop-Ereignisse die Editorfläche überhaupt erreichen –
+      ProseMirror verschluckt sie auf dem eigenen Ziel, die Zone hört deshalb in
+      der **Capture-Phase**; interne Text-Dropes ohne Dateien bleiben unberührt.
+      Zugleich zwei echte Produktfehler gefunden und behoben: (1) ein
+      Render-Rennschild im Inhalts-Sync überschrieb getippten Text und setzte die
+      Cursorposition (Wurzel des oben geschlossenen Beobachtungspunkts); (2)
+      fehlende Routen im E2E-Harness ließen den echten Upload scheitern – beide
+      über den E2E-Beweis geführt. Component 150/150 (sechs neue Fälle: Drop,
+      Mehrfach, Typ, Größe, Netzfehler, Datei-Wähler – von DeepSeek V4.1 Flash
+      nach Vertrag geschrieben, von MiMo reviewt und selbst gelaufen), E2E
+      mail-editor 1/1 inkl. echtem Datei-Drop und Listenzeile.
+
 ## Nutzauftrag 23.11.2026 (zweite Runde: fünf UX-Slices)
 
 - [x] **MAIL-UX-02 — jede Mail-Ablehnung benennt ihre Ursache (23.11.2026):**
-  die irreführende Allerweltsmeldung „Der Auftrag wurde nicht angelegt“
-  erschien für Vorschau und Versand, sobald der Server einen der vielen
-  unmappeten Codes lieferte (20 Codes standen 8 gemappten gegenüber) oder
-  ein unerwarteter Fehler als fremder Fastify-Body antwortete. Jetzt:
-  vollständige Code-Abbildung mit handlungsweisenden Meldungen, unbekannte
-  Codes werden wörtlich zitiert, unerwartete Fehler antworten mit dem
-  stabilen Code `internal` (Vollfehler nur im Serverlog). Zusätzlich die
-  Wurzel des wiederaufgetretenen Picker-Versatzes geschlossen: TippTaps
-  verzögertes `focus()` ließ ein Fokusfenster, in dem der Browser-Caret
-  beim Refocus auf 0 stand und der Observer das in den Editor-State spülte
-  – die Einfügeposition wird jetzt beim Öffnen der Auswahl gemerkt,
-  explizit gesetzt und der Fokus synchron zurückgegeben; Value-Echos
-  können den getippten Text ersetzt gar nicht mehr (`replaceKey`-Vertrag).
-  Component 168/168, Mail-Integration 30/30 (neuer `internal`-Fall),
-  E2E mail-editor in echtem Chromium mehrfach grün.
+      die irreführende Allerweltsmeldung „Der Auftrag wurde nicht angelegt“
+      erschien für Vorschau und Versand, sobald der Server einen der vielen
+      unmappeten Codes lieferte (20 Codes standen 8 gemappten gegenüber) oder
+      ein unerwarteter Fehler als fremder Fastify-Body antwortete. Jetzt:
+      vollständige Code-Abbildung mit handlungsweisenden Meldungen, unbekannte
+      Codes werden wörtlich zitiert, unerwartete Fehler antworten mit dem
+      stabilen Code `internal` (Vollfehler nur im Serverlog). Zusätzlich die
+      Wurzel des wiederaufgetretenen Picker-Versatzes geschlossen: TippTaps
+      verzögertes `focus()` ließ ein Fokusfenster, in dem der Browser-Caret
+      beim Refocus auf 0 stand und der Observer das in den Editor-State spülte
+      – die Einfügeposition wird jetzt beim Öffnen der Auswahl gemerkt,
+      explizit gesetzt und der Fokus synchron zurückgegeben; Value-Echos
+      können den getippten Text ersetzt gar nicht mehr (`replaceKey`-Vertrag).
+      Component 168/168, Mail-Integration 30/30 (neuer `internal`-Fall),
+      E2E mail-editor in echtem Chromium mehrfach grün.
 - [x] **UI-SCROLL-01 — Scrollen bei offenen Dialogen verhindern (23.11.2026):**
-  ein zentraler DOM-Beobachter sperrt das Body-Scrollen, solange irgendein
-  offenes Modal-Dialogelement existiert (`dialog[open]` oder
-  `[role="dialog"]`) – keine Einzelverdrahtung, kein Dialog kann fehlen,
-  gestapelte Dialoge brauchen keinen Zähler. Die Sperre erhält und
-  stellt einen vorhandenen Overflow-Wert wieder her. Component 1081/1081
-  (7 neue Fälle). Ursprüngliche Fassung: die
-  nativen `<dialog>`-Modals sperren das Hintergrundscrollen nicht
-  zuverlässig; Body-Scroll-Lock beim Öffnen, Freigabe beim Schließen,
-  referenzgezählt wegen übereinanderliegender Dialoge.
+      ein zentraler DOM-Beobachter sperrt das Body-Scrollen, solange irgendein
+      offenes Modal-Dialogelement existiert (`dialog[open]` oder
+      `[role="dialog"]`) – keine Einzelverdrahtung, kein Dialog kann fehlen,
+      gestapelte Dialoge brauchen keinen Zähler. Die Sperre erhält und
+      stellt einen vorhandenen Overflow-Wert wieder her. Component 1081/1081
+      (7 neue Fälle). Ursprüngliche Fassung: die
+      nativen `<dialog>`-Modals sperren das Hintergrundscrollen nicht
+      zuverlässig; Body-Scroll-Lock beim Öffnen, Freigabe beim Schließen,
+      referenzgezählt wegen übereinanderliegender Dialoge.
 - [x] **INQUIRY-INFO-01 — Anfrage-Infos mit Ressourcen und Links
-  (23.11.2026):** die
-  Benachrichtigungen zu Website-Anfragen (Telegram und E-Mail) erhalten
-  die Anzahl freier Einheiten je Ressourcenkategorie (Fotoboxen, Drucker)
-  am Eventdatum, einen Link zum Event und einen Link zum Antwort-Mail.
-  Umgesetzt als `inquiryNoticeExtras` (Zählung über `bufferedPeriod` –
-  eine Ableitung der Sperrsemantik; lesbarer Zeitraum sperrt konservativ),
-  dieselben Zusatzzeilen in beiden Kanälen, Zeilen stehen vor dem
-  Kommentar, damit das Kürzen nur den Kommentar-Schwanz trifft. Der
-  Event-Verweis zeigt auf `#event-<id>`, sobald die Übernahme das Event
-  angelegt hat, sonst ehrlich auf den Tag in der Eventübersicht; der
-  Antwort-Link ist ein `mailto:` ohne Namen im Betreff. Ohne die
-  Worker-Variable `AK_AUTH_ORIGIN` tritt keine kaputte Linkzeile auf.
-  Unit 403/403 (Zählung, Kürzen, Kanalgleichheit) plus Integrationsfall
-  gegen echte Tabellen (Frei-Zählung, Tages- und Event-Verweis).
+      (23.11.2026):** die
+      Benachrichtigungen zu Website-Anfragen (Telegram und E-Mail) erhalten
+      die Anzahl freier Einheiten je Ressourcenkategorie (Fotoboxen, Drucker)
+      am Eventdatum, einen Link zum Event und einen Link zum Antwort-Mail.
+      Umgesetzt als `inquiryNoticeExtras` (Zählung über `bufferedPeriod` –
+      eine Ableitung der Sperrsemantik; lesbarer Zeitraum sperrt konservativ),
+      dieselben Zusatzzeilen in beiden Kanälen, Zeilen stehen vor dem
+      Kommentar, damit das Kürzen nur den Kommentar-Schwanz trifft. Der
+      Event-Verweis zeigt auf `#event-<id>`, sobald die Übernahme das Event
+      angelegt hat, sonst ehrlich auf den Tag in der Eventübersicht; der
+      Antwort-Link ist ein `mailto:` ohne Namen im Betreff. Ohne die
+      Worker-Variable `AK_AUTH_ORIGIN` tritt keine kaputte Linkzeile auf.
+      Unit 403/403 (Zählung, Kürzen, Kanalgleichheit) plus Integrationsfall
+      gegen echte Tabellen (Frei-Zählung, Tages- und Event-Verweis).
 - [x] **MAIL-EVENT-01 — neue Mail direkt aus dem Event (23.11.2026):**
-  „Neue Mail schreiben“ im Event-Dokumentenbereich öffnet einen
-  Compose-Dialog (An vorbelegt aus dem Eventkontakt, Betreff, formatierter
-  Editor ohne Platzhalterwähler, da freie Mails nichts auflösen). Eine
-  Geste, ein dauerhafter Auftrag: `POST /api/v1/mail/compose` unter einer
-  Anfrage-ID (Wiederholung erreicht nur denselben Auftrag), Body durch
-  dieselbe Allowlist-Bereinigung und Textalternative wie die Dokument-
-  mail, Betreff/Adressen durch dieselbe Plain-Text-/Adressprüfung
-  (keine Header-Injection), Event/Kontakt mandantengebunden verknüpft,
-  Audit `mail.message_created` + `mail.send_scheduled` (keine neue
-  Migration nötig). Ablehnungen benennen ihre Ursache wie MAIL-UX-02.
-  Integration 32/32 (idempotent, sanitisiert, Refusals), Component 156/156.
-  Ursprüngliche Fassung: zusätzlich zum
-  Dokumentversand kann aus dem Event heraus eine neue Mail begonnen
-  werden (derselbe Editor, dieselbe Vorschau, ohne Dokument).
+      „Neue Mail schreiben“ im Event-Dokumentenbereich öffnet einen
+      Compose-Dialog (An vorbelegt aus dem Eventkontakt, Betreff, formatierter
+      Editor ohne Platzhalterwähler, da freie Mails nichts auflösen). Eine
+      Geste, ein dauerhafter Auftrag: `POST /api/v1/mail/compose` unter einer
+      Anfrage-ID (Wiederholung erreicht nur denselben Auftrag), Body durch
+      dieselbe Allowlist-Bereinigung und Textalternative wie die Dokument-
+      mail, Betreff/Adressen durch dieselbe Plain-Text-/Adressprüfung
+      (keine Header-Injection), Event/Kontakt mandantengebunden verknüpft,
+      Audit `mail.message_created` + `mail.send_scheduled` (keine neue
+      Migration nötig). Ablehnungen benennen ihre Ursache wie MAIL-UX-02.
+      Integration 32/32 (idempotent, sanitisiert, Refusals), Component 156/156.
+      Ursprüngliche Fassung: zusätzlich zum
+      Dokumentversand kann aus dem Event heraus eine neue Mail begonnen
+      werden (derselbe Editor, dieselbe Vorschau, ohne Dokument).
 - [x] **MAIL-FWD-01 — ausgehende Mails weiterleiten (23.11.2026):**
-  Optionen in den
-  Einstellungen für die Buchhaltungs-Mail und Schalter im Editor, um
-  ausgehende Mails an App-User und/oder die Buchhaltung weiterzuleiten.
-  Umgesetzt: Einstellung `mail_forward_settings` (0076, nur die Adresse,
-  validiert wie jede Empfängeradresse); in beiden Mail-Dialogen ein
-  „Weiterleitung"-Bereich – „Kopie an Buchhaltung" (nennt die hinterlegte
-  Adresse) und „Kopie an <App-User>" je aktivem App-User. Die Schalter
-  reisen als `forwardAccounting`/`forwardUserIds`; jede Adresse wird
-  serverseitig aus Einstellung und eigenen Usern dieses Mandanten
-  gelöst (nie vom Client), eine unerfüllbare Weiterleitung verweigert
-  mit `forward_unavailable` statt eine Kopie still zu lassen. Die
-  Adressen landen als `cc_addresses`; Outbox-/Idempotenzverträge
-  unverändert. Integration 36/36, Component 161/161.
+      Optionen in den
+      Einstellungen für die Buchhaltungs-Mail und Schalter im Editor, um
+      ausgehende Mails an App-User und/oder die Buchhaltung weiterzuleiten.
+      Umgesetzt: Einstellung `mail_forward_settings` (0076, nur die Adresse,
+      validiert wie jede Empfängeradresse); in beiden Mail-Dialogen ein
+      „Weiterleitung"-Bereich – „Kopie an Buchhaltung" (nennt die hinterlegte
+      Adresse) und „Kopie an <App-User>" je aktivem App-User. Die Schalter
+      reisen als `forwardAccounting`/`forwardUserIds`; jede Adresse wird
+      serverseitig aus Einstellung und eigenen Usern dieses Mandanten
+      gelöst (nie vom Client), eine unerfüllbare Weiterleitung verweigert
+      mit `forward_unavailable` statt eine Kopie still zu lassen. Die
+      Adressen landen als `cc_addresses`; Outbox-/Idempotenzverträge
+      unverändert. Integration 36/36, Component 161/161.
 
-- [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup** *(23.11.2026
-  konkretisiert)*. **Belege:** die CSV `Dokumente-2026-alle-arten-status.csv`
-  ist eine reine Kopfzeile und belegt die Spaltenstruktur der globalen Liste
-  (Dokumentnummer, Dokumenttyp, Dokumentdatum, Kundenname, Dokumentensumme,
-  Buchungsstatus, erste/letzte Veranstaltung, Veranstaltungsart/-name,
-  Akzeptiert, Bezahlt – keine Kundendaten übernommen); die UX-Referenz §7
-  belegt Filter (Dokumentart, Datumsbereich, Status) und Tabelle
-  (Status/Event/Portal/aktionslos) mit Pagination; die Screenshots belegen
-  „Dokument bereitstellen" (an Buchhaltung senden / Online freigeben /
-  E-Mail an Kunde), den Rechnungsentwurf (Kopf-/Fußtext, Positionen,
-  Produktpicker) und „Ressource verknüpfen"; dazu DO-01…DO-13 und
-  RG-01…RG-09 des Funktionsinventars. Der Iststand (FilesPanel) hat
-  bereits Art/Status/Zahlung/Fälligkeit/Suche/PDF/Seitenzahl und die
-  Spalten Status/Dokument/Datum/Betrag/Fällig/Event/Zahlung/Aktionen.
-  **Unter-Slices:**
-  **DOCS-01 — Globale Dokumente wie in der CSV:** Spalten **Kundenname**
-  und **Akzeptiert** ergänzen (beide CSV-belegt), **Datumsbereich**-Filter
-  (Dokumentdatum von/bis – der von Bookitup benannte fehlende Filter) und
-  die Event-Spalte mit Art und Name; bestehende Filter, Suche,
-  Seitenzahl und PDF-Aktion bleiben unverändert. **Tests:** Integration
-  (API-Filter Datumsbereich), Component (Spalten/Filter), E2E-Ausschnitt.
-  Commit `feat: match the global documents table to bookitup`.
-  **DOCS-02 — „Dokument bereitstellen" am Event:** Aktionsbereich pro
-  Dokument mit den belegten Funktionen der Screenshots: „E-Mail an Kunde"
-  (vorhandener Mail-Dialog), „An Buchhaltung senden" (Mail-Dialog mit
-  vorbelegter Buchhaltungsadresse aus einer kleinen Einstellung) und
-  „Online freigeben" ehrlich als **nicht verfügbar** benannt (Kundenportal
-  KP-* = M5 bewusst zurückgestellt; keine unbelegte Gleichheit).
-  **Tests:** Component/E2E. Commit `feat: offer document delivery actions`.
-  **DOCS-03 — Positionen mit Ressourcen-Verknüpfung (PR-06):** die
-  Screenshots belegen „Ressource verknüpfen" an Positionen; Angebots-/
-  Rechnungspositionen können einer Ressource zugeordnet werden (Verknüpfung
-  im Editor sichtbar/änderbar, Umfang am vorhandenen Ressourcenmodell
-  klein halten). **Tests:** Component/Integration. Commit
-  `feat: link document positions to resources`.
+- [ ] **DOCS-BOOKITUP — Dokumentenverwaltung wie bei bookitup** _(23.11.2026
+      konkretisiert)_. **Belege:** die CSV `Dokumente-2026-alle-arten-status.csv`
+      ist eine reine Kopfzeile und belegt die Spaltenstruktur der globalen Liste
+      (Dokumentnummer, Dokumenttyp, Dokumentdatum, Kundenname, Dokumentensumme,
+      Buchungsstatus, erste/letzte Veranstaltung, Veranstaltungsart/-name,
+      Akzeptiert, Bezahlt – keine Kundendaten übernommen); die UX-Referenz §7
+      belegt Filter (Dokumentart, Datumsbereich, Status) und Tabelle
+      (Status/Event/Portal/aktionslos) mit Pagination; die Screenshots belegen
+      „Dokument bereitstellen" (an Buchhaltung senden / Online freigeben /
+      E-Mail an Kunde), den Rechnungsentwurf (Kopf-/Fußtext, Positionen,
+      Produktpicker) und „Ressource verknüpfen"; dazu DO-01…DO-13 und
+      RG-01…RG-09 des Funktionsinventars. Der Iststand (FilesPanel) hat
+      bereits Art/Status/Zahlung/Fälligkeit/Suche/PDF/Seitenzahl und die
+      Spalten Status/Dokument/Datum/Betrag/Fällig/Event/Zahlung/Aktionen.
+      **Unter-Slices:**
+      **DOCS-01 — Globale Dokumente wie in der CSV:** Spalten **Kundenname**
+      und **Akzeptiert** ergänzen (beide CSV-belegt), **Datumsbereich**-Filter
+      (Dokumentdatum von/bis – der von Bookitup benannte fehlende Filter) und
+      die Event-Spalte mit Art und Name; bestehende Filter, Suche,
+      Seitenzahl und PDF-Aktion bleiben unverändert. **Tests:** Integration
+      (API-Filter Datumsbereich), Component (Spalten/Filter), E2E-Ausschnitt.
+      Commit `feat: match the global documents table to bookitup`.
+      **DOCS-02 — „Dokument bereitstellen" am Event:** Aktionsbereich pro
+      Dokument mit den belegten Funktionen der Screenshots: „E-Mail an Kunde"
+      (vorhandener Mail-Dialog), „An Buchhaltung senden" (Mail-Dialog mit
+      vorbelegter Buchhaltungsadresse aus einer kleinen Einstellung) und
+      „Online freigeben" ehrlich als **nicht verfügbar** benannt (Kundenportal
+      KP-* = M5 bewusst zurückgestellt; keine unbelegte Gleichheit).
+      **Tests:** Component/E2E. Commit `feat: offer document delivery actions`.
+      **DOCS-03 — Positionen mit Ressourcen-Verknüpfung (PR-06):** die
+      Screenshots belegen „Ressource verknüpfen" an Positionen; Angebots-/
+      Rechnungspositionen können einer Ressource zugeordnet werden (Verknüpfung
+      im Editor sichtbar/änderbar, Umfang am vorhandenen Ressourcenmodell
+      klein halten). **Tests:** Component/Integration. Commit
+      `feat: link document positions to resources`.
 
 ## Nutzauftrag 24.11.2026 (Versandstatus, Event-Mail, Signaturen)
 
 - [x] **MAIL-STATUS-01 — echter Versandstatus statt „vorgemerkt“
-  (24.11.2026):** Anlass: Dokument-Mails endeten im Worker als `failed`
-  (`attachment_unavailable`, fehlendes Volume), der Dialog meldete aber
-  Erfolg. Die Mail-Liste antwortet zusätzlich `sendErrorCode` (Fehlercode
-  des jüngsten Outbox-Auftrags, auch im Detail); keine Migration, keine neue
-  Route. Die Eventakte zeigt unter Dateien den Bereich „Mails“ (ausgehende
-  Mails des Events mit Status in Worten, Ursache je Worker-Code, „Erneut
-  senden“ bei `failed` über die vorhandene Send-Route mit neuem Schlüssel);
-  solange eine Mail in der Warteschlange ist, liest die Liste alle 3 s neu
-  (höchstens etwa 2 min, danach ehrlicher Hinweis) und meldet das Ergebnis
-  einmal als Status bzw. Alert. Die Dialoge melden nur noch „in der
-  Warteschlange“ und stoßen die Liste an. Jede Seite nennt nicht zugestellte
-  Mails (`failed`/`uncertain`) mit Link zum Event. `uncertain` bekommt
-  bewusst keinen Ein-Klick-Neuversand (Doppelversand). **Tests:**
-  Integration (Fehlercode in Liste/Detail nach Worker-Lauf), Component
-  (Polling bis Ergebnis, Alert bei Fehlschlag, Erneut senden mit CSRF und
-  Schlüssel, Ladefehler, leer/inaktiv, globaler Hinweis, eigene Texte je
-  Code). Commit `feat: show the real delivery state of event mails`.
+      (24.11.2026):** Anlass: Dokument-Mails endeten im Worker als `failed`
+      (`attachment_unavailable`, fehlendes Volume), der Dialog meldete aber
+      Erfolg. Die Mail-Liste antwortet zusätzlich `sendErrorCode` (Fehlercode
+      des jüngsten Outbox-Auftrags, auch im Detail); keine Migration, keine neue
+      Route. Die Eventakte zeigt unter Dateien den Bereich „Mails“ (ausgehende
+      Mails des Events mit Status in Worten, Ursache je Worker-Code, „Erneut
+      senden“ bei `failed` über die vorhandene Send-Route mit neuem Schlüssel);
+      solange eine Mail in der Warteschlange ist, liest die Liste alle 3 s neu
+      (höchstens etwa 2 min, danach ehrlicher Hinweis) und meldet das Ergebnis
+      einmal als Status bzw. Alert. Die Dialoge melden nur noch „in der
+      Warteschlange“ und stoßen die Liste an. Jede Seite nennt nicht zugestellte
+      Mails (`failed`/`uncertain`) mit Link zum Event. `uncertain` bekommt
+      bewusst keinen Ein-Klick-Neuversand (Doppelversand). **Tests:**
+      Integration (Fehlercode in Liste/Detail nach Worker-Lauf), Component
+      (Polling bis Ergebnis, Alert bei Fehlschlag, Erneut senden mit CSRF und
+      Schlüssel, Ladefehler, leer/inaktiv, globaler Hinweis, eigene Texte je
+      Code). Commit `feat: show the real delivery state of event mails`.
 - [x] **MAIL-EVENT-02 — freie Event-Mail mit Anhängen und Vorlagen
-  (24.11.2026):** der Compose-Dialog bietet dieselben Bausteine wie der
-  Dokumentdialog – „Aus Vorlage“ samt Standardanhängen, Datei-Upload/Drop,
-  finale Event-Dokumente und Bibliotheksdateien in einer entfernbaren Liste
-  (ohne eigenes Hauptdokument). Die Bausteine sind dafür in gemeinsame
-  Render-Funktionen gezogen, beide Dialoge teilen den Anhangszustand.
-  Serverseitig nutzen `scheduleDocumentSend` und `scheduleCompose` dieselben
-  Helfer (`freezeFiles`, `freezeDocuments`, `insertAttachments`); `POST
-  /api/v1/mail/compose` akzeptiert `documentIds` (≤ 10) und `fileIds`
-  (≤ 20). Weil Vorlagen Platzhalter mitbringen, löst die freie Mail sie
-  jetzt aus Kontakt und Event auf; ein Platzhalter ohne Wert (Betrag und
-  Dokumentlink gibt es nur mit Dokument) wird mit `missing_placeholder`
-  abgelehnt statt wörtlich versendet. **Tests:** Integration (Route über
-  HTTP mit Dokument und Datei bis in den Worker, aufgelöste und maskierte
-  Platzhalter, Replay, Ablehnungen ohne Nachricht), Component (Vorlage mit
-  Standardanhang, Dokument/Bibliothek, Upload, benannte Ablehnung).
-  Commit `feat: attach files and templates to event mails`.
-- [x] **MAIL-SIG-01 — Signaturen** *(24.11.2026 in 01a/01b geteilt)*.
-  **MAIL-SIG-01a — Signaturen verwalten (24.11.2026 umgesetzt):**
-  Migration 0077 `mail_signatures` (Bezeichnung, Text in der Mail-Allowlist,
-  optionales Logo als Schlüssel/Typ/Größe/SHA-256 im Storage-Adapter,
-  optionaler Logo-Link, `is_default` mit partiellem Unique-Index: höchstens
-  ein Standard je Mandant) plus Auditaktion `mail.signature_saved`. Routen
-  `GET/POST /api/v1/mail-signatures`, `PUT/DELETE …/:id`, `PUT/DELETE/GET
-  …/:id/logo` (rohes PNG/JPEG, Bytes-Prüfung wie das Dokumentlogo, 512 KiB).
-  Der Text kennt nur den Baustein `{{logo}}`, jeder andere Platzhalter wird
-  abgelehnt; ein neuer Standard löst den alten in derselben Transaktion ab.
-  Einstellungen → E-Mail-Vorlagen zeigt darunter „E-Mail-Signaturen“
-  (Liste mit Standard/Logo, Editor mit Logo-Baustein, Upload mit Vorschau,
-  Link, Standardschalter, Löschen mit Rückfrage). **Tests:** Integration
-  (CRUD, ein Standard, Allowlist, Ablehnungen, Logo-Bytes, Mandanten-
-  trennung, DB-Index), Component (6), E2E (echter Upload, Vorschau, axe,
-  1280/320). Commit `feat: manage mail signatures`.
-  **MAIL-SIG-01b — Signatur im Versand (25.11.2026 umgesetzt):** beide
-  Mail-Dialoge (Dokumentversand, freie Event-Mail) laden die Signaturen,
-  wählen den Standard vor und bieten im Feld „Signatur“ jede andere und
-  „Keine Signatur“; ohne Signaturen bleibt das Feld weg. `signatureId`
-  reist mit Compose, Dokumentversand und Vorschau. Der Server hängt die
-  Signatur an (ein reiner Standardtext wird dafür zu Absätzen), setzt an
-  `{{logo}}` das Logo als `<img src="cid:signature-logo">`, optional in
-  seinem Link, und friert die zuvor geprüften Logo-Bytes in der neuen
-  Tabelle `mail_inline_images` (0078, additiv) am Auftrag ein. Der Worker
-  liest und prüft sie pro Versuch per SHA-256 und übergibt sie mit
-  `cid` an nodemailer (`multipart/related`, `Content-Disposition: inline`).
-  Die Vorschau zeigt das Logo über die Logo-Route. Gelöschte Signatur =
-  `invalid_link`, ersetzte Logo-Bytes = `attachment_unavailable`.
-  **Tests:** Integration (Compose und Dokumentversand mit Signatur, Worker
-  mit CID-Bytes, Vorschau, ersetzte Bytes, gelöschte Signatur; SMTP-MIME
-  mit Content-ID; Migrationspin 0078), Component (Vorauswahl, Keine,
-  Wechsel, Vorschau, ohne Signaturen), E2E (Vorauswahl und gespeicherter
-  Text in Chromium). Commit `feat: send mails with the chosen signature`.
+      (24.11.2026):** der Compose-Dialog bietet dieselben Bausteine wie der
+      Dokumentdialog – „Aus Vorlage“ samt Standardanhängen, Datei-Upload/Drop,
+      finale Event-Dokumente und Bibliotheksdateien in einer entfernbaren Liste
+      (ohne eigenes Hauptdokument). Die Bausteine sind dafür in gemeinsame
+      Render-Funktionen gezogen, beide Dialoge teilen den Anhangszustand.
+      Serverseitig nutzen `scheduleDocumentSend` und `scheduleCompose` dieselben
+      Helfer (`freezeFiles`, `freezeDocuments`, `insertAttachments`); `POST
+/api/v1/mail/compose` akzeptiert `documentIds` (≤ 10) und `fileIds`
+      (≤ 20). Weil Vorlagen Platzhalter mitbringen, löst die freie Mail sie
+      jetzt aus Kontakt und Event auf; ein Platzhalter ohne Wert (Betrag und
+      Dokumentlink gibt es nur mit Dokument) wird mit `missing_placeholder`
+      abgelehnt statt wörtlich versendet. **Tests:** Integration (Route über
+      HTTP mit Dokument und Datei bis in den Worker, aufgelöste und maskierte
+      Platzhalter, Replay, Ablehnungen ohne Nachricht), Component (Vorlage mit
+      Standardanhang, Dokument/Bibliothek, Upload, benannte Ablehnung).
+      Commit `feat: attach files and templates to event mails`.
+- [x] **MAIL-SIG-01 — Signaturen** _(24.11.2026 in 01a/01b geteilt)_.
+      **MAIL-SIG-01a — Signaturen verwalten (24.11.2026 umgesetzt):**
+      Migration 0077 `mail_signatures` (Bezeichnung, Text in der Mail-Allowlist,
+      optionales Logo als Schlüssel/Typ/Größe/SHA-256 im Storage-Adapter,
+      optionaler Logo-Link, `is_default` mit partiellem Unique-Index: höchstens
+      ein Standard je Mandant) plus Auditaktion `mail.signature_saved`. Routen
+      `GET/POST /api/v1/mail-signatures`, `PUT/DELETE …/:id`, `PUT/DELETE/GET
+…/:id/logo` (rohes PNG/JPEG, Bytes-Prüfung wie das Dokumentlogo, 512 KiB).
+      Der Text kennt nur den Baustein `{{logo}}`, jeder andere Platzhalter wird
+      abgelehnt; ein neuer Standard löst den alten in derselben Transaktion ab.
+      Einstellungen → E-Mail-Vorlagen zeigt darunter „E-Mail-Signaturen“
+      (Liste mit Standard/Logo, Editor mit Logo-Baustein, Upload mit Vorschau,
+      Link, Standardschalter, Löschen mit Rückfrage). **Tests:** Integration
+      (CRUD, ein Standard, Allowlist, Ablehnungen, Logo-Bytes, Mandanten-
+      trennung, DB-Index), Component (6), E2E (echter Upload, Vorschau, axe,
+      1280/320). Commit `feat: manage mail signatures`.
+      **MAIL-SIG-01b — Signatur im Versand (25.11.2026 umgesetzt):** beide
+      Mail-Dialoge (Dokumentversand, freie Event-Mail) laden die Signaturen,
+      wählen den Standard vor und bieten im Feld „Signatur“ jede andere und
+      „Keine Signatur“; ohne Signaturen bleibt das Feld weg. `signatureId`
+      reist mit Compose, Dokumentversand und Vorschau. Der Server hängt die
+      Signatur an (ein reiner Standardtext wird dafür zu Absätzen), setzt an
+      `{{logo}}` das Logo als `<img src="cid:signature-logo">`, optional in
+      seinem Link, und friert die zuvor geprüften Logo-Bytes in der neuen
+      Tabelle `mail_inline_images` (0078, additiv) am Auftrag ein. Der Worker
+      liest und prüft sie pro Versuch per SHA-256 und übergibt sie mit
+      `cid` an nodemailer (`multipart/related`, `Content-Disposition: inline`).
+      Die Vorschau zeigt das Logo über die Logo-Route. Gelöschte Signatur =
+      `invalid_link`, ersetzte Logo-Bytes = `attachment_unavailable`.
+      **Tests:** Integration (Compose und Dokumentversand mit Signatur, Worker
+      mit CID-Bytes, Vorschau, ersetzte Bytes, gelöschte Signatur; SMTP-MIME
+      mit Content-ID; Migrationspin 0078), Component (Vorauswahl, Keine,
+      Wechsel, Vorschau, ohne Signaturen), E2E (Vorauswahl und gespeicherter
+      Text in Chromium). Commit `feat: send mails with the chosen signature`.
 
 ## Nutzauftrag 25.11.2026 (UI-Abgleich mit Bookitup, Backend unverändert)
 
@@ -384,76 +385,76 @@ Freigaben, Verdienst, Vermittlungen, eigene Felder) werden nicht als
 Attrappen nachgebaut.
 
 - [x] **UI-PARITY-01 — Einstellungen in Bookitups Gruppen (25.11.2026):**
-  Einstellungsnavigation in Bookitup-Reihenfolge mit benannten, dauerhaft
-  offenen Gruppen (Integrationen, E-Mail, Dokumente, Daten) und
-  Bookitup-Bezeichnungen, wo sie zutreffen (Ein- & Ausgangsserver,
-  Dokument-Vorlagen, Dokument-Layout, Passwort & Account); „Signatur“ als
-  eigene Seite unter E-Mail. Unter 1100 px derselbe Inhalt als
-  Bereichswähler mit `<optgroup>`. Hashes und Deep Links bleiben.
-  **Tests:** Component (Gruppen in Links und Auswahl, Reihenfolge,
-  Hashes), E2E (Grenze 1099/1100, Signatur-Seite, Linknamen).
-  Commit `feat: group the settings like bookitup`.
+      Einstellungsnavigation in Bookitup-Reihenfolge mit benannten, dauerhaft
+      offenen Gruppen (Integrationen, E-Mail, Dokumente, Daten) und
+      Bookitup-Bezeichnungen, wo sie zutreffen (Ein- & Ausgangsserver,
+      Dokument-Vorlagen, Dokument-Layout, Passwort & Account); „Signatur“ als
+      eigene Seite unter E-Mail. Unter 1100 px derselbe Inhalt als
+      Bereichswähler mit `<optgroup>`. Hashes und Deep Links bleiben.
+      **Tests:** Component (Gruppen in Links und Auswahl, Reihenfolge,
+      Hashes), E2E (Grenze 1099/1100, Signatur-Seite, Linknamen).
+      Commit `feat: group the settings like bookitup`.
 - [x] **UI-PARITY-02 — Bereiche der Eventakte wie Bookitup (25.11.2026):**
-  Bookitups Eventakte führt Details (mit Notizen und Logbuch), Ressourcen,
-  Dateien und E-Mails mit Ordnern. Die Akte hat jetzt genau diese vier
-  Bereiche: Notizen und Logbuch stehen unter Details (keine Logikänderung,
-  nur Sichtbarkeit; die doppelte Pausiert-/Lade-Meldung der Notizen entfällt,
-  weil der Eventeditor darüber denselben Speicherzustand meldet). „E-Mails“
-  enthält „Neue Mail schreiben“ und die ausgehenden Mails (MAIL-STATUS-01)
-  mit den Ordnern Alle/Geplant/Fehlgeschlagen/Gesendet aus dem vorhandenen
-  `sendState`; Posteingang, Entwürfe und Papierkorb gibt es fachlich noch
-  nicht und werden nicht vorgetäuscht. Der Compose-Dialog rendert per Portal,
-  damit er auch aus dem E-Mails-Bereich öffnet. Mobil vier statt fünf
-  Spalten. Keine API-Änderung. **Tests:** Component (Bereichsliste, Dialog
-  aus E-Mails, Ordnerfilter, Notizen unter Details, Fokus), E2E (Status im
-  E-Mails-Bereich, mobile Leiste, Notizen/Logbuch-Wege).
-  Commit `feat: shape the event record areas like bookitup`.
+      Bookitups Eventakte führt Details (mit Notizen und Logbuch), Ressourcen,
+      Dateien und E-Mails mit Ordnern. Die Akte hat jetzt genau diese vier
+      Bereiche: Notizen und Logbuch stehen unter Details (keine Logikänderung,
+      nur Sichtbarkeit; die doppelte Pausiert-/Lade-Meldung der Notizen entfällt,
+      weil der Eventeditor darüber denselben Speicherzustand meldet). „E-Mails“
+      enthält „Neue Mail schreiben“ und die ausgehenden Mails (MAIL-STATUS-01)
+      mit den Ordnern Alle/Geplant/Fehlgeschlagen/Gesendet aus dem vorhandenen
+      `sendState`; Posteingang, Entwürfe und Papierkorb gibt es fachlich noch
+      nicht und werden nicht vorgetäuscht. Der Compose-Dialog rendert per Portal,
+      damit er auch aus dem E-Mails-Bereich öffnet. Mobil vier statt fünf
+      Spalten. Keine API-Änderung. **Tests:** Component (Bereichsliste, Dialog
+      aus E-Mails, Ordnerfilter, Notizen unter Details, Fokus), E2E (Status im
+      E-Mails-Bereich, mobile Leiste, Notizen/Logbuch-Wege).
+      Commit `feat: shape the event record areas like bookitup`.
 - [x] **UI-PARITY-03 — „Dokument bereitstellen“ (setzt DOCS-02 um,
-  25.11.2026):** jedes finale Dokument hat die Zeilenaktion
-  „Bereitstellen“. Sie öffnet wie Bookitups Bereitstellen-Spalte einen
-  Dialog mit „Vorschau öffnen“ (das unveränderte PDF in einem neuen Tab, dort
-  auch Drucken), „An Buchhaltung senden“ (vorhandener Mail-Dialog mit der
-  hinterlegten Buchhaltungsadresse als Empfänger; ohne Adresse deaktiviert
-  mit Hinweis, wo sie gepflegt wird), „E-Mail an Kunden“ (vorhandener
-  Dialog) und „Herunterladen“ (Link mit `download`). Bookitups eingebettete
-  Vorschau ist hier bewusst **nicht** übernommen: die Admin-Richtlinie
-  verbietet Framing (`frame-ancestors 'none'`, `X-Frame-Options DENY`), eine
-  Lockerung nur für gleiche Herkunft wäre eine eigene Sicherheitsentscheidung
-  des Betreibers. „Online freigeben“ wird ehrlich als noch nicht verfügbar
-  benannt (Kundenportal zurückgestellt). Keine API-Änderung. **Tests:**
-  Component (Vorschau-Link, Download, Buchhaltung mit/ohne Adresse,
-  Kundenmail, Fokusrückgabe, Browser-Dialogpfad), E2E (echtes PDF über die
-  Route, axe, 1280/320 ohne Überlauf). Commit `feat: deliver a document from
-  one view`.
+      25.11.2026):** jedes finale Dokument hat die Zeilenaktion
+      „Bereitstellen“. Sie öffnet wie Bookitups Bereitstellen-Spalte einen
+      Dialog mit „Vorschau öffnen“ (das unveränderte PDF in einem neuen Tab, dort
+      auch Drucken), „An Buchhaltung senden“ (vorhandener Mail-Dialog mit der
+      hinterlegten Buchhaltungsadresse als Empfänger; ohne Adresse deaktiviert
+      mit Hinweis, wo sie gepflegt wird), „E-Mail an Kunden“ (vorhandener
+      Dialog) und „Herunterladen“ (Link mit `download`). Bookitups eingebettete
+      Vorschau ist hier bewusst **nicht** übernommen: die Admin-Richtlinie
+      verbietet Framing (`frame-ancestors 'none'`, `X-Frame-Options DENY`), eine
+      Lockerung nur für gleiche Herkunft wäre eine eigene Sicherheitsentscheidung
+      des Betreibers. „Online freigeben“ wird ehrlich als noch nicht verfügbar
+      benannt (Kundenportal zurückgestellt). Keine API-Änderung. **Tests:**
+      Component (Vorschau-Link, Download, Buchhaltung mit/ohne Adresse,
+      Kundenmail, Fokusrückgabe, Browser-Dialogpfad), E2E (echtes PDF über die
+      Route, axe, 1280/320 ohne Überlauf). Commit `feat: deliver a document from
+one view`.
 - [x] **UI-PARITY-04 — Notizen und Logbuch in der Hauptspalte (25.11.2026):**
-  wie Bookitups Mittelspalte stehen „Interne Notizen“ und „Logbuch“ jetzt als
-  Karten in der Hauptspalte der Details (h4 wie Termin/Allgemein), Kontakt
-  und Ort bleiben rechts daneben, statt dass beide Abschnitte nach
-  UI-PARITY-02 in voller Breite unter allen Spalten stehen. Im
-  Dreispaltenraster ab 90rem werden Termin/Allgemein/Abschnitte/Seitenleiste
-  ausdrücklich platziert. Nur Markup-Ort und CSS. **Tests:** Component
-  (unverändert grün), E2E (Spaltengeometrie 320/1280/1600, axe).
-  Commit `feat: keep notes and logbook in the details column`.
+      wie Bookitups Mittelspalte stehen „Interne Notizen“ und „Logbuch“ jetzt als
+      Karten in der Hauptspalte der Details (h4 wie Termin/Allgemein), Kontakt
+      und Ort bleiben rechts daneben, statt dass beide Abschnitte nach
+      UI-PARITY-02 in voller Breite unter allen Spalten stehen. Im
+      Dreispaltenraster ab 90rem werden Termin/Allgemein/Abschnitte/Seitenleiste
+      ausdrücklich platziert. Nur Markup-Ort und CSS. **Tests:** Component
+      (unverändert grün), E2E (Spaltengeometrie 320/1280/1600, axe).
+      Commit `feat: keep notes and logbook in the details column`.
 - [x] **UI-PARITY-05 — Logbuch als Zeitleiste (25.11.2026):** wie Bookitups
-  Logbuch steht der neueste Eintrag oben, der Text über seinem Datum, jeder
-  Eintrag mit neutraler Markierung auf einer verbindenden Linie (keine
-  Farbe als einziges Signal, Datum `muted` mit Ziffern in Tabellenbreite).
-  Die API-Reihenfolge bleibt unverändert, nur die Anzeige dreht. **Tests:**
-  Component (Reihenfolge, Aufbau), E2E-Screenshot mit echten Einträgen.
-  Commit `feat: show the logbook as a timeline`.
+      Logbuch steht der neueste Eintrag oben, der Text über seinem Datum, jeder
+      Eintrag mit neutraler Markierung auf einer verbindenden Linie (keine
+      Farbe als einziges Signal, Datum `muted` mit Ziffern in Tabellenbreite).
+      Die API-Reihenfolge bleibt unverändert, nur die Anzeige dreht. **Tests:**
+      Component (Reihenfolge, Aufbau), E2E-Screenshot mit echten Einträgen.
+      Commit `feat: show the logbook as a timeline`.
 - [x] **UI-PARITY-06 — Eingebettete PDF-Vorschau (25.11.2026, Entscheidung
-  des Betreibers „Einbetten erlauben“):** der Dialog „Dokument bereitstellen“
-  zeigt das eingefrorene PDF wie Bookitup direkt neben den Aktionen; „Vorschau
-  öffnen“ heißt jetzt „In neuem Tab öffnen“ (Drucken, Browser ohne
-  PDF-Anzeige). Nginx erlaubt das Rahmen nur für `/api/v1/documents/:id/pdf`
-  und nur vom eigenen Ursprung (`map $uri`), die Admin-CSP erhält
-  `frame-src 'self'`; alle anderen Pfade bleiben `DENY`/`'none'`. Die
-  Browsertests übernehmen die Header jetzt pfadgenau aus der
-  Nginx-Konfiguration (`tests/helpers/nginx-headers.ts`). Keine API-Änderung.
-  **Tests:** Workspace (Map-Vertrag, Route-Regex positiv/negativ), Component
-  (iframe-Titel/-Quelle, Tab-Link), E2E (gerahmte PDF-Antwort mit
-  `SAMEORIGIN`, keine Frame-Ablehnung). Commit `feat: embed the document
-  preview in the delivery dialog`.
+      des Betreibers „Einbetten erlauben“):** der Dialog „Dokument bereitstellen“
+      zeigt das eingefrorene PDF wie Bookitup direkt neben den Aktionen; „Vorschau
+      öffnen“ heißt jetzt „In neuem Tab öffnen“ (Drucken, Browser ohne
+      PDF-Anzeige). Nginx erlaubt das Rahmen nur für `/api/v1/documents/:id/pdf`
+      und nur vom eigenen Ursprung (`map $uri`), die Admin-CSP erhält
+      `frame-src 'self'`; alle anderen Pfade bleiben `DENY`/`'none'`. Die
+      Browsertests übernehmen die Header jetzt pfadgenau aus der
+      Nginx-Konfiguration (`tests/helpers/nginx-headers.ts`). Keine API-Änderung.
+      **Tests:** Workspace (Map-Vertrag, Route-Regex positiv/negativ), Component
+      (iframe-Titel/-Quelle, Tab-Link), E2E (gerahmte PDF-Antwort mit
+      `SAMEORIGIN`, keine Frame-Ablehnung). Commit `feat: embed the document
+preview in the delivery dialog`.
 
 ## Nutzauftrag 25.11.2026 (Quick Wins, Backend erlaubt)
 
@@ -461,71 +462,71 @@ Priorisierte Angleichungen aus dem Stand-Abgleich vom 25.11.2026, der Reihe
 nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
 
 - [x] **QW1 — Akte: „Event duplizieren“ und Kontaktdetails:** „Weitere
-  Eventaktionen“ im Aktenkopf bietet „Event duplizieren“ mit derselben
-  Kopierlogik wie die Listenzeile (archivierte Auswahlen entfallen, ein
-  stillgelegter Ort bleibt als Text, Status Anfrage); bei offenen Änderungen
-  gesperrt, weil die Kopie vom gespeicherten Stand ausgeht. Jeder Kontakt in
-  „Kontakt und Ort“ verlinkt mit „Details anzeigen“ seine Kontaktakte. Eine
-  „PRIMÄR“-Marke am Ort entfällt bewusst: ein Event hat genau einen Ort.
-  Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
-  Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
-  Commit `feat: duplicate events from the record`.
+      Eventaktionen“ im Aktenkopf bietet „Event duplizieren“ mit derselben
+      Kopierlogik wie die Listenzeile (archivierte Auswahlen entfallen, ein
+      stillgelegter Ort bleibt als Text, Status Anfrage); bei offenen Änderungen
+      gesperrt, weil die Kopie vom gespeicherten Stand ausgeht. Jeder Kontakt in
+      „Kontakt und Ort“ verlinkt mit „Details anzeigen“ seine Kontaktakte. Eine
+      „PRIMÄR“-Marke am Ort entfällt bewusst: ein Event hat genau einen Ort.
+      Keine API-Änderung. **Tests:** Component (Kopie aus der Akte,
+      Kontaktlink), E2E (Aktion im Aktenkopf, Screenshot).
+      Commit `feat: duplicate events from the record`.
 - [x] **QW2 — Absagegrund am Event (C071):** Beim Status „Abgesagt“ wählt
-  die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
-  zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
-  ohne Angabe bleibt der Grund), Migration 0079 mit Fremdschlüssel und
-  Status-Prüfregel. **Tests:** Integration (Speichern, Erhalten, Löschen beim
-  Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
-  Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
-  Commit `feat: capture cancellation reasons on events`.
+      die Akte einen aktiven Absagegrund oder „Kein Grund angegeben“; der Kopf
+      zeigt „Grund: …“. API-Feld `cancellationReasonId` (optional beim Schreiben,
+      ohne Angabe bleibt der Grund), Migration 0079 mit Fremdschlüssel und
+      Status-Prüfregel. **Tests:** Integration (Speichern, Erhalten, Löschen beim
+      Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
+      Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
+      Commit `feat: capture cancellation reasons on events`.
 - [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
-  datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
-  Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
-  wie Bookitup“). Migration 0080 übernimmt jede vorhandene Notiz und leert das
-  alte Feld; `notesHtml` in der Event-API wird beim Schreiben zur Notiz,
-  Export führt alle Notizen. Der alte Rich-Text-Editor samt Autosave-Pfad
-  entfällt. **Tests:** Integration (API, Mandanten, Bereinigung, Grabstein,
-  Audit, Umwandlung, Idempotenz, Export, Migrationsumzug), Component
-  (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
-  Screenshots 320/1280 hell/dunkel).
-  Commit `feat: replace event notes with dated notes`.
+      datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
+      Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
+      wie Bookitup“). Migration 0080 übernimmt jede vorhandene Notiz und leert das
+      alte Feld; `notesHtml` in der Event-API wird beim Schreiben zur Notiz,
+      Export führt alle Notizen. Der alte Rich-Text-Editor samt Autosave-Pfad
+      entfällt. **Tests:** Integration (API, Mandanten, Bereinigung, Grabstein,
+      Audit, Umwandlung, Idempotenz, Export, Migrationsumzug), Component
+      (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
+      Screenshots 320/1280 hell/dunkel).
+      Commit `feat: replace event notes with dated notes`.
 - [x] **QW4 — Offene Posten über alle Events:** „Dateien“/„Dokumente“
-  zeigen über der Liste eine Zeile „Offene Posten: n Rechnungen · Betrag offen
-  · davon m überfällig (Betrag)“ mit „Offene anzeigen“ und „Überfällige
-  anzeigen“; der Zahlungsfilter kennt zusätzlich „Noch offen“ (offen oder
-  teilweise bezahlt). Neue Route `GET /api/v1/documents/receivables` und
-  Filterwert `payment=open` lesen dieselben Forderungs-, Zahlungs- und
-  Verzugsausdrücke wie die Liste. **Tests:** Integration (Summen, Verzug,
-  bezahlt/kein Anspruch ausgeschlossen, Filter, Route), Component (Zeile,
-  Kurzwege, leer, ungültige Antwort), E2E (Zeile, Tastaturreihenfolge,
-  Spaltenausrichtung, Screenshots).
-  Commit `feat: show open receivables across events`.
+      zeigen über der Liste eine Zeile „Offene Posten: n Rechnungen · Betrag offen
+      · davon m überfällig (Betrag)“ mit „Offene anzeigen“ und „Überfällige
+      anzeigen“; der Zahlungsfilter kennt zusätzlich „Noch offen“ (offen oder
+      teilweise bezahlt). Neue Route `GET /api/v1/documents/receivables` und
+      Filterwert `payment=open` lesen dieselben Forderungs-, Zahlungs- und
+      Verzugsausdrücke wie die Liste. **Tests:** Integration (Summen, Verzug,
+      bezahlt/kein Anspruch ausgeschlossen, Filter, Route), Component (Zeile,
+      Kurzwege, leer, ungültige Antwort), E2E (Zeile, Tastaturreihenfolge,
+      Spaltenausrichtung, Screenshots).
+      Commit `feat: show open receivables across events`.
 - [x] **QW5 — Mail später senden:** Beide Mail-Dialoge haben „Senden am
-  (optional)“; der Versandauftrag wartet über sein vorhandenes
-  `next_attempt_at`. Die Event-Mails zeigen „Geplant für …“, fragen dafür
-  nicht ständig nach und bieten „Planung aufheben“, solange kein Worker den
-  Auftrag abgeholt hat; danach „Jetzt senden“. Migration 0081 nur für die
-  Audit-Aktion. **Tests:** Integration (Planung, Worker wartet, Liste und
-  Detail, ungültige Zeiten, Aufheben inkl. 403/404/409, erneut senden,
-  Dokumentversand), Component (Dialog, Nutzlast, Fehlertext, Liste, Aufheben,
-  kein Polling).
-  Commit `feat: send mails later`.
+      (optional)“; der Versandauftrag wartet über sein vorhandenes
+      `next_attempt_at`. Die Event-Mails zeigen „Geplant für …“, fragen dafür
+      nicht ständig nach und bieten „Planung aufheben“, solange kein Worker den
+      Auftrag abgeholt hat; danach „Jetzt senden“. Migration 0081 nur für die
+      Audit-Aktion. **Tests:** Integration (Planung, Worker wartet, Liste und
+      Detail, ungültige Zeiten, Aufheben inkl. 403/404/409, erneut senden,
+      Dokumentversand), Component (Dialog, Nutzlast, Fehlertext, Liste, Aufheben,
+      kein Polling).
+      Commit `feat: send mails later`.
 - [x] **QW7 — Gesamtrabatt steuerlich anteilig (STEUER-BLOCKER):**
-  Betreiberentscheidung 25.11.2026 „Anteilig je Steuersatz“: Der Gesamtrabatt
-  ist eine Entgeltminderung und mindert jeden Steuersatz im Verhältnis seines
-  Bruttoanteils (Ganzzahlanteile, Rest nach größtem Bruchteil, Summe exakt
-  gleich dem Rabatt). Je Satz wird das geminderte Brutto wie eine
-  Bruttoposition in Netto und Steuer geteilt; das PDF zeigt unter dem Rabatt
-  „Netto nach Rabatt“ und „Umsatzsteuer x % nach Rabatt“. Zahlbetrag,
-  gespeicherte Positionssummen, Forderungen und fertige Belege bleiben
-  unverändert. Keine Migration. Steuerberatung zur Bestätigung empfohlen.
-  **Tests:** Unit (ein Satz, gemischte Sätze, Restverteilung, Grenzen,
-  Ablehnung, Druck je Satz, Snapshot), Component/E2E (Hinweistext).
-  Commit `fix: lower each tax rate by its share of the total discount`.
+      Betreiberentscheidung 25.11.2026 „Anteilig je Steuersatz“: Der Gesamtrabatt
+      ist eine Entgeltminderung und mindert jeden Steuersatz im Verhältnis seines
+      Bruttoanteils (Ganzzahlanteile, Rest nach größtem Bruchteil, Summe exakt
+      gleich dem Rabatt). Je Satz wird das geminderte Brutto wie eine
+      Bruttoposition in Netto und Steuer geteilt; das PDF zeigt unter dem Rabatt
+      „Netto nach Rabatt“ und „Umsatzsteuer x % nach Rabatt“. Zahlbetrag,
+      gespeicherte Positionssummen, Forderungen und fertige Belege bleiben
+      unverändert. Keine Migration. Steuerberatung zur Bestätigung empfohlen.
+      **Tests:** Unit (ein Satz, gemischte Sätze, Restverteilung, Grenzen,
+      Ablehnung, Druck je Satz, Snapshot), Component/E2E (Hinweistext).
+      Commit `fix: lower each tax rate by its share of the total discount`.
 - [x] **QW8 — Commitplan-Stand C027–C085 nachgetragen:** Die veraltete
-  Sammelzeile „noch nicht implementiert“ ersetzt eine belegte Bereichstabelle
-  (umgesetzt über welche Slices, was offen ist); keine formale Abnahme.
-  Commit `docs: record the real state of the commit plan`.
+      Sammelzeile „noch nicht implementiert“ ersetzt eine belegte Bereichstabelle
+      (umgesetzt über welche Slices, was offen ist); keine formale Abnahme.
+      Commit `docs: record the real state of the commit plan`.
 
 ## Nutzauftrag 25.11.2026 (UI wie Bookitup, Laufzeitabgleich)
 
@@ -535,45 +536,59 @@ Dokumentübersicht, Eventakte. Dokumenteditor, Mail zweispaltig und
 Gesamtrahmen bleiben vorerst aus.
 
 - [x] **UI-BKP-01 — Bookitup-Palette und Grundbausteine:** Nunito Sans lokal,
-  14-px-Fließtext, helle Fläche `#fbfbfb` mit weißen Karten, ein Blau
-  (`#1d5191`) für Links, Primäraktion und Fokus, helle Navigation, Bookitups
-  Statusfarben, Kartenradius 10, Feldradius 4, kleine graue Feldbeschriftungen,
-  Dialoge mit Verlaufsstreifen; Formulargruppen ohne eigenen Rahmen. Grautöne
-  unter WCAG AA sind abgedunkelt, Tippflächen bleiben 44 px. Hell und dunkel.
-  Commit `style: adopt the Bookitup palette, type and base components`.
+      14-px-Fließtext, helle Fläche `#fbfbfb` mit weißen Karten, ein Blau
+      (`#1d5191`) für Links, Primäraktion und Fokus, helle Navigation, Bookitups
+      Statusfarben, Kartenradius 10, Feldradius 4, kleine graue Feldbeschriftungen,
+      Dialoge mit Verlaufsstreifen; Formulargruppen ohne eigenen Rahmen. Grautöne
+      unter WCAG AA sind abgedunkelt, Tippflächen bleiben 44 px. Hell und dunkel.
+      Commit `style: adopt the Bookitup palette, type and base components`.
 - [x] **UI-BKP-02 — Eventliste wie Bookitup:** graue Monatsbänder, weiße
-  Karten mit Schatten und 5-px-Statusbalken, Datumsblock mit Trenner,
-  Eventart nur wenn gesetzt, Ort mit Pin; Bearbeiten/Duplizieren im
-  ⋯-Zeilenmenü statt als Symbole. Filterspalte als helle Kontextspalte mit
-  Markierungsbalken; Buchungsstatus als Mehrfachauswahl (URL `statuses`,
-  clientseitig), Annulliert und Nicht verfügbar standardmäßig aus; ein alter
-  `status`-Link wählt genau diesen Status. **Tests:** Component (Filter,
-  Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
-  Statusauswahl, 390 px; Auth-Ablauf angepasst).
-  Commit `feat: shape the event list like bookitup`.
+      Karten mit Schatten und 5-px-Statusbalken, Datumsblock mit Trenner,
+      Eventart nur wenn gesetzt, Ort mit Pin; Bearbeiten/Duplizieren im
+      ⋯-Zeilenmenü statt als Symbole. Filterspalte als helle Kontextspalte mit
+      Markierungsbalken; Buchungsstatus als Mehrfachauswahl (URL `statuses`,
+      clientseitig), Annulliert und Nicht verfügbar standardmäßig aus; ein alter
+      `status`-Link wählt genau diesen Status. **Tests:** Component (Filter,
+      Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
+      Statusauswahl, 390 px; Auth-Ablauf angepasst).
+      Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-03 — Eventakte wie Bookitup (Aufbau):** Ab 64rem links die
+      Aktenspalte mit Kopf (Datum, Titel, Status, Ort), den Bereichen
+      untereinander und „Event duplizieren“ (blau) / „Event löschen“ (rot) als
+      Textlinks darunter; das Aufklappmenü „Weitere Eventaktionen“ entfällt. Unter
+      64rem stehen die beiden Links unter dem Arbeitsbereich statt oben. Details
+      als Kartenraster: Felder links (Zeitplan), Allgemein (Status), Notizen und
+      Logbuch in der Mitte, Kontakt und Ort rechts als Schattenkarten ohne
+      Aufklapptitel; die doppelte Nur-Lese-Liste „Allgemein“ entfällt, der Stift
+      „Stammdaten bearbeiten“ sitzt im Kartenkopf. Kontaktlinks als 44-px-Zeilen
+      (H042). Die geöffnete Akte liegt auf der Fläche statt in der Listenkarte.
+      **Tests:** Component (Aktionen am Fuß, Löschen als roter Link), E2E (neuer
+      Akten-Look 1440/1024/390 hell/dunkel mit axe, Spaltenreihenfolge,
+      Kontaktzeilen; Inline-Ablauf angepasst).
+      Commit `feat: shape the event record like bookitup`.
 - [x] **UI-BKP-04 — Notizen wie Bookitup bearbeiten:** Das Plus im Kartenkopf
-  öffnet den Editor; jede Notiz zeigt Zeitpunkt (fett) und Verfasser, einen
-  Bearbeiten-Stift, den Text in grauer Box und darunter rot „Event-Notiz
-  löschen“. Auch ältere Notizen sind bearbeitbar: neue Route
-  `PUT /api/v1/events/:id/notes/:noteId`, Zeitpunkt und Verfasser bleiben,
-  „· bearbeitet“ zeigt die Änderung; Migration 0082 (`updated_at`,
-  `updated_by`, Audit `event_note.updated`). **Tests:** Integration
-  (Bearbeiten, leer, CSRF, unbekannt, gelöscht, Audit), Component (Plus,
-  Bearbeiten, Abbrechen, Löschen), E2E (Ablauf mit Screenshots).
-  Commit `feat: edit event notes like bookitup`.
+      öffnet den Editor; jede Notiz zeigt Zeitpunkt (fett) und Verfasser, einen
+      Bearbeiten-Stift, den Text in grauer Box und darunter rot „Event-Notiz
+      löschen“. Auch ältere Notizen sind bearbeitbar: neue Route
+      `PUT /api/v1/events/:id/notes/:noteId`, Zeitpunkt und Verfasser bleiben,
+      „· bearbeitet“ zeigt die Änderung; Migration 0082 (`updated_at`,
+      `updated_by`, Audit `event_note.updated`). **Tests:** Integration
+      (Bearbeiten, leer, CSRF, unbekannt, gelöscht, Audit), Component (Plus,
+      Bearbeiten, Abbrechen, Löschen), E2E (Ablauf mit Screenshots).
+      Commit `feat: edit event notes like bookitup`.
 - [x] **UI-BKP-05 — Dokumentübersicht wie Bookitup:** Filterspalte mit
-  gefülltem Suchfeld, Dokumentart als Einzelauswahl in Listenzeilen, Status
-  als Segmentschalter; Tabelle flach mit Zebra und 2-px-Kopflinie, Frist als
-  farbiges Etikett („Gültig bis …“/„Fällig …“: grau laufend, grün
-  angenommen/bezahlt, rot abgelaufen/überfällig), Event als Pille mit
-  Statuspunkt, Zeilenaktionen (PDF, Im Event öffnen) im ⋯-Menü als natives
-  Popover mit Anker-Positionierung. `include=metadata` liefert dafür
-  zusätzlich `eventStatus`, `offerStatus`, `validUntil`, `offerExpired`.
-  „Dateien“ der Akte und der Dialog „Vorlage wählen“ folgen getrennt.
-  **Tests:** Integration (neue Felder, Ablauf am Tagesende), Component
-  (Etikett-Töne, Pille, Popover, Filterknöpfe, kaputte Felder), E2E (Look
-  hell/dunkel mit axe, Menü unter dem Knopf, 390 px; Auth-Ablauf angepasst).
-  Commit `feat: shape the document overview like bookitup`.
+      gefülltem Suchfeld, Dokumentart als Einzelauswahl in Listenzeilen, Status
+      als Segmentschalter; Tabelle flach mit Zebra und 2-px-Kopflinie, Frist als
+      farbiges Etikett („Gültig bis …“/„Fällig …“: grau laufend, grün
+      angenommen/bezahlt, rot abgelaufen/überfällig), Event als Pille mit
+      Statuspunkt, Zeilenaktionen (PDF, Im Event öffnen) im ⋯-Menü als natives
+      Popover mit Anker-Positionierung. `include=metadata` liefert dafür
+      zusätzlich `eventStatus`, `offerStatus`, `validUntil`, `offerExpired`.
+      „Dateien“ der Akte und der Dialog „Vorlage wählen“ folgen getrennt.
+      **Tests:** Integration (neue Felder, Ablauf am Tagesende), Component
+      (Etikett-Töne, Pille, Popover, Filterknöpfe, kaputte Felder), E2E (Look
+      hell/dunkel mit axe, Menü unter dem Knopf, 390 px; Auth-Ablauf angepasst).
+      Commit `feat: shape the document overview like bookitup`.
 
 ## Aktueller Nachtrag: Bookitup-Parität (22.10.2026)
 
@@ -676,53 +691,53 @@ Gesamtrahmen bleiben vorerst aus.
 - [x] **BKP007.4 — `feat: add last month event filter`**: Den Vormonat als Schnellfilter ergänzen; Monats- und Jahresgrenzen, Auswahlzustand und vorhandene Filter erhalten.
 
 - [x] **CI-CALENDAR-03 — `test: keep today distinct from selected day`**:
-  Der Kalendertest wählt auch am zehnten Tag ein anderes synthetisches Datum,
-  damit seine Prüfung von Heute- und Auswahlmarkierung dauerhaft aussagekräftig bleibt.
+      Der Kalendertest wählt auch am zehnten Tag ein anderes synthetisches Datum,
+      damit seine Prüfung von Heute- und Auswahlmarkierung dauerhaft aussagekräftig bleibt.
 
 - [x] **BKP019.2 — `fix: explain where new offers are created`**:
-  Im neuen Dokumentbereich den tatsächlich vorhandenen Weg zur Angebotserstellung
-  über Event → Dateien knapp benennen und zur Eventübersicht verlinken; keine
-  nicht vorhandene globale Dokumentanlage vortäuschen.
+      Im neuen Dokumentbereich den tatsächlich vorhandenen Weg zur Angebotserstellung
+      über Event → Dateien knapp benennen und zur Eventübersicht verlinken; keine
+      nicht vorhandene globale Dokumentanlage vortäuschen.
 
 - [x] **BKP019.1 — `feat: expose documents in main navigation`**:
-  Die bestehende Geschäftsdokumentliste zusätzlich als eigenen Bereich in der
-  Hauptnavigation anbieten; dort die Dateibibliothek ausblenden. Der bisherige
-  Dateienbereich und vorhandene Deep Links, Filter und Schutzregeln bleiben.
+      Die bestehende Geschäftsdokumentliste zusätzlich als eigenen Bereich in der
+      Hauptnavigation anbieten; dort die Dateibibliothek ausblenden. Der bisherige
+      Dateienbereich und vorhandene Deep Links, Filter und Schutzregeln bleiben.
 
 - [x] **BKP030.6 — `feat: disclose resource filters on mobile`**:
-  Die Filter auf schmalen Bildschirmen über einen beschrifteten Knopf öffnen,
-  aktive Kriterien zählen und Eingaben beim Schließen erhalten. Desktopfilter,
-  Filterlogik, Tastaturbedienung und Fokus bei Breitenwechsel bleiben erhalten.
+      Die Filter auf schmalen Bildschirmen über einen beschrifteten Knopf öffnen,
+      aktive Kriterien zählen und Eingaben beim Schließen erhalten. Desktopfilter,
+      Filterlogik, Tastaturbedienung und Fokus bei Breitenwechsel bleiben erhalten.
 
 - [x] **BKP010.5 — `style: compact product row actions`**:
-  Produktbearbeitung und zusätzliche Aktionen als kompakte, benannte Symbole
-  analog zu Event- und Ressourcenzeilen ausrichten. Offenlegung, Fokus,
-  Archivschutz und mobile Lesbarkeit langer Namen bleiben erhalten.
+      Produktbearbeitung und zusätzliche Aktionen als kompakte, benannte Symbole
+      analog zu Event- und Ressourcenzeilen ausrichten. Offenlegung, Fokus,
+      Archivschutz und mobile Lesbarkeit langer Namen bleiben erhalten.
 
 - [x] **CI-RESOURCE-01 — `test: recognize compact resource edit action`**:
-  Die bestehende Hierarchieprüfung auf den beschrifteten, ruhigen Stiftknopf
-  abstimmen; die Prüfung auf eine eindeutige Primäraktion bleibt erhalten.
+      Die bestehende Hierarchieprüfung auf den beschrifteten, ruhigen Stiftknopf
+      abstimmen; die Prüfung auf eine eindeutige Primäraktion bleibt erhalten.
 
 - [x] **BKP030.5 — `style: compact resource row actions`**:
-  Die Ressourcenbearbeitung als kompakte, beschriftete Symbolaktion ausführen
-  und mit den Zeileninhalten auch mobil ausrichten. Der bedienbare Bereich,
-  Tastaturfokus, bestehender Editor und lange Namen bleiben erhalten.
+      Die Ressourcenbearbeitung als kompakte, beschriftete Symbolaktion ausführen
+      und mit den Zeileninhalten auch mobil ausrichten. Der bedienbare Bereich,
+      Tastaturfokus, bestehender Editor und lange Namen bleiben erhalten.
 
 - [x] **BKP030.4 — `style: separate resource filters from results`**:
-  Die vorhandenen Ressourcenfilter auf breiten Ansichten links neben der Liste
-  gruppieren, mobil über der Liste; Anlage kompakt in den Bereichskopf setzen.
-  Filter, Zustände, Sperrverwaltung und Editor bleiben vollständig bedienbar.
+      Die vorhandenen Ressourcenfilter auf breiten Ansichten links neben der Liste
+      gruppieren, mobil über der Liste; Anlage kompakt in den Bereichskopf setzen.
+      Filter, Zustände, Sperrverwaltung und Editor bleiben vollständig bedienbar.
 
 - [x] **CI-CALENDAR-02 — `test: account for today in calendar label`**:
-  Der Barrierefreiheitstest für den dritten Monatstag berücksichtigt „Heute“,
-  wenn dieser selbst der aktuelle Tag ist; Inhalts- und Namenprüfung bleiben.
+      Der Barrierefreiheitstest für den dritten Monatstag berücksichtigt „Heute“,
+      wenn dieser selbst der aktuelle Tag ist; Inhalts- und Namenprüfung bleiben.
 
 - [x] **BKP030.3 — `feat: make resources directly accessible`**:
-  Die bereits vorhandene Ressourcenverwaltung zusätzlich wie in der beobachteten
-  Bookitup-Hauptnavigation direkt erreichbar machen, auf Desktop und mobil.
-  Bestehende Einstellungslinks und Deep Links, Entwurfsschutz und fachliche
-  Reservierungslogik bleiben erhalten. Aktiver Zustand und Titel müssen den
-  Ressourcenbereich korrekt benennen; Navigation gezielt prüfen.
+      Die bereits vorhandene Ressourcenverwaltung zusätzlich wie in der beobachteten
+      Bookitup-Hauptnavigation direkt erreichbar machen, auf Desktop und mobil.
+      Bestehende Einstellungslinks und Deep Links, Entwurfsschutz und fachliche
+      Reservierungslogik bleiben erhalten. Aktiver Zustand und Titel müssen den
+      Ressourcenbereich korrekt benennen; Navigation gezielt prüfen.
 
 Aufgaben/Workflows, Auswertungen und Exporte sind ausdrücklich ausgeschlossen.
 Direkte Feldbearbeitung speichert gemäß Betreiberentscheidung beim Verlassen des
@@ -734,298 +749,297 @@ DOC-CREATE-01ff (freie und katalogbasierte Angebote/Rechnungen mit/ohne Vorlage)
 Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
 
 - [x] **CI-FOCUS-01 — `test: wait for document logo focus restoration`**:
-  Die bestehende Fokusprüfung nach Logo-Abgleich auf die asynchrone
-  Fokuswiederherstellung warten lassen; alle übrigen Assertions beibehalten.
+      Die bestehende Fokusprüfung nach Logo-Abgleich auf die asynchrone
+      Fokuswiederherstellung warten lassen; alle übrigen Assertions beibehalten.
 
 - [x] **CI-CONTACT-01 — `fix: synchronize contact dirty state before paint`**:
-  Den im GitHub-Lauf beobachteten Zeitspalt schließen, in dem die Kontaktakte
-  nach bestätigtem Autosave noch als schmutzig gilt. Bestehende Speicherung,
-  Konfliktbehandlung und Schutz vor unbestätigten Eingaben unverändert lassen.
+      Den im GitHub-Lauf beobachteten Zeitspalt schließen, in dem die Kontaktakte
+      nach bestätigtem Autosave noch als schmutzig gilt. Bestehende Speicherung,
+      Konfliktbehandlung und Schutz vor unbestätigten Eingaben unverändert lassen.
 
 - [x] **CI-CALENDAR-01 — `test: remove calendar month dependency`**:
-  Der große Chromiumablauf erwartet beim Kalenderstart irrtümlich Oktober.
-  Den aktuellen tenant-lokalen Monat prüfen und für die 31-Tage-Geometrie ein
-  festes synthetisches Datum wählen; keine Prüfungen oder Zeitgrenzen entfernen.
+      Der große Chromiumablauf erwartet beim Kalenderstart irrtümlich Oktober.
+      Den aktuellen tenant-lokalen Monat prüfen und für die 31-Tage-Geometrie ein
+      festes synthetisches Datum wählen; keine Prüfungen oder Zeitgrenzen entfernen.
 
 - [x] **BKP-MASTER-01 — `style: simplify master data editing`**:
-  Die drei Stammdatenkataloge listenorientiert darstellen und ihre bisher
-  ständig sichtbaren Formulare erst bei Bedarf öffnen. Ein- und Ausklappen
-  erhält Entwürfe; Bearbeiten öffnet den Editor, der Wechsel verwirft keine
-  unbestätigte Eingabe ohne Rückfrage. Bestätigte Speicherung mit fehlgeschlagenem
-  Listenabruf klar melden und erneutes Speichern bis zum Abgleich sperren.
-  Bestehende API und Versionen erhalten.
+      Die drei Stammdatenkataloge listenorientiert darstellen und ihre bisher
+      ständig sichtbaren Formulare erst bei Bedarf öffnen. Ein- und Ausklappen
+      erhält Entwürfe; Bearbeiten öffnet den Editor, der Wechsel verwirft keine
+      unbestätigte Eingabe ohne Rückfrage. Bestätigte Speicherung mit fehlgeschlagenem
+      Listenabruf klar melden und erneutes Speichern bis zum Abgleich sperren.
+      Bestehende API und Versionen erhalten.
 
 - [x] **BKP030.2 — `docs: capture event resource planning reference`**:
-  Die beobachtete Event-Ressourcennavigation und den ungespeicherten Dialog
-  für Planungsgruppen ergänzen, ohne reale Eventdaten oder Speicherannahmen.
+      Die beobachtete Event-Ressourcennavigation und den ungespeicherten Dialog
+      für Planungsgruppen ergänzen, ohne reale Eventdaten oder Speicherannahmen.
 
 - [x] **BKP010.4 — `style: clarify product list hierarchy`**:
-  Produktnamen und Preis-/Steuer-/Statusangaben klar gliedern und vorhandene
-  Aktionen ausrichten; Suche, Archivierung, exakte Beträge und Dialoge erhalten.
-  Darstellung und Bedienung mit fiktiven Daten in beiden Themes prüfen.
+      Produktnamen und Preis-/Steuer-/Statusangaben klar gliedern und vorhandene
+      Aktionen ausrichten; Suche, Archivierung, exakte Beträge und Dialoge erhalten.
+      Darstellung und Bedienung mit fiktiven Daten in beiden Themes prüfen.
 
 - [x] **BKP009.3 — `style: clarify resource list hierarchy`**:
-  Bestehende Ressourcenliste als übersichtliche Zeilen mit führendem Namen,
-  sekundären Bestands-/Kategorie-/Statusangaben und ausgerichteter Bearbeitung
-  gestalten. Filter, Sperren, API und Datenmodell bleiben unverändert. Beide
-  Themes, Mobilbreiten und vorhandene Bedienabläufe gezielt prüfen.
+      Bestehende Ressourcenliste als übersichtliche Zeilen mit führendem Namen,
+      sekundären Bestands-/Kategorie-/Statusangaben und ausgerichteter Bearbeitung
+      gestalten. Filter, Sperren, API und Datenmodell bleiben unverändert. Beide
+      Themes, Mobilbreiten und vorhandene Bedienabläufe gezielt prüfen.
 
 - [x] **BKP030.1 — `docs: document observed resource workflows`**:
-  Das nun aktivierte Bookitup-Ressourcenmodul lesend untersuchen und belegte
-  Ansichten, Modellhinweise, Bedienung, Grenzen und sichere Folgeschritte für
-  Agenten dokumentieren; keine Kundendaten oder echten Änderungen übernehmen.
+      Das nun aktivierte Bookitup-Ressourcenmodul lesend untersuchen und belegte
+      Ansichten, Modellhinweise, Bedienung, Grenzen und sichere Folgeschritte für
+      Agenten dokumentieren; keine Kundendaten oder echten Änderungen übernehmen.
 
 - [x] **BKP011.2 — `style: clarify contact list hierarchy`**:
-  Die Kontaktübersicht lesbar und mobil ausgerichtet darstellen: Name führt,
-  Kontaktangaben und Aktionen bleiben erkennbar und bedienbar; geöffnete
-  Kontaktakten und bestehende Bedienung unverändert. Beide Themes prüfen.
+      Die Kontaktübersicht lesbar und mobil ausgerichtet darstellen: Name führt,
+      Kontaktangaben und Aktionen bleiben erkennbar und bedienbar; geöffnete
+      Kontaktakten und bestehende Bedienung unverändert. Beide Themes prüfen.
 
 - [x] **CI-DOC-01 — `test: update document layout reference hashes`**:
-  Nach DOC-PDF-01 die synthetischen HTML-Referenzprüfsummen der Datums- und
-  Bankverbindungs-Integrationstests anhand der neuen Darstellung aktualisieren;
-  die Prüfungen auf unveränderte finale Dokumente und fehlende Zeilen erhalten.
+      Nach DOC-PDF-01 die synthetischen HTML-Referenzprüfsummen der Datums- und
+      Bankverbindungs-Integrationstests anhand der neuen Darstellung aktualisieren;
+      die Prüfungen auf unveränderte finale Dokumente und fehlende Zeilen erhalten.
 
 - [x] **BKP014.7 — `style: clarify event list hierarchy in both themes`**:
-  Monatsüberschriften auf Event- und Suchansicht gleichermaßen gestalten und
-  Eventzeilen durch dezente Flächen und Abstände besser unterscheiden. Namen,
-  Status, Tastaturbedienung und mobile Vollständigkeit bleiben erhalten;
-  Kontrast und Ansichten bei 320, 390, 768 und 1280 px in beiden Themes prüfen.
+      Monatsüberschriften auf Event- und Suchansicht gleichermaßen gestalten und
+      Eventzeilen durch dezente Flächen und Abstände besser unterscheiden. Namen,
+      Status, Tastaturbedienung und mobile Vollständigkeit bleiben erhalten;
+      Kontrast und Ansichten bei 320, 390, 768 und 1280 px in beiden Themes prüfen.
 
 - [x] **DOC-LOGO-01 — `feat: resize large logos before upload`**:
-  Große PNG- und JPEG-Logos im Browser proportional verkleinern und innerhalb
-  der bestehenden Uploadgrenze speichern; Fehler ohne unklaren Serverstand
-  melden und unveränderte kleinere Dateien weiterhin direkt hochladen.
+      Große PNG- und JPEG-Logos im Browser proportional verkleinern und innerhalb
+      der bestehenden Uploadgrenze speichern; Fehler ohne unklaren Serverstand
+      melden und unveränderte kleinere Dateien weiterhin direkt hochladen.
 
 - [x] **DOC-PDF-01 — `feat: align document print layout with reference`**:
-  Gemeinsames Vorschau- und PDF-Layout am bereitgestellten Bookitup-Beispiel
-  ausrichten: Logo rechts, dezente Tabellenköpfe und gut lesbare Summen. Keine
-  Angaben erfinden; bestehende Dokumentinhalte und eingefrorene PDFs bewahren.
+      Gemeinsames Vorschau- und PDF-Layout am bereitgestellten Bookitup-Beispiel
+      ausrichten: Logo rechts, dezente Tabellenköpfe und gut lesbare Summen. Keine
+      Angaben erfinden; bestehende Dokumentinhalte und eingefrorene PDFs bewahren.
 
 - [x] **DOC-FOOT-01 — `fix: place document closing text after positions`**:
-  In allen vom gemeinsamen Dokumenteditor unterstützten Dokumentarten und in
-  Dokumentvorlagen den Schlusstext hinter den Positionen anordnen; Inhalte,
-  Speicherung und Platzhalter unverändert lassen. Reihenfolge gezielt getestet;
-  128 betroffene Komponententests, ein Chromium-Ablauf und schnelle Gates grün.
+      In allen vom gemeinsamen Dokumenteditor unterstützten Dokumentarten und in
+      Dokumentvorlagen den Schlusstext hinter den Positionen anordnen; Inhalte,
+      Speicherung und Platzhalter unverändert lassen. Reihenfolge gezielt getestet;
+      128 betroffene Komponententests, ein Chromium-Ablauf und schnelle Gates grün.
 
 - [x] **FORM-UI-01 — `fix: simplify website inquiry form presentation`**:
-  Websiteformular hell darstellen, Kommentar als „Details zur Veranstaltung“
-  beschriften, gewähltes Paket nicht wiederholen und die bestätigte Nachricht
-  um die vom Betreiber gewünschte 24-Stunden-Rückmeldung ergänzen. Feldnamen und
-  Transportvertrag bleiben unverändert. Acht betroffene Komponententests,
-  Chromium mit Hell-/Dunkel-Geräteeinstellung, Format, Lint, Typen, Docs und
-  Build lokal grün. CI und automatische Auslieferung separat prüfen.
+      Websiteformular hell darstellen, Kommentar als „Details zur Veranstaltung“
+      beschriften, gewähltes Paket nicht wiederholen und die bestätigte Nachricht
+      um die vom Betreiber gewünschte 24-Stunden-Rückmeldung ergänzen. Feldnamen und
+      Transportvertrag bleiben unverändert. Acht betroffene Komponententests,
+      Chromium mit Hell-/Dunkel-Geräteeinstellung, Format, Lint, Typen, Docs und
+      Build lokal grün. CI und automatische Auslieferung separat prüfen.
 
 - [x] **CI-AUTH-01 — `test: allow time for full authenticated browser journeys`**:
-  GitHub-Lauf 40963485443 untersuchen: die bestehenden umfangreichen Google- und
-  Passwort-Abläufe erreichten ihre Zeitgrenzen, nachdem zahlreiche tatsächliche
-  Browser- und Barrierefreiheitsprüfungen durchgeführt wurden. Die Laufzeitgrenze
-  für diese beiden langen Abläufe angemessen erhöhen, ohne Prüfungen, Assertions
-  oder den separaten Dateien-Ablauf zu entfernen. Beide Abläufe gezielt ausführen;
-  anschließend die tatsächliche GitHub-CI und sichere automatische Auslieferung
-  prüfen. Weitere Entkopplung großer Tests bleibt ein eigener Schritt. Lokal
-  bestanden beide betroffenen Abläufe; Format, Lint, Typen und Docs sind grün.
-  Die Wirksamkeit muss der GitHub-Lauf noch bestätigen.
+      GitHub-Lauf 40963485443 untersuchen: die bestehenden umfangreichen Google- und
+      Passwort-Abläufe erreichten ihre Zeitgrenzen, nachdem zahlreiche tatsächliche
+      Browser- und Barrierefreiheitsprüfungen durchgeführt wurden. Die Laufzeitgrenze
+      für diese beiden langen Abläufe angemessen erhöhen, ohne Prüfungen, Assertions
+      oder den separaten Dateien-Ablauf zu entfernen. Beide Abläufe gezielt ausführen;
+      anschließend die tatsächliche GitHub-CI und sichere automatische Auslieferung
+      prüfen. Weitere Entkopplung großer Tests bleibt ein eigener Schritt. Lokal
+      bestanden beide betroffenen Abläufe; Format, Lint, Typen und Docs sind grün.
+      Die Wirksamkeit muss der GitHub-Lauf noch bestätigen.
 
 - [x] **CI-EDIT-02.5 — `test: check notes editor in authenticated browser flows`**:
-  Die beiden im vollständigen lokalen Chromiumlauf fehlgeschlagenen HTTPS-
-  Anmeldeabläufe verwenden noch den nach EDIT-02.5 entfernten Vorschau-Selektor.
-  Den Selektor auf den sichtbaren Notizeditor aktualisieren und die bestehende
-  Assertion zum formatierten Notizinhalt unverändert erhalten. Beide betroffenen
-  Abläufe und passende schnelle Gates prüfen. Keine Änderung des Anwendungscodes.
-  CI-TEST-01 bleibt bis zum Push dieses Testfixes liegen. Beide HTTPS-Abläufe
-  (Google und Passwort) bestehen gezielt; unabhängiges Review und schnelle Gates
-  sind grün. Der volle GitHub-Lauf muss danach erneut abgewartet werden.
+      Die beiden im vollständigen lokalen Chromiumlauf fehlgeschlagenen HTTPS-
+      Anmeldeabläufe verwenden noch den nach EDIT-02.5 entfernten Vorschau-Selektor.
+      Den Selektor auf den sichtbaren Notizeditor aktualisieren und die bestehende
+      Assertion zum formatierten Notizinhalt unverändert erhalten. Beide betroffenen
+      Abläufe und passende schnelle Gates prüfen. Keine Änderung des Anwendungscodes.
+      CI-TEST-01 bleibt bis zum Push dieses Testfixes liegen. Beide HTTPS-Abläufe
+      (Google und Passwort) bestehen gezielt; unabhängiges Review und schnelle Gates
+      sind grün. Der volle GitHub-Lauf muss danach erneut abgewartet werden.
 
 - [x] **CI-TEST-01 — `ci: run test projects once with coverage`**:
-  Den auf Nutzerhinweis belegten doppelten Testlauf in `pnpm check` entfernen.
-  `test:coverage` führt weiterhin alle drei bestehenden Vitest-Projekte mit
-  unveränderten globalen Coverage-Grenzen aus; Format, Lint, Typen, Workspace-,
-  Dokumentations-, Chromium-, Build- und Betriebsprüfungen sowie die separate
-  Changed-Code-Coverage in CI bleiben verpflichtend. Test zuerst für die
-  vollständige Projekt- und Gate-Auswahl sowie das Ausbleiben doppelter Läufe;
-  keine Tests löschen und keine Schranken senken. Wirksamkeit im nächsten
-  GitHub-Lauf anhand tatsächlicher Dauer und Ergebnissen prüfen. Lokal waren
-  Coverage mit 1.640 Tests und 38 Browserfälle grün; ein alter Browserselektor
-  wurde in CI-EDIT-02.5 repariert und beide Abläufe anschließend gezielt grün
-  geprüft. Workspace, Betriebsprüfung, Build und schnelle Gates sind grün;
-  unabhängiges Review erfolgte. Ein vollständig grüner zusammenhängender
-  GitHub-Lauf steht noch aus.
+      Den auf Nutzerhinweis belegten doppelten Testlauf in `pnpm check` entfernen.
+      `test:coverage` führt weiterhin alle drei bestehenden Vitest-Projekte mit
+      unveränderten globalen Coverage-Grenzen aus; Format, Lint, Typen, Workspace-,
+      Dokumentations-, Chromium-, Build- und Betriebsprüfungen sowie die separate
+      Changed-Code-Coverage in CI bleiben verpflichtend. Test zuerst für die
+      vollständige Projekt- und Gate-Auswahl sowie das Ausbleiben doppelter Läufe;
+      keine Tests löschen und keine Schranken senken. Wirksamkeit im nächsten
+      GitHub-Lauf anhand tatsächlicher Dauer und Ergebnissen prüfen. Lokal waren
+      Coverage mit 1.640 Tests und 38 Browserfälle grün; ein alter Browserselektor
+      wurde in CI-EDIT-02.5 repariert und beide Abläufe anschließend gezielt grün
+      geprüft. Workspace, Betriebsprüfung, Build und schnelle Gates sind grün;
+      unabhängiges Review erfolgte. Ein vollständig grüner zusammenhängender
+      GitHub-Lauf steht noch aus.
 
 - [x] **EDIT-02.5 — `feat: autosave event notes in the event record`**:
-  Interne Eventnotizen direkt im bestehenden Notizenbereich bearbeiten
-  (BKP013, Beobachtung B04; das Autosave-Verhalten der Referenz ist nicht
-  belegt). Vorhandenen HTML-/Sanitizer-Vertrag und die gemeinsame versionierte
-  Event-Autosave-Warteschlange verwenden; ein kleiner formatierter Editor ohne
-  neue Abhängigkeit vermeidet die HTML-Rohtexteingabe. Kein zweiter
-  konkurrierender Hook, keine neue API oder Migration. Beim Verlassen speichern, Escape
-  verwirft nur den aktuellen ungesendeten Entwurf. Nur bestätigtes,
-  serverseitig bereinigtes HTML als Vorschau darstellen. Bereichswechsel,
-  andere Feldentwürfe, Navigation, Status, Ressourcen, Konflikt und unklare
-  Antworten dürfen keine Eingaben oder bestätigte Mutationen verlieren.
-  Tests zuerst: Komponentenfälle für Blur/Escape, Warteschlange, Fokus und
-  Abgleich; API-Integration für Sanitizer und Schutzregeln; synthetische
-  Chromium-Prüfung für Mobil/Desktop und beide Themes. Danach Review,
-  notwendige Gates, Dokumentation, explizites Staging und sofortiger Push.
-  Abschluss: vollständiger Coverage-Lauf mit 1.638 Tests grün; danach zwei
-  gezielte Bedienprüfungen ergänzt. Gezielte Changed-Code-Abdeckung 169/183
-  Zeilen und 105/131 Zweige, eigenständiger Chromium-/Axe-Ablauf 320/1280 px
-  in beiden Themes grün. Unabhängiges Review und Sicherheitskorrekturen erfolgt.
+      Interne Eventnotizen direkt im bestehenden Notizenbereich bearbeiten
+      (BKP013, Beobachtung B04; das Autosave-Verhalten der Referenz ist nicht
+      belegt). Vorhandenen HTML-/Sanitizer-Vertrag und die gemeinsame versionierte
+      Event-Autosave-Warteschlange verwenden; ein kleiner formatierter Editor ohne
+      neue Abhängigkeit vermeidet die HTML-Rohtexteingabe. Kein zweiter
+      konkurrierender Hook, keine neue API oder Migration. Beim Verlassen speichern, Escape
+      verwirft nur den aktuellen ungesendeten Entwurf. Nur bestätigtes,
+      serverseitig bereinigtes HTML als Vorschau darstellen. Bereichswechsel,
+      andere Feldentwürfe, Navigation, Status, Ressourcen, Konflikt und unklare
+      Antworten dürfen keine Eingaben oder bestätigte Mutationen verlieren.
+      Tests zuerst: Komponentenfälle für Blur/Escape, Warteschlange, Fokus und
+      Abgleich; API-Integration für Sanitizer und Schutzregeln; synthetische
+      Chromium-Prüfung für Mobil/Desktop und beide Themes. Danach Review,
+      notwendige Gates, Dokumentation, explizites Staging und sofortiger Push.
+      Abschluss: vollständiger Coverage-Lauf mit 1.638 Tests grün; danach zwei
+      gezielte Bedienprüfungen ergänzt. Gezielte Changed-Code-Abdeckung 169/183
+      Zeilen und 105/131 Zweige, eigenständiger Chromium-/Axe-Ablauf 320/1280 px
+      in beiden Themes grün. Unabhängiges Review und Sicherheitskorrekturen erfolgt.
 
 - [x] **EDIT-02.4 — `feat: edit event schedule in the event record`**:
-  Den bisher nur lesenden Terminbereich in der Eventakte direkt bearbeitbar
-  machen (BKP013, Beobachtung B04/B): Datum und vorhandenes Start-/Endpaar
-  als zusammenhängenden Entwurf mit lokaler Uhrzeiteingabe. Derselbe
-  versionierte Event-Autosave-Pfad speichert beim Verlassen der Gruppe; Escape
-  verwirft nur den aktiven ungesendeten Entwurf. Datums-/Zeitvalidierung und
-  vorhandene Zeithilfen wiederverwenden. Bestätigte Ressourcen und Buchungen
-  dürfen nicht aufgehoben oder ohne atomare Serverprüfung verschoben werden;
-  Status-/Ressourcen-/Versionssperren und Konfliktabgleich bleiben bestehen.
-  Keine neue API, Migration oder nachgeahmte zusätzliche Zeitplaneinträge.
-  RED zuerst, fachliche Negativfälle, Tastatur, mobile/weite Darstellung,
-  Entwürfe und Konflikte testen; UI-Review, passende Gates und Browserprüfung.
-  Abschluss: 1.634 Tests im vollständigen Coverage-Lauf; geänderte Zeilen
-  113/126, Zweige 91/110. Format, Lint, Typen, Build, Dokumentationsprüfung,
-  vier betroffene Chromium-Abläufe sowie synthetische Screenshots 320/1280 px
-  in beiden Themes grün. Unabhängiges Review und Detector ohne Befunde.
+      Den bisher nur lesenden Terminbereich in der Eventakte direkt bearbeitbar
+      machen (BKP013, Beobachtung B04/B): Datum und vorhandenes Start-/Endpaar
+      als zusammenhängenden Entwurf mit lokaler Uhrzeiteingabe. Derselbe
+      versionierte Event-Autosave-Pfad speichert beim Verlassen der Gruppe; Escape
+      verwirft nur den aktiven ungesendeten Entwurf. Datums-/Zeitvalidierung und
+      vorhandene Zeithilfen wiederverwenden. Bestätigte Ressourcen und Buchungen
+      dürfen nicht aufgehoben oder ohne atomare Serverprüfung verschoben werden;
+      Status-/Ressourcen-/Versionssperren und Konfliktabgleich bleiben bestehen.
+      Keine neue API, Migration oder nachgeahmte zusätzliche Zeitplaneinträge.
+      RED zuerst, fachliche Negativfälle, Tastatur, mobile/weite Darstellung,
+      Entwürfe und Konflikte testen; UI-Review, passende Gates und Browserprüfung.
+      Abschluss: 1.634 Tests im vollständigen Coverage-Lauf; geänderte Zeilen
+      113/126, Zweige 91/110. Format, Lint, Typen, Build, Dokumentationsprüfung,
+      vier betroffene Chromium-Abläufe sowie synthetische Screenshots 320/1280 px
+      in beiden Themes grün. Unabhängiges Review und Detector ohne Befunde.
 
 - [x] **EDIT-02.3 — `feat: autosave additional event contacts`**:
-  Weitere Kontakte direkt in der Eventakte hinzufügen und entfernen; vorhandene
-  Kontaktsuche und dieselbe versionierte Event-Autosave-Warteschlange nutzen.
-  Gruppierter Entwurf speichert beim Verlassen; Escape verwirft nur die noch
-  ungesendete Auswahl, nicht frühere Blur-Aufträge. Hauptkontakt und bereits
-  gewählte Kontakte nicht doppelt anbieten; bestehende archivierte Zuordnungen
-  erhalten, keine neuen archivierten Zuordnungen. Hauptkontaktwechsel und rasche
-  aufeinanderfolgende Änderungen dürfen keine Zuordnung wiederherstellen oder
-  überschreiben; bei Konflikten bewusst abgleichen und fremde neue Kontakte
-  erhalten. Bestehende Mandanten-, Versions-, Ressourcen-, Buchungs- und
-  Navigationssperren beibehalten. Keine API, Migration, Neuanlage, Aufgaben,
-  Auswertungen oder Exporte. RED zuerst, komponenten- und browsergestützte
-  Prüfung von Blur/Escape, Fokus, Fehlern, Warteschlange und Konflikt; passende
-  API-Integrationsfälle und mobile Darstellung berücksichtigen. Der in CI-Lauf
-  40771829787 belegte ungültige ARIA-Verweis des gemeinsamen Hauptkontakt-
-  Suchfelds wird in diesem Kontakt-Slice mit repariert und mit Axe bei leerer
-  Suche und Treffern geprüft; keine Lockerung der Barrierefreiheitstests.
-  Abschluss: 1.626 Tests im vollständigen Coverage-Lauf, geänderte Zeilen
-  63/63 und Branches 50/56. Format, Lint, Typen, Build und betroffene Chromium-
-  Abläufe (7/7 einschließlich Google-/Passwort-Axe) grün; unabhängige Reviews
-  und 320/1280-Theme-Screenshots geprüft.
+      Weitere Kontakte direkt in der Eventakte hinzufügen und entfernen; vorhandene
+      Kontaktsuche und dieselbe versionierte Event-Autosave-Warteschlange nutzen.
+      Gruppierter Entwurf speichert beim Verlassen; Escape verwirft nur die noch
+      ungesendete Auswahl, nicht frühere Blur-Aufträge. Hauptkontakt und bereits
+      gewählte Kontakte nicht doppelt anbieten; bestehende archivierte Zuordnungen
+      erhalten, keine neuen archivierten Zuordnungen. Hauptkontaktwechsel und rasche
+      aufeinanderfolgende Änderungen dürfen keine Zuordnung wiederherstellen oder
+      überschreiben; bei Konflikten bewusst abgleichen und fremde neue Kontakte
+      erhalten. Bestehende Mandanten-, Versions-, Ressourcen-, Buchungs- und
+      Navigationssperren beibehalten. Keine API, Migration, Neuanlage, Aufgaben,
+      Auswertungen oder Exporte. RED zuerst, komponenten- und browsergestützte
+      Prüfung von Blur/Escape, Fokus, Fehlern, Warteschlange und Konflikt; passende
+      API-Integrationsfälle und mobile Darstellung berücksichtigen. Der in CI-Lauf
+      40771829787 belegte ungültige ARIA-Verweis des gemeinsamen Hauptkontakt-
+      Suchfelds wird in diesem Kontakt-Slice mit repariert und mit Axe bei leerer
+      Suche und Treffern geprüft; keine Lockerung der Barrierefreiheitstests.
+      Abschluss: 1.626 Tests im vollständigen Coverage-Lauf, geänderte Zeilen
+      63/63 und Branches 50/56. Format, Lint, Typen, Build und betroffene Chromium-
+      Abläufe (7/7 einschließlich Google-/Passwort-Axe) grün; unabhängige Reviews
+      und 320/1280-Theme-Screenshots geprüft.
 
 - [x] **CI-EDIT-02.2 — `test: verify event editor focus before escape`**:
-  Fehlgeschlagenen GitHub-Lauf 40708170257 untersuchen. Test für gegenseitige
-  Status-/Stammdaten-Sperren prüft vor der Eingabe, dass das Feld bedienbar und
-  fokussiert ist, sowie vor/nach Escape, dass kein PUT ausgelöst wurde. Kein
-  Abschwächen der Sperren, Assertions oder Timeouts. Ein vorangehender Blur mit
-  laufendem PUT reproduziert den Fehlerzustand, aber die ursprüngliche Ursache
-  ist nicht aus dem CI-Log belegt. Betroffene Komponententests, schnelle Gates
-  und vollständiger Diff-Review vor Commit und Push. Images und automatische
-  Auslieferung erst nach grünem CI prüfen.
-  Lokal 840 Komponententests, 274 Unit-Tests, Format, Lint, Typen, Build,
-  Workspace- und Dokumentationsprüfung grün; nach der ergänzten Negativprüfung
-  die betroffene Komponentendatei 30/30 grün. Unabhängiges Review erfolgt.
+      Fehlgeschlagenen GitHub-Lauf 40708170257 untersuchen. Test für gegenseitige
+      Status-/Stammdaten-Sperren prüft vor der Eingabe, dass das Feld bedienbar und
+      fokussiert ist, sowie vor/nach Escape, dass kein PUT ausgelöst wurde. Kein
+      Abschwächen der Sperren, Assertions oder Timeouts. Ein vorangehender Blur mit
+      laufendem PUT reproduziert den Fehlerzustand, aber die ursprüngliche Ursache
+      ist nicht aus dem CI-Log belegt. Betroffene Komponententests, schnelle Gates
+      und vollständiger Diff-Review vor Commit und Push. Images und automatische
+      Auslieferung erst nach grünem CI prüfen.
+      Lokal 840 Komponententests, 274 Unit-Tests, Format, Lint, Typen, Build,
+      Workspace- und Dokumentationsprüfung grün; nach der ergänzten Negativprüfung
+      die betroffene Komponentendatei 30/30 grün. Unabhängiges Review erfolgt.
 
 - [x] **EDIT-02.2 — `feat: autosave the event primary contact`**:
-  Hauptkontakt in der Eventakte über vorhandene Kontaktsuche auswählen oder
-  entfernen. Die Auswahl bildet einen Feldentwurf und wird beim Verlassen
-  gespeichert; Escape verwirft nur die aktuelle ungesendete Auswahl. Bereits
-  angestoßene Änderungen bleiben erhalten. Dieselbe versionierte Event-PUT-
-  Warteschlange wie EDIT-02.1 verwenden; einen neu gewählten Hauptkontakt aus
-  den weiteren Kontakten entfernen, übrige Zuordnungen erhalten. Bestehende
-  archivierte Kontakte erhalten, keine neuen archivierten Kontakte anbieten.
-  Bei 409/unklarem Ausgang nur nach ausdrücklichem Serverabgleich fortfahren;
-  alle bestehenden Status-/Ressourcen- und Dirty-Sperren erhalten. Keine neue
-  API, Migration, Kontakt-Neuanlage oder Änderungen an Aufgaben und Exporten.
-  RED und Komponenten-/Chromiumtests für Auswahl, Blur/Escape, Versionierung,
-  Konflikt, Duplikat und Bedienung bei mobiler Breite; zugehörige API-Regeln
-  mit Integrationstests belegen. Bestehende Nutzeroberfläche bewahren.
-  Abschluss: 1.614 Tests, Chromium, Format, Lint, Typen und Build grün;
-  geänderter Code 56/60 Zeilen und 61/73 Branches. Unabhängiges Review erfolgt.
+      Hauptkontakt in der Eventakte über vorhandene Kontaktsuche auswählen oder
+      entfernen. Die Auswahl bildet einen Feldentwurf und wird beim Verlassen
+      gespeichert; Escape verwirft nur die aktuelle ungesendete Auswahl. Bereits
+      angestoßene Änderungen bleiben erhalten. Dieselbe versionierte Event-PUT-
+      Warteschlange wie EDIT-02.1 verwenden; einen neu gewählten Hauptkontakt aus
+      den weiteren Kontakten entfernen, übrige Zuordnungen erhalten. Bestehende
+      archivierte Kontakte erhalten, keine neuen archivierten Kontakte anbieten.
+      Bei 409/unklarem Ausgang nur nach ausdrücklichem Serverabgleich fortfahren;
+      alle bestehenden Status-/Ressourcen- und Dirty-Sperren erhalten. Keine neue
+      API, Migration, Kontakt-Neuanlage oder Änderungen an Aufgaben und Exporten.
+      RED und Komponenten-/Chromiumtests für Auswahl, Blur/Escape, Versionierung,
+      Konflikt, Duplikat und Bedienung bei mobiler Breite; zugehörige API-Regeln
+      mit Integrationstests belegen. Bestehende Nutzeroberfläche bewahren.
+      Abschluss: 1.614 Tests, Chromium, Format, Lint, Typen und Build grün;
+      geänderter Code 56/60 Zeilen und 61/73 Branches. Unabhängiges Review erfolgt.
 
 - [x] **EDIT-02.1 — `feat: autosave event master fields inside the event record`**:
-  erster Event-Unter-Slice: Name, Art, Paket, Herkunft, Ort/individuelle Anschrift
-  und Beschreibung direkt in der Akte mit Blur/Escape und bestehendem Autosave-
-  Vertrag. Vollständiger PUT aus expliziter Whitelist, aktuelle bestätigte
-  Eventversion sofort übernehmen; sichere saubere Übernahme fremder bestätigter
-  Status-/Ressourcenänderungen ohne Remount pro Version. Gegenseitige synchrone
-  Sperre mit bestehenden Status-/Ressourcenentwürfen und laufenden Mutationen.
-  Keine Änderung der atomaren Buchungsregeln. Listenrefresh darf aktive Akte
-  nicht entfernen; Suchmitgliedschaft erst nach sicherem Verlassen prüfen.
-  RED, Sequenz-/409-/Antwortverlust-/Refresh-/Fokus-/Escape-Tests und Chromium.
-  Termin-/DST-Gruppe, Kontaktrollen/-daten und Notiz-/Status-Autosave folgen als
-  getrennte beauftragte Unter-Slices; bestehende vollständige Bearbeitung bleibt
-  bis dahin erreichbar. Keine Aufgaben, Auswertungen, Exporte oder neue API.
-  Abnahme: 1606 Tests mit Coverage grün (96,50 % Zeilen, 91,24 % Zweige;
-  geänderte Zeilen 339/360, Zweige 378/450), Format/Lint/Typen/Build und
-  Workspace-/Docs-Tests grün. Chromium: Event-Autosave, Google- und Passwort-
-  Anmeldung jeweils grün; Dateien-Prüfungen zuvor 2/2 grün. Unabhängiger
-  Review und Regressionen für Konflikte, unklare Antworten, Abgleich, Filter-
-  und Ressourcenprojektion. Ein sporadischer URL-/Dokumentfilter-Widerspruch
-  trat einmal auf und ließ sich bisher nicht gezielt reproduzieren.
+      erster Event-Unter-Slice: Name, Art, Paket, Herkunft, Ort/individuelle Anschrift
+      und Beschreibung direkt in der Akte mit Blur/Escape und bestehendem Autosave-
+      Vertrag. Vollständiger PUT aus expliziter Whitelist, aktuelle bestätigte
+      Eventversion sofort übernehmen; sichere saubere Übernahme fremder bestätigter
+      Status-/Ressourcenänderungen ohne Remount pro Version. Gegenseitige synchrone
+      Sperre mit bestehenden Status-/Ressourcenentwürfen und laufenden Mutationen.
+      Keine Änderung der atomaren Buchungsregeln. Listenrefresh darf aktive Akte
+      nicht entfernen; Suchmitgliedschaft erst nach sicherem Verlassen prüfen.
+      RED, Sequenz-/409-/Antwortverlust-/Refresh-/Fokus-/Escape-Tests und Chromium.
+      Termin-/DST-Gruppe, Kontaktrollen/-daten und Notiz-/Status-Autosave folgen als
+      getrennte beauftragte Unter-Slices; bestehende vollständige Bearbeitung bleibt
+      bis dahin erreichbar. Keine Aufgaben, Auswertungen, Exporte oder neue API.
+      Abnahme: 1606 Tests mit Coverage grün (96,50 % Zeilen, 91,24 % Zweige;
+      geänderte Zeilen 339/360, Zweige 378/450), Format/Lint/Typen/Build und
+      Workspace-/Docs-Tests grün. Chromium: Event-Autosave, Google- und Passwort-
+      Anmeldung jeweils grün; Dateien-Prüfungen zuvor 2/2 grün. Unabhängiger
+      Review und Regressionen für Konflikte, unklare Antworten, Abgleich, Filter-
+      und Ressourcenprojektion. Ein sporadischer URL-/Dokumentfilter-Widerspruch
+      trat einmal auf und ließ sich bisher nicht gezielt reproduzieren.
 
 - [x] **EDIT-01 — `feat: autosave contact fields in their record with escape to cancel`**:
-  Kontaktakte direkt bearbeiten, Feldänderungen beim Verlassen speichern und
-  Escape nur für ungesendete Änderungen des aktiven Felds. Bestehende Anlage
-  unverändert; vollständige versionierte PUTs einzeln serialisieren, spätere
-  Entwürfe erhalten. Bestätigte Zeile sofort übernehmen statt von Listen-GET
-  abhängig machen. Mandantengesicherter Einzelkontakt-GET für expliziten Abgleich
-  nach 409/unklarem Fehler; keine automatische Wiederholung/Überschreibung.
-  Gemeinsamer kleiner Autosave-Hook für folgenden Event-Slice, Schutz für
-  Entwürfe/Warteschlange/laufende Mutationen, sichtbarer Speicherstatus.
-  Abnahme RED → Unit/Component/API/Chromium, Fokus/Escape/Blur/Reihenfolge,
-  Normalisierung, Versionskonflikt, Antwortverlust, Tenant, Navigation/Reload.
-  Abnahme: 1567 Tests im vollständigen Coverage-Lauf grün, 96,62 % Zeilen/
-  91,61 % Branches; geänderte Zeilen 300/320, Branches 202/250. Node 24:
-  Format/Lint/Typen/Build und 6/6 betroffene Chromium-Läufe einschließlich
-  beider HTTPS-Loginmodi, Dateimatrizen, Eventdatei und Kontakt-Back/Escape grün.
-  Unabhängige Reviews: spätere Rückänderung zum Original auch beim Abgleich
-  erhalten, Link/Filter-Navigation atomar geschützt, Filter nach Aktschließen
-  erneut geprüft, Dirty-Meldung bei Unmount bereinigt. CI-Regression aus
-  BKP020.2: Dateien-Region in bestehendem Auth-Test exakt adressiert, ohne
-  Abschwächung der Assertions oder Timeouts. Screenshots 320/1280 geprüft.
-  Auch eine bestätigte Neuanlage bleibt bei Listenfehler sichtbar. Kein Schemawechsel.
+      Kontaktakte direkt bearbeiten, Feldänderungen beim Verlassen speichern und
+      Escape nur für ungesendete Änderungen des aktiven Felds. Bestehende Anlage
+      unverändert; vollständige versionierte PUTs einzeln serialisieren, spätere
+      Entwürfe erhalten. Bestätigte Zeile sofort übernehmen statt von Listen-GET
+      abhängig machen. Mandantengesicherter Einzelkontakt-GET für expliziten Abgleich
+      nach 409/unklarem Fehler; keine automatische Wiederholung/Überschreibung.
+      Gemeinsamer kleiner Autosave-Hook für folgenden Event-Slice, Schutz für
+      Entwürfe/Warteschlange/laufende Mutationen, sichtbarer Speicherstatus.
+      Abnahme RED → Unit/Component/API/Chromium, Fokus/Escape/Blur/Reihenfolge,
+      Normalisierung, Versionskonflikt, Antwortverlust, Tenant, Navigation/Reload.
+      Abnahme: 1567 Tests im vollständigen Coverage-Lauf grün, 96,62 % Zeilen/
+      91,61 % Branches; geänderte Zeilen 300/320, Branches 202/250. Node 24:
+      Format/Lint/Typen/Build und 6/6 betroffene Chromium-Läufe einschließlich
+      beider HTTPS-Loginmodi, Dateimatrizen, Eventdatei und Kontakt-Back/Escape grün.
+      Unabhängige Reviews: spätere Rückänderung zum Original auch beim Abgleich
+      erhalten, Link/Filter-Navigation atomar geschützt, Filter nach Aktschließen
+      erneut geprüft, Dirty-Meldung bei Unmount bereinigt. CI-Regression aus
+      BKP020.2: Dateien-Region in bestehendem Auth-Test exakt adressiert, ohne
+      Abschwächung der Assertions oder Timeouts. Screenshots 320/1280 geprüft.
+      Auch eine bestätigte Neuanlage bleibt bei Listenfehler sichtbar. Kein Schemawechsel.
 
 - [x] **BKP020.2 — `feat: link library files to events without copying uploads`**:
-  eigener Bereich in Event → Dateien für verfügbare/archivierte Verknüpfungen,
-  Bibliotheksauswahl und Entfernen allein der Zuordnung. Keine Kopie von Bytes;
-  Upload bleibt über die bestehende Bibliothek erreichbar. Additive Migration
-  mit zusammengesetzten Mandanten-FKs; idempotente GET/PUT/DELETE-Endpunkte
-  `/api/v1/events/:eventId/library-files[/:fileId]`, Änderungen atomar mit Audit.
-  Ungeprüft-Status und fehlender Virenscan bleiben ausdrücklich sichtbar;
-  archivierte Dateien behalten ihre Zuordnung, sind nicht herunterladbar.
-  Abnahme: RED zuerst; DB/FK/Auth/CSRF/Tenant/Retry/Archivierungsrennen und
-  Komponenten-/Chromium-Ablauf (mobil, Tastatur, Fehler und bestätigte Mutation
-  bei fehlgeschlagenem Refresh). Keine Mailanhänge, Löschung oder Exporte.
-  Abnahme: RED belegt, danach Node 24 Format/Lint/Typen/Build, 274 Unit-,
-  766 Komponenten-, 20 Workspace-/3 Docs-Tests und fokussierter Chromium-Lauf
-  grün; 320/1280-Screenshots geprüft. Vollständige Integration zuerst 498 grün
-  und eine veraltete Erwartung des letzten Migrationsnamens; korrigiert und
-  beide betroffenen DB-Dateien einschließlich weiterer Fremdmandantenfälle
-  mit 17/17 grün. Unabhängiger Review; Migration 0050 ausschließlich additiv.
-  Auslieferung bleibt bis erfolgreicher CI/Images separat offen.
+      eigener Bereich in Event → Dateien für verfügbare/archivierte Verknüpfungen,
+      Bibliotheksauswahl und Entfernen allein der Zuordnung. Keine Kopie von Bytes;
+      Upload bleibt über die bestehende Bibliothek erreichbar. Additive Migration
+      mit zusammengesetzten Mandanten-FKs; idempotente GET/PUT/DELETE-Endpunkte
+      `/api/v1/events/:eventId/library-files[/:fileId]`, Änderungen atomar mit Audit.
+      Ungeprüft-Status und fehlender Virenscan bleiben ausdrücklich sichtbar;
+      archivierte Dateien behalten ihre Zuordnung, sind nicht herunterladbar.
+      Abnahme: RED zuerst; DB/FK/Auth/CSRF/Tenant/Retry/Archivierungsrennen und
+      Komponenten-/Chromium-Ablauf (mobil, Tastatur, Fehler und bestätigte Mutation
+      bei fehlgeschlagenem Refresh). Keine Mailanhänge, Löschung oder Exporte.
+      Abnahme: RED belegt, danach Node 24 Format/Lint/Typen/Build, 274 Unit-,
+      766 Komponenten-, 20 Workspace-/3 Docs-Tests und fokussierter Chromium-Lauf
+      grün; 320/1280-Screenshots geprüft. Vollständige Integration zuerst 498 grün
+      und eine veraltete Erwartung des letzten Migrationsnamens; korrigiert und
+      beide betroffenen DB-Dateien einschließlich weiterer Fremdmandantenfälle
+      mit 17/17 grün. Unabhängiger Review; Migration 0050 ausschließlich additiv.
+      Auslieferung bleibt bis erfolgreicher CI/Images separat offen.
 
 - [x] **DOC-SEARCH-01 — `feat: search documents by number, customer and subject`**:
-  mandantengesicherte wortwörtliche Suche nach Belegnummer, Betreff und
-  Kontaktname/Ansprechpartner vor Pagination; begrenztes `q`, eigenes `df_q`
-  für Desktop/Filterdialog mit History und Seitenreset. Fremde Daten bleiben
-  unsichtbar, Prozent-/Unterstrich sind keine Wildcards. Kein Export.
-  Abnahme: API-/DB-Negativfälle, Komponenten- und Chromium-Filterablauf.
-  RED vor Umsetzung beobachtet; danach Node 24: Format/Lint/Typprüfung/Build,
-  274 Unit-, 761 Komponenten-, 153 Dokument-Integrationstests sowie 20 Workspace-
-  und 3 Docs-Tests grün. Chromium prüft echte Mehrworteingabe samt erhaltenem
-  Fokus, eigenem URL-Zustand, Seitenreset und Browser-Zurück. Unabhängiger
-  SQL-/UI-Review; dabei gefundener Formular-Remount behoben. Screenshot geprüft.
-  CI/Images und tatsächlicher Rollout werden getrennt verifiziert.
+      mandantengesicherte wortwörtliche Suche nach Belegnummer, Betreff und
+      Kontaktname/Ansprechpartner vor Pagination; begrenztes `q`, eigenes `df_q`
+      für Desktop/Filterdialog mit History und Seitenreset. Fremde Daten bleiben
+      unsichtbar, Prozent-/Unterstrich sind keine Wildcards. Kein Export.
+      Abnahme: API-/DB-Negativfälle, Komponenten- und Chromium-Filterablauf.
+      RED vor Umsetzung beobachtet; danach Node 24: Format/Lint/Typprüfung/Build,
+      274 Unit-, 761 Komponenten-, 153 Dokument-Integrationstests sowie 20 Workspace-
+      und 3 Docs-Tests grün. Chromium prüft echte Mehrworteingabe samt erhaltenem
+      Fokus, eigenem URL-Zustand, Seitenreset und Browser-Zurück. Unabhängiger
+      SQL-/UI-Review; dabei gefundener Formular-Remount behoben. Screenshot geprüft.
+      CI/Images und tatsächlicher Rollout werden getrennt verifiziert.
 
 - [x] **UI-01.2 — `style: flatten the document list and filter column`**: Die globale Dokumentliste gemäß der beobachteten Anordnung B36 als flache Arbeitsfläche mit rahmenloser Desktop-Filterspalte und ruhiger Tabelle mit Zeilentrennern darstellen. Prüfung am synthetischen Beispiel: Hell und Dunkel auf Desktop und Mobil, kein Seitenüberlauf, Filterdialog per Tastatur und Rückkehr zum Auslöser, benannter Tabellenbereich mit sichtbarem Fokus und horizontalem Scrollen per Pfeiltaste, Dateibibliothek auf eigener Route. Lokale Abnahme: Chromium bei 320, 390, 768, 1280 und 1440 px in beiden Themes, vier axe-Prüfungen ohne Verstöße und 30 Komponententests erfolgreich. Bilder bei 390 und 1440 px mit synthetischem Beleg geprüft.
 
 - [x] **UI-01.1 — `test: isolate document layout audits from login journeys`**:
-  die hinzugefügten Dokumentfilter-Browserprüfungen als eigenständig budgetierten
-  Ablauf prüfen, bestehende Auth-/Sicherheitsassertionen erhalten, keine bloße
-  Timeout-Erhöhung. Abnahme: beide Loginmodi und separater Dokumentablauf grün,
-  lokal 4/4 E2E grün (Hauptläufe 1,3/2,2 min, Dateien-Matrizen 10,8/12,3 s),
-  Typprüfung sowie Format/Lint/274 Unit-/20 Workspace-/3 Docs-Tests grün.
-  Die ursprünglichen Timeouts waren lokal nicht reproduzierbar; CI und Images
-  werden nach Push geprüft, bevor eine Auslieferung behauptet wird.
-
+      die hinzugefügten Dokumentfilter-Browserprüfungen als eigenständig budgetierten
+      Ablauf prüfen, bestehende Auth-/Sicherheitsassertionen erhalten, keine bloße
+      Timeout-Erhöhung. Abnahme: beide Loginmodi und separater Dokumentablauf grün,
+      lokal 4/4 E2E grün (Hauptläufe 1,3/2,2 min, Dateien-Matrizen 10,8/12,3 s),
+      Typprüfung sowie Format/Lint/274 Unit-/20 Workspace-/3 Docs-Tests grün.
+      Die ursprünglichen Timeouts waren lokal nicht reproduzierbar; CI und Images
+      werden nach Push geprüft, bevor eine Auslieferung behauptet wird.
 
 - [x] **UI-01 — `feat: filter documents from a quiet context column and a mobile drawer`** (27.10.2026)
 
@@ -1043,50 +1057,50 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   Kontextspalte mit Gruppierung Dokumentart/Datum/Status wie beobachtet und
   zurückhaltender Untergruppe „Zahlung und Frist“ (Fällig von/bis,
   Überfällig, Zahlungsstand); mobil kompakter Filterzugang mit Kriterienzahl
-  + bedienbarer Drawer statt acht Eingaben, Ergebnisliste früh sichtbar;
-  Tabelle ruhig/kompakt, Spaltenordnung an die beobachtete angleichen
-  (Status · Dokument/Nummer · Name · Datum · Betrag · Frist · Event ·
-  Zahlung · PDF/Aktionen). Eine Zustandsquelle bleibt die URL (`df_*`:
-  readFilters/apply wie heute); History/Back, Paging („es gibt mehr“),
-  Sicherheits- und Geschäftsregeln unverändert. Keine Attrappen für
-  Verträge/Fragebogen/Portal/Mail; Dateibibliothek bleibt getrennt
-  erreichbar; nur vorhandene Möglichkeiten umordnen – KEINE neue Such-API
-  (Beobachtungssuche „Kunde/Nummer durchsuchen“ bleibt offener späterer
-  Slice), KEIN CSV-Export, KEINE neue Finanzlogik, KEINE Schemaänderungen.
-  1024-px-Geometrie messen statt raten (Analyse: Kontextspalte + Tabelle
-  min-width 40rem kollidieren – Breakpoint aus Messung entscheiden,
-  Kontextspalte ≥1280, darunter kompakter Filterzugang). Akzeptanz:
-  synthetischer Bestand, 320/390/768/1280 hell+dunkel, keine
-  Body-Überbreite, vollständige Inhalte, Tastatur/Fokus/Escape/Abbruch,
-  Filter-URL/Zurück, Laden/Leer/Keine Treffer/Fehler; UI-Review vor finalen
-  Gates; Vorher/Nachher/Warum mit privaten Screenshots. Referenz ehrlich:
-  B36 ist Browserbeobachtung, kein REA-Beleg; Mobil-Dialogverhalten der
-  Referenz unbekannt; Taste v2 gilt nicht für Admin.
-  Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt Plan/Docs und reviewt.
-  Abgenommen: RED beobachtet (5 neue Verträge gegen den Altstand, 22
-  bestehende blieben grün), danach grün: `test:unit` 274/274,
-  `test:component` 759/759 (5 neue Verträge: Kontextspalte ohne Filterwand,
-  Untergruppe bei Deep-Link aufgeklappt, kompakter Zugang „Filter, N aktive
-  Kriterien“ + Entwurfs-Drawer mit genau einem History-Eintrag,
-  Abbrechen/Escape/Reset + Fokusrückkehr, beobachtete Spaltenordnung),
-  `test:integration` 495/495 unverändert, `test:coverage` vollständig
-  (FilesPanel 97,71% Zeilen/95,70% Zweige), `test:workspace`/`test:docs`/
-  schnelle Gates/Build grün; E2E 16/16 (Passwort-Szenario 2,4 min im Budget)
-  mit 4 Breiten × 2 Themes, Overflow-/Inhalts-/axe-Prüfung (9 axe-Scans
-  0 Verstöße), 1024-/1280-Geometriemessung, Sheet-Flow (ein History-Eintrag,
-  Back), Screenshots in tests/test-results. Gemessene Geometrie: 1024 px →
-  kompakter Zugang (Kontextspalte bräuchte 892 px in 638 px Fläche),
-  1280 px → Kontextspalte 192 px + 684 px Tabelle ohne Body-Überlauf.
-  Impeccable-Detektor über FilesPanel/styles.css: keine neuen Verstöße
-  (eine Warnung `side-tab` styles.css:1623 ist vorbestehender Datei-Drift
-  bei HEAD; 72 Advisory-Werte ebenfalls Altbestand – neue Werte 0.8rem/
-  0.75rem Radius sind on-Ramp; MiMo-„Angleichung“ auf Datei-übliche Werte
-  war off-ramp und wurde revidiert). Bewusst nicht gebaut (laut Auftrag):
-  Suchfelder (keine Such-API), „…“-Menü ohne Inhalt, „+“-Anlegen
-  (keine Route). Mobil-Drawer ist unser BKP007-Muster, kein erfundenes
-  Bookitup-Verhalten; 320/390/768 behalten alle acht Spalten mit
-  Shell-Scroll (H035) statt Spaltenreduktion – „vollständige Inhalte“
-  gewinnt, Body bleibt schmal.
+  - bedienbarer Drawer statt acht Eingaben, Ergebnisliste früh sichtbar;
+    Tabelle ruhig/kompakt, Spaltenordnung an die beobachtete angleichen
+    (Status · Dokument/Nummer · Name · Datum · Betrag · Frist · Event ·
+    Zahlung · PDF/Aktionen). Eine Zustandsquelle bleibt die URL (`df_*`:
+    readFilters/apply wie heute); History/Back, Paging („es gibt mehr“),
+    Sicherheits- und Geschäftsregeln unverändert. Keine Attrappen für
+    Verträge/Fragebogen/Portal/Mail; Dateibibliothek bleibt getrennt
+    erreichbar; nur vorhandene Möglichkeiten umordnen – KEINE neue Such-API
+    (Beobachtungssuche „Kunde/Nummer durchsuchen“ bleibt offener späterer
+    Slice), KEIN CSV-Export, KEINE neue Finanzlogik, KEINE Schemaänderungen.
+    1024-px-Geometrie messen statt raten (Analyse: Kontextspalte + Tabelle
+    min-width 40rem kollidieren – Breakpoint aus Messung entscheiden,
+    Kontextspalte ≥1280, darunter kompakter Filterzugang). Akzeptanz:
+    synthetischer Bestand, 320/390/768/1280 hell+dunkel, keine
+    Body-Überbreite, vollständige Inhalte, Tastatur/Fokus/Escape/Abbruch,
+    Filter-URL/Zurück, Laden/Leer/Keine Treffer/Fehler; UI-Review vor finalen
+    Gates; Vorher/Nachher/Warum mit privaten Screenshots. Referenz ehrlich:
+    B36 ist Browserbeobachtung, kein REA-Beleg; Mobil-Dialogverhalten der
+    Referenz unbekannt; Taste v2 gilt nicht für Admin.
+    Coding-Subagent: DeepSeek V4.1 Flash, MiMo besitzt Plan/Docs und reviewt.
+    Abgenommen: RED beobachtet (5 neue Verträge gegen den Altstand, 22
+    bestehende blieben grün), danach grün: `test:unit` 274/274,
+    `test:component` 759/759 (5 neue Verträge: Kontextspalte ohne Filterwand,
+    Untergruppe bei Deep-Link aufgeklappt, kompakter Zugang „Filter, N aktive
+    Kriterien“ + Entwurfs-Drawer mit genau einem History-Eintrag,
+    Abbrechen/Escape/Reset + Fokusrückkehr, beobachtete Spaltenordnung),
+    `test:integration` 495/495 unverändert, `test:coverage` vollständig
+    (FilesPanel 97,71% Zeilen/95,70% Zweige), `test:workspace`/`test:docs`/
+    schnelle Gates/Build grün; E2E 16/16 (Passwort-Szenario 2,4 min im Budget)
+    mit 4 Breiten × 2 Themes, Overflow-/Inhalts-/axe-Prüfung (9 axe-Scans
+    0 Verstöße), 1024-/1280-Geometriemessung, Sheet-Flow (ein History-Eintrag,
+    Back), Screenshots in tests/test-results. Gemessene Geometrie: 1024 px →
+    kompakter Zugang (Kontextspalte bräuchte 892 px in 638 px Fläche),
+    1280 px → Kontextspalte 192 px + 684 px Tabelle ohne Body-Überlauf.
+    Impeccable-Detektor über FilesPanel/styles.css: keine neuen Verstöße
+    (eine Warnung `side-tab` styles.css:1623 ist vorbestehender Datei-Drift
+    bei HEAD; 72 Advisory-Werte ebenfalls Altbestand – neue Werte 0.8rem/
+    0.75rem Radius sind on-Ramp; MiMo-„Angleichung“ auf Datei-übliche Werte
+    war off-ramp und wurde revidiert). Bewusst nicht gebaut (laut Auftrag):
+    Suchfelder (keine Such-API), „…“-Menü ohne Inhalt, „+“-Anlegen
+    (keine Route). Mobil-Drawer ist unser BKP007-Muster, kein erfundenes
+    Bookitup-Verhalten; 320/390/768 behalten alle acht Spalten mit
+    Shell-Scroll (H035) statt Spaltenreduktion – „vollständige Inhalte“
+    gewinnt, Body bleibt schmal.
 
 - [x] **BKP019.e12 — `feat: filter documents by payment state and due day`** (26.10.2026)
 
@@ -1148,7 +1162,7 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   RG-08-Status (sechs existieren bereits als `state`/`offerStatus`/
   `paymentState`/`correctionState`). **Rein abgeleitet, nie gespeichert,
   keine Migration:** `overdue = zahlbar (invoice|deposit_invoice ∧ final)
-  ∧ offener Saldo > 0 ∧ due_date < Mandantenheute` (strikt – „fällig heute“
+∧ offener Saldo > 0 ∧ due_date < Mandantenheute` (strikt – „fällig heute“
   ist nicht überfällig; Muster `offerExpired` mit `at`-Parameter,
   DST-sicher). Gilt bei Teilzahlung, Anzahlungen und Schlussrechnungen
   (reduzierter Anspruch), nicht bei Korrekturen/AB/Angeboten, nicht ohne
@@ -1408,12 +1422,12 @@ Ein Slice wird vollständig geprüft und gepusht, bevor der nächste beginnt.
   Migration `0044_document_payments` (append-only, keine Unique wegen
   Teilzahlungen, Audit `payment.recorded`); `document-payments.ts` mit
   Erfassung nur gegen **finale Rechnungen** (`POST /api/v1/documents/:id/
-  payments`: Datum nicht in der Zukunft, Betrag ≥1, Zahlweg
+payments`: Datum nicht in der Zukunft, Betrag ≥1, Zahlweg
   `bank_transfer|cash|card|other` = eigene dokumentierte Konvention, Notiz
   ≤2000), `lockTenant`/Admin/Audit in einer Transaktion; **Überzahlung 409
   `overpaid`** (Σ Zahlungen + neu ≤ offener Saldo); **erweiterter
   Kredit-Guard aus c2:** `Σ Gutschriften + Σ Zahlungen ≤ Brutto + Σ
-  Lastschriften` – solange es keine Rückzahlungslogik gibt, darf nicht
+Lastschriften` – solange es keine Rückzahlungslogik gibt, darf nicht
   gutgeschrieben werden, was bezahlt wurde (dokumentierter Zwischenzustand).
   Abgeleitete Werte (nie gespeichert): Zahlungsstand `none|partial|paid` +
   offener Betrag (`Brutto + Σdebit − Σcredit − ΣZahlungen`; die fehlende
@@ -2716,7 +2730,7 @@ Der neue Benutzerauftrag erweitert das Ziel auf möglichst vollständige Funktio
 - [x] **BKP005 — `style: use restrained neutral surfaces in both themes`** (23.10.2026): neutrale Flächen in beiden Themes statt dominanter Grünflächen. Umgesetzt (MiMo/DeepSeek-Schnitt, 112 API-Calls, Bericht `scratch/bkp005-report.txt`, Vorher-/Nachher-Screenshots im Scratch): alle Theme-Tokens in `styles.css` neu abgestimmt (Darkmode warmes Anthrazit, Hellmode neutrales Offwhite), die festen Seitenleisten-/Backdrop-/Scrim-/Kalender-Farben in Tokens überführt (`--sidebar-*`, `--menu-close-border`, `--backdrop`, `--scrim`, `--calendar-ink`), neue `--disabled-surface`/`--disabled-ink` (gestaffelte Disabled-Tiers nennen jetzt eigene Farben statt 0,6-Deckkraft; generische Inputs behalten die Deckkraft). Grün bleibt als kleiner entsättigter Akzent (Aktion/Fokus/aktive Navigationszeile, `--accent`/`--action` #3d6b58/#9dc1af); H036-Tiers, 44-px-Ziele und Fokus 3px/3px unverändert. Kontraste beider Themes gemessen (Fließtext 16,2/13,3; gedämpft 6,7/7,3; Aktion 6,1/8,6; Fokus 6,5/10,0; Disabled 4,57/6,13; Grenzen ≥3), Status weiterhin textlich benannt. Abnahme im echten Chromium bei 390/1280 in Hell und Dunkel: Referenzfläche (Liste, Formular, Legende, Dialog) sichtbar, kein Body-Overflow, Fokusring ≥3:1, Grünstich-Pixelanteil dunkel 96,2 % → 1,5 % (390) bzw. 0,6 % (1280); `apps/admin/DESIGN.md` trägt exakt die ausgelieferten Werte. Rot beobachtet (4 Component-Tests + E2E „rail is anthracite“ 15 > 4 gegen die Alt-Palette); GREEN unabhängig wiederholt: component 366/366 (u. a. neue Greenness-/Kontrast-/Disabled-Regressionen), unit 241/241 (ein bekannter `worker-main`-Readiness-Timing-Flake im Sammellauf, standalone 2/2 grün — vorbestehend), integration 286/286, `test:coverage` vollständig (893 Tests, Schwellen erreicht), Format/Lint/Typen/Build/Docs grün, E2E 6/6 (shell inkl. Referenzfläche + beide HTTPS-Anmeldemodi). Changed-Code-Coverage 0/0 (keine geänderten TS-Quellzeilen; Abnahme tragen die Messwerte). **Offen dokumentiert:** `.impeccable/design.json` zeigt noch die alte Palette (Sidecar-Drift; regelkonform nicht als Nebenwirkung repariert — nächster Design-Pass: `$impeccable doctor`); die Statuspastellen in `CalendarPanel.tsx` (colors-Map, „frei“ grün-pastell) blieben als kleine belegungsbezogene Zustandsflächen bewusst unverändert; enge Margen: Disabled hell 4,57:1, `quiet-action-border` hell 3,43:1 (jeweils über der 3:1-Grenze).
 - [x] **BKP007.1 — `feat: place event filters in a contextual sidebar and mobile drawer`** (23.10.2026): Die Eventfilter stehen als Desktop-Kontextspalte (`.event-context`, 15–17,5 rem = 240–280 px, direkt links der Ergebnisse, geprüfte Bounding-Box bei 1280/1024) mit der Bookitup-Gruppenfolge (Suche → Ansicht mit nur vorhandenen Zielen `#events`/`#calendar` → Sortieren mit „Ohne Datum“-Zähler → „Anfragen“ als Schnellfilter außerhalb der Sortier-Radiogruppe → Zeitraum-Presets → gefaltetes „Eigener Zeitraum“ → Buchungsstatus → Auftragsarten → Aktionen); genau eine Filterkopie, ein Formular (`filterPanel(mobile)` als gemeinsame Quelle), ein URL-Schreiber, keine Filterwand über den Ergebnissen. Mobil (≤1023) bleibt die Liste zuerst: kompakter „Filter“-Zugang mit Kriterienzahl (`activeFilterCriteria` zählt Dimensionen q / from+to+undated / status / eventTypeId, nicht Zeilen) und „Zurücksetzen“, dahinter ein voll bedienbares Sheet mit denselben Gruppen, „Ergebnisse anzeigen“ = genau ein History-Eintrag (per Zurück exakt die vorherige URL), „Filter schließen“ verwirft nur den Entwurf, Escape/Fokussalle (24× Tab) und Fokusrückkehr auf den Zugang; schmutziger Event-Editor bleibt erhalten; Preset-/Tenant-Zeitzonen-/Schaltjahres-/`df_*`-Logik unverändert (matchMedia 1024 mit Fallback „Spalte“ ohne matchMedia). Rot beobachtet (unit 1/242 „activeFilterCriteria is not a function“, neue Komponentendatei 10/10); GREEN unabhängig wiederholt: unit 242/242, component 381/381 (neue `event-filter-layout.test.tsx` 10 Tests), integration 286/286, `test:coverage` (909 Tests), Changed-Code 128/132 Zeilen und 168/180 Zweige, Format/Lint/Typen/Build/Docs grün, E2E 5/5 (auth beide Modi + shell) mit Browserabnahme 1280/1024/768/390/320 in Hell und Dunkel (kein Body-/Sheet-Overflow, Fokusverhalten, ein History-Eintrag). **BKP007.2 abgeschlossen (23.10.2026, `fix: count event filter totals server-side`):** `GET /api/v1/events` liefert additiv `filterCounts: {undated, inquiries}`, berechnet in derselben Repeatable-Read-Transaktion wie die Liste über EINE `count(*) filter (…)`-Aggregatsabfrage neben den Zeilen (keine Abfrage je Event, keine unbeschränkte Gesamtliste; Testbeleg: genau 2 `events`-Lesezugriffe, davon einer mit `count(`). Gemeinsame Filterliste `narrowing()` für Zeilen und Zähler: `q`/`status`/`eventTypeId` schränken ein, `from`/`to`, Sortierung und Undatiert-Ansicht nie (Datumsunabhängigkeit gemäß H041); Antwortfelder alt/`filterCounts`/`timeZone` exakt, `events` feldgleich zum Repository-Ergebnis (Abwärtskompatibilität getestet), Mandantentrennung getestet. Client zeigt die Serverwerte; die toten Clienthelfer `eventFilterCounts`/`filterRows`/`countable`/`FilterRow` sind entfernt, `FilterCounts`/`emptyFilterCounts` ersetzen sie; Zählbasis tabellarisch in `docs/event-search.md`. Rot beobachtet (Integration `expected undefined to deeply equal { undated: 2, inquiries: 3 }`, Component `expected '0' to be '4'`); GREEN unabhängig wiederholt: unit 242/242, component 382/382, integration 287/287, `test:coverage` (911 Tests), Changed-Code 15/15 Zeilen und 14/16 Zweige, Format/Lint/Typen/Build/Docs grün, E2E auth 2/2. **Offene Referenzfrage (bewusst nicht erfunden):** Die Statusabhängigkeit des Anfragenzählers bleibt wie bisher (angewandter Statusfilter gilt mit) — ob Bookitup das ebenso handhabt, ist unbelegt und vor einer Änderung gezielt an der Referenz abzugleichen. **Weiter offen:** Monat/Jahr-Bedienung, echte Ansichtwechsel, Status-/Art-Mehrfachwahl (API kennt Einzelwerte), Solo/Agentur ohne Referenz — laut Ticket Folge-Unter-Slices erst nach gezielter Referenzprüfung.
 - [x] **BKP007.3 — `fix: keep the mobile filter sheet a coherent draft until applied`** (23.10.2026, Korrektur-Slice): Von Codex unabhängig reproduzierte P1-Regression der mobilen Filter (Reproduktion am unveränderten `836d627` mit Vitest-Komponentenregression, 3 Assertions rot; Testkopie außerhalb Git unter `/Users/gp/Documents/AuftragsKompass-Sicherung/hermes-review-2026-10-23/review-mobile-filter.tmp.test.tsx`). Fehlerbild: (1) Im mobilen Sheet schreiben Sortierung/Presets/„Anfragen“/„Eventfilter zurücksetzen“ sofort die URL, während Suche/Status/Datum Entwurf bis „Ergebnisse anzeigen“ sind; der URL-Key `key={urlSearch + ':' + timeZone}` remountet daraufhin das Formular und verwirft den Eingabeentwurf (Beleg: Suchfeld springt nach Klick auf „Ohne Datum“ von „Synthetic unsaved search“ auf „Synthetic“ zurück, `pushState` wurde bereits einmal aufgerufen). (2) „Filter schließen“/Escape nehmen die schon geschriebenen Änderungen nicht zurück (URL nach Schließen `?q=Synthetic&undated=true` statt der ursprünglichen `?q=Synthetic&from=2026-10-01`). (3) `applyFilters` setzt `undated` immer auf leer: „Ohne Datum“ auswählen und anschließend „Ergebnisse anzeigen“ hebt die eigene Auswahl wieder auf. Soll (verbindlich): Im mobilen Drawer gilt EIN kohärenter Entwurf für ALLE Filter (Suche/Status/Art/Datum/Sortierung/Presets/„Anfragen“/„Zurücksetzen“); nichts im Sheet schreibt die URL. „Ergebnisse anzeigen“ schreibt atomar genau einen History-Eintrag und holt Ergebnisse; Sortierung „Ohne Datum“ bleibt dabei bestehen und löscht gemäß bestehender Semantik die Datumsgrenzen; chronologisch setzt `undated` leer. „Filter schließen“ und Escape verwerfen ALLE Entwurfsänderungen, erhalten die angewandte URL/Ergebnisse und geben den Fokus an den Filterzugang zurück. Der Entwurf geht bei keiner Kombination (Suche+Preset/Sort/Status/„Anfragen“) verloren. Desktopverhalten bewusst unverändert (sofortige Schreibaktionen in der Kontextspalte bleiben); keine neuen Abhängigkeiten, keine neue Formulararchitektur. Erhalten bleiben `df_*`/fremde Queryparameter, Tenant-Zeitzone, Browser-Zurück (trifft die vorherige URL), ungültige Bereiche (Eingaben bleiben) und der schmutzige Eventeditor. Bestehender Test „both presentations read the same applied filter state“ schreibt den Fehler als Vertrag fest und wird SINNVOLL korrigiert (Sheet-Preset = Entwurf ohne History-Eintrag, Abschluss = genau ein Eintrag mit `undated=true` und ohne `from`), nicht durch zusätzliche grüne Tests ersetzt. Tests zuerst rot (Reproduktionsfall + negative Fälle), echter Chromium-Ablauf Desktop+Mobil mit Mischbedienung, Abbruch, Abschluss und Zurück. MiMo prüft vollständigen Diff und Gates unabhängig; explizites Staging, sofortiger Push, finale CI exakt zum neuen HEAD. Kein Merge/Deploy, keine echten Daten, keine Aktivierung des Website-Drains, keine BKP009–030.
-**Abnahme BKP007.3:** Rot auf unveränderter HEAD-Fassung beobachtet (8 failed/9 passed, u. a. `expected 'Synthetic' to be 'Synthetic unsaved search'`, URL `?q=Synthetic&undated=true` statt `?q=Synthetic&from=2026-10-01`, 4 bzw. 2 statt 1 `pushState`); GREEN unabhängig wiederholt: `event-filter-layout.test.tsx` 17/17 (Reproduktion + korrigierter Vertrag „both presentations …“ — Sheet-Sort = Entwurf ohne History-Eintrag, Abschluss = genau ein Eintrag mit `undated=true` ohne `from` — plus Mischkombination, Bug 3, Abbruch/Escape, In-Sheet-Reset, Desktop-Kontrast), component 402/402, unit 243/243, integration 287/287, `test:coverage` (932 Tests, Schwellen erreicht), Changed-Code 44/47 Zeilen und 67/70 Zweige, Format/Lint/Typen/Build/Docs grün, E2E 13/13 (alle Spec-Dateien; auth beide Modi mit Mischbedienung ohne URL-Schreiben, Abbruch mit Fokusrückkehr, Abschluss mit genau einem `/api/v1/events`-Abruf, `goBack` trifft exakt die vorherige URL, 390 hell+dunkel und Desktop-Kontrast 1280/320/768 ohne Overflow). Umgesetzt: `filterDraft` wird beim Öffnen aus der angewandten URL initialisiert, jedes Sheet-Bedienlement schreibt nur in den Entwurf (stabiler Form-Key, kontrollierte Felder, kein Remount), „Ergebnisse anzeigen“ schreibt atomar genau einen History-Eintrag (Sortierung „Ohne Datum“ bleibt bestehen und löscht die Datumsgrenzen; `undated` nie mehr pauschal leer), „Filter schließen“/Escape verwerfen ALLE Entwurfsänderungen und geben den Fokus zurück, In-Sheet-Reset leert nur den Entwurf; Desktop-Kontextspalte behält den Sofortschreiber. **Ehrliche Grenzen dieses Korrekturslices:** eine neu getippte Datumsgrenze hebt den Entwurfs-Sortierer weiterhin auf (bisherige `applyFilters`-Regel „eingereichter eigener Zeitraum ist chronologisch“, auch Desktop-Submit lässt `undated` beim Absenden los — bewusst unverändert laut Vorgabe „Desktopverhalten erhalten“); Popstate bei offenem Sheet lässt den Entwurf stehen (Sheet ist modal); Desktop verliert getippte Suche beim Sofort-Preset weiterhin (unverändert); „Eigener Zeitraum“ öffnet im Sheet imperativ; keine Bildsicht (Belege: Geometrie-/Overflow-Asserts + Screenshots).
+      **Abnahme BKP007.3:** Rot auf unveränderter HEAD-Fassung beobachtet (8 failed/9 passed, u. a. `expected 'Synthetic' to be 'Synthetic unsaved search'`, URL `?q=Synthetic&undated=true` statt `?q=Synthetic&from=2026-10-01`, 4 bzw. 2 statt 1 `pushState`); GREEN unabhängig wiederholt: `event-filter-layout.test.tsx` 17/17 (Reproduktion + korrigierter Vertrag „both presentations …“ — Sheet-Sort = Entwurf ohne History-Eintrag, Abschluss = genau ein Eintrag mit `undated=true` ohne `from` — plus Mischkombination, Bug 3, Abbruch/Escape, In-Sheet-Reset, Desktop-Kontrast), component 402/402, unit 243/243, integration 287/287, `test:coverage` (932 Tests, Schwellen erreicht), Changed-Code 44/47 Zeilen und 67/70 Zweige, Format/Lint/Typen/Build/Docs grün, E2E 13/13 (alle Spec-Dateien; auth beide Modi mit Mischbedienung ohne URL-Schreiben, Abbruch mit Fokusrückkehr, Abschluss mit genau einem `/api/v1/events`-Abruf, `goBack` trifft exakt die vorherige URL, 390 hell+dunkel und Desktop-Kontrast 1280/320/768 ohne Overflow). Umgesetzt: `filterDraft` wird beim Öffnen aus der angewandten URL initialisiert, jedes Sheet-Bedienlement schreibt nur in den Entwurf (stabiler Form-Key, kontrollierte Felder, kein Remount), „Ergebnisse anzeigen“ schreibt atomar genau einen History-Eintrag (Sortierung „Ohne Datum“ bleibt bestehen und löscht die Datumsgrenzen; `undated` nie mehr pauschal leer), „Filter schließen“/Escape verwerfen ALLE Entwurfsänderungen und geben den Fokus zurück, In-Sheet-Reset leert nur den Entwurf; Desktop-Kontextspalte behält den Sofortschreiber. **Ehrliche Grenzen dieses Korrekturslices:** eine neu getippte Datumsgrenze hebt den Entwurfs-Sortierer weiterhin auf (bisherige `applyFilters`-Regel „eingereichter eigener Zeitraum ist chronologisch“, auch Desktop-Submit lässt `undated` beim Absenden los — bewusst unverändert laut Vorgabe „Desktopverhalten erhalten“); Popstate bei offenem Sheet lässt den Entwurf stehen (Sheet ist modal); Desktop verliert getippte Suche beim Sofort-Preset weiterhin (unverändert); „Eigener Zeitraum“ öffnet im Sheet imperativ; keine Bildsicht (Belege: Geometrie-/Overflow-Asserts + Screenshots).
 - [x] **BKP008 — `feat: make the mobile month calendar readable with a day agenda`** (23.10.2026): Das Monatsraster bleibt ein echtes Mo–So-Raster (BKP001-Ausrichtung unverändert, `month-alignment.spec.ts` 3/3 grün) und wird mobil lesbar: Tageszelle ist ein nativer Tagesknopf mit einzeiliger Zahl (nicht mehr „Do., 01.10.“ in jeder Zelle), Ereignisanzahl als Pille ab zwei Events, gezeichnete SVG-Statusmarken je Status (Form statt Farbe), „heute“ gestrichelt plus Wort und Auswahl als Kontur plus Innenring — ohne große Farbfläche unterscheidbar. Darunter die vollständige Tagesagenda: ganzer Titel (kein Abschneiden, Langtitel geprüft), Zeit bzw. „Tagesbuchung, ohne Uhrzeit“, Status/Ort/Kontakt/Ressourcen und erreichbarer Eventlink; ein leerer Tag sagt „Keine Events an diesem Tag.“; Tageswechsel ohne Refetch, Raster mit genau einem Tab-Stopp plus Pfeiltasten (Home/End am Rand), Legende kompakt, fachliche Warnung unverändert. BKP001 fordert den Eventlink zusätzlich in der Zelle ab 60 rem — erhalten. **H042-Abgleich erfüllt:** die Tageliste von `codex/h042-mobile-geometry` wurde bewusst nicht übernommen (Zielvertrag §4 „keine freie Terminliste“), Sticky-Footer/44-px-Regeln dort bleiben separat dokumentiert. Rot beobachtet (10/10 neue Komponententests, u. a. `expected ['1','2',…] to deeply equal ['Do., 01.10.', …]`); zwei echte Regressionsfunde der Gates behoben: axe `label-content-name-mismatch` (auth.spec 2/2 rot, 41 Knoten → 0) und 2 px Grid-Überlauf durch globales `li > button`-Margin (272 → 270 bei 320). GREEN unabhängig wiederholt: unit 243/243, component 395/395 (neu `calendar-mobile.test.tsx` 13), integration 287/287, `test:coverage` (925 Tests), Changed-Code 57/58 Zeilen und 87/93 Zweige, Format/Lint/Typen/Build/Docs grün, E2E 13/13 (calendar-mobile 3 neu, month-alignment 3, auth 2, shell 4+Referenzfläche) mit Browserabnahme 320/390/768/1280/1440 hell+dunkel (Agenda-Langtitel 132,8 px ungekürzt, Kontraste hell 6,1–16,2 / dunkel 7,3–13,3). **Dokumentierte geometrische Grenze:** bei 320 px sind es 7 Spalten à 32,9 px — 44 px Zielbreite ist im Mo–So-Raster unmöglich; Höhe 44 px gehalten, die ganze Zelle ist Ziel, zusätzlich bestehen Pfeiltasten und die Agenda. Offen vermerkt: kein physischer Touch-/Swipe-Test (kein Gerät), Datumsfeld bleibt ungefaltet, `auth.spec` läuft lokal nur unter Node 26 (Node 23 scheitert unabhängig an `sanitize-html`).
 - [x] **BKP031.1 — geprüften Stand sicher in den Testbetrieb geliefert** (23.10.2026, Release-/Betriebsslice): geprüften Stand `eef40bd` sicher in den bestehenden Testbetrieb liefern (Sequenz A aus `docs/bookitup-parity/delivery-workflow.md`, die hier verbindlich verlinkt ist). Vorgehen: (1) Fast-forward-Beziehung `cf68f1e` → `eef40bd` erneut prüfen; die freigegebene UX-Branch `codex/ux-event-simplification` nur per Fast-forward auf den geprüften Paritätsstand vorziehen (Historie erhalten, kein Force-Push, `main` unangetastet). (2) Vollständig grüne CI **einschließlich images** exakt zum freigegebenen SHA auf dieser Branch abwarten (Allowlist `quality.yml`; ein quality-Lauf allein ist kein Deploynachweis). (3) Genau EINEN Updateweg nutzen: den koordinierten automatischen Updater `ak-test-update.timer` (Checkpoint mit Dienste-Pause, verifizierter Dump, zusätzliche Hostkopie mit identischem SHA-256, Digest-Pins, OCI-Revisionsprüfung, `needs-attention`-Fehlersperre, gemeinsames Schloss `/run/lock/auftragskompass-update.lock`); keine parallelen manuellen Updates, laufenden Service abwarten, Timerzustand bewahren. (4) Der automatische Website-Option-Drain bleibt ausdrücklich **off** (kein `AK_INQUIRY_OPTION_DRAIN=on`; Beleg: Worker-Meldung `website_option_drain_inactive`, bereit, Gateway-Empfang läuft, keine Übernahme echter Rückstände). (5) Nach dem Update: drei gesunde Container + exakte OCI-Revision + sichtbare Buildkennung + Browser neu laden (keine ungespeicherten Eingaben verwerfen) + Assets/Filterposition/Theme + **direkte Desktop-/Mobil-Bildprüfung** (Screenshots privat, Build-SHA-bezogen); Betreiberausgleich der Hostkopie mit identischem SHA-256 notieren. (6) Statusmatrix `docs/bookitup-parity/delivery-workflow.md` auf VISUELL ABGENOMMEN / AUSGELIEFERT hochziehen. Kein Produktiv-Cutover, keine echten Datenimporte/Mails, kein Schema-/Datenkontrollverlust; Checkpointfehler stoppen vor Änderungen. Danach Sequenz B (BKP014.1, dann BKP013.1, jeweils einzeln aktiviert, getestet und über denselben Weg ausgeliefert).
 - [x] **BKP013.1 — `refactor: organize event details around focused work areas`** (23.10.2026): stabiler Ereigniskopf (Datum/Titel/Status) und klare Kontexte Details/Ressourcen/Dateien (Auftrag Sequenz B.2 + tasks-core BKP013): vorhandene Dokumente aus „Allgemein/Übersicht“ in einen eigenen Dateien-Kontext verschieben (nach tatsächlicher Art beschriften, bestehende Angebote dürfen nicht verschwinden), Notizen/Logbuch sinnvoll zugänglich erhalten, KEIN Mail-Attrappenreiter ohne Mailfunktion; Hauptinformationen Allgemein/Termin/Kontakt/Ort gut gruppiert, mobil Fokus aufs Nötigste; unvollständiges Website-Event ist ein normaler Zustand. Anlegen/Bearbeiten/Speichern/Abbrechen, Dirtyschutz, Wiederladen und Zurück müssen einen vollständigen benutzbaren Weg ergeben; alte Bereichsanker/Back sauber kompatibel auflösen; Ressourcen-/Statusmutation bleibt dieselbe atomare API; kein Backend-Umbau. Tests: Bereichswechsel erhält schmutzige Entwürfe oder fragt, Hintergrundrefresh überschreibt nicht, Dokumenterfolg bleibt bei Neuladefehler sichtbar, Fokus auf gewähltem Bereich, Tastatur/320px. Commit `refactor: organize event details around focused work areas`; danach Auslieferung über denselben Weg und visuelle Abnahme am ausgelieferten Build. **Abnahme/Belege BKP013.1:** Stabiler Ereigniskopf (`event-record-head`, Datum/Zeitfenster/Titel/Status/Art/wirksamer Ort, `data-status` + Statusmarke, Website-Badge, defensiv `source ?? ''`); fünf Bereiche Details/Ressourcen/Dateien/Notizen/Logbuch (kein Mail-Reiter), Dokumente aus „Übersicht“ in den Dateien-Konticht verschoben und nach tatsächlicher Art gruppiert (Angebote als vorhandene Gruppe, andere Arten nur mit echten Zeilen — keine erfundenen Gruppen, bestehende Angebote bleiben); Notizen/Logbuch direkt erreichbar (Notizen bleiben wie zuvor Anzeige — Bearbeitung im Eventformular); Bereiche bleiben `hidden` eingehängt (Status-/Dispositionsentwürfe überleben jeden Wechsel und Hintergrundrefresh), gewählter Bereich erhält den Tastaturfokus; Kontakt/Ort ab 64rem daneben, darunter als bewusstes Disclosure; unvollständiges Website-Event = normaler Zustand („Kontakt noch offen.“). Anker: Bereiche waren nie URL-adressierbar (State), `#event-<id>`/`eventTargetHref` treffen die Akte unverändert, „Übersicht“ = „Details“ mit identischem Inhalt. Nebenbefund behoben: Fixture ohne `source` ließ den Kopf abstürzen → `(source ?? '')`. Rot beobachtet (11/11 neue Kriterientests, u. a. fehlende Rollen „Details“/„Dateien“, `expected null to be truthy` für den Kopf); GREEN unabhängig wiederholt: component 423/423 (`event-record-contexts.test.tsx` 11), unit 243/243, integration 287/287, `test:coverage` (953 Tests, Schwellen erreicht), Changed-Code 61/62 Zeilen und 94/99 Zweige, Format/Lint/Typen/Build/Docs grün, E2E 6/6 (auth beide Modi mit Aktenwegen + shell) und im Agentenlauf zusätzlich axe 0/12 Aktenzustände, 320/390/1280 hell+dunkel ohne Overflow, Aktenschale einzeilig, Aside mobil zu/1280 rechts daneben, Dirty-Weg Status+Disposition, Zurück zur Liste. **Restabweichungen:** Notizen in der Akte read-only (Bearbeitung im Eventformular — unveränderter Vorstand); Browser-Zurück/„Schließen“ verwerfen schmutzige Entwürfe ohne Rückfrage (app-weiter dokumentierter Altzustand, popstate nie abgesichert); Kopf nicht sticky; Kontakt/Ort-Disclosure erst unter 64rem; bei 320 brechen die fünf Bereichsnamen um (44 px Höhe bleibt); keine Bildsicht/echten Zoom-/Touch-Abnahme. **Nachtrag Auslieferung/Abnahme (23.10.2026):** UX-Branch FF `f8d19ea` → `605f75b`, CI 40014987242 quality+images success, `ak-test-update.timer`-Lauf 22:09:59, drei gesunde Container auf `605f75bd1a913feb6087b4b954de39c5e6420b46`, Checkpoint-Kopien ×3 identisch `dcc63a566bc2…`, `last-success` gesetzt, kein `needs-attention`, Drain weiter inaktiv. Visuelle Abnahme am live ausgelieferten Build: acht Zustände 320/390/768/1280 × Hell/Dunkel (Kopf/Bereiche/Artengruppierung/„Kontakt noch offen“/kein Mail-Reiter/Overflow 0), Belege privat `delivery-2026-10-23/bkp013-1-605f75b-*`; Vorher `bkp013-1-vorher-*` (vier Bereiche, Dokumente in Übersicht), Warum = Nutzerbefund + Referenz B04/B05.
@@ -2726,6 +2740,7 @@ Der neue Benutzerauftrag erweitert das Ziel auf möglichst vollständige Funktio
 - [x] **BKP006 — `style: integrate sidebar collapse into the brand row`** (23.10.2026): Der Collapse-Schalter sitzt nicht mehr als eigene Zeile vor der Marke, sondern in einer kompakten `.sidebar-brand-row` mit dem Marken-/Heimlink (Desktop-Seitenleiste); eingeklappt stapelt dieselbe Zeile AK-Marke über Ausklapp-Schalter, beide 44×44 und zentriert, am selben DOM-Knoten und damit an derselben logischen Position mit erhaltenem Fokusziel. Marke/`Home`-Link, Labels, `title`, `aria-expanded`, gespeicherte `ak-sidebar`-Präferenz und Storage-Sync bleiben unverändert (Marke als `brand()`-Helfer identisch in Leiste und mobilem Drawer wiederverwendet); mobil gibt es weiterhin nur Menü öffnen/schließen (kein zusätzlicher Collapse im Drawer, genau ein „Menü öffnen“), der Schriftzug bricht nicht ab und überlappt nichts. Rot beobachtet (2 von 22 Navigations-Tests: `sidebar.firstElementChild`/`toggle.parentElement`); GREEN unabhängig wiederholt: navigation 22/22, component 371/371 (u. a. Struktur-/Fokus-/Label-Regressionen), unit 241/241, integration 286/286, `test:coverage` (898 Tests), Changed-Code 3/3 Zeilen und 8/8 Zweige, Format/Lint/Typen/Build/Docs grün, E2E 5/5 (shell + beide Anmeldemodi) mit Bounding-Box-Abnahme: Zeile 204×44 bei 240er Leiste (Marke 156 px ungekürzt, Schalter 44×44), gestapelt 60 px Zeile ohne Überdeckung, kein Body-Overflow bei 320/390/640/768. **Ehrliche Grenze:** 200 %-Zoom ist als Layoutbreiten-Äquivalent (960/1024/640) geprüft, weil headless Chromium keinen echten Browser-Zoom kennt; Modifier-/Mittelklick auf Marke/Nav bleibt nativ (unveränderter `onClick`-Pfad). **CI-Nachtrag (Run 39924234516):** Der erste CI-Lauf war rot in `auth.spec.ts` (`name.clipped` true): die Wortmarke wurde unter den breiteren Linux-Fonts der Runner ellipsiert, weil die geteilte Zeile nur 156 px Platz ließ (lokal unter macOS-Schrift passten 150,7 px). Gefixt als eigener Folge-Commit `style: keep the sidebar wordmark unclipped in the brand row`: die Markenzeile läuft randlos über beide Innenabstände (Marke ~176 px), die Rail-Wortmarke erhält die dokumentierte Größe `1rem` (Drawer bleibt `1.15rem`), und die E2E hält zusätzlich die font-unabhängige Layoutgarantie `brand.width >= 168` fest (Worst-Case-Schätzung breitester üblicher Systemschrift bei `1rem`: ~157 px Text). `clipped === false` bleibt als Vertrag bestehen; DESIGN.md führt die neue Geometrie.
 
 Prüfbasis: `cf68f1e` ist im gelesenen Remote-Source und der geöffneten App vorhanden; ältere H041-Notiz „Commit/Push ausstehend“ darunter ist ein historischer Zwischenstand. CI-/Container-/Produktivabnahme wurden für R001 nicht wiederholt.
+
 - [x] H022: AuftragsKompass nach Host-Neustart automatisch starten. Admin und Gateway an `multi-user.target` binden; Datenbank, Worker und API über vorhandene Health-Abhängigkeiten starten. Abnahme: Boot-Vertrag zunächst rot, nativer Quadlet-Generator mit beiden Boot-Symlinks, alle fünf Dienste gesund und öffentliche Adresse erreichbar; kein vollständiger Host-Neustart.
 
 ## 1. Lieferstrategie
@@ -2970,19 +2985,19 @@ C001 wird mit dieser Planprüfung nachgebessert; es wird noch kein Implementieru
 - [x] **BKP013.3 — `style: place event actions in the record header`**: Die seltene Aktion „Event entfernen“ liegt in einem nativen, zunächst geschlossenen Menü im Eventkopf und bleibt in allen Eventbereichen erreichbar. Bestätigung, Dirty- und Versionsschutz bleiben unverändert. Komponententests prüfen Auffindbarkeit, Tastaturbedienung und die bestehenden Fehler- und Löschpfade; synthetische Ansichten in beiden Themes bei Mobil- und Desktopbreite prüfen.
 - [x] **C027.5 — `fix: return to events after removing a record`**: Nach bestätigter oder ungeklärter Entfernung wird der Aktenlink durch die Eventliste ersetzt, sodass ein Neuladen keine entfernte Akte erneut öffnet; die bestehenden Listenabgleiche und Hinweise bleiben erhalten. Komponententest prüft die Adresse nach Entfernung.
 - [ ] C027–C075 und C077–C085: als Commitfolge nicht abgenommen. Viele
-  Inhalte sind seither über eigene Slices (E…, BKP…, MAIL-…, DOC-…, QW…) und in
-  anderer Reihenfolge umgesetzt. Stand 25.11.2026 (QW8, aus Code und Doku
-  belegt; **keine** formale Meilensteinabnahme):
+      Inhalte sind seither über eigene Slices (E…, BKP…, MAIL-…, DOC-…, QW…) und in
+      anderer Reihenfolge umgesetzt. Stand 25.11.2026 (QW8, aus Code und Doku
+      belegt; **keine** formale Meilensteinabnahme):
 
-  | Bereich | Umgesetzt (Beleg) | Offen |
-  | --- | --- | --- |
-  | M1 Abschluss (C027) | C001–C026, C027.1–C027.5 | Release-Markierung |
-  | M2 Anfragen (C028–C037) | Signierter Übergabevertrag (E004.3), getrennte Anfrage-API und Gateway (E004.6), Formular-Widget, lokale Übernahme mit automatischer Option statt Hold (E004.8–E004.14, H032), Telegram/Mail-Hinweis | Anonymisierte Verfügbarkeitsprojektion und -widget (C029–C031, C036), Branding-Einstellungen (C032), WordPress-Shortcode (C033), Release |
-  | M3 Kommunikation (C038–C046) | Dateiablage (C038), SMTP-Versand mit Outbox und Status (C039, MAIL-021, MAIL-STATUS-01), Vorlagen und Platzhalter (C043, MAIL-TPL-01), Anhänge und Signaturen (Teil C044, ATTACH-01, MAIL-SIG-01), Später senden (Teil C045, QW5) | IMAP-Abruf, Zuordnung, Posteingang (C040–C042), Entwürfe und Antworten (Rest C044), Nachfassen (Rest C045), Release |
-  | M4 Dokumente (C047–C056) | Vorlagen, Layout, PDF, Nummern, Angebote, Annahme, AB, Rechnungen, Anzahlung, Schlussrechnung, Korrektur, Zahlungen, offene Posten (C047–C055; DOC-…, BKP019, QW4, QW7) | Fachliche Gesamtabnahme mit echten Belegen, Release |
-  | M5 Verträge/Fragebögen (C057–C066) | – | vollständig |
-  | M6 Aufgaben/Absagen (C067–C073) | Absagegrund am Event (C071, QW2) | Aufgaben (C067–C070, vom Betreiber vorerst ausgeklammert), Auswertung (C072), Release |
-  | M7 Produktionsreife (C074–C085) | Minimalimport mit Prüfliste (Teil C074/C075, E003), verschlüsselte Sicherung und Zeitplanvorlage (Teil C078, E005.1/E005.2), Browserschutz (Teil C079, E005.15), Mengenprobe (Teil C081, E005.12/17), Oberflächenprüfung (Teil C082, E005.16), Störungsleitfaden (Teil C083, E005.21) | Offene Posten/Zähler-Import (C077), unabhängiges Sicherungsziel und Restore-Abnahme, vollständige Härtung und Mandantenprüfung (C079/C080), Migrationsprobe und Umstellung (C084), Release (C085) |
+  | Bereich                            | Umgesetzt (Beleg)                                                                                                                                                                                                                                                                     | Offen                                                                                                                                                                                             |
+  | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | M1 Abschluss (C027)                | C001–C026, C027.1–C027.5                                                                                                                                                                                                                                                              | Release-Markierung                                                                                                                                                                                |
+  | M2 Anfragen (C028–C037)            | Signierter Übergabevertrag (E004.3), getrennte Anfrage-API und Gateway (E004.6), Formular-Widget, lokale Übernahme mit automatischer Option statt Hold (E004.8–E004.14, H032), Telegram/Mail-Hinweis                                                                                  | Anonymisierte Verfügbarkeitsprojektion und -widget (C029–C031, C036), Branding-Einstellungen (C032), WordPress-Shortcode (C033), Release                                                          |
+  | M3 Kommunikation (C038–C046)       | Dateiablage (C038), SMTP-Versand mit Outbox und Status (C039, MAIL-021, MAIL-STATUS-01), Vorlagen und Platzhalter (C043, MAIL-TPL-01), Anhänge und Signaturen (Teil C044, ATTACH-01, MAIL-SIG-01), Später senden (Teil C045, QW5)                                                     | IMAP-Abruf, Zuordnung, Posteingang (C040–C042), Entwürfe und Antworten (Rest C044), Nachfassen (Rest C045), Release                                                                               |
+  | M4 Dokumente (C047–C056)           | Vorlagen, Layout, PDF, Nummern, Angebote, Annahme, AB, Rechnungen, Anzahlung, Schlussrechnung, Korrektur, Zahlungen, offene Posten (C047–C055; DOC-…, BKP019, QW4, QW7)                                                                                                               | Fachliche Gesamtabnahme mit echten Belegen, Release                                                                                                                                               |
+  | M5 Verträge/Fragebögen (C057–C066) | –                                                                                                                                                                                                                                                                                     | vollständig                                                                                                                                                                                       |
+  | M6 Aufgaben/Absagen (C067–C073)    | Absagegrund am Event (C071, QW2)                                                                                                                                                                                                                                                      | Aufgaben (C067–C070, vom Betreiber vorerst ausgeklammert), Auswertung (C072), Release                                                                                                             |
+  | M7 Produktionsreife (C074–C085)    | Minimalimport mit Prüfliste (Teil C074/C075, E003), verschlüsselte Sicherung und Zeitplanvorlage (Teil C078, E005.1/E005.2), Browserschutz (Teil C079, E005.15), Mengenprobe (Teil C081, E005.12/17), Oberflächenprüfung (Teil C082, E005.16), Störungsleitfaden (Teil C083, E005.21) | Offene Posten/Zähler-Import (C077), unabhängiges Sicherungsziel und Restore-Abnahme, vollständige Härtung und Mandantenprüfung (C079/C080), Migrationsprobe und Umstellung (C084), Release (C085) |
 
 ## 2. Qualitätsregeln
 

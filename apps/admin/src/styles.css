@@ -2157,6 +2157,14 @@ summary {
   background: var(--surface);
   box-shadow: var(--shadow-card);
 }
+.event-list > li.event-card:has(.event-record) {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.event-list > li.event-card:has(.event-record)::before {
+  display: none;
+}
 .event-list > li.event-card:has(> .event-row:not([hidden])) {
   padding-left: 2.25rem;
 }
@@ -2579,12 +2587,17 @@ summary {
 .event-record-reason {
   overflow-wrap: anywhere;
 }
-.event-record-actions > summary {
-  color: var(--quiet-ink);
+/* UI-BKP-03: the rare record actions are quiet text links at the foot of
+   the record column - duplicate in the accent, delete in red. */
+.event-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+  padding-block: 0.5rem;
 }
-/* The rare record actions sit in one wrapping row below their summary. */
-.event-record-actions > button {
-  margin: 0.5rem 0.5rem 0 0;
+.event-record-actions > .tertiary-action {
+  justify-content: flex-start;
+  padding-inline: 0;
 }
 .event-record h3 {
   font-size: 1rem;
@@ -2656,6 +2669,8 @@ summary {
   gap: 1rem;
   min-width: 0;
 }
+/* UI-BKP-03: Bookitup's record cards - white with a thin rule in the
+   middle, without a rule but with a soft all-round shadow on the right. */
 .event-detail-primary,
 .event-detail-overview,
 .event-detail-section,
@@ -2664,8 +2679,19 @@ summary {
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--field-surface);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.event-aside-contact,
+.event-aside-location {
+  border-color: transparent;
+  box-shadow: var(--shadow-aside);
+}
+.event-detail-stack {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  min-width: 0;
 }
 .event-detail-primary > h4:first-child,
 .event-detail-overview > h4:first-child,
@@ -2679,9 +2705,36 @@ summary {
   margin-block-start: 1rem;
   overflow-wrap: anywhere;
 }
+.event-aside > section:first-of-type {
+  margin-block-start: 0;
+}
+/* UI-BKP-03: every record card title in Bookitup's 18px bold. */
+:is(
+    .event-detail-primary,
+    .event-detail-section,
+    .event-aside-contact,
+    .event-aside-location
+  )
+  > h4:first-child {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
 .event-aside-contact ul {
   list-style: none;
   padding: 0;
+}
+/* H042: every contact link is its own 44px row, never a run of inline text. */
+.event-aside-contact li > a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+@media (min-width: 64rem) {
+  /* The wide record always shows contact and place; the disclosure title is
+     only needed where they fold away. */
+  .event-detail-aside .event-aside > summary {
+    display: none;
+  }
 }
 .event-aside-contact li + li {
   margin-block-start: 1rem;
@@ -2696,32 +2749,83 @@ summary {
   }
 }
 @media (min-width: 90rem) {
+  /* UI-BKP-03: the fields left, status, notes and logbook in the middle,
+     contacts and place on the right - Bookitup's record grid. */
   .event-detail-layout {
-    grid-template-columns: minmax(28rem, 1.4fr) minmax(18rem, 1fr) minmax(
-        15rem,
-        0.8fr
-      );
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(15rem, 0.8fr);
+    /* The tall field card spans both rows; the flexible second row takes its
+       surplus, so status and notes stay stacked without a gap. */
+    grid-template-rows: auto 1fr;
   }
   .event-detail-main {
     display: contents;
   }
-  /* UI-PARITY-04: appointment and overview side by side, notes and logbook
-     below them across both, contact and place beside all of it - the
-     Bookitup record's centre and right columns. */
   .event-detail-primary {
     grid-column: 1;
-    grid-row: 1;
+    grid-row: 1 / span 2;
   }
   .event-detail-overview {
     grid-column: 2;
     grid-row: 1;
   }
-  .event-detail-section {
-    grid-column: 1 / span 2;
+  .event-detail-stack {
+    grid-column: 2;
+    grid-row: 2;
   }
   .event-detail-aside {
     grid-column: 3;
-    grid-row: 1 / span 3;
+    grid-row: 1 / span 2;
+  }
+}
+/* UI-BKP-03: below 64rem the record reads top to bottom; the rare actions
+   move below the work area instead of sitting at the top. */
+@media (max-width: 63.99rem) {
+  .event-record-layout {
+    display: flex;
+    flex-direction: column;
+  }
+  .event-record-side {
+    display: contents;
+  }
+  .event-record-actions {
+    order: 1;
+    margin-top: 1.5rem;
+  }
+}
+/* UI-BKP-03: from 64rem the record column stands left of the work area, the
+   areas listed vertically like Bookitup's file navigation. */
+@media (min-width: 64rem) {
+  .event-record-layout {
+    display: grid;
+    grid-template-columns: 13.5rem minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+  .event-record-side {
+    position: sticky;
+    top: 1rem;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .event-record-side .event-record-head {
+    padding-block: 0 0.75rem;
+  }
+  .event-record-side .event-record-head h2 {
+    font-size: 1.25rem;
+  }
+  .event-record-side .record-navigation {
+    display: grid;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0 0 0.75rem;
+  }
+  .event-record-side .record-navigation button {
+    justify-content: flex-start;
+    text-align: left;
+    border-radius: var(--radius-field);
+  }
+  .event-record-body > .event-record-panel > h3:first-child {
+    margin-block-start: 0;
   }
 }
 .event-detail-primary > dl,

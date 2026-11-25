@@ -558,4 +558,11 @@ Mehrfachauswahl mit Markierungsbalken und getönter Zeile. Dokumentübersicht
 vollflächig rot mit Flächenfarbe als Schrift für AA in beiden Modi),
 Event-Pille `.files-event-pill[data-status]`, Zeilenmenü als natives Popover
 (`popover="auto"`, Anker über `--menu-anchor`), damit die scrollende Tabelle
-es nicht abschneidet; Licht-Ausblenden und Escape liefert der Browser.
+es nicht abschneidet; Licht-Ausblenden und Escape liefert der Browser. Eventakte
+(UI-BKP-03): `.event-record-layout` mit Aktenspalte `.event-record-side`
+(13,5rem, ab 64rem, klebt oben) und `.event-record-body`; seltene Aktionen
+`.event-record-actions` als Textlinks am Fuß der Spalte, unter 64rem per
+`order` unter dem Arbeitsbereich. Kartenraster ab 90rem: Felder links über
+zwei Zeilen, Allgemein und `.event-detail-stack` (Notizen, Logbuch) in der
+Mitte, `.event-detail-aside` rechts; Mitte weiß mit 1-px-Linie, rechts ohne
+Linie mit `--shadow-aside`; Kartentitel 18/700.
