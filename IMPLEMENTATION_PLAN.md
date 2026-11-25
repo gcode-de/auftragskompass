@@ -478,6 +478,17 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
   Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
   Commit `feat: capture cancellation reasons on events`.
+- [x] **QW4 — Offene Posten über alle Events:** „Dateien“/„Dokumente“
+  zeigen über der Liste eine Zeile „Offene Posten: n Rechnungen · Betrag offen
+  · davon m überfällig (Betrag)“ mit „Offene anzeigen“ und „Überfällige
+  anzeigen“; der Zahlungsfilter kennt zusätzlich „Noch offen“ (offen oder
+  teilweise bezahlt). Neue Route `GET /api/v1/documents/receivables` und
+  Filterwert `payment=open` lesen dieselben Forderungs-, Zahlungs- und
+  Verzugsausdrücke wie die Liste. **Tests:** Integration (Summen, Verzug,
+  bezahlt/kein Anspruch ausgeschlossen, Filter, Route), Component (Zeile,
+  Kurzwege, leer, ungültige Antwort), E2E (Zeile, Tastaturreihenfolge,
+  Spaltenausrichtung, Screenshots).
+  Commit `feat: show open receivables across events`.
 - [x] **QW5 — Mail später senden:** Beide Mail-Dialoge haben „Senden am
   (optional)“; der Versandauftrag wartet über sein vorhandenes
   `next_attempt_at`. Die Event-Mails zeigen „Geplant für …“, fragen dafür

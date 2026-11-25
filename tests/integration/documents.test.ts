@@ -2947,6 +2947,22 @@ test('the list API validates every new filter and keeps auth, tenant and PDF rou
       });
       expect(rejected.statusCode, query).toBe(400);
     }
+    // QW4: `open` is a filter value, and the receivables answer is its sum;
+    // this tenant has drafts only, so nothing is owed.
+    const openRows = await app.inject({
+      url: '/api/v1/documents?include=metadata&payment=open',
+      cookies,
+    });
+    expect(openRows.statusCode).toBe(200);
+    expect(openRows.json()).toEqual([]);
+    expect(
+      (
+        await app.inject({ url: '/api/v1/documents/receivables', cookies })
+      ).json(),
+    ).toEqual({ count: 0, openMinor: 0, overdueCount: 0, overdueMinor: 0 });
+    expect((await app.inject('/api/v1/documents/receivables')).statusCode).toBe(
+      401,
+    );
     const accepted = await app.inject({
       url: '/api/v1/documents?from=2031-06-10&to=2031-06-10&limit=100&offset=0&kind=offer&state=draft',
       cookies,
