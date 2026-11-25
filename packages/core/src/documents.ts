@@ -204,7 +204,7 @@ export type DocumentFilters = {
    * BKP019.e: the derived payment state of a payable document. A row that is no
    * claim (draft, offer, confirmation, correction) is in no bucket at all.
    */
-  payment?: PaymentState;
+  payment?: PaymentState | 'open';
   /** Explicit page size; omitted keeps the full, unbounded list. */
   limit?: number;
   offset?: number;
@@ -400,14 +400,17 @@ const overdueSql = (today: string) => sql`(
 )`;
 // The derived payment state, the same comparison as `paymentState()`: no money is
 // `none`, money below the claim is `partial`, money covering it is `paid`.
-const paymentStateSql = (state: PaymentState) => sql`(
+// QW4: `open` is every claim with money still owed - `none` and `partial`.
+const paymentStateSql = (state: PaymentState | 'open') => sql`(
   ${payableSql}
   AND ${
-    state === 'none'
-      ? sql`${paidMinorSql} <= 0`
-      : state === 'partial'
-        ? sql`${paidMinorSql} > 0 AND ${paidMinorSql} < ${claimMinorSql}`
-        : sql`${paidMinorSql} > 0 AND ${paidMinorSql} >= ${claimMinorSql}`
+    state === 'open'
+      ? sql`${paidMinorSql} < ${claimMinorSql}`
+      : state === 'none'
+        ? sql`${paidMinorSql} <= 0`
+        : state === 'partial'
+          ? sql`${paidMinorSql} > 0 AND ${paidMinorSql} < ${claimMinorSql}`
+          : sql`${paidMinorSql} > 0 AND ${paidMinorSql} >= ${claimMinorSql}`
   }
 )`;
 export type DocumentListRow = {
@@ -882,7 +885,7 @@ export function assertDocumentFilters(filters: DocumentFilters): void {
   // `constructor` is not in it.
   if (
     filters.payment !== undefined &&
-    !(paymentStates as readonly string[]).includes(filters.payment)
+    !([...paymentStates, 'open'] as readonly string[]).includes(filters.payment)
   )
     throw new DocumentError('invalid_filter');
   if (
@@ -1835,6 +1838,35 @@ export function documentRepository(
     },
     // The overview only needs the header fields; lines stay per document.
     // Filters narrow the whole result in SQL: the UI never filters one page.
+    // QW4: what is still owed over all events - the same claim/paid and
+    // lateness expressions the list filters with, summed once in SQL.
+    async receivables() {
+      const [tenant] = await db
+        .select({ timezone: tenants.timezone })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId));
+      if (!tenant) throw new DocumentError('missing_reference');
+      const today = Temporal.Instant.fromEpochMilliseconds(now().getTime())
+        .toZonedDateTimeISO(tenant.timezone)
+        .toPlainDate()
+        .toString();
+      const open = sql`(${claimMinorSql} - ${paidMinorSql})`;
+      const [row] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+          openMinor: sql<string>`coalesce(sum(${open}), 0)::text`,
+          overdueCount: sql<number>`(count(*) FILTER (WHERE ${overdueSql(today)}))::int`,
+          overdueMinor: sql<string>`coalesce(sum(${open}) FILTER (WHERE ${overdueSql(today)}), 0)::text`,
+        })
+        .from(documents)
+        .where(and(scope, paymentStateSql('open')));
+      return {
+        count: row!.count,
+        openMinor: Number(row!.openMinor),
+        overdueCount: row!.overdueCount,
+        overdueMinor: Number(row!.overdueMinor),
+      };
+    },
     async list(filters: DocumentFilters = {}) {
       assertDocumentFilters(filters);
       const include = filters.include === 'metadata',
@@ -1942,9 +1974,7 @@ export function documentRepository(
           : undefined,
         // Both derived axes reuse the single claim/paid expression above: what
         // is filtered here is exactly what the projection displays.
-        filters.payment
-          ? paymentStateSql(filters.payment as PaymentState)
-          : undefined,
+        filters.payment ? paymentStateSql(filters.payment) : undefined,
         filters.overdue === true
           ? overdueSql(today)
           : filters.overdue === false
@@ -4296,6 +4326,33 @@ export function registerDocumentRoutes(
       ...overdueFields,
     },
   };
+  app.get(
+    '/api/v1/documents/receivables',
+    {
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['count', 'openMinor', 'overdueCount', 'overdueMinor'],
+            properties: {
+              count: { type: 'integer' },
+              openMinor: { type: 'integer' },
+              overdueCount: { type: 'integer' },
+              overdueMinor: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
+    async (_request, reply) => {
+      try {
+        return await repo.receivables();
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   app.get<{ Querystring: DocumentListQuery }>(
     '/api/v1/documents',
     {
@@ -4321,7 +4378,7 @@ export function registerDocumentRoutes(
             due_from: { type: 'string', format: 'date' },
             due_to: { type: 'string', format: 'date' },
             overdue: { type: 'string', enum: ['true', 'false'] },
-            payment: { type: 'string', enum: [...paymentStates] },
+            payment: { type: 'string', enum: [...paymentStates, 'open'] },
           },
         },
         response: {

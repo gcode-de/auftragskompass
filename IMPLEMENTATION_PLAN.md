@@ -478,6 +478,28 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Statuswechsel, fremde/archivierte/andersartige Gründe, DB-Regeln),
   Component (Auswahl, Nutzlast, Kopf, archivierter Grund, Ladefehler).
   Commit `feat: capture cancellation reasons on events`.
+- [x] **QW4 — Offene Posten über alle Events:** „Dateien“/„Dokumente“
+  zeigen über der Liste eine Zeile „Offene Posten: n Rechnungen · Betrag offen
+  · davon m überfällig (Betrag)“ mit „Offene anzeigen“ und „Überfällige
+  anzeigen“; der Zahlungsfilter kennt zusätzlich „Noch offen“ (offen oder
+  teilweise bezahlt). Neue Route `GET /api/v1/documents/receivables` und
+  Filterwert `payment=open` lesen dieselben Forderungs-, Zahlungs- und
+  Verzugsausdrücke wie die Liste. **Tests:** Integration (Summen, Verzug,
+  bezahlt/kein Anspruch ausgeschlossen, Filter, Route), Component (Zeile,
+  Kurzwege, leer, ungültige Antwort), E2E (Zeile, Tastaturreihenfolge,
+  Spaltenausrichtung, Screenshots).
+  Commit `feat: show open receivables across events`.
+- [x] **QW3 — Datierte Notizen wie Bookitup:** Die Einzelnotiz wird durch
+  datierte Notizen mit Verfasser, Hinzufügen (gemeinsamer Texteditor) und
+  Löschen als Grabstein ersetzt (Betreiberentscheidung 25.11.2026 „Ersetzen
+  wie Bookitup“). Migration 0080 übernimmt jede vorhandene Notiz und leert das
+  alte Feld; `notesHtml` in der Event-API wird beim Schreiben zur Notiz,
+  Export führt alle Notizen. Der alte Rich-Text-Editor samt Autosave-Pfad
+  entfällt. **Tests:** Integration (API, Mandanten, Bereinigung, Grabstein,
+  Audit, Umwandlung, Idempotenz, Export, Migrationsumzug), Component
+  (Liste, Hinzufügen, Löschen, Fehler, Laden), E2E (Editor, Liste, Löschen,
+  Screenshots 320/1280 hell/dunkel).
+  Commit `feat: replace event notes with dated notes`.
 - [x] **QW8 — Commitplan-Stand C027–C085 nachgetragen:** Die veraltete
   Sammelzeile „noch nicht implementiert“ ersetzt eine belegte Bereichstabelle
   (umgesetzt über welche Slices, was offen ist); keine formale Abnahme.

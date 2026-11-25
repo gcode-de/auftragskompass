@@ -1576,7 +1576,7 @@ export function EventPanel({
                         />
                       </label>
                       <label>
-                        Interne Notizen
+                        Neue Notiz
                         <textarea
                           name="notesHtml"
                           maxLength={20000}
@@ -1588,8 +1588,8 @@ export function EventPanel({
                         Einfache HTML-Formatierung:
                         &lt;strong&gt;fett&lt;/strong&gt;,
                         &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-                        href="https://…"&gt;Link&lt;/a&gt;. Die gespeicherte
-                        Vorschau erscheint am Event.
+                        href="https://…"&gt;Link&lt;/a&gt;. Wird beim Speichern
+                        als datierte Notiz am Event abgelegt.
                       </p>
                     </div>
                   </details>

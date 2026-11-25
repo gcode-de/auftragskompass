@@ -37,7 +37,15 @@ async function mockDocuments(page: Page) {
             ]
           : url.pathname === '/api/v1/events'
             ? { events: [], timeZone: 'Europe/Berlin' }
-            : [],
+            : // QW4: the receivables line above the list.
+              url.pathname === '/api/v1/documents/receivables'
+              ? {
+                  count: 1,
+                  openMinor: 123456,
+                  overdueCount: 1,
+                  overdueMinor: 123456,
+                }
+              : [],
       ),
     });
   });
@@ -138,6 +146,7 @@ for (const theme of ['light', 'dark'] as const) {
       table.getByRole('rowheader', { name: 'Rechnung RE-2031-0001' }),
     ).toBeVisible();
     await expect(filters.getByRole('searchbox')).toBeVisible();
+    await expect(documents.getByText(/Offene Posten:/)).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 
     const themeSurfaces = {
@@ -155,8 +164,13 @@ for (const theme of ['light', 'dark'] as const) {
     }
     const filterBox = (await filters.boundingBox())!;
     const tableBox = (await table.boundingBox())!;
+    // The filter column and the results column start on one line; the
+    // results open with the receivables line (QW4) above the table.
+    const resultsBox = (await documents
+      .locator('.files-results')
+      .boundingBox())!;
     expect(filterBox.x + filterBox.width).toBeLessThan(tableBox.x);
-    expect.soft(filterBox.y).toBeCloseTo(tableBox.y, 0);
+    expect.soft(filterBox.y).toBeCloseTo(resultsBox.y, 0);
 
     for (const width of [1440, 1280, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
@@ -182,6 +196,16 @@ for (const theme of ['light', 'dark'] as const) {
     const scrollRegion = documents.getByRole('region', {
       name: 'Dokumenttabelle',
     });
+    // QW4: the two receivables shortcuts sit between the filter access and
+    // the table, in reading order.
+    await page.keyboard.press('Tab');
+    await expect(
+      documents.getByRole('button', { name: 'Offene anzeigen' }),
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(
+      documents.getByRole('button', { name: 'Überfällige anzeigen' }),
+    ).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(scrollRegion).toBeFocused();
     await expect(scrollRegion).toHaveCSS('outline-style', 'solid');
@@ -189,6 +213,8 @@ for (const theme of ['light', 'dark'] as const) {
     await expect
       .poll(() => scrollRegion.evaluate((region) => region.scrollLeft))
       .toBeGreaterThan(0);
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Shift+Tab');
     await expect(trigger).toBeFocused();
     await page.keyboard.press('Enter');
