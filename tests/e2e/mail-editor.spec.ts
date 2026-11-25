@@ -531,6 +531,20 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       dialog.getByText('Dropped Datei.pdf', { exact: true }),
     ).toBeVisible();
 
+    // QW5: a send time turns the action into planning; clearing it sends now.
+    const sendAt = dialog.getByLabel('Senden am (optional)');
+    await sendAt.fill('2031-01-15T09:30');
+    await expect(
+      dialog.getByRole('button', { name: 'Senden planen' }),
+    ).toBeVisible();
+    await sendAt.scrollIntoViewIfNeeded();
+    await dialog
+      .getByRole('button', { name: 'Senden planen' })
+      .scrollIntoViewIfNeeded();
+    await dialog.screenshot({
+      path: 'tests/test-results/mail-send-later-1280-light.png',
+    });
+    await sendAt.fill('');
     // Send: one durable order, resolved and sanitized on the server.
     await dialog.getByRole('button', { name: 'Senden' }).click();
     await expect(
