@@ -490,8 +490,6 @@ nach, je ein PR. Aufgaben (M6) sind vorerst ausgeklammert.
   Spaltenausrichtung, Screenshots).
   Commit `feat: show open receivables across events`.
 
-## Nutzauftrag 25.11.2026 (Quick Wins, Backend erlaubt)
-
 - [x] **QW7 — Gesamtrabatt steuerlich anteilig (STEUER-BLOCKER):**
   Betreiberentscheidung 25.11.2026 „Anteilig je Steuersatz“: Der Gesamtrabatt
   ist eine Entgeltminderung und mindert jeden Steuersatz im Verhältnis seines
