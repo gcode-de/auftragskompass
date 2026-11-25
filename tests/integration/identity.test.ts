@@ -93,6 +93,8 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // unique index for the one standard and one audit action.
   // MAIL-SIG-01b (0078) adds one tenant-bound table for the inline logo a
   // mail freezes; no existing row and no existing contract changes.
+  // QW2 (0079) adds one nullable cancellation reason reference to events;
+  // existing rows keep NULL and every other contract stays unchanged.
   // QW5 (0081) widens the audit vocabulary by the withdrawn planned send.
   expect(applied.at(-1)!.name).toBe('0081_mail_send_later.sql');
   expect(

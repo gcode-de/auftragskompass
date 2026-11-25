@@ -85,6 +85,139 @@ const detail = {
     },
   ],
 };
+// QW2: a cancellation names its reason; the record head shows it.
+test('cancelling an event saves the chosen reason and shows it in the head', async () => {
+  const fresh = structuredClone(detail);
+  const reasons = [
+    { id: 'reason-price', name: 'Preis', state: 'active' },
+    { id: 'reason-old', name: 'Alter Grund', state: 'archived' },
+  ];
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === '/api/v1/master-data/cancellation_reason')
+      return Response.json(reasons);
+    if (options) {
+      Object.assign(fresh.event, JSON.parse(String(options.body)));
+      fresh.event.version += 1;
+      return Response.json(fresh.event);
+    }
+    return Response.json(fresh);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EventDetails
+      statuses={[...statuses, { code: 'cancelled', label: 'Abgesagt' }]}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn().mockResolvedValue(undefined)}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  expect(screen.queryByLabelText('Absagegrund')).toBeNull();
+  // A late second load re-keys the form; choose again until the choice holds.
+  const picker = await waitFor(() => {
+    fireEvent.change(screen.getByLabelText('Status des Events'), {
+      target: { value: 'cancelled' },
+    });
+    return screen.getByLabelText('Absagegrund') as HTMLSelectElement;
+  });
+  // An archived reason is offered only when the event already carries it.
+  await waitFor(() =>
+    expect(Array.from(picker.options).map((option) => option.text)).toEqual([
+      'Kein Grund angegeben',
+      'Preis',
+    ]),
+  );
+  fireEvent.change(picker, { target: { value: 'reason-price' } });
+  fireEvent.submit(picker.closest('form')!);
+  await screen.findByText('Status gespeichert.');
+  const body = JSON.parse(
+    String(fetcher.mock.calls.find(([, options]) => options)?.[1]?.body),
+  );
+  expect(body).toMatchObject({
+    status: 'cancelled',
+    cancellationReasonId: 'reason-price',
+  });
+  expect(await screen.findByText('Grund: Preis')).toBeTruthy();
+
+  // Leaving the status sends no reason; the server clears it.
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
+    target: { value: 'option' },
+  });
+  expect(screen.queryByLabelText('Absagegrund')).toBeNull();
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Status speichern' }).closest('form')!,
+  );
+  await waitFor(() =>
+    expect(fetcher.mock.calls.filter(([, options]) => options)).toHaveLength(2),
+  );
+  expect(
+    JSON.parse(
+      String(fetcher.mock.calls.filter(([, options]) => options)[1]![1]!.body),
+    ),
+  ).not.toHaveProperty('cancellationReasonId');
+});
+
+test('a stored archived reason stays selectable and an unknown list reads as none', async () => {
+  const fresh = structuredClone(detail);
+  Object.assign(fresh.event, {
+    status: 'cancelled',
+    cancellationReasonId: 'reason-old',
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/master-data/cancellation_reason'
+        ? Response.json([
+            { id: 'reason-old', name: 'Alter Grund', state: 'archived' },
+          ])
+        : Response.json(fresh),
+    ),
+  );
+  render(
+    <EventDetails
+      statuses={[...statuses, { code: 'cancelled', label: 'Abgesagt' }]}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(await screen.findByText('Grund: Alter Grund')).toBeTruthy();
+  const picker = screen.getByLabelText('Absagegrund') as HTMLSelectElement;
+  expect(picker.value).toBe('reason-old');
+  expect(picker.selectedOptions[0]!.text).toBe('Alter Grund (archiviert)');
+  cleanup();
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url === '/api/v1/master-data/cancellation_reason'
+        ? new Response('', { status: 503 })
+        : Response.json(fresh),
+    ),
+  );
+  render(
+    <EventDetails
+      statuses={[...statuses, { code: 'cancelled', label: 'Abgesagt' }]}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn()}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByRole('heading', { name: 'Event: Synthetic detail event' });
+  expect(screen.queryByText(/^Grund:/)).toBeNull();
+  expect(
+    Array.from(
+      (screen.getByLabelText('Absagegrund') as HTMLSelectElement).options,
+    ).map((option) => option.text),
+  ).toEqual(['Kein Grund angegeben']);
+});
+
 test('event details collect contacts, venue, notes and activities and save status with current version', async () => {
   const freshDetail = structuredClone(detail);
   const changed = vi.fn().mockResolvedValue(undefined),
