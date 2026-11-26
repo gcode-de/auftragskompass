@@ -676,10 +676,13 @@ Gesamtrahmen bleiben vorerst aus.
       500 Eventkarten/Kontakte lokal ~120 ms über dem Ausgangswert und rissen
       in CI zweimal das 2-s-Budget. Ein Ankername je Menü-Hülle per
       `anchor-scope` statt Inline-Stilen je Zeile, und nur das offene Menü
-      rendert seine Einträge; die Kontakttabelle blendet Zeilen über
+      rendert seine Einträge – genauer: ein Menü existiert nur, solange es
+      offen ist (`menuRendered`), öffnet sich beim Einhängen selbst und meldet
+      Schließen über sein `toggle`-Ereignis; ein Druck auf den Auslöser eines
+      offenen Menüs öffnet es nicht erneut. Die Kontakttabelle blendet Zeilen über
       React-Attribute statt `:has()`-Regeln aus. Lokal wieder auf
-      Ausgangsniveau (Events
-      0,76/0,89 s, Kontakte 0,63/0,61 s bei 390/1280). **Tests:** Component
+      Ausgangsniveau oder darunter (Events 0,78/0,84 s, Kontakte 0,61/0,66 s
+      bei 390/1280; vorher 0,78/0,84 und 0,61/0,63). **Tests:** Component
       (keine Inline-Stile), E2E-Lastmessung.
       Commit `perf: keep row menus light in long lists`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   menuPanelProps,
+  menuRendered,
   menuToggleProps,
   rowMenuState,
 } from './popover-menu.js';
@@ -2450,69 +2451,75 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                           >
                             Aktionen
                           </button>
-                          <div
-                            className="document-template-secondary-actions popover-menu"
-                            role="group"
-                            aria-label={`Aktionen für ${row.name}`}
-                            {...menuPanelProps(
-                              `document-template-secondary-actions-${row.id}`,
-                              openActionsId === row.id,
-                              (open) =>
-                                setOpenActionsId(
-                                  rowMenuState(row.id, open, null),
-                                ),
-                            )}
-                          >
-                            <button
-                              className="secondary-action"
-                              disabled={
-                                busy ||
-                                archiveReconciliation !== null ||
-                                saveRecovery !== null ||
-                                uncertainCreate
-                              }
-                              aria-label={`Vorlage duplizieren: ${row.name}`}
-                              onClick={(event) => {
-                                const origin = actionToggleRefs.current.get(
-                                  row.id,
-                                );
-                                if (origin?.isConnected && !origin.disabled)
-                                  origin.focus({ preventScroll: true });
-                                setOpenActionsId(null);
-                                begin(row, true, origin ?? event.currentTarget);
-                              }}
+                          {menuRendered(openActionsId === row.id) && (
+                            <div
+                              className="document-template-secondary-actions popover-menu"
+                              role="group"
+                              aria-label={`Aktionen für ${row.name}`}
+                              {...menuPanelProps(
+                                `document-template-secondary-actions-${row.id}`,
+                                openActionsId === row.id,
+                                (open) =>
+                                  setOpenActionsId(
+                                    rowMenuState(row.id, open, null),
+                                  ),
+                              )}
                             >
-                              Duplizieren
-                            </button>
-                            <button
-                              className="tertiary-action"
-                              type="button"
-                              disabled={
-                                busy ||
-                                row.state === 'archived' ||
-                                archiveReconciliation !== null ||
-                                saveRecovery !== null ||
-                                uncertainCreate
-                              }
-                              aria-label={`Vorlage archivieren: ${row.name}`}
-                              onClick={(event) => {
-                                const origin = actionToggleRefs.current.get(
-                                  row.id,
-                                );
-                                if (origin?.isConnected && !origin.disabled)
-                                  origin.focus({ preventScroll: true });
-                                setOpenActionsId(null);
-                                void archive(
-                                  row,
-                                  origin ?? event.currentTarget,
-                                );
-                              }}
-                            >
-                              {archivePendingId === row.id
-                                ? 'Archivierung läuft …'
-                                : 'Archivieren'}
-                            </button>
-                          </div>
+                              <button
+                                className="secondary-action"
+                                disabled={
+                                  busy ||
+                                  archiveReconciliation !== null ||
+                                  saveRecovery !== null ||
+                                  uncertainCreate
+                                }
+                                aria-label={`Vorlage duplizieren: ${row.name}`}
+                                onClick={(event) => {
+                                  const origin = actionToggleRefs.current.get(
+                                    row.id,
+                                  );
+                                  if (origin?.isConnected && !origin.disabled)
+                                    origin.focus({ preventScroll: true });
+                                  setOpenActionsId(null);
+                                  begin(
+                                    row,
+                                    true,
+                                    origin ?? event.currentTarget,
+                                  );
+                                }}
+                              >
+                                Duplizieren
+                              </button>
+                              <button
+                                className="tertiary-action"
+                                type="button"
+                                disabled={
+                                  busy ||
+                                  row.state === 'archived' ||
+                                  archiveReconciliation !== null ||
+                                  saveRecovery !== null ||
+                                  uncertainCreate
+                                }
+                                aria-label={`Vorlage archivieren: ${row.name}`}
+                                onClick={(event) => {
+                                  const origin = actionToggleRefs.current.get(
+                                    row.id,
+                                  );
+                                  if (origin?.isConnected && !origin.disabled)
+                                    origin.focus({ preventScroll: true });
+                                  setOpenActionsId(null);
+                                  void archive(
+                                    row,
+                                    origin ?? event.currentTarget,
+                                  );
+                                }}
+                              >
+                                {archivePendingId === row.id
+                                  ? 'Archivierung läuft …'
+                                  : 'Archivieren'}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </li>
                     ))}

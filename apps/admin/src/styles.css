@@ -2636,7 +2636,11 @@ summary {
 ) {
   anchor-scope: --menu;
 }
-[popovertarget] {
+[popovertarget],
+.row-menu-toggle,
+.product-row > [aria-expanded],
+.document-template-action-toggle,
+.offer-draft-actions-toggle {
   anchor-name: --menu;
 }
 [popover]:is(.popover-menu, .files-row-menu) {

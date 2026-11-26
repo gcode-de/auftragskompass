@@ -4,6 +4,7 @@ import { registerUnsavedChanges } from './unsaved-changes.js';
 import { ModalDialog } from './ModalDialog.js';
 import {
   menuPanelProps,
+  menuRendered,
   menuToggleProps,
   rowMenuState,
 } from './popover-menu.js';
@@ -732,51 +733,53 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
                 <circle cx="19" cy="12" r="1.5" />
               </svg>
             </button>
-            <span
-              className="popover-menu"
-              role="group"
-              aria-label={`Aktionen für ${row.name}`}
-              {...menuPanelProps(
-                `product-secondary-actions-${row.id}`,
-                openActionsId === row.id,
-                (open) => setOpenActionsId(rowMenuState(row.id, open, null)),
-              )}
-            >
-              <button
-                className="secondary-action"
-                disabled={busy}
-                aria-label={`Produkt duplizieren: ${row.name}`}
-                onClick={() => {
-                  // The trigger, not the disappearing group, owns the focus
-                  // the dialog returns to.
-                  focusActionToggle(row.id);
-                  openDuplicate(row);
-                }}
+            {menuRendered(openActionsId === row.id) && (
+              <span
+                className="popover-menu"
+                role="group"
+                aria-label={`Aktionen für ${row.name}`}
+                {...menuPanelProps(
+                  `product-secondary-actions-${row.id}`,
+                  openActionsId === row.id,
+                  (open) => setOpenActionsId(rowMenuState(row.id, open, null)),
+                )}
               >
-                Duplizieren
-              </button>
-              <button
-                className="tertiary-action"
-                type="button"
-                disabled={busy || row.state === 'archived'}
-                aria-label={`Produkt archivieren: ${row.name}`}
-                onClick={() => {
-                  focusActionToggle(row.id);
-                  void archive(row);
-                }}
-              >
-                Archivieren
-              </button>
-              <button
-                className="tertiary-action"
-                type="button"
-                disabled={busy || deleteLocked || locked}
-                aria-label={`Produkt löschen: ${row.name}`}
-                onClick={() => askDelete(row)}
-              >
-                Löschen
-              </button>
-            </span>
+                <button
+                  className="secondary-action"
+                  disabled={busy}
+                  aria-label={`Produkt duplizieren: ${row.name}`}
+                  onClick={() => {
+                    // The trigger, not the disappearing group, owns the focus
+                    // the dialog returns to.
+                    focusActionToggle(row.id);
+                    openDuplicate(row);
+                  }}
+                >
+                  Duplizieren
+                </button>
+                <button
+                  className="tertiary-action"
+                  type="button"
+                  disabled={busy || row.state === 'archived'}
+                  aria-label={`Produkt archivieren: ${row.name}`}
+                  onClick={() => {
+                    focusActionToggle(row.id);
+                    void archive(row);
+                  }}
+                >
+                  Archivieren
+                </button>
+                <button
+                  className="tertiary-action"
+                  type="button"
+                  disabled={busy || deleteLocked || locked}
+                  aria-label={`Produkt löschen: ${row.name}`}
+                  onClick={() => askDelete(row)}
+                >
+                  Löschen
+                </button>
+              </span>
+            )}
           </li>
         ))}
       </ul>

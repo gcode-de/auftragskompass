@@ -4,6 +4,7 @@ import { ContactDialog } from './ContactDialog.js';
 import { mailtoHref, telHref } from './contact-links.js';
 import {
   menuPanelProps,
+  menuRendered,
   menuToggleProps,
   rowMenuState,
 } from './popover-menu.js';
@@ -427,44 +428,49 @@ export function ContactPanel({
                           <circle cx="19" cy="12" r="1.7" />
                         </svg>
                       </button>
-                      <span
-                        className="popover-menu"
-                        role="group"
-                        aria-label={`Aktionen für ${row.name}`}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Escape') return;
-                          event.preventDefault();
-                          setOpenMenu('');
-                          event.currentTarget.parentElement
-                            ?.querySelector<HTMLElement>('.row-menu-toggle')
-                            ?.focus();
-                        }}
-                        {...menuPanelProps(
-                          'contact-menu-' + row.id,
-                          openMenu === row.id,
-                          (open) => setOpenMenu(rowMenuState(row.id, open, '')),
-                        )}
-                      >
-                        {/* Only the open menu renders its action. */}
-                        {openMenu === row.id && (
-                          <button
-                            type="button"
-                            className="tertiary-action"
-                            disabled={busy}
-                            aria-label={`Kontakt bearbeiten: ${row.name}`}
-                            onClick={(event) => {
-                              // The toggle, not the closing menu, gets the focus back.
-                              event.currentTarget.parentElement?.parentElement
-                                ?.querySelector<HTMLElement>('.row-menu-toggle')
-                                ?.focus();
-                              setOpenMenu('');
-                              openEdit(row);
-                            }}
-                          >
-                            Bearbeiten
-                          </button>
-                        )}
-                      </span>
+                      {menuRendered(openMenu === row.id) && (
+                        <span
+                          className="popover-menu"
+                          role="group"
+                          aria-label={`Aktionen für ${row.name}`}
+                          onKeyDown={(event) => {
+                            if (event.key !== 'Escape') return;
+                            event.preventDefault();
+                            setOpenMenu('');
+                            event.currentTarget.parentElement
+                              ?.querySelector<HTMLElement>('.row-menu-toggle')
+                              ?.focus();
+                          }}
+                          {...menuPanelProps(
+                            'contact-menu-' + row.id,
+                            openMenu === row.id,
+                            (open) =>
+                              setOpenMenu(rowMenuState(row.id, open, '')),
+                          )}
+                        >
+                          {/* Only the open menu renders its action. */}
+                          {openMenu === row.id && (
+                            <button
+                              type="button"
+                              className="tertiary-action"
+                              disabled={busy}
+                              aria-label={`Kontakt bearbeiten: ${row.name}`}
+                              onClick={(event) => {
+                                // The toggle, not the closing menu, gets the focus back.
+                                event.currentTarget.parentElement?.parentElement
+                                  ?.querySelector<HTMLElement>(
+                                    '.row-menu-toggle',
+                                  )
+                                  ?.focus();
+                                setOpenMenu('');
+                                openEdit(row);
+                              }}
+                            >
+                              Bearbeiten
+                            </button>
+                          )}
+                        </span>
+                      )}
                     </span>
                   </div>
                   {shown && (
