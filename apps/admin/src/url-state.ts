@@ -103,9 +103,17 @@ export function filesRequest(
 // H035: a document row links to its event. The target must actually be listed
 // there, so the Event filter namespace (`q`, dates, status, art, undated) is
 // cleared while Dateien's own `df_*` filters and unrelated state stay.
-export function eventTargetHref(search: string, eventId: string) {
+export function eventTargetHref(
+  search: string,
+  eventId: string,
+  documentId?: string,
+) {
   const url = new URLSearchParams(search);
   for (const key of Object.keys(emptyEventFilters)) url.delete(key);
+  // UI-BKP-10: `doc` names the document the event file opens in "Dateien";
+  // any other event link drops it.
+  url.delete('doc');
+  if (documentId) url.set('doc', documentId);
   const query = url.toString();
   return (query ? '/?' + query : '/') + '#event-' + eventId;
 }

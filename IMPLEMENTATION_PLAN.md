@@ -570,6 +570,16 @@ Gesamtrahmen bleiben vorerst aus.
       Seitenüberschrift, keine Dokumentliste), E2E (Dokumentabläufe auf
       `#documents`, alte Adresse zeigt die Bibliothek).
       Commit `feat: move the file library into the settings`.
+
+- [x] **UI-BKP-10 — Dokumente aus der Übersicht öffnen:** Der Dokumentname in
+      der Übersicht führt wie bei Bookitup ins Event (`?doc=<id>#event-<id>`):
+      Die Akte öffnet direkt „Dateien“, ein bearbeitbarer Entwurf öffnet seinen
+      Editor, ein fertiges Dokument wird markiert und fokussiert. Ein unbekanntes
+      oder ungültiges `doc` ändert nichts; andere Eventlinks lassen `doc` fallen.
+      Die Event-Pille führt weiter nur ins Event. **Tests:** Component (Linkziel,
+      Entwurf öffnet Editor, fertiges Dokument fokussiert, unbekannt, Akte in
+      Dateien), E2E (Linkziel).
+      Commit `feat: open documents from the overview in their event`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
