@@ -5092,3 +5092,32 @@ a.offer-draft-preview {
     top: 1rem;
   }
 }
+/* UI-BKP-07: the new mail opens inline in the reading pane - no backdrop,
+   no floating box, the pane's own width; the chosen mail steps aside. */
+.event-mail-compose-slot:empty {
+  display: none;
+}
+.event-mail-panes:has(.mail-compose-inline[open]) > .event-mail-reader {
+  display: none;
+}
+.event-mail-compose-slot > dialog.mail-compose-inline {
+  position: static;
+  inset: auto;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border-top: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+@media (min-width: 64rem) {
+  .event-mail-panes > .event-mail-list {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .event-mail-panes > :is(.event-mail-compose-slot, .event-mail-reader) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}

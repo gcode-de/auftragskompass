@@ -545,6 +545,9 @@ export function EventDocuments({
     // MAIL-EVENT-01: a free mail from the event - no document, one durable
     // order under one request id.
     [composeOpen, setComposeOpen] = useState(false),
+    // UI-BKP-07: a mail started in the E-Mails area opens inline in its
+    // reading pane like Bookitup; from Dateien it stays a modal dialog.
+    [composeInline, setComposeInline] = useState(false),
     [composeTo, setComposeTo] = useState(''),
     [composeSubject, setComposeSubject] = useState(''),
     [composeBody, setComposeBody] = useState(''),
@@ -750,7 +753,7 @@ export function EventDocuments({
     mailDialogWasOpen.current = false;
   }, [mailSendId]);
   useEffect(() => {
-    if (composeRequest) openCompose(composeRequest.trigger);
+    if (composeRequest) openCompose(composeRequest.trigger, true);
     // Only a new request opens the dialog, never a re-render.
   }, [composeRequest?.id]);
   // MAIL-EVENT-01: the compose dialog uses the same native dialog mechanics.
@@ -762,7 +765,8 @@ export function EventDocuments({
       // jsdom has no showModal; browsers use the native modal focus behavior.
       dialog.setAttribute('open', '');
     } else if (!dialog.open) {
-      dialog.showModal();
+      if (dialog.isConnected && composeInline) dialog.show();
+      else dialog.showModal();
     }
     composeWasOpen.current = true;
     composeToField.current?.focus();
@@ -2568,8 +2572,9 @@ export function EventDocuments({
   }
   // MAIL-EVENT-01: a free mail from the event. One gesture, one order - the
   // request id keeps a retry on the very same order.
-  function openCompose(trigger: HTMLElement) {
+  function openCompose(trigger: HTMLElement, inline = false) {
     setMessage('');
+    setComposeInline(inline);
     composeTrigger.current = trigger;
     setComposeTo(contactEmail?.trim() ?? '');
     setComposeSubject('');
@@ -4342,6 +4347,10 @@ export function EventDocuments({
       }))
       .filter((group) => group.rows.length),
     unknownRows = documents.filter((entry) => !knownKinds.has(entry.kind));
+  // The reading pane offers its slot; without it the dialog stays modal.
+  const composeSlot = composeInline
+    ? document.getElementById('event-mail-compose-slot')
+    : null;
   return (
     <div className="event-documents">
       {/* UI-PARITY-02: a portal outside the loading-dependent cards, so the
@@ -4351,12 +4360,22 @@ export function EventDocuments({
         createPortal(
           <dialog
             ref={composeDialog}
-            className="form-dialog mail-compose-dialog"
+            className={
+              'form-dialog mail-compose-dialog' +
+              (composeSlot ? ' mail-compose-inline' : '')
+            }
             aria-labelledby="mail-compose-heading"
-            aria-modal="true"
+            aria-modal={composeSlot ? undefined : 'true'}
             onCancel={(event) => {
               event.preventDefault();
               if (busy === '') setComposeOpen(false);
+            }}
+            // A non-modal dialog gets no cancel event; Escape closes it here.
+            onKeyDown={(event) => {
+              if (composeSlot && event.key === 'Escape' && busy === '') {
+                event.preventDefault();
+                setComposeOpen(false);
+              }
             }}
           >
             <h4 id="mail-compose-heading">Neue Mail schreiben</h4>
@@ -4434,7 +4453,7 @@ export function EventDocuments({
               </div>
             </form>
           </dialog>,
-          document.body,
+          composeSlot ?? document.body,
         )}
       {!createDialogOpen && <p role="status">{message}</p>}
       {reloadWarning && (
