@@ -581,6 +581,39 @@ Gesamtrahmen bleiben vorerst aus.
       Dateien), E2E (Linkziel).
       Commit `feat: open documents from the overview in their event`.
 
+- [x] **UI-BKP-11 — Brutto/Netto je Dokument:** Wie bei Bookitup gibt es im
+      Dokumenteditor einen Brutto/Netto-Schalter für das ganze Dokument (im
+      Balken „Positionen“) statt eines Schalters je Position. Umschalten rechnet
+      jeden Einzelpreis und einen Euro-Rabatt exakt in Cent um (kaufmännisch
+      gerundet), damit die Summen gleich bleiben; ein Hinweis nennt die
+      mögliche Cent-Rundung. Neue freie Positionen folgen der Dokumentbasis,
+      Katalogprodukte werden beim Einfügen in sie umgerechnet; ein nicht
+      umrechenbarer Katalogpreis wird mit Hinweis abgelehnt. Ältere Entwürfe mit
+      gemischten Positionen zeigen einen Hinweis, bis eine Basis gewählt wird.
+      Datenmodell und PDF bleiben je Position. **Tests:** Unit (Umrechnung,
+      Rundung, Überlauf), Component (Schalter, Umrechnung inkl. Euro-Rabatt,
+      neue Position, Katalog, gemischter Entwurf, gespeicherte Netto-Basis),
+      E2E (Angebotsablauf).
+      Commit `feat: switch gross and net once per document`.
+
+- [x] **DOC-VALID-0 — Angebote ohne Gültigkeit:** „Gültigkeit in Tagen“ erlaubt
+      0 = ohne Gültigkeit (Editor und Dokumentvorlage, mit Hinweis am Feld). Ein
+      solches Angebot druckt keine Zeile „Gültig bis“, speichert kein
+      `valid_until` und läuft nie ab. Migration 0083 erweitert die beiden
+      CHECK-Regeln auf 0–365 (nur Erweiterung, keine Datenänderung); negative
+      Werte bleiben abgewiesen. **Tests:** Integration (0 Tage: kein Datum,
+      keine PDF-Zeile, kein Ablauf; −1 abgewiesen), Component (Feldgrenzen 0–365
+      mit Hinweis).
+      Commit `feat: allow offers without a validity period`.
+
+- [x] **MAIL-SUBJ-01 — Sprechende Betreffzeilen für Dokumentmails:** Statt
+      „Dokument AN-…“ schlägt der Versanddialog „Angebot für <Event> am <Datum> –
+      <Nummer>“ vor (Art inkl. Schlussrechnung, Eventname und -datum aus der Akte;
+      fehlende Teile entfallen). Der Betreff bleibt im Formular frei änderbar,
+      eigene Formulierungen wie „Fotobox-Angebot …“ gehen über die Mailvorlagen.
+      **Tests:** Component (alle Fallbacks, Dialog ohne Event).
+      Commit `feat: suggest friendlier subjects for document mails`.
+
 - [x] **INQUIRY-INFO-02 — Mehr in Anfrage-Benachrichtigungen:** Telegram und
       E-Mail nennen zusätzlich andere aktive Events am Tag (je Status), einen
       bekannten Kontakt mit früheren Events und „Antwort in der App“

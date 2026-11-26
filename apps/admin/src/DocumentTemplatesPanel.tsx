@@ -235,7 +235,7 @@ function isTemplate(value: unknown): value is Template {
     typeof row.introText === 'string' &&
     typeof row.outroText === 'string' &&
     Number.isSafeInteger(row.validityDays) &&
-    Number(row.validityDays) >= 1 &&
+    Number(row.validityDays) >= 0 &&
     Number(row.validityDays) <= 365 &&
     (row.state === 'active' ||
       row.state === 'inactive' ||
@@ -1960,12 +1960,16 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
               <input
                 name="validityDays"
                 type="number"
-                min={1}
+                aria-describedby="template-validity-hint"
+                min={0}
                 max={365}
                 required
                 defaultValue={draft?.validityDays ?? 14}
               />
             </label>
+            <small id="template-validity-hint" className="document-hint">
+              0 = ohne Gültigkeit; Angebote nennen dann kein „Gültig bis“.
+            </small>
             <label>
               Zustand
               <select name="state" defaultValue={draft?.state ?? 'active'}>

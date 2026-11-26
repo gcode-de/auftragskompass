@@ -1339,6 +1339,9 @@ export function EventDetails({
                 onMailScheduled={() => setMailRevision((value) => value + 1)}
                 composeRequest={composeRequest}
                 openDocumentId={openDocumentId}
+
+                eventName={data.event.name}
+                eventDate={data.event.eventDate}
               />
               <div hidden={editingDocument}>
                 <EventLibraryFiles
