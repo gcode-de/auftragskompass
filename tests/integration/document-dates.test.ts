@@ -672,16 +672,17 @@ test('non-invoice documents print neither line and keep their exact bytes', asyn
   // DOC-EVENTINFO-01 deliberately changed the layout: every one of the three is
   // linked to an event, so each now prints its event line. The statement of this
   // test is unchanged - identical input still yields identical bytes, and none of
-  // the three prints an invoice date line.
+  // the three prints an invoice date line. The narrower number columns of
+  // 26.11.2026 changed the bytes deliberately once more.
   const finalized = await s.repo.finalize(s.actor, chain.invoice.id);
   expect(chain.offer.snapshotHash).toBe(
-    '8e26f8e0b3fa78a4e52f531f54ac4f1c0eeab5c6d853dd10ade3a43aaea86d09',
+    '96194fd76214250d92024e1794e55db226df3108fb274dc388e9cb95f9b03373',
   );
   expect(chain.confirmation.snapshotHash).toBe(
-    'ccfa05ffe78bde1ae4114fa4ae53ad8e05aa1d2ebdb55ae6d3f19ddfb13c531d',
+    '6e6197232e7739da52ed981df7cde3d6f8ced720a853fa62db57111e3155ffd3',
   );
   expect(finalized.snapshotHash).toBe(
-    'd3c601eb0e493fbbced990b28ae68c6d3781488016ea01ca56a068eafbdc3594',
+    'dba3c82dfac55d5dd1e304ffc246d38419d1a9f6bfb2f306301f8d1af6c7903b',
   );
   const invoiceHtml = s.rendered.at(-1)!;
   expect(invoiceHtml).not.toContain('Leistungsdatum');
@@ -1061,14 +1062,15 @@ test('documents without a bank account keep their exact bytes', async () => {
   // The DOC-PRINT-01 golden hashes also cover documents without an account;
   // account-free output remains stable unless the layout changes deliberately.
   // DOC-EVENTINFO-01 changed it deliberately: the same event line as above.
+  // 26.11.2026: the narrower number columns changed it deliberately again.
   expect(chain.offer.snapshotHash).toBe(
-    '8e26f8e0b3fa78a4e52f531f54ac4f1c0eeab5c6d853dd10ade3a43aaea86d09',
+    '96194fd76214250d92024e1794e55db226df3108fb274dc388e9cb95f9b03373',
   );
   expect(chain.confirmation.snapshotHash).toBe(
-    'ccfa05ffe78bde1ae4114fa4ae53ad8e05aa1d2ebdb55ae6d3f19ddfb13c531d',
+    '6e6197232e7739da52ed981df7cde3d6f8ced720a853fa62db57111e3155ffd3',
   );
   expect(finalized.snapshotHash).toBe(
-    'd3c601eb0e493fbbced990b28ae68c6d3781488016ea01ca56a068eafbdc3594',
+    'dba3c82dfac55d5dd1e304ffc246d38419d1a9f6bfb2f306301f8d1af6c7903b',
   );
   for (const html of s.rendered) expect(html).not.toContain('Bankverbindung');
 });

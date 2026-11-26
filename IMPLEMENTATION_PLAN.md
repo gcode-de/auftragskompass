@@ -560,6 +560,17 @@ Gesamtrahmen bleiben vorerst aus.
       (Platz im Lesebereich, nicht modal, Escape, Fokus), E2E (eingebettet neben
       der Liste, axe, Escape).
       Commit `feat: compose event mails inline like bookitup`.
+- [x] **UI-BKP-09 — Dateibibliothek in den Einstellungen:** „Dateien“ ist
+      kein Hauptmenüpunkt mehr (wie Bookitup); die Bibliothek steht unter
+      Einstellungen → Dokumente → „Dateibibliothek“ (`#settings-files`, die alte
+      Adresse `#files` führt weiter dorthin). Die doppelte Liste der
+      Geschäftsdokumente auf dieser Seite entfällt; Dokumente gibt es nur noch
+      unter „Dokumente“. Der Link „Dateibibliothek öffnen“ im Event zeigt auf die
+      neue Adresse. **Tests:** Component (Navigation, Einstellungsgruppen, eine
+      Seitenüberschrift, keine Dokumentliste), E2E (Dokumentabläufe auf
+      `#documents`, alte Adresse zeigt die Bibliothek).
+      Commit `feat: move the file library into the settings`.
+
 - [x] **DOC-VALID-0 — Angebote ohne Gültigkeit:** „Gültigkeit in Tagen“ erlaubt
       0 = ohne Gültigkeit (Editor und Dokumentvorlage, mit Hinweis am Feld). Ein
       solches Angebot druckt keine Zeile „Gültig bis“, speichert kein

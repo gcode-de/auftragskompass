@@ -128,9 +128,12 @@ test('visible screens keep one page title and the detail uses Event language', a
   ).toBeTruthy();
   expect(screen.getByRole('region', { name: 'Dokumente' })).toBeTruthy();
   expect(screen.queryByRole('region', { name: 'Dateibibliothek' })).toBeNull();
-  await go('/#files');
-  expect(await screen.findByRole('region', { name: 'Dateien' })).toBeTruthy();
-  expect(screen.getByRole('region', { name: 'Dateibibliothek' })).toBeTruthy();
+  // UI-BKP-09: the library is a settings page without the document list.
+  await go('/#settings-files');
+  expect(
+    await screen.findByRole('region', { name: 'Dateibibliothek' }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Dateien' })).toBeNull();
 
   await go('/#contacts');
   await screen.findByRole('region', { name: 'Kontakte' });
