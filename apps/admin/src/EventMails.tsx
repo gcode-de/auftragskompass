@@ -364,6 +364,8 @@ export function EventMails({
             ))}
           </ul>
         )}
+        {/* UI-BKP-07: a new mail opens here, in place of the reading pane. */}
+        <div id="event-mail-compose-slot" className="event-mail-compose-slot" />
         {/* UI-BKP-07: Bookitup's reading pane beside the list. */}
         <article className="event-mail-reader" aria-label="Gewählte Mail">
           {(() => {

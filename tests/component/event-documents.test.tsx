@@ -7517,3 +7517,47 @@ test('a requested free mail opens while the documents still load', async () => {
   ).toBeTruthy();
   trigger.remove();
 });
+
+// UI-BKP-07: from the E-Mails area the new mail opens inline in the reading
+// pane's slot, without a modal; Escape closes it and returns the focus.
+test('a requested free mail opens inline in the reading pane slot', async () => {
+  setup({ documents: [finalized] });
+  const show = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  const showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  const native = Object.getOwnPropertyDescriptors(HTMLDialogElement.prototype);
+  Object.assign(HTMLDialogElement.prototype, { show, showModal });
+  const slot = document.createElement('div');
+  slot.id = 'event-mail-compose-slot';
+  const trigger = document.createElement('button');
+  document.body.append(slot, trigger);
+  render(<EventDocuments {...props} composeRequest={{ id: 1, trigger }} />);
+  const compose = await screen.findByRole('dialog', {
+    name: 'Neue Mail schreiben',
+  });
+  expect(slot.contains(compose)).toBe(true);
+  expect(compose.hasAttribute('aria-modal')).toBe(false);
+  expect(compose.className).toContain('mail-compose-inline');
+  expect(show).toHaveBeenCalled();
+  expect(showModal).not.toHaveBeenCalled();
+  fireEvent.keyDown(compose, { key: 'Enter' });
+  expect(screen.getByRole('dialog', { name: 'Neue Mail schreiben' })).toBe(
+    compose,
+  );
+  fireEvent.keyDown(compose, { key: 'Escape' });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'Neue Mail schreiben' }),
+    ).toBeNull(),
+  );
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  for (const name of ['show', 'showModal'] as const)
+    if (native[name])
+      Object.defineProperty(HTMLDialogElement.prototype, name, native[name]);
+    else Reflect.deleteProperty(HTMLDialogElement.prototype, name);
+  slot.remove();
+  trigger.remove();
+});

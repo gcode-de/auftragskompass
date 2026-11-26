@@ -552,6 +552,14 @@ Gesamtrahmen bleiben vorerst aus.
       Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
       Statusauswahl, 390 px; Auth-Ablauf angepasst).
       Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-07b — Neue Mail im Lesebereich:** „Neue Mail schreiben“ im
+      Bereich „E-Mails“ öffnet den bestehenden Editor eingebettet im Lesebereich
+      statt als modalen Dialog (ohne Abdunklung und Verlaufsstreifen); die
+      gewählte Mail tritt so lange zurück. Escape schließt, der Fokus kehrt zum
+      Knopf zurück. Aus „Dateien“ bleibt es der Dialog. **Tests:** Component
+      (Platz im Lesebereich, nicht modal, Escape, Fokus), E2E (eingebettet neben
+      der Liste, axe, Escape).
+      Commit `feat: compose event mails inline like bookitup`.
 - [x] **UI-BKP-07a — E-Mails zweispaltig:** Im Bereich „E-Mails“ der Akte
       steht links die kompakte Liste (Betreff fett, Empfänger und Datum), rechts
       ein Lesebereich mit Betreff, An/CC, Datum, Status und dem gespeicherten

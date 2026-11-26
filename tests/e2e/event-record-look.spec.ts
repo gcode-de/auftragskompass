@@ -270,6 +270,31 @@ test('the event mails read in two panes like Bookitup', async ({ page }) => {
       fullPage: true,
     });
   }
+  // UI-BKP-07: a new mail opens inline in the reading pane, not as a modal.
+  await record.getByRole('button', { name: 'Neue Mail schreiben' }).click();
+  const compose = record.getByRole('dialog', { name: 'Neue Mail schreiben' });
+  await expect(compose).toBeVisible();
+  await expect(reader).toBeHidden();
+  const composeBox = (await compose.boundingBox())!;
+  expect(composeBox.x).toBeGreaterThan(list.x + list.width);
+  expect(await compose.getAttribute('aria-modal')).toBeNull();
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.screenshot({
+    path: test.info().outputPath('event-mail-compose-1440.png'),
+    fullPage: true,
+  });
+  await compose.getByLabel('Betreff').press('Escape');
+  await expect(compose).toBeHidden();
+  await expect(reader).toBeVisible();
+  await expect(
+    record.getByRole('button', { name: 'Neue Mail schreiben' }),
+  ).toBeFocused();
   await page.setViewportSize({ width: 390, height: 900 });
   expect(
     await page.evaluate(
