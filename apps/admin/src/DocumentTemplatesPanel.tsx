@@ -1,4 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  menuPanelProps,
+  menuToggleProps,
+  rowMenuState,
+} from './popover-menu.js';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { DiscountField } from './DiscountField.js';
@@ -573,7 +578,6 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
   const deferredSaveReturnTarget = useRef<HTMLElement | null>(null);
   const createAttempt = useRef<CreateAttempt | null>(null);
   const archiveFocusIntent = useRef<ArchiveFocusIntent | null>(null);
-  const actionRowRefs = useRef(new Map<string, HTMLLIElement>());
   const actionToggleRefs = useRef(new Map<string, HTMLButtonElement>());
   const editButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const createButtonRef = useRef<HTMLButtonElement>(null);
@@ -615,43 +619,6 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
     },
     [],
   );
-  useEffect(() => {
-    if (!openActionsId) return;
-    const closeIfOutside = (target: EventTarget | null) => {
-      const row = actionRowRefs.current.get(openActionsId);
-      if (row && target instanceof Node && !row.contains(target))
-        setOpenActionsId(null);
-    };
-    let switchingToggle: Element | null = null;
-    const onPointerDown = (event: PointerEvent) => {
-      const toggle =
-        event.target instanceof Element
-          ? event.target.closest('.document-template-action-toggle')
-          : null;
-      switchingToggle =
-        toggle &&
-        [...actionRowRefs.current.values()].some((row) => row.contains(toggle))
-          ? toggle
-          : null;
-      if (!switchingToggle) closeIfOutside(event.target);
-    };
-    const onFocusIn = (event: FocusEvent) => {
-      if (event.target !== switchingToggle) closeIfOutside(event.target);
-    };
-    const onPointerEnd = () => {
-      switchingToggle = null;
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('pointerup', onPointerEnd);
-    document.addEventListener('pointercancel', onPointerEnd);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('pointerup', onPointerEnd);
-      document.removeEventListener('pointercancel', onPointerEnd);
-    };
-  }, [openActionsId]);
   function trackArchiveFocus(id: string, origin: HTMLElement) {
     archiveFocusIntent.current?.stop();
     archiveFocusIntent.current = null;
@@ -2406,11 +2373,6 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                   <ul className="document-template-list">
                     {group.rows.map((row) => (
                       <li
-                        ref={(element) => {
-                          if (element)
-                            actionRowRefs.current.set(row.id, element);
-                          else actionRowRefs.current.delete(row.id);
-                        }}
                         className="document-template-row"
                         key={row.id}
                         onKeyDown={(event) => {
@@ -2476,22 +2438,30 @@ export function DocumentTemplatesPanel({ csrfToken }: { csrfToken: string }) {
                               uncertainCreate
                             }
                             aria-label={`Weitere Aktionen für ${row.name}`}
-                            aria-expanded={openActionsId === row.id}
                             aria-controls={`document-template-secondary-actions-${row.id}`}
-                            onClick={() =>
-                              setOpenActionsId((current) =>
-                                current === row.id ? null : row.id,
-                              )
-                            }
+                            {...menuToggleProps(
+                              `document-template-secondary-actions-${row.id}`,
+                              openActionsId === row.id,
+                              (open) =>
+                                setOpenActionsId(
+                                  rowMenuState(row.id, open, null),
+                                ),
+                            )}
                           >
                             Aktionen
                           </button>
                           <div
-                            id={`document-template-secondary-actions-${row.id}`}
-                            className="document-template-secondary-actions"
+                            className="document-template-secondary-actions popover-menu"
                             role="group"
                             aria-label={`Aktionen für ${row.name}`}
-                            hidden={openActionsId !== row.id}
+                            {...menuPanelProps(
+                              `document-template-secondary-actions-${row.id}`,
+                              openActionsId === row.id,
+                              (open) =>
+                                setOpenActionsId(
+                                  rowMenuState(row.id, open, null),
+                                ),
+                            )}
                           >
                             <button
                               className="secondary-action"

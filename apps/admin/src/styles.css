@@ -2358,26 +2358,40 @@ summary {
 .row-menu-toggle:hover:not(:disabled) {
   background: var(--hover-surface);
 }
-.row-menu:not([data-open]) > .row-menu-panel {
-  display: none;
+/* UI-NATIVE-02: every ⋯ menu is a native popover in the top layer, anchored
+   below its toggle and flipped above it near the bottom edge. Light dismiss,
+   Escape and one-open-at-a-time come from the browser. */
+[popovertarget] {
+  anchor-name: var(--menu-anchor);
 }
-.row-menu-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 0.25rem);
-  z-index: var(--layer-sticky);
-  display: grid;
+[popover].popover-menu {
+  position-anchor: var(--menu-anchor);
+  position-area: bottom span-left;
+  position-try-fallbacks: flip-block;
+  inset: auto;
+  margin: 0.25rem 0;
   min-width: 13rem;
+  max-width: min(20rem, calc(100vw - 1rem));
   padding: 0.35rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface);
+  color: var(--ink);
   box-shadow: var(--shadow-dialog);
 }
-.row-menu-panel > button {
+[popover].popover-menu:popover-open {
+  display: grid;
+  gap: 0.1rem;
+}
+/* Author display rules on the shared classes must not reopen a closed one. */
+[popover].popover-menu:not(:popover-open) {
+  display: none;
+}
+[popover].popover-menu > button {
   justify-content: flex-start;
-  align-self: stretch;
-  min-height: 40px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
   padding: 0.5rem 0.75rem;
   border: 0;
   border-radius: var(--radius-field);
@@ -2386,10 +2400,14 @@ summary {
   font-weight: 400;
   text-align: left;
 }
-.row-menu-panel > button:hover:not(:disabled) {
+[popover].popover-menu > button:hover:not(:disabled) {
   background: var(--hover-surface);
 }
-.row-menu-panel > button.danger {
+[popover].popover-menu > :is(button:disabled, [aria-disabled='true']) {
+  color: var(--disabled-ink);
+  cursor: not-allowed;
+}
+[popover].popover-menu > button.danger {
   color: var(--danger-ink);
 }
 .section-heading {
@@ -4613,9 +4631,6 @@ a.offer-draft-preview {
 .files-menu-cell {
   width: 44px;
   text-align: right;
-}
-.files-menu-cell .row-menu-toggle {
-  anchor-name: var(--menu-anchor);
 }
 /* The ⋯ menu is a native popover: light dismiss and Escape come from the
    browser, the anchor keeps it under its toggle and flips it near the edge. */

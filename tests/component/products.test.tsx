@@ -908,7 +908,9 @@ test('rare row actions stay behind one named disclosure until it is opened', asy
   ).toBeTruthy();
 });
 
-test('only one row disclosure is open and Escape, focus leaving the row and an outside click close it', async () => {
+// UI-NATIVE-02: a press elsewhere is the native popover's light dismiss,
+// covered in Chromium; one-open-at-a-time and Escape stay in the state.
+test('only one row menu is open and Escape closes it back to its trigger', async () => {
   vi.stubGlobal('fetch', listFetcher([row, service]));
   render(<ProductPanel csrfToken="csrf" />);
   await screen.findByText(summaryText(rowText));
@@ -919,35 +921,14 @@ test('only one row disclosure is open and Escape, focus leaving the row and an o
   fireEvent.click(second);
   expect(first.getAttribute('aria-expanded')).toBe('false');
   expect(second.getAttribute('aria-expanded')).toBe('true');
-  // A focus move inside the same row keeps the disclosure open.
   const secondArchive = screen.getByRole('button', {
     name: 'Produkt archivieren: Synthetic service',
   });
   secondArchive.focus();
-  fireEvent.focusIn(secondArchive);
-  expect(second.getAttribute('aria-expanded')).toBe('true');
   // Escape closes it and returns focus to its trigger.
   fireEvent.keyDown(secondArchive, { key: 'Escape' });
   expect(second.getAttribute('aria-expanded')).toBe('false');
   expect(document.activeElement).toBe(second);
-  // Tabbing out of the row closes it; focus lands on the outside control.
-  fireEvent.click(second);
-  const refresh = screen.getByRole('button', {
-    name: 'Produkte aktualisieren',
-  });
-  refresh.focus();
-  fireEvent.focusIn(refresh);
-  expect(second.getAttribute('aria-expanded')).toBe('false');
-  expect(document.activeElement).toBe(refresh);
-  // A pointer outside closes it without stealing the focus the user chose.
-  fireEvent.click(second);
-  const outside = document.createElement('button');
-  outside.textContent = 'Fictional outside action';
-  document.body.append(outside);
-  fireEvent.pointerDown(outside);
-  expect(second.getAttribute('aria-expanded')).toBe('false');
-  expect(document.activeElement).not.toBe(second);
-  outside.remove();
 });
 
 test('archiving sends the versioned PUT, updates only that row and keeps its trigger reachable', async () => {

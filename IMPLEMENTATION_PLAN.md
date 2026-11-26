@@ -643,6 +643,15 @@ Gesamtrahmen bleiben vorerst aus.
       Koordinaten), E2E (Fokusrückgabe, Seitenwechsel, Tab bleibt aus der
       inerten Seite, Hell/Dunkel).
       Commit `refactor: use native modal dialogs for the forms`.
+- [x] **UI-NATIVE-02 — ⋯-Menüs als native Popover:** Eventkarten-Menü,
+      Produkt- und Vorlagenaktionen sowie das Positionsmenü im Dokumenteditor
+      sind `popover="auto"` mit Ankerpositionierung (`popover-menu.ts`, Klasse
+      `popover-menu`) statt eigener Außenklick-Logik. Der Browser schließt bei
+      Klick daneben und Escape und hält genau ein Menü offen; der Zustand
+      folgt über das `toggle`-Ereignis, Fokus, der das Menü verlässt, schließt
+      es. **Tests:** Component (Helfer mit/ohne Popover, Escape, eine Zeile
+      offen), E2E (Vorlagenmenüs hell/dunkel bei 320/1280, Eventkarten-Menü).
+      Commit `refactor: open the row menus as native popovers`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

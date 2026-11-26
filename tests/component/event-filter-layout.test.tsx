@@ -9,6 +9,7 @@ import {
   within,
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
+import { openRowMenu } from '../helpers/row-menu.js';
 
 // BKP007: the event filters keep their H041 fields, presets, counters and URL
 // rules, but get the Bookitup frame: one context column beside the list on wide
@@ -346,6 +347,7 @@ test('opening and cancelling the sheet leaves a dirty event editor alone', async
   const fetcher = mocker();
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',

@@ -428,11 +428,12 @@ async function captureTemplateEvidence(
     if ((await page.locator('html').getAttribute('data-theme')) !== theme)
       await toggle.click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    if (
-      disclosureTrigger &&
-      (await disclosureTrigger.getAttribute('aria-expanded')) !== 'true'
-    )
+    // The theme click outside light-dismisses a native popover menu at
+    // once; its state follows asynchronously, so look at the menu itself.
+    if (disclosureTrigger && !(await visibleTarget?.isVisible())) {
       await disclosureTrigger.click();
+      await expect(disclosureTrigger).toHaveAttribute('aria-expanded', 'true');
+    }
     for (const width of [1280, 320] as const) {
       await page.setViewportSize({ width, height: 844 });
       await expect

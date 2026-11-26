@@ -15,6 +15,7 @@ import {
   type ContactSearchState,
 } from '../../apps/admin/src/ContactPicker.js';
 import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
+import { openRowMenu } from '../helpers/row-menu.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -393,6 +394,7 @@ test('closing after a resize returns focus to the plus where it now stands', asy
 test('editing typed text over a placeholder never clears the stored value', async () => {
   const { posts } = setup();
   await ready();
+  await openRowMenu('Synthetic stored event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic stored event',
@@ -435,6 +437,7 @@ test('a confirmed create closes the dialog even when the list reload fails', asy
 test('an open edit draft blocks create and duplicate, then focus survives cancel', async () => {
   const { posts } = setup();
   await ready();
+  await openRowMenu('Synthetic stored event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic stored event',
@@ -445,6 +448,7 @@ test('an open edit draft blocks create and duplicate, then focus survives cancel
   });
   const create = screen.getByRole('button', { name: 'Event anlegen' });
   expect((create as HTMLButtonElement).disabled).toBe(true);
+  await openRowMenu('Synthetic stored event');
   expect(
     (
       screen.getByRole('button', {
@@ -458,6 +462,7 @@ test('an open edit draft blocks create and duplicate, then focus survives cancel
   expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
     'Synthetic dirty draft',
   );
+  await openRowMenu('Synthetic stored event');
   const edit = screen.getByRole('button', {
     name: 'Event bearbeiten: Synthetic stored event',
   });
@@ -506,6 +511,7 @@ test('Escape and close do nothing while the create POST is still pending', async
 test('focus returns to the surviving edit trigger after a confirmed edit save', async () => {
   setup();
   await ready();
+  await openRowMenu('Synthetic stored event');
   const edit = screen.getByRole('button', {
     name: 'Event bearbeiten: Synthetic stored event',
   });
@@ -516,11 +522,9 @@ test('focus returns to the surviving edit trigger after a confirmed edit save', 
   fireEvent.click(screen.getByRole('button', { name: 'Event speichern' }));
   await screen.findByText('Event gespeichert.');
   await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+  // The closed menu hides its actions; focus is back on its toggle.
   expect(document.activeElement).toBe(
-    screen
-      .getByRole('button', { name: /Event bearbeiten: Synthetic/ })
-      .closest('.row-menu')!
-      .querySelector('.row-menu-toggle'),
+    screen.getByRole('button', { name: /Weitere Aktionen: Synthetic/ }),
   );
 });
 test('a failed pending create keeps the dialog open and closeable', async () => {
@@ -563,6 +567,7 @@ test('a duplicate keeps the visible free-form place and raw legacy link', async 
     },
   });
   await ready();
+  await openRowMenu('Synthetic stored event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event duplizieren: Synthetic stored event',
@@ -618,6 +623,7 @@ test('a duplicate of an archived legacy place keeps the visible place as text', 
     ],
   });
   await ready();
+  await openRowMenu('Synthetic stored event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event duplizieren: Synthetic stored event',
@@ -659,6 +665,7 @@ test('the dialog prefills the complete legacy address and honours the text bound
     ],
   });
   await ready();
+  await openRowMenu('Synthetic stored event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event duplizieren: Synthetic stored event',
@@ -709,6 +716,7 @@ test('a duplicate of an inactive legacy place keeps custom or cleared text and d
       locationChoices: archived,
     });
     await ready();
+    await openRowMenu('Synthetic stored event');
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Event duplizieren: Synthetic stored event',

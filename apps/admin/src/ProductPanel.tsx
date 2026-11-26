@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { ModalDialog } from './ModalDialog.js';
+import {
+  menuPanelProps,
+  menuToggleProps,
+  rowMenuState,
+} from './popover-menu.js';
 import { PositionRemoveDialog } from './PositionRemoveDialog.js';
 
 type Product = {
@@ -160,7 +165,6 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const createTrigger = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  const actionRowRefs = useRef(new Map<string, HTMLLIElement>());
   const actionToggleRefs = useRef(new Map<string, HTMLButtonElement>());
   const [rows, setRows] = useState<Product[]>([]),
     [editing, setEditing] = useState<Product | null>(null),
@@ -219,22 +223,6 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
   useEffect(() => {
     void refresh().catch(() => setMessage(loadFailureMessage));
   }, []);
-  useEffect(() => {
-    if (!openActionsId) return;
-    const closeIfOutside = (target: EventTarget | null) => {
-      const row = actionRowRefs.current.get(openActionsId);
-      if (row && target instanceof Node && !row.contains(target))
-        setOpenActionsId(null);
-    };
-    const onPointerDown = (event: PointerEvent) => closeIfOutside(event.target);
-    const onFocusIn = (event: FocusEvent) => closeIfOutside(event.target);
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('focusin', onFocusIn);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('focusin', onFocusIn);
-    };
-  }, [openActionsId]);
   function usableFocusTarget(
     element: HTMLElement | null | undefined,
   ): element is HTMLElement {
@@ -689,10 +677,6 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
           <li
             key={row.id}
             className="product-row"
-            ref={(element) => {
-              if (element) actionRowRefs.current.set(row.id, element);
-              else actionRowRefs.current.delete(row.id);
-            }}
             onKeyDown={(event) => {
               if (event.key !== 'Escape' || openActionsId !== row.id) return;
               event.preventDefault();
@@ -735,13 +719,12 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               disabled={busy}
               aria-label={`Weitere Aktionen für ${row.name}`}
               title="Weitere Aktionen"
-              aria-expanded={openActionsId === row.id}
               aria-controls={`product-secondary-actions-${row.id}`}
-              onClick={() =>
-                setOpenActionsId((current) =>
-                  current === row.id ? null : row.id,
-                )
-              }
+              {...menuToggleProps(
+                `product-secondary-actions-${row.id}`,
+                openActionsId === row.id,
+                (open) => setOpenActionsId(rowMenuState(row.id, open, null)),
+              )}
             >
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <circle cx="5" cy="12" r="1.5" />
@@ -750,10 +733,14 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
               </svg>
             </button>
             <span
-              id={`product-secondary-actions-${row.id}`}
+              className="popover-menu"
               role="group"
               aria-label={`Aktionen für ${row.name}`}
-              hidden={openActionsId !== row.id}
+              {...menuPanelProps(
+                `product-secondary-actions-${row.id}`,
+                openActionsId === row.id,
+                (open) => setOpenActionsId(rowMenuState(row.id, open, null)),
+              )}
             >
               <button
                 className="secondary-action"
