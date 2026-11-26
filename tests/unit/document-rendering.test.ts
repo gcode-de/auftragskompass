@@ -195,6 +195,15 @@ describe('renderDocumentHtml', () => {
     expect(html).toContain('counter(page)');
     expect(html).toContain('counter(pages)');
     expect(html).not.toContain('Seite 1');
+    // The number columns stay narrow so the description keeps about 60% of
+    // the table and a long text does not turn into a tall thin column.
+    expect(html).toContain(
+      '.positions td:nth-last-child(3), .positions td:last-child { width: 13%; }',
+    );
+    expect(html).toContain(
+      '.positions td:nth-last-child(2) { width: 12%; white-space: nowrap; }',
+    );
+    expect(html).not.toContain('width: 17%');
   });
   test('renders multiline position info with its service and preserves tax and numbering', () => {
     const html = renderDocumentHtml({
