@@ -2307,10 +2307,13 @@ test('the logbook shows the newest entry first with its date below', async () =>
   expect(entries[1]!.dataset.kind).toBe('created');
   expect(entries[1]!.hasAttribute('data-status')).toBe(false);
   // The status choice names its current code for the coloured dot.
-  const field = screen.getByLabelText('Status des Events').closest('label')!;
+  const select = screen.getByLabelText(
+      'Status des Events',
+    ) as HTMLSelectElement,
+    field = select.closest('label')!;
   expect(field.dataset.status).toBe(detail.event.status);
-  fireEvent.change(screen.getByLabelText('Status des Events'), {
-    target: { value: 'booked' },
-  });
-  expect(field.dataset.status).toBe('booked');
+  // The status form is locked while the record still loads in the background.
+  await waitFor(() => expect(select.closest('fieldset')!.disabled).toBe(false));
+  fireEvent.change(select, { target: { value: 'booked' } });
+  await waitFor(() => expect(field.dataset.status).toBe('booked'));
 });

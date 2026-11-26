@@ -153,7 +153,7 @@ test('settings navigation groups its areas like Bookitup in links and select', a
   const select = within(settingsNavigation).getByRole('combobox', {
     name: 'Einstellungsbereich',
   }) as HTMLSelectElement;
-  expect(select.options).toHaveLength(16);
+  expect(select.options).toHaveLength(17);
   expect(select.value).toBe('#settings-resources');
   // UI-PARITY-01: every option keeps its own hash; groups are optgroups.
   expect(
@@ -178,6 +178,7 @@ test('settings navigation groups its areas like Bookitup in links and select', a
     ['Dokumente', 'Produkte', '#settings-products'],
     ['Dokumente', 'Dokument-Layout', '#settings-document-layout'],
     ['Dokumente', 'Nummernkreise', '#settings-numbers'],
+    ['Dokumente', 'Dateibibliothek', '#settings-files'],
     ['Daten', 'Datenimport', '#import-review'],
     ['Daten', 'Datenexport', '#settings-export'],
     ['', 'Passwort & Account', '#settings-security'],
@@ -202,7 +203,13 @@ test('settings navigation groups its areas like Bookitup in links and select', a
     ['E-Mail', ['Vorlagen', 'Ein- & Ausgangsserver', 'Signatur']],
     [
       'Dokumente',
-      ['Dokument-Vorlagen', 'Produkte', 'Dokument-Layout', 'Nummernkreise'],
+      [
+        'Dokument-Vorlagen',
+        'Produkte',
+        'Dokument-Layout',
+        'Nummernkreise',
+        'Dateibibliothek',
+      ],
     ],
     ['Daten', ['Datenimport', 'Datenexport']],
   ]);
@@ -700,52 +707,31 @@ test('shrinking to the mobile breakpoint moves focused sidebar controls to the m
   expect(document.activeElement).toBe(input);
 });
 
-test('Dateien is a first-class main entry with quiet, labelled icon controls', () => {
-  shimDialog();
-  window.history.replaceState(null, '', '/?q=Fictional#files');
-  render(<Workspace />);
-  expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('files');
-  const sidebar = within(screen.getByLabelText('Arbeitsbereiche'));
-  const link = sidebar.getByRole('link', { name: 'Dateien' });
-  expect(link.getAttribute('href')).toBe('#files');
-  expect(link.getAttribute('title')).toBe('Dateien');
-  expect(link.getAttribute('aria-current')).toBe('page');
-  const heading = screen.getByRole('link', {
-    name: 'Dateien – zur Eventübersicht',
-  });
-  expect(heading.textContent).toBe('Dateien');
-  // Settings stays a separate area and never claims the file page.
+// UI-BKP-09: like Bookitup the file library is a settings page, not a main
+// menu entry; the old `#files` address keeps working.
+test('the file library lives in the settings, also under its old address', () => {
+  for (const hash of ['#settings-files', '#files']) {
+    window.history.replaceState(null, '', '/?q=Fictional' + hash);
+    const view = render(<Workspace />);
+    expect(screen.getByLabelText('Arbeitsbereich').textContent).toBe('files');
+    const sidebar = within(screen.getByLabelText('Arbeitsbereiche'));
+    expect(sidebar.queryByRole('link', { name: 'Dateien' })).toBeNull();
+    // The settings entry is the current main area.
+    expect(
+      sidebar
+        .getByRole('link', { name: 'Einstellungen' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    expect(window.location.search).toBe('?q=Fictional');
+    view.unmount();
+  }
+  window.history.replaceState(null, '', '/#settings-files');
+  render(<SettingsNavigation />);
   expect(
-    sidebar
-      .getByRole('link', { name: 'Einstellungen' })
+    screen
+      .getByRole('link', { name: 'Dateibibliothek' })
       .getAttribute('aria-current'),
-  ).toBeNull();
-  // Mobile dialog exposes the same entry and closes on click.
-  fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
-  const drawer = within(screen.getByRole('dialog', { name: 'Menü' }));
-  const mobile = drawer.getByRole('link', { name: 'Dateien' });
-  expect(mobile.getAttribute('aria-current')).toBe('page');
-  clickLink(mobile);
-  // The unrelated query survives navigating into the new area.
-  expect(window.location.search).toBe('?q=Fictional');
-});
-
-test('the collapsed sidebar keeps Dateien active, labelled and keyboard reachable', () => {
-  localStorage.setItem('ak-sidebar-icon-rail', 'collapsed');
-  window.history.replaceState(null, '', '/?q=keep#files');
-  render(<Workspace />);
-  const sidebar = screen.getByLabelText('Arbeitsbereiche');
-  expect(sidebar.className).toContain('collapsed');
-  const link = within(sidebar).getByRole('link', { name: 'Dateien' });
-  // The icon-only state keeps the accessible name and adds a local title.
-  expect(link.getAttribute('aria-label')).toBe('Dateien');
-  expect(link.getAttribute('title')).toBe('Dateien');
-  expect(link.getAttribute('aria-current')).toBe('page');
-  expect(link.getAttribute('href')).toBe('#files');
-  link.focus();
-  expect(document.activeElement).toBe(link);
-  expect(clickLink(link)).toBe(false);
-  expect(window.location.search).toBe('?q=keep');
+  ).toBe('page');
 });
 
 // BKP006: the desktop collapse control belongs to the compact brand row, so it
