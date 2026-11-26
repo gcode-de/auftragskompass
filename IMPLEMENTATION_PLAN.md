@@ -595,6 +595,16 @@ Gesamtrahmen bleiben vorerst aus.
       neue Position, Katalog, gemischter Entwurf, gespeicherte Netto-Basis),
       E2E (Angebotsablauf).
       Commit `feat: switch gross and net once per document`.
+
+- [x] **DOC-VALID-0 — Angebote ohne Gültigkeit:** „Gültigkeit in Tagen“ erlaubt
+      0 = ohne Gültigkeit (Editor und Dokumentvorlage, mit Hinweis am Feld). Ein
+      solches Angebot druckt keine Zeile „Gültig bis“, speichert kein
+      `valid_until` und läuft nie ab. Migration 0083 erweitert die beiden
+      CHECK-Regeln auf 0–365 (nur Erweiterung, keine Datenänderung); negative
+      Werte bleiben abgewiesen. **Tests:** Integration (0 Tage: kein Datum,
+      keine PDF-Zeile, kein Ablauf; −1 abgewiesen), Component (Feldgrenzen 0–365
+      mit Hinweis).
+      Commit `feat: allow offers without a validity period`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

@@ -102,7 +102,8 @@ export const documentTemplateFields = {
   subject: { type: 'string', maxLength: 200 },
   introText: { type: 'string', maxLength: 4000 },
   outroText: { type: 'string', maxLength: 4000 },
-  validityDays: { type: 'integer', minimum: 1, maximum: 365 },
+  // 0 days: offers from this template carry no validity period.
+  validityDays: { type: 'integer', minimum: 0, maximum: 365 },
   state: { type: 'string', enum: ['active', 'inactive', 'archived'] },
   positions: {
     type: 'array',
