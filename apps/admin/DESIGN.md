@@ -568,4 +568,7 @@ Mitte, `.event-detail-aside` rechts; Mitte weiß mit 1-px-Linie, rechts ohne
 Linie mit `--shadow-aside`; Kartentitel 18/700. „Dateien“ der Akte: `.document-card` weiß
 mit Linie, `.document-state[data-state]` als Etikett (final grün getönt),
 Aktionen in `.document-list .document-actions` als ruhige Textknöpfe.
-⋯-Knöpfe nutzen das gezeichnete Drei-Punkte-SVG, nie ein Textzeichen.
+⋯-Knöpfe nutzen das gezeichnete Drei-Punkte-SVG, nie ein Textzeichen. Dokumenteditor (UI-BKP-06a): `.offer-draft-position` als graue Karte
+(`--status-surface`), „Positionen“-Überschrift als dunkler Balken (`--ink`
+auf `--surface`), `.offer-draft-totals` rechtsbündig mit Gesamtbetrag 18/700
+über einer Linie.

@@ -3334,8 +3334,13 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
   padding-block: 0.75rem;
   border-top: 1px solid var(--border);
 }
+/* UI-BKP-06: Bookitup's dark "Positionen" bar above the position cards. */
 .offer-draft-positions h6 {
   margin: 0.25rem 0 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-field);
+  background: var(--ink);
+  color: var(--surface);
   font-size: 0.95rem;
 }
 .offer-draft-positions > p:first-of-type {
@@ -3348,12 +3353,16 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
   gap: 0.75rem;
   margin-block: 0.75rem;
 }
+/* UI-BKP-06: every position is one grey card, like Bookitup's editor; the
+   white fields stand out on it. */
 .offer-draft-position {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   min-width: 0;
-  padding: 0.45rem 0.5rem 0.65rem;
-  border: 1px solid var(--border);
+  padding: 0.6rem 0.75rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--status-surface);
 }
 /* EDITOR-ACTIONS-01: the legend only names the field group; the visible header
    carries the row title and its compact icon group on one line. */
@@ -3583,13 +3592,27 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
     grid-column: span 2;
   }
 }
+/* UI-BKP-06: the totals as Bookitup's right-aligned box - net and tax
+   first, the gross amount last and largest above a rule. */
+.offer-draft-totals {
+  width: min(100%, 22rem);
+  margin: 0.5rem 0 0.75rem auto;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-card);
+  background: var(--status-surface);
+  text-align: right;
+}
 .offer-draft-subtotal {
   margin: 0.25rem 0;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .offer-draft-total {
-  font-weight: 650;
+  margin: 0.5rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 1.125rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .offer-draft-actions {

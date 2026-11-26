@@ -2699,9 +2699,10 @@ test('the editor names its field groups with legends and keeps the sum apart', a
     within(summary).getByText(/Gespeicherter Gesamtbetrag: 249,00/),
   ).toBeTruthy();
   // Net and tax stand above the gross total, like Bookitup's totals box.
-  const lines = Array.from(summary.querySelectorAll('p')).map(
-    (line) => line.textContent,
-  );
+  // UI-BKP-06: the three lines form one totals box.
+  const lines = Array.from(
+    summary.querySelectorAll('.offer-draft-totals > p'),
+  ).map((line) => line.textContent);
   expect(lines[0]).toMatch(/^Netto: [\d.,]+ €$/);
   expect(lines[1]).toMatch(/^Umsatzsteuer: [\d.,]+ €$/);
   expect(lines[2]).toMatch(/^Gespeicherter Gesamtbetrag: 249,00 €$/);
