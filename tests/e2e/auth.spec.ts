@@ -6270,7 +6270,7 @@ async function signInScenario(
                 ),
               ),
           );
-          expect(readyMs).toBeLessThan(2000);
+          expect(readyMs, `${route} at ${width}px`).toBeLessThan(2000);
           expect(
             await page.evaluate(() => document.documentElement.scrollWidth),
           ).toBeLessThanOrEqual(width + 1);

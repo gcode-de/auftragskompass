@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAutoRefresh } from './auto-refresh.js';
 import {
   eventTargetHref,
@@ -895,7 +895,7 @@ export function FilesPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, index) => {
+                  {rows.map((row) => {
                     const href = eventHref(row.eventId),
                       due = deadline(row);
                     return (
@@ -983,14 +983,7 @@ export function FilesPanel({
                         {/* UI-BKP-05: the row actions behind Bookitup's ⋯ menu,
                             a native popover in the top layer so the scrolling
                             table shell never clips it; anchored to its toggle. */}
-                        <td
-                          className="files-menu-cell"
-                          style={
-                            {
-                              '--menu-anchor': '--file-menu-' + index,
-                            } as CSSProperties
-                          }
-                        >
+                        <td className="files-menu-cell">
                           <button
                             type="button"
                             className="icon-action tier-quiet-icon row-menu-toggle"

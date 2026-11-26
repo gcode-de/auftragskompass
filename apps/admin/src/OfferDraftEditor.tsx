@@ -6,7 +6,11 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { menuPanelProps, menuToggleProps } from './popover-menu.js';
+import {
+  menuPanelProps,
+  menuRendered,
+  menuToggleProps,
+} from './popover-menu.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
@@ -645,59 +649,61 @@ function PositionRowActions({
           <circle cx="19" cy="12" r="1.7" />
         </svg>
       </button>
-      <div
-        className="offer-draft-actions-menu popover-menu"
-        role="group"
-        aria-label={menuLabel}
-        {...menuPanelProps(menuId, open, setOpen)}
-      >
-        <button
-          type="button"
-          className="tertiary-action"
-          aria-label={`${title} nach oben schieben`}
-          disabled={!canReorder}
-          aria-disabled={!canMoveUp}
-          onClick={() => choose(-1)}
+      {menuRendered(open) && (
+        <div
+          className="offer-draft-actions-menu popover-menu"
+          role="group"
+          aria-label={menuLabel}
+          {...menuPanelProps(menuId, open, setOpen)}
         >
-          Nach oben schieben
-        </button>
-        <button
-          type="button"
-          className="tertiary-action"
-          aria-label={`${title} nach unten schieben`}
-          disabled={!canReorder}
-          aria-disabled={!canMoveDown}
-          onClick={() => choose(1)}
-        >
-          Nach unten schieben
-        </button>
-        {product && (
           <button
             type="button"
             className="tertiary-action"
-            aria-label={`${title} als Produkt speichern`}
-            disabled={productDisabled || productState.createLocked}
+            aria-label={`${title} nach oben schieben`}
+            disabled={!canReorder}
+            aria-disabled={!canMoveUp}
+            onClick={() => choose(-1)}
+          >
+            Nach oben schieben
+          </button>
+          <button
+            type="button"
+            className="tertiary-action"
+            aria-label={`${title} nach unten schieben`}
+            disabled={!canReorder}
+            aria-disabled={!canMoveDown}
+            onClick={() => choose(1)}
+          >
+            Nach unten schieben
+          </button>
+          {product && (
+            <button
+              type="button"
+              className="tertiary-action"
+              aria-label={`${title} als Produkt speichern`}
+              disabled={productDisabled || productState.createLocked}
+              onClick={() => {
+                closeAndFocus();
+                void productState.create();
+              }}
+            >
+              Als Produkt speichern
+            </button>
+          )}
+          <button
+            type="button"
+            className="tertiary-action"
+            aria-label={`${title}: Position entfernen`}
+            disabled={removeDisabled}
             onClick={() => {
               closeAndFocus();
-              void productState.create();
+              onRemove();
             }}
           >
-            Als Produkt speichern
+            Position entfernen
           </button>
-        )}
-        <button
-          type="button"
-          className="tertiary-action"
-          aria-label={`${title}: Position entfernen`}
-          disabled={removeDisabled}
-          onClick={() => {
-            closeAndFocus();
-            onRemove();
-          }}
-        >
-          Position entfernen
-        </button>
-      </div>
+        </div>
+      )}
       {product && (
         <PositionProductStatus
           state={productState}

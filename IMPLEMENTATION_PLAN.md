@@ -672,6 +672,20 @@ Gesamtrahmen bleiben vorerst aus.
       nicht vorgetäuscht. **Tests:** Component (Brotkrume, Stift, Reiter,
       Aktionsstufen), E2E (Akte ohne Überlauf, Hell/Dunkel).
       Commit `feat: open the contact record like bookitup`.
+- [x] **PERF-MENU-01 — Zeilenmenüs leicht halten:** Nach UI-NATIVE-02 lagen
+      500 Eventkarten/Kontakte lokal ~120 ms über dem Ausgangswert und rissen
+      in CI zweimal das 2-s-Budget. Ein Ankername je Menü-Hülle per
+      `anchor-scope` statt Inline-Stilen je Zeile, und nur das offene Menü
+      rendert seine Einträge – genauer: ein Menü existiert nur, solange es
+      offen ist (`menuRendered`), öffnet sich beim Einhängen selbst und meldet
+      Schließen über sein `toggle`-Ereignis; ein Druck auf den Auslöser eines
+      offenen Menüs öffnet es nicht erneut. Die Kontakttabelle blendet Zeilen über
+      React-Attribute statt `:has()`-Regeln aus. Lokal wieder auf
+      Ausgangsniveau oder darunter (Events 0,78/0,84 s, Kontakte 0,61/0,66 s
+      bei 390/1280; vorher 0,78/0,84 und 0,61/0,63). **Tests:** Component
+      (keine Inline-Stile), E2E-Lastmessung.
+      Commit `perf: keep row menus light in long lists`.
+
 - [x] **UI-BKP-11 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der
       Einstellungslink führen dorthin). Ab 1024 px Kontextspalte mit Titel,

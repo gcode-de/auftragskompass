@@ -1,29 +1,46 @@
-import type { CSSProperties, FocusEvent, ToggleEvent } from 'react';
+import type { FocusEvent, PointerEvent, ToggleEvent } from 'react';
 
 // Modern web guidance: a ⋯ menu is a native popover. The browser puts it in
 // the top layer (no clipping by scrolling lists), closes it on a press
 // elsewhere or Escape and keeps one auto popover open at a time; CSS anchor
-// positioning keeps it under its toggle. The caller keeps the open state so
-// labels and focus hand-back stay in React; the popover's toggle event feeds
-// light dismiss back into that state. Without popover support (jsdom) the
-// panel falls back to `hidden` and the toggle's own click.
+// positioning keeps it under its toggle (one anchor name, scoped per row in
+// CSS). The caller keeps the open state and renders a panel only while it is
+// open (`menuRendered`), so a list of 500 rows carries no closed popovers and
+// no per-row listeners (PERF-MENU-01). The panel shows itself when mounted;
+// its toggle event feeds light dismiss and Escape back into the state.
+// Without popover support (jsdom) the panel stays rendered with `hidden`.
 const supported = () =>
   typeof HTMLElement === 'function' &&
   typeof HTMLElement.prototype.showPopover === 'function';
 
-const shownState = new WeakMap<HTMLElement, boolean>();
+/** Whether the caller renders the menu panel at all. */
+export function menuRendered(open: boolean) {
+  return open || !supported();
+}
 
-const anchor = (id: string) =>
-  ({ '--menu-anchor': '--' + id }) as CSSProperties;
+// The press on an open menu's toggle light-dismisses it before the click
+// arrives; the click must then not open it again.
+const pressedWhileOpen = new WeakSet<Element>();
 
 export function menuToggleProps(
   id: string,
   open: boolean,
   setOpen: (open: boolean) => void,
 ) {
-  return supported()
-    ? { popoverTarget: id, 'aria-expanded': open, style: anchor(id) }
-    : { 'aria-expanded': open, onClick: () => setOpen(!open) };
+  if (!supported())
+    return { 'aria-expanded': open, onClick: () => setOpen(!open) };
+  return {
+    'aria-expanded': open,
+    // Names the menu even while it is not rendered (aria-expanded=false).
+    'aria-controls': id,
+    onPointerDown: (event: PointerEvent<HTMLElement>) => {
+      if (open) pressedWhileOpen.add(event.currentTarget);
+    },
+    onClick: (event: { currentTarget: Element }) => {
+      const pressed = pressedWhileOpen.delete(event.currentTarget);
+      setOpen(!(open || pressed));
+    },
+  };
 }
 
 export function menuPanelProps(
@@ -39,8 +56,7 @@ export function menuPanelProps(
       open &&
       next instanceof Element &&
       !event.currentTarget.contains(next) &&
-      next.getAttribute('aria-controls') !== id &&
-      next.getAttribute('popovertarget') !== id
+      next.getAttribute('aria-controls') !== id
     )
       setOpen(false);
   };
@@ -49,19 +65,12 @@ export function menuPanelProps(
     id,
     onBlur,
     popover: 'auto' as const,
-    style: anchor(id),
     onToggle: (event: ToggleEvent<HTMLElement>) => {
-      const next = event.newState === 'open';
-      if (next !== open) setOpen(next);
+      if (event.newState === 'closed') setOpen(false);
     },
-    // A chosen action closes the menu through the state; mirror it here.
-    // Only a real open → closed change hides: a render caused by another
-    // menu may arrive before this one's own open event.
+    // Mounted only while open: show it at once.
     ref: (element: HTMLElement | null) => {
-      if (!element) return;
-      if (!open && shownState.get(element) && element.matches(':popover-open'))
-        element.hidePopover();
-      shownState.set(element, open);
+      if (element && !element.matches(':popover-open')) element.showPopover();
     },
   };
 }
