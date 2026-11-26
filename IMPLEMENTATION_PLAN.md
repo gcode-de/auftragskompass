@@ -561,6 +561,16 @@ Gesamtrahmen bleiben vorerst aus.
       **Tests:** E2E (Leistenbreite, Spaltenlage und -höhe, Titel und Plus in
       der Spalte, h1 verborgen; Dokumentspalte), Component (eine Seitenüberschrift).
       Commit `feat: frame the workspace like bookitup`.
+- [x] **UI-BKP-07a — E-Mails zweispaltig:** Im Bereich „E-Mails“ der Akte
+      steht links die kompakte Liste (Betreff fett, Empfänger und Datum), rechts
+      ein Lesebereich mit Betreff, An/CC, Datum, Status und dem gespeicherten
+      Klartext der Mail (HTML wird nie gerendert). Laden über die bestehende
+      Route `GET /api/v1/mail/messages/:id`; ein Fehler bietet „Erneut laden“,
+      eine späte Antwort einer früher gewählten Mail wird verworfen. Der
+      eingebettete Editor folgt getrennt. **Tests:** Component (Öffnen, Klartext,
+      CC, Fehler und Wiederholung, falsche Form, späte Antwort), E2E
+      (Zwei-Spalten-Ansicht hell/dunkel).
+      Commit `feat: read event mails in a bookitup reading pane`.
 - [x] **UI-BKP-06b — Editorkopf wie Bookitup:** Brotkrume „Dateien /
       Angebot bearbeiten“ statt „Schließen“ (der Knopf heißt für Screenreader
       „Dateien – Bearbeitung schließen“), rechts „Vorschau“ als blaue

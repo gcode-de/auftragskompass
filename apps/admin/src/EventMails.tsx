@@ -19,6 +19,10 @@ type MailRow = {
   scheduledFor?: string | null;
 };
 
+// The reading pane shows the stored plain text only; the HTML part of a mail
+// is never rendered here.
+type MailReading = { id: string; bodyText: string; cc: string };
+
 const pollMs = 3000,
   // About two minutes; a longer run is shown as such instead of polling on.
   maxPolls = 40;
@@ -112,7 +116,30 @@ export function EventMails({
     [failed, setFailed] = useState(false),
     [busy, setBusy] = useState(''),
     [message, setMessage] = useState(''),
-    [alert, setAlert] = useState('');
+    [alert, setAlert] = useState(''),
+    // UI-BKP-07: the reading pane - the chosen mail and its stored text.
+    [selected, setSelected] = useState(''),
+    [reading, setReading] = useState<MailReading | null>(null),
+    [readFailed, setReadFailed] = useState(false);
+  const readSequence = useRef(0);
+
+  async function open(id: string) {
+    const current = ++readSequence.current;
+    setSelected(id);
+    setReading(null);
+    setReadFailed(false);
+    try {
+      const reply = await fetch('/api/v1/mail/messages/' + id);
+      if (!reply.ok) throw Error('read');
+      const body = (await reply.json()) as Partial<MailReading>;
+      if (typeof body.bodyText !== 'string' || typeof body.cc !== 'string')
+        throw Error('shape');
+      if (current === readSequence.current)
+        setReading({ id, bodyText: body.bodyText, cc: body.cc });
+    } catch {
+      if (current === readSequence.current) setReadFailed(true);
+    }
+  }
 
   async function load() {
     const current = ++sequence.current;
@@ -276,57 +303,121 @@ export function EventMails({
       {rows.length > 0 && !shown.length && (
         <p className="document-card-hint">Keine Mail in diesem Ordner.</p>
       )}
-      {shown.length > 0 && (
-        <ul className="document-list">
-          {shown.map((row) => (
-            <li key={row.id} className="event-mail" data-state={row.sendState}>
-              <div className="document-row">
-                <div>
-                  <strong>{row.subject.trim() || '(ohne Betreff)'}</strong>
-                  <div className="event-mail-meta">
-                    an {row.to} · {dateText(row.sentAt ?? row.createdAt)}
-                  </div>
+      <div className="event-mail-panes">
+        {shown.length > 0 && (
+          <ul className="document-list event-mail-list">
+            {shown.map((row) => (
+              <li
+                key={row.id}
+                className="event-mail"
+                data-state={row.sendState}
+              >
+                <div className="document-row">
+                  <button
+                    type="button"
+                    className="event-mail-open"
+                    aria-pressed={selected === row.id}
+                    onClick={() => void open(row.id)}
+                  >
+                    <strong>{row.subject.trim() || '(ohne Betreff)'}</strong>
+                    <span className="event-mail-meta">
+                      an {row.to} · {dateText(row.sentAt ?? row.createdAt)}
+                    </span>
+                  </button>
+                  <strong className="event-mail-state">
+                    {planned(row)
+                      ? 'Geplant für ' + dateText(row.scheduledFor!)
+                      : stateLabels[row.sendState]}
+                  </strong>
                 </div>
-                <strong className="event-mail-state">
-                  {planned(row)
-                    ? 'Geplant für ' + dateText(row.scheduledFor!)
-                    : stateLabels[row.sendState]}
-                </strong>
-              </div>
-              {(row.sendState === 'failed' ||
-                row.sendState === 'uncertain') && (
-                <p className="event-mail-error">
-                  {mailDeliveryFailureText(row.sendErrorCode)}
+                {(row.sendState === 'failed' ||
+                  row.sendState === 'uncertain') && (
+                  <p className="event-mail-error">
+                    {mailDeliveryFailureText(row.sendErrorCode)}
+                  </p>
+                )}
+                {(row.sendState === 'failed' || row.sendState === 'none') && (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busy !== ''}
+                    onClick={() => void resend(row)}
+                  >
+                    {busy === row.id
+                      ? 'Wird eingereiht …'
+                      : row.sendState === 'none'
+                        ? 'Jetzt senden'
+                        : 'Erneut senden'}
+                  </button>
+                )}
+                {planned(row) && (
+                  <button
+                    type="button"
+                    className="tertiary-action"
+                    disabled={busy !== ''}
+                    onClick={() => void unschedule(row)}
+                  >
+                    Planung aufheben
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {/* UI-BKP-07: Bookitup's reading pane beside the list. */}
+        <article className="event-mail-reader" aria-label="Gewählte Mail">
+          {(() => {
+            const row = rows.find((entry) => entry.id === selected);
+            if (!row)
+              return (
+                <p className="document-card-hint">
+                  Wähle eine Mail aus, um sie hier zu lesen.
                 </p>
-              )}
-              {(row.sendState === 'failed' || row.sendState === 'none') && (
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={busy !== ''}
-                  onClick={() => void resend(row)}
-                >
-                  {busy === row.id
-                    ? 'Wird eingereiht …'
-                    : row.sendState === 'none'
-                      ? 'Jetzt senden'
-                      : 'Erneut senden'}
-                </button>
-              )}
-              {planned(row) && (
-                <button
-                  type="button"
-                  className="tertiary-action"
-                  disabled={busy !== ''}
-                  onClick={() => void unschedule(row)}
-                >
-                  Planung aufheben
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+              );
+            return (
+              <>
+                <h5>{row.subject.trim() || '(ohne Betreff)'}</h5>
+                <dl className="event-mail-head">
+                  <dt>An</dt>
+                  <dd>{row.to}</dd>
+                  {reading?.id === row.id && reading.cc && (
+                    <>
+                      <dt>CC</dt>
+                      <dd>{reading.cc}</dd>
+                    </>
+                  )}
+                  <dt>Datum</dt>
+                  <dd>{dateText(row.sentAt ?? row.createdAt)}</dd>
+                  <dt>Status</dt>
+                  <dd>
+                    {planned(row)
+                      ? 'Geplant für ' + dateText(row.scheduledFor!)
+                      : stateLabels[row.sendState]}
+                  </dd>
+                </dl>
+                {readFailed ? (
+                  <p role="alert">
+                    Der Mailtext konnte nicht geladen werden.{' '}
+                    <button
+                      type="button"
+                      className="tertiary-action"
+                      onClick={() => void open(row.id)}
+                    >
+                      Erneut laden
+                    </button>
+                  </p>
+                ) : reading?.id === row.id ? (
+                  <div className="event-mail-body">
+                    {reading.bodyText.trim() || '(ohne Text)'}
+                  </div>
+                ) : (
+                  <p role="status">Mailtext wird geladen …</p>
+                )}
+              </>
+            );
+          })()}
+        </article>
+      </div>
       <button
         type="button"
         className="tertiary-action"

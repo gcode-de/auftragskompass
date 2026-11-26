@@ -365,3 +365,87 @@ test('a refused or unclear withdrawal is named', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Planung aufheben' }));
   expect(await screen.findByText(/Der Ausgang ist unklar/)).toBeTruthy();
 });
+
+// UI-BKP-07: Bookitup's reading pane beside the list.
+test('a chosen mail opens in the reading pane with its head and plain text', async () => {
+  const second = '88888888-8888-4888-8888-888888888888';
+  let detailFails = true;
+  const fetcher = vi.fn<(url: string) => Promise<Response>>(async (url) => {
+    if (url.endsWith('/' + second))
+      return Response.json({ bodyText: 7, cc: '' });
+    if (url.includes('/api/v1/mail/messages/')) {
+      if (detailFails) return new Response(null, { status: 500 });
+      return Response.json({
+        bodyText: 'Hallo,\n<b>kein HTML</b>\nGrüße',
+        cc: 'synthetic.cc@example.invalid',
+      });
+    }
+    return Response.json([
+      mail({ sendState: 'sent', sentAt: '2030-10-26T10:00:05.000Z' }),
+      mail({ id: second, subject: 'Zweite fiktive Mail' }),
+    ]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventMails eventId={eventId} csrfToken="csrf" active revision={0} />);
+  const reader = screen.getByRole('article', { name: 'Gewählte Mail' });
+  expect(within(reader).getByText(/Wähle eine Mail aus/)).toBeTruthy();
+  const open = await screen.findByRole('button', { name: /Fiktives Angebot/ });
+  fireEvent.click(open);
+  expect(open.getAttribute('aria-pressed')).toBe('true');
+  expect(
+    within(reader).getByRole('heading', { name: 'Fiktives Angebot' }),
+  ).toBeTruthy();
+  // A failed read says so and can be retried in place.
+  const retry = await within(reader).findByRole('button', {
+    name: 'Erneut laden',
+  });
+  detailFails = false;
+  fireEvent.click(retry);
+  const body = await within(reader).findByText(/kein HTML/);
+  // The stored text is shown as text: markup stays visible characters.
+  expect(body.textContent).toBe('Hallo,\n<b>kein HTML</b>\nGrüße');
+  expect(reader.querySelector('b')).toBeNull();
+  expect(within(reader).getByText('synthetic.cc@example.invalid')).toBeTruthy();
+  expect(within(reader).getByText('Gesendet')).toBeTruthy();
+  // A malformed answer is refused instead of showing a wrong text.
+  fireEvent.click(screen.getByRole('button', { name: /Zweite fiktive Mail/ }));
+  expect(await within(reader).findByRole('alert')).toBeTruthy();
+  expect(within(reader).queryByText(/kein HTML/)).toBeNull();
+});
+
+test('a late answer for an earlier mail never replaces the chosen one', async () => {
+  const second = '88888888-8888-4888-8888-888888888888';
+  let releaseFirst: (response: Response) => void = () => {};
+  let failFirst: () => void = () => {};
+  let round = 0;
+  const fetcher = vi.fn<(url: string) => Promise<Response>>(async (url) => {
+    if (url.endsWith('/' + second))
+      return Response.json({ bodyText: 'Zweiter Text', cc: '' });
+    if (url.includes('/api/v1/mail/messages/'))
+      return new Promise<Response>((resolve, reject) => {
+        round += 1;
+        if (round === 1) releaseFirst = resolve;
+        else failFirst = () => reject(new Error('late'));
+      });
+    return Response.json([
+      mail({}),
+      mail({ id: second, subject: 'Zweite fiktive Mail' }),
+    ]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EventMails eventId={eventId} csrfToken="csrf" active revision={0} />);
+  const reader = screen.getByRole('article', { name: 'Gewählte Mail' });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Fiktives Angebot/ }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Fiktives Angebot/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Zweite fiktive Mail/ }));
+  await within(reader).findByText('Zweiter Text');
+  await act(async () => {
+    releaseFirst(Response.json({ bodyText: 'Alter Text', cc: '' }));
+    failFirst();
+  });
+  expect(within(reader).getByText('Zweiter Text')).toBeTruthy();
+  expect(within(reader).queryByText('Alter Text')).toBeNull();
+  expect(within(reader).queryByRole('alert')).toBeNull();
+});

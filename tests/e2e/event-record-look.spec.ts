@@ -70,6 +70,35 @@ async function openRecord(page: Page) {
           websiteInquiryAvailable: false,
         },
       });
+    if (path === '/api/v1/mail/messages')
+      return route.fulfill({
+        json: [
+          {
+            id: '99999999-9999-4999-8999-999999999999',
+            accountId: '77777777-7777-4777-8777-777777777777',
+            direction: 'out',
+            folder: 'sent',
+            editState: 'open',
+            sendState: 'sent',
+            subject: 'Fiktives Angebot zur Sommerhochzeit',
+            from: 'fictional.sender@example.invalid',
+            to: 'kundin@example.invalid',
+            contactId: null,
+            eventId: id,
+            threadKey: null,
+            createdAt: '2031-02-03T10:00:00.000Z',
+            sentAt: '2031-02-03T10:00:05.000Z',
+            sendErrorCode: null,
+          },
+        ],
+      });
+    if (path === '/api/v1/mail/messages/99999999-9999-4999-8999-999999999999')
+      return route.fulfill({
+        json: {
+          bodyText: 'Hallo,\nanbei das fiktive Angebot.\nViele Grüße',
+          cc: '',
+        },
+      });
     if (path === '/api/v1/events')
       return route.fulfill({
         json: { events: [event], timeZone: 'Europe/Berlin' },
@@ -206,4 +235,45 @@ test('the event record reads like Bookitup in both themes', async ({
       fullPage: true,
     });
   }
+});
+
+test('the event mails read in two panes like Bookitup', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openRecord(page);
+  const record = page.getByRole('region', {
+    name: 'Event-Details',
+    exact: true,
+  });
+  await record.getByRole('button', { name: 'E-Mails', exact: true }).click();
+  const open = record.getByRole('button', { name: /Fiktives Angebot/ });
+  await open.click();
+  const reader = record.getByRole('article', { name: 'Gewählte Mail' });
+  await expect(reader.getByText(/anbei das fiktive Angebot/)).toBeVisible();
+  const [list, pane] = [
+    (await open.boundingBox())!,
+    (await reader.boundingBox())!,
+  ];
+  expect(list.x + list.width).toBeLessThan(pane.x);
+  for (const theme of ['light', 'dark'] as const) {
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+      await page.getByRole('button', { name: /modus aktivieren/i }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await page.screenshot({
+      path: test.info().outputPath(`event-mails-1440-${theme}.png`),
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 900 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });

@@ -5015,3 +5015,80 @@ a.offer-draft-preview {
     grid-column: 1;
   }
 }
+
+/* UI-BKP-07: the event mails as Bookitup's two panes - a compact list on the
+   left, the chosen mail with its head and plain text on the right. */
+.event-mail-panes {
+  display: grid;
+  gap: 1rem;
+  margin-block: 0.75rem;
+}
+.event-mail-list {
+  margin: 0;
+}
+.event-mail-open {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-weight: 400;
+}
+.event-mail-open:hover {
+  background: var(--hover-surface);
+}
+.event-mail-list .event-mail-open[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--status-inquiry-surface);
+  color: var(--ink);
+}
+.event-mail-open > strong {
+  overflow-wrap: anywhere;
+}
+.event-mail-reader {
+  min-width: 0;
+  padding: 1rem;
+  border-radius: var(--radius-card);
+  background: var(--status-surface);
+}
+.event-mail-reader > h5 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.event-mail-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.15rem 0.75rem;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+}
+.event-mail-head dt {
+  color: var(--muted);
+}
+.event-mail-head dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.event-mail-body {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 64rem) {
+  .event-mail-panes {
+    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+    align-items: start;
+  }
+  .event-mail-reader {
+    position: sticky;
+    top: 1rem;
+  }
+}
