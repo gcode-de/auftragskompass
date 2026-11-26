@@ -276,7 +276,7 @@ test('contact rows keep names and actions readable on narrow screens', async ({
 }) => {
   await page.goto('/');
   await page.evaluate(() => {
-    document.body.innerHTML = `<main class="workspace-page"><section><ul class="contact-list"><li><div class="contact-row"><a class="contact-name-link" href="#contact">Ein fiktiver Kontakt mit einem sehr langen Namen</a><span>Fiktive Ansprechpartnerin</span><a href="mailto:example@example.invalid">E-Mail</a><a href="tel:123">Anrufen</a><button class="icon-action tier-quiet-icon" aria-label="Kontakt bearbeiten">✎</button></div></li></ul></section></main>`;
+    document.body.innerHTML = `<main class="workspace-page"><section><ul class="contact-list"><li><div class="contact-row"><a class="contact-name-link" href="#contact">Ein fiktiver Kontakt mit einem sehr langen Namen</a><span class="contact-cell-meta"><span>Fiktive Ansprechpartnerin</span></span><span class="contact-cell-mail"><a href="mailto:example@example.invalid">example@example.invalid</a></span><span class="contact-cell-phone"><a href="tel:123">0123 456789</a></span><span class="contact-cell-menu"><button class="icon-action tier-quiet-icon row-menu-toggle" aria-label="Weitere Aktionen">⋯</button></span></div></li></ul></section></main>`;
   });
   for (const theme of ['light', 'dark']) {
     await page

@@ -1134,22 +1134,6 @@ time {
   gap: 0.5rem;
   margin-left: auto;
 }
-.contact-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-.contact-toolbar form {
-  flex: 1 1 16rem;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  margin: 0;
-}
-.contact-toolbar .section-actions {
-  margin-left: 0;
-}
 /* BKP009: the resource panel leads with its list; search and the two
    narrowing selects sit in one compact toolbar beside the create action.
    BKP010: the product panel reuses that compact toolbar. */
@@ -1300,28 +1284,50 @@ time {
 }
 .contact-list {
   list-style: none;
+  margin: 0;
   padding: 0;
 }
 .contact-list > li {
   scroll-margin-top: 6rem;
 }
+.contact-list > li:nth-child(even) > .contact-row {
+  background: var(--table-surface);
+}
+/* UI-BKP-09: Bookitup's contact table - Name, E-Mail and Telefonnummer
+   columns with alternating rows and one ⋯ menu at the end. Narrow screens
+   keep name and menu on the first line, the addresses below. */
+.contact-list-head,
 .contact-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-areas:
+    'name menu'
+    'meta menu'
+    'mail menu'
+    'phone menu';
   align-items: center;
-  gap: 0 0.75rem;
-  padding: 0.65rem 0.85rem;
-  border-radius: 0.5rem;
-  background: var(--field-surface);
+  column-gap: 1rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--surface);
+}
+.contact-list-head {
+  display: none;
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.contact-row[hidden] {
+  display: none;
 }
 .contact-name-link {
+  grid-area: name;
   display: flex;
   align-items: center;
-  flex: 1 0 100%;
   min-width: 0;
   min-height: 44px;
   color: var(--ink);
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
   text-decoration: none;
 }
@@ -1329,17 +1335,175 @@ time {
 .contact-name-link:focus-visible {
   text-decoration: underline;
 }
-.contact-row > a:not(.contact-name-link) {
+.contact-cell-meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.contact-cell-meta:not(:has(span)) {
+  display: none;
+}
+.contact-cell-mail {
+  grid-area: mail;
+}
+.contact-cell-phone {
+  grid-area: phone;
+  font-variant-numeric: tabular-nums;
+}
+.contact-cell-mail,
+.contact-cell-phone {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.contact-cell-mail > a,
+.contact-cell-phone > a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: var(--quiet-ink);
+  color: var(--ink);
+  text-decoration: none;
 }
-.contact-row > span {
-  color: var(--muted);
+.contact-cell-mail > a:hover,
+.contact-cell-phone > a:hover {
+  text-decoration: underline;
 }
-.contact-row > button {
-  margin: 0 0 0 auto;
+.contact-cell-menu {
+  grid-area: menu;
+  justify-self: end;
+}
+@media (min-width: 48rem) {
+  .contact-list-head,
+  .contact-row {
+    grid-template-columns:
+      minmax(0, 1.3fr) minmax(0, 1.4fr) minmax(0, 0.9fr)
+      44px;
+    grid-template-areas:
+      'name mail phone menu'
+      'meta mail phone menu';
+  }
+  .contact-list-head {
+    display: grid;
+    grid-template-areas: none;
+  }
+  .contact-row:not(:has(.contact-cell-meta > span)) {
+    grid-template-areas: 'name mail phone menu';
+  }
+}
+/* The context column: title and plus, the filled search and the export. */
+.contacts-layout {
+  display: grid;
+  gap: 1rem;
+}
+.contacts-results {
+  min-width: 0;
+}
+.contacts-context {
+  display: grid;
+  gap: 0.75rem;
+}
+.contacts-context > .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+}
+.contacts-context .context-title {
+  display: none;
+}
+.contacts-context form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  margin: 0;
+}
+/* The label stays the field's accessible name; like Bookitup only the
+   filled field with its placeholder shows. */
+.contacts-context form > label {
+  font-size: 0;
+}
+.contacts-context form input {
+  border-color: transparent;
+  background: var(--filled-field);
+  font-size: 0.9375rem;
+}
+.contacts-export {
+  justify-self: start;
+}
+/* Without the column (narrow screens, global search) it is a toolbar. */
+.contacts-context {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+.contacts-context > .section-heading {
+  grid-column: 2;
+  grid-row: 1;
+}
+.contacts-context > form {
+  grid-column: 1;
+  grid-row: 1;
+}
+@media (min-width: 1024px) {
+  /* Like the event list the table sits on the canvas, the column beside the
+     rail; the page h1 stays for assistive technology only. */
+  .workspace-page > section#contacts:has(> .contacts-layout[data-column]) {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  .app-shell:has(
+    .workspace-page:not([hidden]) [data-column] > .contacts-context
+  ) {
+    padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
+  }
+  .app-shell:has(
+      .workspace-page:not([hidden]) [data-column] > .contacts-context
+    )
+    .workspace-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  [data-column] > .contacts-context {
+    grid-template-columns: minmax(0, 1fr);
+    position: fixed;
+    inset: 0 auto 0 var(--rail-width);
+    z-index: var(--layer-sticky);
+    align-content: start;
+    width: 17.125rem;
+    padding: 1.5rem 0.75rem 2rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+  [data-column] > .contacts-context > :is(.section-heading, form) {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  [data-column] > .contacts-context .context-title {
+    display: block;
+    font-size: 1.375rem;
+    font-weight: 600;
+  }
+  [data-column] > .contacts-context .contacts-export {
+    border: 0;
+    padding-inline: 0;
+    background: transparent;
+    color: var(--accent);
+  }
+  [data-column] > .contacts-results {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  [data-column] > .contacts-results > :is(p, .reload-warning) {
+    margin: 1rem;
+  }
 }
 /* BKP011.1: the reading record opens inline in its row; it stays secondary to
    the page's single primary action and shows the stored values unabridged. */

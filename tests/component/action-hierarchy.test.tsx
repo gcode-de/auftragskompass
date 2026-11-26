@@ -514,13 +514,13 @@ test('contact list, record and dialog keep exactly one primary action', async ()
   expect(
     tier(screen.getByRole('link', { name: 'Kontakte als CSV exportieren' })),
   ).toBe('secondary-action');
-  // BKP011.1: the row keeps one icon action; the reading entry is the name
-  // link, not a competing button.
+  // BKP011.1 / UI-BKP-09: the row keeps one icon action, the ⋯ menu; the
+  // reading entry is the name link, not a competing button.
   iconTier(
     within(section).getByRole('button', {
-      name: 'Kontakt bearbeiten: Synthetic Company',
+      name: 'Weitere Aktionen: Synthetic Company',
     }),
-    'Kontakt bearbeiten',
+    'Weitere Aktionen',
   );
   expect(
     within(section).queryByRole('button', { name: /Events anzeigen/ }),
@@ -585,6 +585,7 @@ test('the reload warning retries the list without a second mutation', async () =
   vi.stubGlobal('fetch', fetcher);
   render(<ContactPanel csrfToken="csrf" />);
   await screen.findByText(/Synthetic Company/);
+  await openRowMenu('Synthetic Company');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Kontakt bearbeiten: Synthetic Company',

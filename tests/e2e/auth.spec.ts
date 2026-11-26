@@ -3832,7 +3832,7 @@ async function signInScenario(
     await expect(contacts.locator('ul.contact-list')).toBeAttached();
     expect(
       await contacts.evaluate((section) => {
-        const form = section.querySelector('.contact-toolbar form');
+        const form = section.querySelector('.contacts-context form');
         const list = section.querySelector('ul.contact-list');
         return Boolean(
           form &&
@@ -3872,7 +3872,7 @@ async function signInScenario(
       ).toBe(true);
       expect(
         await contacts
-          .locator('.contact-toolbar')
+          .locator('.contacts-context')
           .evaluate(
             (element) => element.scrollWidth <= element.clientWidth + 1,
           ),
@@ -3898,6 +3898,54 @@ async function signInScenario(
     await expect(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
+    // UI-BKP-09: the contacts page as Bookitup's column and table, both
+    // themes; the column stays beside the rail, the table never overflows.
+    const themeBefore = await page.locator('html').getAttribute('data-theme');
+    for (const theme of ['light', 'dark']) {
+      await page
+        .locator('html')
+        .evaluate(
+          (element, value) => element.setAttribute('data-theme', value),
+          theme,
+        );
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 720 });
+        const column = contacts.locator('.contacts-context');
+        const table = contacts.locator('.contacts-results');
+        const [columnBox, tableBox] = [
+          (await column.boundingBox())!,
+          (await table.boundingBox())!,
+        ];
+        if (width === 1280) {
+          expect(columnBox.height).toBeGreaterThan(600);
+          expect(tableBox.x).toBeGreaterThanOrEqual(
+            columnBox.x + columnBox.width,
+          );
+          await expect(contacts.locator('.contact-list-head')).toBeVisible();
+        } else
+          expect(columnBox.y + columnBox.height).toBeLessThanOrEqual(
+            tableBox.y,
+          );
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth + 1,
+          ),
+        ).toBe(true);
+        await page.screenshot({
+          path: `tests/test-results/contacts-page-${width}-${theme}.png`,
+        });
+      }
+    }
+    await page
+      .locator('html')
+      .evaluate(
+        (element, value) =>
+          value === null
+            ? element.removeAttribute('data-theme')
+            : element.setAttribute('data-theme', value),
+        themeBefore,
+      );
+    await page.setViewportSize({ width: 1280, height: 720 });
     const contactSearch = contacts.getByLabel('Kontakte suchen');
     await contactSearch.fill('no-such-synthetic-contact');
     await contacts
@@ -3912,9 +3960,20 @@ async function signInScenario(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
     await navigate('Kontakte');
-    const contactEdit = contacts.getByRole('button', {
-      name: 'Kontakt bearbeiten: Synthetic browser contact',
+    // UI-BKP-09: like Bookitup the edit sits behind the row's ⋯ menu.
+    const contactMenu = contacts.getByRole('button', {
+      name: 'Weitere Aktionen: Synthetic browser contact',
     });
+    const contactEdit = {
+      click: async () => {
+        await contactMenu.click();
+        await contacts
+          .getByRole('button', {
+            name: 'Kontakt bearbeiten: Synthetic browser contact',
+          })
+          .click();
+      },
+    };
     // BKP011.1: the row keeps one icon action. The reading record opens from
     // the contact name itself, so the old "Events anzeigen" button is gone.
     await expect(
@@ -3926,9 +3985,9 @@ async function signInScenario(
     await expect(
       contacts.getByRole('button', { name: /Events anzeigen/ }),
     ).toHaveCount(0);
-    await expect(contactEdit).toHaveAttribute('title', 'Kontakt bearbeiten');
-    await expect(contactEdit).toHaveText('');
-    const contactActionBox = (await contactEdit.boundingBox())!;
+    await expect(contactMenu).toHaveAttribute('title', 'Weitere Aktionen');
+    await expect(contactMenu).toHaveText('');
+    const contactActionBox = (await contactMenu.boundingBox())!;
     expect(contactActionBox.width).toBeGreaterThanOrEqual(44);
     expect(contactActionBox.height).toBeGreaterThanOrEqual(44);
     await contactEdit.click();
@@ -3941,7 +4000,7 @@ async function signInScenario(
     );
     await page.keyboard.press('Escape');
     await expect(contactEditDialog).toBeHidden();
-    await expect(contactEdit).toBeFocused();
+    await expect(contactMenu).toBeFocused();
     await contactEdit.click();
     let discardPrompt = '';
     page.once('dialog', (dialog) => {
@@ -6220,7 +6279,7 @@ async function signInScenario(
             'contacts',
             'Kontakte',
             'button',
-            /^Kontakt bearbeiten: Fictional browser volume /,
+            /^Weitere Aktionen: Fictional browser volume /,
           ],
         ] as const) {
           // A hash-only navigation would reuse the previous performance time origin.
