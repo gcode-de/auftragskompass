@@ -3080,7 +3080,9 @@ export function EventDocuments({
           <li key={entry.id}>
             <div className="document-row">
               <strong>{entry.number ?? 'Entwurf'}</strong>
-              <span>{stateLabels[entry.state]}</span>
+              <span className="document-state" data-state={entry.state}>
+                {stateLabels[entry.state]}
+              </span>
             </div>
             <p className="document-meta">
               {entry.state === 'final' && entry.finalizedAt
