@@ -438,6 +438,19 @@ test('the wide frame keeps contact and place beside the main information', async
   ).toBeTruthy();
 });
 
+// A notification's "Antwort in der App" link opens the record in E-Mails with
+// the composer, once.
+test('a mail request in the address opens the record in E-Mails with the composer', async () => {
+  window.history.replaceState(null, '', '/?mail=new#event-' + event.id);
+  mockRecord();
+  const view = await open();
+  expect(view.tab('E-Mails').getAttribute('aria-current')).toBe('location');
+  expect(
+    await screen.findByRole('dialog', { name: 'Neue Mail schreiben' }),
+  ).toBeTruthy();
+  window.history.replaceState(null, '', '/');
+});
+
 // UI-BKP-10: a link from the document overview opens the record in Dateien.
 test('a document named in the address opens the record in Dateien', async () => {
   for (const [doc, area] of [

@@ -51,6 +51,18 @@ Eingang gebildet – ihr Event-Verweis zeigt daher meist auf den Tag, die
 Telegram-Nachricht entsteht beim Versand und zeigt meist direkt auf das
 Event.
 
+**Weitere Zusatzfakten (INQUIRY-INFO-02, 26.11.2026):** Beide Wege nennen
+zusätzlich, welche anderen aktiven Events am angefragten Tag schon stehen
+(„Bereits am 12.07.2031: 1× Gebucht, 2× Option“; abgesagte und nicht
+verfügbare zählen nicht, das eigene Event der Anfrage auch nicht), einen
+**bekannten Kontakt** mit derselben Adresse samt Zahl seiner früheren Events
+(nur wenn er schon andere Events hat) und – sobald das Event existiert – den
+Link **„Antwort in der App“** (`/?mail=new#event-<id>`), der die Akte direkt
+unter „E-Mails“ mit geöffnetem Editor zeigt. Der Antwort-Mail-Link nennt im
+Betreff das angefragte Datum. Für alle Links braucht **der Worker**
+`AK_AUTH_ORIGIN`; fehlt sie dort (auch wenn die API sie hat), kommen
+Benachrichtigungen ohne Links an.
+
 Der Versand läuft über eine Datenbankwarteschlange mit Wiederholung bei
 Fehlern und einem auf sechs Stunden begrenzten Wiederholungsabstand. Auch
 dauerhaft ungültige Zugangsdaten werden weiter versucht; nach Korrektur der

@@ -21,6 +21,19 @@ export type InquiryNoticeExtras = {
   eventLink: { href: string; exact: boolean } | null;
   /** A mailto: link that opens an answer to the inquirer. */
   replyLink: string | null;
+  /** Opens the event with the app's own composer, once the event exists. */
+  replyInAppLink?: string | null;
+  /** Other active events on the inquired day, counted per status label. */
+  sameDayEvents?: Array<{ label: string; count: number }>;
+  /** An existing contact with the inquirer's address and their events. */
+  knownContact?: { name: string; events: number } | null;
+};
+
+// The status labels the notice speaks; an unknown code keeps its code.
+const statusLabels: Record<string, string> = {
+  inquiry: 'Anfrage',
+  option: 'Option',
+  booked: 'Gebucht',
 };
 
 const blockingStates = ['hold', 'booked', 'blocked'] as const;
@@ -123,12 +136,68 @@ export async function inquiryNoticeExtras(
     freeUnits: [],
     eventLink: null,
     replyLink: null,
+    replyInAppLink: null,
+    sameDayEvents: [],
+    knownContact: null,
   };
+  const email = (inquiry.email ?? '').trim();
   const day = /^\d{4}-\d{2}-\d{2}$/.test(inquiry.eventDate ?? '')
     ? (inquiry.eventDate as string)
     : null;
-  if (!day && !origin) return base;
+  // Without a day, a link or an address there is nothing to look up.
+  if (!day && !origin && !isSafeMailtoAddress(email)) return base;
   const eventId = await database(connection).transaction(async (tx) => {
+    const { rows: ownRows } = await tx.execute<{ event_id: string | null }>(
+      sql`SELECT event_id FROM website_inquiries
+           WHERE tenant_id = ${tenantId} AND id = ${inquiry.id}`,
+    );
+    const ownEvent = ownRows[0]?.event_id ?? null;
+    // Who else is on that day: active events only, never this inquiry's own.
+    if (day) {
+      const { rows: dayRows } = await tx.execute<{
+        status: string;
+        count: number;
+      }>(
+        sql`SELECT status, count(*)::int AS count FROM events
+             WHERE tenant_id = ${tenantId} AND deleted_at IS NULL
+               AND event_date = ${day}::date
+               AND status NOT IN ('cancelled','unavailable')
+               AND id IS DISTINCT FROM ${ownEvent}::uuid
+             GROUP BY status ORDER BY status`,
+      );
+      base.sameDayEvents = dayRows.map((row) => ({
+        label: statusLabels[row.status] ?? row.status,
+        count: row.count,
+      }));
+    }
+    // A returning customer: an active contact with the same address.
+    if (isSafeMailtoAddress(email)) {
+      const { rows: contactRows } = await tx.execute<{
+        name: string;
+        events: number;
+      }>(
+        sql`SELECT c.name,
+                   (SELECT count(DISTINCT ec.event_id)::int
+                      FROM event_contacts ec
+                      JOIN events e ON e.tenant_id = ec.tenant_id
+                                   AND e.id = ec.event_id
+                     WHERE ec.tenant_id = c.tenant_id
+                       AND ec.contact_id = c.id
+                       AND e.deleted_at IS NULL
+                       AND e.id IS DISTINCT FROM ${ownEvent}::uuid) AS events
+              FROM contacts c
+             WHERE c.tenant_id = ${tenantId} AND c.state = 'active'
+               AND lower(c.email) = lower(${email})
+             ORDER BY events DESC, c.name LIMIT 1`,
+      );
+      // The import creates a contact for every new inquirer; only one with
+      // other events is a returning customer.
+      const known = contactRows[0];
+      base.knownContact =
+        known && known.events > 0
+          ? { name: known.name, events: known.events }
+          : null;
+    }
     if (day) {
       const { rows } = await tx.execute<{
         unit_id: string;
@@ -184,12 +253,7 @@ export async function inquiryNoticeExtras(
         tenantRows[0]?.timezone ?? 'Europe/Berlin',
       );
     }
-    if (!origin) return null;
-    const { rows: inquiryRows } = await tx.execute<{ event_id: string }>(
-      sql`SELECT event_id FROM website_inquiries
-           WHERE tenant_id = ${tenantId} AND id = ${inquiry.id}`,
-    );
-    return inquiryRows[0]?.event_id ?? null;
+    return ownEvent;
   });
   if (!origin) return base;
   base.eventLink = eventId
@@ -200,9 +264,11 @@ export async function inquiryNoticeExtras(
           exact: false,
         }
       : null;
-  const email = (inquiry.email ?? '').trim();
   base.replyLink = isSafeMailtoAddress(email)
-    ? `mailto:${email}?subject=${encodeURIComponent('Ihre Anfrage')}`
+    ? `mailto:${email}?subject=${encodeURIComponent(
+        day ? `Ihre Anfrage für den ${formatNoticeDate(day)}` : 'Ihre Anfrage',
+      )}`
     : null;
+  base.replyInAppLink = eventId ? `${origin}/?mail=new#event-${eventId}` : null;
   return base;
 }
