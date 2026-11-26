@@ -606,6 +606,23 @@ Gesamtrahmen bleiben vorerst aus.
       mit Hinweis).
       Commit `feat: allow offers without a validity period`.
 
+- [x] **MAIL-SUBJ-01 — Sprechende Betreffzeilen für Dokumentmails:** Statt
+      „Dokument AN-…“ schlägt der Versanddialog „Angebot für <Event> am <Datum> –
+      <Nummer>“ vor (Art inkl. Schlussrechnung, Eventname und -datum aus der Akte;
+      fehlende Teile entfallen). Der Betreff bleibt im Formular frei änderbar,
+      eigene Formulierungen wie „Fotobox-Angebot …“ gehen über die Mailvorlagen.
+      **Tests:** Component (alle Fallbacks, Dialog ohne Event).
+      Commit `feat: suggest friendlier subjects for document mails`.
+
+- [x] **INQUIRY-INFO-02 — Mehr in Anfrage-Benachrichtigungen:** Telegram und
+      E-Mail nennen zusätzlich andere aktive Events am Tag (je Status), einen
+      bekannten Kontakt mit früheren Events und „Antwort in der App“
+      (`?mail=new` öffnet die Akte in „E-Mails“ mit dem Editor); der
+      Antwort-Mail-Betreff nennt das Datum. **Tests:** Unit (Zeilen, Kurzweg ohne
+      Datenbank), Integration (Tag, bekannter Kontakt ohne Groß-/Kleinschreibung,
+      eigenes Event ausgenommen, Links), Component (Akte öffnet den Editor).
+      Commit `feat: tell more in inquiry notifications`.
+
 - [x] **FEED-02 — Kalender-Abos filtern und ausführlicher:** Abos filtern nach
       Buchungsstatus (Vorgabe ohne Annulliert/Nicht verfügbar, auch für
       bestehende Abos) und Eventarten; Termine nennen immer die Uhrzeit, auf

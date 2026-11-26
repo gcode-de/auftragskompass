@@ -7,7 +7,10 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { EventDocuments } from '../../apps/admin/src/EventDocuments.js';
+import {
+  EventDocuments,
+  documentMailSubject,
+} from '../../apps/admin/src/EventDocuments.js';
 
 afterEach(() => {
   cleanup();
@@ -6282,7 +6285,8 @@ test('applying a template fills subject and body and guards dirty drafts', async
   });
   const dialog = await openMailSend(trigger);
   const subject = within(dialog).getByLabelText('Betreff') as HTMLInputElement;
-  expect(subject.value).toBe('Dokument AN-2030-0001');
+  // Without an event the subject names the kind and the number.
+  expect(subject.value).toBe('Angebot AN-2030-0001');
   // Only active templates are offered.
   const templateSelect = within(dialog).getByLabelText('Aus Vorlage');
   expect(
@@ -6295,7 +6299,7 @@ test('applying a template fills subject and body and guards dirty drafts', async
   );
   // Selecting alone changes nothing.
   fireEvent.change(templateSelect, { target: { value: mailTemplate.id } });
-  expect(subject.value).toBe('Dokument AN-2030-0001');
+  expect(subject.value).toBe('Angebot AN-2030-0001');
   // Applying adopts subject and body into the editable draft.
   fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
   await waitFor(() => expect(subject.value).toBe('Erinnerung für {{contact}}'));
@@ -7560,6 +7564,30 @@ test('a requested free mail opens inline in the reading pane slot', async () => 
     else Reflect.deleteProperty(HTMLDialogElement.prototype, name);
   slot.remove();
   trigger.remove();
+});
+
+// The default subject of a document mail names what it is for.
+test('document mail subjects name the kind, the event, its date and the number', () => {
+  const offer = { kind: 'offer', number: 'AN-2031-0001' };
+  expect(documentMailSubject(offer, 'Fiktives Sommerfest', '2031-07-12')).toBe(
+    'Angebot für Fiktives Sommerfest am 12.07.2031 – AN-2031-0001',
+  );
+  expect(documentMailSubject(offer, 'Fiktives Sommerfest', null)).toBe(
+    'Angebot für Fiktives Sommerfest – AN-2031-0001',
+  );
+  expect(
+    documentMailSubject(
+      { kind: 'invoice', invoiceRole: 'final', number: null },
+      ' Fiktive Feier ',
+      'kein-datum',
+    ),
+  ).toBe('Schlussrechnung für Fiktive Feier');
+  expect(documentMailSubject(offer, '  ', '2031-07-12')).toBe(
+    'Angebot AN-2031-0001',
+  );
+  expect(documentMailSubject({ kind: 'offer', number: null }, null, null)).toBe(
+    'Angebot',
+  );
 });
 
 // UI-BKP-10: a document linked from the overview opens once it has loaded -

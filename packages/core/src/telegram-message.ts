@@ -28,6 +28,23 @@ export function renderInquiryNoticeLines(
     lines.push(
       `${extras.eventLink.exact ? 'Event' : `Events am ${day ? formatNoticeDate(day) : '—'}`}: ${extras.eventLink.href}`,
     );
+  if (day && extras.sameDayEvents?.length)
+    lines.push(
+      `Bereits am ${formatNoticeDate(day)}: ` +
+        extras.sameDayEvents
+          .map((entry) => `${entry.count}× ${entry.label}`)
+          .join(', '),
+    );
+  if (extras.knownContact)
+    lines.push(
+      `Bekannter Kontakt: ${extras.knownContact.name} (${
+        extras.knownContact.events === 1
+          ? '1 früheres Event'
+          : `${extras.knownContact.events} frühere Events`
+      })`,
+    );
+  if (extras.replyInAppLink)
+    lines.push(`Antwort in der App: ${extras.replyInAppLink}`);
   if (extras.replyLink) lines.push(`Antwort-Mail: ${extras.replyLink}`);
   return lines;
 }

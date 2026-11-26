@@ -2364,9 +2364,14 @@ test('the notice extras count free units and link the day or the event', async (
     href: `${origin}/?from=2030-10-27&to=2030-10-27#events`,
     exact: false,
   });
+  // The answer link names the inquired day; nothing else is on that day yet.
   expect(dayView.replyLink).toBe(
-    'mailto:fictional@example.invalid?subject=Ihre%20Anfrage',
+    'mailto:fictional@example.invalid?subject=' +
+      encodeURIComponent('Ihre Anfrage für den 27.10.2030'),
   );
+  expect(dayView.sameDayEvents).toEqual([]);
+  expect(dayView.knownContact).toBeNull();
+  expect(dayView.replyInAppLink).toBeNull();
   // Once the import has created the event, the link names it directly.
   const value = entry();
   await receiveOption(value, 'DE');
@@ -2389,5 +2394,42 @@ test('the notice extras count free units and link the day or the event', async (
   expect(exact.eventLink).toEqual({
     href: `${origin}/#event-${eventId}`,
     exact: true,
+  });
+  expect(exact.replyInAppLink).toBe(`${origin}/?mail=new#event-${eventId}`);
+  // A second, booked event on the day and a returning contact with the same
+  // address are named, matched without regard to case; the inquiry's own
+  // event is not counted.
+  const otherEvent = randomUUID(),
+    contactId = randomUUID();
+  await pool.query(
+    `INSERT INTO events(tenant_id,id,name,status,source,event_date,time_zone,description,notes_html)
+     VALUES($1,$2,'Fictional other event','booked','synthetic',DATE '2030-10-27','Europe/Berlin','','')`,
+    [tenantId, otherEvent],
+  );
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional Returning Customer','','','','','DE',
+      'fictional@example.invalid','','','','','active',1)`,
+    [tenantId, contactId],
+  );
+  await pool.query(
+    `INSERT INTO event_contacts(tenant_id,event_id,contact_id,role) VALUES($1,$2,$3,'primary')`,
+    [tenantId, otherEvent, contactId],
+  );
+  const enriched = await inquiryNoticeExtras(
+    pool,
+    tenantId,
+    { origin },
+    {
+      id: value.id,
+      eventDate: '2030-10-27',
+      email: 'Fictional@Example.invalid',
+    },
+  );
+  expect(enriched.sameDayEvents).toEqual([{ label: 'Gebucht', count: 1 }]);
+  expect(enriched.knownContact).toEqual({
+    name: 'Fictional Returning Customer',
+    events: 1,
   });
 });
