@@ -1014,3 +1014,43 @@ test.each(['malformed', 'conflict', 'unknown', 'server_error'])(
     await waitFor(() => expect(changed).toHaveBeenCalledOnce());
   },
 );
+// UI-BKP-12: the availability line carries its outcome for the coloured pill;
+// a change marks every line as stale until it is checked again.
+test('each unit names its availability state for the status pill', async () => {
+  const units = [
+    { ...resource, unitId: 'free', name: 'Fictional free' },
+    {
+      ...resource,
+      unitId: 'hold',
+      name: 'Fictional hold',
+      conflicts: [
+        {
+          id: 'synthetic-hold',
+          state: 'hold',
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+        },
+      ],
+    },
+    { ...resource, unitId: 'busy', name: 'Fictional busy', available: false },
+  ];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(units)),
+  );
+  render(
+    <ResourceAssignments
+      event={event}
+      csrfToken="csrf"
+      onChanged={vi.fn().mockResolvedValue(undefined)}
+    />,
+  );
+  await screen.findByLabelText('Fictional free · Einheit 1 zuweisen');
+  const states = () =>
+    Array.from(document.querySelectorAll('.resource-assign-state')).map(
+      (line) => line.getAttribute('data-state'),
+    );
+  expect(states()).toEqual(['free', 'hold', 'blocked']);
+  fireEvent.click(screen.getByLabelText('Fictional free · Einheit 1 zuweisen'));
+  expect(states()).toEqual(['stale', 'stale', 'stale']);
+});
