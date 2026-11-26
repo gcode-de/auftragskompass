@@ -892,3 +892,12 @@ Bruttopreis der Bruttobetrag. Die Umsatzsteuer kommt nur einmal im
 Summenblock dazu, der mit „Brutto“ endet. Bisher stand rechts immer der
 Bruttobetrag, auch neben einem Nettopreis. Fertige Belege behalten ihr
 gespeichertes PDF.
+
+## Angebote ohne Gültigkeit (26.11.2026)
+
+„Gültigkeit in Tagen“ akzeptiert 0–365; 0 bedeutet „ohne Gültigkeit“. Ein
+Angebot mit 0 Tagen druckt keine Zeile „Gültig bis“, speichert beim
+Finalisieren kein `valid_until`, zeigt in der Übersicht kein Fristetikett und
+gilt nie als abgelaufen. Dokumentvorlagen können 0 als Vorgabe setzen.
+Migration 0083 erweitert dafür die CHECK-Regeln von `documents` und
+`document_templates`.

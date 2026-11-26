@@ -219,7 +219,7 @@ function isDetail(value: unknown): value is DraftDetail {
       typeof detail.outroText === 'string' &&
       detail.outroText.length <= 4000 &&
       Number.isInteger(detail.validityDays) &&
-      detail.validityDays! >= 1 &&
+      detail.validityDays! >= 0 &&
       detail.validityDays! <= 365;
   return (
     typeof detail.id === 'string' &&
@@ -301,7 +301,7 @@ function hasSavedContent(detail: DraftDetail): detail is DraftDetail & {
     typeof detail.introText === 'string' &&
     typeof detail.outroText === 'string' &&
     Number.isInteger(detail.validityDays) &&
-    detail.validityDays! >= 1 &&
+    detail.validityDays! >= 0 &&
     detail.validityDays! <= 365
   );
 }
@@ -825,7 +825,7 @@ export function OfferDraftEditor({
     validTotalDiscount = !totalDiscountValueInvalid,
     totalDiscountNote = values?.totalDiscountNote ?? '';
   const days = Number(values?.validityDays),
-    validDays = Number.isInteger(days) && days >= 1 && days <= 365,
+    validDays = Number.isInteger(days) && days >= 0 && days <= 365,
     validLines =
       lineValues.length >= 1 &&
       lineValues.length <= 1000 &&
@@ -889,7 +889,7 @@ export function OfferDraftEditor({
             typeof template.introText !== 'string' ||
             typeof template.outroText !== 'string' ||
             !Number.isInteger(template.validityDays) ||
-            template.validityDays < 1 ||
+            template.validityDays < 0 ||
             template.validityDays > 365
           )
             throw new Error('template');
@@ -1466,9 +1466,10 @@ export function OfferDraftEditor({
                   Gültigkeit in Tagen
                   <input
                     type="number"
-                    min={1}
+                    min={0}
                     max={365}
                     step={1}
+                    aria-describedby={'offer-validity-hint-' + documentId}
                     value={values?.validityDays ?? ''}
                     disabled={!values || loading || busy}
                     onChange={(event) =>
@@ -1476,6 +1477,12 @@ export function OfferDraftEditor({
                     }
                   />
                 </label>
+                <small
+                  id={'offer-validity-hint-' + documentId}
+                  className="document-hint"
+                >
+                  0 = ohne Gültigkeit; das Angebot nennt dann kein „Gültig bis“.
+                </small>
                 {/* RG-07: the two invoice dates. A draft keeps the input; the due
                   day is computed by the server when the document is finalized. */}
                 {showsDates && (

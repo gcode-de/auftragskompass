@@ -2381,12 +2381,21 @@ test('field limits and validity range are explicit and invalid days block saving
   expect(subject).toHaveProperty('maxLength', 200);
   expect(intro).toHaveProperty('maxLength', 4000);
   expect(outro).toHaveProperty('maxLength', 4000);
-  expect(validity).toHaveProperty('min', '1');
+  // 0 days is an offer without a validity period, named in the description.
+  expect(validity).toHaveProperty('min', '0');
   expect(validity).toHaveProperty('max', '365');
-  fireEvent.change(validity, { target: { value: '366' } });
   expect(
-    screen.getByRole('button', { name: 'Änderungen speichern' }),
-  ).toHaveProperty('disabled', true);
+    document.getElementById(validity.getAttribute('aria-describedby')!)!
+      .textContent,
+  ).toContain('0 = ohne Gültigkeit');
+  const save = () =>
+    screen.getByRole('button', { name: 'Änderungen speichern' });
+  fireEvent.change(validity, { target: { value: '0' } });
+  expect(save()).toHaveProperty('disabled', false);
+  fireEvent.change(validity, { target: { value: '-1' } });
+  expect(save()).toHaveProperty('disabled', true);
+  fireEvent.change(validity, { target: { value: '366' } });
+  expect(save()).toHaveProperty('disabled', true);
 });
 
 test('blank and invalid position values block saving without sending a request', async () => {

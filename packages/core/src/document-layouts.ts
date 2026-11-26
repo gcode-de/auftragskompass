@@ -794,7 +794,7 @@ export function documentLayoutRepository(
             layout: fictionalPreviewLayout,
             documentNumber: 'VORSCHAU',
             issuedAt,
-            ...(input.kind === 'offer'
+            ...(input.kind === 'offer' && input.validityDays > 0
               ? {
                   validUntil: validityDate(
                     issuedAt,
