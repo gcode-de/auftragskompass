@@ -5141,7 +5141,9 @@ test('a blank offer finalized in another tab does not lock the draft list', asyn
   expect(
     screen.queryByRole('heading', { name: 'Angebot bearbeiten' }),
   ).toBeNull();
-  expect(document.activeElement).toBe(trigger);
+  // The focus returns in an effect after the list renders; a busy runner
+  // may need a moment longer than the link to appear.
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
   const edit = screen.getByRole('button', {
     name: 'Angebot Entwurf bearbeiten',
   });
