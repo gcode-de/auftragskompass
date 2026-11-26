@@ -191,7 +191,7 @@ export function AuthPanel() {
               showHeading={route === 'search'}
             />
           </div>
-          {/* UI-BKP-11: like Bookitup the resources are a page of their own
+          {/* UI-BKP-14: like Bookitup the resources are a page of their own
               with a context column, not a box inside the settings frame. The
               route keeps its settings entry and hashes. */}
           <div className="workspace-page" hidden={route !== 'resources'}>

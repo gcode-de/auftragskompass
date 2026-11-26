@@ -249,7 +249,7 @@ export function ContactPanel({
       data-record={detailId ? '' : undefined}
     >
       {showHeading && <h2>Kontakte</h2>}
-      {/* UI-BKP-09: Bookitup's contacts frame - a context column with the
+      {/* UI-BKP-12: Bookitup's contacts frame - a context column with the
           title, the plus and the search; the list fills the canvas. */}
       {/* In the global search the contacts follow the events as a plain
           block; only the Kontakte page itself gets the column. */}

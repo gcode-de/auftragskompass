@@ -652,7 +652,7 @@ Gesamtrahmen bleiben vorerst aus.
       es. **Tests:** Component (Helfer mit/ohne Popover, Escape, eine Zeile
       offen), E2E (Vorlagenmenüs hell/dunkel bei 320/1280, Eventkarten-Menü).
       Commit `refactor: open the row menus as native popovers`.
-- [x] **UI-BKP-09 — Kontaktliste wie Bookitup:** Ab 1024 px steht links neben
+- [x] **UI-BKP-12 — Kontaktliste wie Bookitup:** Ab 1024 px steht links neben
       der Leiste die Kontextspalte mit Titel „Kontakte“, Plus, gefülltem
       Suchfeld und CSV-Export; die Liste ist eine Tabelle Name · E-Mail ·
       Telefonnummer mit abwechselnden Zeilen und einem ⋯-Menü („Bearbeiten“).
@@ -662,7 +662,7 @@ Gesamtrahmen bleiben vorerst aus.
       neben der Leiste, Tabelle ohne Überlauf, Suche mit Eventspalte,
       Hell/Dunkel bei 1280/390).
       Commit `feat: list contacts in a bookitup table with a context column`.
-- [x] **UI-BKP-10 — Kontaktakte wie Bookitup:** Die geöffnete Akte beginnt
+- [x] **UI-BKP-13 — Kontaktakte wie Bookitup:** Die geöffnete Akte beginnt
       mit der Brotkrume „Kontakte / Name“ (zurück zur Liste, Name „Kontakte –
       Kontakt-Details schließen“); die übrigen Zeilen treten zurück. Darunter
       weiße Karten: Kontakt mit Stift oben rechts (öffnet den Dialog), die
@@ -686,7 +686,7 @@ Gesamtrahmen bleiben vorerst aus.
       (keine Inline-Stile), E2E-Lastmessung.
       Commit `perf: keep row menus light in long lists`.
 
-- [x] **UI-BKP-11 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
+- [x] **UI-BKP-14 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der
       Einstellungslink führen dorthin). Ab 1024 px Kontextspalte mit Titel,
       Plus, Suche, Kategorie und Zustand; die Liste ist eine Tabelle Name ·

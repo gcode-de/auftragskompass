@@ -1213,7 +1213,7 @@ time {
   align-self: center;
   margin: 0 0 0 auto;
 }
-/* UI-BKP-11: the resource list as a table - Name, Bestand, Kategorie and
+/* UI-BKP-14: the resource list as a table - Name, Bestand, Kategorie and
    Zustand - with alternating rows; one accessible line per row stays the
    summary, its parts become the cells. Narrow screens keep the summary. */
 .resource-list {
@@ -1432,7 +1432,7 @@ time {
 .contact-list > li:nth-child(even) > .contact-row {
   background: var(--table-surface);
 }
-/* UI-BKP-09: Bookitup's contact table - Name, E-Mail and Telefonnummer
+/* UI-BKP-12: Bookitup's contact table - Name, E-Mail and Telefonnummer
    columns with alternating rows and one ⋯ menu at the end. Narrow screens
    keep name and menu on the first line, the addresses below. */
 .contact-list-head,
@@ -1819,7 +1819,7 @@ time {
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
-/* UI-BKP-10: Bookitup's contact record - a breadcrumb back to the list,
+/* UI-BKP-13: Bookitup's contact record - a breadcrumb back to the list,
    then white cards on the canvas: the contact with its pen, the direct
    editing and the events with their two tabs. The other rows step aside. */
 #contacts[data-record] .contacts-results {

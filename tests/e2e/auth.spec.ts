@@ -3223,7 +3223,7 @@ async function signInScenario(
     const settingsSelect = settingsNavigation.locator(
       'select[aria-label="Einstellungsbereich"]',
     );
-    // UI-BKP-11: the settings entry opens the standalone resources page; the
+    // UI-BKP-14: the settings entry opens the standalone resources page; the
     // settings frame steps aside and the main navigation names the page.
     await expect(settingsSelect).toBeHidden();
     await expect(settingsNavigation).toBeHidden();
@@ -3401,7 +3401,7 @@ async function signInScenario(
             () => document.documentElement.scrollWidth <= window.innerWidth + 1,
           ),
         ).toBe(true);
-        // UI-BKP-11: a standalone page - the settings frame stays away at
+        // UI-BKP-14: a standalone page - the settings frame stays away at
         // every width.
         await expect(settingsNavigation).toBeHidden();
         await page.evaluate(() => window.scrollTo(0, 0));
@@ -3643,7 +3643,7 @@ async function signInScenario(
     await expect(resourceLink).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/#settings-resources$/);
-    // UI-BKP-11: the link leads out of the settings frame to the page itself.
+    // UI-BKP-14: the link leads out of the settings frame to the page itself.
     await expect(resources).toBeVisible();
     await expect(settingsNavigation).toBeHidden();
 
@@ -3656,7 +3656,7 @@ async function signInScenario(
       if (new URL(request.url()).pathname === '/api/v1/products')
         productApiRequests += 1;
     });
-    // UI-BKP-11: the resources page has no settings frame; the browser makes
+    // UI-BKP-14: the resources page has no settings frame; the browser makes
     // the switch back into the settings.
     await page.evaluate(() => {
       window.location.hash = 'settings-products';
@@ -3771,7 +3771,7 @@ async function signInScenario(
     // keys; use the native option typeahead for a real keyboard selection.
     await page.keyboard.press('r');
     await expect(page).toHaveURL(/#settings-resources$/);
-    // UI-BKP-11: Ressourcen is a page of its own; the select steps aside.
+    // UI-BKP-14: Ressourcen is a page of its own; the select steps aside.
     await expect(resources).toBeVisible();
     await expect(settingsSelect).toBeHidden();
     await page.goBack();
@@ -3870,7 +3870,7 @@ async function signInScenario(
     await expect(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
-    // UI-BKP-09: the contacts page as Bookitup's column and table, both
+    // UI-BKP-12: the contacts page as Bookitup's column and table, both
     // themes; the column stays beside the rail, the table never overflows.
     const themeBefore = await page.locator('html').getAttribute('data-theme');
     for (const theme of ['light', 'dark']) {
@@ -3932,7 +3932,7 @@ async function signInScenario(
       contacts.getByText('Synthetic browser contact', { exact: true }),
     ).toBeVisible();
     await navigate('Kontakte');
-    // UI-BKP-09: like Bookitup the edit sits behind the row's ⋯ menu.
+    // UI-BKP-12: like Bookitup the edit sits behind the row's ⋯ menu.
     const contactMenu = contacts.getByRole('button', {
       name: 'Weitere Aktionen: Synthetic browser contact',
     });
