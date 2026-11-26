@@ -5013,6 +5013,9 @@ a.offer-draft-preview {
   }
   .files-layout:has(> .files-context) > .files-results {
     grid-column: 1;
+  }
+}
+
 /* UI-BKP-07: the event mails as Bookitup's two panes - a compact list on the
    left, the chosen mail with its head and plain text on the right. */
 .event-mail-panes {
