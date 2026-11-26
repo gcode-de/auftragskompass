@@ -3223,18 +3223,15 @@ async function signInScenario(
     const settingsSelect = settingsNavigation.locator(
       'select[aria-label="Einstellungsbereich"]',
     );
+    // UI-BKP-11: the settings entry opens the standalone resources page; the
+    // settings frame steps aside and the main navigation names the page.
     await expect(settingsSelect).toBeHidden();
-    await expect(
-      settingsNavigation.getByRole('link', {
-        name: 'Ressourcen',
-        exact: true,
-      }),
-    ).toHaveAttribute('aria-current', 'page');
+    await expect(settingsNavigation).toBeHidden();
     await expect(
       page
         .getByRole('navigation', { name: 'Hauptnavigation' })
         .getByRole('link', { name: 'Ressourcen', exact: true }),
-    ).toBeVisible();
+    ).toHaveAttribute('aria-current', 'page');
     const resources = page.getByRole('region', {
       name: 'Ressourcen',
       exact: true,
@@ -3404,35 +3401,9 @@ async function signInScenario(
             () => document.documentElement.scrollWidth <= window.innerWidth + 1,
           ),
         ).toBe(true);
-        expect(
-          await settingsNavigation.evaluate(
-            (element) => element.scrollWidth <= element.clientWidth + 1,
-          ),
-        ).toBe(true);
-        if (width > 900) {
-          await expect(settingsSelect).toBeHidden();
-          await expect(
-            settingsNavigation.getByRole('link', {
-              name: 'Ressourcen',
-              exact: true,
-            }),
-          ).toHaveAttribute('aria-current', 'page');
-        } else {
-          await expect(settingsSelect).toBeVisible();
-          await expect(
-            settingsNavigation.getByRole('combobox', {
-              name: 'Einstellungsbereich',
-              exact: true,
-            }),
-          ).toBeVisible();
-          await expect(settingsSelect).toHaveValue('#settings-resources');
-          await expect(
-            settingsNavigation.getByRole('link', {
-              name: 'Ressourcen',
-              exact: true,
-            }),
-          ).toHaveCount(0);
-        }
+        // UI-BKP-11: a standalone page - the settings frame stays away at
+        // every width.
+        await expect(settingsNavigation).toBeHidden();
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({
           path:
@@ -3466,12 +3437,10 @@ async function signInScenario(
     });
     await expect(page).toHaveURL(/#resources$/);
     await expect(resources).toBeVisible();
-    await expect(settingsSelect).toHaveValue('#settings-resources');
     await expect(
-      settingsNavigation.getByRole('link', {
-        name: 'Ressourcen',
-        exact: true,
-      }),
+      page
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .getByRole('link', { name: 'Ressourcen', exact: true }),
     ).toHaveAttribute('aria-current', 'page');
     expect(await page.evaluate(() => performance.timeOrigin)).toBe(
       resourcesTimeOrigin,
@@ -3674,8 +3643,9 @@ async function signInScenario(
     await expect(resourceLink).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/#settings-resources$/);
-    await expect(resourceLink).toBeFocused();
+    // UI-BKP-11: the link leads out of the settings frame to the page itself.
     await expect(resources).toBeVisible();
+    await expect(settingsNavigation).toBeHidden();
 
     // Back and Forward across canonical and legacy hashes keep query, drafts
     // and the single mounted panels.
@@ -3686,9 +3656,11 @@ async function signInScenario(
       if (new URL(request.url()).pathname === '/api/v1/products')
         productApiRequests += 1;
     });
-    await settingsNavigation
-      .getByRole('link', { name: 'Produkte', exact: true })
-      .click();
+    // UI-BKP-11: the resources page has no settings frame; the browser makes
+    // the switch back into the settings.
+    await page.evaluate(() => {
+      window.location.hash = 'settings-products';
+    });
     await expect(page).toHaveURL(/#settings-products$/);
     // BKP010.1: the product editor is mounted on demand. Open the row's
     // dialog so the draft below is typed into a real form field.
@@ -3748,9 +3720,8 @@ async function signInScenario(
       resources.getByRole('dialog', { name: 'Ressource bearbeiten' }),
     ).toBeHidden();
     await page.goBack();
-    await settingsNavigation
-      .getByRole('link', { name: 'Produkte', exact: true })
-      .click();
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await page.goBack();
     await expect(page).toHaveURL(/#settings-products$/);
     await expect(
       products.getByLabel('Produktname', { exact: true }),
@@ -3800,20 +3771,21 @@ async function signInScenario(
     // keys; use the native option typeahead for a real keyboard selection.
     await page.keyboard.press('r');
     await expect(page).toHaveURL(/#settings-resources$/);
-    await expect(settingsSelect).toHaveValue('#settings-resources');
+    // UI-BKP-11: Ressourcen is a page of its own; the select steps aside.
     await expect(resources).toBeVisible();
-    await expect(settingsSelect).toBeFocused();
+    await expect(settingsSelect).toBeHidden();
+    await page.goBack();
+    await expect(page).toHaveURL(/#settings$/);
     await settingsSelect.selectOption('#settings-products');
     await expect(page).toHaveURL(/#settings-products$/);
     await expect(settingsSelect).toHaveValue('#settings-products');
     await expect(products).toBeVisible();
     await page.goBack();
-    await expect(page).toHaveURL(/#settings-resources$/);
-    await expect(settingsSelect).toHaveValue('#settings-resources');
+    await expect(page).toHaveURL(/#settings$/);
+    await expect(settingsSelect).toHaveValue('#settings');
     await page.goForward();
     await expect(page).toHaveURL(/#settings-products$/);
     await expect(settingsSelect).toHaveValue('#settings-products');
-    await expect(settingsSelect).toBeFocused();
     await expect(products).toBeVisible();
     expect(await page.evaluate(() => location.search)).toBe(queryBeforeHistory);
     expect(

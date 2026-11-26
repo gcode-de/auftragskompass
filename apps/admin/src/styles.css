@@ -1209,13 +1209,152 @@ time {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.resource-meta {
-  color: var(--muted);
-  font-size: 0.875rem;
-}
 .resource-row > button {
   align-self: center;
   margin: 0 0 0 auto;
+}
+/* UI-BKP-11: the resource list as a table - Name, Bestand, Kategorie and
+   Zustand - with alternating rows; one accessible line per row stays the
+   summary, its parts become the cells. Narrow screens keep the summary. */
+.resource-list {
+  margin: 0;
+}
+.resource-list > li:nth-child(even) {
+  background: var(--table-surface);
+}
+.resource-summary > :is(.resource-cell-quantity, .resource-cell-category) {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+/* Narrow: the name, then one muted line "1 Stück · Fotobox · Aktiv". */
+.resource-summary {
+  display: block;
+}
+.resource-summary > strong {
+  display: block;
+}
+.resource-cell-quantity,
+.resource-cell-category {
+  display: inline;
+}
+.resource-cell-quantity::after,
+.resource-cell-category::after {
+  content: ' · ';
+}
+.resource-cell-state {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.resource-blocked {
+  margin-inline-start: 0.5rem;
+  color: var(--danger-ink);
+  font-weight: 600;
+}
+.resource-list-head {
+  display: none;
+}
+.resource-intro {
+  color: var(--muted);
+}
+@media (min-width: 48rem) {
+  .resource-list-head,
+  .resource-row {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1.6fr) minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 1fr)
+      44px;
+    align-items: center;
+    column-gap: 1rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 0;
+  }
+  .resource-list-head {
+    padding-block: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .resource-summary {
+    display: contents;
+  }
+  .resource-summary > strong {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .resource-summary > :is(.resource-cell-quantity, .resource-cell-category),
+  .resource-cell-state {
+    color: var(--ink);
+    font-size: 0.9375rem;
+  }
+  .resource-cell-quantity::after,
+  .resource-cell-category::after {
+    content: none;
+  }
+  .resource-row > button {
+    margin: 0;
+  }
+}
+@media (min-width: 1024px) {
+  /* The column beside the rail, like Kontakte; the h1 stays for assistive
+     technology, the column title names the page visually. */
+  .workspace-page > section#resources {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  .app-shell:has(.workspace-page:not([hidden]) > section#resources) {
+    padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
+  }
+  .app-shell:has(.workspace-page:not([hidden]) > section#resources)
+    .workspace-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .resource-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .resource-filter-column {
+    position: fixed;
+    inset: 0 auto 0 var(--rail-width);
+    z-index: var(--layer-sticky);
+    width: 17.125rem;
+    padding: 1.5rem 0.75rem 2rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .resource-filter-column > .section-heading {
+    margin: 0 0 1rem;
+  }
+  .resource-filter-column > .section-heading h2 {
+    margin: 0;
+    font-size: 1.375rem;
+    font-weight: 600;
+  }
+  .resource-filter-column .resource-toolbar input {
+    border-color: transparent;
+    background: var(--filled-field);
+  }
+  .resource-results > .resource-list,
+  .resource-results > .resource-list-head {
+    background: var(--surface);
+  }
+  .resource-results > .resource-list-head {
+    border: 1px solid var(--border);
+    border-bottom-color: var(--border);
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+  }
+  .resource-results > .resource-list {
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+    overflow: hidden;
+  }
 }
 .product-list {
   list-style: none;

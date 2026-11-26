@@ -191,17 +191,20 @@ export function AuthPanel() {
               showHeading={route === 'search'}
             />
           </div>
+          {/* UI-BKP-11: like Bookitup the resources are a page of their own
+              with a context column, not a box inside the settings frame. The
+              route keeps its settings entry and hashes. */}
+          <div className="workspace-page" hidden={route !== 'resources'}>
+            <ResourcePanel csrfToken={user.csrfToken} />
+          </div>
           <section
             id="settings"
             aria-label="Einstellungen"
-            hidden={!inSettings}
+            hidden={!inSettings || route === 'resources'}
           >
             <SettingsNavigation />
             <div hidden={route !== 'settings'}>
               <MasterDataSettings csrfToken={user.csrfToken} />
-            </div>
-            <div hidden={route !== 'resources'}>
-              <ResourcePanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'products'}>
               <ProductPanel csrfToken={user.csrfToken} />

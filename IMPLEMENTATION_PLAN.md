@@ -672,6 +672,17 @@ Gesamtrahmen bleiben vorerst aus.
       nicht vorgetäuscht. **Tests:** Component (Brotkrume, Stift, Reiter,
       Aktionsstufen), E2E (Akte ohne Überlauf, Hell/Dunkel).
       Commit `feat: open the contact record like bookitup`.
+- [x] **UI-BKP-11 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
+      Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der
+      Einstellungslink führen dorthin). Ab 1024 px Kontextspalte mit Titel,
+      Plus, Suche, Kategorie und Zustand; die Liste ist eine Tabelle Name ·
+      Bestand · Kategorie · Zustand mit abwechselnden Zeilen, „Gesperrt“ rot.
+      Die zugängliche Zeilenzeile bleibt unverändert. Bookitups Ressourcenmodul
+      ist im Konto per Testphase gesperrt; Typ (Set/Case/Item) und
+      Kategorienverwaltung fehlen im Datenmodell und werden nicht vorgetäuscht.
+      **Tests:** Component (Gliederung, Hauptnavigation), E2E (Spalte,
+      Tabelle, Verlauf über alte und neue Hashes, Hell/Dunkel).
+      Commit `feat: give resources a bookitup page of their own`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

@@ -247,10 +247,15 @@ test('search keeps distinct section headings and resources keep a valid outline'
   expect(screen.queryByRole('region', { name: 'Produkte' })).toBeNull();
   expect(document.querySelectorAll('#resources')).toHaveLength(1);
 
+  // UI-BKP-11: the legacy settings hash opens the same standalone page; the
+  // settings frame steps aside and the main navigation names the page.
   await go('/#settings-resources');
   await screen.findByRole('region', { name: 'Ressourcen' });
   expect(
-    within(screen.getByRole('navigation', { name: 'Einstellungen' }))
+    screen.queryByRole('navigation', { name: 'Einstellungen' }),
+  ).toBeNull();
+  expect(
+    within(screen.getByRole('navigation', { name: 'Hauptnavigation' }))
       .getByRole('link', { name: 'Ressourcen' })
       .getAttribute('aria-current'),
   ).toBe('page');
