@@ -73,7 +73,7 @@ export function ContactDetails({
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  // UI-BKP-10: Bookitup's two event tabs - dated events in date order, the
+  // UI-BKP-13: Bookitup's two event tabs - dated events in date order, the
   // undated ones on their own.
   const [undated, setUndated] = useState(false);
 
@@ -127,7 +127,7 @@ export function ContactDetails({
       aria-label="Kontakt-Details"
       aria-busy={loading}
     >
-      {/* UI-BKP-10: like Bookitup the record opens with its breadcrumb back
+      {/* UI-BKP-13: like Bookitup the record opens with its breadcrumb back
           to the list; it is the record's close action. */}
       <nav className="contact-record-crumbs" aria-label="Brotkrume">
         <button

@@ -1213,7 +1213,7 @@ time {
   align-self: center;
   margin: 0 0 0 auto;
 }
-/* UI-BKP-11: the resource list as a table - Name, Bestand, Kategorie and
+/* UI-BKP-14: the resource list as a table - Name, Bestand, Kategorie and
    Zustand - with alternating rows; one accessible line per row stays the
    summary, its parts become the cells. Narrow screens keep the summary. */
 .resource-list {
@@ -1432,7 +1432,7 @@ time {
 .contact-list > li:nth-child(even) > .contact-row {
   background: var(--table-surface);
 }
-/* UI-BKP-09: Bookitup's contact table - Name, E-Mail and Telefonnummer
+/* UI-BKP-12: Bookitup's contact table - Name, E-Mail and Telefonnummer
    columns with alternating rows and one ⋯ menu at the end. Narrow screens
    keep name and menu on the first line, the addresses below. */
 .contact-list-head,
@@ -1482,7 +1482,7 @@ time {
   color: var(--muted);
   font-size: 0.875rem;
 }
-.contact-cell-meta:not(:has(span)) {
+.contact-row:not([data-meta]) > .contact-cell-meta {
   display: none;
 }
 .contact-cell-mail {
@@ -1527,7 +1527,7 @@ time {
     display: grid;
     grid-template-areas: none;
   }
-  .contact-row:not(:has(.contact-cell-meta > span)) {
+  .contact-row:not([data-meta]) {
     grid-template-areas: 'name mail phone menu';
   }
 }
@@ -1819,19 +1819,19 @@ time {
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
-/* UI-BKP-10: Bookitup's contact record - a breadcrumb back to the list,
+/* UI-BKP-13: Bookitup's contact record - a breadcrumb back to the list,
    then white cards on the canvas: the contact with its pen, the direct
    editing and the events with their two tabs. The other rows step aside. */
-.contacts-results:has(.contact-record) {
+#contacts[data-record] .contacts-results {
   border: 0;
   background: transparent;
   overflow: visible;
 }
-.contacts-results:has(.contact-record) > .contact-list-head,
-.contact-list:has(.contact-record) > li:not(:has(.contact-record)) {
+#contacts[data-record] .contact-list-head,
+.contact-list > li[data-other] {
   display: none;
 }
-.contact-list > li:has(.contact-record) {
+#contacts[data-record] .contact-list > li {
   background: transparent;
 }
 .contact-record {
@@ -1841,7 +1841,7 @@ time {
   border: 0;
 }
 /* Cards on the canvas, never cards inside the page frame. */
-.workspace-page > section#contacts:has(.contact-record) {
+.workspace-page > section#contacts[data-record] {
   background: transparent;
   border: 0;
   padding: 0;
@@ -2763,11 +2763,27 @@ summary {
 /* UI-NATIVE-02: every ⋯ menu is a native popover in the top layer, anchored
    below its toggle and flipped above it near the bottom edge. Light dismiss,
    Escape and one-open-at-a-time come from the browser. */
-[popovertarget] {
-  anchor-name: var(--menu-anchor);
+/* Each menu's own wrapper scopes the one anchor name, so the many rows of a
+   list need no per-row names or inline styles. */
+:is(
+  .row-menu,
+  .contact-cell-menu,
+  .product-row,
+  .document-template-actions,
+  .offer-draft-position-actions,
+  .files-menu-cell
+) {
+  anchor-scope: --menu;
 }
-[popover].popover-menu {
-  position-anchor: var(--menu-anchor);
+[popovertarget],
+.row-menu-toggle,
+.product-row > [aria-expanded],
+.document-template-action-toggle,
+.offer-draft-actions-toggle {
+  anchor-name: --menu;
+}
+[popover]:is(.popover-menu, .files-row-menu) {
+  position-anchor: --menu;
   position-area: bottom span-left;
   position-try-fallbacks: flip-block;
   inset: auto;
@@ -5037,7 +5053,6 @@ a.offer-draft-preview {
 /* The ⋯ menu is a native popover: light dismiss and Escape come from the
    browser, the anchor keeps it under its toggle and flips it near the edge. */
 .files-row-menu {
-  position-anchor: var(--menu-anchor);
   position-area: bottom span-left;
   position-try-fallbacks: flip-block;
   inset: auto;

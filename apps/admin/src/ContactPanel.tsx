@@ -4,6 +4,7 @@ import { ContactDialog } from './ContactDialog.js';
 import { mailtoHref, telHref } from './contact-links.js';
 import {
   menuPanelProps,
+  menuRendered,
   menuToggleProps,
   rowMenuState,
 } from './popover-menu.js';
@@ -239,9 +240,16 @@ export function ContactPanel({
     } else focusList();
   }
   return (
-    <section id="contacts" aria-label="Kontakte" aria-busy={loading}>
+    <section
+      id="contacts"
+      aria-label="Kontakte"
+      aria-busy={loading}
+      // Plain attributes instead of :has() rules: a 500-row list must not
+      // pay for selector invalidation on every change (PERF-MENU-01).
+      data-record={detailId ? '' : undefined}
+    >
       {showHeading && <h2>Kontakte</h2>}
-      {/* UI-BKP-09: Bookitup's contacts frame - a context column with the
+      {/* UI-BKP-12: Bookitup's contacts frame - a context column with the
           title, the plus and the search; the list fills the canvas. */}
       {/* In the global search the contacts follow the events as a plain
           block; only the Kontakte page itself gets the column. */}
@@ -342,10 +350,22 @@ export function ContactPanel({
             {rows.map((row) => {
               const shown = detailId === row.id;
               return (
-                <li key={row.id} id={'contact-' + row.id}>
+                <li
+                  key={row.id}
+                  id={'contact-' + row.id}
+                  data-other={detailId && !shown ? '' : undefined}
+                >
                   {/* The summary steps aside while the record is open; the row
               itself stays mounted so search, scroll and focus survive. */}
-                  <div className="contact-row" hidden={shown}>
+                  <div
+                    className="contact-row"
+                    hidden={shown}
+                    data-meta={
+                      row.state === 'archived' || row.contactPerson
+                        ? ''
+                        : undefined
+                    }
+                  >
                     <a
                       className="contact-name-link"
                       href={'#contact-' + row.id}
@@ -408,40 +428,49 @@ export function ContactPanel({
                           <circle cx="19" cy="12" r="1.7" />
                         </svg>
                       </button>
-                      <span
-                        className="popover-menu"
-                        role="group"
-                        aria-label={`Aktionen für ${row.name}`}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Escape') return;
-                          event.preventDefault();
-                          setOpenMenu('');
-                          event.currentTarget.parentElement
-                            ?.querySelector<HTMLElement>('.row-menu-toggle')
-                            ?.focus();
-                        }}
-                        {...menuPanelProps(
-                          'contact-menu-' + row.id,
-                          openMenu === row.id,
-                          (open) => setOpenMenu(rowMenuState(row.id, open, '')),
-                        )}
-                      >
-                        <button
-                          type="button"
-                          disabled={busy}
-                          aria-label={`Kontakt bearbeiten: ${row.name}`}
-                          onClick={(event) => {
-                            // The toggle, not the closing menu, gets the focus back.
-                            event.currentTarget.parentElement?.parentElement
+                      {menuRendered(openMenu === row.id) && (
+                        <span
+                          className="popover-menu"
+                          role="group"
+                          aria-label={`Aktionen für ${row.name}`}
+                          onKeyDown={(event) => {
+                            if (event.key !== 'Escape') return;
+                            event.preventDefault();
+                            setOpenMenu('');
+                            event.currentTarget.parentElement
                               ?.querySelector<HTMLElement>('.row-menu-toggle')
                               ?.focus();
-                            setOpenMenu('');
-                            openEdit(row);
                           }}
+                          {...menuPanelProps(
+                            'contact-menu-' + row.id,
+                            openMenu === row.id,
+                            (open) =>
+                              setOpenMenu(rowMenuState(row.id, open, '')),
+                          )}
                         >
-                          Bearbeiten
-                        </button>
-                      </span>
+                          {/* Only the open menu renders its action. */}
+                          {openMenu === row.id && (
+                            <button
+                              type="button"
+                              className="tertiary-action"
+                              disabled={busy}
+                              aria-label={`Kontakt bearbeiten: ${row.name}`}
+                              onClick={(event) => {
+                                // The toggle, not the closing menu, gets the focus back.
+                                event.currentTarget.parentElement?.parentElement
+                                  ?.querySelector<HTMLElement>(
+                                    '.row-menu-toggle',
+                                  )
+                                  ?.focus();
+                                setOpenMenu('');
+                                openEdit(row);
+                              }}
+                            >
+                              Bearbeiten
+                            </button>
+                          )}
+                        </span>
+                      )}
                     </span>
                   </div>
                   {shown && (

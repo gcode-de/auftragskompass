@@ -514,7 +514,7 @@ test('contact list, record and dialog keep exactly one primary action', async ()
   expect(
     tier(screen.getByRole('link', { name: 'Kontakte als CSV exportieren' })),
   ).toBe('secondary-action');
-  // BKP011.1 / UI-BKP-09: the row keeps one icon action, the ⋯ menu; the
+  // BKP011.1 / UI-BKP-12: the row keeps one icon action, the ⋯ menu; the
   // reading entry is the name link, not a competing button.
   iconTier(
     within(section).getByRole('button', {
@@ -534,7 +534,7 @@ test('contact list, record and dialog keep exactly one primary action', async ()
   // The open record stays secondary/tertiary: the create action of the page
   // frame remains the only dominant one.
   expectHierarchy(section, 'Kontakte mit offener Akte');
-  // UI-BKP-10: the record's edit is Bookitup's pen in the contact card.
+  // UI-BKP-13: the record's edit is Bookitup's pen in the contact card.
   iconTier(
     within(record).getByRole('button', {
       name: 'Kontakt bearbeiten: Synthetic Company',

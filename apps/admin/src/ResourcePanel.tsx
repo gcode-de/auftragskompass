@@ -333,7 +333,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   const title = editing ? 'Ressource bearbeiten' : 'Ressource anlegen';
   return (
     <section id="resources" aria-label="Ressourcen" aria-busy={loading || busy}>
-      {/* UI-BKP-11: like Bookitup the page title, the plus and the filters
+      {/* UI-BKP-14: like Bookitup the page title, the plus and the filters
           form the context column beside the rail; the list fills the canvas. */}
       <div className="resource-layout">
         <div className="resource-filter-column">

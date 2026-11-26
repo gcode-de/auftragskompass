@@ -652,7 +652,7 @@ Gesamtrahmen bleiben vorerst aus.
       es. **Tests:** Component (Helfer mit/ohne Popover, Escape, eine Zeile
       offen), E2E (Vorlagenmenüs hell/dunkel bei 320/1280, Eventkarten-Menü).
       Commit `refactor: open the row menus as native popovers`.
-- [x] **UI-BKP-09 — Kontaktliste wie Bookitup:** Ab 1024 px steht links neben
+- [x] **UI-BKP-12 — Kontaktliste wie Bookitup:** Ab 1024 px steht links neben
       der Leiste die Kontextspalte mit Titel „Kontakte“, Plus, gefülltem
       Suchfeld und CSV-Export; die Liste ist eine Tabelle Name · E-Mail ·
       Telefonnummer mit abwechselnden Zeilen und einem ⋯-Menü („Bearbeiten“).
@@ -662,7 +662,7 @@ Gesamtrahmen bleiben vorerst aus.
       neben der Leiste, Tabelle ohne Überlauf, Suche mit Eventspalte,
       Hell/Dunkel bei 1280/390).
       Commit `feat: list contacts in a bookitup table with a context column`.
-- [x] **UI-BKP-10 — Kontaktakte wie Bookitup:** Die geöffnete Akte beginnt
+- [x] **UI-BKP-13 — Kontaktakte wie Bookitup:** Die geöffnete Akte beginnt
       mit der Brotkrume „Kontakte / Name“ (zurück zur Liste, Name „Kontakte –
       Kontakt-Details schließen“); die übrigen Zeilen treten zurück. Darunter
       weiße Karten: Kontakt mit Stift oben rechts (öffnet den Dialog), die
@@ -672,7 +672,21 @@ Gesamtrahmen bleiben vorerst aus.
       nicht vorgetäuscht. **Tests:** Component (Brotkrume, Stift, Reiter,
       Aktionsstufen), E2E (Akte ohne Überlauf, Hell/Dunkel).
       Commit `feat: open the contact record like bookitup`.
-- [x] **UI-BKP-11 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
+- [x] **PERF-MENU-01 — Zeilenmenüs leicht halten:** Nach UI-NATIVE-02 lagen
+      500 Eventkarten/Kontakte lokal ~120 ms über dem Ausgangswert und rissen
+      in CI zweimal das 2-s-Budget. Ein Ankername je Menü-Hülle per
+      `anchor-scope` statt Inline-Stilen je Zeile, und nur das offene Menü
+      rendert seine Einträge – genauer: ein Menü existiert nur, solange es
+      offen ist (`menuRendered`), öffnet sich beim Einhängen selbst und meldet
+      Schließen über sein `toggle`-Ereignis; ein Druck auf den Auslöser eines
+      offenen Menüs öffnet es nicht erneut. Die Kontakttabelle blendet Zeilen über
+      React-Attribute statt `:has()`-Regeln aus. Lokal wieder auf
+      Ausgangsniveau oder darunter (Events 0,78/0,84 s, Kontakte 0,61/0,66 s
+      bei 390/1280; vorher 0,78/0,84 und 0,61/0,63). **Tests:** Component
+      (keine Inline-Stile), E2E-Lastmessung.
+      Commit `perf: keep row menus light in long lists`.
+
+- [x] **UI-BKP-14 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der
       Einstellungslink führen dorthin). Ab 1024 px Kontextspalte mit Titel,
       Plus, Suche, Kategorie und Zustand; die Liste ist eine Tabelle Name ·

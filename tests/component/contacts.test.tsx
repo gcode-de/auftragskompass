@@ -81,7 +81,7 @@ test('the contact page starts with the search toolbar and the list directly belo
   await screen.findByText('Synthetic Company');
   const search = screen.getByLabelText('Kontakte suchen');
   const list = screen.getByRole('list');
-  // UI-BKP-09: search and plus sit in the context column, the list beside it.
+  // UI-BKP-12: search and plus sit in the context column, the list beside it.
   const column = search.closest('aside')!;
   expect(column.getAttribute('aria-label')).toBe('Kontaktsuche');
   expect(list.closest('.contacts-results')?.previousElementSibling).toBe(
@@ -899,7 +899,7 @@ test('contacts suggest duplicates and archive through the edit dialog with direc
   const dialog = await openEdit('Synthetic Company');
   // BKP011.1: `@` stays literal (RFC 6068) and the number reaches the dialler
   // without the formatting characters of the stored value.
-  // UI-BKP-09: the table shows the address and the number themselves.
+  // UI-BKP-12: the table shows the address and the number themselves.
   expect(
     screen
       .getByRole('link', { name: 'synthetic@example.invalid' })
