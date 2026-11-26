@@ -552,6 +552,13 @@ Gesamtrahmen bleiben vorerst aus.
       Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
       Statusauswahl, 390 px; Auth-Ablauf angepasst).
       Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-06b — Editorkopf wie Bookitup:** Brotkrume „Dateien /
+      Angebot bearbeiten“ statt „Schließen“ (der Knopf heißt für Screenreader
+      „Dateien – Bearbeitung schließen“), rechts „Vorschau“ als blaue
+      Hauptaktion, gesperrt solange ungespeichert; die Vorschau unten bleibt mit
+      ihrem Hinweis. **Tests:** Component (Kopf, Vorschau aktiv/gesperrt),
+      Editorabläufe angepasst.
+      Commit `feat: give the document editor bookitup's breadcrumb head`.
 - [x] **UI-BKP-06a — Dokumenteditor: Bookitup-Optik:** jede Position als
       graue Karte ohne Rahmen (Radius 10), „Positionen“ als dunkler Balken,
       Netto, Umsatzsteuer und Gesamtbetrag als rechtsbündiger Summenblock mit dem
