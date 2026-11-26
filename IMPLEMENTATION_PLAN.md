@@ -560,6 +560,15 @@ Gesamtrahmen bleiben vorerst aus.
       (Platz im Lesebereich, nicht modal, Escape, Fokus), E2E (eingebettet neben
       der Liste, axe, Escape).
       Commit `feat: compose event mails inline like bookitup`.
+- [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
+      60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
+      als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
+      Kopf „Events“ (22/600), Plus und „Entfernte Events anzeigen“; die
+      h1 im Kopf bleibt für Screenreader. Ab 1280 px gilt das ebenso für die
+      Dokumentfilter. Die Regeln greifen nur für die sichtbare Seite.
+      **Tests:** E2E (Leistenbreite, Spaltenlage und -höhe, Titel und Plus in
+      der Spalte, h1 verborgen; Dokumentspalte), Component (eine Seitenüberschrift).
+      Commit `feat: frame the workspace like bookitup`.
 - [x] **UI-BKP-07a — E-Mails zweispaltig:** Im Bereich „E-Mails“ der Akte
       steht links die kompakte Liste (Betreff fett, Empfänger und Datum), rechts
       ein Lesebereich mit Betreff, An/CC, Datum, Status und dem gespeicherten

@@ -149,9 +149,10 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(documents.getByText(/Offene Posten:/)).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 
+    // UI-BKP-08: the filters are the light full-height context column
+    // beside the rail; the section and the table stay flat on the canvas.
     const themeSurfaces = {
       section: documents,
-      filters,
       table: documents.locator('.files-table-shell'),
     };
     for (const [name, surface] of Object.entries(themeSurfaces)) {
@@ -170,7 +171,8 @@ for (const theme of ['light', 'dark'] as const) {
       .locator('.files-results')
       .boundingBox())!;
     expect(filterBox.x + filterBox.width).toBeLessThan(tableBox.x);
-    expect.soft(filterBox.y).toBeCloseTo(resultsBox.y, 0);
+    expect.soft(filterBox.y).toBe(0);
+    expect(resultsBox.y).toBeGreaterThan(0);
 
     for (const width of [1440, 1280, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });

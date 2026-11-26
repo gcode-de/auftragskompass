@@ -571,4 +571,8 @@ Aktionen in `.document-list .document-actions` als ruhige Textknöpfe.
 ⋯-Knöpfe nutzen das gezeichnete Drei-Punkte-SVG, nie ein Textzeichen. Dokumenteditor (UI-BKP-06a): `.offer-draft-position` als graue Karte
 (`--status-surface`), „Positionen“-Überschrift als dunkler Balken (`--ink`
 auf `--surface`), `.offer-draft-totals` rechtsbündig mit Gesamtbetrag 18/700
-über einer Linie.
+über einer Linie. Gesamtrahmen (UI-BKP-08): `--rail-width` 3,75rem (eingeklappt) bzw. 15rem;
+die Kontextspalten `.event-context` (ab 1024 px) und `.files-context` (ab
+1280 px) stehen `position: fixed` mit 17,125rem Breite neben der Leiste, nur
+wenn ihre `.workspace-page` sichtbar ist; Spaltentitel `.context-title` ist
+rein visuell (`aria-hidden`), die h1 bleibt die einzige Seitenüberschrift.
