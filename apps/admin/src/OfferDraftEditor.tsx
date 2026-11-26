@@ -2074,7 +2074,7 @@ export function OfferDraftEditor({
                 </p>
                 <p className="offer-draft-total">
                   Gespeicherter Gesamtbetrag:{' '}
-                  {exactMinorUnits(detail.grossMinor) ?? '—'} €
+                  {exactMinorUnits(detail.grossMinor)} €
                 </p>
               </div>
               {hasOptionalLines && (
