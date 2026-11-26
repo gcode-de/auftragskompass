@@ -60,8 +60,7 @@ const referenceSurface = `
 </div>`;
 
 const referenceDialog = `
-<div class="form-dialog-backdrop" data-synthetic="theme-dialog">
-  <div class="form-dialog" role="dialog" aria-modal="true" aria-labelledby="synthetic-dialog-title">
+<dialog class="form-dialog" data-synthetic="theme-dialog" aria-labelledby="synthetic-dialog-title">
     <div class="form-dialog-header">
       <h3 id="synthetic-dialog-title">Fiktiven Eintrag bearbeiten</h3>
       <button type="button" class="form-dialog-close tertiary-action" aria-label="Dialog schließen">×</button>
@@ -76,8 +75,7 @@ const referenceDialog = `
         <button type="button" class="secondary-action">Abbrechen</button>
       </div>
     </form>
-  </div>
-</div>`;
+</dialog>`;
 
 const referenceSidebar = `
 <aside class="desktop-sidebar" data-synthetic="theme-sidebar">
@@ -512,8 +510,12 @@ test('both themes keep a neutral reference surface readable at 390 and 1280', as
         animations: 'disabled',
       });
 
+      // The app's form dialogs are native modal dialogs.
       await page.evaluate((markup) => {
         document.body.insertAdjacentHTML('beforeend', markup);
+        document
+          .querySelector<HTMLDialogElement>('[data-synthetic="theme-dialog"]')!
+          .showModal();
       }, referenceDialog);
       const dialog = page.getByRole('dialog', {
         name: 'Fiktiven Eintrag bearbeiten',

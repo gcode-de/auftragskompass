@@ -163,7 +163,7 @@ test('the plus action opens one accessible dialog with focus, trap, dirty guard 
   const create = screen.getByRole('button', { name: 'Produkt anlegen' });
   create.focus();
   const dialog = await openCreate();
-  expect(dialog.getAttribute('aria-modal')).toBe('true');
+  expect(dialog.tagName).toBe('DIALOG');
   const labelledBy = dialog.getAttribute('aria-labelledby')!;
   expect(document.getElementById(labelledBy)?.textContent).toBe(
     'Produkt anlegen',
@@ -176,16 +176,12 @@ test('the plus action opens one accessible dialog with focus, trap, dirty guard 
   const save = within(dialog).getByRole('button', {
     name: 'Produkt speichern',
   });
-  dialog.focus();
-  fireEvent.keyDown(dialog, { key: 'Tab' });
-  expect(close).toBe(document.activeElement);
-  fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
-  expect(save).toBe(document.activeElement);
-  save.focus();
-  fireEvent.keyDown(dialog, { key: 'Tab' });
-  expect(close).toBe(document.activeElement);
-  fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
-  expect(save).toBe(document.activeElement);
+  // A native modal dialog: the browser keeps the focus inside and makes the
+  // page behind inert, so no own focus trap is needed.
+  expect(dialog.tagName).toBe('DIALOG');
+  expect(dialog.hasAttribute('open')).toBe(true);
+  expect(close).toBeTruthy();
+  expect(save).toBeTruthy();
   // An untouched dialog closes without asking and returns focus to its trigger.
   const confirm = vi.fn(() => true);
   vi.stubGlobal('confirm', confirm);
@@ -704,10 +700,6 @@ test('a double submit sends exactly one mutation and holds the dialog open while
   expect(document.activeElement).toBe(dialog);
   expect((edit as HTMLButtonElement).disabled).toBe(true);
   expect((creation as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.keyDown(dialog, { key: 'Tab' });
-  expect(document.activeElement).toBe(dialog);
-  fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
-  expect(document.activeElement).toBe(dialog);
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'Dialog schließen' }),
   );
@@ -1224,7 +1216,7 @@ test('deleting asks first; cancel, Escape and the backdrop keep the row and retu
   expect(screen.getByText(summaryText(rowText))).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(toggle));
   dialog = await openDelete('Synthetic product');
-  fireEvent.mouseDown(dialog.parentElement!);
+  fireEvent.mouseDown(dialog, { clientX: -10, clientY: -10 });
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(writes).toHaveLength(0);
   expect(screen.getByText(summaryText(serviceText))).toBeTruthy();

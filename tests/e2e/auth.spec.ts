@@ -294,7 +294,10 @@ async function signInScenario(
     // every page visible. Trigger the same visibility/focus transition in the
     // built page instead of sleeping or calling the removed refresh controls.
     const returnToApp = async () => {
+      // a return follows leaving; programmatic focus may already have
+      // refocused the headless window and consumed the last arming
       await page.evaluate(() => {
+        window.dispatchEvent(new Event('blur'));
         document.dispatchEvent(new Event('visibilitychange'));
         window.dispatchEvent(new Event('focus'));
       });
@@ -3982,18 +3985,14 @@ async function signInScenario(
         element.contains(document.activeElement),
       ),
     ).toBe(true);
+    // native modal: the page behind is inert, Tab may only leave to browser UI
+    const focusStaysOffPage = (element: Element) =>
+      element.contains(document.activeElement) ||
+      document.activeElement === document.body;
     await page.keyboard.press('Tab');
-    expect(
-      await contactEditDialog.evaluate((element) =>
-        element.contains(document.activeElement),
-      ),
-    ).toBe(true);
+    expect(await contactEditDialog.evaluate(focusStaysOffPage)).toBe(true);
     await page.keyboard.press('Shift+Tab');
-    expect(
-      await contactEditDialog.evaluate((element) =>
-        element.contains(document.activeElement),
-      ),
-    ).toBe(true);
+    expect(await contactEditDialog.evaluate(focusStaysOffPage)).toBe(true);
     await page.keyboard.press('Escape');
     await expect(contactEditDialog).toBeVisible();
     releaseSave!();
@@ -4173,11 +4172,25 @@ async function signInScenario(
       name: 'Event speichern',
       exact: true,
     });
+    // native modal: Tab past the last control never reaches the inert page
     await createSave.focus();
     await page.keyboard.press('Tab');
-    await expect(createClose).toBeFocused();
+    expect(
+      await createDialog.evaluate(
+        (element) =>
+          element.contains(document.activeElement) ||
+          document.activeElement === document.body,
+      ),
+    ).toBe(true);
+    await createClose.focus();
     await page.keyboard.press('Shift+Tab');
-    await expect(createSave).toBeFocused();
+    expect(
+      await createDialog.evaluate(
+        (element) =>
+          element.contains(document.activeElement) ||
+          document.activeElement === document.body,
+      ),
+    ).toBe(true);
     await page.keyboard.press('Escape');
     await expect(createDialog).toBeHidden();
     await expect(createTrigger).toBeFocused();

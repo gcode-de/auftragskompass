@@ -1,10 +1,5 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  type KeyboardEvent,
-  type MouseEvent,
-} from 'react';
+import { useEffect, useId, useRef } from 'react';
+import { ModalDialog } from './ModalDialog.js';
 
 /**
  * EDITOR-ACTIONS-01 / PRODUCTS-DELETE-01: one confirmed removal. It reuses the
@@ -34,7 +29,7 @@ export function PositionRemoveDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const dialog = useRef<HTMLDivElement>(null),
+  const dialog = useRef<HTMLDialogElement>(null),
     cancel = useRef<HTMLButtonElement>(null),
     headingId = useId();
 
@@ -48,75 +43,40 @@ export function PositionRemoveDialog({
     if (busy) dialog.current?.focus({ preventScroll: true });
   }, [busy]);
 
-  function keyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape') {
-      // The editor itself closes on Escape; this question stops that.
-      event.preventDefault();
-      event.stopPropagation();
-      if (!busy) onCancel();
-      return;
-    }
-    if (event.key !== 'Tab' || !dialog.current) return;
-    const focusable = Array.from(
-      dialog.current.querySelectorAll<HTMLElement>('button:not([disabled])'),
-    );
-    if (!focusable.length) {
-      event.preventDefault();
-      dialog.current.focus();
-      return;
-    }
-    const first = focusable[0]!,
-      last = focusable[focusable.length - 1]!;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
   return (
-    <div
-      className="form-dialog-backdrop"
-      onMouseDown={(event: MouseEvent<HTMLDivElement>) => {
-        if (!busy && event.target === event.currentTarget) onCancel();
-      }}
+    <ModalDialog
+      ref={dialog}
+      className="form-dialog position-remove-dialog"
+      aria-busy={busy}
+      aria-labelledby={headingId}
+      tabIndex={-1}
+      busy={busy}
+      dismissOnBackdrop
+      onDismiss={onCancel}
     >
-      <div
-        ref={dialog}
-        className="form-dialog position-remove-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-busy={busy}
-        aria-labelledby={headingId}
-        tabIndex={-1}
-        onKeyDown={keyDown}
-      >
-        <header className="form-dialog-header">
-          <h3 id={headingId}>{heading ?? `${position} entfernen?`}</h3>
-        </header>
-        <p>{message}</p>
-        <div className="form-dialog-footer">
-          <button
-            ref={cancel}
-            type="button"
-            className="secondary-action"
-            disabled={busy}
-            onClick={onCancel}
-          >
-            Abbrechen
-          </button>
-          <button
-            type="button"
-            className="primary-action"
-            disabled={busy}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+      <header className="form-dialog-header">
+        <h3 id={headingId}>{heading ?? `${position} entfernen?`}</h3>
+      </header>
+      <p>{message}</p>
+      <div className="form-dialog-footer">
+        <button
+          ref={cancel}
+          type="button"
+          className="secondary-action"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Abbrechen
+        </button>
+        <button
+          type="button"
+          className="primary-action"
+          disabled={busy}
+          onClick={onConfirm}
+        >
+          {confirmLabel}
+        </button>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

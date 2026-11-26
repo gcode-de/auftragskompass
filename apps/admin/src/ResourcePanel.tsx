@@ -1,5 +1,6 @@
 import { ResourceBlocks } from './ResourceBlocks.js';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ModalDialog } from './ModalDialog.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
 type Resource = {
@@ -85,7 +86,7 @@ function label(state: string): string {
 export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   const sequence = useRef(0);
   const saving = useRef(false);
-  const dialog = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const createTrigger = useRef<HTMLButtonElement>(null);
   const filterTrigger = useRef<HTMLButtonElement>(null);
@@ -189,18 +190,6 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
     if (!open || !errorFocus) return;
     errorMessage.current?.focus({ preventScroll: true });
   }, [errorFocus, open]);
-  function focusableElements() {
-    if (!dialog.current) return [];
-    return Array.from(
-      dialog.current.querySelectorAll<HTMLElement>(
-        'button, input, select, textarea, a[href], summary',
-      ),
-    ).filter(
-      (element) =>
-        !(element as HTMLButtonElement).disabled &&
-        !element.closest('fieldset[disabled]'),
-    );
-  }
   function focusErrorSoon() {
     setErrorFocus((value) => value + 1);
   }
@@ -339,36 +328,6 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
       await refresh();
     } catch {
       setReloadFailed(true);
-    }
-  }
-  function onDialogKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== 'Tab' || !dialog.current) return;
-    const focusable = focusableElements();
-    if (!focusable.length) {
-      // While a request is pending every control is disabled. Keep Tab on the
-      // dialog instead of letting focus escape into the background.
-      event.preventDefault();
-      dialog.current.focus();
-      return;
-    }
-    const first = focusable[0]!,
-      last = focusable[focusable.length - 1]!;
-    if (document.activeElement === dialog.current) {
-      event.preventDefault();
-      (event.shiftKey ? last : first).focus();
-      return;
-    }
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
     }
   }
   const title = editing ? 'Ressource bearbeiten' : 'Ressource anlegen';
@@ -547,121 +506,116 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
         </div>
       </div>
       {open && (
-        <div className="form-dialog-backdrop">
-          <div
-            className="form-dialog resource-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-busy={busy}
-            aria-labelledby="resource-dialog-title"
-            ref={dialog}
-            tabIndex={-1}
-            onKeyDown={onDialogKeyDown}
+        <ModalDialog
+          className="form-dialog resource-dialog"
+          aria-busy={busy}
+          aria-labelledby="resource-dialog-title"
+          ref={dialog}
+          tabIndex={-1}
+          busy={busy}
+          onDismiss={close}
+        >
+          <header className="form-dialog-header">
+            <h3 id="resource-dialog-title">{title}</h3>
+            <button
+              type="button"
+              className="tertiary-action form-dialog-close"
+              aria-label="Dialog schließen"
+              title="Dialog schließen"
+              disabled={busy}
+              onClick={close}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </header>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
           >
-            <header className="form-dialog-header">
-              <h3 id="resource-dialog-title">{title}</h3>
+            <fieldset disabled={busy}>
+              <legend className="sr-only">{title}</legend>
+              {texts.map(([key, fieldLabel, max]) => (
+                <label key={key}>
+                  {fieldLabel}
+                  <input
+                    name={key}
+                    required={key !== 'description'}
+                    maxLength={max}
+                    value={values[key]}
+                    onChange={(event) => update(key, event.target.value)}
+                  />
+                </label>
+              ))}
+              {numbers.map(([key, fieldLabel, , max]) => (
+                <label key={key}>
+                  {fieldLabel}
+                  <input
+                    name={key}
+                    type="number"
+                    min={0}
+                    max={max}
+                    required
+                    value={values[key]}
+                    onChange={(event) => update(key, event.target.value)}
+                  />
+                </label>
+              ))}
+              <label>
+                Zustand
+                <select
+                  name="state"
+                  value={values.state}
+                  onChange={(event) => update('state', event.target.value)}
+                >
+                  <option value="active">Aktiv</option>
+                  <option value="inactive">Inaktiv</option>
+                  <option value="archived">Archiviert</option>
+                </select>
+              </label>
+              <label>
+                <input
+                  name="blocked"
+                  type="checkbox"
+                  checked={values.blocked}
+                  onChange={(event) => update('blocked', event.target.checked)}
+                />
+                Gesperrt
+              </label>
+              {formError && (
+                <p
+                  className="field-error"
+                  role="alert"
+                  tabIndex={-1}
+                  ref={errorMessage}
+                >
+                  {formError}
+                </p>
+              )}
+              <p className="sr-only" role="status">
+                {busy
+                  ? editing
+                    ? 'Ressource wird gespeichert …'
+                    : 'Ressource wird angelegt …'
+                  : ''}
+              </p>
+            </fieldset>
+            <div className="form-dialog-footer">
               <button
                 type="button"
-                className="tertiary-action form-dialog-close"
-                aria-label="Dialog schließen"
-                title="Dialog schließen"
+                className="secondary-action"
                 disabled={busy}
                 onClick={close}
               >
-                <span aria-hidden="true">×</span>
+                Ressource abbrechen
               </button>
-            </header>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submit();
-              }}
-            >
-              <fieldset disabled={busy}>
-                <legend className="sr-only">{title}</legend>
-                {texts.map(([key, fieldLabel, max]) => (
-                  <label key={key}>
-                    {fieldLabel}
-                    <input
-                      name={key}
-                      required={key !== 'description'}
-                      maxLength={max}
-                      value={values[key]}
-                      onChange={(event) => update(key, event.target.value)}
-                    />
-                  </label>
-                ))}
-                {numbers.map(([key, fieldLabel, , max]) => (
-                  <label key={key}>
-                    {fieldLabel}
-                    <input
-                      name={key}
-                      type="number"
-                      min={0}
-                      max={max}
-                      required
-                      value={values[key]}
-                      onChange={(event) => update(key, event.target.value)}
-                    />
-                  </label>
-                ))}
-                <label>
-                  Zustand
-                  <select
-                    name="state"
-                    value={values.state}
-                    onChange={(event) => update('state', event.target.value)}
-                  >
-                    <option value="active">Aktiv</option>
-                    <option value="inactive">Inaktiv</option>
-                    <option value="archived">Archiviert</option>
-                  </select>
-                </label>
-                <label>
-                  <input
-                    name="blocked"
-                    type="checkbox"
-                    checked={values.blocked}
-                    onChange={(event) =>
-                      update('blocked', event.target.checked)
-                    }
-                  />
-                  Gesperrt
-                </label>
-                {formError && (
-                  <p
-                    className="field-error"
-                    role="alert"
-                    tabIndex={-1}
-                    ref={errorMessage}
-                  >
-                    {formError}
-                  </p>
-                )}
-                <p className="sr-only" role="status">
-                  {busy
-                    ? editing
-                      ? 'Ressource wird gespeichert …'
-                      : 'Ressource wird angelegt …'
-                    : ''}
-                </p>
-              </fieldset>
-              <div className="form-dialog-footer">
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={busy}
-                  onClick={close}
-                >
-                  Ressource abbrechen
-                </button>
-                <button className="primary-action" disabled={busy}>
-                  {busy ? 'Wird gespeichert …' : 'Ressource speichern'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+              <button className="primary-action" disabled={busy}>
+                {busy ? 'Wird gespeichert …' : 'Ressource speichern'}
+              </button>
+            </div>
+          </form>
+        </ModalDialog>
       )}
       <ResourceBlocks csrfToken={csrfToken} />
     </section>

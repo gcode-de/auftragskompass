@@ -1537,15 +1537,10 @@ time {
   color: var(--alert-ink);
   font-weight: 550;
 }
-.event-create-backdrop,
-.form-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  overflow-y: auto;
+/* Native modal dialogs: the browser centres them in the top layer and draws
+   the scrim as ::backdrop. */
+.event-create-dialog::backdrop,
+.form-dialog::backdrop {
   background: var(--scrim);
 }
 /* UI-BKP-01: Bookitup's dialog - white, radius 10, the warm brand stripe
@@ -1805,10 +1800,6 @@ time {
   font-size: 1.25rem;
 }
 @media (max-width: 30rem) {
-  .event-create-backdrop,
-  .form-dialog-backdrop {
-    padding: 0.5rem;
-  }
   .event-create-dialog,
   .form-dialog {
     max-height: calc(100dvh - 1rem);

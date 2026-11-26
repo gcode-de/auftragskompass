@@ -4086,7 +4086,6 @@ export function EventDocuments({
                 ref={deliverDialog}
                 className="form-dialog document-deliver-dialog"
                 aria-labelledby={'deliver-heading-' + entry.id}
-                aria-modal="true"
                 onCancel={(event) => {
                   event.preventDefault();
                   setDeliverId('');
@@ -4193,7 +4192,6 @@ export function EventDocuments({
                 ref={mailDialog}
                 className="form-dialog mail-send-dialog"
                 aria-labelledby={'mail-send-heading-' + entry.id}
-                aria-modal="true"
                 onCancel={(event) => {
                   event.preventDefault();
                   closeMailSend();
@@ -4417,7 +4415,6 @@ export function EventDocuments({
               (composeSlot ? ' mail-compose-inline' : '')
             }
             aria-labelledby="mail-compose-heading"
-            aria-modal={composeSlot ? undefined : 'true'}
             onCancel={(event) => {
               event.preventDefault();
               if (busy === '') setComposeOpen(false);
@@ -4606,7 +4603,6 @@ export function EventDocuments({
                 ref={createDialog}
                 className="form-dialog offer-create-dialog"
                 aria-labelledby="offer-create-heading"
-                aria-modal="true"
                 onCancel={(event) => {
                   event.preventDefault();
                   if (busy === '') setCreateDialogOpen(false);

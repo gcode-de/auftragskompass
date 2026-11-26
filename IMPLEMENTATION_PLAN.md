@@ -632,6 +632,17 @@ Gesamtrahmen bleiben vorerst aus.
       fremde Eventart 404), Component (Formular, Zusammenfassung, mindestens ein
       Status).
       Commit `feat: filter calendar feeds and fill their entries`.
+- [x] **UI-NATIVE-01 — Formulardialoge nativ:** Event anlegen, Kontakt,
+      Produkt, Ressource, Produktwahl und Position entfernen nutzen
+      `<dialog>` mit `showModal()` über die gemeinsame Hülle `ModalDialog`
+      statt eigener Fokusfalle und Backdrop-`div`; `aria-modal` an nativen
+      Dialogen entfällt. Escape und Außenklick schließen nur ohne laufendes
+      Speichern; ein Dialog auf verborgener Seite verlässt den Top Layer;
+      Fokus, den der Aufrufer beim Schließen setzt, wird nachgeholt.
+      **Tests:** Component (nativer Dialog, Escape, Außenklick per
+      Koordinaten), E2E (Fokusrückgabe, Seitenwechsel, Tab bleibt aus der
+      inerten Seite, Hell/Dunkel).
+      Commit `refactor: use native modal dialogs for the forms`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
