@@ -267,8 +267,8 @@ export function CalendarFeedsPanel({ csrfToken }: { csrfToken: string }) {
                     internalLink: feed.internalLink,
                     contact: feed.contact,
                     notes: feed.notes,
-                    statuses: feed.statuses,
-                    eventTypeIds: feed.eventTypeIds,
+                    statuses: feed.statuses ?? ['inquiry', 'option', 'booked'],
+                    eventTypeIds: feed.eventTypeIds ?? [],
                   },
                   feed.id,
                 )

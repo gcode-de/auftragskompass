@@ -596,7 +596,7 @@ test('feeds filter by status and event type and carry contact, notes and times',
           description: false,
           eventType: false,
           internalLink: false,
-        } as typeof input)
+        } as unknown as typeof input)
       ).json().url,
     )
   ).body.replace(/\r\n /g, '');
@@ -618,7 +618,7 @@ test('feeds filter by status and event type and carry contact, notes and times',
           contact: true,
           notes: true,
           eventTypeIds: [typeId],
-        } as typeof input)
+        } as unknown as typeof input)
       ).json().url,
     )
   ).body.replace(/\r\n /g, '');
@@ -636,7 +636,7 @@ test('feeds filter by status and event type and carry contact, notes and times',
       await create({
         ...input,
         eventTypeIds: [randomUUID()],
-      } as typeof input)
+      } as unknown as typeof input)
     ).statusCode,
   ).toBe(404);
   const listed = (
