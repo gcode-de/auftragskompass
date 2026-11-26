@@ -5573,7 +5573,7 @@ a.offer-draft-preview {
   }
 }
 
-/* UI-BKP-12: the event's resources in Bookitup's card language - the status
+/* UI-BKP-15: the event's resources in Bookitup's card language - the status
    and the schedule, then one white card per unit with its checkbox, a quiet
    buffer line and the availability as a coloured pill. Bookitup's own
    resource tab is locked behind its trial, so no layout is copied. */

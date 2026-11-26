@@ -631,7 +631,7 @@ export function ResourceAssignments({
                 Einschließlich Puffer: {time(unit.startsAt)} –{' '}
                 {time(unit.endsAt)}
               </p>
-              {/* UI-BKP-12: the outcome as a quiet coloured pill; the
+              {/* UI-BKP-15: the outcome as a quiet coloured pill; the
                   words stay the same. */}
               <p
                 className="resource-assign-state"

@@ -683,7 +683,7 @@ Gesamtrahmen bleiben vorerst aus.
       **Tests:** Component (Gliederung, Hauptnavigation), E2E (Spalte,
       Tabelle, Verlauf über alte und neue Hashes, Hell/Dunkel).
       Commit `feat: give resources a bookitup page of their own`.
-- [x] **UI-BKP-12 — Ressourcen in der Eventakte als Karten:** Status, Termin
+- [x] **UI-BKP-15 — Ressourcen in der Eventakte als Karten:** Status, Termin
       und jede Einheit stehen als weiße Karten (Bookitups Kartensprache);
       Pufferzeile gedämpft, Verfügbarkeit als farbige Pille (frei grün,
       Vormerkung orange, belegt/gesperrt rot, „erneut prüfen“ grau), Texte und

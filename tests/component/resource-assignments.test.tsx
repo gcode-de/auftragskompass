@@ -1014,7 +1014,7 @@ test.each(['malformed', 'conflict', 'unknown', 'server_error'])(
     await waitFor(() => expect(changed).toHaveBeenCalledOnce());
   },
 );
-// UI-BKP-12: the availability line carries its outcome for the coloured pill;
+// UI-BKP-15: the availability line carries its outcome for the coloured pill;
 // a change marks every line as stale until it is checked again.
 test('each unit names its availability state for the status pill', async () => {
   const units = [
