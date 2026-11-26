@@ -19,7 +19,8 @@ const resource = { id: 'fictional-resource', name: 'Fictional box' },
     internalLink: false,
   },
   row = { ...input, id: 'fictional-feed', expiresAt: '2031-01-01T00:00:00Z' },
-  url = 'https://admin.example.invalid/feeds/v1/fictional-one-time-token.ics';
+  url = 'https://admin.example.invalid/feeds/v1/fictional-one-time-token.ics',
+  eventType = { id: 'fictional-type', name: 'Fictional wedding type' };
 test('creates optional scoped feeds, shows link once, rotates and revokes with CSRF', async () => {
   let rows: (typeof row)[] = [];
   const calls: RequestInit[] = [];
@@ -35,7 +36,13 @@ test('creates optional scoped feeds, shows link once, rotates and revokes with C
           ? new Response(null, { status: 204 })
           : Response.json({ ...rows[0], url });
       }
-      return Response.json(path.endsWith('/resources') ? [resource] : rows);
+      return Response.json(
+        path.endsWith('/resources')
+          ? [resource]
+          : path.endsWith('/event_type')
+            ? [eventType]
+            : rows,
+      );
     }),
   );
   render(<CalendarFeedsPanel csrfToken="fictional-csrf" />);
@@ -46,12 +53,19 @@ test('creates optional scoped feeds, shows link once, rotates and revokes with C
   fireEvent.change(screen.getByLabelText('Kalenderumfang'), {
     target: { value: resource.id },
   });
+  // FEED-02: cancelled and unavailable start unchecked; the on-site content
+  // and one event type are chosen here.
+  expect(screen.getByLabelText('Annulliert')).toHaveProperty('checked', false);
+  expect(screen.getByLabelText('Gebucht')).toHaveProperty('checked', true);
   for (const label of [
     'Eventbeschreibung aufnehmen',
-    'Eventart aufnehmen',
+    'Eventart und Paket aufnehmen',
     'Internen Eventlink aufnehmen',
+    'Ansprechpartner mit Telefon und E-Mail aufnehmen',
+    'Notizen aufnehmen (die zehn neuesten)',
+    'Fictional wedding type',
   ])
-    fireEvent.click(screen.getByLabelText(label));
+    fireEvent.click(await screen.findByLabelText(label));
   fireEvent.click(create);
   expect(
     (
@@ -60,12 +74,23 @@ test('creates optional scoped feeds, shows link once, rotates and revokes with C
       )) as HTMLInputElement
     ).value,
   ).toBe(url);
-  expect(JSON.parse(calls[0]!.body as string)).toEqual({
+  const created = {
     resourceId: resource.id,
     description: true,
     eventType: true,
     internalLink: true,
-  });
+    contact: true,
+    notes: true,
+    statuses: ['inquiry', 'option', 'booked'],
+    eventTypeIds: [eventType.id],
+  };
+  expect(JSON.parse(calls[0]!.body as string)).toEqual(created);
+  // The list names what the feed carries.
+  expect(
+    await screen.findByText(
+      /Anfrage, Option, Gebucht · Fictional wedding type · mit Kontakt, Notizen/,
+    ),
+  ).toBeTruthy();
   expect(calls[0]!.headers).toEqual({
     'content-type': 'application/json',
     'x-csrf-token': 'fictional-csrf',
@@ -74,12 +99,7 @@ test('creates optional scoped feeds, shows link once, rotates and revokes with C
   await screen.findByText(/Den neuen Link jetzt/);
   await waitFor(() => expect(calls).toHaveLength(2));
   expect(calls[1]!.method).toBe('PUT');
-  expect(JSON.parse(calls[1]!.body as string)).toEqual({
-    resourceId: resource.id,
-    description: true,
-    eventType: true,
-    internalLink: true,
-  });
+  expect(JSON.parse(calls[1]!.body as string)).toEqual(created);
   await waitFor(() =>
     expect(
       (
@@ -121,7 +141,7 @@ test('load failures and uncertain mutations clear links and allow explicit reloa
   await screen.findByText('Kalender-Abos konnten nicht geladen werden.');
   failLoad = false;
   fireEvent.click(screen.getByRole('button', { name: 'Abos neu laden' }));
-  await screen.findByText(/Ressource · läuft nicht ab/);
+  await screen.findByText(/^Ressource ·.*läuft nicht ab/);
   fireEvent.click(screen.getByRole('button', { name: 'Abo erstellen' }));
   await screen.findByLabelText('Neuer Kalenderlink (nur jetzt sichtbar)');
   failMutation = true;
@@ -179,4 +199,27 @@ test('unmount ignores late successful or failed loading', async () => {
   second.unmount();
   reject(Error('offline'));
   await Promise.resolve();
+});
+
+test('a feed needs at least one booking status', async () => {
+  const calls: RequestInit[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_path: string, options?: RequestInit) => {
+      if (options) calls.push(options);
+      return Response.json([]);
+    }),
+  );
+  render(<CalendarFeedsPanel csrfToken="fictional-csrf" />);
+  const create = screen.getByRole('button', { name: 'Abo erstellen' });
+  await waitFor(() =>
+    expect((create as HTMLButtonElement).disabled).toBe(false),
+  );
+  for (const label of ['Anfrage', 'Option', 'Gebucht'])
+    fireEvent.click(screen.getByLabelText(label));
+  fireEvent.click(create);
+  expect(
+    await screen.findByText('Bitte mindestens einen Buchungsstatus wählen.'),
+  ).toBeTruthy();
+  expect(calls).toHaveLength(0);
 });

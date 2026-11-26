@@ -305,6 +305,10 @@ export const calendarFeeds = pgTable('calendar_feeds', {
   description: boolean('description').notNull(),
   eventType: boolean('event_type').notNull(),
   internalLink: boolean('internal_link').notNull(),
+  statuses: text('statuses').array().notNull(),
+  eventTypeIds: uuid('event_type_ids').array().notNull(),
+  contact: boolean('contact').notNull(),
+  notes: boolean('notes').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

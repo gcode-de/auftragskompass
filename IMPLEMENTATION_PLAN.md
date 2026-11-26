@@ -622,6 +622,16 @@ Gesamtrahmen bleiben vorerst aus.
       Datenbank), Integration (Tag, bekannter Kontakt ohne Groß-/Kleinschreibung,
       eigenes Event ausgenommen, Links), Component (Akte öffnet den Editor).
       Commit `feat: tell more in inquiry notifications`.
+
+- [x] **FEED-02 — Kalender-Abos filtern und ausführlicher:** Abos filtern nach
+      Buchungsstatus (Vorgabe ohne Annulliert/Nicht verfügbar, auch für
+      bestehende Abos) und Eventarten; Termine nennen immer die Uhrzeit, auf
+      Wunsch Ansprechpartner mit Telefon/Mobil/E-Mail, die zehn neuesten Notizen
+      und Paket. Migration 0084 (Spalten mit Vorgaben und CHECK-Regeln).
+      **Tests:** Integration (Vorgabefilter, Eventart, Kontakt, Notizen, Zeit,
+      fremde Eventart 404), Component (Formular, Zusammenfassung, mindestens ein
+      Status).
+      Commit `feat: filter calendar feeds and fill their entries`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

@@ -49,6 +49,9 @@ const input = {
   description: false,
   eventType: false,
   internalLink: false,
+  // These cases follow one event through cancellation, so they carry every
+  // status; the defaults have their own case below.
+  statuses: ['inquiry', 'option', 'booked', 'unavailable', 'cancelled'],
 };
 let actor: string, resource: string, unit: string, foreignResource: string;
 beforeAll(async () => {
@@ -515,4 +518,132 @@ test('calendar feeds omit events after their tombstone is written', async () => 
   await events.remove(actor, created.id, created.version);
   const body = (await feed(savedFeed.url)).body;
   expect(body).not.toContain('Fictional removed feed event');
+});
+
+// FEED-02: a feed leaves cancelled and unavailable events out by default,
+// narrows by event type and, on request, carries the times, the primary
+// contact and the newest notes for the on-site view.
+test('feeds filter by status and event type and carry contact, notes and times', async () => {
+  const events = eventRepository(pool, tenant),
+    typeId = randomUUID(),
+    otherType = randomUUID(),
+    contactId = randomUUID();
+  for (const [id, name] of [
+    [typeId, 'Fictional wedding type'],
+    [otherType, 'Fictional company type'],
+  ] as const)
+    await pool.query(
+      `INSERT INTO master_data (tenant_id,id,kind,name,position,state)
+       VALUES ($1,$2,'event_type',$3,90,'active')`,
+      [tenant, id, name],
+    );
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional On-site Person','','','','','DE',
+      'onsite@example.invalid','+49 30 000001','+49 170 000002','4930000001','49170000002','active',1)`,
+    [tenant, contactId],
+  );
+  const base = {
+    packageId: null,
+    locationId: null,
+    additionalContactIds: [],
+    source: 'Synthetic fixture',
+    description: '',
+    notesHtml: '',
+  };
+  const wanted = await events.save(actor, {
+    ...base,
+    name: 'Fictional on-site wedding',
+    status: 'booked',
+    eventTypeId: typeId,
+    primaryContactId: contactId,
+    eventDate: '2033-05-06',
+    startsAt: '2033-05-06T16:00:00Z',
+    endsAt: '2033-05-06T22:00:00Z',
+  });
+  await events.save(actor, {
+    ...base,
+    name: 'Fictional cancelled wedding',
+    status: 'cancelled',
+    eventTypeId: typeId,
+    primaryContactId: null,
+    eventDate: '2033-05-07',
+    startsAt: null,
+    endsAt: null,
+  });
+  await events.save(actor, {
+    ...base,
+    name: 'Fictional company party',
+    status: 'booked',
+    eventTypeId: otherType,
+    primaryContactId: null,
+    eventDate: '2033-05-08',
+    startsAt: null,
+    endsAt: null,
+  });
+  await pool.query(
+    `INSERT INTO event_notes (tenant_id,id,event_id,body_html,created_by)
+     VALUES ($1,$2,$3,'<p>Fictional note: <strong>side entrance</strong></p>',$4)`,
+    [tenant, randomUUID(), wanted.id, actor],
+  );
+  // Defaults: no cancelled event, no contact and no notes.
+  const plain = (
+    await feed(
+      (
+        await create({
+          resourceId: null,
+          description: false,
+          eventType: false,
+          internalLink: false,
+        } as unknown as typeof input)
+      ).json().url,
+    )
+  ).body.replace(/\r\n /g, '');
+  expect(plain).toContain('Fictional on-site wedding');
+  expect(plain).not.toContain('Fictional cancelled wedding');
+  expect(plain).not.toContain('Fictional On-site Person');
+  expect(plain).not.toContain('side entrance');
+  // The times always stand in the text, in the event's zone.
+  expect(plain).toContain('Zeit: 18:00–00:00 Uhr');
+  // Narrowed to one type, with contact and notes.
+  const rich = (
+    await feed(
+      (
+        await create({
+          resourceId: null,
+          description: false,
+          eventType: true,
+          internalLink: false,
+          contact: true,
+          notes: true,
+          eventTypeIds: [typeId],
+        } as unknown as typeof input)
+      ).json().url,
+    )
+  ).body.replace(/\r\n /g, '');
+  expect(rich).toContain('Fictional on-site wedding');
+  expect(rich).not.toContain('Fictional company party');
+  expect(rich).toContain('Ansprechpartner: Fictional On-site Person');
+  expect(rich).toContain('Telefon: +49 30 000001');
+  expect(rich).toContain('Mobil: +49 170 000002');
+  expect(rich).toContain('E-Mail: onsite@example.invalid');
+  expect(rich).toContain('Fictional note: side entrance');
+  expect(rich).toContain('Eventart: Fictional wedding type');
+  // A foreign or unknown event type is refused.
+  expect(
+    (
+      await create({
+        ...input,
+        eventTypeIds: [randomUUID()],
+      } as unknown as typeof input)
+    ).statusCode,
+  ).toBe(404);
+  const listed = (
+    await app.inject({ url: '/api/v1/calendar-feeds', cookies })
+  ).json() as Array<{ statuses: string[]; contact: boolean }>;
+  expect(listed.some((row) => row.contact)).toBe(true);
+  expect(
+    listed.some((row) => row.statuses.join() === 'inquiry,option,booked'),
+  ).toBe(true);
 });
