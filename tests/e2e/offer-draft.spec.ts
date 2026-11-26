@@ -761,15 +761,17 @@ async function offerDraftScenario(browser: Browser) {
     await expect(netPosition.getByLabel('Beschreibung')).toBeFocused();
     await expect(netPosition.getByLabel('Menge')).toHaveValue('1');
     await expect(netPosition.getByLabel('Einheit')).toHaveValue('Stück');
-    // The catalog price is copied with its basis, not converted to gross.
+    // UI-BKP-11: the net catalog price joins the gross document converted
+    // (100,00 € net at 19 % is 119,00 € gross); one switch rules the basis.
     await expect(
-      netPosition.getByLabel('Einzelpreis (Netto) in Euro'),
-    ).toHaveValue('100.00');
-    // EDITOR-VISUAL-01: the stored basis is a Brutto/Netto switch in the row
-    // header (B37 deviation 2), not a select beside the price field.
+      netPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('119.00');
     await expect(
-      netPosition.getByRole('radio', { name: 'Netto' }),
+      editor
+        .getByRole('radiogroup', { name: 'Preise des Dokuments' })
+        .getByRole('radio', { name: 'Brutto' }),
     ).toBeChecked();
+    await expect(netPosition.getByRole('radiogroup')).toHaveCount(0);
     await expect(netPosition.getByLabel('Steuer in Prozent')).toHaveValue(
       '19.00',
     );
@@ -782,9 +784,6 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       grossPosition.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
-    await expect(
-      grossPosition.getByRole('radio', { name: 'Brutto' }),
-    ).toBeChecked();
     await expect(grossPosition.getByLabel('Einheit')).toHaveValue('Pauschale');
     await expect(netPosition.getByLabel('Infotext (optional)')).toHaveValue(
       'Synthetic net-priced product',
@@ -1063,11 +1062,11 @@ async function offerDraftScenario(browser: Browser) {
         info_text: 'Fictional edited product information\nSecond line',
         quantity: 1,
         unit: 'Stück',
-        unit_price_minor: '10000',
+        unit_price_minor: '11900',
         tax_basis_points: 1900,
         discount_basis_points: 0,
         discount_amount_minor: null,
-        price_basis: 'net',
+        price_basis: 'gross',
       },
       {
         position: 4,
@@ -1281,12 +1280,8 @@ async function offerDraftScenario(browser: Browser) {
     await expect(reopenedPosition4.getByLabel('Menge')).toHaveValue('1');
     await expect(reopenedPosition4.getByLabel('Einheit')).toHaveValue('Stück');
     await expect(
-      reopenedPosition4.getByLabel('Einzelpreis (Netto) in Euro'),
-    ).toHaveValue('100.00');
-    // EDITOR-VISUAL-01: the basis survives the reload as the checked switch.
-    await expect(
-      reopenedPosition4.getByRole('radio', { name: 'Netto' }),
-    ).toBeChecked();
+      reopenedPosition4.getByLabel('Einzelpreis (Brutto) in Euro'),
+    ).toHaveValue('119.00');
     await expect(reopenedPosition3.getByLabel('Beschreibung')).toHaveValue(
       'Fictional gross product',
     );
@@ -1297,9 +1292,6 @@ async function offerDraftScenario(browser: Browser) {
     await expect(
       reopenedPosition3.getByLabel('Einzelpreis (Brutto) in Euro'),
     ).toHaveValue('119.00');
-    await expect(
-      reopenedPosition3.getByRole('radio', { name: 'Brutto' }),
-    ).toBeChecked();
     await expect(reopenedPosition5.getByLabel('Beschreibung')).toHaveValue(
       'Fictional extra cable',
     );

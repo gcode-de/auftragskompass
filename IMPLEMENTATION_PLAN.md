@@ -571,6 +571,31 @@ Gesamtrahmen bleiben vorerst aus.
       `#documents`, alte Adresse zeigt die Bibliothek).
       Commit `feat: move the file library into the settings`.
 
+- [x] **UI-BKP-10 — Dokumente aus der Übersicht öffnen:** Der Dokumentname in
+      der Übersicht führt wie bei Bookitup ins Event (`?doc=<id>#event-<id>`):
+      Die Akte öffnet direkt „Dateien“, ein bearbeitbarer Entwurf öffnet seinen
+      Editor, ein fertiges Dokument wird markiert und fokussiert. Ein unbekanntes
+      oder ungültiges `doc` ändert nichts; andere Eventlinks lassen `doc` fallen.
+      Die Event-Pille führt weiter nur ins Event. **Tests:** Component (Linkziel,
+      Entwurf öffnet Editor, fertiges Dokument fokussiert, unbekannt, Akte in
+      Dateien), E2E (Linkziel).
+      Commit `feat: open documents from the overview in their event`.
+
+- [x] **UI-BKP-11 — Brutto/Netto je Dokument:** Wie bei Bookitup gibt es im
+      Dokumenteditor einen Brutto/Netto-Schalter für das ganze Dokument (im
+      Balken „Positionen“) statt eines Schalters je Position. Umschalten rechnet
+      jeden Einzelpreis und einen Euro-Rabatt exakt in Cent um (kaufmännisch
+      gerundet), damit die Summen gleich bleiben; ein Hinweis nennt die
+      mögliche Cent-Rundung. Neue freie Positionen folgen der Dokumentbasis,
+      Katalogprodukte werden beim Einfügen in sie umgerechnet; ein nicht
+      umrechenbarer Katalogpreis wird mit Hinweis abgelehnt. Ältere Entwürfe mit
+      gemischten Positionen zeigen einen Hinweis, bis eine Basis gewählt wird.
+      Datenmodell und PDF bleiben je Position. **Tests:** Unit (Umrechnung,
+      Rundung, Überlauf), Component (Schalter, Umrechnung inkl. Euro-Rabatt,
+      neue Position, Katalog, gemischter Entwurf, gespeicherte Netto-Basis),
+      E2E (Angebotsablauf).
+      Commit `feat: switch gross and net once per document`.
+
 - [x] **DOC-VALID-0 — Angebote ohne Gültigkeit:** „Gültigkeit in Tagen“ erlaubt
       0 = ohne Gültigkeit (Editor und Dokumentvorlage, mit Hinweis am Feld). Ein
       solches Angebot druckt keine Zeile „Gültig bis“, speichert kein

@@ -9,6 +9,7 @@ import {
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
+import { convertMinor } from './price-basis.js';
 import { DiscountField } from './DiscountField.js';
 import { PositionRemoveDialog } from './PositionRemoveDialog.js';
 import {
@@ -1030,6 +1031,53 @@ export function OfferDraftEditor({
     );
   }
 
+  // UI-BKP-11: the document's price basis. Every position shares it; an
+  // older draft may still mix both until one is chosen for the whole document.
+  const documentBasis: 'gross' | 'net' | 'mixed' = (() => {
+    const bases = new Set(
+      lineValues.flatMap((line) =>
+        line.kind === 'info' ? [] : [line.priceBasis],
+      ),
+    );
+    return bases.size > 1 ? 'mixed' : bases.has('net') ? 'net' : 'gross';
+  })();
+  // Switching converts each entered price (and a euro discount) so the sums
+  // stay the same up to cent rounding; an unreadable value is left for the
+  // field's own validation.
+  function setDocumentBasis(basis: 'gross' | 'net') {
+    if (finalizing) return;
+    const convert = (value: string, tax: string) => {
+      try {
+        return formatHundredths(
+          convertMinor(parseHundredths(value), parseHundredths(tax), basis),
+        );
+      } catch {
+        return value;
+      }
+    };
+    setLineValues((current) =>
+      current.map((line) =>
+        line.kind === 'info' || line.priceBasis === basis
+          ? line
+          : {
+              ...line,
+              priceBasis: basis,
+              unitPrice: convert(line.unitPrice, line.tax),
+              discountAmount:
+                line.discountMode === 'amount'
+                  ? convert(line.discountAmount, line.tax)
+                  : line.discountAmount,
+            },
+      ),
+    );
+    setError(false);
+    setMessage(
+      basis === 'net'
+        ? 'Preise auf Netto umgerechnet. Rundung auf volle Cent kann einzelne Beträge um einen Cent verändern.'
+        : 'Preise auf Brutto umgerechnet. Rundung auf volle Cent kann einzelne Beträge um einen Cent verändern.',
+    );
+  }
+
   // EDITOR-MOBILE-01: opening and closing is one deliberate act of the operator.
   // The state survives blur, save and re-renders, so nothing folds away while
   // someone is still working in the group.
@@ -1069,7 +1117,7 @@ export function OfferDraftEditor({
         discount: '0.00',
         discountMode: 'percent',
         discountAmount: '0.00',
-        priceBasis: 'gross',
+        priceBasis: documentBasis === 'net' ? 'net' : 'gross',
         optional: false,
       },
     ]);
@@ -1145,24 +1193,46 @@ export function OfferDraftEditor({
       return;
     }
     catalogAddInFlight.current = true;
-    const added = selected.map((product, index): DraftItemValues => {
-      lineSequence.current += 1;
-      return {
-        key: `catalog-${lineSequence.current}`,
-        productId: product.id,
-        description: product.name,
-        infoText: information[index] ?? '',
-        quantity: '1',
-        unit: product.unit,
-        unitPrice: formatHundredths(product.priceMinor),
-        priceBasis: product.priceBasis === 'net' ? 'net' : 'gross',
-        tax: formatHundredths(product.taxBasisPoints),
-        discount: '0.00',
-        discountMode: 'percent',
-        discountAmount: '0.00',
-        optional: false,
-      };
-    });
+    const targetBasis: 'gross' | 'net' =
+        documentBasis === 'net' ? 'net' : 'gross',
+      productBasis = (product: CatalogProduct) =>
+        product.priceBasis === 'net' ? 'net' : 'gross';
+    let added: DraftItemValues[];
+    try {
+      added = selected.map((product, index): DraftItemValues => {
+        lineSequence.current += 1;
+        return {
+          key: `catalog-${lineSequence.current}`,
+          productId: product.id,
+          description: product.name,
+          infoText: information[index] ?? '',
+          quantity: '1',
+          unit: product.unit,
+          // UI-BKP-11: a catalog price joins in the document's basis.
+          unitPrice: formatHundredths(
+            productBasis(product) === targetBasis
+              ? product.priceMinor
+              : convertMinor(
+                  product.priceMinor,
+                  product.taxBasisPoints,
+                  targetBasis,
+                ),
+          ),
+          priceBasis: targetBasis,
+          tax: formatHundredths(product.taxBasisPoints),
+          discount: '0.00',
+          discountMode: 'percent',
+          discountAmount: '0.00',
+          optional: false,
+        };
+      });
+    } catch {
+      catalogAddInFlight.current = false;
+      setCatalogMessage(
+        'Ein Katalogpreis lässt sich nicht in die Preisbasis des Dokuments umrechnen. Prüfen Sie den Preis im Katalog.',
+      );
+      return;
+    }
     pendingLineFocus.current = added[0]!.key;
     setLineValues((current) => [...current, ...added]);
     setProductPickerOpen(false);
@@ -1545,7 +1615,36 @@ export function OfferDraftEditor({
               className="offer-draft-positions"
               aria-labelledby={'offer-positions-' + documentId}
             >
-              <h6 id={'offer-positions-' + documentId}>Positionen</h6>
+              {/* UI-BKP-11: Bookitup's Brutto/Netto switch, once for the
+                  whole document instead of on every position. */}
+              <div className="offer-draft-positions-head">
+                <h6 id={'offer-positions-' + documentId}>Positionen</h6>
+                <div
+                  className="offer-draft-basis"
+                  role="radiogroup"
+                  aria-label="Preise des Dokuments"
+                >
+                  {(['gross', 'net'] as const).map((basis) => (
+                    <label key={basis}>
+                      <input
+                        type="radio"
+                        name={'document-basis-' + documentId}
+                        value={basis}
+                        checked={documentBasis === basis}
+                        disabled={finalizing || busy}
+                        onChange={() => setDocumentBasis(basis)}
+                      />
+                      {basis === 'net' ? 'Netto' : 'Brutto'}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {documentBasis === 'mixed' && (
+                <p className="document-hint">
+                  Die Positionen nutzen noch Brutto und Netto gemischt. Wähle
+                  oben eine Preisbasis für das ganze Dokument.
+                </p>
+              )}
               <p>Änderungen werden beim Speichern neu berechnet.</p>
               <p className="document-hint">
                 Je Position gilt eine Rabattart: Prozent oder Euro. Ein
@@ -1660,33 +1759,6 @@ export function OfferDraftEditor({
                         >
                           {title}
                         </span>
-                        {/* EDITOR-VISUAL-01 (B37 deviation 2): the price basis is
-                            one compact Brutto/Netto switch of the row header, not
-                            a select beside the price. It keeps the stored value
-                            and only renames the price field; the core computes
-                            every sum. */}
-                        {line.kind !== 'info' && (
-                          <div
-                            className="offer-draft-position-basis"
-                            role="radiogroup"
-                            aria-label="Preisbasis"
-                          >
-                            {(['gross', 'net'] as const).map((basis) => (
-                              <label key={basis}>
-                                <input
-                                  type="radio"
-                                  name={`price-basis-${line.key}`}
-                                  value={basis}
-                                  checked={line.priceBasis === basis}
-                                  onChange={() =>
-                                    changeLine(line.key, 'priceBasis', basis)
-                                  }
-                                />
-                                {basis === 'net' ? 'Netto' : 'Brutto'}
-                              </label>
-                            ))}
-                          </div>
-                        )}
                         {/* EDITOR-VISUAL-02: one compact menu per position
                             replaces the four unnamed icons. The toggle stays
                             the single visible row action; the group holds the
