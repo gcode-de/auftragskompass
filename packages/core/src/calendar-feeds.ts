@@ -2,19 +2,30 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { and, eq, sql } from 'drizzle-orm';
-import { calendarFeeds, resources } from './schema.js';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { calendarFeeds, masterData, resources } from './schema.js';
+import { mailBodyTextFromHtml } from './mail-content.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 import { digest } from './auth.js';
 import { renderIcs, type IcsOptions, type IcsEvent } from './ics.js';
-export type FeedInput = IcsOptions & { resourceId: string | null };
+// FEED-02: which events a feed carries; absent means the defaults below.
+export type FeedInput = IcsOptions & {
+  resourceId: string | null;
+  statuses?: string[];
+  eventTypeIds?: string[];
+};
+const defaultStatuses = ['inquiry', 'option', 'booked'];
 const metadata = {
   id: calendarFeeds.id,
   resourceId: calendarFeeds.resourceId,
   description: calendarFeeds.description,
   eventType: calendarFeeds.eventType,
   internalLink: calendarFeeds.internalLink,
+  contact: calendarFeeds.contact,
+  notes: calendarFeeds.notes,
+  statuses: calendarFeeds.statuses,
+  eventTypeIds: calendarFeeds.eventTypeIds,
   createdAt: calendarFeeds.createdAt,
   expiresAt: calendarFeeds.expiresAt,
 };
@@ -49,9 +60,32 @@ export function calendarFeedRepository(
             );
           if (!resource) throw new AccessError('not_found');
         }
+        // Only this tenant's event types may narrow a feed.
+        const eventTypeIds = [...new Set(input.eventTypeIds ?? [])];
+        if (eventTypeIds.length) {
+          const known = await tx
+            .select({ id: masterData.id })
+            .from(masterData)
+            .where(
+              and(
+                eq(masterData.tenantId, tenantId),
+                eq(masterData.kind, 'event_type'),
+                inArray(masterData.id, eventTypeIds),
+              ),
+            );
+          if (known.length !== eventTypeIds.length)
+            throw new AccessError('not_found');
+        }
         const token = randomBytes(32).toString('base64url'),
           values = {
-            ...input,
+            resourceId: input.resourceId,
+            description: input.description,
+            eventType: input.eventType,
+            internalLink: input.internalLink,
+            contact: input.contact ?? false,
+            notes: input.notes ?? false,
+            statuses: [...new Set(input.statuses ?? defaultStatuses)],
+            eventTypeIds,
             tokenHash: digest(token),
             expiresAt: null,
           };
@@ -99,7 +133,8 @@ export function calendarFeedRepository(
         async (tx) => {
           const result = await tx.execute<FeedInput & Record<string, unknown>>(
             sql`SELECT f.resource_id AS "resourceId", f.description,
-              f.event_type AS "eventType", f.internal_link AS "internalLink"
+              f.event_type AS "eventType", f.internal_link AS "internalLink",
+              f.contact, f.notes, f.statuses, f.event_type_ids AS "eventTypeIds"
             FROM calendar_feeds f
             JOIN memberships m ON m.tenant_id=f.tenant_id AND m.user_id=f.owner_id AND m.active
             JOIN allowed_accounts a ON a.tenant_id=f.tenant_id AND a.user_id=f.owner_id AND a.active
@@ -115,6 +150,16 @@ export function calendarFeedRepository(
           >(
             sql`SELECT e.id, e.name, e.status, e.event_date AS "eventDate",
               e.starts_at AS "startsAt", e.ends_at AS "endsAt", e.description, t.name AS "eventType",
+              e.time_zone AS "timeZone", p.name AS "packageName",
+              c.name AS "contactName", c.phone AS "contactPhone",
+              c.mobile AS "contactMobile", c.email AS "contactEmail",
+              CASE WHEN ${feed.notes} THEN COALESCE((
+                SELECT array_agg(n.body_html ORDER BY n.created_at DESC)
+                FROM (SELECT body_html, created_at FROM event_notes
+                       WHERE tenant_id=e.tenant_id AND event_id=e.id
+                         AND deleted_at IS NULL
+                       ORDER BY created_at DESC LIMIT 10) n
+              ),ARRAY[]::text[]) ELSE ARRAY[]::text[] END AS notes,
               CASE WHEN e.venue_override THEN COALESCE(NULLIF(btrim(e.venue),''),'')
                 ELSE concat_ws(', ',NULLIF(l.name,''),NULLIF(l.street,''),
                   NULLIF(concat_ws(' ',NULLIF(l.postal_code,''),NULLIF(l.city,'')),''),
@@ -132,7 +177,15 @@ export function calendarFeedRepository(
             FROM events e
             LEFT JOIN locations l ON l.tenant_id=e.tenant_id AND l.id=e.location_id
             LEFT JOIN master_data t ON t.tenant_id=e.tenant_id AND t.id=e.event_type_id
+            LEFT JOIN master_data p ON p.tenant_id=e.tenant_id AND p.id=e.package_id
+            LEFT JOIN event_contacts ec ON ec.tenant_id=e.tenant_id AND ec.event_id=e.id
+              AND ec.role='primary'
+            LEFT JOIN contacts c ON c.tenant_id=ec.tenant_id AND c.id=ec.contact_id
+              AND ${feed.contact}
             WHERE e.tenant_id=${tenantId} AND e.deleted_at IS NULL AND e.event_date IS NOT NULL
+              AND e.status = ANY(${sql.param(feed.statuses)}::text[])
+              AND (cardinality(${sql.param(feed.eventTypeIds)}::uuid[])=0
+                OR e.event_type_id = ANY(${sql.param(feed.eventTypeIds)}::uuid[]))
               AND (${feed.resourceId}::uuid IS NULL OR EXISTS(
                 SELECT 1 FROM reservations s
                 JOIN resource_units u ON u.tenant_id=s.tenant_id AND u.id=s.unit_id
@@ -154,6 +207,9 @@ export function calendarFeedRepository(
               ...row,
               startsAt: row.startsAt ? new Date(row.startsAt) : null,
               endsAt: row.endsAt ? new Date(row.endsAt) : null,
+              notes: (row.notes ?? [])
+                .map((html) => mailBodyTextFromHtml(html).trim())
+                .filter(Boolean),
             })),
             state?.revision ?? 1,
             state ? new Date(state.changed_at) : new Date(0),
@@ -177,6 +233,22 @@ const inputSchema = {
     description: { type: 'boolean' },
     eventType: { type: 'boolean' },
     internalLink: { type: 'boolean' },
+    contact: { type: 'boolean' },
+    notes: { type: 'boolean' },
+    statuses: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 5,
+      items: {
+        type: 'string',
+        enum: ['inquiry', 'option', 'booked', 'unavailable', 'cancelled'],
+      },
+    },
+    eventTypeIds: {
+      type: 'array',
+      maxItems: 100,
+      items: { type: 'string', format: 'uuid' },
+    },
   },
 };
 const paramsSchema = {
@@ -193,6 +265,10 @@ const rowSchema = {
     'description',
     'eventType',
     'internalLink',
+    'contact',
+    'notes',
+    'statuses',
+    'eventTypeIds',
     'createdAt',
     'expiresAt',
   ],

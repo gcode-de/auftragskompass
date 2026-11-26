@@ -4,6 +4,9 @@ export type IcsOptions = {
   description: boolean;
   eventType: boolean;
   internalLink: boolean;
+  // FEED-02: the on-site view - who to call and what was noted.
+  contact?: boolean;
+  notes?: boolean;
 };
 export type IcsEvent = {
   id: string;
@@ -16,7 +19,23 @@ export type IcsEvent = {
   description: string;
   eventType: string | null;
   resources: string[];
+  // FEED-02: the event's own zone for the clock times, the package beside the
+  // event type, the primary contact and the notes (plain text, newest first).
+  timeZone?: string;
+  packageName?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactMobile?: string | null;
+  contactEmail?: string | null;
+  notes?: string[];
 };
+function clock(value: Date, timeZone: string) {
+  return new Intl.DateTimeFormat('de-DE', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(value);
+}
 const labels = Object.fromEntries(
   eventStatuses.map(({ code, label }) => [code, label]),
 );
@@ -91,13 +110,38 @@ export function renderIcs(
       'X-MICROSOFT-CDO-ALLDAYEVENT:TRUE',
     );
     const status = labels[event.status]!;
-    const description = [
-      status,
-      'Ressourcen: ' + (event.resources.join(', ') || 'Keine zugewiesen'),
-    ];
-    if (options.description) description.push(event.description);
-    if (options.eventType)
+    const description: string[] = [status];
+    // The clock times stay in the text: the entry itself remains all-day.
+    if (event.startsAt && event.endsAt) {
+      const zone = event.timeZone ?? 'Europe/Berlin';
+      description.push(
+        'Zeit: ' +
+          clock(event.startsAt, zone) +
+          '–' +
+          clock(event.endsAt, zone) +
+          ' Uhr',
+      );
+    }
+    if (options.contact && event.contactName) {
+      description.push('Ansprechpartner: ' + event.contactName);
+      for (const [label, value] of [
+        ['Telefon', event.contactPhone],
+        ['Mobil', event.contactMobile],
+        ['E-Mail', event.contactEmail],
+      ] as const)
+        if (value?.trim()) description.push(label + ': ' + value.trim());
+    }
+    if (options.eventType) {
       description.push('Eventart: ' + (event.eventType ?? 'Offen'));
+      if (event.packageName) description.push('Paket: ' + event.packageName);
+    }
+    description.push(
+      'Ressourcen: ' + (event.resources.join(', ') || 'Keine zugewiesen'),
+    );
+    if (options.description && event.description.trim())
+      description.push('Beschreibung: ' + event.description.trim());
+    if (options.notes && event.notes?.length)
+      description.push('Notizen:\n' + event.notes.join('\n---\n'));
     lines.push(
       'SUMMARY:' + text(status + ' · ' + event.name),
       'LOCATION:' + text(event.location),

@@ -62,13 +62,13 @@ Protokolle kopieren. Keine Linkvorschau- oder Analysedienste verwenden.
 Migration `0022_calendar_feeds.sql` ergänzt mandantengebundene Feeds mit Fremdschlüsseln,
 Ablauf und Hashprüfung sowie transaktionale Kalenderrevisionen und Audit-Aktionen.
 
-| Route | Zugriff | Verhalten |
-|---|---|---|
-| `GET /api/v1/calendar-feeds` | App-Sitzung | aktive Metadaten ohne Schlüssel |
-| `POST /api/v1/calendar-feeds` | Sitzung + CSRF | `resourceId` (UUID oder null), `description`, `eventType`, `internalLink` (Bool); einmaliger Link, 201 |
-| `PUT /api/v1/calendar-feeds/:id` | Sitzung + CSRF | dieselbe vollständige Auswahl, Schlüssel und Ablauf erneuern, 200 |
-| `DELETE /api/v1/calendar-feeds/:id` | Sitzung + CSRF | widerrufen, 204 |
-| `GET /feeds/v1/:token.ics` | eigener Bearer-Link + HTTPS | nur ausgewählte ICS-Daten; keine Verwaltungsberechtigung |
+| Route                               | Zugriff                     | Verhalten                                                                                              |
+| ----------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `GET /api/v1/calendar-feeds`        | App-Sitzung                 | aktive Metadaten ohne Schlüssel                                                                        |
+| `POST /api/v1/calendar-feeds`       | Sitzung + CSRF              | `resourceId` (UUID oder null), `description`, `eventType`, `internalLink` (Bool); einmaliger Link, 201 |
+| `PUT /api/v1/calendar-feeds/:id`    | Sitzung + CSRF              | dieselbe vollständige Auswahl, Schlüssel und Ablauf erneuern, 200                                      |
+| `DELETE /api/v1/calendar-feeds/:id` | Sitzung + CSRF              | widerrufen, 204                                                                                        |
+| `GET /feeds/v1/:token.ics`          | eigener Bearer-Link + HTTPS | nur ausgewählte ICS-Daten; keine Verwaltungsberechtigung                                               |
 
 Der bestehende TLS-Proxy muss `X-Forwarded-Proto: https` selbst setzen und vom Client
 vorgegebene Werte ersetzen. nginx reicht diesen Wert nur für `/feeds/v1/` weiter.
@@ -81,3 +81,19 @@ Anwendungs- und nginx-Logs enthalten keine URL, Query oder Header. Vor öffentli
 Nutzung auch bestehende TLS-Proxy-/Cloudflare-Protokollierung auf vertrauliche
 Tokenpfade prüfen. Statusfilter und ein separater ausgehender Feed-Abgleich sind
 optionaler späterer Ausbau; der lokale Kern liefert die aktuellen Daten direkt.
+
+## Filter und Inhalte je Abo (FEED-02, 26.11.2026)
+
+Jedes Abo filtert nach **Buchungsstatus** (Vorgabe: Anfrage, Option, Gebucht;
+„Annulliert“ und „Nicht verfügbar“ nur auf Wunsch) und optional nach
+**Eventarten** (keine Auswahl = alle). Bestehende Abos behalten ihren Link und
+lassen ab Migration 0084 ebenfalls annullierte und nicht verfügbare Events weg.
+Jeder Termin nennt jetzt immer Status, **Uhrzeit** (in der Zeitzone des Events;
+der Termin bleibt ganztägig) und Ressourcen. Wählbar sind zusätzlich:
+Ansprechpartner mit Telefon, Mobilnummer und E-Mail (Hauptkontakt), die zehn
+neuesten Notizen als Text, die Eventbeschreibung, Eventart und Paket sowie der
+interne Eventlink. Mit Kontakt oder Notizen trägt der Link personenbezogene
+Daten; die Oberfläche weist darauf hin. Eventarten anderer Mandanten werden
+mit 404 abgewiesen. API: `POST/PUT /api/v1/calendar-feeds` nehmen zusätzlich
+`statuses` (1–5 Codes), `eventTypeIds` (≤ 100), `contact` und `notes` an; die
+Liste liefert sie mit.

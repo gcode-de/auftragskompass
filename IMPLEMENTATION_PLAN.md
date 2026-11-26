@@ -560,6 +560,15 @@ Gesamtrahmen bleiben vorerst aus.
       (Platz im Lesebereich, nicht modal, Escape, Fokus), E2E (eingebettet neben
       der Liste, axe, Escape).
       Commit `feat: compose event mails inline like bookitup`.
+- [x] **FEED-02 — Kalender-Abos filtern und ausführlicher:** Abos filtern nach
+      Buchungsstatus (Vorgabe ohne Annulliert/Nicht verfügbar, auch für
+      bestehende Abos) und Eventarten; Termine nennen immer die Uhrzeit, auf
+      Wunsch Ansprechpartner mit Telefon/Mobil/E-Mail, die zehn neuesten Notizen
+      und Paket. Migration 0084 (Spalten mit Vorgaben und CHECK-Regeln).
+      **Tests:** Integration (Vorgabefilter, Eventart, Kontakt, Notizen, Zeit,
+      fremde Eventart 404), Component (Formular, Zusammenfassung, mindestens ein
+      Status).
+      Commit `feat: filter calendar feeds and fill their entries`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
