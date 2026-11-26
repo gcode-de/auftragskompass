@@ -2991,8 +2991,11 @@ async function signInScenario(
       [config.tenantId],
     );
     // BKP020.1: uploading, downloading and archiving a synthetic library file.
-    // The library is its own named region beside the document index, with its
-    // own heading and endpoint.
+    // UI-BKP-09: the library is its own settings page with its own heading
+    // and endpoint; it is reached through the settings, not the main menu.
+    await page.evaluate(() => {
+      location.hash = 'settings-files';
+    });
     const library = page.getByRole('region', { name: 'Dateibibliothek' });
     await expect(library).toBeVisible();
     await expect(
