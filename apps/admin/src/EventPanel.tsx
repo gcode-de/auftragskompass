@@ -709,8 +709,11 @@ export function EventPanel({
   function closeCreate() {
     setCreating(false);
     setCreateInitial(null);
-    const target = createReturnFocus.current ?? createTrigger.current;
-    if (target?.isConnected) target.focus({ preventScroll: true });
+    // UI-BKP-08: a resize can move the plus between the column and the top,
+    // so a replaced trigger falls back to the current one.
+    const stored = createReturnFocus.current,
+      target = stored?.isConnected ? stored : createTrigger.current;
+    target?.focus({ preventScroll: true });
   }
   async function created() {
     setCreating(false);
@@ -1299,51 +1302,64 @@ export function EventPanel({
       </form>
     );
   }
+  // UI-BKP-08: on wide screens the page head (title, removed events, plus)
+  // tops the light context column like Bookitup; narrow screens keep it
+  // above the list.
+  const heading = (
+    <div className="section-heading" hidden={showingDetail}>
+      {showHeading && <h2>Events</h2>}
+      {/* The column shows the page name; the h1 names it for assistive
+          technology, so this copy stays out of the heading outline. */}
+      {wide && !showHeading && (
+        <p className="context-title" aria-hidden="true">
+          Events
+        </p>
+      )}
+      <div className="section-actions">
+        <button
+          type="button"
+          className="tertiary-action"
+          disabled={busy || removedBusy}
+          onClick={() => {
+            if (viewingRemoved) {
+              setViewingRemoved(false);
+              void refresh().catch(() => {});
+            } else {
+              setViewingRemoved(true);
+              void loadRemoved();
+            }
+          }}
+        >
+          {viewingRemoved
+            ? 'Aktive Events anzeigen'
+            : 'Entfernte Events anzeigen'}
+        </button>
+        <button
+          ref={createTrigger}
+          className="icon-action tier-primary-icon"
+          aria-label="Event anlegen"
+          title="Event anlegen"
+          disabled={busy || editing || Boolean(draft)}
+          onClick={() => openCreate()}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
   return (
     <section id="events" aria-label="Events" aria-busy={loading}>
-      <div className="section-heading" hidden={showingDetail}>
-        {showHeading && <h2>Events</h2>}
-        <div className="section-actions">
-          <button
-            type="button"
-            className="tertiary-action"
-            disabled={busy || removedBusy}
-            onClick={() => {
-              if (viewingRemoved) {
-                setViewingRemoved(false);
-                void refresh().catch(() => {});
-              } else {
-                setViewingRemoved(true);
-                void loadRemoved();
-              }
-            }}
-          >
-            {viewingRemoved
-              ? 'Aktive Events anzeigen'
-              : 'Entfernte Events anzeigen'}
-          </button>
-          <button
-            ref={createTrigger}
-            className="icon-action tier-primary-icon"
-            aria-label="Event anlegen"
-            title="Event anlegen"
-            disabled={busy || editing || Boolean(draft)}
-            onClick={() => openCreate()}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-        </div>
-      </div>
+      {!wide && heading}
       <div className="event-layout">
         {wide ? (
           <aside
@@ -1351,6 +1367,7 @@ export function EventPanel({
             aria-label="Eventfilter"
             hidden={showingDetail}
           >
+            {heading}
             {filterPanel(false)}
           </aside>
         ) : (

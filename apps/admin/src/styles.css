@@ -4912,3 +4912,106 @@ a.offer-draft-preview {
   background: var(--filled-field);
   font-size: 0.875rem;
 }
+
+/* UI-BKP-08: Bookitup's frame - a slim 60px icon rail and, on wide screens,
+   the page's filters as a full-height light context column right beside it.
+   The column scrolls on its own; the content keeps the canvas. */
+@media (min-width: 901px) {
+  .app-shell {
+    --rail-width: 15rem;
+  }
+  .app-shell:has(.desktop-sidebar.collapsed) {
+    --rail-width: 3.75rem;
+    padding-left: calc(var(--rail-width) + 2rem);
+  }
+  .desktop-sidebar.collapsed {
+    width: var(--rail-width);
+    /* Leaves the 44px targets their full width inside the 60px rail. */
+    padding: 1rem 0.4rem;
+    border-right: 1px solid var(--border);
+  }
+  .desktop-sidebar.collapsed nav a {
+    padding: 0;
+    min-height: 44px;
+    align-items: center;
+  }
+}
+@media (min-width: 1024px) {
+  .app-shell:has(
+    .workspace-page:not([hidden]) .event-layout > .event-context:not([hidden])
+  ) {
+    padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
+  }
+  .event-layout > .event-context:not([hidden]) {
+    position: fixed;
+    inset: 0 auto 0 var(--rail-width);
+    z-index: var(--layer-sticky);
+    width: 17.125rem;
+    padding: 1.5rem 0 2rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .event-layout:has(> .event-context:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .event-layout:has(> .event-context:not([hidden])) > .event-results {
+    grid-column: 1;
+  }
+  /* The column head: the title in 22/600, removed events and the plus. */
+  .event-context > .section-heading {
+    margin: 0 0.75rem 1rem;
+  }
+  .event-context > .section-heading :is(h2, .context-title) {
+    margin: 0;
+    font-size: 1.375rem;
+    font-weight: 600;
+  }
+  .event-context > .section-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25rem 0.5rem;
+  }
+  .event-context > .section-heading .section-actions {
+    display: contents;
+  }
+  .event-context > .section-heading .section-actions > .tertiary-action {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+    padding-inline: 0;
+  }
+  /* The column names the page; the top bar keeps the h1 for assistive
+     technology only. */
+  .app-shell:has(
+      .workspace-page:not([hidden]) .event-layout > .event-context:not([hidden])
+    )
+    .workspace-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+@media (min-width: 1280px) {
+  .app-shell:has(.workspace-page:not([hidden]) .files-layout > .files-context) {
+    padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
+  }
+  .app-shell .files-layout > .files-context {
+    position: fixed;
+    inset: 0 auto 0 var(--rail-width);
+    z-index: var(--layer-sticky);
+    width: 17.125rem;
+    padding: 1.5rem 1rem 2rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .files-layout:has(> .files-context) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .files-layout:has(> .files-context) > .files-results {
+    grid-column: 1;
+  }
+}
