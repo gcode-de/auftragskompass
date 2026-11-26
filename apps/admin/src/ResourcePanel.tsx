@@ -333,37 +333,36 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   const title = editing ? 'Ressource bearbeiten' : 'Ressource anlegen';
   return (
     <section id="resources" aria-label="Ressourcen" aria-busy={loading || busy}>
-      <div className="section-heading">
-        <h2>Ressourcen</h2>
-        <div className="section-actions">
-          <button
-            ref={createTrigger}
-            type="button"
-            className="icon-action tier-primary-icon"
-            aria-label="Ressource anlegen"
-            title="Ressource anlegen"
-            disabled={busy}
-            onClick={openNew}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-        </div>
-      </div>
-      <p>
-        Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.
-      </p>
+      {/* UI-BKP-14: like Bookitup the page title, the plus and the filters
+          form the context column beside the rail; the list fills the canvas. */}
       <div className="resource-layout">
         <div className="resource-filter-column">
+          <div className="section-heading">
+            <h2>Ressourcen</h2>
+            <div className="section-actions">
+              <button
+                ref={createTrigger}
+                type="button"
+                className="icon-action tier-primary-icon"
+                aria-label="Ressource anlegen"
+                title="Ressource anlegen"
+                disabled={busy}
+                onClick={openNew}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            </div>
+          </div>
           {!wideFilters && (
             <button
               ref={filterTrigger}
@@ -422,6 +421,9 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           </div>
         </div>
         <div className="resource-results">
+          <p className="resource-intro">
+            Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.
+          </p>
           {loading && <p role="status">Ressourcen werden geladen …</p>}
           {!loading && !loadFailed && !rows.length && (
             <p>
@@ -445,16 +447,35 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
               </button>
             </>
           )}
+          {filtered.length > 0 && (
+            <div className="resource-list-head" aria-hidden="true">
+              <span>Name</span>
+              <span>Bestand</span>
+              <span>Kategorie</span>
+              <span>Zustand</span>
+            </div>
+          )}
           <ul className="resource-list">
             {filtered.map((row) => (
               <li key={row.id} className="resource-row">
                 <span className="resource-summary">
                   <strong>{row.name}</strong>
                   <span className="sr-only"> – </span>
-                  <span className="resource-meta">
-                    {String(row.quantity)} Stück – {row.category} –{' '}
+                  {/* One accessible line, shown as table cells. */}
+                  <span className="resource-cell-quantity">
+                    {String(row.quantity)} Stück
+                  </span>
+                  <span className="sr-only"> – </span>
+                  <span className="resource-cell-category">{row.category}</span>
+                  <span className="sr-only"> – </span>
+                  <span className="resource-cell-state">
                     {label(row.state)}
-                    {row.blocked ? ' – Gesperrt' : ''}
+                    {row.blocked && (
+                      <>
+                        <span className="sr-only"> – </span>
+                        <span className="resource-blocked">Gesperrt</span>
+                      </>
+                    )}
                   </span>
                 </span>{' '}
                 <button

@@ -292,7 +292,7 @@ test('related events show name, date or no date and status without their notes',
   expect(first.getAttribute('href')).toBe('#event-event-one');
   expect(within(details).getByText('16.10.2026')).toBeTruthy();
   expect(within(details).getByText('Gebucht')).toBeTruthy();
-  // UI-BKP-10: undated events wait behind Bookitup's "Ohne Datum" tab.
+  // UI-BKP-13: undated events wait behind Bookitup's "Ohne Datum" tab.
   expect(
     within(details).queryByRole('link', { name: 'Fictional undated event' }),
   ).toBeNull();
@@ -473,7 +473,7 @@ test('the record keeps one quiet breadcrumb back and an icon edit action', async
   await screen.findByText('Synthetic Company');
   const details = await openRecord();
   const buttons = within(details).getAllByRole('button');
-  // UI-BKP-10: like Bookitup no secondary button competes in the record;
+  // UI-BKP-13: like Bookitup no secondary button competes in the record;
   // the breadcrumb and the two event tabs are the quiet ones.
   expect(
     buttons.filter((button) =>
