@@ -73,6 +73,9 @@ export function ContactDetails({
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // UI-BKP-10: Bookitup's two event tabs - dated events in date order, the
+  // undated ones on their own.
+  const [undated, setUndated] = useState(false);
 
   // Opening the record moves the focus off the now hidden name link; closing
   // hands it back. The list itself stays mounted, so search text, scroll
@@ -113,74 +116,114 @@ export function ContactDetails({
   const phones: [string, string][] = [];
   if (contact.phone.trim()) phones.push(['Telefon', contact.phone]);
   if (contact.mobile.trim()) phones.push(['Mobil', contact.mobile]);
+  const dated = events
+      .filter((event) => event.eventDate)
+      .sort((a, b) => a.eventDate!.localeCompare(b.eventDate!)),
+    withoutDate = events.filter((event) => !event.eventDate),
+    shownEvents = undated ? withoutDate : dated;
   return (
     <section
       className="contact-record"
       aria-label="Kontakt-Details"
       aria-busy={loading}
     >
-      <header className="contact-record-head" data-state={contact.state}>
-        <p className="contact-record-kind">
-          <span>{kind}</span>
-          <span className="contact-record-state">
-            {contact.state === 'archived' ? 'Archiviert' : 'Aktiv'}
-          </span>
-        </p>
-        {/* BKP011.1c: the record is a second-level heading like the event
+      {/* UI-BKP-10: like Bookitup the record opens with its breadcrumb back
+          to the list; it is the record's close action. */}
+      <nav className="contact-record-crumbs" aria-label="Brotkrume">
+        <button
+          type="button"
+          className="tertiary-action"
+          aria-label="Kontakte – Kontakt-Details schließen"
+          onClick={onClose}
+        >
+          Kontakte
+        </button>
+        <span aria-hidden="true">/</span>
+        <span className="contact-record-crumb-current">{contact.name}</span>
+      </nav>
+      <div className="contact-record-card">
+        <header className="contact-record-head" data-state={contact.state}>
+          <p className="contact-record-kind">
+            <span>{kind}</span>
+            <span className="contact-record-state">
+              {contact.state === 'archived' ? 'Archiviert' : 'Aktiv'}
+            </span>
+          </p>
+          {/* BKP011.1c: the record is a second-level heading like the event
         record (EventDetails.tsx), because the contacts route carries only the
         page h1. The sections below follow one level up, so the outline never
         skips a level on either route. */}
-        <h2 ref={heading} tabIndex={-1}>
-          {contact.name}
-        </h2>
-      </header>
-      <dl>
-        {/* MAIL-EDITOR-01a: the stored first name only; an empty one is an
+          <h2 ref={heading} tabIndex={-1}>
+            {contact.name}
+          </h2>
+          <button
+            type="button"
+            className="icon-action tier-quiet-icon contact-record-edit"
+            aria-label={`Kontakt bearbeiten: ${contact.name}`}
+            title="Kontakt bearbeiten"
+            onClick={onEdit}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </button>
+        </header>
+        <dl>
+          {/* MAIL-EDITOR-01a: the stored first name only; an empty one is an
         omitted optional row, never a name guessed from the full name. */}
-        {!!contact.firstName && (
-          <Fragment>
-            <dt>Vorname</dt>
-            <dd>{contact.firstName}</dd>
-          </Fragment>
-        )}
-        {showPerson && (
-          <Fragment>
-            <dt>Ansprechpartner</dt>
-            <dd>{contact.contactPerson || 'Nicht angegeben'}</dd>
-          </Fragment>
-        )}
-        <dt>E-Mail</dt>
-        <dd>
-          {email ? <a href={email}>{contact.email}</a> : 'Nicht angegeben'}
-        </dd>
-        {phones.length ? (
-          phones.map(([label, value]) => (
-            <Fragment key={label}>
-              <dt>{label}</dt>
-              <dd>
-                <a href={telHref(value)}>{value}</a>
-              </dd>
+          {!!contact.firstName && (
+            <Fragment>
+              <dt>Vorname</dt>
+              <dd>{contact.firstName}</dd>
             </Fragment>
-          ))
-        ) : (
-          <Fragment>
-            <dt>Telefon</dt>
-            <dd>Nicht angegeben</dd>
-          </Fragment>
-        )}
-      </dl>
-      <section className="contact-record-address" aria-label="Anschrift">
-        <h3>Anschrift</h3>
-        {address.length ? (
-          <address>
-            {address.map((line) => (
-              <span key={line}>{line}</span>
-            ))}
-          </address>
-        ) : (
-          <p>Keine Anschrift hinterlegt.</p>
-        )}
-      </section>
+          )}
+          {showPerson && (
+            <Fragment>
+              <dt>Ansprechpartner</dt>
+              <dd>{contact.contactPerson || 'Nicht angegeben'}</dd>
+            </Fragment>
+          )}
+          <dt>E-Mail</dt>
+          <dd>
+            {email ? <a href={email}>{contact.email}</a> : 'Nicht angegeben'}
+          </dd>
+          {phones.length ? (
+            phones.map(([label, value]) => (
+              <Fragment key={label}>
+                <dt>{label}</dt>
+                <dd>
+                  <a href={telHref(value)}>{value}</a>
+                </dd>
+              </Fragment>
+            ))
+          ) : (
+            <Fragment>
+              <dt>Telefon</dt>
+              <dd>Nicht angegeben</dd>
+            </Fragment>
+          )}
+        </dl>
+        <section className="contact-record-address" aria-label="Anschrift">
+          <h3>Anschrift</h3>
+          {address.length ? (
+            <address>
+              {address.map((line) => (
+                <span key={line}>{line}</span>
+              ))}
+            </address>
+          ) : (
+            <p>Keine Anschrift hinterlegt.</p>
+          )}
+        </section>
+      </div>
       {inlineVisible && (
         <ContactInlineEditor
           key={contact.id + ':' + editorEpoch}
@@ -190,8 +233,30 @@ export function ContactDetails({
           onDirtyChange={onDirtyChange}
         />
       )}
-      <section className="contact-record-events">
-        <h3>Zugeordnete Events</h3>
+      <section className="contact-record-events" aria-label="Events">
+        <h3>Events</h3>
+        <div
+          className="contact-event-tabs"
+          role="group"
+          aria-label="Events zeigen"
+        >
+          <button
+            type="button"
+            className="tertiary-action"
+            aria-pressed={!undated}
+            onClick={() => setUndated(false)}
+          >
+            Chronologisch
+          </button>
+          <button
+            type="button"
+            className="tertiary-action"
+            aria-pressed={undated}
+            onClick={() => setUndated(true)}
+          >
+            Ohne Datum
+          </button>
+        </div>
         {loading && <p>Zugeordnete Events werden geladen …</p>}
         {!loading && failed && (
           <div className="reload-warning">
@@ -205,12 +270,18 @@ export function ContactDetails({
             </button>
           </div>
         )}
-        {!loading && !failed && !events.length && (
-          <p>Keine zugeordneten Events.</p>
+        {!loading && !failed && !shownEvents.length && (
+          <p>
+            {events.length
+              ? undated
+                ? 'Keine Events ohne Datum.'
+                : 'Keine datierten Events.'
+              : 'Keine zugeordneten Events.'}
+          </p>
         )}
-        {!failed && events.length > 0 && (
+        {!failed && shownEvents.length > 0 && (
           <ul className="contact-event-list">
-            {events.map((event) => (
+            {shownEvents.map((event) => (
               <li key={event.id}>
                 <a
                   href={'#event-' + event.id}
@@ -230,14 +301,6 @@ export function ContactDetails({
           </ul>
         )}
       </section>
-      <div className="contact-record-actions">
-        <button type="button" className="secondary-action" onClick={onEdit}>
-          Kontakt bearbeiten: {contact.name}
-        </button>
-        <button type="button" className="tertiary-action" onClick={onClose}>
-          Kontakt-Details schließen
-        </button>
-      </div>
     </section>
   );
 }

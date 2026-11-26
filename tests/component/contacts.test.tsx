@@ -726,7 +726,11 @@ test('the contact name opens its record and the related events stay honest for o
       if (!url.endsWith('/events')) return Response.json([row]);
       if (calls++ === 0)
         return Response.json([
-          { id: 'synthetic-event', name: 'Fictional linked event' },
+          {
+            id: 'synthetic-event',
+            name: 'Fictional linked event',
+            eventDate: '2026-10-16',
+          },
         ]);
       if (calls === 2) return Response.json([]);
       return new Response(null, { status: 500 });
@@ -746,7 +750,9 @@ test('the contact name opens its record and the related events stay honest for o
     ).getAttribute('href'),
   ).toBe('#event-synthetic-event');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Kontakt-Details schließen' }),
+    screen.getByRole('button', {
+      name: 'Kontakte – Kontakt-Details schließen',
+    }),
   );
   await waitFor(() => expect(window.location.hash).toBe('#contacts'));
   fireEvent.click(screen.getByRole('link', { name: 'Synthetic Company' }));
@@ -754,7 +760,9 @@ test('the contact name opens its record and the related events stay honest for o
     await screen.findByRole('region', { name: 'Kontakt-Details' }),
   ).findByText('Keine zugeordneten Events.');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Kontakt-Details schließen' }),
+    screen.getByRole('button', {
+      name: 'Kontakte – Kontakt-Details schließen',
+    }),
   );
   await waitFor(() => expect(window.location.hash).toBe('#contacts'));
   fireEvent.click(screen.getByRole('link', { name: 'Synthetic Company' }));

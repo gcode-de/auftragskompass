@@ -1680,11 +1680,110 @@ time {
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
-.contact-record-actions {
+/* UI-BKP-10: Bookitup's contact record - a breadcrumb back to the list,
+   then white cards on the canvas: the contact with its pen, the direct
+   editing and the events with their two tabs. The other rows step aside. */
+.contacts-results:has(.contact-record) {
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+.contacts-results:has(.contact-record) > .contact-list-head,
+.contact-list:has(.contact-record) > li:not(:has(.contact-record)) {
+  display: none;
+}
+.contact-list > li:has(.contact-record) {
+  background: transparent;
+}
+.contact-record {
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+/* Cards on the canvas, never cards inside the page frame. */
+.workspace-page > section#contacts:has(.contact-record) {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.contact-record-crumbs {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-block: 1rem;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+.contact-record-crumbs > .tertiary-action {
+  min-height: 44px;
+  padding-inline: 0;
+}
+.contact-record-crumb-current {
+  color: var(--accent);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.contact-record-card,
+.contact-record
+  > section:is(
+    [aria-label='Kontaktdaten direkt bearbeiten'],
+    .contact-record-events
+  ) {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.contact-record-card > .contact-record-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  padding-block: 0 0.75rem;
+}
+.contact-record-head > :not(.contact-record-edit) {
+  grid-column: 1;
+}
+.contact-record-edit {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+}
+.contact-record > section > h3:first-child,
+.contact-record-events > h3 {
+  margin-top: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.contact-event-tabs {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.contact-event-tabs > button {
+  min-height: 44px;
+  margin-bottom: -1px;
+  padding: 0 0.15rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
+}
+.contact-event-tabs > button[aria-pressed='true'] {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.contact-event-list > li {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-field);
+  background: var(--table-surface);
 }
 .sr-only {
   position: absolute;

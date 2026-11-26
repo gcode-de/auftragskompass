@@ -662,6 +662,16 @@ Gesamtrahmen bleiben vorerst aus.
       neben der Leiste, Tabelle ohne Überlauf, Suche mit Eventspalte,
       Hell/Dunkel bei 1280/390).
       Commit `feat: list contacts in a bookitup table with a context column`.
+- [x] **UI-BKP-10 — Kontaktakte wie Bookitup:** Die geöffnete Akte beginnt
+      mit der Brotkrume „Kontakte / Name“ (zurück zur Liste, Name „Kontakte –
+      Kontakt-Details schließen“); die übrigen Zeilen treten zurück. Darunter
+      weiße Karten: Kontakt mit Stift oben rechts (öffnet den Dialog), die
+      direkte Bearbeitung (EDIT-01 unverändert) und „Events“ mit den Reitern
+      „Chronologisch“ (datiert, aufsteigend) und „Ohne Datum“. Notizen,
+      Aufgaben, Dateien und Mails je Kontakt gibt es noch nicht; sie werden
+      nicht vorgetäuscht. **Tests:** Component (Brotkrume, Stift, Reiter,
+      Aktionsstufen), E2E (Akte ohne Überlauf, Hell/Dunkel).
+      Commit `feat: open the contact record like bookitup`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

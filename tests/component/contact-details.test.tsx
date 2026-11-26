@@ -100,7 +100,9 @@ function record() {
 
 async function closeRecord() {
   fireEvent.click(
-    screen.getByRole('button', { name: 'Kontakt-Details schließen' }),
+    screen.getByRole('button', {
+      name: 'Kontakte – Kontakt-Details schließen',
+    }),
   );
   await waitFor(() => expect(window.location.hash).toBe('#contacts'));
 }
@@ -290,12 +292,26 @@ test('related events show name, date or no date and status without their notes',
   expect(first.getAttribute('href')).toBe('#event-event-one');
   expect(within(details).getByText('16.10.2026')).toBeTruthy();
   expect(within(details).getByText('Gebucht')).toBeTruthy();
+  // UI-BKP-10: undated events wait behind Bookitup's "Ohne Datum" tab.
+  expect(
+    within(details).queryByRole('link', { name: 'Fictional undated event' }),
+  ).toBeNull();
+  fireEvent.click(within(details).getByRole('button', { name: 'Ohne Datum' }));
+  expect(
+    within(details)
+      .getByRole('button', { name: 'Ohne Datum' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
   const second = await within(details).findByRole('link', {
     name: 'Fictional undated event',
   });
   expect(second.getAttribute('href')).toBe('#event-event-two');
-  expect(within(details).getByText('Ohne Datum')).toBeTruthy();
+  expect(within(details).getAllByText('Ohne Datum')).toHaveLength(2);
   expect(within(details).getByText('Anfrage')).toBeTruthy();
+  fireEvent.click(
+    within(details).getByRole('button', { name: 'Chronologisch' }),
+  );
+  expect(within(details).getByText('Gebucht')).toBeTruthy();
   // Notes stay out of the contact record entirely.
   expect(details.innerHTML).not.toMatch(/secret/i);
   expect(within(details).queryByRole('tab')).toBeNull();
@@ -331,7 +347,7 @@ test('a failed event load retries with GET only and keeps the record open', asyn
       {
         id: 'event-one',
         name: 'Fictional linked event',
-        eventDate: null,
+        eventDate: '2026-10-16',
         status: 'option',
       },
     ]);
@@ -452,31 +468,38 @@ test('editing from the record reuses the dialog and a conflict keeps draft and r
   expect(screen.getByRole('dialog')).toBeTruthy();
 });
 
-test('the record keeps exactly one secondary and one tertiary action', async () => {
+test('the record keeps one quiet breadcrumb back and an icon edit action', async () => {
   mount('#contacts', [company]);
   await screen.findByText('Synthetic Company');
   const details = await openRecord();
   const buttons = within(details).getAllByRole('button');
+  // UI-BKP-10: like Bookitup no secondary button competes in the record;
+  // the breadcrumb and the two event tabs are the quiet ones.
   expect(
     buttons.filter((button) =>
       (button.getAttribute('class') ?? '').includes('secondary-action'),
     ),
-  ).toHaveLength(1);
+  ).toHaveLength(0);
   expect(
-    buttons.filter((button) =>
-      (button.getAttribute('class') ?? '').includes('tertiary-action'),
-    ),
-  ).toHaveLength(1);
+    buttons
+      .filter((button) =>
+        (button.getAttribute('class') ?? '').includes('tertiary-action'),
+      )
+      .map((button) => button.textContent),
+  ).toEqual(['Kontakte', 'Chronologisch', 'Ohne Datum']);
+  const edit = within(details).getByRole('button', {
+    name: 'Kontakt bearbeiten: Synthetic Company',
+  });
+  expect(edit.getAttribute('class')).toContain('icon-action');
+  expect(edit.getAttribute('title')).toBe('Kontakt bearbeiten');
+  const back = within(details).getByRole('button', {
+    name: 'Kontakte – Kontakt-Details schließen',
+  });
+  expect(back.textContent).toBe('Kontakte');
+  expect(back.getAttribute('class')).toContain('tertiary-action');
   expect(
-    within(details)
-      .getByRole('button', { name: 'Kontakt bearbeiten: Synthetic Company' })
-      .getAttribute('class'),
-  ).toContain('secondary-action');
-  expect(
-    within(details)
-      .getByRole('button', { name: 'Kontakt-Details schließen' })
-      .getAttribute('class'),
-  ).toContain('tertiary-action');
+    within(details).getByRole('navigation', { name: 'Brotkrume' }).textContent,
+  ).toContain('Synthetic Company');
 });
 
 test('long fictional values stay complete and wrap instead of clipping', async () => {
@@ -533,7 +556,9 @@ test('keeps an inline draft when closing or searching the contact list', async (
   const name = within(details).getByLabelText('Name / Firma');
   fireEvent.change(name, { target: { value: 'Unfinished' } });
   fireEvent.click(
-    within(details).getByRole('button', { name: 'Kontakt-Details schließen' }),
+    within(details).getByRole('button', {
+      name: 'Kontakte – Kontakt-Details schließen',
+    }),
   );
   expect((name as HTMLInputElement).value).toBe('Unfinished');
   expect(screen.getByRole('region', { name: 'Kontakt-Details' })).toBeTruthy();
@@ -573,7 +598,9 @@ test('keeps an edited search result open and refreshes membership after closing'
       .length,
   ).toBe(1);
   fireEvent.click(
-    within(details).getByRole('button', { name: 'Kontakt-Details schließen' }),
+    within(details).getByRole('button', {
+      name: 'Kontakte – Kontakt-Details schließen',
+    }),
   );
   expect(await screen.findByText('Keine Kontakte gefunden.')).toBeTruthy();
   expect(
@@ -604,7 +631,9 @@ test('keeps the confirmed contact visible when refreshing search membership fail
   fireEvent.blur(name);
   await within(details).findByText('Alle Änderungen gespeichert.');
   fireEvent.click(
-    within(details).getByRole('button', { name: 'Kontakt-Details schließen' }),
+    within(details).getByRole('button', {
+      name: 'Kontakte – Kontakt-Details schließen',
+    }),
   );
   expect(
     screen.queryByText(
