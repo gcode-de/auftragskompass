@@ -892,3 +892,10 @@ Bruttopreis der Bruttobetrag. Die Umsatzsteuer kommt nur einmal im
 Summenblock dazu, der mit „Brutto“ endet. Bisher stand rechts immer der
 Bruttobetrag, auch neben einem Nettopreis. Fertige Belege behalten ihr
 gespeichertes PDF.
+
+## Spaltenbreiten der Positionstabelle (26.11.2026)
+
+Einzelpreis und Preis nehmen je 13 %, die Menge 12 % (ohne Umbruch) der
+Tabellenbreite ein; die Beschreibung erhält den Rest, etwa 60 % statt bisher
+etwa 45 %. Lange Positionstexte bleiben so breit statt hoch. Fertige Belege
+behalten ihr gespeichertes PDF.
