@@ -5,6 +5,7 @@ import {
   inquiryNoticeExtras,
 } from '../../packages/core/src/inquiry-notice.js';
 import { renderWebsiteInquiryEmail } from '../../packages/core/src/inquiry-email.js';
+import { renderInquiryNoticeLines } from '../../packages/core/src/telegram-message.js';
 
 // INQUIRY-INFO-01: the counting is pure and reuses `bufferedPeriod` - a unit
 // is free exactly when no active reservation's buffered period reaches the
@@ -142,7 +143,14 @@ describe('inquiry notice extras and e-mail', () => {
         { origin: '' },
         { id: '22222222-2222-4222-8222-222222222222', eventDate: null },
       ),
-    ).resolves.toEqual({ freeUnits: [], eventLink: null, replyLink: null });
+    ).resolves.toEqual({
+      freeUnits: [],
+      eventLink: null,
+      replyLink: null,
+      replyInAppLink: null,
+      sameDayEvents: [],
+      knownContact: null,
+    });
   });
 
   test('the e-mail carries the same extras as the Telegram message', () => {
@@ -172,14 +180,59 @@ describe('inquiry notice extras and e-mail', () => {
         freeUnits: [{ category: 'Fotobox', free: 2, total: 3 }],
         eventLink: { href: 'https://admin.example/#event-2', exact: true },
         replyLink: 'mailto:ada@example.invalid?subject=Ihre%20Anfrage',
+        replyInAppLink: 'https://admin.example/?mail=new#event-2',
+        sameDayEvents: [
+          { label: 'Gebucht', count: 1 },
+          { label: 'Option', count: 2 },
+        ],
+        knownContact: { name: 'Ada Beispiel', events: 1 },
       },
     );
     expect(mail.subject).toBe('Neue Website-Anfrage');
     expect(mail.text).toContain('Freie Einheiten am 12.06.2027: Fotobox 2/3');
     expect(mail.text).toContain('Event: https://admin.example/#event-2');
     expect(mail.text).toContain('Antwort-Mail: mailto:ada@example.invalid');
+    expect(mail.text).toContain('Bereits am 12.06.2027: 1× Gebucht, 2× Option');
+    expect(mail.text).toContain(
+      'Bekannter Kontakt: Ada Beispiel (1 früheres Event)',
+    );
+    expect(mail.text).toContain(
+      'Antwort in der App: https://admin.example/?mail=new#event-2',
+    );
     expect(mail.text).toContain(
       'Anfrage-ID: 22222222-2222-4222-8222-222222222222',
     );
+  });
+});
+
+describe('inquiry notice lines', () => {
+  test('name the same day, a returning contact and both answer links', () => {
+    const base = { freeUnits: [], eventLink: null, replyLink: null };
+    expect(
+      renderInquiryNoticeLines(
+        {
+          ...base,
+          sameDayEvents: [{ label: 'Gebucht', count: 2 }],
+          knownContact: { name: 'Fiktiv', events: 3 },
+          replyInAppLink: 'https://admin.example/?mail=new#event-1',
+        },
+        '2031-07-12',
+      ),
+    ).toEqual([
+      'Bereits am 12.07.2031: 2× Gebucht',
+      'Bekannter Kontakt: Fiktiv (3 frühere Events)',
+      'Antwort in der App: https://admin.example/?mail=new#event-1',
+    ]);
+    // Without a day no same-day line; one earlier event is singular.
+    expect(
+      renderInquiryNoticeLines(
+        {
+          ...base,
+          sameDayEvents: [{ label: 'Option', count: 1 }],
+          knownContact: { name: 'Fiktiv', events: 1 },
+        },
+        null,
+      ),
+    ).toEqual(['Bekannter Kontakt: Fiktiv (1 früheres Event)']);
   });
 });

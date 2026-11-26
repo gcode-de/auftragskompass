@@ -158,7 +158,16 @@ export function EventDetails({
   onResourceConfirmed?: (row: EventRow) => void;
   onRecordDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [area, setArea] = useState<Area>('details');
+  // A notification link "Antwort in der App" (`?mail=new`) opens the record
+  // in E-Mails with the composer, once.
+  const [mailRequested] = useState(
+    () => new URLSearchParams(window.location.search).get('mail') === 'new',
+  );
+  const [area, setArea] = useState<Area>(() =>
+    mailRequested ? 'mails' : 'details',
+  );
+  const newMailButton = useRef<HTMLButtonElement>(null),
+    mailOpened = useRef(false);
   const [editingDocument, setEditingDocument] = useState(false);
   // MAIL-STATUS-01: raised by every send order so the mail list reloads.
   const [mailRevision, setMailRevision] = useState(0);
@@ -168,6 +177,11 @@ export function EventDetails({
     id: number;
     trigger: HTMLElement;
   } | null>(null);
+  useEffect(() => {
+    if (!mailRequested || mailOpened.current || !newMailButton.current) return;
+    mailOpened.current = true;
+    setComposeRequest({ id: Date.now(), trigger: newMailButton.current });
+  });
   const wideRecord = useWideRecord();
   const heading = useRef<HTMLHeadingElement>(null),
     detailsPanel = useRef<HTMLDivElement>(null),
@@ -1333,6 +1347,7 @@ export function EventDetails({
             >
               <h3 id="event-panel-mails">E-Mails</h3>
               <button
+                ref={newMailButton}
                 type="button"
                 className="secondary-action"
                 aria-haspopup="dialog"

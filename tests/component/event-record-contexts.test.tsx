@@ -437,3 +437,16 @@ test('the wide frame keeps contact and place beside the main information', async
     within(aside).getByRole('link', { name: 'record@example.invalid' }),
   ).toBeTruthy();
 });
+
+// A notification's "Antwort in der App" link opens the record in E-Mails with
+// the composer, once.
+test('a mail request in the address opens the record in E-Mails with the composer', async () => {
+  window.history.replaceState(null, '', '/?mail=new#event-' + event.id);
+  mockRecord();
+  const view = await open();
+  expect(view.tab('E-Mails').getAttribute('aria-current')).toBe('location');
+  expect(
+    await screen.findByRole('dialog', { name: 'Neue Mail schreiben' }),
+  ).toBeTruthy();
+  window.history.replaceState(null, '', '/');
+});
