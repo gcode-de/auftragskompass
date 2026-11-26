@@ -426,21 +426,25 @@ export function ContactPanel({
                           (open) => setOpenMenu(rowMenuState(row.id, open, '')),
                         )}
                       >
-                        <button
-                          type="button"
-                          disabled={busy}
-                          aria-label={`Kontakt bearbeiten: ${row.name}`}
-                          onClick={(event) => {
-                            // The toggle, not the closing menu, gets the focus back.
-                            event.currentTarget.parentElement?.parentElement
-                              ?.querySelector<HTMLElement>('.row-menu-toggle')
-                              ?.focus();
-                            setOpenMenu('');
-                            openEdit(row);
-                          }}
-                        >
-                          Bearbeiten
-                        </button>
+                        {/* Only the open menu renders its action. */}
+                        {openMenu === row.id && (
+                          <button
+                            type="button"
+                            className="tertiary-action"
+                            disabled={busy}
+                            aria-label={`Kontakt bearbeiten: ${row.name}`}
+                            onClick={(event) => {
+                              // The toggle, not the closing menu, gets the focus back.
+                              event.currentTarget.parentElement?.parentElement
+                                ?.querySelector<HTMLElement>('.row-menu-toggle')
+                                ?.focus();
+                              setOpenMenu('');
+                              openEdit(row);
+                            }}
+                          >
+                            Bearbeiten
+                          </button>
+                        )}
                       </span>
                     </span>
                   </div>

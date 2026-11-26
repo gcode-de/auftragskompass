@@ -52,8 +52,9 @@ test('with popover support the browser owns opening, light dismiss feeds back', 
   expect(toggle).toMatchObject({
     popoverTarget: 'menu-a',
     'aria-expanded': true,
-    style: { '--menu-anchor': '--menu-a' },
   });
+  // The anchor is scoped in CSS; no row carries an inline style.
+  expect(toggle).not.toHaveProperty('style');
   const panel = menuPanelProps('menu-a', true, setOpen) as {
     popover: string;
     onToggle: (event: ToggleEvent<HTMLElement>) => void;

@@ -2624,11 +2624,23 @@ summary {
 /* UI-NATIVE-02: every ⋯ menu is a native popover in the top layer, anchored
    below its toggle and flipped above it near the bottom edge. Light dismiss,
    Escape and one-open-at-a-time come from the browser. */
-[popovertarget] {
-  anchor-name: var(--menu-anchor);
+/* Each menu's own wrapper scopes the one anchor name, so the many rows of a
+   list need no per-row names or inline styles. */
+:is(
+  .row-menu,
+  .contact-cell-menu,
+  .product-row,
+  .document-template-actions,
+  .offer-draft-position-actions,
+  .files-menu-cell
+) {
+  anchor-scope: --menu;
 }
-[popover].popover-menu {
-  position-anchor: var(--menu-anchor);
+[popovertarget] {
+  anchor-name: --menu;
+}
+[popover]:is(.popover-menu, .files-row-menu) {
+  position-anchor: --menu;
   position-area: bottom span-left;
   position-try-fallbacks: flip-block;
   inset: auto;
@@ -4898,7 +4910,6 @@ a.offer-draft-preview {
 /* The ⋯ menu is a native popover: light dismiss and Escape come from the
    browser, the anchor keeps it under its toggle and flips it near the edge. */
 .files-row-menu {
-  position-anchor: var(--menu-anchor);
   position-area: bottom span-left;
   position-try-fallbacks: flip-block;
   inset: auto;

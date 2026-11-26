@@ -1,9 +1,10 @@
-import type { CSSProperties, FocusEvent, ToggleEvent } from 'react';
+import type { FocusEvent, ToggleEvent } from 'react';
 
 // Modern web guidance: a ⋯ menu is a native popover. The browser puts it in
 // the top layer (no clipping by scrolling lists), closes it on a press
 // elsewhere or Escape and keeps one auto popover open at a time; CSS anchor
-// positioning keeps it under its toggle. The caller keeps the open state so
+// positioning keeps it under its toggle (one anchor name, scoped per row in
+// CSS, so 500 rows carry no inline styles). The caller keeps the open state so
 // labels and focus hand-back stay in React; the popover's toggle event feeds
 // light dismiss back into that state. Without popover support (jsdom) the
 // panel falls back to `hidden` and the toggle's own click.
@@ -13,16 +14,13 @@ const supported = () =>
 
 const shownState = new WeakMap<HTMLElement, boolean>();
 
-const anchor = (id: string) =>
-  ({ '--menu-anchor': '--' + id }) as CSSProperties;
-
 export function menuToggleProps(
   id: string,
   open: boolean,
   setOpen: (open: boolean) => void,
 ) {
   return supported()
-    ? { popoverTarget: id, 'aria-expanded': open, style: anchor(id) }
+    ? { popoverTarget: id, 'aria-expanded': open }
     : { 'aria-expanded': open, onClick: () => setOpen(!open) };
 }
 
@@ -49,7 +47,6 @@ export function menuPanelProps(
     id,
     onBlur,
     popover: 'auto' as const,
-    style: anchor(id),
     onToggle: (event: ToggleEvent<HTMLElement>) => {
       const next = event.newState === 'open';
       if (next !== open) setOpen(next);

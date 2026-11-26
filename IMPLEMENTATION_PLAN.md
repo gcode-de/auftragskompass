@@ -672,6 +672,14 @@ Gesamtrahmen bleiben vorerst aus.
       nicht vorgetäuscht. **Tests:** Component (Brotkrume, Stift, Reiter,
       Aktionsstufen), E2E (Akte ohne Überlauf, Hell/Dunkel).
       Commit `feat: open the contact record like bookitup`.
+- [x] **PERF-MENU-01 — Zeilenmenüs leicht halten:** Nach UI-NATIVE-02 lagen
+      500 Eventkarten/Kontakte lokal ~120 ms über dem Ausgangswert und rissen
+      in CI zweimal das 2-s-Budget. Ein Ankername je Menü-Hülle per
+      `anchor-scope` statt Inline-Stilen je Zeile, und nur das offene Menü
+      rendert seine Einträge. Lokal wieder auf Ausgangsniveau (Events
+      0,76/0,89 s, Kontakte 0,63/0,61 s bei 390/1280). **Tests:** Component
+      (keine Inline-Stile), E2E-Lastmessung.
+      Commit `perf: keep row menus light in long lists`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

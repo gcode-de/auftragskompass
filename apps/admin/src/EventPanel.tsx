@@ -1976,49 +1976,55 @@ export function EventPanel({
                                   setOpenMenu(rowMenuState(row.id, open, '')),
                               )}
                             >
-                              <button
-                                type="button"
-                                className="tertiary-action"
-                                disabled={busy || editing}
-                                aria-label={`Event duplizieren: ${row.name}`}
-                                onClick={(event) => {
-                                  closeRowMenu(event.currentTarget);
-                                  duplicateEvent(row);
-                                }}
-                              >
-                                Event duplizieren
-                              </button>
-                              <button
-                                type="button"
-                                className="tertiary-action"
-                                disabled={busy}
-                                aria-label={`Event bearbeiten: ${row.name}`}
-                                onClick={(event) => {
-                                  // Focus returns to the menu button, which
-                                  // stays visible while the menu is closed.
-                                  editReturnFocus.current = closeRowMenu(
-                                    event.currentTarget,
-                                  );
-                                  setCreating(false);
-                                  setCreateInitial(null);
-                                  // A new editing context always starts on the event.
-                                  setView('event');
-                                  setVenue(
-                                    initialVenueText(
-                                      row,
-                                      locations.find(
-                                        (choice) =>
-                                          choice.id === row.locationId,
-                                      ),
-                                    ),
-                                  );
-                                  setVenueEdited(false);
-                                  setDraft(row);
-                                  setEditing(true);
-                                }}
-                              >
-                                Event bearbeiten
-                              </button>
+                              {/* Only the open menu renders its actions:
+                                  long lists stay light (500-card budget). */}
+                              {openMenu === row.id && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="tertiary-action"
+                                    disabled={busy || editing}
+                                    aria-label={`Event duplizieren: ${row.name}`}
+                                    onClick={(event) => {
+                                      closeRowMenu(event.currentTarget);
+                                      duplicateEvent(row);
+                                    }}
+                                  >
+                                    Event duplizieren
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="tertiary-action"
+                                    disabled={busy}
+                                    aria-label={`Event bearbeiten: ${row.name}`}
+                                    onClick={(event) => {
+                                      // Focus returns to the menu button, which
+                                      // stays visible while the menu is closed.
+                                      editReturnFocus.current = closeRowMenu(
+                                        event.currentTarget,
+                                      );
+                                      setCreating(false);
+                                      setCreateInitial(null);
+                                      // A new editing context always starts on the event.
+                                      setView('event');
+                                      setVenue(
+                                        initialVenueText(
+                                          row,
+                                          locations.find(
+                                            (choice) =>
+                                              choice.id === row.locationId,
+                                          ),
+                                        ),
+                                      );
+                                      setVenueEdited(false);
+                                      setDraft(row);
+                                      setEditing(true);
+                                    }}
+                                  >
+                                    Event bearbeiten
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
