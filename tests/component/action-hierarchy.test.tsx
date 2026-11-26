@@ -534,17 +534,17 @@ test('contact list, record and dialog keep exactly one primary action', async ()
   // The open record stays secondary/tertiary: the create action of the page
   // frame remains the only dominant one.
   expectHierarchy(section, 'Kontakte mit offener Akte');
+  // UI-BKP-10: the record's edit is Bookitup's pen in the contact card.
+  iconTier(
+    within(record).getByRole('button', {
+      name: 'Kontakt bearbeiten: Synthetic Company',
+    }),
+    'Kontakt bearbeiten',
+  );
   expect(
     tier(
       within(record).getByRole('button', {
-        name: 'Kontakt bearbeiten: Synthetic Company',
-      }),
-    ),
-  ).toBe('secondary-action');
-  expect(
-    tier(
-      within(record).getByRole('button', {
-        name: 'Kontakt-Details schließen',
+        name: 'Kontakte – Kontakt-Details schließen',
       }),
     ),
   ).toBe('tertiary-action');

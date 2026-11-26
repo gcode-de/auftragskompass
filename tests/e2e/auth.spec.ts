@@ -4737,7 +4737,7 @@ async function signInScenario(
       contactRecord.getByRole('link', { name: 'Synthetic browser event' }),
     ).toBeVisible();
     const contactRecordClose = contactRecord.getByRole('button', {
-      name: 'Kontakt-Details schließen',
+      name: 'Kontakte – Kontakt-Details schließen',
     });
     // BKP011.1b: the opened record is measured, not assumed. At 320, 390 and
     // 1280px in both themes neither the record, its list row nor the document
@@ -4802,7 +4802,7 @@ async function signInScenario(
         const headingStyle = heading ? getComputedStyle(heading) : null;
         const events = record.querySelector('.contact-record-events');
         const close = record.querySelector(
-          '.contact-record-actions .tertiary-action',
+          '.contact-record-crumbs .tertiary-action',
         );
         let closeCovered = true;
         if (close) {
@@ -4914,7 +4914,7 @@ async function signInScenario(
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     // Closing returns to the list and the record stays a real deep link.
     await contactRecord
-      .getByRole('button', { name: 'Kontakt-Details schließen' })
+      .getByRole('button', { name: 'Kontakte – Kontakt-Details schließen' })
       .click();
     await expect(contactRecord).toBeHidden();
     await expect(page).toHaveURL(/#contacts$/);
@@ -6298,7 +6298,7 @@ async function signInScenario(
                 ),
               ),
           );
-          expect(readyMs).toBeLessThan(2000);
+          expect(readyMs, `${route} at ${width}px`).toBeLessThan(2000);
           expect(
             await page.evaluate(() => document.documentElement.scrollWidth),
           ).toBeLessThanOrEqual(width + 1);
