@@ -1434,7 +1434,8 @@ async function signInScenario(
     });
     const titleBox = (await confirmationTitle.boundingBox())!;
     const closeBox = (await closeConfirmation.boundingBox())!;
-    expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(closeBox.x);
+    // UI-BKP-06: the breadcrumb back to Dateien stands before the title.
+    expect(closeBox.x + closeBox.width).toBeLessThanOrEqual(titleBox.x);
     expect(titleBox.y).toBeLessThan(closeBox.y + closeBox.height);
     expect(closeBox.y).toBeLessThan(titleBox.y + titleBox.height);
     expect(

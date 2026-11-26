@@ -3300,11 +3300,35 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
 }
 .offer-draft-editor-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.5rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--border);
+}
+.offer-draft-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0;
+  color: var(--muted);
+}
+.offer-draft-breadcrumb > .tertiary-action {
+  padding-inline: 0.25rem;
+}
+/* The preview link wears the primary button's look; it stays a link because
+   it opens a new tab. */
+a.offer-draft-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding-inline: 1rem;
+  border-radius: var(--radius-field);
+  background: var(--action);
+  color: var(--action-ink);
+  font-weight: 600;
+  text-decoration: none;
 }
 .offer-draft-editor-heading h5 {
   margin: 0.25rem 0;

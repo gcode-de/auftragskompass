@@ -482,11 +482,28 @@ test('a draft opens focused with editable saved positions and previews only pers
   expect(
     screen.getByRole('link', { name: 'Vorschau öffnen' }).getAttribute('href'),
   ).toBe('/api/v1/documents/doc-1/preview');
+  // UI-BKP-06: the head repeats the preview as the blue action beside the
+  // breadcrumb back to Dateien.
+  const head = document.querySelector('.offer-draft-editor-heading')!;
+  expect(
+    within(head as HTMLElement)
+      .getByRole('link', { name: 'Vorschau' })
+      .getAttribute('href'),
+  ).toBe('/api/v1/documents/doc-1/preview');
+  expect(
+    within(head as HTMLElement).getByRole('button', {
+      name: 'Dateien – Bearbeitung schließen',
+    }),
+  ).toBeTruthy();
 
   fireEvent.change(screen.getByLabelText('Betreff'), {
     target: { value: 'Noch nicht gespeichert' },
   });
   expect(screen.queryByRole('link', { name: 'Vorschau öffnen' })).toBeNull();
+  // An unsaved draft disables the head preview as well.
+  expect(
+    within(head as HTMLElement).getByRole('button', { name: 'Vorschau' }),
+  ).toHaveProperty('disabled', true);
   expect(
     screen.getByText('Bitte zuerst speichern, damit die Vorschau stimmt.'),
   ).toBeTruthy();
@@ -541,7 +558,7 @@ test('without a template an offer is created blank, empty stays calm, and the fi
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(confirm).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(
@@ -805,7 +822,7 @@ test('existing standalone information text remains editable', async () => {
   expect(submitted.lines[1]).toEqual({ kind: 'info', description });
 
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   fireEvent.click(
     screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
@@ -836,7 +853,7 @@ test('existing standalone information text remains editable', async () => {
     screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
   ).toHaveProperty('disabled', true);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   const listFinalize = screen.getByRole('button', {
     name: 'Angebot Entwurf finalisieren',
@@ -902,7 +919,7 @@ test.each([
   ).toBeTruthy();
 
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   fireEvent.click(
     screen.getByRole('button', { name: `${name} Entwurf bearbeiten` }),
@@ -999,7 +1016,7 @@ test('reordering keeps unsaved fields and attached text with the moved position'
     ],
   });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   fireEvent.click(
     screen.getByRole('button', { name: 'Angebot Entwurf bearbeiten' }),
@@ -1295,7 +1312,7 @@ test('existing and free positions save exactly, removal/addition persist, and ro
   );
   await screen.findByText('Änderungen gespeichert.');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(document.querySelector('.document-meta')?.textContent).toContain(
     '275,00',
@@ -2097,7 +2114,9 @@ test('pending finalization locks draft fields, saving and closing until its resu
     screen.getByRole('button', { name: 'Angebot Entwurf finalisieren' }),
   );
   await screen.findByText('Dokument wird finalisiert …');
-  const close = screen.getByRole('button', { name: 'Bearbeitung schließen' });
+  const close = screen.getByRole('button', {
+    name: 'Dateien – Bearbeitung schließen',
+  });
   const save = screen.getByRole('button', { name: 'Änderungen speichern' });
   expect(subject).toHaveProperty('disabled', true);
   expect(screen.getByRole('group', { name: 'Position 1' })).toHaveProperty(
@@ -2213,7 +2232,7 @@ test('the document editor guards event removal, closing and browser navigation',
   }
   confirm.mockReturnValue(true);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(remove).toHaveProperty('disabled', false);
   const edit = screen.getByRole('button', {
@@ -2430,7 +2449,7 @@ test('large stored totals and prices retain every cent in the editor and documen
   const total = await screen.findByText(/Gesamtbetrag/);
   expect(total.textContent).toContain('90.071.992.547.409,91 €');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(document.querySelector('.document-meta')?.textContent).toContain(
     '90.071.992.547.409,91 €',
@@ -2455,7 +2474,7 @@ test('dirty editor keeps route protection and Escape cancellation until discard 
   fireEvent.keyDown(subject, { key: 'Escape' });
   expect(screen.getByLabelText('Betreff')).toBeTruthy();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(screen.getByLabelText('Betreff')).toBeTruthy();
 
@@ -2606,7 +2625,7 @@ test('catalog information belongs to the position through saving, reloading and 
   });
 
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   fireEvent.click(
     await screen.findByRole('button', { name: 'Angebot Entwurf bearbeiten' }),

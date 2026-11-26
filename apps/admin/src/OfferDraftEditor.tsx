@@ -1391,17 +1391,35 @@ export function OfferDraftEditor({
       aria-labelledby={'offer-editor-' + documentId}
       onKeyDown={escape}
     >
+      {/* UI-BKP-06: Bookitup's editor head - the way back as a breadcrumb
+          "Dateien / …", the preview as the one blue action on the right. */}
       <div className="offer-draft-editor-heading">
+        <p className="offer-draft-breadcrumb">
+          <button
+            type="button"
+            className="tertiary-action"
+            disabled={busy}
+            onClick={close}
+          >
+            Dateien <span className="sr-only">– Bearbeitung schließen</span>
+          </button>
+          <span aria-hidden="true">/</span>
+        </p>
         <h5 id={'offer-editor-' + documentId}>{editorHeading(kind)}</h5>
-        <button
-          type="button"
-          className="tertiary-action"
-          aria-label="Bearbeitung schließen"
-          disabled={busy}
-          onClick={close}
-        >
-          Schließen
-        </button>
+        {dirty || legacy || busy || loading || isBlocked || !validLines ? (
+          <button type="button" className="primary-action" disabled>
+            Vorschau
+          </button>
+        ) : (
+          <a
+            className="primary-action offer-draft-preview"
+            href={'/api/v1/documents/' + documentId + '/preview'}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Vorschau
+          </a>
+        )}
       </div>
       <p role={error ? 'alert' : 'status'}>{message}</p>
       {finalizing && <p role="status">Dokument wird finalisiert …</p>}

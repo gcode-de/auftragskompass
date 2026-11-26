@@ -872,7 +872,7 @@ test('an unclear revision refreshes and can retry with the same predecessor, pre
     },
   ]);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(document.activeElement).toBe(
     screen.getByRole('button', { name: 'Angebot AN-2030-0001 überarbeiten' }),
@@ -2441,7 +2441,7 @@ test('a free invoice uses only the event and its main contact and opens the invo
     },
   ]);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   await waitFor(() =>
     expect(document.activeElement).toBe(
@@ -3202,7 +3202,7 @@ test('the shared editor shows the invoice dates only for an invoice and saves th
   // day, and the server would refuse one.
   await screen.findByText('Änderungen gespeichert.');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   const offerRow = screen
     .getByRole('button', { name: 'Angebot Entwurf bearbeiten' })
@@ -3279,7 +3279,7 @@ test('the shared editor shows the bank account field only for an invoice and sav
   );
   await screen.findByText('Änderungen gespeichert.');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   // The row shows the saved account without another list request.
   const updatedInvoiceRow = within(
@@ -3300,7 +3300,7 @@ test('the shared editor shows the bank account field only for an invoice and sav
       .value,
   ).toBe('Fiktive Bank\nIBAN DE00 0000 0000');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   // The same editor on the offer shows no account field - the server would
   // refuse one.
@@ -4705,7 +4705,7 @@ test('a correction draft opens the shared editor under its own heading and saves
   });
   // Leaving a changed correction asks with the correction's own wording.
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(confirm).toHaveBeenCalledWith(
     'Ungespeicherte Änderungen an der Rechnungskorrektur verwerfen?',
@@ -4755,7 +4755,7 @@ test('a correction draft opens the shared editor under its own heading and saves
   ).toBe(false);
   // Closing an unchanged correction returns to the row without a question.
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(confirm).toHaveBeenCalledTimes(1);
   expect(
@@ -4828,7 +4828,7 @@ test('a confirmation draft opens the shared editor under its own heading and sav
   ).toBe(false);
   // Closing returns to the row exactly like the offer editor does.
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   expect(
     screen.queryByRole('heading', {
@@ -4876,7 +4876,7 @@ test('opening an offer draft replaces the document list and closing restores foc
   expect(screen.queryByRole('region', { name: 'Rechnungen' })).toBeNull();
 
   fireEvent.click(
-    screen.getByRole('button', { name: 'Bearbeitung schließen' }),
+    screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' }),
   );
   const trigger = await screen.findByRole('button', {
     name: 'Angebot Entwurf bearbeiten',
@@ -5094,7 +5094,9 @@ test.each([500, 200])(
       await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
     ).toBeTruthy();
     await screen.findByRole('heading', { name: 'Angebot bearbeiten' });
-    const close = screen.getByRole('button', { name: 'Bearbeitung schließen' });
+    const close = screen.getByRole('button', {
+      name: 'Dateien – Bearbeitung schließen',
+    });
     expect(document.activeElement).toBe(close);
     fireEvent.click(close);
     expect(document.activeElement).toBe(
