@@ -4926,7 +4926,8 @@ a.offer-draft-preview {
   }
   .desktop-sidebar.collapsed {
     width: var(--rail-width);
-    padding: 1rem 0.5rem;
+    /* Leaves the 44px targets their full width inside the 60px rail. */
+    padding: 1rem 0.4rem;
     border-right: 1px solid var(--border);
   }
   .desktop-sidebar.collapsed nav a {

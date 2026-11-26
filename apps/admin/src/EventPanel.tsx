@@ -709,8 +709,11 @@ export function EventPanel({
   function closeCreate() {
     setCreating(false);
     setCreateInitial(null);
-    const target = createReturnFocus.current ?? createTrigger.current;
-    if (target?.isConnected) target.focus({ preventScroll: true });
+    // UI-BKP-08: a resize can move the plus between the column and the top,
+    // so a replaced trigger falls back to the current one.
+    const stored = createReturnFocus.current,
+      target = stored?.isConnected ? stored : createTrigger.current;
+    target?.focus({ preventScroll: true });
   }
   async function created() {
     setCreating(false);
