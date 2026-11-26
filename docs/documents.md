@@ -911,3 +911,12 @@ Netto umgedeutet. Neue Positionen und eingefügte Katalogprodukte übernehmen
 die Dokumentbasis (ein Katalogpreis wird dabei umgerechnet). Gespeichert wird
 die Basis weiterhin je Position; ältere gemischte Entwürfe bleiben gültig und
 zeigen einen Hinweis. Dokumentvorlagen behalten ihre Basis je Position.
+
+## Angebote ohne Gültigkeit (26.11.2026)
+
+„Gültigkeit in Tagen“ akzeptiert 0–365; 0 bedeutet „ohne Gültigkeit“. Ein
+Angebot mit 0 Tagen druckt keine Zeile „Gültig bis“, speichert beim
+Finalisieren kein `valid_until`, zeigt in der Übersicht kein Fristetikett und
+gilt nie als abgelaufen. Dokumentvorlagen können 0 als Vorgabe setzen.
+Migration 0083 erweitert dafür die CHECK-Regeln von `documents` und
+`document_templates`.

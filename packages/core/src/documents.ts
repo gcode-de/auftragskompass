@@ -1639,7 +1639,8 @@ export function documentRepository(
       throw new DocumentError('missing_reference');
     const content = { subject, introText, outroText };
     const validUntil =
-      document.kind === 'offer'
+      // 0 days is an offer without a validity period: no deadline at all.
+      document.kind === 'offer' && validityDays > 0
         ? validityDate(issuedAt, validityDays, tenant.timezone)
         : undefined;
     const formattedValidUntil = validUntil?.toString().split('-').reverse();
@@ -3077,7 +3078,7 @@ export function documentRepository(
         content.introText.length > 4000 ||
         content.outroText.length > 4000 ||
         !Number.isInteger(content.validityDays) ||
-        content.validityDays < 1 ||
+        content.validityDays < 0 ||
         content.validityDays > 365
       )
         throw new DocumentError('invalid_content');
@@ -3830,7 +3831,7 @@ export function registerDocumentRoutes(
       outroText: nullableText,
       validityDays: {
         anyOf: [
-          { type: 'integer', minimum: 1, maximum: 365 },
+          { type: 'integer', minimum: 0, maximum: 365 },
           { type: 'null' },
         ],
       },
@@ -4097,7 +4098,7 @@ export function registerDocumentRoutes(
             subject: { type: 'string', maxLength: 200 },
             introText: { type: 'string', maxLength: 4000 },
             outroText: { type: 'string', maxLength: 4000 },
-            validityDays: { type: 'integer', minimum: 1, maximum: 365 },
+            validityDays: { type: 'integer', minimum: 0, maximum: 365 },
             // RG-07: both invoice fields are optional. Omitting one keeps the
             // stored value, `null` clears it; the domain judges the calendar day
             // and the range, so every refusal answers with one stable error

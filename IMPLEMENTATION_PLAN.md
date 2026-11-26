@@ -596,6 +596,16 @@ Gesamtrahmen bleiben vorerst aus.
       E2E (Angebotsablauf).
       Commit `feat: switch gross and net once per document`.
 
+- [x] **DOC-VALID-0 — Angebote ohne Gültigkeit:** „Gültigkeit in Tagen“ erlaubt
+      0 = ohne Gültigkeit (Editor und Dokumentvorlage, mit Hinweis am Feld). Ein
+      solches Angebot druckt keine Zeile „Gültig bis“, speichert kein
+      `valid_until` und läuft nie ab. Migration 0083 erweitert die beiden
+      CHECK-Regeln auf 0–365 (nur Erweiterung, keine Datenänderung); negative
+      Werte bleiben abgewiesen. **Tests:** Integration (0 Tage: kein Datum,
+      keine PDF-Zeile, kein Ablauf; −1 abgewiesen), Component (Feldgrenzen 0–365
+      mit Hinweis).
+      Commit `feat: allow offers without a validity period`.
+
 - [x] **FEED-02 — Kalender-Abos filtern und ausführlicher:** Abos filtern nach
       Buchungsstatus (Vorgabe ohne Annulliert/Nicht verfügbar, auch für
       bestehende Abos) und Eventarten; Termine nennen immer die Uhrzeit, auf
