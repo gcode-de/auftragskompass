@@ -3595,7 +3595,8 @@ checkbox rows; the logo preview stays small and keeps its proportions. */
 /* UI-BKP-06: the totals as Bookitup's right-aligned box - net and tax
    first, the gross amount last and largest above a rule. */
 .offer-draft-totals {
-  width: min(100%, 22rem);
+  width: min(100%, 28rem);
+  text-wrap: balance;
   margin: 0.5rem 0 0.75rem auto;
   padding: 0.75rem 1rem;
   border-radius: var(--radius-card);
