@@ -839,17 +839,18 @@ async function signInScenario(
     await expect(
       page.getByRole('region', { name: 'Dateibibliothek', exact: true }),
     ).toBeHidden();
-    await navigate('Dateien');
-    const files = page.getByRole('region', { name: 'Dateien', exact: true });
+    // UI-BKP-09: the document list lives under "Dokumente" only; the
+    // former Dateien page is now the settings' file library.
+    const files = page.getByRole('region', { name: 'Dokumente', exact: true });
     await expect(files).toBeVisible();
 
     // Exactly one page heading in the whole document, owned by the shell; the
-    // panel itself adds none and repeats no visible "Dateien" title.
+    // panel itself adds none and repeats no visible "Dokumente" title.
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expect(
       page.getByRole('heading', {
         level: 1,
-        name: 'Dateien – zur Eventübersicht',
+        name: 'Dokumente – zur Eventübersicht',
       }),
     ).toBeVisible();
     await expect(files.getByRole('heading')).toHaveCount(0);
@@ -1054,7 +1055,7 @@ async function signInScenario(
     const urlBeforeSheet = page.url();
     await compactAccess.click();
     await expect(
-      page.getByRole('dialog', { name: 'Dateifilter' }),
+      page.getByRole('dialog', { name: 'Dokumentfilter' }),
     ).toBeVisible();
     expect(page.url()).toBe(urlBeforeSheet);
     await files
@@ -1067,9 +1068,9 @@ async function signInScenario(
       .click();
     expect(page.url()).toBe(urlBeforeSheet);
     await files.getByRole('button', { name: 'Ergebnisse anzeigen' }).click();
-    await expect(page.getByRole('dialog', { name: 'Dateifilter' })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole('dialog', { name: 'Dokumentfilter' }),
+    ).toHaveCount(0);
     expect(
       await compactAccess.evaluate(
         (element) => element === document.activeElement,
@@ -1106,7 +1107,7 @@ async function signInScenario(
     expect(target.hash).toBe('#event-33333333-3333-4333-8333-333333333333');
     // Modifier clicks never change the current route or filters.
     await eventLink.click({ modifiers: ['ControlOrMeta'] });
-    expect(new URL(page.url()).hash).toBe('#files');
+    expect(new URL(page.url()).hash).toBe('#documents');
     // BKP019.0: the offer validity and status flow, run against the real
     // document routes of this tenant. Only synthetic fixtures are seeded: one
     // contact, one offer template with one position, a layout and a number

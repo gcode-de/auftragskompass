@@ -560,6 +560,16 @@ Gesamtrahmen bleiben vorerst aus.
       (Platz im Lesebereich, nicht modal, Escape, Fokus), E2E (eingebettet neben
       der Liste, axe, Escape).
       Commit `feat: compose event mails inline like bookitup`.
+- [x] **UI-BKP-09 — Dateibibliothek in den Einstellungen:** „Dateien“ ist
+      kein Hauptmenüpunkt mehr (wie Bookitup); die Bibliothek steht unter
+      Einstellungen → Dokumente → „Dateibibliothek“ (`#settings-files`, die alte
+      Adresse `#files` führt weiter dorthin). Die doppelte Liste der
+      Geschäftsdokumente auf dieser Seite entfällt; Dokumente gibt es nur noch
+      unter „Dokumente“. Der Link „Dateibibliothek öffnen“ im Event zeigt auf die
+      neue Adresse. **Tests:** Component (Navigation, Einstellungsgruppen, eine
+      Seitenüberschrift, keine Dokumentliste), E2E (Dokumentabläufe auf
+      `#documents`, alte Adresse zeigt die Bibliothek).
+      Commit `feat: move the file library into the settings`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
