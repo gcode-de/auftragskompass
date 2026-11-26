@@ -2268,6 +2268,8 @@ test('the logbook shows the newest entry first with its date below', async () =>
           {
             ...detail.activities[0],
             id: 'activity-new',
+            kind: 'status_changed',
+            nextStatus: 'booked',
             eventVersion: 2,
             description: 'Neuerer Eintrag.',
             occurredAt: '2030-10-02T10:00:00.000Z',
@@ -2293,4 +2295,18 @@ test('the logbook shows the newest entry first with its date below', async () =>
     'Älterer Eintrag.',
   ]);
   expect(entries[0]!.lastElementChild?.tagName).toBe('TIME');
+  // UI-BKP-03: the markers carry kind and target status for their colour.
+  expect(entries[0]!.dataset).toMatchObject({
+    kind: 'status_changed',
+    status: 'booked',
+  });
+  expect(entries[1]!.dataset.kind).toBe('created');
+  expect(entries[1]!.hasAttribute('data-status')).toBe(false);
+  // The status choice names its current code for the coloured dot.
+  const field = screen.getByLabelText('Status des Events').closest('label')!;
+  expect(field.dataset.status).toBe(detail.event.status);
+  fireEvent.change(screen.getByLabelText('Status des Events'), {
+    target: { value: 'booked' },
+  });
+  expect(field.dataset.status).toBe('booked');
 });
