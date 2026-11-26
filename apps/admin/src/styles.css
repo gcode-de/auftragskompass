@@ -4507,6 +4507,21 @@ a.offer-draft-preview {
 .files-table tbody th {
   font-weight: 600;
 }
+/* UI-BKP-10: the document name opens it in its event; ink until hovered,
+   like Bookitup's clickable rows. */
+.files-document-link {
+  color: var(--ink);
+  text-decoration: none;
+}
+.files-document-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+/* The document opened from the overview stays marked in its event. */
+.document-list > li[data-opened='true'] {
+  border-radius: var(--radius-field);
+  background: var(--status-inquiry-surface);
+}
 .files-table .numeric {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

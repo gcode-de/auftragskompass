@@ -460,6 +460,7 @@ export function EventDocuments({
   onEditorProtectedChange,
   onMailScheduled,
   composeRequest = null,
+  openDocumentId = null,
 }: {
   eventId: string;
   contactId: string | null;
@@ -477,6 +478,8 @@ export function EventDocuments({
   // UI-PARITY-02: the event's E-Mails area asks for a new free mail; the
   // trigger gets the focus back when the dialog closes.
   composeRequest?: { id: number; trigger: HTMLElement } | null;
+  // UI-BKP-10: the document the overview linked to; opened once it loads.
+  openDocumentId?: string | null;
 }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
@@ -752,6 +755,24 @@ export function EventDocuments({
     mailTrigger.current = null;
     mailDialogWasOpen.current = false;
   }, [mailSendId]);
+  // UI-BKP-10: like Bookitup, a document opened from the overview lands in
+  // its editor when it is an editable draft, otherwise at its row.
+  const openedDocument = useRef('');
+  useEffect(() => {
+    if (!openDocumentId || openedDocument.current === openDocumentId) return;
+    const entry = documents.find((row) => row.id === openDocumentId);
+    if (!entry) return;
+    openedDocument.current = openDocumentId;
+    if (entry.state === 'draft' && editableDraftKinds.has(entry.kind)) {
+      editorTrigger.current = 'edit-document-' + entry.id;
+      setEditorDirty(false);
+      setEditorId(entry.id);
+      return;
+    }
+    const row = document.getElementById('document-row-' + entry.id);
+    row?.scrollIntoView?.({ block: 'center' });
+    row?.focus({ preventScroll: true });
+  }, [openDocumentId, documents]);
   useEffect(() => {
     if (composeRequest) openCompose(composeRequest.trigger, true);
     // Only a new request opens the dialog, never a re-render.
@@ -3082,7 +3103,12 @@ export function EventDocuments({
     return (
       <ul className="document-list">
         {entries.map((entry) => (
-          <li key={entry.id}>
+          <li
+            key={entry.id}
+            id={'document-row-' + entry.id}
+            tabIndex={-1}
+            data-opened={entry.id === openDocumentId ? 'true' : undefined}
+          >
             <div className="document-row">
               <strong>{entry.number ?? 'Entwurf'}</strong>
               <span className="document-state" data-state={entry.state}>

@@ -176,20 +176,8 @@ export function AuthPanel() {
               showHeading={route === 'search'}
             />
           </div>
-          <div
-            className="workspace-page"
-            hidden={route !== 'files' && route !== 'documents'}
-          >
-            <FilesPanel
-              active={route === 'files' || route === 'documents'}
-              documentsOnly={route === 'documents'}
-            />
-            <div hidden={route !== 'files'}>
-              <LibraryFiles
-                csrfToken={user.csrfToken}
-                active={route === 'files'}
-              />
-            </div>
+          <div className="workspace-page" hidden={route !== 'documents'}>
+            <FilesPanel active={route === 'documents'} documentsOnly />
           </div>
           <div className="workspace-page" hidden={route !== 'calendar'}>
             <CalendarPanel key={importRevision} />
@@ -264,6 +252,14 @@ export function AuthPanel() {
             </div>
             <div hidden={route !== 'export'}>
               <ExportPanel />
+            </div>
+            {/* UI-BKP-09: the file library as a settings page; the business
+                documents live under "Dokumente" only. */}
+            <div hidden={route !== 'files'}>
+              <LibraryFiles
+                csrfToken={user.csrfToken}
+                active={route === 'files'}
+              />
             </div>
             <div hidden={route !== 'security'}>
               {mode === 'password' && (

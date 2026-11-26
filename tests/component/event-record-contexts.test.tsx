@@ -450,3 +450,22 @@ test('a mail request in the address opens the record in E-Mails with the compose
   ).toBeTruthy();
   window.history.replaceState(null, '', '/');
 });
+
+// UI-BKP-10: a link from the document overview opens the record in Dateien.
+test('a document named in the address opens the record in Dateien', async () => {
+  for (const [doc, area] of [
+    ['55555555-5555-4555-8555-555555555555', 'Dateien'],
+    ['not-a-document', 'Details'],
+  ] as const) {
+    window.history.replaceState(
+      null,
+      '',
+      '/?doc=' + doc + '#event-' + event.id,
+    );
+    mockRecord();
+    const view = await open();
+    expect(view.tab(area).getAttribute('aria-current')).toBe('location');
+    view.unmount();
+  }
+  window.history.replaceState(null, '', '/');
+});

@@ -554,9 +554,10 @@ test('document layout setup, preview, conflict recovery, and persistence work in
             }),
           ).toBeVisible();
           await expect(settingsSelect).toHaveValue('#settings-document-layout');
-          // UI-PARITY-01: sixteen areas in Bookitup's groups, including
-          // the separate signature page under E-Mail.
-          await expect(settingsSelect.locator('option')).toHaveCount(16);
+          // UI-PARITY-01: seventeen areas in Bookitup's groups, including
+          // the separate signature page under E-Mail and, since UI-BKP-09,
+          // the file library under Dokumente.
+          await expect(settingsSelect.locator('option')).toHaveCount(17);
           await expect(
             settingsNavigation.getByRole('link', {
               name: 'Dokument-Layout',

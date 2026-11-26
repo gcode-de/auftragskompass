@@ -158,13 +158,24 @@ export function EventDetails({
   onResourceConfirmed?: (row: EventRow) => void;
   onRecordDirtyChange?: (dirty: boolean) => void;
 }) {
+  // UI-BKP-10: a link from the document overview names one document; the
+  // file then opens in "Dateien" with that document.
+  const [openDocumentId] = useState(() => {
+    const doc = new URLSearchParams(window.location.search).get('doc');
+    return doc &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        doc,
+      )
+      ? doc
+      : null;
+  });
   // A notification link "Antwort in der App" (`?mail=new`) opens the record
   // in E-Mails with the composer, once.
   const [mailRequested] = useState(
     () => new URLSearchParams(window.location.search).get('mail') === 'new',
   );
   const [area, setArea] = useState<Area>(() =>
-    mailRequested ? 'mails' : 'details',
+    openDocumentId ? 'files' : mailRequested ? 'mails' : 'details',
   );
   const newMailButton = useRef<HTMLButtonElement>(null),
     mailOpened = useRef(false);
@@ -1327,6 +1338,7 @@ export function EventDetails({
                 onEditorProtectedChange={documentEditorProtectionChanged}
                 onMailScheduled={() => setMailRevision((value) => value + 1)}
                 composeRequest={composeRequest}
+                openDocumentId={openDocumentId}
               />
               <div hidden={editingDocument}>
                 <EventLibraryFiles

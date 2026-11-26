@@ -905,7 +905,24 @@ export function FilesPanel({
                             {stateLabels[row.state]}
                           </span>
                         </td>
-                        <th scope="row">{rowName(row)}</th>
+                        {/* UI-BKP-10: like Bookitup the document opens in
+                            its event's "Dateien" - a draft in its editor. */}
+                        <th scope="row">
+                          {href ? (
+                            <a
+                              className="files-document-link"
+                              href={eventTargetHref(
+                                search,
+                                row.eventId!,
+                                row.id,
+                              )}
+                            >
+                              {rowName(row)}
+                            </a>
+                          ) : (
+                            rowName(row)
+                          )}
+                        </th>
                         <td>
                           <time dateTime={row.issuedDate}>
                             {dateText(row.issuedDate)}
