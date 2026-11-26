@@ -552,6 +552,15 @@ Gesamtrahmen bleiben vorerst aus.
       Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
       Statusauswahl, 390 px; Auth-Ablauf angepasst).
       Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
+      60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
+      als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
+      Kopf „Events“ (22/600), Plus und „Entfernte Events anzeigen“; die
+      h1 im Kopf bleibt für Screenreader. Ab 1280 px gilt das ebenso für die
+      Dokumentfilter. Die Regeln greifen nur für die sichtbare Seite.
+      **Tests:** E2E (Leistenbreite, Spaltenlage und -höhe, Titel und Plus in
+      der Spalte, h1 verborgen; Dokumentspalte), Component (eine Seitenüberschrift).
+      Commit `feat: frame the workspace like bookitup`.
 - [x] **UI-BKP-06b — Editorkopf wie Bookitup:** Brotkrume „Dateien /
       Angebot bearbeiten“ statt „Schließen“ (der Knopf heißt für Screenreader
       „Dateien – Bearbeitung schließen“), rechts „Vorschau“ als blaue
