@@ -552,6 +552,14 @@ Gesamtrahmen bleiben vorerst aus.
       Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
       Statusauswahl, 390 px; Auth-Ablauf angepasst).
       Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-05b — „Dateien“ der Akte wie Bookitup:** Dokumentkarten und
+      Bibliotheksdateien als weiße Karten mit 18/700-Titel, Erklärtexte klein und
+      leise, Status als getöntes Etikett neben der Nummer, Dokumentaktionen als
+      ruhige Textaktionen statt einer Reihe gerahmter Knöpfe (44-px-Ziele
+      bleiben). Die ⋯-Menüs der Event- und Dokumentliste zeigen ein gezeichnetes
+      Punktsymbol statt eines Textzeichens. Kein Verhalten geändert.
+      **Tests:** Component (Status-Etikett), bestehende Abläufe unverändert grün.
+      Commit `style: align the record's file cards with bookitup`.
 - [x] **UI-BKP-03 — Eventakte wie Bookitup (Aufbau):** Ab 64rem links die
       Aktenspalte mit Kopf (Datum, Titel, Status, Ort), den Bereichen
       untereinander und „Event duplizieren“ (blau) / „Event löschen“ (rot) als

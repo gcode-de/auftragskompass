@@ -124,7 +124,10 @@ export function EventLibraryFiles({
       row.state === 'available' && !linked.some((entry) => entry.id === row.id),
   );
   return (
-    <section aria-label="Eventdateien aus der Bibliothek">
+    <section
+      className="document-card"
+      aria-label="Eventdateien aus der Bibliothek"
+    >
       <h4>Bibliotheksdateien</h4>
       <p>
         Dateien werden nicht auf Schadsoftware geprüft.{' '}
