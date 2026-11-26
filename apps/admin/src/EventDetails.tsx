@@ -45,6 +45,8 @@ type Detail = {
   activities: {
     id: string;
     kind: string;
+    // UI-BKP-03: the target status colours a status change in the logbook.
+    nextStatus?: string | null;
     eventVersion: number | null;
     occurredAt: string;
     description: string;
@@ -962,7 +964,12 @@ export function EventDetails({
                         }
                       >
                         <legend>Status ändern</legend>
-                        <label>
+                        {/* UI-BKP-03: Bookitup's status choice with its
+                            coloured dot, following the current choice. */}
+                        <label
+                          className="event-status-field"
+                          data-status={statusChoice ?? data.event.status}
+                        >
                           Status des Events
                           <select
                             name="status"
@@ -1102,7 +1109,11 @@ export function EventDetails({
                       newest entry first, what happened above when it did. */}
                       <ol className="event-logbook">
                         {[...data.activities].reverse().map((activity) => (
-                          <li key={activity.id}>
+                          <li
+                            key={activity.id}
+                            data-kind={activity.kind}
+                            data-status={activity.nextStatus ?? undefined}
+                          >
                             <span>
                               {activity.description}
                               {activity.eventVersion === null

@@ -2644,6 +2644,50 @@ summary {
   width: 2px;
   background: var(--border);
 }
+/* UI-BKP-03: like Bookitup the logbook colours its markers - creation and
+   website requests in the accent, a status change in the new status. */
+.event-logbook
+  li:is([data-kind='created'], [data-kind='website_received'])::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.event-logbook li[data-kind='status_changed']::before {
+  border-color: var(--status-cancelled);
+  background: var(--status-cancelled);
+}
+.event-logbook li[data-status='inquiry']::before {
+  border-color: var(--status-inquiry);
+  background: var(--status-inquiry);
+}
+.event-logbook li[data-status='option']::before {
+  border-color: var(--status-option);
+  background: var(--status-option);
+}
+.event-logbook li[data-status='booked']::before {
+  border-color: var(--status-booked);
+  background: var(--status-booked);
+}
+/* The status choice carries its coloured dot inside the field. */
+.event-status-field {
+  --status-dot: var(--status-cancelled);
+}
+.event-status-field[data-status='inquiry'] {
+  --status-dot: var(--status-inquiry);
+}
+.event-status-field[data-status='option'] {
+  --status-dot: var(--status-option);
+}
+.event-status-field[data-status='booked'] {
+  --status-dot: var(--status-booked);
+}
+.event-status-field > select {
+  padding-left: 2rem;
+  background-image: radial-gradient(
+    circle at 0.95rem 50%,
+    var(--status-dot) 0.3rem,
+    transparent 0.32rem
+  );
+}
 .event-logbook time {
   color: var(--muted);
   font-size: 0.85rem;
@@ -2820,9 +2864,27 @@ summary {
     padding: 0 0 0.75rem;
   }
   .event-record-side .record-navigation button {
+    position: relative;
     justify-content: flex-start;
+    padding-left: 1.5rem;
     text-align: left;
+    border-color: transparent;
     border-radius: var(--radius-field);
+  }
+  /* The current area like Bookitup's file navigation: tinted, bold and a
+     5px marker, so the state never rests on colour alone. */
+  .event-record-side .record-navigation button[aria-current] {
+    border-color: transparent;
+  }
+  .event-record-side .record-navigation button[aria-current]::before {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    top: 25%;
+    bottom: 25%;
+    width: 5px;
+    border-radius: 25px;
+    background: var(--accent);
   }
   .event-record-body > .event-record-panel > h3:first-child {
     margin-block-start: 0;

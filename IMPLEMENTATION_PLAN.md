@@ -552,6 +552,13 @@ Gesamtrahmen bleiben vorerst aus.
       Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
       Statusauswahl, 390 px; Auth-Ablauf angepasst).
       Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-03b — Akte: Farben wie Bookitup:** Logbuch-Marker farbig
+      (Anlage/Website-Anfrage in Akzentblau, Statuswechsel in der Farbe des neuen
+      Status, z. B. grün für Gebucht), Statusauswahl mit farbigem Punkt, der der
+      aktuellen Wahl folgt, aktueller Aktenbereich mit 5-px-Markierung statt
+      Rahmen. **Tests:** Component (Logbuch-Attribute, Statuspunkt folgt der
+      Auswahl), E2E (Markerfarben, Punkt, Markierung).
+      Commit `style: colour the record logbook and status like bookitup`.
 - [x] **UI-BKP-03 — Eventakte wie Bookitup (Aufbau):** Ab 64rem links die
       Aktenspalte mit Kopf (Datum, Titel, Status, Ort), den Bereichen
       untereinander und „Event duplizieren“ (blau) / „Event löschen“ (rot) als
