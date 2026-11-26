@@ -1654,7 +1654,7 @@ test('a backdrop close keeps the draft and an empty choice cannot be added', asy
   fireEvent.click(productOption(dialog, /Nettoprodukt/));
   expect(add).toHaveProperty('disabled', true);
 
-  fireEvent.mouseDown(dialog.parentElement!);
+  fireEvent.mouseDown(dialog, { clientX: -10, clientY: -10 });
   expect(
     screen.queryByRole('dialog', { name: 'Produkt auswählen' }),
   ).toBeNull();
@@ -3591,7 +3591,11 @@ test('removing a position asks first and cancelling keeps it', async () => {
   expect(document.activeElement).toBe(toggle);
 
   rowAction(first, 'Position 1: Position entfernen');
-  fireEvent.mouseDown(document.querySelector('.form-dialog-backdrop')!);
+  // A press on the native backdrop lands on the dialog outside its box.
+  fireEvent.mouseDown(screen.getByRole('dialog'), {
+    clientX: -10,
+    clientY: -10,
+  });
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.getAllByLabelText('Beschreibung')).toHaveLength(2);
   expect(document.activeElement).toBe(toggle);

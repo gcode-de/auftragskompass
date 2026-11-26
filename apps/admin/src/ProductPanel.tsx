@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { parseHundredths, formatHundredths } from './decimal.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
+import { ModalDialog } from './ModalDialog.js';
 import { PositionRemoveDialog } from './PositionRemoveDialog.js';
 
 type Product = {
@@ -155,7 +156,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
   const saving = useRef(false);
   const archiveInFlight = useRef(false);
   const deleteInFlight = useRef(false);
-  const dialog = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const createTrigger = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -258,18 +259,6 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
     if (!open || !errorFocus) return;
     errorMessage.current?.focus({ preventScroll: true });
   }, [errorFocus, open]);
-  function focusableElements() {
-    if (!dialog.current) return [];
-    return Array.from(
-      dialog.current.querySelectorAll<HTMLElement>(
-        'button, input, select, textarea, a[href], summary',
-      ),
-    ).filter(
-      (element) =>
-        !(element as HTMLButtonElement).disabled &&
-        !element.closest('fieldset[disabled]'),
-    );
-  }
   function focusErrorSoon() {
     setErrorFocus((value) => value + 1);
   }
@@ -627,36 +616,6 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
       setFormError(unknownOutcomeMessage);
     }
   }
-  function onDialogKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== 'Tab' || !dialog.current) return;
-    const focusable = focusableElements();
-    if (!focusable.length) {
-      // While a request is pending every control is disabled. Keep Tab on the
-      // dialog instead of letting focus escape into the background.
-      event.preventDefault();
-      dialog.current.focus();
-      return;
-    }
-    const first = focusable[0]!,
-      last = focusable[focusable.length - 1]!;
-    if (document.activeElement === dialog.current) {
-      event.preventDefault();
-      (event.shiftKey ? last : first).focus();
-      return;
-    }
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
   const title = editing ? 'Produkt bearbeiten' : 'Produkt anlegen';
   return (
     <section id="products" aria-label="Produkte" aria-busy={loading || busy}>
@@ -874,183 +833,176 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
         </button>
       )}
       {open && (
-        <div className="form-dialog-backdrop">
-          <div
-            className="form-dialog product-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-busy={busy}
-            aria-labelledby="product-dialog-title"
-            ref={dialog}
-            tabIndex={-1}
-            onKeyDown={onDialogKeyDown}
+        <ModalDialog
+          className="form-dialog product-dialog"
+          aria-busy={busy}
+          aria-labelledby="product-dialog-title"
+          ref={dialog}
+          tabIndex={-1}
+          busy={busy}
+          onDismiss={close}
+        >
+          <header className="form-dialog-header">
+            <h3 id="product-dialog-title">{title}</h3>
+            <button
+              type="button"
+              className="tertiary-action form-dialog-close"
+              aria-label="Dialog schließen"
+              title="Dialog schließen"
+              disabled={busy}
+              onClick={close}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </header>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
           >
-            <header className="form-dialog-header">
-              <h3 id="product-dialog-title">{title}</h3>
+            <fieldset disabled={busy}>
+              <legend className="sr-only">{title}</legend>
+              <label>
+                Produktname
+                <input
+                  name="name"
+                  required
+                  maxLength={120}
+                  value={values.name}
+                  onChange={(event) => update('name', event.target.value)}
+                />
+              </label>
+              <label>
+                Produktbeschreibung
+                <textarea
+                  name="description"
+                  maxLength={2000}
+                  value={values.description}
+                  onChange={(event) =>
+                    update('description', event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                Einheit
+                <input
+                  name="unit"
+                  required
+                  maxLength={40}
+                  value={values.unit}
+                  onChange={(event) => update('unit', event.target.value)}
+                />
+              </label>
+              <label>
+                Preis in Euro
+                <input
+                  name="price"
+                  inputMode="decimal"
+                  required
+                  maxLength={17}
+                  aria-invalid={invalidField === 'price' ? true : undefined}
+                  aria-describedby={
+                    invalidField === 'price' ? 'product-form-error' : undefined
+                  }
+                  value={values.price}
+                  onChange={(event) => update('price', event.target.value)}
+                />
+              </label>
+              <label>
+                Preisbasis
+                <select
+                  name="priceBasis"
+                  value={values.priceBasis}
+                  onChange={(event) => update('priceBasis', event.target.value)}
+                >
+                  <option value="gross">Brutto</option>
+                  <option value="net">Netto</option>
+                </select>
+              </label>
+              <label>
+                Steuersatz in Prozent
+                <input
+                  name="tax"
+                  inputMode="decimal"
+                  required
+                  maxLength={6}
+                  aria-invalid={invalidField === 'tax' ? true : undefined}
+                  aria-describedby={
+                    invalidField === 'tax' ? 'product-form-error' : undefined
+                  }
+                  value={values.tax}
+                  onChange={(event) => update('tax', event.target.value)}
+                />
+              </label>
+              <label>
+                Produktsortierung
+                <input
+                  name="position"
+                  type="number"
+                  min={0}
+                  max={9999}
+                  required
+                  value={values.position}
+                  onChange={(event) => update('position', event.target.value)}
+                />
+              </label>
+              <label>
+                Produktzustand
+                <select
+                  name="state"
+                  value={values.state}
+                  onChange={(event) => update('state', event.target.value)}
+                >
+                  <option value="active">Aktiv</option>
+                  <option value="inactive">Inaktiv</option>
+                  <option value="archived">Archiviert</option>
+                </select>
+              </label>
+              {formError && (
+                <p
+                  className="field-error"
+                  role="alert"
+                  id="product-form-error"
+                  tabIndex={-1}
+                  ref={errorMessage}
+                >
+                  {formError}
+                </p>
+              )}
+              {locked && (
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  disabled={busy}
+                  onClick={() => void reloadList()}
+                >
+                  Liste neu laden
+                </button>
+              )}
+              <p className="sr-only" role="status">
+                {busy
+                  ? editing
+                    ? 'Produkt wird gespeichert …'
+                    : 'Produkt wird angelegt …'
+                  : ''}
+              </p>
+            </fieldset>
+            <div className="form-dialog-footer">
               <button
                 type="button"
-                className="tertiary-action form-dialog-close"
-                aria-label="Dialog schließen"
-                title="Dialog schließen"
+                className="secondary-action"
                 disabled={busy}
                 onClick={close}
               >
-                <span aria-hidden="true">×</span>
+                Abbrechen
               </button>
-            </header>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submit();
-              }}
-            >
-              <fieldset disabled={busy}>
-                <legend className="sr-only">{title}</legend>
-                <label>
-                  Produktname
-                  <input
-                    name="name"
-                    required
-                    maxLength={120}
-                    value={values.name}
-                    onChange={(event) => update('name', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Produktbeschreibung
-                  <textarea
-                    name="description"
-                    maxLength={2000}
-                    value={values.description}
-                    onChange={(event) =>
-                      update('description', event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Einheit
-                  <input
-                    name="unit"
-                    required
-                    maxLength={40}
-                    value={values.unit}
-                    onChange={(event) => update('unit', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Preis in Euro
-                  <input
-                    name="price"
-                    inputMode="decimal"
-                    required
-                    maxLength={17}
-                    aria-invalid={invalidField === 'price' ? true : undefined}
-                    aria-describedby={
-                      invalidField === 'price'
-                        ? 'product-form-error'
-                        : undefined
-                    }
-                    value={values.price}
-                    onChange={(event) => update('price', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Preisbasis
-                  <select
-                    name="priceBasis"
-                    value={values.priceBasis}
-                    onChange={(event) =>
-                      update('priceBasis', event.target.value)
-                    }
-                  >
-                    <option value="gross">Brutto</option>
-                    <option value="net">Netto</option>
-                  </select>
-                </label>
-                <label>
-                  Steuersatz in Prozent
-                  <input
-                    name="tax"
-                    inputMode="decimal"
-                    required
-                    maxLength={6}
-                    aria-invalid={invalidField === 'tax' ? true : undefined}
-                    aria-describedby={
-                      invalidField === 'tax' ? 'product-form-error' : undefined
-                    }
-                    value={values.tax}
-                    onChange={(event) => update('tax', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Produktsortierung
-                  <input
-                    name="position"
-                    type="number"
-                    min={0}
-                    max={9999}
-                    required
-                    value={values.position}
-                    onChange={(event) => update('position', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Produktzustand
-                  <select
-                    name="state"
-                    value={values.state}
-                    onChange={(event) => update('state', event.target.value)}
-                  >
-                    <option value="active">Aktiv</option>
-                    <option value="inactive">Inaktiv</option>
-                    <option value="archived">Archiviert</option>
-                  </select>
-                </label>
-                {formError && (
-                  <p
-                    className="field-error"
-                    role="alert"
-                    id="product-form-error"
-                    tabIndex={-1}
-                    ref={errorMessage}
-                  >
-                    {formError}
-                  </p>
-                )}
-                {locked && (
-                  <button
-                    type="button"
-                    className="tertiary-action"
-                    disabled={busy}
-                    onClick={() => void reloadList()}
-                  >
-                    Liste neu laden
-                  </button>
-                )}
-                <p className="sr-only" role="status">
-                  {busy
-                    ? editing
-                      ? 'Produkt wird gespeichert …'
-                      : 'Produkt wird angelegt …'
-                    : ''}
-                </p>
-              </fieldset>
-              <div className="form-dialog-footer">
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={busy}
-                  onClick={close}
-                >
-                  Abbrechen
-                </button>
-                <button className="primary-action" disabled={busy || locked}>
-                  {busy ? 'Wird gespeichert …' : 'Produkt speichern'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+              <button className="primary-action" disabled={busy || locked}>
+                {busy ? 'Wird gespeichert …' : 'Produkt speichern'}
+              </button>
+            </div>
+          </form>
+        </ModalDialog>
       )}
       {confirming && (
         <PositionRemoveDialog

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ModalDialog } from './ModalDialog.js';
 import { localDateTime, resolveEventTime } from './event-time.js';
 import { ContactDialog, contactDialogTitleId } from './ContactDialog.js';
 import {
@@ -59,7 +60,7 @@ export function EventCreateDialog({
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
-  const dialog = useRef<HTMLDivElement>(null),
+  const dialog = useRef<HTMLDialogElement>(null),
     saving = useRef(false),
     contactSearch = useContactSearch(),
     [busy, setBusy] = useState(false),
@@ -155,32 +156,6 @@ export function EventCreateDialog({
       delete next[field];
       return next;
     });
-  }
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    // While the contact view is open it owns Escape and Tab completely.
-    if (view === 'contact') return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      if (saving.current || busy) return;
-      onClose();
-      return;
-    }
-    if (event.key !== 'Tab' || !dialog.current) return;
-    const focusable = Array.from(
-      dialog.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, a[href]',
-      ),
-    );
-    if (!focusable.length) return;
-    const first = focusable[0]!,
-      last = focusable[focusable.length - 1]!;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
   }
   async function save(form: HTMLFormElement) {
     if (saving.current) return;
@@ -330,264 +305,263 @@ export function EventCreateDialog({
     ));
   }
   return (
-    <div className="event-create-backdrop">
-      <div
-        className="event-create-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={
-          view === 'contact'
-            ? contactDialogTitleId('event-create')
-            : 'event-create-title'
-        }
-        ref={dialog}
-        onKeyDown={onKeyDown}
-      >
-        <header className="event-create-header" hidden={view === 'contact'}>
-          <div>
-            <h2 id="event-create-title">Neues Event</h2>
-            <p>
-              Datum, Kunde oder Eventart genügen. Alles Weitere ist optional.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="tertiary-action event-create-close"
-            aria-label="Dialog schließen"
-            title="Dialog schließen"
-            disabled={busy}
-            onClick={() => {
-              if (saving.current || busy) return;
-              onClose();
-            }}
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        </header>
-        <form
-          hidden={view === 'contact'}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save(event.currentTarget);
+    <ModalDialog
+      className="event-create-dialog"
+      aria-labelledby={
+        view === 'contact'
+          ? contactDialogTitleId('event-create')
+          : 'event-create-title'
+      }
+      ref={dialog}
+      // While the contact view is open it owns Escape (it stops the key);
+      // a pending save keeps the dialog open.
+      busy={busy || saving.current}
+      onDismiss={() => {
+        if (view !== 'contact') onClose();
+      }}
+    >
+      <header className="event-create-header" hidden={view === 'contact'}>
+        <div>
+          <h2 id="event-create-title">Neues Event</h2>
+          <p>Datum, Kunde oder Eventart genügen. Alles Weitere ist optional.</p>
+        </div>
+        <button
+          type="button"
+          className="tertiary-action event-create-close"
+          aria-label="Dialog schließen"
+          title="Dialog schließen"
+          disabled={busy}
+          onClick={() => {
+            if (saving.current || busy) return;
+            onClose();
           }}
         >
-          <fieldset disabled={busy || !timeZone}>
-            <legend className="sr-only">Neues Event</legend>
-            <label>
-              Eventdatum
-              <input
-                name="eventDate"
-                type="date"
-                value={eventDate}
-                readOnly={dateDerived}
-                aria-invalid={Boolean(scheduleErrors.eventDate)}
-                aria-describedby={
-                  scheduleErrors.eventDate
-                    ? 'event-create-date-help event-create-eventDate-error'
-                    : 'event-create-date-help'
-                }
-                onChange={(event) => {
-                  setEventDate(event.currentTarget.value);
-                  clearScheduleError('eventDate');
-                }}
-              />
-            </label>
-            <p id="event-create-date-help">
-              {dateDerived
-                ? 'Wird aus dem Beginn übernommen. Um das Datum zu ändern, den Beginn ändern.'
-                : 'Ohne Datum bleibt das Event undatiert. Uhrzeiten sind optional und stehen unter „Weitere Angaben“.'}
-            </p>
-            {scheduleErrors.eventDate && (
-              <p
-                className="field-error"
-                id="event-create-eventDate-error"
-                role="alert"
-              >
-                {scheduleErrors.eventDate}
-              </p>
-            )}
-            <ContactPicker
-              idPrefix="event-create"
-              search={contactSearch}
-              value={primaryContactId}
-              selected={chosen}
-              hiddenName="primaryContactId"
-              disabled={busy}
-              focusRequest={pickerFocus}
-              onSelect={chooseContact}
-              onClear={clearContact}
-              onCreate={() => setView('contact')}
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
+      <form
+        hidden={view === 'contact'}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save(event.currentTarget);
+        }}
+      >
+        <fieldset disabled={busy || !timeZone}>
+          <legend className="sr-only">Neues Event</legend>
+          <label>
+            Eventdatum
+            <input
+              name="eventDate"
+              type="date"
+              value={eventDate}
+              readOnly={dateDerived}
+              aria-invalid={Boolean(scheduleErrors.eventDate)}
+              aria-describedby={
+                scheduleErrors.eventDate
+                  ? 'event-create-date-help event-create-eventDate-error'
+                  : 'event-create-date-help'
+              }
+              onChange={(event) => {
+                setEventDate(event.currentTarget.value);
+                clearScheduleError('eventDate');
+              }}
             />
-            <label>
-              Eventart
-              <select
-                name="eventTypeId"
-                value={eventTypeId}
-                onChange={(event) => setEventTypeId(event.currentTarget.value)}
-              >
-                <option value="">Eventart wählen</option>
-                {options(types, eventTypeId || null)}
-              </select>
-            </label>
-            <details className="event-advanced">
-              <summary>Weitere Angaben</summary>
-              <div className="event-advanced-fields">
-                <label>
-                  Eventname
-                  <input
-                    name="name"
-                    maxLength={200}
-                    value={name}
-                    placeholder={generated}
-                    aria-describedby="event-create-name-help"
-                    onChange={(event) => setName(event.currentTarget.value)}
-                  />
-                </label>
-                <p id="event-create-name-help">
-                  Ohne eigene Eingabe wird „{generated}“ als Name gespeichert.
-                </p>
-                <label>
-                  Eventstatus
-                  <select
-                    name="status"
-                    value={eventStatus}
-                    onChange={(event) =>
-                      setEventStatus(event.currentTarget.value)
-                    }
-                  >
-                    {statuses.map((option) => (
-                      <option key={option.code} value={option.code}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Fotobox-Paket
-                  <select
-                    name="packageId"
-                    defaultValue={initial?.packageId ?? ''}
-                  >
-                    <option value="">Noch offen</option>
-                    {options(packages, initial?.packageId ?? null)}
-                  </select>
-                </label>
-                <label>
-                  Ort / Adresse
-                  <textarea
-                    name="venue"
-                    maxLength={venueMaxLength}
-                    value={venue}
-                    onChange={(event) => {
-                      setVenue(event.currentTarget.value);
-                      setVenueEdited(true);
-                    }}
-                  />
-                </label>
-                <label>
-                  Anfragequelle
-                  <input
-                    name="source"
-                    maxLength={200}
-                    defaultValue={initial?.source ?? ''}
-                  />
-                </label>
-                <label>
-                  Weitere Kontakte
-                  <select
-                    name="additionalContactIds"
-                    multiple
-                    value={additionalContactIds}
-                    onChange={(event) =>
-                      setAdditionalContactIds(
-                        Array.from(
-                          event.currentTarget.selectedOptions,
-                          (option) => option.value,
-                        ),
-                      )
-                    }
-                  >
-                    {options(
-                      contactChoices.filter(
-                        (choice) => choice.id !== primaryContactId,
-                      ),
-                      additionalContactIds,
-                    )}
-                  </select>
-                </label>
-                <EventTimeField
-                  name="startsAt"
-                  label="Eventbeginn"
-                  timeZone={timeZone}
-                  idPrefix="event-create"
-                  instant={initial?.startsAt ?? null}
-                  error={scheduleErrors.startsAt}
-                  onChange={(next) => {
-                    setDateDerived(Boolean(next));
-                    if (next) {
-                      setEventDate(next.slice(0, 10));
-                      clearScheduleError('eventDate');
-                    }
-                    clearScheduleError('startsAt');
+          </label>
+          <p id="event-create-date-help">
+            {dateDerived
+              ? 'Wird aus dem Beginn übernommen. Um das Datum zu ändern, den Beginn ändern.'
+              : 'Ohne Datum bleibt das Event undatiert. Uhrzeiten sind optional und stehen unter „Weitere Angaben“.'}
+          </p>
+          {scheduleErrors.eventDate && (
+            <p
+              className="field-error"
+              id="event-create-eventDate-error"
+              role="alert"
+            >
+              {scheduleErrors.eventDate}
+            </p>
+          )}
+          <ContactPicker
+            idPrefix="event-create"
+            search={contactSearch}
+            value={primaryContactId}
+            selected={chosen}
+            hiddenName="primaryContactId"
+            disabled={busy}
+            focusRequest={pickerFocus}
+            onSelect={chooseContact}
+            onClear={clearContact}
+            onCreate={() => setView('contact')}
+          />
+          <label>
+            Eventart
+            <select
+              name="eventTypeId"
+              value={eventTypeId}
+              onChange={(event) => setEventTypeId(event.currentTarget.value)}
+            >
+              <option value="">Eventart wählen</option>
+              {options(types, eventTypeId || null)}
+            </select>
+          </label>
+          <details className="event-advanced">
+            <summary>Weitere Angaben</summary>
+            <div className="event-advanced-fields">
+              <label>
+                Eventname
+                <input
+                  name="name"
+                  maxLength={200}
+                  value={name}
+                  placeholder={generated}
+                  aria-describedby="event-create-name-help"
+                  onChange={(event) => setName(event.currentTarget.value)}
+                />
+              </label>
+              <p id="event-create-name-help">
+                Ohne eigene Eingabe wird „{generated}“ als Name gespeichert.
+              </p>
+              <label>
+                Eventstatus
+                <select
+                  name="status"
+                  value={eventStatus}
+                  onChange={(event) =>
+                    setEventStatus(event.currentTarget.value)
+                  }
+                >
+                  {statuses.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Fotobox-Paket
+                <select
+                  name="packageId"
+                  defaultValue={initial?.packageId ?? ''}
+                >
+                  <option value="">Noch offen</option>
+                  {options(packages, initial?.packageId ?? null)}
+                </select>
+              </label>
+              <label>
+                Ort / Adresse
+                <textarea
+                  name="venue"
+                  maxLength={venueMaxLength}
+                  value={venue}
+                  onChange={(event) => {
+                    setVenue(event.currentTarget.value);
+                    setVenueEdited(true);
                   }}
                 />
-                <EventTimeField
-                  name="endsAt"
-                  label="Eventende"
-                  timeZone={timeZone}
-                  idPrefix="event-create"
-                  instant={initial?.endsAt ?? null}
-                  error={scheduleErrors.endsAt}
-                  onChange={() => clearScheduleError('endsAt')}
+              </label>
+              <label>
+                Anfragequelle
+                <input
+                  name="source"
+                  maxLength={200}
+                  defaultValue={initial?.source ?? ''}
                 />
-                <label>
-                  Eventbeschreibung
-                  <textarea
-                    name="description"
-                    maxLength={4000}
-                    defaultValue={initial?.description ?? ''}
-                  />
-                </label>
-                <label>
-                  Erste Notiz
-                  <textarea
-                    name="notesHtml"
-                    maxLength={20000}
-                    defaultValue={initial?.notesHtml ?? ''}
-                    aria-describedby="event-create-notes-help"
-                  />
-                </label>
-                <p id="event-create-notes-help">
-                  Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
-                  &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
-                  href="https://…"&gt;Link&lt;/a&gt;. Wird als datierte Notiz am
-                  Event abgelegt.
-                </p>
-              </div>
-            </details>
-            {message && (
-              <p className="field-error" role="alert">
-                {message}
+              </label>
+              <label>
+                Weitere Kontakte
+                <select
+                  name="additionalContactIds"
+                  multiple
+                  value={additionalContactIds}
+                  onChange={(event) =>
+                    setAdditionalContactIds(
+                      Array.from(
+                        event.currentTarget.selectedOptions,
+                        (option) => option.value,
+                      ),
+                    )
+                  }
+                >
+                  {options(
+                    contactChoices.filter(
+                      (choice) => choice.id !== primaryContactId,
+                    ),
+                    additionalContactIds,
+                  )}
+                </select>
+              </label>
+              <EventTimeField
+                name="startsAt"
+                label="Eventbeginn"
+                timeZone={timeZone}
+                idPrefix="event-create"
+                instant={initial?.startsAt ?? null}
+                error={scheduleErrors.startsAt}
+                onChange={(next) => {
+                  setDateDerived(Boolean(next));
+                  if (next) {
+                    setEventDate(next.slice(0, 10));
+                    clearScheduleError('eventDate');
+                  }
+                  clearScheduleError('startsAt');
+                }}
+              />
+              <EventTimeField
+                name="endsAt"
+                label="Eventende"
+                timeZone={timeZone}
+                idPrefix="event-create"
+                instant={initial?.endsAt ?? null}
+                error={scheduleErrors.endsAt}
+                onChange={() => clearScheduleError('endsAt')}
+              />
+              <label>
+                Eventbeschreibung
+                <textarea
+                  name="description"
+                  maxLength={4000}
+                  defaultValue={initial?.description ?? ''}
+                />
+              </label>
+              <label>
+                Erste Notiz
+                <textarea
+                  name="notesHtml"
+                  maxLength={20000}
+                  defaultValue={initial?.notesHtml ?? ''}
+                  aria-describedby="event-create-notes-help"
+                />
+              </label>
+              <p id="event-create-notes-help">
+                Einfache HTML-Formatierung: &lt;strong&gt;fett&lt;/strong&gt;,
+                &lt;em&gt;kursiv&lt;/em&gt; und &lt;a
+                href="https://…"&gt;Link&lt;/a&gt;. Wird als datierte Notiz am
+                Event abgelegt.
               </p>
-            )}
-            <div className="event-create-footer">
-              <button className="primary-action">
-                {busy ? 'Wird gespeichert …' : 'Event speichern'}
-              </button>
             </div>
-          </fieldset>
-        </form>
-        {view === 'contact' && (
-          <ContactDialog
-            inline
-            csrfToken={csrfToken}
-            idPrefix="event-create"
-            discardMessage="Ungespeicherte Eingaben verwerfen und zur Eventanlage zurückkehren?"
-            onClose={backToPicker}
-            onSaved={contactSaved}
-          />
-        )}
-      </div>
-    </div>
+          </details>
+          {message && (
+            <p className="field-error" role="alert">
+              {message}
+            </p>
+          )}
+          <div className="event-create-footer">
+            <button className="primary-action">
+              {busy ? 'Wird gespeichert …' : 'Event speichern'}
+            </button>
+          </div>
+        </fieldset>
+      </form>
+      {view === 'contact' && (
+        <ContactDialog
+          inline
+          csrfToken={csrfToken}
+          idPrefix="event-create"
+          discardMessage="Ungespeicherte Eingaben verwerfen und zur Eventanlage zurückkehren?"
+          onClose={backToPicker}
+          onSaved={contactSaved}
+        />
+      )}
+    </ModalDialog>
   );
 }

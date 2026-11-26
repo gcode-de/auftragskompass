@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import type React from 'react';
+import { ModalDialog } from './ModalDialog.js';
 import type { ContactRecord } from './ContactDetails.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
@@ -94,7 +96,7 @@ export function ContactDialog({
   onClose: () => void;
   onSaved: (row: Contact) => void;
 }) {
-  const dialog = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLElement>(null);
   const saving = useRef(false);
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const [values, setValues] = useState<ContactInput>(() =>
@@ -121,18 +123,6 @@ export function ContactDialog({
     if (!errorFocus) return;
     errorMessage.current?.focus({ preventScroll: true });
   }, [errorFocus]);
-  function focusableElements() {
-    if (!dialog.current) return [];
-    return Array.from(
-      dialog.current.querySelectorAll<HTMLElement>(
-        'button, input, select, textarea, a[href], summary',
-      ),
-    ).filter(
-      (element) =>
-        !(element as HTMLButtonElement).disabled &&
-        !element.closest('fieldset[disabled]'),
-    );
-  }
   function focusErrorSoon() {
     setErrorFocus((value) => value + 1);
   }
@@ -238,38 +228,13 @@ export function ContactDialog({
       onBusyChange?.(false);
     }
   }
-  function onDialogKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      // Inline the surrounding event dialog keeps its draft, so the key must
-      // not continue into the outer handler.
-      if (inline) event.stopPropagation();
-      close();
-      return;
-    }
-    if (event.key !== 'Tab' || !dialog.current) return;
-    const focusable = focusableElements();
-    if (!focusable.length) {
-      // While a request is pending every control is disabled. Keep Tab on the
-      // dialog instead of letting focus escape into the background.
-      event.preventDefault();
-      dialog.current.focus();
-      return;
-    }
-    const first = focusable[0]!,
-      last = focusable[focusable.length - 1]!;
-    if (document.activeElement === dialog.current) {
-      event.preventDefault();
-      (event.shiftKey ? last : first).focus();
-      return;
-    }
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+  // Inline the surrounding event dialog keeps its draft, so Escape closes only
+  // the contact view and must not reach the outer handler.
+  function onInlineKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    close();
   }
   const body = (
     <>
@@ -381,27 +346,24 @@ export function ContactDialog({
       <div
         className="contact-dialog-inline"
         aria-busy={busy}
-        ref={dialog}
+        ref={dialog as React.RefObject<HTMLDivElement>}
         tabIndex={-1}
-        onKeyDown={onDialogKeyDown}
+        onKeyDown={onInlineKeyDown}
       >
         {body}
       </div>
     );
   return (
-    <div className="form-dialog-backdrop">
-      <div
-        className="form-dialog contact-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-busy={busy}
-        aria-labelledby={titleId}
-        ref={dialog}
-        tabIndex={-1}
-        onKeyDown={onDialogKeyDown}
-      >
-        {body}
-      </div>
-    </div>
+    <ModalDialog
+      className="form-dialog contact-dialog"
+      aria-busy={busy}
+      aria-labelledby={titleId}
+      ref={dialog as React.RefObject<HTMLDialogElement>}
+      tabIndex={-1}
+      busy={busy}
+      onDismiss={close}
+    >
+      {body}
+    </ModalDialog>
   );
 }
