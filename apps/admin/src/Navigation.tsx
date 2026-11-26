@@ -14,7 +14,6 @@ import {
 import { appVersionLabel } from './revision.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import {
-  discardForFilesMessage,
   discardForHomeMessage,
   discardForSearchMessage,
   confirmNavigation,
@@ -49,11 +48,6 @@ const links = [
     'documents',
     'Dokumente',
     'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Zm-1 1v4h4M9 13h6m-6 3h6',
-  ],
-  [
-    'files',
-    'Dateien',
-    'M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z',
   ],
   [
     'contacts',
@@ -96,6 +90,9 @@ const settingsGroups: readonly (
       ['settings-products', 'Produkte'],
       ['settings-document-layout', 'Dokument-Layout'],
       ['settings-numbers', 'Nummernkreise'],
+      // UI-BKP-09: the file library is rarely needed; like Bookitup it lives
+      // in the settings instead of the main menu.
+      ['settings-files', 'Dateibibliothek'],
     ],
   },
   {
@@ -122,6 +119,7 @@ export type WorkspaceRoute =
   | 'document-layout'
   | 'numbers'
   | 'search'
+  | 'files'
   | 'resources'
   | 'products'
   | 'website';
@@ -142,6 +140,7 @@ export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'resources',
   'products',
   'website',
+  'files',
 ]);
 export function isSettingsRoute(route: WorkspaceRoute) {
   return settingsRoutes.has(route);
@@ -163,6 +162,7 @@ const settingsHashes = {
   resources: 'settings-resources',
   products: 'settings-products',
   website: 'settings-website',
+  files: 'settings-files',
 } satisfies Partial<Record<WorkspaceRoute, string>>;
 function readRoute(): WorkspaceRoute {
   const hash = window.location.hash.slice(1);
@@ -189,7 +189,8 @@ function readRoute(): WorkspaceRoute {
   if (hash.startsWith('event-')) return 'events';
   if (hash.startsWith('contact-')) return 'contacts';
   if (hash === 'search') return 'search';
-  if (hash === 'files') return 'files';
+  // `#files` stays a working old address of the library.
+  if (hash === 'files' || hash === 'settings-files') return 'files';
   return links.find(([id]) => id === hash)?.[0] ?? 'events';
 }
 // H034: `#locations` is retired. Rewriting it keeps the address honest without
@@ -439,23 +440,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
               aria-label={label}
               title={label}
               aria-current={id === activeRoute ? 'page' : undefined}
-              onClick={(event) => {
-                // H035: only the new Dateien entry asks, because leaving the
-                // event area unmounts its details and their registered draft.
-                // A modifier click opens a new tab and must change nothing.
-                if (
-                  id === 'files' &&
-                  route !== 'files' &&
-                  !event.metaKey &&
-                  !event.ctrlKey &&
-                  !event.shiftKey &&
-                  !event.altKey &&
-                  event.button === 0 &&
-                  !confirmNavigation(discardForFilesMessage, '#files')
-                ) {
-                  event.preventDefault();
-                  return;
-                }
+              onClick={() => {
                 if (dialog.current?.open) closeMenu();
               }}
             >

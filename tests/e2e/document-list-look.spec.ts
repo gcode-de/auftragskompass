@@ -109,6 +109,13 @@ test('the document overview reads like Bookitup in both themes', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: /Dokumente/ }),
   ).toBeVisible();
+  // UI-BKP-10: the document name opens it in its event's Dateien.
+  const opener = documents.getByRole('link', { name: 'Angebot AN-2031-0001' });
+  expect(
+    new URL((await opener.getAttribute('href'))!, page.url()).searchParams.get(
+      'doc',
+    ),
+  ).toBe('00000000-0000-4000-8000-000000000001');
   const kinds = documents.getByRole('group', { name: 'Dokumentart' });
   await expect(
     kinds.getByRole('button', { name: 'Alle Arten' }),

@@ -76,7 +76,7 @@ test('document search filters the list and preserves its own URL state', async (
 }) => {
   const documentRequests = await mockDocuments(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/?q=global&df_q=invoice&df_page=1#files');
+  await page.goto('/?q=global&df_q=invoice&df_page=1#documents');
   const search = page.getByRole('searchbox', {
     name: 'Dokumente durchsuchen',
   });
@@ -225,12 +225,15 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
 
+    // UI-BKP-09: the old file page is the settings' library now; the
+    // document list exists only once, under "Dokumente".
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/#files');
-    const files = page.getByRole('region', { name: 'Dateien', exact: true });
-    await expect(files).toHaveCSS('border-top-width', '1px');
     await expect(
-      files.getByRole('complementary', { name: 'Dateifilter' }),
-    ).toHaveCSS('border-top-width', '1px');
+      page.getByRole('region', { name: 'Dateibibliothek', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Dateien', exact: true }),
+    ).toHaveCount(0);
   });
 }
