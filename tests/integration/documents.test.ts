@@ -3284,6 +3284,62 @@ async function indexedOffer(scope: string, now: string, id: string) {
   return rows.find((row) => row.id === id)!;
 }
 
+// An offer without a validity period: 0 days print no deadline, store none
+// and never expire; a negative period is still refused.
+test('an offer with 0 validity days has no deadline and never expires', async () => {
+  const scope = randomUUID();
+  await bootstrapAccess(
+    pool,
+    scope,
+    'offer-open-' + scope + '@example.invalid',
+    'Synthetic open offer',
+    'Europe/Berlin',
+  );
+  const seed = await seedIssuingContext(scope),
+    run = dependencies({ now: () => new Date('2030-10-26T10:00:00Z') }),
+    repo = documentRepository(pool, scope, run.deps);
+  await pool.query(
+    'UPDATE document_templates SET validity_days=0 WHERE tenant_id=$1 AND id=$2',
+    [scope, seed.templateId],
+  );
+  const contact = randomUUID();
+  await pool.query(
+    `INSERT INTO contacts (tenant_id,id,kind,name,contact_person,street,postal_code,city,country,
+      email,phone,mobile,phone_key,mobile_key,state,version)
+     VALUES ($1,$2,'private','Fictional Open Customer','','Example Street 2','12345',
+      'Fictional Town','DE','offer-open@example.invalid','','','','','active',1)`,
+    [scope, contact],
+  );
+  const draft = await repo.createDraft(seed.actor, {
+    templateId: seed.templateId,
+    contactId: contact,
+  });
+  await expect(
+    repo.updateDraftContent(seed.actor, draft.id, {
+      version: draft.version,
+      subject: 'Fiktives Angebot',
+      introText: '',
+      outroText: '',
+      validityDays: -1,
+    }),
+  ).rejects.toMatchObject({ reason: 'invalid_content' });
+  const saved = await repo.updateDraftContent(seed.actor, draft.id, {
+    version: draft.version,
+    subject: 'Fiktives Angebot',
+    introText: '',
+    outroText: '',
+    validityDays: 0,
+  });
+  expect(saved).toMatchObject({ validityDays: 0 });
+  const finalized = await repo.finalize(seed.actor, draft.id);
+  expect((await offerState(scope, finalized.id)).valid_until).toBeNull();
+  expect(run.rendered.at(-1)).not.toContain('Gültig bis');
+  // Years later it still has not expired.
+  expect(
+    await listedOffer(scope, '2040-01-01T00:00:00Z', finalized.id),
+  ).toMatchObject({ validUntil: null, offerExpired: false });
+});
+
 test('finalizing an offer freezes exactly the deadline the PDF prints', async () => {
   const scope = randomUUID(),
     // 26 October 2030, 12:00 local in Europe/Berlin (still summer time).

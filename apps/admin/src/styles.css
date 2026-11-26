@@ -3421,6 +3421,56 @@ a.offer-draft-preview {
   border-top: 1px solid var(--border);
 }
 /* UI-BKP-06: Bookitup's dark "Positionen" bar above the position cards. */
+/* UI-BKP-11: the dark bar carries the document's Brutto/Netto switch on its
+   right, like Bookitup's segmented control beside the document title. */
+.offer-draft-positions-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.5rem;
+}
+.offer-draft-positions-head > h6 {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+.offer-draft-basis {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-field);
+  background: var(--filled-field);
+}
+.offer-draft-basis > label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 1rem;
+  border-radius: var(--radius-field);
+  color: var(--ink);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.offer-draft-basis > label > input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.offer-draft-basis > label:has(input:checked) {
+  background: var(--action);
+  color: var(--action-ink);
+  font-weight: 600;
+}
+.offer-draft-basis > label:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+.offer-draft-basis > label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
 .offer-draft-positions h6 {
   margin: 0.25rem 0 0.5rem;
   padding: 0.55rem 0.75rem;
@@ -3464,28 +3514,6 @@ a.offer-draft-preview {
 .offer-draft-position-title {
   font-weight: 600;
   overflow-wrap: anywhere;
-}
-/* EDITOR-VISUAL-01: the price basis is one compact Brutto/Netto switch between
-   the row title and the row actions. It keeps the documented target size of its
-   two radio labels and never claims a track of the field grid. */
-.offer-draft-position-basis {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 0.5rem;
-  min-width: 0;
-  margin-inline-start: 0.25rem;
-  padding-inline: 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 0.4rem;
-}
-.offer-draft-position-basis > label:has(input[type='radio']) {
-  gap: 0.35rem;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-.offer-draft-position-basis > label:has(input:checked) {
-  font-weight: 600;
 }
 .offer-draft-position[data-drop-target] {
   outline: 2px solid var(--focus);

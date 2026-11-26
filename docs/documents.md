@@ -899,3 +899,24 @@ Einzelpreis und Preis nehmen je 13 %, die Menge 12 % (ohne Umbruch) der
 Tabellenbreite ein; die Beschreibung erhält den Rest, etwa 60 % statt bisher
 etwa 45 %. Lange Positionstexte bleiben so breit statt hoch. Fertige Belege
 behalten ihr gespeichertes PDF.
+
+## Brutto/Netto je Dokument (UI-BKP-11, 26.11.2026)
+
+Der Editor hat einen Brutto/Netto-Schalter für das ganze Dokument. Umschalten
+rechnet jeden Einzelpreis und einen Euro-Rabatt einer Position exakt in
+ganzen Cent um (Netto = Brutto · 10000 / (10000 + Steuer in Basispunkten),
+kaufmännisch gerundet; umgekehrt entsprechend), sodass die Summen bis auf
+Cent-Rundung gleich bleiben – ein Bruttopreis wird nie stillschweigend als
+Netto umgedeutet. Neue Positionen und eingefügte Katalogprodukte übernehmen
+die Dokumentbasis (ein Katalogpreis wird dabei umgerechnet). Gespeichert wird
+die Basis weiterhin je Position; ältere gemischte Entwürfe bleiben gültig und
+zeigen einen Hinweis. Dokumentvorlagen behalten ihre Basis je Position.
+
+## Angebote ohne Gültigkeit (26.11.2026)
+
+„Gültigkeit in Tagen“ akzeptiert 0–365; 0 bedeutet „ohne Gültigkeit“. Ein
+Angebot mit 0 Tagen druckt keine Zeile „Gültig bis“, speichert beim
+Finalisieren kein `valid_until`, zeigt in der Übersicht kein Fristetikett und
+gilt nie als abgelaufen. Dokumentvorlagen können 0 als Vorgabe setzen.
+Migration 0083 erweitert dafür die CHECK-Regeln von `documents` und
+`document_templates`.
