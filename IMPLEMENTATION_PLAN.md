@@ -652,6 +652,16 @@ Gesamtrahmen bleiben vorerst aus.
       es. **Tests:** Component (Helfer mit/ohne Popover, Escape, eine Zeile
       offen), E2E (Vorlagenmenüs hell/dunkel bei 320/1280, Eventkarten-Menü).
       Commit `refactor: open the row menus as native popovers`.
+- [x] **UI-BKP-09 — Kontaktliste wie Bookitup:** Ab 1024 px steht links neben
+      der Leiste die Kontextspalte mit Titel „Kontakte“, Plus, gefülltem
+      Suchfeld und CSV-Export; die Liste ist eine Tabelle Name · E-Mail ·
+      Telefonnummer mit abwechselnden Zeilen und einem ⋯-Menü („Bearbeiten“).
+      E-Mail und Nummer stehen selbst als Links da. In der globalen Suche und
+      schmal bleibt die Spalte eine Werkzeugleiste über der Liste.
+      **Tests:** Component (Spalte, Menü, Fokusrückgabe, Links), E2E (Spalte
+      neben der Leiste, Tabelle ohne Überlauf, Suche mit Eventspalte,
+      Hell/Dunkel bei 1280/390).
+      Commit `feat: list contacts in a bookitup table with a context column`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

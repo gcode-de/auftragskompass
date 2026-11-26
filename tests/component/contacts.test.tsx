@@ -11,6 +11,7 @@ import {
   within,
 } from '@testing-library/react';
 import { ContactPanel } from '../../apps/admin/src/ContactPanel.js';
+import { openRowMenu } from '../helpers/row-menu.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -59,6 +60,7 @@ async function openCreate() {
   return screen.findByRole('dialog', { name: 'Kontakt anlegen' });
 }
 async function openEdit(name: string) {
+  await openRowMenu(name);
   const trigger = screen.getByRole('button', {
     name: 'Kontakt bearbeiten: ' + name,
   });
@@ -79,7 +81,12 @@ test('the contact page starts with the search toolbar and the list directly belo
   await screen.findByText('Synthetic Company');
   const search = screen.getByLabelText('Kontakte suchen');
   const list = screen.getByRole('list');
-  expect(search.closest('form')!.parentElement!.nextElementSibling).toBe(list);
+  // UI-BKP-09: search and plus sit in the context column, the list beside it.
+  const column = search.closest('aside')!;
+  expect(column.getAttribute('aria-label')).toBe('Kontaktsuche');
+  expect(list.closest('.contacts-results')?.previousElementSibling).toBe(
+    column,
+  );
   expect(screen.queryByLabelText('Name / Firma')).toBeNull();
   expect(
     screen.queryByRole('button', { name: 'Kontakt speichern' }),
@@ -93,11 +100,18 @@ test('the contact page starts with the search toolbar and the list directly belo
   const nameLink = screen.getByRole('link', { name: 'Synthetic Company' });
   expect(nameLink.getAttribute('href')).toBe('#contact-synthetic');
   const action = screen.getByRole('button', {
-    name: 'Kontakt bearbeiten: Synthetic Company',
+    name: 'Weitere Aktionen: Synthetic Company',
   });
-  expect(action.getAttribute('title')).toBe('Kontakt bearbeiten');
+  expect(action.getAttribute('title')).toBe('Weitere Aktionen');
   expect(action.textContent).toBe('');
   expect(action.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  // Like Bookitup the edit sits behind the row's ⋯ menu.
+  fireEvent.click(action);
+  expect(
+    screen.getByRole('button', {
+      name: 'Kontakt bearbeiten: Synthetic Company',
+    }).textContent,
+  ).toBe('Bearbeiten');
   expect(screen.queryByRole('button', { name: /Events anzeigen/ })).toBeNull();
   expect(screen.getByRole('region', { name: 'Kontakte' })).toBeTruthy();
 });
@@ -274,7 +288,7 @@ test('edits a contact with its version and never reuses stale values when switch
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: 'Kontakt bearbeiten: Fictional Person',
+        name: 'Weitere Aktionen: Fictional Person',
       }),
     ).toBe(document.activeElement),
   );
@@ -811,7 +825,15 @@ test('a contact deep link opens the matching record and keeps its editor reachab
   expect(
     within(details).getByRole('heading', { name: 'Synthetic Company' }),
   ).toBeTruthy();
-  const dialog = await openEdit('Synthetic Company');
+  // The open record hides its row and offers its own edit action.
+  fireEvent.click(
+    within(details).getByRole('button', {
+      name: 'Kontakt bearbeiten: Synthetic Company',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Kontakt bearbeiten',
+  });
   expect(
     (screen.getByLabelText('Name / Firma') as HTMLInputElement).value,
   ).toBe('Synthetic Company');
@@ -869,15 +891,14 @@ test('contacts suggest duplicates and archive through the edit dialog with direc
   const dialog = await openEdit('Synthetic Company');
   // BKP011.1: `@` stays literal (RFC 6068) and the number reaches the dialler
   // without the formatting characters of the stored value.
+  // UI-BKP-09: the table shows the address and the number themselves.
   expect(
     screen
-      .getByRole('link', { name: 'E-Mail: Synthetic Company' })
+      .getByRole('link', { name: 'synthetic@example.invalid' })
       .getAttribute('href'),
   ).toBe('mailto:synthetic@example.invalid');
   expect(
-    screen
-      .getByRole('link', { name: 'Anrufen: Synthetic Company' })
-      .getAttribute('href'),
+    screen.getByRole('link', { name: '030 000000' }).getAttribute('href'),
   ).toBe('tel:030000000');
   fireEvent.click(screen.getByRole('button', { name: 'Dubletten prüfen' }));
   await screen.findByText('Mögliche Dubletten: Synthetic Company');
@@ -888,4 +909,22 @@ test('contacts suggest duplicates and archive through the edit dialog with direc
   await screen.findByText('Synthetic Company');
   expect(screen.getByText('Archiviert')).toBeTruthy();
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+test('the row menu closes on Escape back to its toggle', async () => {
+  vi.stubGlobal('fetch', listFetcher());
+  render(<ContactPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic Company');
+  const toggle = screen.getByRole('button', {
+    name: 'Weitere Aktionen: Synthetic Company',
+  });
+  fireEvent.click(toggle);
+  const edit = screen.getByRole('button', {
+    name: 'Kontakt bearbeiten: Synthetic Company',
+  });
+  edit.focus();
+  fireEvent.keyDown(edit, { key: 'Enter' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.keyDown(edit, { key: 'Escape' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(toggle);
 });

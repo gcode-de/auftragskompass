@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { ContactDetails, type ContactRecord } from './ContactDetails.js';
 import { ContactDialog } from './ContactDialog.js';
 import { mailtoHref, telHref } from './contact-links.js';
+import {
+  menuPanelProps,
+  menuToggleProps,
+  rowMenuState,
+} from './popover-menu.js';
 type Contact = ContactRecord & { version: number };
 const loadFailureMessage = 'Kontakte konnten nicht geladen werden.';
 const reloadFailureMessage =
@@ -32,7 +37,8 @@ export function ContactPanel({
     [reloadFailed, setReloadFailed] = useState(false),
     [editorEpoch, setEditorEpoch] = useState(0),
     [detailId, setDetailId] = useState<string | null>(null),
-    [editedSearchRecord, setEditedSearchRecord] = useState(false);
+    [editedSearchRecord, setEditedSearchRecord] = useState(false),
+    [openMenu, setOpenMenu] = useState('');
   async function refresh(query = '') {
     const current = ++sequence.current;
     setLoading(true);
@@ -235,180 +241,244 @@ export function ContactPanel({
   return (
     <section id="contacts" aria-label="Kontakte" aria-busy={loading}>
       {showHeading && <h2>Kontakte</h2>}
-      <div className="contact-toolbar">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (inlineDirty.current) {
-              setMessage(
-                'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
-              );
-              return;
-            }
-            void refresh(search).catch(() => setMessage(loadFailureMessage));
-          }}
-        >
-          <label>
-            Kontakte suchen
-            <input
-              value={search}
-              maxLength={200}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <button
-            className="icon-action tier-quiet-icon"
-            aria-label="Kontakte durchsuchen"
-            title="Kontakte durchsuchen"
-            disabled={busy}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              aria-hidden="true"
+      {/* UI-BKP-09: Bookitup's contacts frame - a context column with the
+          title, the plus and the search; the list fills the canvas. */}
+      {/* In the global search the contacts follow the events as a plain
+          block; only the Kontakte page itself gets the column. */}
+      <div
+        className="contacts-layout"
+        data-column={showHeading ? undefined : ''}
+      >
+        <aside className="contacts-context" aria-label="Kontaktsuche">
+          <div className="section-heading">
+            {/* The column names the page visually; the h1 stays the one
+                heading for assistive technology. */}
+            <span className="context-title" aria-hidden="true">
+              Kontakte
+            </span>
+            <button
+              ref={createTrigger}
+              type="button"
+              className="icon-action tier-primary-icon"
+              aria-label="Kontakt anlegen"
+              title="Kontakt anlegen"
+              disabled={busy}
+              onClick={openNew}
             >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m16 16 5 5" />
-            </svg>
-          </button>
-        </form>
-        <div className="section-actions">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (inlineDirty.current) {
+                setMessage(
+                  'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+                );
+                return;
+              }
+              void refresh(search).catch(() => setMessage(loadFailureMessage));
+            }}
+          >
+            <label>
+              Kontakte suchen
+              <input
+                value={search}
+                maxLength={200}
+                placeholder="Kontakt durchsuchen"
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <button
+              className="icon-action tier-quiet-icon"
+              aria-label="Kontakte durchsuchen"
+              title="Kontakte durchsuchen"
+              disabled={busy}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m16 16 5 5" />
+              </svg>
+            </button>
+          </form>
           <a
-            className="secondary-action"
+            className="secondary-action contacts-export"
             href="/api/v1/contacts/export.csv"
             download
           >
             Kontakte als CSV exportieren
           </a>
-          <button
-            ref={createTrigger}
-            type="button"
-            className="icon-action tier-primary-icon"
-            aria-label="Kontakt anlegen"
-            title="Kontakt anlegen"
-            disabled={busy}
-            onClick={openNew}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
+        </aside>
+        <div className="contacts-results">
+          {loading && <p role="status">Kontakte werden geladen …</p>}
+          {!loading && !loadFailed && !rows.length && (
+            <p>Keine Kontakte gefunden.</p>
+          )}
+          {rows.length > 0 && (
+            <div className="contact-list-head" aria-hidden="true">
+              <span>Name</span>
+              <span>E-Mail</span>
+              <span>Telefonnummer</span>
+            </div>
+          )}
+          <ul className="contact-list">
+            {rows.map((row) => {
+              const shown = detailId === row.id;
+              return (
+                <li key={row.id} id={'contact-' + row.id}>
+                  {/* The summary steps aside while the record is open; the row
+              itself stays mounted so search, scroll and focus survive. */}
+                  <div className="contact-row" hidden={shown}>
+                    <a
+                      className="contact-name-link"
+                      href={'#contact-' + row.id}
+                      onClick={(event) => {
+                        if (
+                          detailId &&
+                          detailId !== row.id &&
+                          inlineDirty.current
+                        ) {
+                          event.preventDefault();
+                          setMessage(
+                            'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+                          );
+                        }
+                      }}
+                    >
+                      {row.name}
+                    </a>{' '}
+                    <span className="contact-cell-meta">
+                      {row.state === 'archived' && (
+                        <span className="contact-archived">Archiviert</span>
+                      )}{' '}
+                      {row.contactPerson && <span>{row.contactPerson}</span>}
+                    </span>
+                    <span className="contact-cell-mail">
+                      {row.email && (
+                        <a href={mailtoHref(row.email)}>{row.email}</a>
+                      )}
+                    </span>
+                    <span className="contact-cell-phone">
+                      {(row.phone || row.mobile) && (
+                        <a href={telHref(row.phone || row.mobile)}>
+                          {row.phone || row.mobile}
+                        </a>
+                      )}
+                    </span>
+                    <span className="contact-cell-menu">
+                      <button
+                        type="button"
+                        className="icon-action tier-quiet-icon row-menu-toggle"
+                        disabled={busy}
+                        title="Weitere Aktionen"
+                        aria-label={`Weitere Aktionen: ${row.name}`}
+                        aria-haspopup="true"
+                        {...menuToggleProps(
+                          'contact-menu-' + row.id,
+                          openMenu === row.id,
+                          (open) => setOpenMenu(rowMenuState(row.id, open, '')),
+                        )}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          width="18"
+                          height="18"
+                          fill="currentColor"
+                        >
+                          <circle cx="5" cy="12" r="1.7" />
+                          <circle cx="12" cy="12" r="1.7" />
+                          <circle cx="19" cy="12" r="1.7" />
+                        </svg>
+                      </button>
+                      <span
+                        className="popover-menu"
+                        role="group"
+                        aria-label={`Aktionen für ${row.name}`}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Escape') return;
+                          event.preventDefault();
+                          setOpenMenu('');
+                          event.currentTarget.parentElement
+                            ?.querySelector<HTMLElement>('.row-menu-toggle')
+                            ?.focus();
+                        }}
+                        {...menuPanelProps(
+                          'contact-menu-' + row.id,
+                          openMenu === row.id,
+                          (open) => setOpenMenu(rowMenuState(row.id, open, '')),
+                        )}
+                      >
+                        <button
+                          type="button"
+                          disabled={busy}
+                          aria-label={`Kontakt bearbeiten: ${row.name}`}
+                          onClick={(event) => {
+                            // The toggle, not the closing menu, gets the focus back.
+                            event.currentTarget.parentElement?.parentElement
+                              ?.querySelector<HTMLElement>('.row-menu-toggle')
+                              ?.focus();
+                            setOpenMenu('');
+                            openEdit(row);
+                          }}
+                        >
+                          Bearbeiten
+                        </button>
+                      </span>
+                    </span>
+                  </div>
+                  {shown && (
+                    <>
+                      {editedSearchRecord && (
+                        <p role="status">
+                          Der geänderte Kontakt bleibt bis zum Schließen
+                          geöffnet. Die Trefferliste wird nach dem Schließen
+                          aktualisiert.
+                        </p>
+                      )}
+                      <ContactDetails
+                        contact={row}
+                        csrfToken={csrfToken}
+                        onConfirmed={(confirmed) => {
+                          adoptContact(confirmed);
+                          if (appliedSearch.current) {
+                            editedSearchId.current = confirmed.id;
+                            setEditedSearchRecord(true);
+                          }
+                        }}
+                        editorEpoch={editorEpoch}
+                        inlineVisible={!open}
+                        onDirtyChange={(dirty) => {
+                          inlineDirty.current = dirty;
+                        }}
+                        onEdit={() => openEdit(row)}
+                        onClose={() => closeDetail(row.id)}
+                      />
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </div>
-      {loading && <p role="status">Kontakte werden geladen …</p>}
-      {!loading && !loadFailed && !rows.length && (
-        <p>Keine Kontakte gefunden.</p>
-      )}
-      <ul className="contact-list">
-        {rows.map((row) => {
-          const shown = detailId === row.id;
-          return (
-            <li key={row.id} id={'contact-' + row.id}>
-              {/* The summary steps aside while the record is open; the row
-              itself stays mounted so search, scroll and focus survive. */}
-              <div className="contact-row" hidden={shown}>
-                <a
-                  className="contact-name-link"
-                  href={'#contact-' + row.id}
-                  onClick={(event) => {
-                    if (
-                      detailId &&
-                      detailId !== row.id &&
-                      inlineDirty.current
-                    ) {
-                      event.preventDefault();
-                      setMessage(
-                        'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
-                      );
-                    }
-                  }}
-                >
-                  {row.name}
-                </a>{' '}
-                {row.state === 'archived' && (
-                  <span className="contact-archived">Archiviert</span>
-                )}{' '}
-                {row.contactPerson && <span>{row.contactPerson} </span>}
-                {row.email && (
-                  <a
-                    aria-label={`E-Mail: ${row.name}`}
-                    href={mailtoHref(row.email)}
-                  >
-                    E-Mail
-                  </a>
-                )}{' '}
-                {(row.phone || row.mobile) && (
-                  <a
-                    aria-label={`Anrufen: ${row.name}`}
-                    href={telHref(row.phone || row.mobile)}
-                  >
-                    Anrufen
-                  </a>
-                )}{' '}
-                <button
-                  type="button"
-                  className="icon-action tier-quiet-icon"
-                  disabled={busy}
-                  title="Kontakt bearbeiten"
-                  aria-label={`Kontakt bearbeiten: ${row.name}`}
-                  onClick={() => openEdit(row)}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </button>
-              </div>
-              {shown && (
-                <>
-                  {editedSearchRecord && (
-                    <p role="status">
-                      Der geänderte Kontakt bleibt bis zum Schließen geöffnet.
-                      Die Trefferliste wird nach dem Schließen aktualisiert.
-                    </p>
-                  )}
-                  <ContactDetails
-                    contact={row}
-                    csrfToken={csrfToken}
-                    onConfirmed={(confirmed) => {
-                      adoptContact(confirmed);
-                      if (appliedSearch.current) {
-                        editedSearchId.current = confirmed.id;
-                        setEditedSearchRecord(true);
-                      }
-                    }}
-                    editorEpoch={editorEpoch}
-                    inlineVisible={!open}
-                    onDirtyChange={(dirty) => {
-                      inlineDirty.current = dirty;
-                    }}
-                    onEdit={() => openEdit(row)}
-                    onClose={() => closeDetail(row.id)}
-                  />
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ul>
       <p role="status">{message}</p>
       {reloadFailed && (
         <div className="reload-warning">
