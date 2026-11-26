@@ -5094,7 +5094,9 @@ test.each([500, 200])(
       await screen.findByText(/Dateiliste konnte nicht neu geladen werden/),
     ).toBeTruthy();
     await screen.findByRole('heading', { name: 'Angebot bearbeiten' });
-    const close = screen.getByRole('button', { name: 'Dateien – Bearbeitung schließen' });
+    const close = screen.getByRole('button', {
+      name: 'Dateien – Bearbeitung schließen',
+    });
     expect(document.activeElement).toBe(close);
     fireEvent.click(close);
     expect(document.activeElement).toBe(

@@ -2098,7 +2098,8 @@ async function offerDraftScenario(browser: Browser) {
     const closeEditor = invoiceEditor.getByRole('button', {
       name: 'Bearbeitung schließen',
     });
-    await expect(closeEditor).toHaveText('Schließen');
+    // UI-BKP-06: the way back is the breadcrumb "Dateien /" before the title.
+    await expect(closeEditor).toContainText('Dateien');
     const header = invoiceEditor.locator('.offer-draft-editor-heading');
     const title = invoiceEditor.getByRole('heading', {
       name: 'Rechnung bearbeiten',
@@ -2112,7 +2113,7 @@ async function offerDraftScenario(browser: Browser) {
         await page.setViewportSize({ width, height: 850 });
         const titleBox = (await title.boundingBox())!;
         const closeBox = (await closeEditor.boundingBox())!;
-        expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(closeBox.x);
+        expect(closeBox.x + closeBox.width).toBeLessThanOrEqual(titleBox.x);
         expect(titleBox.y).toBeLessThan(closeBox.y + closeBox.height);
         expect(closeBox.y).toBeLessThan(titleBox.y + titleBox.height);
         expect(closeBox.width).toBeGreaterThanOrEqual(44);
