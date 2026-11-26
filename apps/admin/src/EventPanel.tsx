@@ -1941,7 +1941,17 @@ export function EventPanel({
                                 )
                               }
                             >
-                              <span aria-hidden="true">⋯</span>
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="currentColor"
+                              >
+                                <circle cx="5" cy="12" r="1.7" />
+                                <circle cx="12" cy="12" r="1.7" />
+                                <circle cx="19" cy="12" r="1.7" />
+                              </svg>
                             </button>
                             {/* A plain toggle instead of a native disclosure:
                                 500 cards with <details> broke the load budget.

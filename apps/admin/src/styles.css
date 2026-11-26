@@ -2367,11 +2367,6 @@ summary {
 .row-menu-toggle:hover:not(:disabled) {
   background: var(--hover-surface);
 }
-.row-menu-toggle > span {
-  font-size: 1.4rem;
-  font-weight: 700;
-  line-height: 1;
-}
 .row-menu:not([data-open]) > .row-menu-panel {
   display: none;
 }
@@ -2933,17 +2928,56 @@ summary {
   gap: 1.25rem;
   margin-top: 1.25rem;
 }
+.document-cards > .document-card {
+  margin-top: 0;
+}
+/* UI-BKP-05: Bookitup's file cards - white, a thin rule, radius 10, the
+   title in 18/700; the explanations stay as quiet small print. */
 .document-card {
+  margin-top: 1.25rem;
   border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border-radius: var(--radius-card);
   padding: 0.25rem 1rem 1rem;
+  background: var(--surface);
 }
 .document-card > h4 {
   margin-block: 1rem 0.5rem;
+
+  font-size: 1.125rem;
+  font-weight: 700;
 }
 .document-card-hint {
   max-width: 70ch;
   color: var(--muted);
+  font-size: 0.8125rem;
+}
+/* The state as a small badge beside the number, tinted like the deadline
+   badges of the overview. */
+.document-row .document-state {
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-field);
+  background: var(--status-surface);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.document-row .document-state[data-state='final'] {
+  background: var(--status-booked-surface);
+  color: var(--status-booked-ink);
+}
+/* A document's actions read as one quiet row of text actions instead of a
+   wall of framed buttons; each keeps its 44px target. */
+.document-list .document-actions {
+  gap: 0 0.25rem;
+}
+.document-list .document-actions > .secondary-action {
+  padding-inline: 0.6rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent);
+}
+.document-list .document-actions > .secondary-action:hover:not(:disabled) {
+  background: var(--hover-surface);
 }
 .document-list {
   list-style: none;

@@ -565,4 +565,7 @@ es nicht abschneidet; Licht-Ausblenden und Escape liefert der Browser. Eventakte
 `order` unter dem Arbeitsbereich. Kartenraster ab 90rem: Felder links über
 zwei Zeilen, Allgemein und `.event-detail-stack` (Notizen, Logbuch) in der
 Mitte, `.event-detail-aside` rechts; Mitte weiß mit 1-px-Linie, rechts ohne
-Linie mit `--shadow-aside`; Kartentitel 18/700.
+Linie mit `--shadow-aside`; Kartentitel 18/700. „Dateien“ der Akte: `.document-card` weiß
+mit Linie, `.document-state[data-state]` als Etikett (final grün getönt),
+Aktionen in `.document-list .document-actions` als ruhige Textknöpfe.
+⋯-Knöpfe nutzen das gezeichnete Drei-Punkte-SVG, nie ein Textzeichen.

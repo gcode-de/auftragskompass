@@ -1522,9 +1522,12 @@ test('a finalized offer shows its status, deadline and next steps', async () => 
   ) as HTMLElement;
   // The event file asks for the offer projection explicitly.
   expect(calls[0]!.url).toContain('include=offer');
+  // UI-BKP-05: the state is a badge that carries its code for the tint.
   expect(
-    within(row).getByText('Finalisiert', { selector: '.document-row span' }),
-  ).toBeTruthy();
+    within(row)
+      .getByText('Finalisiert', { selector: '.document-row span' })
+      .getAttribute('data-state'),
+  ).toBe('final');
   expect(within(row).getByText(/Gültig bis/)).toBeTruthy();
   expect(within(row).getByText('09.11.2030')).toBeTruthy();
   expect(within(row).queryByText('Abgelaufen')).toBeNull();
