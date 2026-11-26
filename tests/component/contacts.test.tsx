@@ -682,10 +682,14 @@ test('returns focus to the plus action when the edited row disappears after savi
   submitSave(dialog);
   await screen.findByText('Kontakt gespeichert.');
   expect(await screen.findByText('Keine Kontakte gefunden.')).toBeTruthy();
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Kontakt anlegen' })).toBe(
-      document.activeElement,
-    ),
+  // Save, reload and focus return are one async chain; under the coverage
+  // run on a loaded machine it took longer than the 1s default (flaky gate).
+  await waitFor(
+    () =>
+      expect(screen.getByRole('button', { name: 'Kontakt anlegen' })).toBe(
+        document.activeElement,
+      ),
+    { timeout: 4000 },
   );
 });
 test('deep links without a matching row stay honest and never open a stale editor', async () => {

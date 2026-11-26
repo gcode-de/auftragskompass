@@ -53,12 +53,15 @@ async function openRecord(page: Page) {
           activities: [
             {
               id: '33333333-3333-4333-8333-333333333333',
+              kind: 'created',
               description: 'Event angelegt',
               occurredAt: '2031-01-02T10:00:00.000Z',
               eventVersion: 1,
             },
             {
               id: '44444444-4444-4444-8444-444444444444',
+              kind: 'status_changed',
+              nextStatus: 'booked',
               description: 'Status auf Gebucht geändert',
               occurredAt: '2031-02-03T10:00:00.000Z',
               eventVersion: 3,
@@ -143,6 +146,30 @@ test('the event record reads like Bookitup in both themes', async ({
     await contact.evaluate((el) => getComputedStyle(el).boxShadow),
   ).not.toBe('none');
   await expect(record.getByText('Kontakt und Ort')).toBeHidden();
+  // Logbook markers: creation in the accent, a change to booked in green.
+  const marker = (index: number) =>
+    record
+      .locator('.event-logbook li')
+      .nth(index)
+      .evaluate((el) => getComputedStyle(el, '::before').backgroundColor);
+  expect(await marker(0)).toBe('rgb(78, 191, 70)');
+  expect(await marker(1)).toBe('rgb(29, 81, 145)');
+  // The status choice shows its dot; the current area its 5px marker.
+  expect(
+    await record
+      .getByLabel('Status des Events')
+      .evaluate((el) => getComputedStyle(el).backgroundImage),
+  ).toContain('radial-gradient');
+  expect(
+    await nav
+      .getByRole('button', { name: 'Details', exact: true })
+      .evaluate((el) => getComputedStyle(el, '::before').width),
+  ).toBe('5px');
+  expect(
+    await nav
+      .getByRole('button', { name: 'Details', exact: true })
+      .evaluate((el) => getComputedStyle(el).borderTopColor),
+  ).toBe('rgba(0, 0, 0, 0)');
   // Every contact link is a 44px row.
   for (const link of await contact.getByRole('link').all())
     expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
