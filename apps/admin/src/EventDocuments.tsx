@@ -392,6 +392,25 @@ function kindName(entry: { kind: string; invoiceRole?: 'final' | null }) {
     return 'Schlussrechnung';
   return kindSingular[entry.kind] ?? 'Dokument';
 }
+// A customer reads the subject first, so it names what the document is for:
+// "Angebot für Sommerfest am 12.07.2031 – AN-2031-0001". Missing parts fall
+// away; the operator can still rewrite it in the form.
+export function documentMailSubject(
+  entry: { kind: string; invoiceRole?: 'final' | null; number: string | null },
+  eventName: string | null | undefined,
+  eventDate: string | null | undefined,
+) {
+  const name = eventName?.trim(),
+    date =
+      eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate)
+        ? eventDate.split('-').reverse().join('.')
+        : '',
+    number = entry.number ? ' – ' + entry.number : '';
+  if (!name) return (kindName(entry) + ' ' + (entry.number ?? '')).trim();
+  return (
+    kindName(entry) + ' für ' + name + (date ? ' am ' + date : '') + number
+  );
+}
 // BKP019.b2: a confirmation draft owns its texts and positions exactly like an
 // offer draft, so both open the one editor.
 // BKP019.c1: an invoice draft copied from a confirmation is correctable the same
@@ -460,6 +479,8 @@ export function EventDocuments({
   onEditorProtectedChange,
   onMailScheduled,
   composeRequest = null,
+  eventName = null,
+  eventDate = null,
 }: {
   eventId: string;
   contactId: string | null;
@@ -477,6 +498,9 @@ export function EventDocuments({
   // UI-PARITY-02: the event's E-Mails area asks for a new free mail; the
   // trigger gets the focus back when the dialog closes.
   composeRequest?: { id: number; trigger: HTMLElement } | null;
+  // The event names the default subject of a document mail.
+  eventName?: string | null;
+  eventDate?: string | null;
 }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]),
     [templates, setTemplates] = useState<TemplateRow[]>([]),
@@ -2481,7 +2505,7 @@ export function EventDocuments({
     );
   }
   function defaultMailSubject(entry: DocumentRow) {
-    return 'Dokument ' + (entry.number ?? '');
+    return documentMailSubject(entry, eventName, eventDate);
   }
   // The pickers of both mail dialogs: available library files and active
   // templates, read again whenever a dialog opens.

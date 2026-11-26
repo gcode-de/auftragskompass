@@ -1313,6 +1313,8 @@ export function EventDetails({
                 onEditorProtectedChange={documentEditorProtectionChanged}
                 onMailScheduled={() => setMailRevision((value) => value + 1)}
                 composeRequest={composeRequest}
+                eventName={data.event.name}
+                eventDate={data.event.eventDate}
               />
               <div hidden={editingDocument}>
                 <EventLibraryFiles

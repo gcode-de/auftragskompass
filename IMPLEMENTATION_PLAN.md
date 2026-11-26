@@ -560,6 +560,13 @@ Gesamtrahmen bleiben vorerst aus.
       (Platz im Lesebereich, nicht modal, Escape, Fokus), E2E (eingebettet neben
       der Liste, axe, Escape).
       Commit `feat: compose event mails inline like bookitup`.
+- [x] **MAIL-SUBJ-01 — Sprechende Betreffzeilen für Dokumentmails:** Statt
+      „Dokument AN-…“ schlägt der Versanddialog „Angebot für <Event> am <Datum> –
+      <Nummer>“ vor (Art inkl. Schlussrechnung, Eventname und -datum aus der Akte;
+      fehlende Teile entfallen). Der Betreff bleibt im Formular frei änderbar,
+      eigene Formulierungen wie „Fotobox-Angebot …“ gehen über die Mailvorlagen.
+      **Tests:** Component (alle Fallbacks, Dialog ohne Event).
+      Commit `feat: suggest friendlier subjects for document mails`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
