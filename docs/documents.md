@@ -892,3 +892,15 @@ Bruttopreis der Bruttobetrag. Die Umsatzsteuer kommt nur einmal im
 Summenblock dazu, der mit „Brutto“ endet. Bisher stand rechts immer der
 Bruttobetrag, auch neben einem Nettopreis. Fertige Belege behalten ihr
 gespeichertes PDF.
+
+## Brutto/Netto je Dokument (UI-BKP-11, 26.11.2026)
+
+Der Editor hat einen Brutto/Netto-Schalter für das ganze Dokument. Umschalten
+rechnet jeden Einzelpreis und einen Euro-Rabatt einer Position exakt in
+ganzen Cent um (Netto = Brutto · 10000 / (10000 + Steuer in Basispunkten),
+kaufmännisch gerundet; umgekehrt entsprechend), sodass die Summen bis auf
+Cent-Rundung gleich bleiben – ein Bruttopreis wird nie stillschweigend als
+Netto umgedeutet. Neue Positionen und eingefügte Katalogprodukte übernehmen
+die Dokumentbasis (ein Katalogpreis wird dabei umgerechnet). Gespeichert wird
+die Basis weiterhin je Position; ältere gemischte Entwürfe bleiben gültig und
+zeigen einen Hinweis. Dokumentvorlagen behalten ihre Basis je Position.

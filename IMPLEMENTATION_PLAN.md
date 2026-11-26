@@ -560,6 +560,20 @@ Gesamtrahmen bleiben vorerst aus.
       (Platz im Lesebereich, nicht modal, Escape, Fokus), E2E (eingebettet neben
       der Liste, axe, Escape).
       Commit `feat: compose event mails inline like bookitup`.
+- [x] **UI-BKP-11 — Brutto/Netto je Dokument:** Wie bei Bookitup gibt es im
+      Dokumenteditor einen Brutto/Netto-Schalter für das ganze Dokument (im
+      Balken „Positionen“) statt eines Schalters je Position. Umschalten rechnet
+      jeden Einzelpreis und einen Euro-Rabatt exakt in Cent um (kaufmännisch
+      gerundet), damit die Summen gleich bleiben; ein Hinweis nennt die
+      mögliche Cent-Rundung. Neue freie Positionen folgen der Dokumentbasis,
+      Katalogprodukte werden beim Einfügen in sie umgerechnet; ein nicht
+      umrechenbarer Katalogpreis wird mit Hinweis abgelehnt. Ältere Entwürfe mit
+      gemischten Positionen zeigen einen Hinweis, bis eine Basis gewählt wird.
+      Datenmodell und PDF bleiben je Position. **Tests:** Unit (Umrechnung,
+      Rundung, Überlauf), Component (Schalter, Umrechnung inkl. Euro-Rabatt,
+      neue Position, Katalog, gemischter Entwurf, gespeicherte Netto-Basis),
+      E2E (Angebotsablauf).
+      Commit `feat: switch gross and net once per document`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit
