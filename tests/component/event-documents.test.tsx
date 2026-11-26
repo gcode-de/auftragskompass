@@ -7561,3 +7561,40 @@ test('a requested free mail opens inline in the reading pane slot', async () => 
   slot.remove();
   trigger.remove();
 });
+
+// UI-BKP-10: a document linked from the overview opens once it has loaded -
+// an editable draft in its editor, a finished document at its marked row.
+test('a linked draft opens in its editor and a linked final document is focused', async () => {
+  setup({ documents: [draft, finalized] });
+  const view = render(<EventDocuments {...props} openDocumentId={draft.id} />);
+  expect(
+    await screen.findByRole('region', { name: 'Angebot bearbeiten' }),
+  ).toBeTruthy();
+  view.unmount();
+  setup({ documents: [draft, finalized] });
+  render(<EventDocuments {...props} openDocumentId={finalized.id} />);
+  await waitFor(() =>
+    expect(document.activeElement?.id).toBe('document-row-' + finalized.id),
+  );
+  expect(
+    document.getElementById('document-row-' + finalized.id)!.dataset.opened,
+  ).toBe('true');
+  expect(
+    screen.queryByRole('region', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+});
+
+test('an unknown linked document changes nothing', async () => {
+  setup({ documents: [draft] });
+  render(
+    <EventDocuments
+      {...props}
+      openDocumentId="99999999-9999-4999-8999-999999999999"
+    />,
+  );
+  await screen.findByText(/Angelegt am/);
+  expect(
+    screen.queryByRole('region', { name: 'Angebot bearbeiten' }),
+  ).toBeNull();
+  expect(document.activeElement).toBe(document.body);
+});

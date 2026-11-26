@@ -1137,3 +1137,30 @@ test('no open claim says so and a broken receivables answer hides the line', asy
   await screen.findByText('Angebot · Entwurf');
   expect(screen.queryByText(/Offene Posten|Keine offenen Posten/)).toBeNull();
 });
+
+// UI-BKP-10: like Bookitup a document opens from the overview in its event.
+test('a document name links into its event with the document named', async () => {
+  window.history.replaceState(null, '', '/?df_kind=offer&status=option&doc=x');
+  vi.stubGlobal('fetch', pageFetcher({ '*': [draft, orphan] }));
+  render(<FilesPanel />);
+  const link = await screen.findByRole('link', { name: 'Angebot · Entwurf' });
+  const target = new URL(link.getAttribute('href')!, 'https://example.invalid');
+  expect(target.hash).toBe('#event-33333333-3333-4333-8333-333333333333');
+  expect(target.searchParams.get('doc')).toBe(draft.id);
+  // Event filters are dropped, the document filters stay.
+  expect(target.searchParams.get('status')).toBeNull();
+  expect(target.searchParams.get('df_kind')).toBe('offer');
+  // The plain event link never carries a stale document along.
+  const pill = screen.getByRole('link', { name: 'Fictional Wedding' });
+  expect(
+    new URL(
+      pill.getAttribute('href')!,
+      'https://example.invalid',
+    ).searchParams.get('doc'),
+  ).toBeNull();
+  // A document without an event names itself as text only.
+  const rowsWithoutLink = screen
+    .getAllByRole('rowheader')
+    .filter((cell) => !cell.querySelector('a'));
+  expect(rowsWithoutLink).toHaveLength(1);
+});
