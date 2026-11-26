@@ -82,6 +82,24 @@ test('the event list reads like Bookitup in both themes', async ({ page }) => {
   // Cancelled and unavailable events stay out until chosen.
   await expect(list.getByText('Fiktiv abgesagt')).toHaveCount(0);
   await expect(list.getByText('Fiktiv belegt')).toHaveCount(0);
+  // UI-BKP-08: a 60px rail, then the full-height context column with the
+  // page title and the plus; the top bar keeps the h1 only for screen readers.
+  const rail = (await page.locator('.desktop-sidebar').boundingBox())!;
+  expect(rail.width).toBe(60);
+  const column = page.getByRole('complementary', { name: 'Eventfilter' });
+  const columnBox = (await column.boundingBox())!;
+  expect(columnBox.x).toBe(rail.width);
+  expect(columnBox.y).toBe(0);
+  expect(columnBox.height).toBe(1000);
+  await expect(column.locator('.context-title')).toHaveText('Events');
+  await expect(
+    column.getByRole('button', { name: 'Event anlegen' }),
+  ).toBeVisible();
+  expect(
+    await page
+      .getByRole('heading', { level: 1 })
+      .evaluate((el) => el.getBoundingClientRect().width),
+  ).toBeLessThanOrEqual(1);
   const card = list.locator('.event-card').first();
   await expect(card).toHaveCSS('border-radius', '10px');
   expect(await card.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe(

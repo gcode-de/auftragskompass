@@ -99,6 +99,16 @@ test('the document overview reads like Bookitup in both themes', async ({
     exact: true,
   });
   await expect(documents.getByText('Angebot AN-2031-0001')).toBeVisible();
+  // UI-BKP-08: the filters stand as the full-height column beside the rail;
+  // the page title stays visible in the top bar.
+  const column = (await documents
+    .getByRole('complementary', { name: 'Dokumentfilter' })
+    .boundingBox())!;
+  expect(column.x).toBe(60);
+  expect(column.y).toBe(0);
+  await expect(
+    page.getByRole('heading', { level: 1, name: /Dokumente/ }),
+  ).toBeVisible();
   const kinds = documents.getByRole('group', { name: 'Dokumentart' });
   await expect(
     kinds.getByRole('button', { name: 'Alle Arten' }),

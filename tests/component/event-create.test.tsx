@@ -363,6 +363,35 @@ test('Escape and close write nothing, keep the focus trap and return focus', asy
   expect(posts).toHaveLength(0);
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
+// UI-BKP-08: on wide screens the plus sits in the context column, on narrow
+// ones above the list. A resize while the dialog is open replaces the button,
+// so closing returns focus to the current one instead of a detached node.
+test('closing after a resize returns focus to the plus where it now stands', async () => {
+  let wide = true;
+  const listeners = new Set<() => void>();
+  vi.stubGlobal('matchMedia', () => ({
+    get matches() {
+      return wide;
+    },
+    addEventListener: (_: string, listener: () => void) =>
+      listeners.add(listener),
+    removeEventListener: (_: string, listener: () => void) =>
+      listeners.delete(listener),
+  }));
+  setup();
+  await ready();
+  const before = screen.getByRole('button', { name: 'Event anlegen' });
+  expect(before.closest('aside')).toBeTruthy();
+  fireEvent.click(before);
+  await screen.findByRole('dialog');
+  wide = false;
+  act(() => listeners.forEach((listener) => listener()));
+  fireEvent.click(screen.getByRole('button', { name: 'Dialog schließen' }));
+  const after = screen.getByRole('button', { name: 'Event anlegen' });
+  expect(after).not.toBe(before);
+  expect(after.closest('aside')).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(after));
+});
 test('editing typed text over a placeholder never clears the stored value', async () => {
   const { posts } = setup();
   await ready();
