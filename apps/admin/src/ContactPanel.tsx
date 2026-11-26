@@ -239,7 +239,14 @@ export function ContactPanel({
     } else focusList();
   }
   return (
-    <section id="contacts" aria-label="Kontakte" aria-busy={loading}>
+    <section
+      id="contacts"
+      aria-label="Kontakte"
+      aria-busy={loading}
+      // Plain attributes instead of :has() rules: a 500-row list must not
+      // pay for selector invalidation on every change (PERF-MENU-01).
+      data-record={detailId ? '' : undefined}
+    >
       {showHeading && <h2>Kontakte</h2>}
       {/* UI-BKP-09: Bookitup's contacts frame - a context column with the
           title, the plus and the search; the list fills the canvas. */}
@@ -342,10 +349,22 @@ export function ContactPanel({
             {rows.map((row) => {
               const shown = detailId === row.id;
               return (
-                <li key={row.id} id={'contact-' + row.id}>
+                <li
+                  key={row.id}
+                  id={'contact-' + row.id}
+                  data-other={detailId && !shown ? '' : undefined}
+                >
                   {/* The summary steps aside while the record is open; the row
               itself stays mounted so search, scroll and focus survive. */}
-                  <div className="contact-row" hidden={shown}>
+                  <div
+                    className="contact-row"
+                    hidden={shown}
+                    data-meta={
+                      row.state === 'archived' || row.contactPerson
+                        ? ''
+                        : undefined
+                    }
+                  >
                     <a
                       className="contact-name-link"
                       href={'#contact-' + row.id}

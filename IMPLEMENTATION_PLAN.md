@@ -676,7 +676,9 @@ Gesamtrahmen bleiben vorerst aus.
       500 Eventkarten/Kontakte lokal ~120 ms über dem Ausgangswert und rissen
       in CI zweimal das 2-s-Budget. Ein Ankername je Menü-Hülle per
       `anchor-scope` statt Inline-Stilen je Zeile, und nur das offene Menü
-      rendert seine Einträge. Lokal wieder auf Ausgangsniveau (Events
+      rendert seine Einträge; die Kontakttabelle blendet Zeilen über
+      React-Attribute statt `:has()`-Regeln aus. Lokal wieder auf
+      Ausgangsniveau (Events
       0,76/0,89 s, Kontakte 0,63/0,61 s bei 390/1280). **Tests:** Component
       (keine Inline-Stile), E2E-Lastmessung.
       Commit `perf: keep row menus light in long lists`.

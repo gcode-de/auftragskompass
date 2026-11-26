@@ -1343,7 +1343,7 @@ time {
   color: var(--muted);
   font-size: 0.875rem;
 }
-.contact-cell-meta:not(:has(span)) {
+.contact-row:not([data-meta]) > .contact-cell-meta {
   display: none;
 }
 .contact-cell-mail {
@@ -1388,7 +1388,7 @@ time {
     display: grid;
     grid-template-areas: none;
   }
-  .contact-row:not(:has(.contact-cell-meta > span)) {
+  .contact-row:not([data-meta]) {
     grid-template-areas: 'name mail phone menu';
   }
 }
@@ -1683,16 +1683,16 @@ time {
 /* UI-BKP-10: Bookitup's contact record - a breadcrumb back to the list,
    then white cards on the canvas: the contact with its pen, the direct
    editing and the events with their two tabs. The other rows step aside. */
-.contacts-results:has(.contact-record) {
+#contacts[data-record] .contacts-results {
   border: 0;
   background: transparent;
   overflow: visible;
 }
-.contacts-results:has(.contact-record) > .contact-list-head,
-.contact-list:has(.contact-record) > li:not(:has(.contact-record)) {
+#contacts[data-record] .contact-list-head,
+.contact-list > li[data-other] {
   display: none;
 }
-.contact-list > li:has(.contact-record) {
+#contacts[data-record] .contact-list > li {
   background: transparent;
 }
 .contact-record {
@@ -1702,7 +1702,7 @@ time {
   border: 0;
 }
 /* Cards on the canvas, never cards inside the page frame. */
-.workspace-page > section#contacts:has(.contact-record) {
+.workspace-page > section#contacts[data-record] {
   background: transparent;
   border: 0;
   padding: 0;
