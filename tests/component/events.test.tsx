@@ -13,6 +13,7 @@ import {
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { Navigation } from '../../apps/admin/src/Navigation.js';
 import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
+import { openRowMenu } from '../helpers/row-menu.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -104,12 +105,14 @@ test('events create without date, retain formatted notes and edit/cancel with ve
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
   );
   await findRow(/Synthetic new event/);
+  await openRowMenu('Synthetic new event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic new event',
     }),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
+  await openRowMenu('Synthetic new event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic new event',
@@ -204,6 +207,7 @@ test('duplicating an event creates a new inquiry and does not update its source'
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event duplizieren: Synthetic event',
@@ -241,6 +245,7 @@ test('event copies retain active references and require new choices for archived
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event duplizieren: Synthetic event',
@@ -731,6 +736,7 @@ test('event rows are direct links and their icon actions stay independent', asyn
   const create = screen.getByRole('button', { name: 'Event anlegen' });
   expect(create.getAttribute('title')).toBe('Event anlegen');
   expect(create.textContent).toBe('');
+  await openRowMenu('Synthetic event');
   for (const [name, text] of [
     ['Event bearbeiten: Synthetic event', 'Event bearbeiten'],
     ['Event duplizieren: Synthetic event', 'Event duplizieren'],
@@ -839,6 +845,7 @@ test('moving an event time from summer to winter resolves the new local time wit
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -876,6 +883,7 @@ test('moving an event time from winter to summer resolves the new local time wit
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -979,6 +987,7 @@ test('an unchanged repeated hour preselects the saved offset and keeps its insta
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1120,6 +1129,7 @@ test('duplicating a saved repeated hour keeps the original instant unless change
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event duplizieren: Synthetic event',
@@ -1151,6 +1161,7 @@ test('changing a saved repeated hour back into the repeated range requires a new
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1183,6 +1194,7 @@ test('changing the saved offset of a repeated hour is an explicit, honoured choi
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1267,6 +1279,7 @@ test('the normal editor keeps advanced values in Weitere Angaben and preserves t
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1485,6 +1498,7 @@ test('a stored duplicate between main and further contacts is normalised instead
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1513,6 +1527,7 @@ test('editing a booked event keeps its status unchanged', async () => {
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1547,6 +1562,7 @@ test.each([
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1638,6 +1654,7 @@ test('duplicating an event preserves every advanced value for editing', async ()
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event duplizieren: Synthetic event',
@@ -1700,6 +1717,7 @@ test('clearing a free-form place sends an explicit empty value without resurrect
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1725,6 +1743,7 @@ test('editing the prefilled legacy place promotes it to a free-form value', asyn
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1767,6 +1786,7 @@ test('an untouched free-form place keeps its raw value and resets between drafts
   vi.stubGlobal('fetch', fetcher);
   render(<EventPanel csrfToken="csrf" />);
   showForms();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -1786,6 +1806,7 @@ test('an untouched free-form place keeps its raw value and resets between drafts
   const saved = savedBody(fetcher);
   expect(saved).not.toHaveProperty('venue');
   expect(saved).not.toHaveProperty('venueOverride');
+  await openRowMenu('Synthetic untouched venue');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic untouched venue',
@@ -1939,6 +1960,7 @@ test('a dirty event editor survives an automatic list refresh and never confirms
   render(<EventPanel csrfToken="csrf" />);
   showForms();
   await findRow();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -2017,6 +2039,7 @@ test('a cancelled editor is refreshed automatically on the next return', async (
   render(<EventPanel csrfToken="csrf" />);
   showForms();
   await findRow();
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -2250,6 +2273,7 @@ test('an already-home brand click keeps a dirty event editor unchanged', async (
       <EventPanel csrfToken="csrf" />
     </>,
   );
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -2993,6 +3017,7 @@ function editorContacts({
   };
 }
 async function openEditor(name = 'Synthetic event') {
+  await openRowMenu(`${name}`);
   fireEvent.click(
     await screen.findByRole('button', { name: `Event bearbeiten: ${name}` }),
   );
@@ -3432,6 +3457,7 @@ test('opening another event returns from the contact view to the event form', as
   fireEvent.click(screen.getByRole('button', { name: 'Neuen Kunden anlegen' }));
   expect(screen.getByRole('heading', { name: 'Kontakt anlegen' })).toBeTruthy();
   // The row action is the same deliberate edit the list always allowed.
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Synthetic event',
@@ -4094,35 +4120,39 @@ test('removed events can be restored without silently restoring old bookings', a
   expect(removedRows).toHaveLength(0);
 });
 
-// UI-BKP-02: one row menu at a time; the toggle, Escape and a click outside
-// close it, and choosing an action closes it too.
-test('the row menu opens one at a time and closes on Escape or outside', async () => {
+// UI-BKP-02 / UI-NATIVE-02: the row menu is a native popover; the browser
+// closes it on a press elsewhere (covered in Chromium). Here: the toggle,
+// Escape back to the toggle, and a chosen action close it.
+test('the row menu opens from its toggle and closes on Escape or a choice', async () => {
   vi.stubGlobal('fetch', mocker());
   render(<EventPanel csrfToken="csrf" />);
   const toggle = await screen.findByRole('button', {
     name: 'Weitere Aktionen: Synthetic event',
   });
-  const menu = toggle.closest('.row-menu')!;
+  const panel = toggle.parentElement!.querySelector('.row-menu-panel')!;
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(panel.hasAttribute('hidden')).toBe(true);
   fireEvent.click(toggle);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
-  expect(menu.hasAttribute('data-open')).toBe(true);
-  // A click inside the menu keeps it open.
-  fireEvent.pointerDown(menu);
-  expect(menu.hasAttribute('data-open')).toBe(true);
-  fireEvent.keyDown(document, { key: 'Enter' });
-  expect(menu.hasAttribute('data-open')).toBe(true);
-  fireEvent.keyDown(document, { key: 'Escape' });
-  expect(menu.hasAttribute('data-open')).toBe(false);
+  expect(panel.hasAttribute('hidden')).toBe(false);
+  fireEvent.keyDown(panel, { key: 'Enter' });
+  expect(panel.hasAttribute('hidden')).toBe(false);
+  const duplicate = screen.getByRole('button', {
+    name: 'Event duplizieren: Synthetic event',
+  });
+  duplicate.focus();
+  fireEvent.keyDown(duplicate, { key: 'Escape' });
+  expect(panel.hasAttribute('hidden')).toBe(true);
+  expect(document.activeElement).toBe(toggle);
+  // Escape on a closed menu leaves everything as it is.
+  fireEvent.keyDown(toggle, { key: 'Escape' });
+  expect(document.activeElement).toBe(toggle);
   fireEvent.click(toggle);
-  fireEvent.pointerDown(document.body);
-  expect(menu.hasAttribute('data-open')).toBe(false);
   fireEvent.click(toggle);
-  fireEvent.click(toggle);
-  expect(menu.hasAttribute('data-open')).toBe(false);
-  fireEvent.click(toggle);
+  expect(panel.hasAttribute('hidden')).toBe(true);
+  await openRowMenu('Synthetic event');
   fireEvent.click(
     screen.getByRole('button', { name: 'Event duplizieren: Synthetic event' }),
   );
-  expect(menu.hasAttribute('data-open')).toBe(false);
+  expect(panel.hasAttribute('hidden')).toBe(true);
 });

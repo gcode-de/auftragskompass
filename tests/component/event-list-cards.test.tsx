@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
+import { openRowMenu } from '../helpers/row-menu.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -201,9 +202,15 @@ test('a row has exactly one primary link and no nested button', async () => {
   expect(card.querySelectorAll('a')).toHaveLength(1);
   expect(link.querySelector('button')).toBeNull();
   expect(link.querySelector('input, select, textarea')).toBeNull();
+  await openRowMenu(
+    'Fiktive Hochzeit mit einem sehr langen Titel ohne Kürzung',
+  );
   const edit = screen.getByRole('button', {
     name: 'Event bearbeiten: Fiktive Hochzeit mit einem sehr langen Titel ohne Kürzung',
   });
+  await openRowMenu(
+    'Fiktive Hochzeit mit einem sehr langen Titel ohne Kürzung',
+  );
   const duplicate = screen.getByRole('button', {
     name: 'Event duplizieren: Fiktive Hochzeit mit einem sehr langen Titel ohne Kürzung',
   });

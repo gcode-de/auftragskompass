@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { ResourceAssignments } from '../../apps/admin/src/ResourceAssignments.js';
+import { openRowMenu } from '../helpers/row-menu.js';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -881,6 +882,7 @@ test('editor and event file keep their own time error ids at the same time', asy
   fireEvent.submit(region.querySelector('form')!);
   await within(region).findByText('Bitte auch das Ende angeben.');
 
+  await openRowMenu('Fictional booking');
   fireEvent.click(
     screen.getByRole('button', {
       name: 'Event bearbeiten: Fictional booking',

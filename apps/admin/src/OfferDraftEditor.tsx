@@ -6,6 +6,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
+import { menuPanelProps, menuToggleProps } from './popover-menu.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { exactMinorUnits } from './FilesPanel.js';
 import { formatHundredths, parseHundredths } from './decimal.js';
@@ -629,9 +630,8 @@ function PositionRowActions({
         className="icon-action tier-quiet-icon offer-draft-actions-toggle"
         aria-label={menuLabel}
         title={menuLabel}
-        aria-expanded={open}
         aria-controls={menuId}
-        onClick={() => setOpen((current) => !current)}
+        {...menuToggleProps(menuId, open, setOpen)}
       >
         <svg
           aria-hidden="true"
@@ -646,11 +646,10 @@ function PositionRowActions({
         </svg>
       </button>
       <div
-        id={menuId}
-        className="offer-draft-actions-menu"
+        className="offer-draft-actions-menu popover-menu"
         role="group"
         aria-label={menuLabel}
-        hidden={!open}
+        {...menuPanelProps(menuId, open, setOpen)}
       >
         <button
           type="button"

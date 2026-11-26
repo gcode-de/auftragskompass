@@ -28,6 +28,7 @@ import { ResourceAssignments } from '../../apps/admin/src/ResourceAssignments.js
 import { ResourceBlocks } from '../../apps/admin/src/ResourceBlocks.js';
 import { ResourcePanel } from '../../apps/admin/src/ResourcePanel.js';
 import { WebsiteInbox } from '../../apps/admin/src/WebsiteInbox.js';
+import { openRowMenu } from '../helpers/row-menu.js';
 
 // H036: one visually dominant primary action per section or dialog; every other
 // visible action stays reachable but names a quieter tier. jsdom has no layout
@@ -647,6 +648,7 @@ test('event list, editor and filter block share one primary action', async () =>
     screen.getByRole('button', { name: 'Event anlegen' }).getAttribute('class'),
   ).toContain('tier-primary-icon');
   // UI-BKP-02: edit and duplicate are quiet text actions in the row menu.
+  await openRowMenu('Synthetic event');
   for (const name of [
     'Event bearbeiten: Synthetic event',
     'Event duplizieren: Synthetic event',
@@ -654,7 +656,6 @@ test('event list, editor and filter block share one primary action', async () =>
     expect(tier(within(section).getByRole('button', { name })), name).toBe(
       'tertiary-action',
     );
-
   fireEvent.click(
     screen.getByRole('button', { name: 'Event bearbeiten: Synthetic event' }),
   );

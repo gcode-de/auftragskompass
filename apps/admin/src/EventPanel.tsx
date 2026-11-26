@@ -1,3 +1,8 @@
+import {
+  menuPanelProps,
+  menuToggleProps,
+  rowMenuState,
+} from './popover-menu.js';
 import { EventDetails } from './EventDetails.js';
 import {
   useUrlSearch,
@@ -521,25 +526,9 @@ export function EventPanel({
     },
     [],
   );
-  // UI-BKP-02: one row menu at a time; Escape or a click elsewhere closes it.
+  // UI-BKP-02: one row menu at a time; as native popovers the browser closes
+  // them on Escape or a press elsewhere.
   const [openMenu, setOpenMenu] = useState('');
-  useEffect(() => {
-    if (!openMenu) return;
-    const close = (event: Event) => {
-      if (
-        event instanceof KeyboardEvent
-          ? event.key === 'Escape'
-          : !(event.target as Element | null)?.closest?.('.row-menu')
-      )
-        setOpenMenu('');
-    };
-    document.addEventListener('keydown', close);
-    document.addEventListener('pointerdown', close);
-    return () => {
-      document.removeEventListener('keydown', close);
-      document.removeEventListener('pointerdown', close);
-    };
-  }, [openMenu]);
   // UI-BKP-02: a chosen row-menu action closes its menu again.
   function closeRowMenu(target: HTMLElement) {
     const toggle = target
@@ -1943,7 +1932,12 @@ export function EventPanel({
                         <div className="event-actions">
                           <div
                             className="row-menu"
-                            data-open={openMenu === row.id ? 'true' : undefined}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Escape' || openMenu !== row.id)
+                                return;
+                              event.preventDefault();
+                              closeRowMenu(event.target as HTMLElement).focus();
+                            }}
                           >
                             <button
                               type="button"
@@ -1951,12 +1945,12 @@ export function EventPanel({
                               aria-label={`Weitere Aktionen: ${row.name}`}
                               title="Weitere Aktionen"
                               aria-haspopup="true"
-                              aria-expanded={openMenu === row.id}
-                              onClick={() =>
-                                setOpenMenu((current) =>
-                                  current === row.id ? '' : row.id,
-                                )
-                              }
+                              {...menuToggleProps(
+                                'event-row-menu-' + row.id,
+                                openMenu === row.id,
+                                (open) =>
+                                  setOpenMenu(rowMenuState(row.id, open, '')),
+                              )}
                             >
                               <svg
                                 aria-hidden="true"
@@ -1970,11 +1964,18 @@ export function EventPanel({
                                 <circle cx="19" cy="12" r="1.7" />
                               </svg>
                             </button>
-                            {/* A plain toggle instead of a native disclosure:
-                                500 cards with <details> broke the load budget.
-                                The panel stays in the DOM and is shown by CSS. */}
-
-                            <div className="row-menu-panel">
+                            {/* A popover instead of a native disclosure:
+                                500 cards with <details> broke the load budget;
+                                a closed popover costs no layout. */}
+                            <div
+                              className="row-menu-panel popover-menu"
+                              {...menuPanelProps(
+                                'event-row-menu-' + row.id,
+                                openMenu === row.id,
+                                (open) =>
+                                  setOpenMenu(rowMenuState(row.id, open, '')),
+                              )}
+                            >
                               <button
                                 type="button"
                                 className="tertiary-action"
