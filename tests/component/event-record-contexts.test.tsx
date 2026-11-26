@@ -437,3 +437,22 @@ test('the wide frame keeps contact and place beside the main information', async
     within(aside).getByRole('link', { name: 'record@example.invalid' }),
   ).toBeTruthy();
 });
+
+// UI-BKP-10: a link from the document overview opens the record in Dateien.
+test('a document named in the address opens the record in Dateien', async () => {
+  for (const [doc, area] of [
+    ['55555555-5555-4555-8555-555555555555', 'Dateien'],
+    ['not-a-document', 'Details'],
+  ] as const) {
+    window.history.replaceState(
+      null,
+      '',
+      '/?doc=' + doc + '#event-' + event.id,
+    );
+    mockRecord();
+    const view = await open();
+    expect(view.tab(area).getAttribute('aria-current')).toBe('location');
+    view.unmount();
+  }
+  window.history.replaceState(null, '', '/');
+});

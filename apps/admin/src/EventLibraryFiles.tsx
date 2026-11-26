@@ -132,7 +132,7 @@ export function EventLibraryFiles({
       <p>
         Dateien werden nicht auf Schadsoftware geprüft.{' '}
         <a
-          href="#files"
+          href="#settings-files"
           onClick={(event) => {
             if (
               !event.metaKey &&
