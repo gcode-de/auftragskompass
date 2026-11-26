@@ -1,12 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AuthPanel } from '../../apps/admin/src/AuthPanel.js';
 afterEach(() => {
   cleanup();
@@ -288,12 +281,10 @@ test('shows one workspace and preserves unsaved input across section changes', a
   ).toBe('Fictional unsaved contact');
 });
 
-test('the Dateien area renders in the shell with exactly one page heading', async () => {
-  window.history.replaceState(
-    null,
-    '',
-    '/?q=keep&from=2031-05-01&status=option&df_kind=invoice#files',
-  );
+// UI-BKP-09: the file library is a settings page with one page heading;
+// the business documents are no longer repeated there.
+test('the file library renders as a settings page with exactly one page heading', async () => {
+  window.history.replaceState(null, '', '/?q=keep#settings-files');
   const requested: string[] = [];
   const fetcher = vi.fn(async (url: string) => {
     if (url === '/auth/me')
@@ -303,8 +294,6 @@ test('the Dateien area renders in the shell with exactly one page heading', asyn
       });
     if (url.startsWith('/api/v1/documents'))
       requested.push(url.replace(/^.*\/api\/v1\/documents/, ''));
-    // Any filtered variant of the event list must answer with the real shape,
-    // otherwise a refetch during navigation reads an array as the payload.
     if (url === '/api/v1/events' || url.startsWith('/api/v1/events?'))
       return Response.json({ timeZone: 'Europe/Berlin', events: [] });
     if (url.startsWith('/api/')) return Response.json([]);
@@ -312,263 +301,19 @@ test('the Dateien area renders in the shell with exactly one page heading', asyn
   });
   vi.stubGlobal('fetch', fetcher);
   render(<AuthPanel />);
-  const files = await screen.findByRole('region', { name: 'Dateien' });
-  // The shell's toolbar heading is the only page heading, and the panel does
-  // not repeat the label as a second one.
+  expect(
+    await screen.findByRole('region', { name: 'Dateibibliothek' }),
+  ).toBeTruthy();
   const headings = screen.getAllByRole('heading', { level: 1 });
   expect(headings).toHaveLength(1);
-  // One visible page title; its accessible name names the home link too.
   expect(
     screen.getByRole('heading', {
       level: 1,
-      name: 'Dateien – zur Eventübersicht',
+      name: 'Einstellungen – zur Eventübersicht',
     }),
   ).toBe(headings[0]);
-  expect(within(files).queryByRole('heading')).toBeNull();
-  // The file filters are server-side; the unrelated Event filter stays in the
-  // URL but is not sent to the document list.
-  await waitFor(() =>
-    expect(requested.some((query) => query.includes('kind=invoice'))).toBe(
-      true,
-    ),
-  );
-  for (const query of requested) {
-    expect(query).not.toContain('status=');
-    expect(query).not.toContain('from=2031-05-01');
-  }
+  // The document list belongs to "Dokumente" only and is not loaded here.
+  expect(screen.queryByRole('region', { name: 'Dateien' })).toBeNull();
+  expect(requested).toEqual([]);
   expect(new URLSearchParams(window.location.search).get('q')).toBe('keep');
-});
-
-test('leaving a dirty event for Dateien asks first and keeps the draft when cancelled', async () => {
-  const eventId = '11111111-1111-4111-8111-111111111111';
-  window.history.replaceState(null, '', '/#event-' + eventId);
-  const writes: string[] = [];
-  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
-    if (options?.method && options.method !== 'GET') writes.push(url);
-    if (url === '/auth/me')
-      return Response.json({
-        email: 'synthetic@example.invalid',
-        csrfToken: 'synthetic-csrf',
-      });
-    if (url === '/api/v1/statuses')
-      return Response.json([
-        { code: 'inquiry', label: 'Anfrage', state: 'active' },
-        { code: 'option', label: 'Option', state: 'active' },
-        { code: 'booked', label: 'Gebucht', state: 'active' },
-      ]);
-    // Any filtered variant of the event list must answer with the real shape,
-    // otherwise a refetch during navigation reads an array as the payload.
-    if (url === '/api/v1/events' || url.startsWith('/api/v1/events?'))
-      return Response.json({
-        timeZone: 'Europe/Berlin',
-        events: [
-          {
-            id: eventId,
-            name: 'Synthetic dirty event',
-            status: 'option',
-            eventTypeId: null,
-            packageId: null,
-            locationId: null,
-            venue: '',
-            venueOverride: false,
-            source: '',
-            eventDate: '2031-05-01',
-            startsAt: null,
-            endsAt: null,
-            timeZone: 'Europe/Berlin',
-            description: '',
-            notesHtml: '',
-            version: 3,
-            primaryContactId: null,
-            additionalContactIds: [],
-          },
-        ],
-      });
-    if (url.startsWith('/api/v1/events/' + eventId))
-      return Response.json({
-        event: {
-          id: eventId,
-          name: 'Synthetic dirty event',
-          status: 'option',
-          eventTypeId: null,
-          packageId: null,
-          locationId: null,
-          venue: '',
-          venueOverride: false,
-          source: '',
-          eventDate: '2031-05-01',
-          startsAt: null,
-          endsAt: null,
-          primaryContactId: null,
-          additionalContactIds: [],
-          timeZone: 'Europe/Berlin',
-          description: '',
-          notesHtml: '',
-          version: 3,
-        },
-        contacts: [],
-        resources: [],
-        activities: [],
-      });
-    if (url.startsWith('/api/v1/')) return Response.json([]);
-    return new Response(null, { status: 204 });
-  });
-  vi.stubGlobal('fetch', fetcher);
-  render(<AuthPanel />);
-  const edit = await screen.findByRole('button', {
-    name: 'Event bearbeiten: Synthetic dirty event',
-  });
-  fireEvent.click(edit);
-  // The details' own registered draft is the status field; changing it marks
-  // the event file dirty exactly as a real edit would.
-  const status = (await screen.findByLabelText(
-    'Status des Events',
-  )) as HTMLSelectElement;
-  fireEvent.change(status, { target: { value: 'inquiry' } });
-  expect(status.value).toBe('inquiry');
-
-  const filesLink = screen
-    .getByRole('navigation', { name: 'Hauptnavigation' })
-    .querySelector<HTMLAnchorElement>('a[href="#files"]')!;
-  // Cancel: the hash, the draft and the focus stay exactly where they were.
-  const cancelled = vi.fn((message?: string) => {
-    void message;
-    return false;
-  });
-  vi.stubGlobal('confirm', cancelled);
-  fireEvent.click(filesLink);
-  expect(cancelled).toHaveBeenCalledTimes(1);
-  expect(cancelled.mock.calls[0]![0]).toContain('Ungespeicherte Eingaben');
-  expect(window.location.hash).toBe('#event-' + eventId);
-  expect(
-    (screen.getByLabelText('Status des Events') as HTMLSelectElement).value,
-  ).toBe('inquiry');
-  // No write happened just from attempting to navigate.
-  expect(writes).toEqual([]);
-
-  // Accepting the discard really switches area.
-  const accepted = vi.fn(() => true);
-  vi.stubGlobal('confirm', accepted);
-  fireEvent.click(filesLink);
-  expect(accepted).toHaveBeenCalledTimes(1);
-  window.history.replaceState(null, '', '/#files');
-  fireEvent(window, new HashChangeEvent('hashchange'));
-  expect(await screen.findByRole('region', { name: 'Dateien' })).toBeTruthy();
-  expect(writes).toEqual([]);
-});
-
-test('the Dateien guard also covers the mobile menu and never triggers on a new-tab click', async () => {
-  const eventId = '22222222-2222-4222-8222-222222222222';
-  window.history.replaceState(null, '', '/#event-' + eventId);
-  const fetcher = vi.fn(async (url: string) => {
-    if (url === '/auth/me')
-      return Response.json({
-        email: 'synthetic@example.invalid',
-        csrfToken: 'synthetic-csrf',
-      });
-    if (url === '/api/v1/statuses')
-      return Response.json([
-        { code: 'inquiry', label: 'Anfrage', state: 'active' },
-        { code: 'option', label: 'Option', state: 'active' },
-      ]);
-    // Any filtered variant of the event list must answer with the real shape,
-    // otherwise a refetch during navigation reads an array as the payload.
-    if (url === '/api/v1/events' || url.startsWith('/api/v1/events?'))
-      return Response.json({
-        timeZone: 'Europe/Berlin',
-        events: [
-          {
-            id: eventId,
-            name: 'Synthetic mobile event',
-            status: 'option',
-            eventTypeId: null,
-            packageId: null,
-            locationId: null,
-            venue: '',
-            venueOverride: false,
-            source: '',
-            eventDate: '2031-05-01',
-            startsAt: null,
-            endsAt: null,
-            timeZone: 'Europe/Berlin',
-            description: '',
-            notesHtml: '',
-            version: 1,
-            primaryContactId: null,
-            additionalContactIds: [],
-          },
-        ],
-      });
-    if (url.startsWith('/api/v1/events/' + eventId))
-      return Response.json({
-        event: {
-          id: eventId,
-          name: 'Synthetic mobile event',
-          status: 'option',
-          eventTypeId: null,
-          packageId: null,
-          locationId: null,
-          venue: '',
-          venueOverride: false,
-          source: '',
-          eventDate: '2031-05-01',
-          startsAt: null,
-          endsAt: null,
-          primaryContactId: null,
-          additionalContactIds: [],
-          timeZone: 'Europe/Berlin',
-          description: '',
-          notesHtml: '',
-          version: 1,
-        },
-        contacts: [],
-        resources: [],
-        activities: [],
-      });
-    if (url.startsWith('/api/v1/')) return Response.json([]);
-    return new Response(null, { status: 204 });
-  });
-  vi.stubGlobal('fetch', fetcher);
-  // jsdom has no dialog implementation; the established shim opens it.
-  HTMLDialogElement.prototype.showModal = vi.fn(function (
-    this: HTMLDialogElement,
-  ) {
-    this.open = true;
-  });
-  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
-    this.open = false;
-  });
-  render(<AuthPanel />);
-  fireEvent.click(
-    await screen.findByRole('button', {
-      name: 'Event bearbeiten: Synthetic mobile event',
-    }),
-  );
-  fireEvent.change(await screen.findByLabelText('Status des Events'), {
-    target: { value: 'inquiry' },
-  });
-
-  // A new-tab click is a decision about another tab: never a prompt here.
-  const sidebarLink = screen
-    .getByRole('navigation', { name: 'Hauptnavigation' })
-    .querySelector<HTMLAnchorElement>('a[href="#files"]')!;
-  const modifierConfirm = vi.fn(() => false);
-  vi.stubGlobal('confirm', modifierConfirm);
-  fireEvent.click(sidebarLink, { ctrlKey: true, button: 0 });
-  expect(modifierConfirm).not.toHaveBeenCalled();
-  expect(window.location.hash).toBe('#event-' + eventId);
-
-  // The mobile menu entry is the same guarded action.
-  fireEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
-  const drawer = within(screen.getByRole('dialog', { name: 'Menü' }));
-  const mobileLink = drawer
-    .getByRole('navigation', { name: 'Hauptnavigation' })
-    .querySelector<HTMLAnchorElement>('a[href="#files"]')!;
-  const cancel = vi.fn(() => false);
-  vi.stubGlobal('confirm', cancel);
-  fireEvent.click(mobileLink);
-  expect(cancel).toHaveBeenCalledTimes(1);
-  expect(window.location.hash).toBe('#event-' + eventId);
-  // Cancel keeps the menu open, so the user sees why nothing happened.
-  expect(screen.getByRole('dialog', { name: 'Menü' })).toBeTruthy();
 });

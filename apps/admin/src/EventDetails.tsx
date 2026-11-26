@@ -158,7 +158,20 @@ export function EventDetails({
   onResourceConfirmed?: (row: EventRow) => void;
   onRecordDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [area, setArea] = useState<Area>('details');
+  // UI-BKP-10: a link from the document overview names one document; the
+  // file then opens in "Dateien" with that document.
+  const [openDocumentId] = useState(() => {
+    const doc = new URLSearchParams(window.location.search).get('doc');
+    return doc &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        doc,
+      )
+      ? doc
+      : null;
+  });
+  const [area, setArea] = useState<Area>(() =>
+    openDocumentId ? 'files' : 'details',
+  );
   const [editingDocument, setEditingDocument] = useState(false);
   // MAIL-STATUS-01: raised by every send order so the mail list reloads.
   const [mailRevision, setMailRevision] = useState(0);
@@ -1313,6 +1326,8 @@ export function EventDetails({
                 onEditorProtectedChange={documentEditorProtectionChanged}
                 onMailScheduled={() => setMailRevision((value) => value + 1)}
                 composeRequest={composeRequest}
+                openDocumentId={openDocumentId}
+
                 eventName={data.event.name}
                 eventDate={data.event.eventDate}
               />

@@ -1393,7 +1393,8 @@ test('each mounted workspace route shows at most one primary action in the real 
   const routes: [string, string, string?][] = [
     ['/#events', 'Events – zur Eventübersicht'],
     ['/#contacts', 'Kontakte – zur Eventübersicht'],
-    ['/#files', 'Dateien – zur Eventübersicht'],
+    // UI-BKP-09: the file library is a settings page.
+    ['/#settings-files', 'Einstellungen – zur Eventübersicht'],
     ['/#documents', 'Dokumente – zur Eventübersicht'],
     ['/#calendar', 'Kalender – zur Eventübersicht'],
     ['/#settings', 'Einstellungen – zur Eventübersicht', 'Eventarten'],
