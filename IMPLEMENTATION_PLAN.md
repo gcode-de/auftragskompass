@@ -552,6 +552,13 @@ Gesamtrahmen bleiben vorerst aus.
       Menü, Fokus, Schnellfilter), E2E (neuer Listen-Look hell/dunkel mit axe,
       Statusauswahl, 390 px; Auth-Ablauf angepasst).
       Commit `feat: shape the event list like bookitup`.
+- [x] **UI-BKP-06a — Dokumenteditor: Bookitup-Optik:** jede Position als
+      graue Karte ohne Rahmen (Radius 10), „Positionen“ als dunkler Balken,
+      Netto, Umsatzsteuer und Gesamtbetrag als rechtsbündiger Summenblock mit dem
+      Gesamtbetrag zuletzt, größer und über einer Linie. Nur Oberfläche; Aufbau
+      mit Vorschau-Kopf und Brotkrumen folgt getrennt. **Tests:** Component
+      (Summenblock), bestehender Editorablauf mit axe hell/dunkel.
+      Commit `style: give the document editor bookitup's cards and totals`.
 - [x] **UI-BKP-05b — „Dateien“ der Akte wie Bookitup:** Dokumentkarten und
       Bibliotheksdateien als weiße Karten mit 18/700-Titel, Erklärtexte klein und
       leise, Status als getöntes Etikett neben der Nummer, Dokumentaktionen als

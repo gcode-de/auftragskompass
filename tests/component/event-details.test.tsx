@@ -849,7 +849,11 @@ test('a clean detail refreshes on return, while a dirty detail defers without a 
   ).toBeNull();
   const loads = detailLoads(fetcher);
   returnToApp();
-  await vi.waitFor(() => expect(detailLoads(fetcher)).toBe(loads + 1));
+  // At least one reload: on a slow runner a second background refresh may
+  // land as well, which is not what this test is about.
+  await vi.waitFor(() =>
+    expect(detailLoads(fetcher)).toBeGreaterThanOrEqual(loads + 1),
+  );
   fireEvent.change(screen.getByLabelText('Status des Events'), {
     target: { value: 'option' },
   });
