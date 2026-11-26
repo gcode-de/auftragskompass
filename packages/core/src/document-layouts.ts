@@ -499,8 +499,8 @@ ${discountTaxRows}${
       .positions th:nth-last-child(5), .positions td:nth-last-child(5),
       .positions td:nth-last-child(3), .positions td:last-child,
       .totals td { white-space: nowrap; }
-      .positions td:nth-last-child(3), .positions td:nth-last-child(2),
-      .positions td:last-child { width: 17%; }
+      .positions td:nth-last-child(3), .positions td:last-child { width: 13%; }
+      .positions td:nth-last-child(2) { width: 12%; white-space: nowrap; }
 ${input.lines.length > serviceLines.length ? `      .positions .position-info td { width: auto; text-align: left; white-space: normal; }\n` : ''}      .position-discount { font-size: 8pt; }
       .totals { margin-top: 3mm; margin-left: auto; width: auto; min-width: 60mm; font-size: 9pt; }
       .totals tr:last-child { background: #eeeeee; font-weight: bold; }
