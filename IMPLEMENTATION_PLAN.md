@@ -724,6 +724,20 @@ Gesamtrahmen bleiben vorerst aus.
       (Listenfilter, Archiv, Typ-Hinweis, Kategorievorschläge, Ausfall der
       Kategorieliste).
       Commit `feat: type resources and filter them like bookitup`.
+- [x] **RES-BKP-03 — Ressourcenakte wie Bookitup:** Der Name in der Liste
+      öffnet `#resource-<id>`: die Kontextspalte nennt „Ressource / Name“ mit
+      Details, Bestand und Planung, der Inhalt beginnt mit der Brotkrume
+      zurück zur Liste. Details zeigt die Stammdaten (Stift öffnet den
+      Ressourcendialog), Bestand die Stückzahl und die physischen Einheiten
+      (planbar/stillgelegt), Planung je Event und Zeitraum Menge, Bestätigt
+      (gebucht) oder Vorgemerkt und das Event mit Status als Link. Neue
+      lesende Route `GET /api/v1/resources/:id/planning`; geplant wird weiter
+      im Event. Abbildung, Zubehör/Alternativen/Produkte/Sets und geplante
+      Lagerbewegungen folgen als eigene Slices. **Tests:** Integration
+      (Einheiten, Planung je Event, abgelaufene Vormerkung, 401/404),
+      Component (Öffnen, Kontextspalte, Stammdaten, Stift, Rückweg mit Fokus,
+      Bestand, Planung, Fehler/Wiederholung, unbekannte Adresse).
+      Commit `feat: open a resource record like bookitup`.
 
 - [x] **UI-BKP-14 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der

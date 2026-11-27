@@ -1,6 +1,11 @@
 import { ResourceBlocks } from './ResourceBlocks.js';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { ModalDialog } from './ModalDialog.js';
+import {
+  ResourceRecord,
+  recordTabs,
+  type RecordTab,
+} from './ResourceRecord.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
 type Resource = {
@@ -122,6 +127,28 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
       window.matchMedia('(min-width: 960px)').matches,
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // RES-BKP-03: `#resource-<id>` opens the resource's record.
+  const readRecord = () =>
+    window.location.hash.startsWith('#resource-')
+      ? window.location.hash.slice('#resource-'.length)
+      : null;
+  const [recordId, setRecordId] = useState<string | null>(readRecord);
+  const [recordTab, setRecordTab] = useState<RecordTab>('details');
+  const shownRecord = useRef(recordId);
+  useEffect(() => {
+    const changed = () => {
+      const next = readRecord();
+      if (next !== shownRecord.current) setRecordTab('details');
+      shownRecord.current = next;
+      setRecordId(next);
+    };
+    window.addEventListener('hashchange', changed);
+    window.addEventListener('popstate', changed);
+    return () => {
+      window.removeEventListener('hashchange', changed);
+      window.removeEventListener('popstate', changed);
+    };
+  }, []);
   const [rows, setRows] = useState<Resource[]>([]),
     [editing, setEditing] = useState<Resource | null>(null),
     [open, setOpen] = useState(false),
@@ -384,111 +411,65 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
     }
   }
   const title = editing ? 'Ressource bearbeiten' : 'Ressource anlegen';
+  const record = rows.find((row) => row.id === recordId) ?? null;
+  // Closing the record returns to the list and to the resource's name, once
+  // the list is shown again.
+  const focusName = useRef<string | null>(null);
+  function closeRecord() {
+    focusName.current = recordId;
+    window.location.hash = 'resources';
+    shownRecord.current = null;
+    setRecordId(null);
+  }
+  useEffect(() => {
+    const id = focusName.current;
+    if (recordId || !id) return;
+    focusName.current = null;
+    document
+      .querySelector<HTMLElement>(`a[href="#resource-${id}"]`)
+      ?.focus({ preventScroll: true });
+  }, [recordId]);
   return (
     <section id="resources" aria-label="Ressourcen" aria-busy={loading || busy}>
       {/* UI-BKP-14: like Bookitup the page title, the plus and the filters
           form the context column beside the rail; the list fills the canvas. */}
       <div className="resource-layout">
         <div className="resource-filter-column">
-          <div className="section-heading">
-            <h2>Ressourcen</h2>
-            <div className="section-actions">
-              <button
-                ref={createTrigger}
-                type="button"
-                className="icon-action tier-primary-icon"
-                aria-label="Ressource anlegen"
-                title="Ressource anlegen"
-                disabled={busy}
-                onClick={openNew}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          {!wideFilters && (
-            <button
-              ref={filterTrigger}
-              type="button"
-              className="secondary-action resource-filter-trigger"
-              aria-label={`Filter, aktive Kriterien: ${filterCount}`}
-              aria-expanded={filtersOpen}
-              aria-controls="resource-filter-panel"
-              onClick={() => setFiltersOpen((current) => !current)}
-            >
-              Filter <span className="event-count">{filterCount}</span>
-            </button>
-          )}
-          <div
-            ref={filterGroup}
-            id="resource-filter-panel"
-            className="resource-toolbar"
-            role="group"
-            aria-label="Ressourcenfilter"
-            hidden={!wideFilters && !filtersOpen}
-          >
-            <label>
-              Ressourcen suchen
-              <input
-                value={search}
-                maxLength={200}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </label>
-            <div
-              className="resource-filter-list"
-              role="group"
-              aria-labelledby="resource-kind-filter"
-            >
-              <span id="resource-kind-filter" className="resource-filter-label">
-                Typ
-              </span>
-              {[...kinds]
-                .sort(
-                  ([a], [b]) =>
-                    // Bookitup's order: Set, Case, Item.
-                    ['set', 'case', 'item'].indexOf(a) -
-                    ['set', 'case', 'item'].indexOf(b),
-                )
-                .map(([value, text]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className="tertiary-action"
-                    aria-pressed={kind === value}
-                    onClick={() =>
-                      setKind((current) => (current === value ? '' : value))
-                    }
-                  >
-                    {text}
-                  </button>
-                ))}
-            </div>
-            <div
-              className="resource-filter-list"
-              role="group"
-              aria-labelledby="resource-category-filter"
-            >
-              <span
-                id="resource-category-filter"
-                className="resource-filter-label"
-              >
-                Kategorie
+          {record && (
+            // RES-BKP-03: like Bookitup the column names the open resource
+            // and switches between its areas.
+            <nav className="record-context" aria-label="Ressourcen-Akte">
+              <p className="record-context-title">
+                <span>Ressource</span>
+                <strong>{record.name}</strong>
+              </p>
+              {recordTabs.map(([value, text]) => (
                 <a
-                  className="icon-action tier-quiet-icon"
-                  href="#settings-resources"
-                  aria-label="Kategorien bearbeiten"
-                  title="Kategorien bearbeiten"
+                  key={value}
+                  href={'#resource-' + record.id}
+                  aria-current={recordTab === value ? 'page' : undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setRecordTab(value);
+                  }}
+                >
+                  {text}
+                </a>
+              ))}
+            </nav>
+          )}
+          <div className="resource-filter-body" hidden={Boolean(record)}>
+            <div className="section-heading">
+              <h2>Ressourcen</h2>
+              <div className="section-actions">
+                <button
+                  ref={createTrigger}
+                  type="button"
+                  className="icon-action tier-primary-icon"
+                  aria-label="Ressource anlegen"
+                  title="Ressource anlegen"
+                  disabled={busy}
+                  onClick={openNew}
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -499,144 +480,254 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
                     strokeLinejoin="round"
                     aria-hidden="true"
                   >
-                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    <path d="M12 5v14M5 12h14" />
                   </svg>
-                </a>
-              </span>
-              {categories.map((entry) => (
-                <button
-                  key={entry}
-                  type="button"
-                  className="tertiary-action"
-                  aria-pressed={category === entry}
-                  onClick={() =>
-                    setCategory((current) => (current === entry ? '' : entry))
-                  }
-                >
-                  {entry}
                 </button>
-              ))}
+              </div>
             </div>
-            <label className="resource-archive-filter">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(event) => setShowArchived(event.target.checked)}
-              />
-              Archivierte anzeigen
-            </label>
+            {!wideFilters && (
+              <button
+                ref={filterTrigger}
+                type="button"
+                className="secondary-action resource-filter-trigger"
+                aria-label={`Filter, aktive Kriterien: ${filterCount}`}
+                aria-expanded={filtersOpen}
+                aria-controls="resource-filter-panel"
+                onClick={() => setFiltersOpen((current) => !current)}
+              >
+                Filter <span className="event-count">{filterCount}</span>
+              </button>
+            )}
+            <div
+              ref={filterGroup}
+              id="resource-filter-panel"
+              className="resource-toolbar"
+              role="group"
+              aria-label="Ressourcenfilter"
+              hidden={!wideFilters && !filtersOpen}
+            >
+              <label>
+                Ressourcen suchen
+                <input
+                  value={search}
+                  maxLength={200}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </label>
+              <div
+                className="resource-filter-list"
+                role="group"
+                aria-labelledby="resource-kind-filter"
+              >
+                <span
+                  id="resource-kind-filter"
+                  className="resource-filter-label"
+                >
+                  Typ
+                </span>
+                {[...kinds]
+                  .sort(
+                    ([a], [b]) =>
+                      // Bookitup's order: Set, Case, Item.
+                      ['set', 'case', 'item'].indexOf(a) -
+                      ['set', 'case', 'item'].indexOf(b),
+                  )
+                  .map(([value, text]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className="tertiary-action"
+                      aria-pressed={kind === value}
+                      onClick={() =>
+                        setKind((current) => (current === value ? '' : value))
+                      }
+                    >
+                      {text}
+                    </button>
+                  ))}
+              </div>
+              <div
+                className="resource-filter-list"
+                role="group"
+                aria-labelledby="resource-category-filter"
+              >
+                <span
+                  id="resource-category-filter"
+                  className="resource-filter-label"
+                >
+                  Kategorie
+                  <a
+                    className="icon-action tier-quiet-icon"
+                    href="#settings-resources"
+                    aria-label="Kategorien bearbeiten"
+                    title="Kategorien bearbeiten"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </a>
+                </span>
+                {categories.map((entry) => (
+                  <button
+                    key={entry}
+                    type="button"
+                    className="tertiary-action"
+                    aria-pressed={category === entry}
+                    onClick={() =>
+                      setCategory((current) => (current === entry ? '' : entry))
+                    }
+                  >
+                    {entry}
+                  </button>
+                ))}
+              </div>
+              <label className="resource-archive-filter">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(event) => setShowArchived(event.target.checked)}
+                />
+                Archivierte anzeigen
+              </label>
+            </div>
           </div>
         </div>
         <div className="resource-results">
-          <p className="resource-intro">
-            Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit prüfen.
-          </p>
-          {loading && <p role="status">Ressourcen werden geladen …</p>}
-          {!loading && !loadFailed && !rows.length && (
-            <p>
-              Noch keine Ressourcen. Über „Ressource anlegen“ die erste
-              Ressource erfassen.
+          {record && (
+            <ResourceRecord
+              resource={record}
+              tab={recordTab}
+              onEdit={() => openEdit(record)}
+              onClose={closeRecord}
+            />
+          )}
+          <div className="resource-list-body" hidden={Boolean(record)}>
+            <p className="resource-intro">
+              Ressourcen lassen sich Events zuweisen und auf Verfügbarkeit
+              prüfen.
             </p>
-          )}
-          {!loading && rows.length > 0 && !filtered.length && (
-            <>
-              <p>Keine Treffer für die aktuellen Filter.</p>
-              <button
-                type="button"
-                className="tertiary-action"
-                onClick={() => {
-                  setSearch('');
-                  setCategory('');
-                  setKind('');
-                  setShowArchived(false);
-                }}
-              >
-                Filter zurücksetzen
-              </button>
-            </>
-          )}
-          {filtered.length > 0 && (
-            <div className="resource-list-head" aria-hidden="true">
-              <span>Typ</span>
-              <span>Name</span>
-              <span>Bestand</span>
-              <span>Kategorie</span>
-              <span>Zustand</span>
-            </div>
-          )}
-          <ul className="resource-list">
-            {filtered.map((row) => (
-              <li key={row.id} className="resource-row">
-                <span className="resource-cell-kind">
-                  {kindLabel(row.kind ?? 'item')}
-                  <span className="sr-only">: </span>
-                </span>
-                <span className="resource-summary">
-                  <strong>{row.name}</strong>
-                  <span className="sr-only"> – </span>
-                  {/* One accessible line, shown as table cells. */}
-                  <span className="resource-cell-quantity">
-                    {String(row.quantity)} Stück
-                  </span>
-                  <span className="sr-only"> – </span>
-                  <span className="resource-cell-category">{row.category}</span>
-                  <span className="sr-only"> – </span>
-                  <span className="resource-cell-state">
-                    {label(row.state)}
-                    {row.blocked && (
-                      <>
-                        <span className="sr-only"> – </span>
-                        <span className="resource-blocked">Gesperrt</span>
-                      </>
-                    )}
-                  </span>
-                </span>{' '}
+            {loading && <p role="status">Ressourcen werden geladen …</p>}
+            {!loading && !loadFailed && !rows.length && (
+              <p>
+                Noch keine Ressourcen. Über „Ressource anlegen“ die erste
+                Ressource erfassen.
+              </p>
+            )}
+            {!loading && rows.length > 0 && !filtered.length && (
+              <>
+                <p>Keine Treffer für die aktuellen Filter.</p>
                 <button
                   type="button"
-                  className="icon-action tier-quiet-icon"
-                  disabled={busy}
-                  aria-label={`Ressource bearbeiten: ${row.name}`}
-                  title="Ressource bearbeiten"
-                  onClick={() => openEdit(row)}
+                  className="tertiary-action"
+                  onClick={() => {
+                    setSearch('');
+                    setCategory('');
+                    setKind('');
+                    setShowArchived(false);
+                  }}
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
+                  Filter zurücksetzen
                 </button>
-              </li>
-            ))}
-          </ul>
-          <p role="status">{message}</p>
-          {reloadFailed ? (
-            <div className="reload-warning">
-              <p role="status">{reloadFailureMessage}</p>
+              </>
+            )}
+            {filtered.length > 0 && (
+              <div className="resource-list-head" aria-hidden="true">
+                <span>Typ</span>
+                <span>Name</span>
+                <span>Bestand</span>
+                <span>Kategorie</span>
+                <span>Zustand</span>
+              </div>
+            )}
+            <ul className="resource-list">
+              {filtered.map((row) => (
+                <li key={row.id} className="resource-row">
+                  <span className="resource-cell-kind">
+                    {kindLabel(row.kind ?? 'item')}
+                    <span className="sr-only">: </span>
+                  </span>
+                  <span className="resource-summary">
+                    <a
+                      className="resource-name-link"
+                      href={'#resource-' + row.id}
+                    >
+                      <strong>{row.name}</strong>
+                    </a>
+                    <span className="sr-only"> – </span>
+                    {/* One accessible line, shown as table cells. */}
+                    <span className="resource-cell-quantity">
+                      {String(row.quantity)} Stück
+                    </span>
+                    <span className="sr-only"> – </span>
+                    <span className="resource-cell-category">
+                      {row.category}
+                    </span>
+                    <span className="sr-only"> – </span>
+                    <span className="resource-cell-state">
+                      {label(row.state)}
+                      {row.blocked && (
+                        <>
+                          <span className="sr-only"> – </span>
+                          <span className="resource-blocked">Gesperrt</span>
+                        </>
+                      )}
+                    </span>
+                  </span>{' '}
+                  <button
+                    type="button"
+                    className="icon-action tier-quiet-icon"
+                    disabled={busy}
+                    aria-label={`Ressource bearbeiten: ${row.name}`}
+                    title="Ressource bearbeiten"
+                    onClick={() => openEdit(row)}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p role="status">{message}</p>
+            {reloadFailed ? (
+              <div className="reload-warning">
+                <p role="status">{reloadFailureMessage}</p>
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  disabled={busy}
+                  onClick={() => void retryReload()}
+                >
+                  Ressourcen erneut laden
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
                 className="tertiary-action"
                 disabled={busy}
-                onClick={() => void retryReload()}
+                onClick={() => void retryList()}
               >
-                Ressourcen erneut laden
+                Ressourcen aktualisieren
               </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="tertiary-action"
-              disabled={busy}
-              onClick={() => void retryList()}
-            >
-              Ressourcen aktualisieren
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
       {open && (
@@ -788,7 +879,9 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           </form>
         </ModalDialog>
       )}
-      <ResourceBlocks csrfToken={csrfToken} />
+      <div hidden={Boolean(record)}>
+        <ResourceBlocks csrfToken={csrfToken} />
+      </div>
     </section>
   );
 }
