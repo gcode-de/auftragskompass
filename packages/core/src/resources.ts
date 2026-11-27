@@ -12,6 +12,8 @@ export type ResourceInput = {
   name: string;
   code: string;
   category: string;
+  /** RES-BKP-02: item, set or case; an older client keeps the stored one. */
+  kind?: 'item' | 'set' | 'case';
   description: string;
   quantity: number;
   beforeDays: number;
@@ -41,7 +43,8 @@ export function resourceRepository(pool: Pool, tenantId: string) {
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
-        let previous = 0;
+        let previous = 0,
+          kept: 'item' | 'set' | 'case' = 'item';
         if (id) {
           const [old] = await tx
             .select()
@@ -50,9 +53,11 @@ export function resourceRepository(pool: Pool, tenantId: string) {
           if (!old) throw new ResourceError('not_found');
           if (old.version !== version) throw new ResourceError('conflict');
           previous = old.version;
+          kept = old.kind as typeof kept;
         }
         const values = {
           ...input,
+          kind: input.kind ?? kept,
           name: input.name.trim(),
           code: input.code.trim(),
           category: input.category.trim(),
@@ -92,6 +97,7 @@ export function registerResourceRoutes(
     name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' },
     code: { type: 'string', minLength: 1, maxLength: 40, pattern: '\\S' },
     category: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' },
+    kind: { type: 'string', enum: ['item', 'set', 'case'] },
     description: { type: 'string', maxLength: 2000 },
     quantity: { type: 'integer', minimum: 0, maximum: 10000 },
     beforeDays: { type: 'integer', minimum: 0, maximum: 365 },
@@ -100,6 +106,8 @@ export function registerResourceRoutes(
     state: { type: 'string', enum: ['active', 'inactive', 'archived'] },
     position: { type: 'integer', minimum: 0, maximum: 9999 },
   };
+  // `kind` came later (RES-BKP-02); bodies may leave it out.
+  const required = Object.keys(fields).filter((key) => key !== 'kind');
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',
@@ -144,7 +152,7 @@ export function registerResourceRoutes(
         body: {
           type: 'object',
           additionalProperties: false,
-          required: Object.keys(fields),
+          required: required,
           properties: fields,
         },
         response: { 201: row },
@@ -175,7 +183,7 @@ export function registerResourceRoutes(
         body: {
           type: 'object',
           additionalProperties: false,
-          required: [...Object.keys(fields), 'version'],
+          required: [...required, 'version'],
           properties: { ...fields, version },
         },
         response: { 200: row },

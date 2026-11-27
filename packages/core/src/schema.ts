@@ -119,6 +119,7 @@ export const resources = pgTable('resources', {
   name: text('name').notNull(),
   code: text('code').notNull(),
   category: text('category').notNull(),
+  kind: text('kind').notNull().default('item'),
   description: text('description').notNull(),
   quantity: integer('quantity').notNull(),
   beforeDays: integer('before_days').notNull(),
