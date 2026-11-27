@@ -7,6 +7,7 @@ import {
   within,
 } from '@testing-library/react';
 import { EventDetails } from '../../apps/admin/src/EventDetails.js';
+import { hasUnsavedChanges } from '../../apps/admin/src/unsaved-changes.js';
 
 // BKP013.1: the event file is one record with a stable head and focused work
 // areas. These tests prove the user-facing criteria; the storage contract
@@ -121,14 +122,14 @@ function mockRecord(
   options: {
     detail?: unknown;
     documents?: unknown[];
-    onLoad?: (url: string) => Response | null;
+    onLoad?: (url: string, init?: RequestInit) => Response | null;
   } = {},
 ) {
   const calls: { url: string; method: string }[] = [];
   const fetcher = vi.fn(
     async (url: string, init?: RequestInit): Promise<Response> => {
       calls.push({ url, method: init?.method ?? 'GET' });
-      const override = options.onLoad?.(url);
+      const override = options.onLoad?.(url, init);
       if (override) return override;
       if (url === '/api/v1/document-templates') return Response.json(templates);
       if (url.startsWith('/api/v1/documents?eventId='))
@@ -415,6 +416,202 @@ test('the narrow frame offers contact and place as one deliberate disclosure', a
   expect(
     within(aside).getByRole('heading', { name: 'Ort / Adresse' }),
   ).toBeTruthy();
+});
+
+test('creates a reusable location in the record and assigns it using the current event version', async () => {
+  const location = {
+    id: 'synthetic-location-new',
+    name: 'Fiktiver Festsaal',
+    street: 'Musterweg 1',
+    postalCode: '12345',
+    city: 'Beispielstadt',
+    country: 'DE',
+    state: 'active',
+    version: 1,
+  };
+  const { fetcher } = mockRecord({
+    onLoad: (url, init) => {
+      if (url === '/api/v1/locations')
+        return Response.json(location, { status: 201 });
+      if (init?.method === 'PUT' && url === '/api/v1/events/' + event.id)
+        return Response.json({
+          ...event,
+          locationId: location.id,
+          version: event.version + 1,
+        });
+      return null;
+    },
+  });
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Location anlegen' }));
+  const dialog = screen.getByRole('dialog', { name: 'Location anlegen' });
+  for (const [label, value] of [
+    ['Name', location.name],
+    ['Straße und Hausnummer', location.street],
+    ['PLZ', location.postalCode],
+    ['Ort', location.city],
+  ]) {
+    fireEvent.change(within(dialog).getByLabelText(label!), {
+      target: { value },
+    });
+  }
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Anlegen und zuordnen' }),
+  );
+  const card = screen.getByRole('region', { name: 'Ort / Adresse' });
+  expect(await within(card).findByText(location.name)).toBeTruthy();
+  expect(within(card).getByText(/Musterweg 1/)).toBeTruthy();
+  expect(screen.queryByRole('dialog', { name: 'Location anlegen' })).toBeNull();
+  expect(
+    (screen.getByLabelText('Gespeicherter Ort') as HTMLSelectElement).value,
+  ).toBe(location.id);
+  const requests = fetcher.mock.calls.filter(([, init]) => init?.method);
+  expect(requests.map(([url, init]) => [url, init?.method])).toEqual([
+    ['/api/v1/locations', 'POST'],
+    ['/api/v1/events/' + event.id, 'PUT'],
+  ]);
+  expect(requests[0]?.[1]?.headers).toMatchObject({ 'x-csrf-token': 'csrf' });
+  expect(JSON.parse(requests[0]?.[1]?.body as string)).toEqual({
+    name: location.name,
+    street: location.street,
+    postalCode: location.postalCode,
+    city: location.city,
+    country: 'DE',
+    state: 'active',
+  });
+  expect(JSON.parse(requests[1]?.[1]?.body as string)).toMatchObject({
+    version: event.version,
+    locationId: location.id,
+    venueOverride: false,
+  });
+});
+
+test('keeps the location draft on a rejected write and asks before discarding it', async () => {
+  const { fetcher } = mockRecord({
+    onLoad: (url) =>
+      url === '/api/v1/locations'
+        ? Response.json({ error: 'forbidden' }, { status: 403 })
+        : null,
+  });
+  await open();
+  const trigger = screen.getByRole('button', { name: 'Location anlegen' });
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole('dialog', { name: 'Location anlegen' });
+  const name = within(dialog).getByLabelText('Name') as HTMLInputElement;
+  const submit = within(dialog).getByRole('button', {
+    name: 'Anlegen und zuordnen',
+  });
+  expect(hasUnsavedChanges()).toBe(false);
+  fireEvent.change(name, { target: { value: '   ' } });
+  expect(hasUnsavedChanges()).toBe(true);
+  fireEvent.click(submit);
+  expect(await within(dialog).findByText(/Bitte einen Namen/)).toBeTruthy();
+  fireEvent.change(name, { target: { value: 'Fiktiver Festsaal' } });
+  fireEvent.click(submit);
+  expect(await within(dialog).findByText(/keine Berechtigung/)).toBeTruthy();
+  expect(name.value).toBe('Fiktiver Festsaal');
+  const confirm = vi
+    .spyOn(window, 'confirm')
+    .mockReturnValueOnce(false)
+    .mockReturnValueOnce(true);
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(screen.getByRole('dialog', { name: 'Location anlegen' })).toBe(dialog);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('dialog', { name: 'Location anlegen' })).toBeNull();
+  expect(hasUnsavedChanges()).toBe(false);
+  expect(document.activeElement).toBe(trigger);
+  expect(
+    fetcher.mock.calls
+      .filter(([, init]) => init?.method)
+      .map(([, init]) => init?.method),
+  ).toEqual(['POST']);
+});
+
+test('keeps uncertain location creation in the dialog and prevents duplicate submissions', async () => {
+  const { fetcher } = mockRecord();
+  let rejectWrite: ((error: Error) => void) | undefined;
+  const request = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation((url, init) => {
+    if (url !== '/api/v1/locations') return request(url, init);
+    if (rejectWrite)
+      return Promise.resolve(
+        Response.json({ error: 'invalid' }, { status: 400 }),
+      );
+    return new Promise((_, reject) => {
+      rejectWrite = reject;
+    });
+  });
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Location anlegen' }));
+  const dialog = screen.getByRole('dialog', { name: 'Location anlegen' });
+  const name = within(dialog).getByLabelText('Name') as HTMLInputElement;
+  fireEvent.change(name, { target: { value: 'Fiktiver Saal' } });
+  const submit = within(dialog).getByRole('button', {
+    name: 'Anlegen und zuordnen',
+  });
+  fireEvent.click(submit);
+  fireEvent.submit(submit.closest('form')!);
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(
+    fetcher.mock.calls.filter(([url]) => url === '/api/v1/locations'),
+  ).toHaveLength(1);
+  rejectWrite!(new Error('synthetic connection failure'));
+  expect(
+    await within(dialog).findByText(/Anlage nicht bestätigt/),
+  ).toBeTruthy();
+  expect(name.value).toBe('Fiktiver Saal');
+  expect((submit as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(submit);
+  expect(
+    await within(dialog).findByText(/Location konnte nicht angelegt werden/),
+  ).toBeTruthy();
+  expect(name.value).toBe('Fiktiver Saal');
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(
+    false,
+  );
+});
+
+test('keeps a created location selectable when the event version conflicts', async () => {
+  const location = {
+    id: 'synthetic-location-conflict',
+    name: 'Fiktiver Saal',
+    state: 'active',
+  };
+  const { fetcher } = mockRecord({
+    onLoad: (url, init) => {
+      if (url === '/api/v1/locations')
+        return Response.json(location, { status: 201 });
+      if (init?.method === 'PUT')
+        return Response.json({ error: 'conflict' }, { status: 409 });
+      return null;
+    },
+  });
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Location anlegen' }));
+  const dialog = screen.getByRole('dialog', { name: 'Location anlegen' });
+  fireEvent.change(within(dialog).getByLabelText('Name'), {
+    target: { value: location.name },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Anlegen und zuordnen' }),
+  );
+  expect(
+    await screen.findByText(/Event wurde inzwischen geändert/),
+  ).toBeTruthy();
+  expect(
+    within(screen.getByRole('region', { name: 'Ort / Adresse' })).getByText(
+      'Ort offen.',
+    ),
+  ).toBeTruthy();
+  expect(
+    within(screen.getByLabelText('Gespeicherter Ort')).getByRole('option', {
+      name: location.name,
+    }),
+  ).toBeTruthy();
+  expect(
+    fetcher.mock.calls.filter(([url]) => url === '/api/v1/locations'),
+  ).toHaveLength(1);
 });
 
 test('the wide frame keeps contact and place beside the main information', async () => {
