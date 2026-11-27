@@ -277,20 +277,21 @@ test('the location dialog is keyboard-accessible in both themes and widths', asy
   }
 });
 
+const suggestion = {
+  formatted: 'Fiktiver Festsaal, Musterweg 2, Beispielstadt',
+  name: 'Fiktiver Festsaal',
+  street: 'Musterweg 2',
+  postalCode: '00000',
+  city: 'Beispielstadt',
+  country: 'DE',
+  attribution: 'Geoapify · OpenStreetMap',
+};
+
 test('company and location suggestions prefill editable addresses in Chromium', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openRecord(page);
-  const suggestion = {
-    formatted: 'Fiktiver Festsaal, Musterweg 2, Beispielstadt',
-    name: 'Fiktiver Festsaal',
-    street: 'Musterweg 2',
-    postalCode: '00000',
-    city: 'Beispielstadt',
-    country: 'DE',
-    attribution: 'Geoapify · OpenStreetMap',
-  };
   await page.route('**/api/v1/address-suggestions', (route) =>
     route.fulfill({ json: [suggestion] }),
   );
@@ -351,6 +352,57 @@ test('company and location suggestions prefill editable addresses in Chromium', 
   await expect(contact.getByLabel('Straße und Hausnummer')).toHaveValue(
     'Fiktive Korrektur',
   );
+});
+
+test.describe('address suggestions with touch input', () => {
+  test.use({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+
+  test('a tap fills both new address forms', async ({ page }) => {
+    await openRecord(page);
+    await page.route('**/api/v1/address-suggestions', (route) =>
+      route.fulfill({ json: [suggestion] }),
+    );
+    const aside = page.locator('details.event-aside');
+    await aside.locator('summary').tap();
+    await aside.getByRole('button', { name: 'Location anlegen' }).tap();
+    const location = page.getByRole('dialog', { name: 'Location anlegen' });
+    const name = location.getByLabel('Name', { exact: true });
+    const result = location.getByRole('button', { name: /Fiktiver Festsaal/ });
+    const street = location.getByLabel('Straße und Hausnummer');
+    await name.fill('Fiktiver Fes');
+    await expect(result).toBeVisible();
+    await street.tap();
+    await expect(result).toBeHidden();
+    await name.fill('Fiktiver Fest');
+    await result.tap();
+    await expect(street).toHaveValue(suggestion.street);
+    await expect(location.getByLabel('PLZ')).toHaveValue(suggestion.postalCode);
+    await expect(location.getByLabel('Ort', { exact: true })).toHaveValue(
+      suggestion.city,
+    );
+    page.once('dialog', (confirm) => confirm.accept());
+    await location.getByRole('button', { name: 'Abbrechen' }).tap();
+
+    await page.goto('/#contacts');
+    await page.getByRole('button', { name: 'Kontakt anlegen' }).tap();
+    const contact = page.getByRole('dialog', { name: 'Kontakt anlegen' });
+    await contact.getByLabel('Kontaktart').selectOption('company');
+    await contact.getByLabel('Name / Firma').fill('Fiktiver Fest');
+    await contact.getByRole('button', { name: /Fiktiver Festsaal/ }).tap();
+    await expect(contact.getByLabel('Straße und Hausnummer')).toHaveValue(
+      suggestion.street,
+    );
+    await expect(contact.getByLabel('Postleitzahl')).toHaveValue(
+      suggestion.postalCode,
+    );
+    await expect(contact.getByLabel('Ort', { exact: true })).toHaveValue(
+      suggestion.city,
+    );
+  });
 });
 
 test('the event mails read in two panes like Bookitup', async ({ page }) => {

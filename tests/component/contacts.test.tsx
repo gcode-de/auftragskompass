@@ -95,17 +95,21 @@ test('fills a new company from an address suggestion and saves the edited addres
   fireEvent.change(form.getByLabelText('Kontaktart'), {
     target: { value: 'company' },
   });
-  fireEvent.change(form.getByLabelText('Name / Firma'), {
+  const name = form.getByLabelText('Name / Firma');
+  const street = form.getByLabelText<HTMLInputElement>('Straße und Hausnummer');
+  const resultName = /Synthetic Company, Fictional City/;
+  fireEvent.change(name, { target: { value: 'Synthetic Co' } });
+  await form.findByRole('button', { name: resultName });
+  fireEvent.focusOut(name, { relatedTarget: street });
+  expect(form.queryByRole('button', { name: resultName })).toBeNull();
+  fireEvent.change(name, {
     target: { value: 'Synthetic Com' },
   });
-  fireEvent.click(
-    await form.findByRole('button', {
-      name: /Synthetic Company, Fictional City/,
-    }),
-  );
-  expect(
-    form.getByLabelText<HTMLInputElement>('Straße und Hausnummer').value,
-  ).toBe(row.street);
+  const result = await form.findByRole('button', { name: resultName });
+  fireEvent.pointerDown(result, { pointerType: 'touch' });
+  expect(fireEvent.mouseDown(result)).toBe(false);
+  fireEvent.click(result);
+  expect(street.value).toBe(row.street);
   fireEvent.change(form.getByLabelText('Straße und Hausnummer'), {
     target: { value: 'Fictional corrected address' },
   });
