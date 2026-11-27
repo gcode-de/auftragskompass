@@ -237,6 +237,46 @@ test('the event record reads like Bookitup in both themes', async ({
   }
 });
 
+test('the location dialog is keyboard-accessible in both themes and widths', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openRecord(page);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const aside = page.locator('details.event-aside');
+    if (width === 390) await aside.locator('summary').click();
+    for (const theme of ['light', 'dark']) {
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+        await page.getByRole('button', { name: /modus aktivieren/i }).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const trigger = aside.getByRole('button', { name: 'Location anlegen' });
+      await trigger.focus();
+      await trigger.press('Enter');
+      const dialog = page.getByRole('dialog', { name: 'Location anlegen' });
+      await expect(
+        dialog.getByRole('textbox', { name: 'Name', exact: true }),
+      ).toBeFocused();
+      expect(
+        await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      ).toBe(true);
+      expect(
+        (
+          await new AxeBuilder({ page })
+            .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+            .analyze()
+        ).violations,
+      ).toEqual([]);
+      await page.screenshot({
+        path: test.info().outputPath(`event-location-${width}-${theme}.png`),
+      });
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await expect(trigger).toBeFocused();
+    }
+  }
+});
+
 test('the event mails read in two panes like Bookitup', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openRecord(page);

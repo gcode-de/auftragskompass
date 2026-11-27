@@ -6,6 +6,18 @@
 
 **Neue Session:** Zuerst die [Projektübergabe mit Funktionsstand und Skill-Vorgaben](docs/handoff.md) lesen und den tatsächlichen Repository-/Betriebsstand verifizieren.
 
+## Priorisierter Slice 27.11.2026
+
+- [x] **LOC-BKP-01 — Wiederverwendbare Location aus der Eventakte anlegen.**
+      Plus in der Location-Karte öffnet einen Dialog für Name und Adresse.
+      Abnahme: Erfolgreiche Anlage übernimmt den Ort über die versionierte
+      Eventspeicherung, aktualisiert Karte und Auswahl, und lässt den Ort bei
+      einem Zuordnungskonflikt für die spätere Auswahl verfügbar. Fehler bei
+      der Anlage halten die Eingaben im Dialog. Bestehende Orte und individuelle
+      Anschriften bleiben nutzbar. Anlage über `POST /api/v1/locations`,
+      Zuordnung über das versionierte `PUT /api/v1/events/:id`.
+      Commit `fix: restore location creation from event records`.
+
 ## Priorisierte Dokumentarbeiten (Nutzauftrag 20.11.2026, verbindliche Reihenfolge)
 
 **Nachsteuerung 21.11.2026 (hat Vorrang, Nutzer-Feature-Wünsche):** zuerst

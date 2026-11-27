@@ -2049,6 +2049,9 @@ export function EventPanel({
                             types={types}
                             packages={packages}
                             locations={locations}
+                            onLocationCreated={(location) => {
+                              setLocations((current) => [...current, location]);
+                            }}
                             onRecordConfirmed={(confirmed) => {
                               ++resourceProjectionSequence.current;
                               ++sequence.current;

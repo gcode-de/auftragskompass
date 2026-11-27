@@ -4,6 +4,7 @@ import { EventDocuments } from './EventDocuments.js';
 import { EventMails } from './EventMails.js';
 import { EventLibraryFiles } from './EventLibraryFiles.js';
 import { EventNotes } from './EventNotes.js';
+import { EventLocationDialog } from './EventLocationDialog.js';
 import {
   EventInlineEditor,
   canonicalEventRow,
@@ -138,6 +139,7 @@ export function EventDetails({
   types = [],
   packages = [],
   locations = [],
+  onLocationCreated,
   onRecordConfirmed,
   onResourceConfirmed,
   onRecordDirtyChange,
@@ -154,6 +156,7 @@ export function EventDetails({
   types?: VenueChoice[];
   packages?: VenueChoice[];
   locations?: VenueChoice[];
+  onLocationCreated?: (location: VenueChoice) => void;
   onRecordConfirmed?: (row: EventRow) => void;
   onResourceConfirmed?: (row: EventRow) => void;
   onRecordDirtyChange?: (dirty: boolean) => void;
@@ -194,6 +197,31 @@ export function EventDetails({
     setComposeRequest({ id: Date.now(), trigger: newMailButton.current });
   });
   const wideRecord = useWideRecord();
+  const [locationTrigger, setLocationTrigger] =
+    useState<HTMLButtonElement | null>(null);
+  const [locationNotice, setLocationNotice] = useState('');
+  const createdLocations = useRef<VenueChoice[]>([]);
+  const availableLocations = [
+    ...locations,
+    ...createdLocations.current.filter(
+      (created) => !locations.some((place) => place.id === created.id),
+    ),
+  ];
+  function closeLocationDialog() {
+    setLocationTrigger(null);
+    locationTrigger?.focus();
+  }
+  function locationCreated(location: VenueChoice) {
+    createdLocations.current.push(location);
+    onLocationCreated?.(location);
+    const assigning = inline.current?.assignLocation(location.id);
+    setLocationNotice(
+      assigning
+        ? ''
+        : 'Location angelegt. Bitte unter „Gespeicherter Ort“ zuordnen.',
+    );
+    closeLocationDialog();
+  }
   const heading = useRef<HTMLHeadingElement>(null),
     detailsPanel = useRef<HTMLDivElement>(null),
     resourcesPanel = useRef<HTMLDivElement>(null),
@@ -277,7 +305,9 @@ export function EventDetails({
     details?: ConfirmedContact[],
     known?: ContactHit[],
   ) {
-    const chosenLocation = locations.find((item) => item.id === row.locationId);
+    const chosenLocation =
+      createdLocations.current.find((item) => item.id === row.locationId) ??
+      locations.find((item) => item.id === row.locationId);
     ++loadSequence.current;
     loadedVersion.current = row.version;
     loadedId.current = row.id;
@@ -1100,7 +1130,7 @@ export function EventDetails({
                       csrfToken={csrfToken}
                       types={types}
                       packages={packages}
-                      locations={locations}
+                      locations={availableLocations}
                       contacts={data.contacts}
                       locked={metaBlocked || loading}
                       canEdit={() =>
@@ -1202,8 +1232,35 @@ export function EventDetails({
                         ))}
                       </ul>
                     </section>
-                    <section className="event-aside-location">
-                      <h4>Ort / Adresse</h4>
+                    <section
+                      className="event-aside-location"
+                      aria-labelledby="event-location-heading"
+                    >
+                      <div className="card-head">
+                        <h4 id="event-location-heading">Ort / Adresse</h4>
+                        <button
+                          type="button"
+                          className="icon-action tier-quiet-icon"
+                          aria-label="Location anlegen"
+                          title="Location anlegen"
+                          disabled={metaBlocked || loading}
+                          onClick={(event) =>
+                            setLocationTrigger(event.currentTarget)
+                          }
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                        </button>
+                      </div>
+                      {locationNotice && <p role="status">{locationNotice}</p>}
                       {data.event.venueOverride ? (
                         data.event.venue?.trim() ? (
                           <p className="event-venue">{data.event.venue}</p>
@@ -1229,6 +1286,13 @@ export function EventDetails({
                       )}
                     </section>
                   </details>
+                  {locationTrigger && (
+                    <EventLocationDialog
+                      csrfToken={csrfToken}
+                      onClose={closeLocationDialog}
+                      onCreated={locationCreated}
+                    />
+                  )}
                 </aside>
               </div>
             </div>

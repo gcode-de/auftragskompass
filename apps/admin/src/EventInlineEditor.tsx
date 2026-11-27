@@ -135,6 +135,7 @@ export type ConfirmedContact = {
 };
 export type EventInlineHandle = {
   adoptExternal: (row: EventRow) => boolean;
+  assignLocation: (id: string) => boolean;
   reconcile: () => void;
   useRemote: () => void;
   reapply: () => void;
@@ -368,6 +369,12 @@ export const EventInlineEditor = forwardRef<
       scheduleSubmission.current = null;
       return save.adoptExternal(row);
     },
+    assignLocation: (id) => {
+      if (!canEdit()) return false;
+      changeLocation(id);
+      save.commitFields(['locationId', 'venueOverride']);
+      return true;
+    },
     reconcile: () => void save.reconcile(),
     useRemote,
     reapply: save.reapply,
@@ -488,6 +495,11 @@ export const EventInlineEditor = forwardRef<
     save.commitFields(['eventDate', 'startsAt', 'endsAt']);
     setScheduleError('');
   }
+  function changeLocation(id: string | null) {
+    onDirtyChange(true);
+    save.setField('locationId', id);
+    save.setField('venueOverride', false);
+  }
   function field(keys: Field[], key: Field) {
     return {
       onChange: (
@@ -496,12 +508,13 @@ export const EventInlineEditor = forwardRef<
         >,
       ) => {
         if (!canEdit()) return;
-        onDirtyChange(true);
         setInvalid('');
         if (key === 'locationId') {
-          save.setField('locationId', e.currentTarget.value || null);
-          save.setField('venueOverride', false);
-        } else if (key === 'venue') {
+          changeLocation(e.currentTarget.value || null);
+          return;
+        }
+        onDirtyChange(true);
+        if (key === 'venue') {
           const venue = venuePayload(e.currentTarget.value, true);
           save.setField('venue', venue.venue ?? '');
           save.setField('venueOverride', true);

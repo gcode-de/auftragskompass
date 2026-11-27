@@ -2023,6 +2023,13 @@ time {
     var(--brand-stripe) border-box;
   box-shadow: var(--shadow-dialog);
 }
+.event-location-dialog:modal,
+.event-location-dialog::backdrop {
+  overscroll-behavior: contain;
+}
+.event-location-dialog::backdrop {
+  overflow: hidden;
+}
 .document-deliver-layout {
   display: grid;
   gap: 1.25rem;

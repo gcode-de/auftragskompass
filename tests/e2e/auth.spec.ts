@@ -4672,6 +4672,35 @@ async function signInScenario(
       )
     ).rows[0]!;
     expect(storedEvent.contactId).toBeTruthy();
+    const locationCard = record.getByRole('region', { name: 'Ort / Adresse' });
+    await locationCard
+      .getByRole('button', { name: 'Location anlegen' })
+      .click();
+    const locationDialog = page.getByRole('dialog', {
+      name: 'Location anlegen',
+    });
+    await locationDialog
+      .getByRole('textbox', { name: 'Name', exact: true })
+      .fill('Fiktiver Browser-Festsaal');
+    await locationDialog
+      .getByLabel('Straße und Hausnummer')
+      .fill('Fiktiver Musterweg');
+    await locationDialog
+      .getByRole('button', { name: 'Anlegen und zuordnen' })
+      .click();
+    await expect(
+      locationCard.getByText('Fiktiver Browser-Festsaal'),
+    ).toBeVisible();
+    const storedVenue = await pool.query(
+      `SELECT l.name, e.venue_override
+         FROM events e JOIN locations l ON l.tenant_id = e.tenant_id AND l.id = e.location_id
+        WHERE e.tenant_id = $1 AND e.id = $2`,
+      [config.tenantId, storedEvent.id],
+    );
+    expect(storedVenue.rows).toEqual([
+      { name: 'Fiktiver Browser-Festsaal', venue_override: false },
+    ]);
+
     const offerTemplateRow = {
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       kind: 'offer',
