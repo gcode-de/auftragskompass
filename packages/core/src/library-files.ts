@@ -170,6 +170,7 @@ export type LibraryFileRow = {
   uploadedAt: string;
   uploadedDate: string;
   archivedAt: string | null;
+  eventId?: string;
 };
 
 export type LibraryFileUploadInput = {
@@ -177,6 +178,7 @@ export type LibraryFileUploadInput = {
   mediaType: unknown;
   contentBase64: unknown;
   requestId?: string;
+  eventId?: string;
 };
 
 type DbRow = {
@@ -189,11 +191,12 @@ type DbRow = {
   uploaded_at: Date;
   uploaded_date: string;
   archived_at: Date | null;
+  scoped_event_id: string | null;
 };
 
 const rowSelect = sql`
   SELECT f.id, f.display_name, f.media_type, f.size_bytes::integer AS size_bytes,
-         f.state, f.scan_state, f.uploaded_at, f.archived_at,
+         f.state, f.scan_state, f.uploaded_at, f.archived_at, f.scoped_event_id,
          to_char(f.uploaded_at AT TIME ZONE t.timezone, 'YYYY-MM-DD') AS uploaded_date
   FROM library_files f JOIN tenants t ON t.id = f.tenant_id
 `;
@@ -201,6 +204,7 @@ const rowSelect = sql`
 function mapRow(row: DbRow): LibraryFileRow {
   return {
     id: row.id,
+    ...(row.scoped_event_id ? { eventId: row.scoped_event_id } : {}),
     displayName: row.display_name,
     mediaType: row.media_type,
     sizeBytes: row.size_bytes,
@@ -223,9 +227,11 @@ export function libraryFileRepository(
   async function readRow(
     executor: { execute: (query: ReturnType<typeof sql>) => Promise<unknown> },
     id: string,
+    eventId: string | null = null,
   ): Promise<LibraryFileRow> {
     const result = (await executor.execute(
-      sql`${rowSelect} WHERE f.tenant_id = ${tenantId} AND f.id = ${id} AND f.state <> 'rejected'`,
+      sql`${rowSelect} WHERE f.tenant_id = ${tenantId} AND f.id = ${id} AND f.state <> 'rejected'
+          AND f.scoped_event_id IS NOT DISTINCT FROM ${eventId}::uuid`,
     )) as unknown as { rows: DbRow[] };
     const row = result.rows[0];
     if (!row) throw new LibraryFileError('not_found');
@@ -238,7 +244,15 @@ export function libraryFileRepository(
       );
       if (!event.rows.length) throw new LibraryFileError('not_found');
       const result = (await db.execute(
-        sql`${rowSelect} JOIN event_library_files l ON l.tenant_id = f.tenant_id AND l.file_id = f.id WHERE l.tenant_id = ${tenantId} AND l.event_id = ${eventId} AND f.state <> 'rejected' ORDER BY f.uploaded_at DESC, f.id DESC`,
+        sql`${rowSelect}
+          WHERE f.tenant_id = ${tenantId} AND f.state <> 'rejected'
+            AND (f.scoped_event_id = ${eventId} OR (
+              f.scoped_event_id IS NULL AND EXISTS (
+                SELECT 1 FROM event_library_files l
+                WHERE l.tenant_id = f.tenant_id AND l.file_id = f.id AND l.event_id = ${eventId}
+              )
+            ))
+          ORDER BY f.uploaded_at DESC, f.id DESC`,
       )) as unknown as { rows: DbRow[] };
       return result.rows.map(mapRow);
     },
@@ -277,7 +291,7 @@ export function libraryFileRepository(
     },
     async list(): Promise<LibraryFileRow[]> {
       const result = (await db.execute(
-        sql`${rowSelect} WHERE f.tenant_id = ${tenantId} AND f.state <> 'rejected' ORDER BY f.uploaded_at DESC, f.id DESC`,
+        sql`${rowSelect} WHERE f.tenant_id = ${tenantId} AND f.scoped_event_id IS NULL AND f.state <> 'rejected' ORDER BY f.uploaded_at DESC, f.id DESC`,
       )) as unknown as { rows: DbRow[] };
       return result.rows.map(mapRow);
     },
@@ -294,12 +308,25 @@ export function libraryFileRepository(
         storageKey = libraryStorageKey(mediaType),
         sha256 = createHash('sha256').update(bytes).digest('hex'),
         requestHash = createHash('sha256')
-          .update(JSON.stringify([displayName, mediaType, sha256]))
+          .update(
+            JSON.stringify([
+              displayName,
+              mediaType,
+              sha256,
+              ...(input.eventId ? [input.eventId] : []),
+            ]),
+          )
           .digest('hex'),
         requestId = input.requestId;
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
+        if (input.eventId) {
+          const event = await tx.execute(
+            sql`SELECT id FROM events WHERE tenant_id = ${tenantId} AND id = ${input.eventId} AND deleted_at IS NULL`,
+          );
+          if (!event.rows.length) throw new LibraryFileError('not_found');
+        }
         if (requestId) {
           const receipt = (await tx.execute(
             sql`SELECT request_hash, response FROM library_file_upload_operations WHERE tenant_id = ${tenantId} AND request_id = ${requestId}`,
@@ -323,15 +350,15 @@ export function libraryFileRepository(
         // Bytes are written first; a failed insert rolls the row back and
         // leaves only an unreferenced, uniquely named file.
         await tx.execute(
-          sql`INSERT INTO library_files (tenant_id,id,display_name,media_type,size_bytes,sha256,storage_key,state,scan_state,uploaded_at,uploaded_by)
-              VALUES (${tenantId},${id},${displayName},${mediaType},${bytes.byteLength},${sha256},${storageKey},'available','not_scanned',now(),${actorId})`,
+          sql`INSERT INTO library_files (tenant_id,id,display_name,media_type,size_bytes,sha256,storage_key,state,scan_state,uploaded_at,uploaded_by,scoped_event_id)
+              VALUES (${tenantId},${id},${displayName},${mediaType},${bytes.byteLength},${sha256},${storageKey},'available','not_scanned',now(),${actorId},${input.eventId ?? null})`,
         );
         // The audit action is part of the migration's CHECK, not of appendAudit's
         // narrower union, so it is written directly inside the same transaction.
         await tx.execute(
           sql`INSERT INTO audit_events (tenant_id,actor_id,action,record_id) VALUES (${tenantId},${actorId},'file.uploaded',${id})`,
         );
-        const row = await readRow(tx, id);
+        const row = await readRow(tx, id, input.eventId ?? null);
         if (requestId)
           await tx.execute(
             sql`INSERT INTO library_file_upload_operations (tenant_id,request_id,request_hash,response)
@@ -340,7 +367,10 @@ export function libraryFileRepository(
         return row;
       });
     },
-    async read(id: string): Promise<{
+    async read(
+      id: string,
+      eventId: string | null = null,
+    ): Promise<{
       displayName: string;
       mediaType: LibraryMediaType;
       bytes: Buffer;
@@ -348,7 +378,13 @@ export function libraryFileRepository(
       if (!uuidPattern.test(id)) throw new LibraryFileError('not_found');
       const result = (await db.execute(
         sql`SELECT display_name, media_type, storage_key, state FROM library_files
-            WHERE tenant_id = ${tenantId} AND id = ${id} AND state <> 'rejected'`,
+            WHERE tenant_id = ${tenantId} AND id = ${id} AND state <> 'rejected'
+              AND scoped_event_id IS NOT DISTINCT FROM ${eventId}::uuid
+              AND (scoped_event_id IS NULL OR EXISTS (
+                SELECT 1 FROM events e
+                WHERE e.tenant_id = library_files.tenant_id AND e.id = scoped_event_id
+                  AND e.deleted_at IS NULL
+              ))`,
       )) as unknown as {
         rows: {
           display_name: string;
@@ -422,6 +458,7 @@ export function registerLibraryFileRoutes(
       ],
       properties: {
         id: { type: 'string', format: 'uuid' },
+        eventId: { type: 'string', format: 'uuid' },
         displayName: { type: 'string' },
         mediaType: { type: 'string', enum: [...libraryMediaTypes] },
         sizeBytes: {
@@ -539,6 +576,7 @@ export function registerLibraryFileRoutes(
       mediaType: string;
       contentBase64: string;
       requestId?: string;
+      eventId?: string;
     };
   }>(
     '/api/v1/library-files',
@@ -554,6 +592,7 @@ export function registerLibraryFileRoutes(
             mediaType: { type: 'string', enum: [...libraryMediaTypes] },
             contentBase64: { type: 'string', minLength: 1 },
             requestId: { type: 'string', format: 'uuid' },
+            eventId: { type: 'string', format: 'uuid' },
           },
         },
         response: { 201: row },
@@ -569,25 +608,36 @@ export function registerLibraryFileRoutes(
       }
     },
   );
+  async function sendContent(
+    reply: FastifyReply,
+    id: string,
+    eventId?: string,
+  ) {
+    try {
+      const file = await repo.read(id, eventId);
+      return reply
+        .type(file.mediaType)
+        .header('X-Content-Type-Options', 'nosniff')
+        .header('Cache-Control', 'private, no-store')
+        .header(
+          'Content-Disposition',
+          contentDispositionHeader(file.displayName, file.mediaType),
+        )
+        .send(file.bytes);
+    } catch (error) {
+      return failure(error, reply);
+    }
+  }
   app.get<{ Params: { id: string } }>(
     '/api/v1/library-files/:id/content',
     { schema: { params } },
-    async (request, reply) => {
-      try {
-        const file = await repo.read(request.params.id);
-        return reply
-          .type(file.mediaType)
-          .header('X-Content-Type-Options', 'nosniff')
-          .header('Cache-Control', 'private, no-store')
-          .header(
-            'Content-Disposition',
-            contentDispositionHeader(file.displayName, file.mediaType),
-          )
-          .send(file.bytes);
-      } catch (error) {
-        return failure(error, reply);
-      }
-    },
+    (request, reply) => sendContent(reply, request.params.id),
+  );
+  app.get<{ Params: { eventId: string; fileId: string } }>(
+    '/api/v1/events/:eventId/library-files/:fileId/content',
+    { schema: { params: eventFileParams } },
+    (request, reply) =>
+      sendContent(reply, request.params.fileId, request.params.eventId),
   );
   app.post<{ Params: { id: string } }>(
     '/api/v1/library-files/:id/archive',

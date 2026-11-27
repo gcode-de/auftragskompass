@@ -348,7 +348,7 @@ export function mailTemplateRepository(pool: Pool, tenantId: string) {
             const check = await tx.execute(
               sql`SELECT 1 FROM library_files
                    WHERE tenant_id=${tenantId} AND id=${fileId}::uuid
-                     AND state='available' AND scan_state='not_scanned'`,
+                     AND scoped_event_id IS NULL AND state='available' AND scan_state='not_scanned'`,
             );
             if (!check.rows[0])
               throw new MailTemplateError('attachment_unavailable');

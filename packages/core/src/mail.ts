@@ -946,6 +946,7 @@ export function mailRepository(
   async function freezeFiles(
     connection: Connection,
     ids: readonly string[] | undefined,
+    eventId: string | null,
   ): Promise<FrozenFile[]> {
     const fileIds = [...new Set(ids ?? [])];
     if (fileIds.length > 20) throw new MailError('attachment_unavailable');
@@ -956,6 +957,7 @@ export function mailRepository(
                    storage_key, sha256
               FROM library_files
              WHERE tenant_id=${tenantId} AND id=${fileId}::uuid
+               AND (scoped_event_id IS NULL OR scoped_event_id=${eventId}::uuid)
                AND state='available' AND scan_state='not_scanned'`,
       )) as {
         rows: {
@@ -1638,7 +1640,11 @@ export function mailRepository(
           ),
           html = signed.bodyHtml ?? '',
           text = mailBodyTextFromHtml(html);
-        const files = await freezeFiles(tx, input.fileIds),
+        const files = await freezeFiles(
+            tx,
+            input.fileIds,
+            input.eventId ?? null,
+          ),
           documents = await freezeDocuments(tx, input.documentIds ?? []);
         // MAIL-FWD-01: the forwarding switches resolve their addresses here;
         // an unconfigured switch refuses instead of dropping a copy.
@@ -1763,7 +1769,7 @@ export function mailRepository(
         // order - the transaction leaves no message behind - and is never
         // silently dropped.
         const attachDocument = input.attachDocument ?? true,
-          files = await freezeFiles(tx, input.fileIds),
+          files = await freezeFiles(tx, input.fileIds, document.event_id),
           extraDocuments = await freezeDocuments(
             tx,
             (input.documentIds ?? []).filter((id) => id !== input.documentId),

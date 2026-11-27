@@ -533,6 +533,28 @@ test('the document mail is composed, previewed and ordered in Chromium', async (
       dialog.getByText('Dropped Datei.pdf', { exact: true }),
     ).toBeVisible();
 
+    const generalFiles = await page.request.get(
+      origin + '/api/v1/library-files',
+    );
+    expect(generalFiles.ok()).toBe(true);
+    expect(await generalFiles.json()).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ displayName: 'Dropped Datei.pdf' }),
+      ]),
+    );
+    const eventFiles = await page.request.get(
+      origin + `/api/v1/events/${event.id}/library-files`,
+    );
+    expect(eventFiles.ok()).toBe(true);
+    expect(await eventFiles.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          displayName: 'Dropped Datei.pdf',
+          eventId: event.id,
+        }),
+      ]),
+    );
+
     // QW5: a send time turns the action into planning; clearing it sends now.
     const sendAt = dialog.getByLabel('Senden am (optional)');
     await sendAt.fill('2031-01-15T09:30');

@@ -2448,6 +2448,61 @@ test('the document send route carries the attachment choice through', async () =
 // MAIL-EVENT-02: the free event mail carries the same attachment sources as
 // the document mail and resolves template placeholders from contact and
 // event - a placeholder without a value is refused, never sent literally.
+test('uploaded event attachments can only be queued for their owning event', async () => {
+  const { headers, csrf } = await signedIn();
+  const file = await seedLibraryFile();
+  await pool.query(
+    'UPDATE library_files SET scoped_event_id=$1 WHERE tenant_id=$2 AND id=$3',
+    [eventId, tenantId, file.id],
+  );
+  const anotherEvent = randomUUID();
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html) VALUES ($1,$2,'Synthetic different event','inquiry','','Europe/Berlin','','')`,
+    [tenantId, anotherEvent],
+  );
+  const compose = (target?: string) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/mail/compose',
+      headers: { ...headers, ...csrf },
+      payload: {
+        requestId: 'fictional-scoped-' + (target ?? 'without-event'),
+        to: 'synthetic.contact@example.invalid',
+        subject: 'Synthetic attachment',
+        bodyHtml: '<p>Fictional content</p>',
+        ...(target && { eventId: target }),
+        fileIds: [file.id],
+      },
+    });
+  const count = async () =>
+    (
+      await pool.query(
+        'SELECT (SELECT count(*) FROM mail_messages) AS messages, (SELECT count(*) FROM mail_outbox) AS orders',
+      )
+    ).rows[0];
+  const before = await count();
+  for (const target of [undefined, anotherEvent]) {
+    const response = await compose(target);
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: 'attachment_unavailable' });
+  }
+  expect(await count()).toEqual(before);
+  expect((await compose(eventId)).statusCode).toBe(201);
+  const document = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail/document-send',
+    headers: { ...headers, ...csrf },
+    payload: {
+      documentId: finalDocumentId,
+      requestId: 'fictional-scoped-document',
+      to: 'synthetic.contact@example.invalid',
+      bodyText: 'Fictional content',
+      fileIds: [file.id],
+    },
+  });
+  expect(document.statusCode).toBe(201);
+});
+
 test('a free event mail carries attachments and resolved placeholders', async () => {
   await pool.query('DELETE FROM mail_outbox');
   const { headers, csrf } = await signedIn();

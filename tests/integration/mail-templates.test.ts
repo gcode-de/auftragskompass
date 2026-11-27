@@ -402,6 +402,39 @@ test('templates carry standard file references and refuse unavailable ones', asy
   expect(replaced.json().attachments).toEqual([]);
 });
 
+test('a reusable mail template cannot reference a private event upload', async () => {
+  const eventId = randomUUID();
+  await pool.query(
+    `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html) VALUES ($1,$2,'Synthetic template event','inquiry','','Europe/Berlin','','')`,
+    [tenantId, eventId],
+  );
+  const file = await seedLibraryFile();
+  await pool.query(
+    'UPDATE library_files SET scoped_event_id=$1 WHERE tenant_id=$2 AND id=$3',
+    [eventId, tenantId, file.id],
+  );
+  const repo = mailTemplateRepository(pool, tenantId);
+  await expect(
+    repo.save(
+      actorId,
+      templateInput({
+        name: 'Fiktive Vorlage mit Eventanhang',
+        attachmentFileIds: [file.id],
+      }),
+    ),
+  ).rejects.toMatchObject({ reason: 'attachment_unavailable' });
+  const template = await repo.save(
+    actorId,
+    templateInput({ name: 'Fiktive leere Vorlage' }),
+  );
+  await expect(
+    pool.query(
+      'INSERT INTO mail_template_attachments (tenant_id,template_id,library_file_id) VALUES ($1,$2,$3)',
+      [tenantId, template.id, file.id],
+    ),
+  ).rejects.toThrow('mail file attachment is not available');
+});
+
 test('a template refuses more than the documented number of attachments', async () => {
   const ids = Array.from({ length: 21 }, () => randomUUID());
   // The route schema caps the list first; the repository guard is the same

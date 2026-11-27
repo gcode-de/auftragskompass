@@ -48,9 +48,11 @@
       Zurück/Abbrechen, Filter-Reset, Build-Version im Fuß der Navigation und
       Kalender als Events-Ansicht. Abnahme mit Komponenten- und Browsertests.
       Commit `fix: streamline event workspace interactions`.
-- [ ] **MAIL-FILE-SCOPE-01 — Hochgeladene Mailanhänge dem Event zuordnen.**
+- [x] **MAIL-FILE-SCOPE-01 — Hochgeladene Mailanhänge dem Event zuordnen.**
       Neue Anhänge aus Event-Mails atomar im Event speichern, in der allgemeinen
       Dateibibliothek ausblenden, Zugriff und Versand auf die Event-Grenze prüfen.
+      Abnahme mit Upload-Wiederholung, falschem Event, Vorlagen und unverändertem Bibliothekszugriff.
+      Commit `fix: scope mail uploads to their event`.
 - [ ] **MASTER-DELETE-01 — Verwendete Kontakte und Produkte entfernen.**
       Deaktivierte Stammdaten aus Auswahl und normalen Listen nehmen, historische
       Referenzen und unveränderliche Belege konsistent erhalten.

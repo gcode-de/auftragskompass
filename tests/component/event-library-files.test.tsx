@@ -53,6 +53,40 @@ test('links an existing library file to the event', async () => {
   ).toBeTruthy();
 });
 
+test('shows a mail upload with an event-scoped download and no unlink action', async () => {
+  const eventId = '11111111-1111-4111-8111-111111111111';
+  const id = '44444444-4444-4444-8444-444444444444';
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) =>
+      Response.json(
+        String(input).includes('/events/')
+          ? [
+              {
+                id,
+                eventId,
+                displayName: 'Fiktiver Mailanhang.pdf',
+                state: 'available',
+                scanState: 'not_scanned',
+              },
+            ]
+          : [],
+      ),
+    ),
+  );
+  render(<EventLibraryFiles eventId={eventId} csrfToken="synthetic" active />);
+  const link = await screen.findByRole('link', {
+    name: 'Herunterladen: Fiktiver Mailanhang.pdf',
+  });
+  expect(link.getAttribute('href')).toBe(
+    `/api/v1/events/${eventId}/library-files/${id}/content`,
+  );
+  expect(screen.getByText(/Mailanhang$/)).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: /^Zuordnung entfernen/ }),
+  ).toBeNull();
+});
+
 test('keeps a confirmed link visible when refreshing fails', async () => {
   const row = {
     id: '44444444-4444-4444-8444-444444444444',
