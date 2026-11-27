@@ -3344,7 +3344,8 @@ async function signInScenario(
       .getByRole('button', { name: 'Ressource speichern' })
       .click();
     await expect(
-      resources.getByRole('listitem').filter({ hasText: /^FB1 –/ }),
+      // RES-BKP-02: each row leads with its type.
+      resources.getByRole('listitem').filter({ hasText: /^Item: FB1 –/ }),
     ).toContainText('FB1 – 1 Stück – Fotobox – Aktiv – Gesperrt');
     const blocks = resources.getByRole('region', {
       name: 'Zeitweise Ressourcensperren',
