@@ -525,7 +525,7 @@ test('deleting an unused product removes it, audits the actor and refuses a stal
   expect(await productRepository(pool, foreignTenant).list()).toHaveLength(1);
 });
 
-test('a referenced product is never deleted; archiving stays the safe path', async () => {
+test('removing a referenced product preserves draft, final and template lines', async () => {
   const repo = productRepository(pool, tenantId);
   const product = await repo.save(actorId, {
     ...input,
@@ -563,9 +563,6 @@ test('a referenced product is never deleted; archiving stays the safe path', asy
     [tenantId, draftId, blankTemplate.id],
   );
   await line(draftId);
-  await expect(
-    repo.remove(actorId, product.id, product.version),
-  ).rejects.toThrow('product_in_use');
   await pool.query(
     `INSERT INTO documents
       (tenant_id,id,kind,template_id,state,number,finalized_at,snapshot_hash,pdf_hash,issued_at,version)
@@ -576,9 +573,6 @@ test('a referenced product is never deleted; archiving stays the safe path', asy
     [tenantId, finalId, blankTemplate.id],
   );
   await line(finalId);
-  await expect(
-    repo.remove(actorId, product.id, product.version),
-  ).rejects.toThrow('product_in_use');
   const template = await documentTemplateRepository(pool, tenantId).save(
     actorId,
     {
@@ -602,40 +596,34 @@ test('a referenced product is never deleted; archiving stays the safe path', asy
       ],
     },
   );
-  expect(template.id).toBeTruthy();
-  await expect(
-    repo.remove(actorId, product.id, product.version),
-  ).rejects.toThrow('product_in_use');
-  expect((await repo.list()).map((entry) => entry.id)).toContain(product.id);
-  // The product is blocked by use, not by state: archiving still works.
-  const archived = await repo.save(
-    actorId,
-    { ...input, name: product.name, state: 'archived' },
+  await repo.remove(actorId, product.id, product.version);
+  expect((await repo.list()).map((entry) => entry.id)).not.toContain(
     product.id,
-    product.version,
   );
-  expect(archived).toMatchObject({ state: 'archived', version: 2 });
-  // The foreign-key rejection is the second line of defence and answers the
-  // same 409 as the explicit reference check.
-  const guarded = await repo.save(actorId, {
-    ...input,
-    name: 'Synthetic guarded product',
-  });
-  await pool.query(
-    `CREATE TABLE IF NOT EXISTS synthetic_product_reference(
-      tenant_id uuid, product_id uuid,
-      FOREIGN KEY(tenant_id,product_id) REFERENCES products(tenant_id,id))`,
+  const lines = await pool.query(
+    'SELECT product_id FROM document_lines WHERE tenant_id=$1 AND document_id=ANY($2)',
+    [tenantId, [draftId, finalId]],
   );
-  await pool.query('INSERT INTO synthetic_product_reference VALUES($1,$2)', [
-    tenantId,
-    guarded.id,
+  expect(lines.rows).toEqual([
+    { product_id: product.id },
+    { product_id: product.id },
   ]);
+  const final = await pool.query(
+    'SELECT snapshot_hash FROM documents WHERE tenant_id=$1 AND id=$2',
+    [tenantId, finalId],
+  );
+  expect(final.rows[0].snapshot_hash).toBe('a'.repeat(64));
+  const templateLines = await pool.query(
+    'SELECT product_id FROM document_template_positions WHERE tenant_id=$1 AND template_id=$2',
+    [tenantId, template.id],
+  );
+  expect(templateLines.rows).toEqual([{ product_id: product.id }]);
   await expect(
-    repo.remove(actorId, guarded.id, guarded.version),
-  ).rejects.toThrow('product_in_use');
+    repo.remove(actorId, product.id, product.version + 1),
+  ).rejects.toThrow('not_found');
 });
 
-test('the delete API requires auth and CSRF, answers 409 product_in_use and keeps the list consistent', async () => {
+test('the delete API requires auth and CSRF, checks versions and removes referenced products from the list', async () => {
   const config = {
     origin: 'https://admin.example.invalid',
     tenantId,
@@ -729,22 +717,21 @@ test('the delete API requires auth and CSRF, answers 409 product_in_use and keep
        VALUES ($1,$2,$3,0,$4,'Synthetic API used line',1,'Stück',1999,1900)`,
       [tenantId, documentId, randomUUID(), used.id],
     );
-    const refused = await app.inject({
+    const removedUsed = await app.inject({
       method: 'DELETE',
       url: '/api/v1/products/' + used.id,
       cookies,
       headers,
       payload: { version: used.version },
     });
-    expect(refused.statusCode).toBe(409);
-    expect(refused.json()).toEqual({ error: 'product_in_use' });
+    expect(removedUsed.statusCode).toBe(204);
     const listed = (
       await app.inject({ url: '/api/v1/products', cookies })
     ).json() as {
       id: string;
       state: string;
     }[];
-    expect(listed.some((entry) => entry.id === used.id)).toBe(true);
+    expect(listed.some((entry) => entry.id === used.id)).toBe(false);
     // A product of another tenant is simply not found for this catalogue.
     const foreignTenant = randomUUID();
     await bootstrapAccess(

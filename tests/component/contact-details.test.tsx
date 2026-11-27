@@ -473,8 +473,7 @@ test('the record keeps one quiet breadcrumb back and an icon edit action', async
   await screen.findByText('Synthetic Company');
   const details = await openRecord();
   const buttons = within(details).getAllByRole('button');
-  // UI-BKP-13: like Bookitup no secondary button competes in the record;
-  // the breadcrumb and the two event tabs are the quiet ones.
+  // The removal action stays in the footer alongside quiet record controls.
   expect(
     buttons.filter((button) =>
       (button.getAttribute('class') ?? '').includes('secondary-action'),
@@ -486,7 +485,7 @@ test('the record keeps one quiet breadcrumb back and an icon edit action', async
         (button.getAttribute('class') ?? '').includes('tertiary-action'),
       )
       .map((button) => button.textContent),
-  ).toEqual(['Kontakte', 'Chronologisch', 'Ohne Datum']);
+  ).toEqual(['Kontakte', 'Chronologisch', 'Ohne Datum', 'Kontakt löschen']);
   const edit = within(details).getByRole('button', {
     name: 'Kontakt bearbeiten: Synthetic Company',
   });

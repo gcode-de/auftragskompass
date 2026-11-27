@@ -2,6 +2,7 @@ import { Snackbar } from './Snackbar.js';
 import { useEffect, useRef, useState } from 'react';
 import { ContactDetails, type ContactRecord } from './ContactDetails.js';
 import { ContactDialog } from './ContactDialog.js';
+import { PositionRemoveDialog } from './PositionRemoveDialog.js';
 import { mailtoHref, telHref } from './contact-links.js';
 import {
   menuPanelProps,
@@ -21,6 +22,7 @@ export function ContactPanel({
   showHeading?: boolean;
 }) {
   const sequence = useRef(0);
+  const deleting = useRef(false);
   const inlineDirty = useRef(false);
   const editedSearchId = useRef<string | null>(null);
   const scrolledDetail = useRef<string | null>(null);
@@ -40,7 +42,9 @@ export function ContactPanel({
     [editorEpoch, setEditorEpoch] = useState(0),
     [detailId, setDetailId] = useState<string | null>(null),
     [editedSearchRecord, setEditedSearchRecord] = useState(false),
-    [openMenu, setOpenMenu] = useState('');
+    [openMenu, setOpenMenu] = useState(''),
+    [confirming, setConfirming] = useState<Contact | null>(null),
+    [deleteUnconfirmed, setDeleteUnconfirmed] = useState(false);
   async function refresh(query = '') {
     const current = ++sequence.current;
     setLoading(true);
@@ -59,6 +63,7 @@ export function ContactPanel({
         setEditedSearchRecord(false);
         setEditorEpoch((value) => value + 1);
         setReloadFailed(false);
+        setDeleteUnconfirmed(false);
         setMessage((text) => (text === loadFailureMessage ? '' : text));
       }
     } catch (error) {
@@ -164,6 +169,69 @@ export function ContactPanel({
     setOpen(false);
     setEditing(null);
     restoreFocus();
+  }
+  function askRemove(row: Contact, trigger: HTMLElement) {
+    if (open || busy || confirming || deleteUnconfirmed) return;
+    if (inlineDirty.current) {
+      setMessage(
+        'Bitte die Kontaktänderungen zuerst speichern oder abgleichen.',
+      );
+      return;
+    }
+    returnFocus.current = trigger;
+    setOpenMenu('');
+    setMessage('');
+    setConfirming(row);
+  }
+  function closeRemove() {
+    if (deleting.current) return;
+    setConfirming(null);
+    restoreFocus();
+  }
+  async function removeContact() {
+    if (!confirming || deleting.current) return;
+    const row = confirming;
+    deleting.current = true;
+    setBusy(true);
+    try {
+      const response = await fetch('/api/v1/contacts/' + row.id, {
+        method: 'DELETE',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ version: row.version }),
+      });
+      if (response.status === 204 || response.status === 404) {
+        ++sequence.current;
+        setLoading(false);
+        setRows((current) => current.filter((entry) => entry.id !== row.id));
+        returnFocus.current = null;
+        if (detailId === row.id) {
+          setDetailId(null);
+          window.history.replaceState(null, '', '#contacts');
+        }
+        setMessage(
+          response.status === 204
+            ? 'Kontakt gelöscht.'
+            : 'Kontakt bereits entfernt.',
+        );
+      } else if (response.status === 409) {
+        setDeleteUnconfirmed(true);
+        setMessage(
+          'Der Kontakt wurde inzwischen geändert. Bitte Kontakte erneut laden.',
+        );
+      } else {
+        setMessage('Der Kontakt konnte nicht gelöscht werden.');
+      }
+    } catch {
+      setDeleteUnconfirmed(true);
+      setMessage('Löschstand unklar. Bitte Kontakte erneut laden.');
+    } finally {
+      deleting.current = false;
+      setBusy(false);
+      closeRemove();
+    }
   }
   function adoptContact(row: Contact) {
     ++sequence.current;
@@ -451,24 +519,42 @@ export function ContactPanel({
                         >
                           {/* Only the open menu renders its action. */}
                           {openMenu === row.id && (
-                            <button
-                              type="button"
-                              className="tertiary-action"
-                              disabled={busy}
-                              aria-label={`Kontakt bearbeiten: ${row.name}`}
-                              onClick={(event) => {
-                                // The toggle, not the closing menu, gets the focus back.
-                                event.currentTarget.parentElement?.parentElement
-                                  ?.querySelector<HTMLElement>(
-                                    '.row-menu-toggle',
-                                  )
-                                  ?.focus();
-                                setOpenMenu('');
-                                openEdit(row);
-                              }}
-                            >
-                              Bearbeiten
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className="tertiary-action"
+                                disabled={busy}
+                                aria-label={`Kontakt bearbeiten: ${row.name}`}
+                                onClick={(event) => {
+                                  // The toggle, not the closing menu, gets the focus back.
+                                  event.currentTarget.parentElement?.parentElement
+                                    ?.querySelector<HTMLElement>(
+                                      '.row-menu-toggle',
+                                    )
+                                    ?.focus();
+                                  setOpenMenu('');
+                                  openEdit(row);
+                                }}
+                              >
+                                Bearbeiten
+                              </button>
+                              <button
+                                type="button"
+                                className="tertiary-action"
+                                disabled={busy || deleteUnconfirmed}
+                                aria-label={`Kontakt löschen: ${row.name}`}
+                                onClick={(event) => {
+                                  const toggle = event.currentTarget
+                                    .closest('.contact-cell-menu')
+                                    ?.querySelector<HTMLElement>(
+                                      '.row-menu-toggle',
+                                    );
+                                  askRemove(row, toggle ?? event.currentTarget);
+                                }}
+                              >
+                                Löschen
+                              </button>
+                            </>
                           )}
                         </span>
                       )}
@@ -499,6 +585,11 @@ export function ContactPanel({
                           inlineDirty.current = dirty;
                         }}
                         onEdit={() => openEdit(row)}
+                        onRemove={
+                          deleteUnconfirmed
+                            ? undefined
+                            : (trigger) => askRemove(row, trigger)
+                        }
                         onClose={() => closeDetail(row.id)}
                       />
                     </>
@@ -523,7 +614,7 @@ export function ContactPanel({
           </button>
         </div>
       )}
-      {!reloadFailed && loadFailed && (
+      {!reloadFailed && (loadFailed || deleteUnconfirmed) && (
         <button
           type="button"
           className="tertiary-action"
@@ -532,6 +623,17 @@ export function ContactPanel({
         >
           Kontakte erneut laden
         </button>
+      )}
+      {confirming && (
+        <PositionRemoveDialog
+          position={confirming.name}
+          heading="Kontakt löschen?"
+          confirmLabel="Löschen"
+          busy={busy}
+          message={`„${confirming.name}“ wird aus den Kontakten entfernt. Bestehende Zuordnungen bleiben erhalten.`}
+          onConfirm={() => void removeContact()}
+          onCancel={closeRemove}
+        />
       )}
       {open && (
         <ContactDialog

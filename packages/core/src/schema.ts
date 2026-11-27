@@ -141,6 +141,7 @@ export const products = pgTable('products', {
   state: text('state').notNull(),
   position: integer('position').notNull(),
   version: integer('version').notNull().default(1),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
 export const contacts = pgTable('contacts', {
@@ -162,6 +163,7 @@ export const contacts = pgTable('contacts', {
   mobileKey: text('mobile_key').notNull(),
   state: text('state').notNull(),
   version: integer('version').notNull().default(1),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
 export const locations = pgTable('locations', {

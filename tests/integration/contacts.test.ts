@@ -349,6 +349,42 @@ test('contact API authorizes reads, export and writes, validates and rolls back 
     expect((await update(created.json().id, 1)).statusCode).toBe(200);
     expect((await update(created.json().id, 1)).statusCode).toBe(409);
     expect((await update(randomUUID(), 1)).statusCode).toBe(404);
+    const contactId = created.json().id as string;
+    const eventId = randomUUID();
+    await pool.query(
+      `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html)
+       VALUES ($1,$2,'Synthetic historical event','option','','UTC','','')`,
+      [tenantId, eventId],
+    );
+    await pool.query(
+      "INSERT INTO event_contacts (tenant_id,event_id,contact_id,role) VALUES ($1,$2,$3,'primary')",
+      [tenantId, eventId, contactId],
+    );
+    const remove = (id: string, version: number, csrf = true) =>
+      app.inject({
+        method: 'DELETE',
+        url: '/api/v1/contacts/' + id,
+        cookies,
+        headers: csrf ? headers : {},
+        payload: { version },
+      });
+    expect((await remove(contactId, 2, false)).statusCode).toBe(403);
+    expect((await remove(otherContact.id, 1)).statusCode).toBe(404);
+    expect((await remove(contactId, 1)).statusCode).toBe(409);
+    expect((await remove(contactId, 2)).statusCode).toBe(204);
+    expect((await remove(contactId, 3)).statusCode).toBe(404);
+    expect((await app.inject({ url: contactUrl, cookies })).statusCode).toBe(
+      404,
+    );
+    const historical = await pool.query(
+      `SELECT role,contacts.deleted_at FROM event_contacts
+       JOIN contacts ON contacts.tenant_id=event_contacts.tenant_id AND contacts.id=contact_id
+       WHERE event_contacts.tenant_id=$1 AND event_id=$2`,
+      [tenantId, eventId],
+    );
+    expect(historical.rows).toEqual([
+      { role: 'primary', deleted_at: expect.any(Date) },
+    ]);
     await pool.query(
       'ALTER TABLE audit_events RENAME TO temporarily_missing_audit',
     );

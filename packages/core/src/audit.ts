@@ -23,6 +23,7 @@ export type AuditAction =
   | 'product.deleted'
   | 'contact.created'
   | 'contact.updated'
+  | 'contact.deleted'
   | 'location.created'
   | 'location.updated'
   | 'event.created'

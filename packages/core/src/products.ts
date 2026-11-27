@@ -2,12 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { and, asc, eq } from 'drizzle-orm';
-import {
-  documentLines,
-  documentTemplatePositions,
-  products,
-} from './schema.js';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { products } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
 import { csv } from './contacts.js';
@@ -22,19 +18,9 @@ export type ProductInput = {
   position: number;
 };
 class ProductError extends Error {}
-// A foreign-key rejection while deleting a product can only mean that a
-// document line or a template position still points at it: the delete is not
-// safe. Both drizzle's wrapper and the driver error are inspected so the
-// caller always receives the documented `product_in_use` answer.
-function isForeignKeyViolation(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const code = (error as { code?: string }).code;
-  const cause = (error as { cause?: { code?: string } }).cause?.code;
-  return code === '23503' || cause === '23503';
-}
 export function productRepository(pool: Pool, tenantId: string) {
   const db = drizzle(pool),
-    scope = eq(products.tenantId, tenantId);
+    scope = and(eq(products.tenantId, tenantId), isNull(products.deletedAt));
   return {
     async list() {
       return db
@@ -88,12 +74,6 @@ export function productRepository(pool: Pool, tenantId: string) {
         return row!;
       });
     },
-    /**
-     * Deletes an unused catalogue product. A product that a draft, a final
-     * document or a template still refers to is never deleted and never
-     * silently detached: the caller receives `product_in_use` and archiving
-     * stays the way to retire it.
-     */
     async remove(actorId: string, id: string, version: number) {
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
@@ -104,36 +84,14 @@ export function productRepository(pool: Pool, tenantId: string) {
           .where(and(scope, eq(products.id, id)));
         if (!row) throw new ProductError('not_found');
         if (row.version !== version) throw new ProductError('conflict');
-        const [line] = await tx
-          .select({ id: documentLines.id })
-          .from(documentLines)
-          .where(
-            and(
-              eq(documentLines.tenantId, tenantId),
-              eq(documentLines.productId, id),
-            ),
-          )
-          .limit(1);
-        const [position] = await tx
-          .select({ id: documentTemplatePositions.id })
-          .from(documentTemplatePositions)
-          .where(
-            and(
-              eq(documentTemplatePositions.tenantId, tenantId),
-              eq(documentTemplatePositions.productId, id),
-            ),
-          )
-          .limit(1);
-        if (line || position) throw new ProductError('product_in_use');
-        try {
-          await tx.delete(products).where(and(scope, eq(products.id, id)));
-        } catch (error) {
-          if (isForeignKeyViolation(error))
-            throw new ProductError('product_in_use');
-          throw error;
-        }
-        // PRODUCTS-DELETE-01: the removal has its own audit action (migration
-        // 0064 extends the 0052 list additively).
+        await tx
+          .update(products)
+          .set({
+            state: 'archived',
+            deletedAt: sql`now()`,
+            version: version + 1,
+          })
+          .where(and(scope, eq(products.id, id)));
         await appendAudit(tx, tenantId, 'product.deleted', actorId, id);
       });
     },
