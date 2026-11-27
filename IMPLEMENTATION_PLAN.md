@@ -32,6 +32,13 @@
   manuelle Eingabe verfügbar. Migration 0088 speichert die Quellenangaben
   ausgewählter Adressen. Kalenderabos benötigen den Suchdienst nicht.
 
+- [x] **LOC-BKP-03 — Adressvorschläge per Fingertipp übernehmen.**
+      Ein Fokusverlust beim Antippen darf den Treffer vor der Auswahl nicht
+      entfernen. Abnahme in Firmen- und Location-Formular, einschließlich
+      Tastaturauswahl und Schließen der Vorschläge außerhalb des Feldes,
+      in Chromium und WebKit mit emulierter Touch-Eingabe geprüft.
+      Commit `fix: accept address suggestions on touch`.
+
 ## Priorisierte Dokumentarbeiten (Nutzauftrag 20.11.2026, verbindliche Reihenfolge)
 
 **Nachsteuerung 21.11.2026 (hat Vorrang, Nutzer-Feature-Wünsche):** zuerst

@@ -120,7 +120,8 @@ export function AddressNameField({
                 <button
                   type="button"
                   className="contact-picker-hit"
-                  onPointerDown={(event) => event.preventDefault()}
+                  // WebKit may focus the dialog between a tap and its click.
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     onSelect(suggestion);
                     input.current?.focus();

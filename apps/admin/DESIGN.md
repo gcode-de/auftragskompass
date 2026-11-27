@@ -296,8 +296,9 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
 - **Adressvorschläge (LOC-BKP-02):** Beim Anlegen von Firmenkontakten oder
   Locations stehen Vorschläge direkt unter dem Namensfeld als Liste benannter
   Knöpfe mit Quellenangabe. Pfeil nach unten fokussiert den ersten Treffer,
-  Escape schließt die Liste. Bei Auswahl füllen sich die bearbeitbaren
-  Adressfelder. Ein Ausfall der Suche lässt die manuelle Anlage verfügbar.
+  Escape oder Antippen außerhalb schließt die Liste. Beim Antippen eines
+  Treffers bleibt die Liste bis zur Auswahl verfügbar. Die Auswahl füllt die
+  bearbeitbaren Adressfelder. Bei Suchausfall bleibt die manuelle Anlage möglich.
 - **Location-Zuordnung (LOC-BKP-01):** Die Karte zeigt die bestätigte
   Zuordnung. Bei Versionskonflikten bleibt der angelegte Ort in der Auswahl
   „Gespeicherter Ort“ verfügbar, und der Eventeditor zeigt die Konfliktlösung.
