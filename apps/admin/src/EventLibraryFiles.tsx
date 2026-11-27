@@ -14,6 +14,7 @@ type Row = {
   uploadedAt: string;
   uploadedDate: string;
   archivedAt: string | null;
+  eventId?: string;
 };
 
 function validRow(value: unknown): value is Row {
@@ -196,7 +197,12 @@ export function EventLibraryFiles({
             <li key={row.id}>
               {row.state === 'available' ? (
                 <a
-                  href={'/api/v1/library-files/' + row.id + '/content'}
+                  href={
+                    (row.eventId ? url : '/api/v1/library-files') +
+                    '/' +
+                    row.id +
+                    '/content'
+                  }
                   download
                   aria-label={'Herunterladen: ' + row.displayName}
                 >
@@ -208,14 +214,18 @@ export function EventLibraryFiles({
               {' · '}
               {row.state === 'available' ? 'Verfügbar' : 'Archiviert'} ·
               Ungeprüft{' '}
-              <button
-                type="button"
-                className="tertiary-action"
-                disabled={busy || loading}
-                onClick={() => void change(row.id, false)}
-              >
-                Zuordnung entfernen: {row.displayName}
-              </button>
+              {row.eventId ? (
+                ' · Mailanhang'
+              ) : (
+                <button
+                  type="button"
+                  className="tertiary-action"
+                  disabled={busy || loading}
+                  onClick={() => void change(row.id, false)}
+                >
+                  Zuordnung entfernen: {row.displayName}
+                </button>
+              )}
             </li>
           ))}
         </ul>

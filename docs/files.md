@@ -21,8 +21,7 @@ können weder Pfade noch Header beeinflussen.
 Der Upload wird als JSON mit Base64-Inhalt übertragen (Name bleibt aus URLs
 und Logs). Der Server prüft die deklarierte Art gegen die tatsächliche
 Dateisignatur (MIME-Spoofing ergibt 415 ohne Zeile und ohne Ablage), die
-Größe (die Grenze von 10 MiB ist selbst erlaubt, ein Byte darüber ergibt
-413) und die strenge kanonische Base64-Schreibweise. ZIP-Dateien werden
+Größe (die Grenze von 10 MiB ist selbst erlaubt, ein Byte darüber ergibt 413) und die strenge kanonische Base64-Schreibweise. ZIP-Dateien werden
 niemals entpackt. Es gibt bewusst keine Deduplizierung über den Prüfsummen-
 Wert: dieselben Bytes zweimal hochgeladen ergeben zwei getrennte Dateien.
 
@@ -99,3 +98,17 @@ Direkter Upload aus dem Event, Kategorien (Upload/Standard/Mailanhang), Ersetzen
 Versionierung, Mailanhangpicker, die acht Standarddateien (DA-07, braucht
 echte Bestandsdateien außerhalb Git), Suche/Filter/Paginierung der Liste bei
 großen Beständen sowie Retention/Löschung sind gesonderte Folgeslices.
+
+### Uploads aus Event-Mails
+
+Der Maildialog sendet beim Upload zusätzlich die vorhandene `eventId` an
+`POST /api/v1/library-files`. Die API prüft den aktiven Eventbezug im selben
+Mandanten und schreibt ihn zusammen mit der Datei. Die Wiederholungsprüfung
+bindet die Upload-ID an das Event. Solche Dateien erscheinen ausschließlich
+unter Dateien in diesem Event und sind über
+`GET /api/v1/events/:eventId/library-files/:fileId/content` abrufbar.
+
+Der allgemeine Bibliotheksbestand, Dokumentannahmen und Mailvorlagen führen
+weiterhin allgemeine Dateien. Im Maildialog lassen sich Eventdateien desselben Events erneut auswählen.
+Der Versand prüft den Eventbezug. Bestehende Dateien ohne aufgezeichneten
+Eventbezug behalten ihre bisherige Zuordnung.

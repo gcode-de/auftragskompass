@@ -447,6 +447,68 @@ test('links a library file to an event idempotently without copying bytes', asyn
   ).toBe(204);
 });
 
+test('an event upload stays in its own event and keeps retries scoped', async () => {
+  const eventId = randomUUID(),
+    otherEventId = randomUUID(),
+    foreignEventId = randomUUID();
+  for (const [tenant, id] of [
+    [tenantId, eventId],
+    [tenantId, otherEventId],
+    [otherTenantId, foreignEventId],
+  ])
+    await pool.query(
+      `INSERT INTO events (tenant_id,id,name,status,source,time_zone,description,notes_html) VALUES ($1,$2,'Synthetic file event','inquiry','','Europe/Berlin','','')`,
+      [tenant, id],
+    );
+  const requestId = randomUUID();
+  const response = await upload({ eventId, requestId });
+  expect(response.statusCode).toBe(201);
+  const { id } = response.json();
+  expect((await upload({ eventId, requestId })).json()).toMatchObject({
+    id,
+    eventId,
+  });
+  expect((await upload({ eventId: otherEventId, requestId })).statusCode).toBe(
+    409,
+  );
+  expect((await upload({ requestId })).statusCode).toBe(409);
+  expect((await upload({ eventId: foreignEventId })).statusCode).toBe(404);
+  expect((await upload({ eventId: randomUUID() })).statusCode).toBe(404);
+
+  const global = '/api/v1/library-files';
+  const owned = `/api/v1/events/${eventId}/library-files`;
+  const other = `/api/v1/events/${otherEventId}/library-files`;
+  expect((await app.inject({ url: global, cookies })).json()).toEqual([]);
+  expect((await app.inject({ url: owned, cookies })).json()).toMatchObject([
+    { id, eventId },
+  ]);
+  expect((await app.inject({ url: other, cookies })).json()).toEqual([]);
+  expect(
+    (await app.inject({ url: `${global}/${id}/content`, cookies })).statusCode,
+  ).toBe(404);
+  expect(
+    (await app.inject({ url: `${other}/${id}/content`, cookies })).statusCode,
+  ).toBe(404);
+  const download = await app.inject({ url: `${owned}/${id}/content`, cookies });
+  expect(download.statusCode).toBe(200);
+  expect(download.rawPayload).toEqual(pdfBytes);
+  for (const method of ['PUT', 'DELETE'] as const)
+    expect(
+      (await app.inject({ method, url: `${other}/${id}`, cookies, headers }))
+        .statusCode,
+    ).toBe(404);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `${global}/${id}/archive`,
+        cookies,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(404);
+});
+
 test('uploads each allowed type with a generated key and an honest scan state', async () => {
   for (const [mediaType, bytes] of [
     ['application/pdf', pdfBytes],

@@ -1089,7 +1089,7 @@ export function documentRepository(
     };
     const files = (await executor.execute(sql`
       SELECT state FROM library_files
-       WHERE tenant_id = ${tenantId} AND id = ${value}`)) as {
+       WHERE tenant_id = ${tenantId} AND id = ${value} AND scoped_event_id IS NULL`)) as {
       rows: { state: 'available' | 'archived' }[];
     };
     const file = files.rows[0];

@@ -6499,6 +6499,7 @@ test('dropping files on the text area uploads them into the attachment list', as
   );
   expect(uploads).toHaveLength(1);
   expect(uploads[0]!.body).toMatchObject({
+    eventId: props.eventId,
     displayName: 'Rechnung.pdf',
     mediaType: 'application/pdf',
   });

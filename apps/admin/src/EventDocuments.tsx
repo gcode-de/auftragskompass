@@ -2551,23 +2551,32 @@ export function EventDocuments({
         setMailSignatures([]);
         setMailSignatureId('none');
       });
-    // The library picker lists the available files; a failed list leaves the
-    // picker empty and never invents an entry.
-    void fetch('/api/v1/library-files')
-      .then(async (response) => {
-        if (!response.ok) throw Error('load');
-        const rows = (await response.json()) as {
-          id: string;
-          displayName: string;
-          state: string;
-        }[];
-        setMailLibraryFiles(
-          rows
-            .filter((row) => row.state === 'available')
-            .map((row) => ({ id: row.id, label: row.displayName })),
-        );
-      })
-      .catch(() => setMailLibraryFiles([]));
+    // Offer the general library and this event's existing mail uploads.
+    const fileLists = [
+      '/api/v1/library-files',
+      '/api/v1/events/' + eventId + '/library-files',
+    ];
+    void Promise.all(
+      fileLists.map(async (url) => {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return [];
+          const rows: unknown = await response.json();
+          return Array.isArray(rows)
+            ? (rows as { id: string; displayName: string; state: string }[])
+            : [];
+        } catch {
+          return [];
+        }
+      }),
+    ).then((lists) => {
+      const choices = new Map<string, { id: string; label: string }>();
+      for (const row of lists.flat()) {
+        if (row?.state === 'available')
+          choices.set(row.id, { id: row.id, label: row.displayName });
+      }
+      setMailLibraryFiles([...choices.values()]);
+    });
     // Only active templates are offered; a failed list is a quiet notice.
     void fetch('/api/v1/mail-templates')
       .then(async (response) => {
@@ -2752,6 +2761,7 @@ export function EventDocuments({
                 'x-csrf-token': csrfToken,
               },
               body: JSON.stringify({
+                eventId,
                 displayName: file.name,
                 mediaType,
                 contentBase64,
