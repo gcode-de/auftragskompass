@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type React from 'react';
+import { AddressNameField } from './AddressNameField.js';
 import { ModalDialog } from './ModalDialog.js';
 import type { ContactRecord } from './ContactDetails.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
 export type Contact = ContactRecord & { version: number };
-type ContactInput = Omit<Contact, 'id' | 'version'>;
+type ContactInput = Omit<Contact, 'id' | 'version' | 'addressAttribution'>;
 
 const fields = [
   ['name', 'Name / Firma', 200],
@@ -110,7 +111,10 @@ export function ContactDialog({
     [errorFocus, setErrorFocus] = useState(0),
     [duplicates, setDuplicates] = useState<string[]>([]),
     [busy, setBusy] = useState(false);
-  const dirty = JSON.stringify(values) !== JSON.stringify(baseline);
+  const [addressAttribution, setAddressAttribution] = useState<string>();
+  const dirty =
+    Boolean(addressAttribution) ||
+    JSON.stringify(values) !== JSON.stringify(baseline);
   const title = contact ? 'Kontakt bearbeiten' : 'Kontakt anlegen';
   const titleId = contactDialogTitleId(idPrefix);
   useEffect(() => registerUnsavedChanges(() => dirty), [dirty]);
@@ -159,6 +163,7 @@ export function ContactDialog({
           },
           body: JSON.stringify({
             ...input,
+            ...(addressAttribution && { addressAttribution }),
             ...(contact ? { version: contact.version } : {}),
           }),
         },
@@ -272,18 +277,48 @@ export function ContactDialog({
               <option value="company">Firma</option>
             </select>
           </label>
-          {fields.map(([key, label, maxLength]) => (
-            <label key={key}>
-              {label}
-              <input
-                name={key}
-                maxLength={maxLength}
-                required={key === 'name' || key === 'country'}
-                value={values[key]}
-                onChange={(event) => update(key, event.target.value)}
+          {fields.map(([key, label, maxLength]) =>
+            key === 'name' && !contact && values.kind === 'company' ? (
+              <AddressNameField
+                key={key}
+                label={label}
+                value={values.name}
+                csrfToken={csrfToken}
+                onChange={(value) => update('name', value)}
+                onSelect={({
+                  name,
+                  street,
+                  postalCode,
+                  city,
+                  country,
+                  attribution,
+                }) => {
+                  setAddressAttribution(attribution);
+                  setValues((current) => ({
+                    ...current,
+                    name: name || current.name,
+                    street,
+                    postalCode,
+                    city,
+                    country: country || current.country,
+                  }));
+                  setFormStatus('');
+                  setDuplicates([]);
+                }}
               />
-            </label>
-          ))}
+            ) : (
+              <label key={key}>
+                {label}
+                <input
+                  name={key}
+                  maxLength={maxLength}
+                  required={key === 'name' || key === 'country'}
+                  value={values[key]}
+                  onChange={(event) => update(key, event.target.value)}
+                />
+              </label>
+            ),
+          )}
           <label>
             Kontaktzustand
             <select

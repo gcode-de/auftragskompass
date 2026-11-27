@@ -10,6 +10,7 @@ export type VenueChoice = {
   postalCode?: string;
   city?: string;
   country?: string;
+  addressAttribution?: string | null;
 };
 
 export type VenueEvent = {

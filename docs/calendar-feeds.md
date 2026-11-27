@@ -17,6 +17,14 @@ der Feed ist keine Verfügbarkeitszusage. Ressourcenfeeds enthalten passende akt
 Zuordnungen und bewahren annullierte beziehungsweise nicht verfügbare Events mit ihrer
 früheren Zuordnung, damit der Client die Annullierung erhält.
 
+Ist eine Location verknüpft, steht ihre gespeicherte Adresse im Kalenderfeld
+„Ort“. Eine zusätzliche individuelle Ortsangabe, etwa zum Hintereingang,
+erscheint in der Terminbeschreibung als Lieferhinweis. Der Lieferhinweis
+gehört zum Ort und wird auch bei ausgeblendeter Eventbeschreibung mitgegeben.
+Bei einer reinen Freitext-Location bleibt der Text im Feld „Ort“. Ein
+ausdrücklich geleerter Ort bleibt leer. Gespeicherte Quellenangaben erscheinen
+bei der verwendeten Adresse in der Terminbeschreibung.
+
 Beschreibung, Eventart und interner Link sind pro Abo einzeln einschaltbar und anfangs
 aus. Kontaktdatensätze, interne HTML-Notizen, Produkte, Preise und Dateien werden nie
 exportiert. Ein optionaler interner Eventlink erfordert weiterhin eine App-Anmeldung.

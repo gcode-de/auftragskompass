@@ -4688,18 +4688,29 @@ async function signInScenario(
     await locationDialog
       .getByRole('button', { name: 'Anlegen und zuordnen' })
       .click();
+    await expect(locationDialog).toBeHidden();
     await expect(
-      locationCard.getByText('Fiktiver Browser-Festsaal'),
+      locationCard.getByText(/Synthetic Browser Hall/),
     ).toBeVisible();
-    const storedVenue = await pool.query(
-      `SELECT l.name, e.venue_override
-         FROM events e JOIN locations l ON l.tenant_id = e.tenant_id AND l.id = e.location_id
-        WHERE e.tenant_id = $1 AND e.id = $2`,
-      [config.tenantId, storedEvent.id],
-    );
-    expect(storedVenue.rows).toEqual([
-      { name: 'Fiktiver Browser-Festsaal', venue_override: false },
-    ]);
+    await expect
+      .poll(
+        async () =>
+          (
+            await pool.query(
+              `SELECT l.name, e.venue, e.venue_override
+           FROM events e JOIN locations l ON l.tenant_id = e.tenant_id AND l.id = e.location_id
+          WHERE e.tenant_id = $1 AND e.id = $2`,
+              [config.tenantId, storedEvent.id],
+            )
+          ).rows,
+      )
+      .toEqual([
+        {
+          name: 'Fiktiver Browser-Festsaal',
+          venue: 'Synthetic Browser Hall\nSide entrance',
+          venue_override: true,
+        },
+      ]);
 
     const offerTemplateRow = {
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',

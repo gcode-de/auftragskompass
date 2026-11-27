@@ -160,11 +160,16 @@ export function calendarFeedRepository(
                          AND deleted_at IS NULL
                        ORDER BY created_at DESC LIMIT 10) n
               ),ARRAY[]::text[]) ELSE ARRAY[]::text[] END AS notes,
-              CASE WHEN e.venue_override THEN COALESCE(NULLIF(btrim(e.venue),''),'')
+              CASE WHEN e.venue_override AND (l.id IS NULL OR NULLIF(btrim(e.venue),'') IS NULL)
+                THEN COALESCE(NULLIF(btrim(e.venue),''),'')
                 ELSE concat_ws(', ',NULLIF(l.name,''),NULLIF(l.street,''),
                   NULLIF(concat_ws(' ',NULLIF(l.postal_code,''),NULLIF(l.city,'')),''),
                   NULLIF(l.country,''))
               END AS location,
+              CASE WHEN l.id IS NOT NULL AND e.venue_override
+                THEN NULLIF(btrim(e.venue),'')
+              END AS "locationHint",
+              l.address_attribution AS "locationAttribution",
               COALESCE((
                 SELECT array_agg(DISTINCT r.code||' #'||u.ordinal ORDER BY r.code||' #'||u.ordinal)
                 FROM reservations s

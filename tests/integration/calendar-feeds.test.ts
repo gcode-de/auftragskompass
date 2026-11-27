@@ -435,7 +435,7 @@ test('undated rows are absent and day-only rows survive without fabricated times
   expect(body).toContain('Fictional day-only');
 });
 
-test('the effective place keeps ics escaping and folding for hostile text', async () => {
+test('the manual delivery hint keeps ics escaping and folding for hostile text', async () => {
   const saved = (await create()).json(),
     venue =
       'Synthetic \\ Hall; Ort, "Zwei"\nZweite Zeile mit einem sehr langen Zusatz, der die Zeile sicher umbricht';
@@ -446,11 +446,11 @@ test('the effective place keeps ics escaping and folding for hostile text', asyn
   const body = (await feed(saved.url)).body,
     flat = body.replace(/\r\n /g, '');
   expect(flat).toContain(
-    'LOCATION:Synthetic \\\\ Hall\\; Ort\\, "Zwei"\\nZweite Zeile mit einem sehr langen Zusatz\\, der die Zeile sicher umbricht',
+    'Hinweise zum Veranstaltungsort: Synthetic \\\\ Hall\\; Ort\\, "Zwei"\\nZweite Zeile mit einem sehr langen Zusatz\\, der die Zeile sicher umbricht',
   );
   expect(flat).not.toContain('Synthetic \\ Hall;');
   // The logical line exceeds 75 bytes and is folded, not truncated.
-  expect(body).toMatch(/LOCATION:[^\r]*\r\n /);
+  expect(body).toMatch(/DESCRIPTION:[^\r]*\r\n /);
 });
 
 test('token route throttles repeated invalid reads without a session', async () => {
@@ -471,19 +471,30 @@ test('token route throttles repeated invalid reads without a session', async () 
   ).toBe(429);
 });
 
-test('the ics location is the effective place only', async () => {
+test('a linked place publishes its address and a separate manual delivery hint', async () => {
   const saved = (await create()).json(),
     block = async () => {
       const body = (await feed(saved.url)).body.split('BEGIN:VEVENT');
       return body.find((entry) => entry.includes('Fictional changed event'))!;
     };
   await pool.query(
+    "UPDATE locations SET address_attribution='Geoapify · OpenStreetMap' WHERE tenant_id=$1 AND id=$2",
+    [tenant, location],
+  );
+  await pool.query(
     "UPDATE events SET venue='Fictional Freeform Hall, Side entrance', venue_override=true WHERE tenant_id=$1 AND id=$2",
     [tenant, event],
   );
   let entry = await block();
-  expect(entry).toContain('LOCATION:Fictional Freeform Hall\\, Side entrance');
-  expect(entry).not.toContain('Fictional street');
+  expect(entry.replace(/\r\n /g, '')).toContain(
+    'LOCATION:Fictional renamed hall\\, Fictional street',
+  );
+  expect(entry.replace(/\r\n /g, '')).toContain(
+    'Hinweise zum Veranstaltungsort: Fictional Freeform Hall\\, Side entrance',
+  );
+  expect(entry.replace(/\r\n /g, '')).toContain(
+    'Adressquelle: Geoapify · OpenStreetMap',
+  );
   await pool.query(
     "UPDATE events SET venue='', venue_override=true WHERE tenant_id=$1 AND id=$2",
     [tenant, event],

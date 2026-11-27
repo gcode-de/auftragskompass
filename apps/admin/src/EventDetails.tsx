@@ -40,6 +40,7 @@ type Detail = {
     postalCode: string;
     city: string;
     country: string;
+    addressAttribution?: string | null;
   } | null;
   eventType: { id: string; name: string } | null;
   package: { id: string; name: string } | null;
@@ -370,6 +371,8 @@ export function EventDetails({
                       postalCode: chosenLocation.postalCode ?? '',
                       city: chosenLocation.city ?? '',
                       country: chosenLocation.country ?? '',
+                      addressAttribution:
+                        chosenLocation.addressAttribution ?? null,
                     }
                   : null,
           }
@@ -1280,6 +1283,9 @@ export function EventDetails({
                               .filter(Boolean)
                               .join(', ')}
                           </p>
+                          {data.location.addressAttribution && (
+                            <small>{data.location.addressAttribution}</small>
+                          )}
                         </>
                       ) : (
                         <p>Ort offen.</p>

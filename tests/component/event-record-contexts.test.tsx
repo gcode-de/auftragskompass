@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { EventDetails } from '../../apps/admin/src/EventDetails.js';
@@ -483,6 +484,86 @@ test('creates a reusable location in the record and assigns it using the current
     version: event.version,
     locationId: location.id,
     venueOverride: false,
+  });
+});
+
+test('uses a location suggestion, preserves its source and keeps the event delivery hint', async () => {
+  const venue = 'Fiktiver Hintereingang';
+  const addressAttribution = 'Geoapify · OpenStreetMap';
+  const location = {
+    id: 'synthetic-location-suggested',
+    state: 'active',
+    name: 'Fiktive Halle',
+    street: 'Musterweg 2',
+    postalCode: '00000',
+    city: 'Beispielstadt',
+    country: 'DE',
+    addressAttribution,
+  };
+  const { fetcher } = mockRecord({
+    detail: { ...detail, event: { ...event, venue, venueOverride: true } },
+    onLoad: (url, init) => {
+      if (url === '/api/v1/address-suggestions')
+        return Response.json([
+          {
+            ...location,
+            formatted: 'Fiktive Halle, Beispielstadt',
+            attribution: addressAttribution,
+          },
+        ]);
+      if (url === '/api/v1/locations')
+        return Response.json(location, { status: 201 });
+      if (init?.method === 'PUT')
+        return Response.json({
+          ...event,
+          venue,
+          venueOverride: true,
+          locationId: location.id,
+          version: event.version + 1,
+        });
+      return null;
+    },
+  });
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Location anlegen' }));
+  const form = within(screen.getByRole('dialog', { name: 'Location anlegen' }));
+  const name = form.getByLabelText('Name');
+  fireEvent.change(name, { target: { value: 'Fiktive Hal' } });
+  await form.findByRole('button', { name: /Fiktive Halle/ });
+  fireEvent.keyDown(name, { key: 'Escape' });
+  expect(form.queryByRole('button', { name: /Fiktive Halle/ })).toBeNull();
+  fireEvent.change(name, { target: { value: 'Fiktive Hall' } });
+  const reopened = await form.findByRole('button', { name: /Fiktive Halle/ });
+  fireEvent.keyDown(name, { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(reopened);
+  fireEvent.click(reopened);
+  expect(
+    form.getByLabelText<HTMLInputElement>('Straße und Hausnummer').value,
+  ).toBe('Musterweg 2');
+  fireEvent.click(form.getByRole('button', { name: 'Anlegen und zuordnen' }));
+  await waitFor(() =>
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(
+      true,
+    ),
+  );
+  expect(
+    JSON.parse(
+      fetcher.mock.calls.find(([url]) => url === '/api/v1/locations')?.[1]
+        ?.body as string,
+    ),
+  ).toMatchObject({
+    addressAttribution,
+    name: location.name,
+  });
+  expect(
+    JSON.parse(
+      fetcher.mock.calls.find(([, init]) => init?.method === 'PUT')?.[1]
+        ?.body as string,
+    ),
+  ).toMatchObject({
+    venue,
+    venueOverride: true,
+    locationId: location.id,
   });
 });
 

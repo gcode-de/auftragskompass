@@ -12,6 +12,7 @@ export type LocationInput = {
   postalCode: string;
   city: string;
   country: string;
+  addressAttribution?: string;
   state: 'active' | 'archived';
 };
 class LocationError extends Error {}
@@ -103,6 +104,7 @@ export function registerLocationRoutes(
 ) {
   const repo = locationRepository(pool, tenantId);
   const fields = locationFields;
+  const attribution = { type: 'string', minLength: 1, maxLength: 240 };
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',
@@ -110,6 +112,7 @@ export function registerLocationRoutes(
       required: [...Object.keys(fields), 'id', 'version'],
       properties: {
         ...fields,
+        addressAttribution: { anyOf: [attribution, { type: 'null' }] },
         id: { type: 'string', format: 'uuid' },
         version,
       },
@@ -144,7 +147,7 @@ export function registerLocationRoutes(
           type: 'object',
           additionalProperties: false,
           required: Object.keys(fields),
-          properties: fields,
+          properties: { ...fields, addressAttribution: attribution },
         },
         response: { 201: row },
       },
@@ -175,7 +178,7 @@ export function registerLocationRoutes(
           type: 'object',
           additionalProperties: false,
           required: [...Object.keys(fields), 'version'],
-          properties: { ...fields, version },
+          properties: { ...fields, version, addressAttribution: attribution },
         },
         response: { 200: row },
       },

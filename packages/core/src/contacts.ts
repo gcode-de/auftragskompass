@@ -19,6 +19,7 @@ export type ContactInput = {
   postalCode: string;
   city: string;
   country: string;
+  addressAttribution?: string;
   email: string;
   phone: string;
   mobile: string;
@@ -207,6 +208,7 @@ export function registerContactRoutes(
   const writeRequired = Object.keys(fields).filter(
     (key) => key !== 'firstName',
   );
+  const attribution = { type: 'string', minLength: 1, maxLength: 240 };
   const version = { type: 'integer', minimum: 1 },
     row = {
       type: 'object',
@@ -214,6 +216,7 @@ export function registerContactRoutes(
       required: [...Object.keys(fields), 'id', 'version'],
       properties: {
         ...fields,
+        addressAttribution: { anyOf: [attribution, { type: 'null' }] },
         id: { type: 'string', format: 'uuid' },
         version,
       },
@@ -319,7 +322,7 @@ export function registerContactRoutes(
           type: 'object',
           additionalProperties: false,
           required: writeRequired,
-          properties: fields,
+          properties: { ...fields, addressAttribution: attribution },
         },
         response: { 201: row },
       },
@@ -350,7 +353,7 @@ export function registerContactRoutes(
           type: 'object',
           additionalProperties: false,
           required: [...writeRequired, 'version'],
-          properties: { ...fields, version },
+          properties: { ...fields, version, addressAttribution: attribution },
         },
         response: { 200: row },
       },

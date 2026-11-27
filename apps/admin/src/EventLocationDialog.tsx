@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { AddressNameField } from './AddressNameField.js';
 import { ModalDialog } from './ModalDialog.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import type { VenueChoice } from './venue.js';
@@ -18,6 +19,14 @@ export function EventLocationDialog({
   onClose: () => void;
   onCreated: (location: VenueChoice) => void;
 }) {
+  const [address, setAddress] = useState({
+    name: '',
+    street: '',
+    postalCode: '',
+    city: '',
+    country: 'DE',
+  });
+  const [addressAttribution, setAddressAttribution] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const changed = useRef(false);
@@ -64,6 +73,7 @@ export function EventLocationDialog({
           ),
           country: (fields.get('country') as string).toUpperCase(),
           state: 'active',
+          ...(addressAttribution && { addressAttribution }),
         }),
       });
       if (!response.ok) {
@@ -106,14 +116,43 @@ export function EventLocationDialog({
         aria-busy={busy}
       >
         <fieldset disabled={busy} aria-label="Location-Daten">
-          <label>
-            Name
-            <input name="name" required maxLength={200} autoFocus />
-          </label>
+          <AddressNameField
+            label="Name"
+            csrfToken={csrfToken}
+            value={address.name}
+            autoFocus
+            onChange={(name) => setAddress((current) => ({ ...current, name }))}
+            onSelect={({
+              name,
+              street,
+              postalCode,
+              city,
+              country,
+              attribution,
+            }) => {
+              setAddressAttribution(attribution);
+              changed.current = true;
+              setAddress((current) => ({
+                name: name || current.name,
+                street,
+                postalCode,
+                city,
+                country: country || current.country,
+              }));
+            }}
+          />
           {addressFields.map(([key, label, maxLength]) => (
             <label key={key}>
               {label}
-              <input name={key} maxLength={maxLength} />
+              <input
+                name={key}
+                maxLength={maxLength}
+                value={address[key]}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setAddress((current) => ({ ...current, [key]: value }));
+                }}
+              />
             </label>
           ))}
           <label>
@@ -121,7 +160,11 @@ export function EventLocationDialog({
             <input
               name="country"
               required
-              defaultValue="DE"
+              value={address.country}
+              onChange={(event) => {
+                const country = event.currentTarget.value;
+                setAddress((current) => ({ ...current, country }));
+              }}
               maxLength={2}
               pattern="[A-Za-z]{2}"
             />

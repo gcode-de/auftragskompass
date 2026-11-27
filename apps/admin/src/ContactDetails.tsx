@@ -15,6 +15,7 @@ export type ContactRecord = {
   postalCode: string;
   city: string;
   country: string;
+  addressAttribution?: string | null;
   email: string;
   phone: string;
   mobile: string;
@@ -221,6 +222,9 @@ export function ContactDetails({
             </address>
           ) : (
             <p>Keine Anschrift hinterlegt.</p>
+          )}
+          {contact.addressAttribution && (
+            <small>{contact.addressAttribution}</small>
           )}
         </section>
       </div>
