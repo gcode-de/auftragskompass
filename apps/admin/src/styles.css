@@ -5823,6 +5823,17 @@ input[type='checkbox'].switch:disabled {
 .record-context {
   display: grid;
   gap: 0.1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+/* An open record shows its cards on the canvas, not inside the page card. */
+.workspace-page > section#resources[data-record] {
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
 .record-context-title {
   display: grid;
@@ -5992,4 +6003,83 @@ input[type='checkbox'].switch:disabled {
 .resource-name-link:hover,
 .resource-name-link:focus-visible {
   text-decoration: underline;
+}
+
+/* RES-BKP-04: Bookitup's right-hand cards beside the record content on wide
+   screens, below it on narrow ones; pickers list resources with checkboxes. */
+.record-body {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+.record-main,
+.record-side {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+@media (min-width: 1200px) {
+  .record-body {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  }
+}
+.record-empty {
+  margin: 0;
+  font-style: italic;
+}
+.record-links {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.record-links > li {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.link-picker {
+  width: min(100%, 48rem);
+}
+.link-picker-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.link-picker-filters > label {
+  flex: 1 1 10rem;
+}
+.link-picker-filters > label:first-child {
+  flex-basis: 16rem;
+}
+.link-picker-filters input,
+.link-picker-filters select {
+  border-color: transparent;
+  background: var(--filled-field);
+}
+.link-picker-list {
+  display: grid;
+  gap: 0.2rem;
+  max-height: min(50dvh, 26rem);
+  margin: 0 0 0.75rem;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.link-picker-list > li {
+  margin: 0;
+}
+.link-picker-list label {
+  display: grid;
+  grid-template-columns: auto 3.5rem minmax(0, 1fr) minmax(0, 0.8fr);
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-field);
+  color: var(--ink);
+}
+.link-picker-list label:hover {
+  background: var(--hover-surface);
 }
