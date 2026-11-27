@@ -371,8 +371,9 @@ export const EventInlineEditor = forwardRef<
     },
     assignLocation: (id) => {
       if (!canEdit()) return false;
-      changeLocation(id);
-      save.commitFields(['locationId', 'venueOverride']);
+      onDirtyChange(true);
+      save.setField('locationId', id);
+      save.commitFields(['locationId']);
       return true;
     },
     reconcile: () => void save.reconcile(),

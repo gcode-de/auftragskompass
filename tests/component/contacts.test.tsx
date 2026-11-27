@@ -75,6 +75,94 @@ function submitSave(dialog: HTMLElement) {
       .closest('form')!,
   );
 }
+test('fills a new company from an address suggestion and saves the edited address', async () => {
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) =>
+    url === '/api/v1/address-suggestions'
+      ? Response.json([
+          {
+            ...row,
+            formatted: 'Synthetic Company, Fictional City',
+            attribution: 'Geoapify · OpenStreetMap',
+          },
+        ])
+      : Response.json(init ? row : [row]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<ContactPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic Company');
+  const dialog = await openCreate();
+  const form = within(dialog);
+  fireEvent.change(form.getByLabelText('Kontaktart'), {
+    target: { value: 'company' },
+  });
+  fireEvent.change(form.getByLabelText('Name / Firma'), {
+    target: { value: 'Synthetic Com' },
+  });
+  fireEvent.click(
+    await form.findByRole('button', {
+      name: /Synthetic Company, Fictional City/,
+    }),
+  );
+  expect(
+    form.getByLabelText<HTMLInputElement>('Straße und Hausnummer').value,
+  ).toBe(row.street);
+  fireEvent.change(form.getByLabelText('Straße und Hausnummer'), {
+    target: { value: 'Fictional corrected address' },
+  });
+  submitSave(dialog);
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some(
+        ([url, init]) =>
+          url === '/api/v1/contacts' &&
+          init?.method === 'POST' &&
+          JSON.parse(init.body as string).street ===
+            'Fictional corrected address' &&
+          JSON.parse(init.body as string).addressAttribution ===
+            'Geoapify · OpenStreetMap',
+      ),
+    ).toBe(true),
+  );
+});
+
+test('private contacts stay manual and a provider failure leaves company input editable', async () => {
+  const fetcher = vi.fn(async (url: string) =>
+    url === '/api/v1/address-suggestions'
+      ? Response.json({}, { status: 502 })
+      : Response.json([row]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<ContactPanel csrfToken="csrf" />);
+  await screen.findByText('Synthetic Company');
+  const form = within(await openCreate());
+  fireEvent.change(form.getByLabelText('Name / Firma'), {
+    target: { value: 'Fiktive Privatperson' },
+  });
+  await waitFor(() =>
+    expect(form.getByLabelText<HTMLInputElement>('Name / Firma').value).toBe(
+      'Fiktive Privatperson',
+    ),
+  );
+  expect(
+    fetcher.mock.calls.some(([url]) => url === '/api/v1/address-suggestions'),
+  ).toBe(false);
+  fireEvent.change(form.getByLabelText('Kontaktart'), {
+    target: { value: 'company' },
+  });
+  const name = form.getByLabelText<HTMLInputElement>('Name / Firma');
+  fireEvent.change(name, { target: { value: 'Fiktives Unternehmen' } });
+  expect(
+    await form.findByText(/Adressvorschläge sind gerade nicht verfügbar/),
+  ).toBeTruthy();
+  expect(name.value).toBe('Fiktives Unternehmen');
+  fireEvent.blur(name, {
+    relatedTarget: form.getByLabelText('Straße und Hausnummer'),
+  });
+  expect(
+    form.queryByText(/Adressvorschläge sind gerade nicht verfügbar/),
+  ).toBeNull();
+});
+
 test('the contact page starts with the search toolbar and the list directly below, without an exposed form', async () => {
   vi.stubGlobal('fetch', listFetcher());
   render(<ContactPanel csrfToken="csrf" />);

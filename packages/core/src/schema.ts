@@ -154,6 +154,7 @@ export const contacts = pgTable('contacts', {
   postalCode: text('postal_code').notNull(),
   city: text('city').notNull(),
   country: text('country').notNull(),
+  addressAttribution: text('address_attribution'),
   email: text('email').notNull(),
   phone: text('phone').notNull(),
   mobile: text('mobile').notNull(),
@@ -171,6 +172,7 @@ export const locations = pgTable('locations', {
   postalCode: text('postal_code').notNull(),
   city: text('city').notNull(),
   country: text('country').notNull(),
+  addressAttribution: text('address_attribution'),
   state: text('state').notNull(),
   version: integer('version').notNull().default(1),
 });

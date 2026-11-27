@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from 'vitest';
+import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
@@ -18,6 +18,7 @@ import {
   createHealthServer,
   loadRuntimeConfig,
 } from '../../packages/core/src/runtime.js';
+import { registerAddressSuggestionRoute } from '../../packages/core/src/address-suggestions.js';
 import { registerAuth, digest } from '../../packages/core/src/auth.js';
 import { syntheticGoogle } from '../helpers/oidc.js';
 let container: StartedPostgreSqlContainer;
@@ -110,6 +111,7 @@ test('location API validates, authorizes and keeps audit atomic', async () => {
     (await syntheticGoogle(config)).provider,
   );
   registerLocationRoutes(app, pool, tenantId);
+  registerAddressSuggestionRoute(app, 'synthetic-geoapify-key');
   const cookies = { '__Host-ak-session': 'synthetic-locations' },
     headers = {
       origin: config.origin,
@@ -124,6 +126,78 @@ test('location API validates, authorizes and keeps audit atomic', async () => {
       payload: payload as Record<string, unknown>,
     });
   try {
+    const sendSearch = (query: string, authorized = true, csrf = true) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/address-suggestions',
+        cookies: authorized ? cookies : {},
+        headers: csrf ? headers : {},
+        payload: { query },
+      });
+    const upstream = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await sendSearch('Fiktiver Saal', false)).statusCode).toBe(401);
+      expect((await sendSearch('Fiktiver Saal', true, false)).statusCode).toBe(
+        403,
+      );
+      expect((await sendSearch('ab')).statusCode).toBe(400);
+      expect((await sendSearch('   ')).json()).toEqual([]);
+      expect(upstream).not.toHaveBeenCalled();
+      upstream.mockResolvedValueOnce(
+        Response.json({
+          results: [
+            {
+              formatted: 'Fiktiver Saal, Beispielstadt',
+              name: 'Fiktiver Saal',
+              street: 'Musterweg',
+              housenumber: '1',
+              postcode: '00000',
+              city: 'Beispielstadt',
+              country_code: 'de',
+              datasource: { attribution: '© OpenStreetMap contributors' },
+              lat: 0,
+              lon: 0,
+            },
+            { formatted: 'Fiktive unvollständige Anschrift' },
+            {},
+          ],
+        }),
+      );
+      expect((await sendSearch(' Fiktiver Saal & Ort ')).json()).toEqual([
+        {
+          formatted: 'Fiktiver Saal, Beispielstadt',
+          name: 'Fiktiver Saal',
+          street: 'Musterweg 1',
+          postalCode: '00000',
+          city: 'Beispielstadt',
+          country: 'DE',
+          attribution: 'Geoapify · © OpenStreetMap contributors',
+        },
+        {
+          formatted: 'Fiktive unvollständige Anschrift',
+          name: '',
+          street: '',
+          postalCode: '',
+          city: '',
+          country: '',
+          attribution: 'Geoapify · © OpenStreetMap-Mitwirkende',
+        },
+      ]);
+      const called = upstream.mock.calls[0]?.[0] as URL;
+      expect(called.origin).toBe('https://api.geoapify.com');
+      expect(called.searchParams.get('text')).toBe('Fiktiver Saal & Ort');
+      expect(called.searchParams.get('apiKey')).toBe('synthetic-geoapify-key');
+      upstream.mockResolvedValueOnce(
+        Response.json({ error: 'synthetic private detail' }, { status: 429 }),
+      );
+      expect((await sendSearch('Fiktiver Saal')).json()).toEqual({
+        error: 'address_suggestions_unavailable',
+      });
+      upstream.mockResolvedValueOnce(Response.json({ results: null }));
+      expect((await sendSearch('Fiktiver Saal')).statusCode).toBe(502);
+    } finally {
+      upstream.mockRestore();
+    }
     expect((await app.inject('/api/v1/locations')).statusCode).toBe(401);
     expect(
       (
@@ -147,7 +221,9 @@ test('location API validates, authorizes and keeps audit atomic', async () => {
       { street: 'x'.repeat(201) },
     ])
       expect((await create({ ...input, ...bad })).statusCode).toBe(400);
-    const created = await create(input);
+    const addressAttribution = 'Geoapify · © OpenStreetMap contributors';
+    const created = await create({ ...input, addressAttribution });
+    expect(created.json().addressAttribution).toBe(addressAttribution);
     expect(created.statusCode).toBe(201);
     expect(created.json()).not.toHaveProperty('tenantId');
     const update = (id: string, version: number) =>
@@ -158,7 +234,9 @@ test('location API validates, authorizes and keeps audit atomic', async () => {
         headers,
         payload: { ...input, state: 'archived', version },
       });
-    expect((await update(created.json().id, 1)).statusCode).toBe(200);
+    const updated = await update(created.json().id, 1);
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().addressAttribution).toBe(addressAttribution);
     expect((await update(created.json().id, 1)).statusCode).toBe(409);
     expect((await update(randomUUID(), 1)).statusCode).toBe(404);
     await pool.query(

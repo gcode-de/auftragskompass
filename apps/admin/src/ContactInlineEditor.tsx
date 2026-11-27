@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRecordAutosave } from './useRecordAutosave.js';
 import type { Contact } from './ContactDialog.js';
 
-type Input = Omit<Contact, 'id' | 'version'>;
+type Input = Omit<Contact, 'id' | 'version' | 'addressAttribution'>;
 const fields = [
   ['name', 'Name / Firma', 200],
   ['firstName', 'Vorname', 200],

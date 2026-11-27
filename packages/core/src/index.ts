@@ -135,6 +135,7 @@ export {
 
 export { contactRepository, registerContactRoutes } from './contacts.js';
 
+export { registerAddressSuggestionRoute } from './address-suggestions.js';
 export { registerLocationRoutes } from './locations.js';
 
 export { registerEventRoutes } from './events.js';

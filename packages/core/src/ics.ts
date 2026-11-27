@@ -16,6 +16,8 @@ export type IcsEvent = {
   startsAt: Date | null;
   endsAt: Date | null;
   location: string;
+  locationHint?: string | null;
+  locationAttribution?: string | null;
   description: string;
   eventType: string | null;
   resources: string[];
@@ -138,6 +140,10 @@ export function renderIcs(
     description.push(
       'Ressourcen: ' + (event.resources.join(', ') || 'Keine zugewiesen'),
     );
+    if (event.locationHint && event.locationHint !== event.location)
+      description.push('Hinweise zum Veranstaltungsort: ' + event.locationHint);
+    if (event.location && event.locationAttribution)
+      description.push('Adressquelle: ' + event.locationAttribution);
     if (options.description && event.description.trim())
       description.push('Beschreibung: ' + event.description.trim());
     if (options.notes && event.notes?.length)

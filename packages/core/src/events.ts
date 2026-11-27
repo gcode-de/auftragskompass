@@ -723,6 +723,7 @@ export function eventRepository(pool: Connection, tenantId: string) {
                     postalCode: locations.postalCode,
                     city: locations.city,
                     country: locations.country,
+                    addressAttribution: locations.addressAttribution,
                   })
                   .from(locations)
                   .where(
@@ -764,7 +765,12 @@ export function eventRepository(pool: Connection, tenantId: string) {
               role:
                 person.id === event.primaryContactId ? 'primary' : 'additional',
             })),
-            location: venue,
+            location: venue
+              ? {
+                  ...venue,
+                  addressAttribution: venue.addressAttribution ?? undefined,
+                }
+              : null,
             eventType:
               masters.find((row) => row.id === event.eventTypeId) ?? null,
             package: masters.find((row) => row.id === event.packageId) ?? null,
@@ -1575,6 +1581,7 @@ export function registerEventRoutes(
       postalCode: { type: 'string' },
       city: { type: 'string' },
       country: { type: 'string' },
+      addressAttribution: { type: ['string', 'null'] },
     },
   };
   const nullableStatus = { anyOf: [fields.status, { type: 'null' }] };

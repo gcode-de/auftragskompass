@@ -15,6 +15,7 @@ import {
   registerResourceRoutes,
   registerProductRoutes,
   registerContactRoutes,
+  registerAddressSuggestionRoute,
   registerLocationRoutes,
   registerEventRoutes,
   registerEventNoteRoutes,
@@ -175,6 +176,10 @@ try {
     registerMailSignatureRoutes(app, pool, auth.tenantId, documentStore);
     registerContactRoutes(app, pool, auth.tenantId);
     registerLocationRoutes(app, pool, auth.tenantId);
+    registerAddressSuggestionRoute(
+      app,
+      process.env.AK_GEOAPIFY_API_KEY?.trim(),
+    );
     registerEventRoutes(app, pool, auth.tenantId);
     registerEventNoteRoutes(app, pool, auth.tenantId);
     registerImportRoutes(app, pool, auth.tenantId);

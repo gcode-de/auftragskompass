@@ -33,6 +33,7 @@ services:
       AK_HOST: 0.0.0.0
       AK_PORT: 3000
       AK_DOCUMENT_STORAGE: /data
+      AK_GEOAPIFY_API_KEY: ${AK_GEOAPIFY_API_KEY:-}
     volumes: ['documents:/data']
     depends_on:
       database: { condition: service_healthy }

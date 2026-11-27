@@ -18,6 +18,20 @@
       Zuordnung über das versionierte `PUT /api/v1/events/:id`.
       Commit `fix: restore location creation from event records`.
 
+- [x] **LOC-BKP-02 — Adressvorschläge für Neuanlagen und vollständige Kalenderorte.**
+      Firmen- und Location-Neuanlage übernehmen gewählte Geoapify-Vorschläge in
+      bearbeitbare Felder. Manuelle Eingabe bleibt möglich. Der ICS-Feed liefert
+      bei einer gespeicherten Location die Adresse als Ort und eine abweichende
+      manuelle Ortsangabe als Lieferhinweis. Abnahme mit API-, Komponenten- und
+      Kalendertests sowie Chromium. Commit `feat: suggest addresses and export delivery notes`.
+
+  `POST /api/v1/address-suggestions` (Sitzung und CSRF) nimmt
+  ausschließlich den eingegebenen Namen als Suchtext und liefert maximal fünf
+  Vorschläge. `AK_GEOAPIFY_API_KEY` ist optional und gehört in die private
+  API-Umgebung (Compose oder Podman-API-Drop-in). Ohne Schlüssel bleibt die
+  manuelle Eingabe verfügbar. Migration 0088 speichert die Quellenangaben
+  ausgewählter Adressen. Kalenderabos benötigen den Suchdienst nicht.
+
 ## Priorisierte Dokumentarbeiten (Nutzauftrag 20.11.2026, verbindliche Reihenfolge)
 
 **Nachsteuerung 21.11.2026 (hat Vorrang, Nutzer-Feature-Wünsche):** zuerst

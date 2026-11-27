@@ -277,6 +277,82 @@ test('the location dialog is keyboard-accessible in both themes and widths', asy
   }
 });
 
+test('company and location suggestions prefill editable addresses in Chromium', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openRecord(page);
+  const suggestion = {
+    formatted: 'Fiktiver Festsaal, Musterweg 2, Beispielstadt',
+    name: 'Fiktiver Festsaal',
+    street: 'Musterweg 2',
+    postalCode: '00000',
+    city: 'Beispielstadt',
+    country: 'DE',
+    attribution: 'Geoapify · OpenStreetMap',
+  };
+  await page.route('**/api/v1/address-suggestions', (route) =>
+    route.fulfill({ json: [suggestion] }),
+  );
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const aside = page.locator('details.event-aside');
+    if (width === 390) await aside.locator('summary').click();
+    for (const theme of ['light', 'dark']) {
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+        await page.getByRole('button', { name: /modus aktivieren/i }).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await aside.getByRole('button', { name: 'Location anlegen' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Location anlegen' });
+      const name = dialog.getByLabel('Name', { exact: true });
+      await name.fill('Fiktiver Fest');
+      const result = dialog.getByRole('button', { name: /Fiktiver Festsaal/ });
+      await expect(result).toBeVisible();
+      expect(
+        await dialog.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      ).toBe(true);
+      expect(
+        (
+          await new AxeBuilder({ page })
+            .withTags(['wcag2a', 'wcag2aa'])
+            .analyze()
+        ).violations,
+      ).toEqual([]);
+      await dialog.screenshot({
+        path: test
+          .info()
+          .outputPath(`location-suggestions-${width}-${theme}.png`),
+      });
+      await name.press('ArrowDown');
+      await expect(result).toBeFocused();
+      await result.press('Enter');
+      await expect(dialog.getByLabel('Straße und Hausnummer')).toHaveValue(
+        suggestion.street,
+      );
+      page.once('dialog', (confirm) => confirm.accept());
+      await dialog
+        .getByRole('button', { name: 'Abbrechen', exact: true })
+        .click();
+      await expect(dialog).toBeHidden();
+    }
+  }
+  await page.goto('/#contacts');
+  await page.getByRole('button', { name: 'Kontakt anlegen' }).click();
+  const contact = page.getByRole('dialog', { name: 'Kontakt anlegen' });
+  await contact.getByLabel('Kontaktart').selectOption('company');
+  await contact.getByLabel('Name / Firma').fill('Fiktiver Fest');
+  await contact.getByRole('button', { name: /Fiktiver Festsaal/ }).click();
+  await expect(contact.getByLabel('Postleitzahl')).toHaveValue(
+    suggestion.postalCode,
+  );
+  await contact.getByLabel('Straße und Hausnummer').fill('Fiktive Korrektur');
+  await expect(contact.getByLabel('Straße und Hausnummer')).toHaveValue(
+    'Fiktive Korrektur',
+  );
+});
+
 test('the event mails read in two panes like Bookitup', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openRecord(page);
