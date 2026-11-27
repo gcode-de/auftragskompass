@@ -4607,7 +4607,7 @@ async function signInScenario(
       expect((await areaBar.boundingBox())!.height).toBeLessThan(100);
       const aside = narrowRecord.locator('details.event-aside');
       await expect(aside).not.toHaveAttribute('open', '');
-      await aside.locator('summary').click();
+      await aside.locator(':scope > summary').click();
       await expect(
         aside.getByRole('heading', { name: 'Ort / Adresse' }),
       ).toBeVisible();
@@ -4651,7 +4651,7 @@ async function signInScenario(
       .selectOption('option');
     await record.getByRole('button', { name: 'Status speichern' }).click();
     await expect(
-      events.getByText('Eventstatus gespeichert.', { exact: true }),
+      record.getByText('Status gespeichert.', { exact: true }),
     ).toBeVisible();
     await record.getByRole('button', { name: 'Details', exact: true }).click();
     await expect(
@@ -5439,18 +5439,18 @@ async function signInScenario(
           path: `tests/test-results/event-filter-drawer-${width}.png`,
           animations: 'disabled',
         });
-        // The modal keeps Tab inside the sheet: no focus escapes to the list.
-        for (let step = 0; step < 24; step += 1)
+        // Native dialog tabbing may briefly reach browser chrome, but it
+        // must never reach the underlying page.
+        for (let step = 0; step < 24; step += 1) {
           await page.keyboard.press('Tab');
-        expect(
-          await page.evaluate(() =>
-            Boolean(
-              document
-                .querySelector('dialog.event-filter-drawer')
-                ?.contains(document.activeElement),
+          expect(
+            await sheet.evaluate((element) =>
+              document.activeElement === document.body ||
+              element.contains(document.activeElement),
             ),
-          ),
-        ).toBe(true);
+          ).toBe(true);
+        }
+        await sheet.getByLabel('Events suchen').focus();
         // Escape closes the sheet and focuses the access again.
         await page.keyboard.press('Escape');
         await expect(sheet).toHaveCount(0);
