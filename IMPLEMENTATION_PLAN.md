@@ -697,6 +697,21 @@ Gesamtrahmen bleiben vorerst aus.
       Lokal Events 1280 px 0,81 s (vorher 0,84–0,89). **Tests:** Component
       (Attribut), E2E-Lastmessung.
       Commit `perf: read the page column from the workspace route`.
+- [x] **RES-BKP-01 — Ressourcen-Einstellungen wie Bookitup:** Nach Bookitups
+      Bildschirmfotos vom 31.10.2026 führt Einstellungen → Ressourcen wieder
+      zu einer eigenen Einstellungsseite (die Liste bleibt die Hauptseite
+      `#resources`): Schalter „Ressourcen-Modul in Navigation ausblenden“
+      (blendet nur den Menüpunkt aus, nie die offene Seite) und die Karte
+      „Kategorien“ mit Plus, verschachtelbar („Innerhalb Kategorie“), je Zeile
+      ⋯ mit Bearbeiten/Löschen. Migration 0085: `resource_categories`
+      (eindeutige Namen je Mandant, Oberkategorie, Version), ein Trigger legt
+      die Kategorie einer gespeicherten oder importierten Ressource an,
+      `resource_settings.hide_navigation`; Umbenennen ändert die Ressourcen
+      mit, Löschen nur ohne Verwendung und Unterkategorien; Audit.
+      **Tests:** Integration (Bestand, Anlage per Ressource, Umbenennen,
+      Version, Dublette, Zyklus, Löschregeln, CSRF, Schalter), Component
+      (Baum, Schalter, Dialog, Fehler, Navigation), E2E (Seite hell/dunkel).
+      Commit `feat: manage resource categories and the navigation switch`.
 
 - [x] **UI-BKP-14 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der

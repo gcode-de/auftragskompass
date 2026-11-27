@@ -13,6 +13,7 @@ import {
 } from './url-state.js';
 import { appVersionLabel } from './revision.js';
 import { ThemeToggle } from './ThemeToggle.js';
+import { resourceSettingsEvent } from './resource-settings-event.js';
 import {
   discardForHomeMessage,
   discardForSearchMessage,
@@ -121,6 +122,7 @@ export type WorkspaceRoute =
   | 'search'
   | 'files'
   | 'resources'
+  | 'resource-settings'
   | 'products'
   | 'website';
 export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
@@ -137,7 +139,8 @@ export const settingsRoutes: ReadonlySet<WorkspaceRoute> = new Set([
   'templates',
   'document-layout',
   'numbers',
-  'resources',
+  // RES-BKP-01: the resource page is a main area; only its settings are here.
+  'resource-settings',
   'products',
   'website',
   'files',
@@ -159,7 +162,7 @@ const settingsHashes = {
   templates: 'settings-templates',
   'document-layout': 'settings-document-layout',
   numbers: 'settings-numbers',
-  resources: 'settings-resources',
+  'resource-settings': 'settings-resources',
   products: 'settings-products',
   website: 'settings-website',
   files: 'settings-files',
@@ -171,7 +174,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'locations') return 'events';
   if (hash === 'resources') return 'resources';
   if (hash === 'products') return 'products';
-  if (hash === 'settings-resources') return 'resources';
+  if (hash === 'settings-resources') return 'resource-settings';
   if (hash === 'settings-products') return 'products';
   if (hash === 'settings-website') return 'website';
   if (hash === 'import-review') return 'import';
@@ -287,13 +290,36 @@ export function SettingsNavigation() {
     </nav>
   );
 }
+// RES-BKP-01: the resource settings may hide the main entry; a change in the
+// settings is announced without a reload.
+function useHiddenResources() {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    let current = true;
+    const read = () =>
+      void fetch('/api/v1/settings/resources')
+        .then((response) => (response.ok ? response.json() : null))
+        .then((value: { hideNavigation?: boolean } | null) => {
+          if (current && value) setHidden(value.hideNavigation === true);
+        })
+        .catch(() => {});
+    read();
+    window.addEventListener(resourceSettingsEvent, read);
+    return () => {
+      current = false;
+      window.removeEventListener(resourceSettingsEvent, read);
+    };
+  }, []);
+  return hidden;
+}
 export function Navigation({ account }: { account?: ReactNode }) {
   useEffect(installUnsavedNavigationGuard, []);
   const search = useUrlSearch(),
     q = new URLSearchParams(search).get('q') ?? '';
   const route = useWorkspaceRoute();
   const settings = isSettingsRoute(route);
-  const activeRoute = settings && route !== 'resources' ? 'settings' : route;
+  const activeRoute = settings ? 'settings' : route;
+  const hideResources = useHiddenResources();
   const title =
     route === 'search'
       ? 'Suchergebnisse'
@@ -433,31 +459,36 @@ export function Navigation({ account }: { account?: ReactNode }) {
         <p className="menu-caption">Dein Büro für Events</p>
         <p className="menu-caption">Version {appVersionLabel}</p>
         <nav aria-label="Hauptnavigation">
-          {links.map(([id, label, path]) => (
-            <a
-              key={id}
-              href={'#' + id}
-              aria-label={label}
-              title={label}
-              aria-current={id === activeRoute ? 'page' : undefined}
-              onClick={() => {
-                if (dialog.current?.open) closeMenu();
-              }}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+          {links
+            // RES-BKP-01: the switch hides the entry, never the open page.
+            .filter(
+              ([id]) => !(id === 'resources' && hideResources && route !== id),
+            )
+            .map(([id, label, path]) => (
+              <a
+                key={id}
+                href={'#' + id}
+                aria-label={label}
+                title={label}
+                aria-current={id === activeRoute ? 'page' : undefined}
+                onClick={() => {
+                  if (dialog.current?.open) closeMenu();
+                }}
               >
-                <path d={path} />
-              </svg>
-              <span className="nav-label">{label}</span>
-            </a>
-          ))}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d={path} />
+                </svg>
+                <span className="nav-label">{label}</span>
+              </a>
+            ))}
         </nav>
         {showAccount && account && (
           <div className="menu-account">{account}</div>

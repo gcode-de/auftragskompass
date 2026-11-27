@@ -63,7 +63,11 @@ export type AuditAction =
   | 'event_note.created'
   | 'event_note.removed'
   | 'mail.send_cancelled'
-  | 'event_note.updated';
+  | 'event_note.updated'
+  | 'resource_category.created'
+  | 'resource_category.updated'
+  | 'resource_category.deleted'
+  | 'resource_settings.updated';
 export async function appendAudit(
   db: Pick<NodePgDatabase, 'insert'>,
   tenantId: string,
