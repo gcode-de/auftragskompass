@@ -709,6 +709,15 @@ Gesamtrahmen bleiben vorerst aus.
       **Tests:** Component (Gliederung, Hauptnavigation), E2E (Spalte,
       Tabelle, Verlauf über alte und neue Hashes, Hell/Dunkel).
       Commit `feat: give resources a bookitup page of their own`.
+- [x] **UI-BKP-15 — Ressourcen in der Eventakte als Karten:** Status, Termin
+      und jede Einheit stehen als weiße Karten (Bookitups Kartensprache);
+      Pufferzeile gedämpft, Verfügbarkeit als farbige Pille (frei grün,
+      Vormerkung orange, belegt/gesperrt rot, „erneut prüfen“ grau), Texte und
+      Abläufe unverändert. Bookitups eigener Ressourcenreiter ist im Konto per
+      Testphase gesperrt (B07); es wird kein Layout nachgebaut, nur die
+      Gestaltung angeglichen. **Tests:** Component (Pillenzustand, veraltet
+      nach Änderung), E2E (Zuweisung, Hell/Dunkel).
+      Commit `style: show event resources as bookitup cards`.
 - [x] **UI-BKP-08 — Gesamtrahmen wie Bookitup:** eingeklappte Navigation als
       60-px-Symbolleiste mit feiner Linie; ab 1024 px steht die Eventfilter-Spalte
       als helle, volle Höhe direkt neben der Leiste und scrollt für sich, mit

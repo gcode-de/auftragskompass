@@ -492,7 +492,11 @@ export function ResourceAssignments({
     return (sources[unit.unitId] ?? unit.periodSource) === 'manual';
   }
   return (
-    <section aria-label="Ressourcenzuweisung" aria-busy={loading || busy}>
+    <section
+      className="resource-assign"
+      aria-label="Ressourcenzuweisung"
+      aria-busy={loading || busy}
+    >
       <h3>Ressourcen zuweisen</h3>
       <p role="status">{message}</p>
       {unconfirmed && (
@@ -608,6 +612,7 @@ export function ResourceAssignments({
           return (
             <fieldset
               key={unit.unitId}
+              className="resource-assign-unit"
               disabled={busy || loading || !loaded || locked || unconfirmed}
             >
               <legend>
@@ -621,12 +626,25 @@ export function ResourceAssignments({
                 />
                 {label} zuweisen
               </label>
-              <p>
+              <p className="resource-assign-buffer">
                 {unit.beforeDays} Tage vorher, {unit.afterDays} Tage nachher.
                 Einschließlich Puffer: {time(unit.startsAt)} –{' '}
                 {time(unit.endsAt)}
               </p>
-              <p>
+              {/* UI-BKP-15: the outcome as a quiet coloured pill; the
+                  words stay the same. */}
+              <p
+                className="resource-assign-state"
+                data-state={
+                  !verified.has(unit.unitId)
+                    ? 'stale'
+                    : unit.reason || !unit.available
+                      ? 'blocked'
+                      : unit.conflicts.length
+                        ? 'hold'
+                        : 'free'
+                }
+              >
                 {!verified.has(unit.unitId)
                   ? 'Geändert; Verfügbarkeit erneut prüfen.'
                   : unit.reason === 'import_review_required'
