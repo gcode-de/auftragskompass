@@ -191,6 +191,7 @@ function readRoute(): WorkspaceRoute {
   if (hash === 'settings-numbers') return 'numbers';
   if (hash.startsWith('event-')) return 'events';
   if (hash.startsWith('contact-')) return 'contacts';
+  if (hash.startsWith('resource-')) return 'resources';
   if (hash === 'search') return 'search';
   // `#files` stays a working old address of the library.
   if (hash === 'files' || hash === 'settings-files') return 'files';

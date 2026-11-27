@@ -5816,3 +5816,180 @@ input[type='checkbox'].switch:disabled {
 .category-usage {
   font-size: 0.875rem;
 }
+
+/* RES-BKP-03: Bookitup's resource record - the context column names the
+   resource ("Ressource" over its name) with Details, Bestand and Planung;
+   the content shows cards after a breadcrumb back to the list. */
+.record-context {
+  display: grid;
+  gap: 0.1rem;
+}
+.record-context-title {
+  display: grid;
+  margin: 0 0 1rem;
+}
+.record-context-title > span {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.record-context-title > strong {
+  font-size: 1.375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.record-context > a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-field);
+  color: var(--ink);
+  text-decoration: none;
+}
+.record-context > a:hover {
+  background: var(--hover-surface);
+}
+.record-context > a[aria-current='page'] {
+  background: var(--selected-surface);
+  color: var(--selected-ink);
+  font-weight: 600;
+}
+.resource-record {
+  display: grid;
+  gap: 1rem;
+}
+.record-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 0.875rem;
+}
+.record-crumbs > .tertiary-action {
+  min-height: 44px;
+  padding-inline: 0;
+}
+.record-crumb-current {
+  color: var(--accent);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.record-card {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.record-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.record-card > .card-head h3 {
+  margin: 0;
+}
+.record-card > .card-head {
+  margin-bottom: 0.75rem;
+}
+.record-facts {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.6rem 1rem;
+  margin: 0;
+}
+.record-facts dt {
+  color: var(--muted);
+}
+.record-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.record-units {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.record-units > li {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-field);
+  background: var(--table-surface);
+}
+.record-planning {
+  width: 100%;
+  border-collapse: collapse;
+}
+.record-planning th {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+}
+.record-planning td {
+  padding: 0.5rem;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+.plan-state {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--status-option);
+  border-radius: 50%;
+}
+.plan-state[data-confirmed] {
+  border-color: var(--accent);
+  background: var(--accent)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12 4 4 8-8'/%3E%3C/svg%3E")
+    center / 70% no-repeat;
+}
+.plan-event {
+  display: inline-grid;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-field);
+  background: var(--table-surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+.plan-event > span:first-child {
+  font-weight: 600;
+}
+.plan-event > span:first-child::before {
+  content: '';
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-inline-end: 0.4rem;
+  border-radius: 50%;
+  background: var(--status-inquiry);
+}
+.plan-event[data-status='option'] > span:first-child::before {
+  background: var(--status-option);
+}
+.plan-event[data-status='booked'] > span:first-child::before {
+  background: var(--status-booked);
+}
+.plan-event[data-status='cancelled'] > span:first-child::before,
+.plan-event[data-status='unavailable'] > span:first-child::before {
+  background: var(--status-cancelled);
+}
+.plan-event > .muted {
+  font-size: 0.8125rem;
+}
+.resource-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+.resource-name-link:hover,
+.resource-name-link:focus-visible {
+  text-decoration: underline;
+}
