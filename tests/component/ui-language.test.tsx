@@ -247,20 +247,27 @@ test('search keeps distinct section headings and resources keep a valid outline'
   expect(screen.queryByRole('region', { name: 'Produkte' })).toBeNull();
   expect(document.querySelectorAll('#resources')).toHaveLength(1);
 
-  // UI-BKP-14: the legacy settings hash opens the same standalone page; the
-  // settings frame steps aside and the main navigation names the page.
   // PERF-MENU-02: the shell reads the page from the workspace's attribute.
   expect(document.querySelector('.workspace')?.getAttribute('data-route')).toBe(
     'resources',
   );
+  // RES-BKP-01: the settings entry opens the resource settings in the
+  // settings frame; the main navigation no longer names the page.
   await go('/#settings-resources');
-  await screen.findByRole('region', { name: 'Ressourcen' });
+  const settings = await screen.findByRole('region', {
+    name: 'Ressourcen-Einstellungen',
+  });
   expect(
-    screen.queryByRole('navigation', { name: 'Einstellungen' }),
-  ).toBeNull();
+    within(settings).getByRole('heading', { level: 3, name: 'Kategorien' }),
+  ).toBeTruthy();
+  expect(
+    within(screen.getByRole('navigation', { name: 'Einstellungen' }))
+      .getByRole('link', { name: 'Ressourcen' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
   expect(
     within(screen.getByRole('navigation', { name: 'Hauptnavigation' }))
-      .getByRole('link', { name: 'Ressourcen' })
+      .getByRole('link', { name: 'Einstellungen' })
       .getAttribute('aria-current'),
   ).toBe('page');
 });
@@ -338,7 +345,7 @@ test('settings keep resource and product panels mounted once and retain drafts a
   ).toBe(productDialog);
   expect(window.location.search).toBe('?q=Synthetic');
 
-  await go('/?q=Synthetic#settings-resources');
+  await go('/?q=Synthetic#resources');
   const resources = await screen.findByRole('region', { name: 'Ressourcen' });
   expect(screen.queryByRole('region', { name: 'Produkte' })).toBeNull();
   // BKP009: the resource editor is mounted on demand. Open the dialog and keep
@@ -370,6 +377,8 @@ test('settings keep resource and product panels mounted once and retain drafts a
     blocksSummary,
   );
 
+  // A trip into the settings and back keeps the mounted page and its draft.
+  await go('/?q=Synthetic#settings-products');
   await go('/?q=Synthetic#resources');
   const resourcesAfterHash = screen.getByRole('region', { name: 'Ressourcen' });
   expect(

@@ -23,6 +23,7 @@ import { DocumentTemplatesPanel } from './DocumentTemplatesPanel.js';
 import { DocumentNumbersPanel } from './DocumentNumbersPanel.js';
 import { DocumentLayoutPanel } from './DocumentLayoutPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
+import { ResourceSettingsPanel } from './ResourceSettingsPanel.js';
 import { WebsiteInbox } from './WebsiteInbox.js';
 import { UndeliveredMailNotice } from './EventMails.js';
 import { MailSignaturesPanel } from './MailSignaturesPanel.js';
@@ -195,19 +196,23 @@ export function AuthPanel() {
             />
           </div>
           {/* UI-BKP-14: like Bookitup the resources are a page of their own
-              with a context column, not a box inside the settings frame. The
-              route keeps its settings entry and hashes. */}
+              with a context column, not a box inside the settings frame; its
+              settings (categories, navigation switch) live under
+              Einstellungen → Ressourcen (RES-BKP-01). */}
           <div className="workspace-page" hidden={route !== 'resources'}>
             <ResourcePanel csrfToken={user.csrfToken} />
           </div>
           <section
             id="settings"
             aria-label="Einstellungen"
-            hidden={!inSettings || route === 'resources'}
+            hidden={!inSettings}
           >
             <SettingsNavigation />
             <div hidden={route !== 'settings'}>
               <MasterDataSettings csrfToken={user.csrfToken} />
+            </div>
+            <div hidden={route !== 'resource-settings'}>
+              <ResourceSettingsPanel csrfToken={user.csrfToken} />
             </div>
             <div hidden={route !== 'products'}>
               <ProductPanel csrfToken={user.csrfToken} />

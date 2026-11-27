@@ -123,7 +123,8 @@ test('resolves deep links, settings and browser history without losing search', 
     ['#settings-security', 'security'],
     ['#settings-export', 'export'],
     ['#settings-inquiry', 'inquiry'],
-    ['#settings-resources', 'resources'],
+    // RES-BKP-01: the settings entry opens the resource settings page.
+    ['#settings-resources', 'resource-settings'],
     ['#settings-products', 'products'],
     ['#settings-website', 'website'],
     ['#contact-synthetic', 'contacts'],
@@ -145,7 +146,7 @@ test('resolves deep links, settings and browser history without losing search', 
 });
 
 test('settings navigation groups its areas like Bookitup in links and select', async () => {
-  window.history.replaceState(null, '', '/?q=Fictional#resources');
+  window.history.replaceState(null, '', '/?q=Fictional#settings-resources');
   render(<SettingsNavigation />);
   const settingsNavigation = screen.getByRole('navigation', {
     name: 'Einstellungen',
@@ -225,7 +226,7 @@ test('settings navigation groups its areas like Bookitup in links and select', a
     window.history.back();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
-  expect(window.location.hash).toBe('#resources');
+  expect(window.location.hash).toBe('#settings-resources');
   expect(window.location.search).toBe('?q=Fictional');
   expect(select.value).toBe('#settings-resources');
 });
@@ -300,7 +301,9 @@ test('resources are directly accessible in desktop and mobile navigation while s
   });
   expect(resourcesLink.getAttribute('href')).toBe('#settings-resources');
   expect(productsLink.getAttribute('href')).toBe('#settings-products');
-  expect(resourcesLink.getAttribute('aria-current')).toBe('page');
+  // RES-BKP-01: on the resource page the settings entry (its settings) is
+  // not the current one; the main entry is.
+  expect(resourcesLink.getAttribute('aria-current')).toBeNull();
   expect(productsLink.getAttribute('aria-current')).toBeNull();
   // The website diagnosis is a settings section of its own, not an event block.
   const websiteLink = within(settingsNavigation).getByRole('link', {
@@ -328,7 +331,7 @@ test('resources are directly accessible in desktop and mobile navigation while s
   for (const [hash, current, other] of [
     ['#settings-products', 'Produkte', 'Ressourcen'],
     ['#products', 'Produkte', 'Ressourcen'],
-    ['#resources', 'Ressourcen', 'Produkte'],
+    // RES-BKP-01: only the settings hash makes the settings entry current.
     ['#settings-resources', 'Ressourcen', 'Produkte'],
     ['#settings-website', 'Website-Eingänge', 'Ressourcen'],
   ] as const) {
@@ -348,12 +351,14 @@ test('resources are directly accessible in desktop and mobile navigation while s
       within(sidebar)
         .getByRole('link', { name: 'Einstellungen' })
         .getAttribute('aria-current'),
-    ).toBe(current === 'Ressourcen' ? null : 'page');
+    ).toBe('page');
+    // RES-BKP-01: every settings page, including the resource settings,
+    // belongs to Einstellungen; the main Ressourcen entry is the list page.
     expect(
       within(sidebar)
         .getByRole('link', { name: 'Ressourcen' })
         .getAttribute('aria-current'),
-    ).toBe(current === 'Ressourcen' ? 'page' : null);
+    ).toBeNull();
   }
 });
 test.each(['Ressourcen', 'Dokumente'])(

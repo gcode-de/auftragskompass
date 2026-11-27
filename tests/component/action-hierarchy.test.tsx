@@ -1400,7 +1400,12 @@ test('each mounted workspace route shows at most one primary action in the real 
     ['/#documents', 'Dokumente – zur Eventübersicht'],
     ['/#calendar', 'Kalender – zur Eventübersicht'],
     ['/#settings', 'Einstellungen – zur Eventübersicht', 'Eventarten'],
-    ['/#settings-resources', 'Ressourcen – zur Eventübersicht', 'Ressourcen'],
+    ['/#resources', 'Ressourcen – zur Eventübersicht', 'Ressourcen'],
+    [
+      '/#settings-resources',
+      'Einstellungen – zur Eventübersicht',
+      'Kategorien',
+    ],
     ['/#settings-products', 'Einstellungen – zur Eventübersicht', 'Produkte'],
     [
       '/#settings-calendar',
@@ -1478,7 +1483,8 @@ test('each mounted workspace route shows at most one primary action in the real 
         {
           ...(section === 'Kalender-Abos'
             ? { name: section }
-            : { level: 2, name: section }),
+            : // RES-BKP-01: the categories are the settings card's h3.
+              { level: section === 'Kategorien' ? 3 : 2, name: section }),
         },
       );
     // The rule this contract protects: the displayed frame shows 0 or 1 primary.

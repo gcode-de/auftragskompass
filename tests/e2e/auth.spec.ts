@@ -823,7 +823,7 @@ async function signInScenario(
         page
           .getByRole('navigation', { name: 'Hauptnavigation' })
           .getByRole('link', {
-            name: setting === 'Ressourcen' ? 'Ressourcen' : label,
+            name: label,
             exact: true,
           }),
       ).toHaveAttribute('aria-current', 'page');
@@ -3223,15 +3223,56 @@ async function signInScenario(
     const settingsSelect = settingsNavigation.locator(
       'select[aria-label="Einstellungsbereich"]',
     );
-    // UI-BKP-14: the settings entry opens the standalone resources page; the
-    // settings frame steps aside and the main navigation names the page.
+    // RES-BKP-01: the settings entry opens the resource settings - the
+    // navigation switch and the seeded categories; the list itself is the
+    // main Ressourcen page.
     await expect(settingsSelect).toBeHidden();
-    await expect(settingsNavigation).toBeHidden();
     await expect(
-      page
-        .getByRole('navigation', { name: 'Hauptnavigation' })
-        .getByRole('link', { name: 'Ressourcen', exact: true }),
+      settingsNavigation.getByRole('link', { name: 'Ressourcen', exact: true }),
     ).toHaveAttribute('aria-current', 'page');
+    const resourceSettings = page.getByRole('region', {
+      name: 'Ressourcen-Einstellungen',
+    });
+    await expect(
+      resourceSettings.getByRole('heading', { name: 'Kategorien' }),
+    ).toBeVisible();
+    await expect(resourceSettings.getByRole('list')).toContainText('Fotobox');
+    await expect(
+      resourceSettings.getByRole('switch', {
+        name: /Ressourcen-Modul in Navigation ausblenden/,
+      }),
+    ).not.toBeChecked();
+    const settingsTheme = await page.locator('html').getAttribute('data-theme');
+    for (const theme of ['light', 'dark']) {
+      await page
+        .locator('html')
+        .evaluate(
+          (element, value) => element.setAttribute('data-theme', value),
+          theme,
+        );
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 800 });
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth + 1,
+          ),
+        ).toBe(true);
+        await page.screenshot({
+          path: `tests/test-results/resource-settings-${width}-${theme}.png`,
+        });
+      }
+    }
+    await page
+      .locator('html')
+      .evaluate(
+        (element, value) =>
+          value === null
+            ? element.removeAttribute('data-theme')
+            : element.setAttribute('data-theme', value),
+        settingsTheme,
+      );
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await navigate('Ressourcen');
     const resources = page.getByRole('region', {
       name: 'Ressourcen',
       exact: true,
@@ -3643,9 +3684,9 @@ async function signInScenario(
     await expect(resourceLink).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/#settings-resources$/);
-    // UI-BKP-14: the link leads out of the settings frame to the page itself.
-    await expect(resources).toBeVisible();
-    await expect(settingsNavigation).toBeHidden();
+    await expect(resourceLink).toBeFocused();
+    await expect(resourceSettings).toBeVisible();
+    await expect(resources).toBeHidden();
 
     // Back and Forward across canonical and legacy hashes keep query, drafts
     // and the single mounted panels.
@@ -3656,11 +3697,9 @@ async function signInScenario(
       if (new URL(request.url()).pathname === '/api/v1/products')
         productApiRequests += 1;
     });
-    // UI-BKP-14: the resources page has no settings frame; the browser makes
-    // the switch back into the settings.
-    await page.evaluate(() => {
-      window.location.hash = 'settings-products';
-    });
+    await settingsNavigation
+      .getByRole('link', { name: 'Produkte', exact: true })
+      .click();
     await expect(page).toHaveURL(/#settings-products$/);
     // BKP010.1: the product editor is mounted on demand. Open the row's
     // dialog so the draft below is typed into a real form field.
@@ -3679,9 +3718,9 @@ async function signInScenario(
     // The open dialog covers the sub-navigation, so the hash switch is made
     // the way the browser makes it.
     await page.evaluate(() => {
-      window.location.hash = 'settings-resources';
+      window.location.hash = 'resources';
     });
-    await expect(page).toHaveURL(/#settings-resources$/);
+    await expect(page).toHaveURL(/#resources$/);
     // BKP009: the resource editor is mounted on demand. Open the row's dialog
     // so the draft below is typed into a real form field.
     await resources
@@ -3693,19 +3732,20 @@ async function signInScenario(
     await resources
       .getByLabel('Bezeichnung', { exact: true })
       .fill('Synthetic draft box');
+    // A detour to the resource settings keeps the page and its draft.
     await page.evaluate(() => {
-      window.location.hash = 'resources';
+      window.location.hash = 'settings-resources';
     });
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await expect(resourceSettings).toBeVisible();
+    await page.goBack();
     await expect(page).toHaveURL(/#resources$/);
     await expect(
       resources.getByLabel('Bezeichnung', { exact: true }),
     ).toHaveValue('Synthetic draft box');
-    await page.goBack();
-    await expect(page).toHaveURL(/#settings-resources$/);
-    await expect(
-      resources.getByLabel('Bezeichnung', { exact: true }),
-    ).toHaveValue('Synthetic draft box');
     await page.goForward();
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await page.goBack();
     await expect(page).toHaveURL(/#resources$/);
     await expect(
       resources.getByLabel('Bezeichnung', { exact: true }),
@@ -3719,8 +3759,6 @@ async function signInScenario(
     await expect(
       resources.getByRole('dialog', { name: 'Ressource bearbeiten' }),
     ).toBeHidden();
-    await page.goBack();
-    await expect(page).toHaveURL(/#settings-resources$/);
     await page.goBack();
     await expect(page).toHaveURL(/#settings-products$/);
     await expect(
@@ -3771,21 +3809,20 @@ async function signInScenario(
     // keys; use the native option typeahead for a real keyboard selection.
     await page.keyboard.press('r');
     await expect(page).toHaveURL(/#settings-resources$/);
-    // UI-BKP-14: Ressourcen is a page of its own; the select steps aside.
-    await expect(resources).toBeVisible();
-    await expect(settingsSelect).toBeHidden();
-    await page.goBack();
-    await expect(page).toHaveURL(/#settings$/);
+    await expect(settingsSelect).toHaveValue('#settings-resources');
+    await expect(resourceSettings).toBeVisible();
+    await expect(settingsSelect).toBeFocused();
     await settingsSelect.selectOption('#settings-products');
     await expect(page).toHaveURL(/#settings-products$/);
     await expect(settingsSelect).toHaveValue('#settings-products');
     await expect(products).toBeVisible();
     await page.goBack();
-    await expect(page).toHaveURL(/#settings$/);
-    await expect(settingsSelect).toHaveValue('#settings');
+    await expect(page).toHaveURL(/#settings-resources$/);
+    await expect(settingsSelect).toHaveValue('#settings-resources');
     await page.goForward();
     await expect(page).toHaveURL(/#settings-products$/);
     await expect(settingsSelect).toHaveValue('#settings-products');
+    await expect(settingsSelect).toBeFocused();
     await expect(products).toBeVisible();
     expect(await page.evaluate(() => location.search)).toBe(queryBeforeHistory);
     expect(
