@@ -5755,7 +5755,11 @@ async function signInScenario(
     await expect(
       imported.getByText('Fictional Future Event', { exact: true }).first(),
     ).toBeVisible();
-    await navigate('Kalender');
+    await navigate('Events');
+    await page
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
+      .getByRole('link', { name: 'Kalender', exact: true })
+      .click();
     await expect(calendar.getByRole('alert')).toContainText(
       '1 ungeprüfte Bestandszusagen',
     );
@@ -5824,7 +5828,11 @@ async function signInScenario(
     await expect(
       imported.getByText(/Keine ungeprüften Bestandszusagen vorhanden/),
     ).toBeVisible();
-    await navigate('Kalender');
+    await navigate('Events');
+    await page
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
+      .getByRole('link', { name: 'Kalender', exact: true })
+      .click();
     await expect(calendar.getByRole('alert')).toHaveCount(0);
     const importedEvent = (
       await pool.query(
