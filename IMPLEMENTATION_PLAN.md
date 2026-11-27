@@ -685,6 +685,18 @@ Gesamtrahmen bleiben vorerst aus.
       bei 390/1280; vorher 0,78/0,84 und 0,61/0,63). **Tests:** Component
       (keine Inline-Stile), E2E-Lastmessung.
       Commit `perf: keep row menus light in long lists`.
+- [x] **PERF-MENU-02 — Seitenspalte ohne Volltextsuche im Baum:** Die
+      Spalten von Kontakte und Ressourcen setzten den Seitenabstand über
+      `.app-shell:has(… .contacts-context)`-Regeln, die ab 1024 px bei jeder
+      Änderung alle Listen (500 Events, 500 Kontakte) durchsuchen; die
+      Event-Lastmessung lag in CI bei 1280 px knapp über 2 s. Die Arbeitsfläche
+      trägt jetzt `data-route`, die Regeln prüfen nur dieses direkte Kind;
+      die Eventspalte prüft ihren Pfad nur über Kind-Kombinatoren
+      (`main.app-shell` überwiegt zudem die gleich gewichtete Regel der
+      eingeklappten Leiste).
+      Lokal Events 1280 px 0,81 s (vorher 0,84–0,89). **Tests:** Component
+      (Attribut), E2E-Lastmessung.
+      Commit `perf: read the page column from the workspace route`.
 
 - [x] **UI-BKP-14 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der

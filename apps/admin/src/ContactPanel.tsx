@@ -329,7 +329,7 @@ export function ContactPanel({
           <a
             className="secondary-action contacts-export"
             href="/api/v1/contacts/export.csv"
-            download
+            download="contacts.csv"
           >
             Kontakte als CSV exportieren
           </a>

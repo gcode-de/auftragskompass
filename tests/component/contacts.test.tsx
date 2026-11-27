@@ -880,11 +880,12 @@ test('retains the existing CSV export in the quiet toolbar', async () => {
   vi.stubGlobal('fetch', listFetcher());
   render(<ContactPanel csrfToken="csrf" />);
   await screen.findByText('Synthetic Company');
-  expect(
-    screen
-      .getByRole('link', { name: 'Kontakte als CSV exportieren' })
-      .getAttribute('href'),
-  ).toBe('/api/v1/contacts/export.csv');
+  const exportLink = screen.getByRole('link', {
+    name: 'Kontakte als CSV exportieren',
+  });
+  expect(exportLink.getAttribute('href')).toBe('/api/v1/contacts/export.csv');
+  // The file keeps its name even if the response header is lost on the way.
+  expect(exportLink.getAttribute('download')).toBe('contacts.csv');
 });
 test('contacts suggest duplicates and archive through the edit dialog with direct communication links', async () => {
   let rows = [row];
