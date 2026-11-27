@@ -249,6 +249,10 @@ test('search keeps distinct section headings and resources keep a valid outline'
 
   // UI-BKP-14: the legacy settings hash opens the same standalone page; the
   // settings frame steps aside and the main navigation names the page.
+  // PERF-MENU-02: the shell reads the page from the workspace's attribute.
+  expect(document.querySelector('.workspace')?.getAttribute('data-route')).toBe(
+    'resources',
+  );
   await go('/#settings-resources');
   await screen.findByRole('region', { name: 'Ressourcen' });
   expect(

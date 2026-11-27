@@ -1303,11 +1303,10 @@ time {
     border: 0;
     padding: 0;
   }
-  .app-shell:has(.workspace-page:not([hidden]) > section#resources) {
+  .app-shell:has(> .workspace[data-route='resources']) {
     padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
   }
-  .app-shell:has(.workspace-page:not([hidden]) > section#resources)
-    .workspace-heading {
+  .app-shell:has(> .workspace[data-route='resources']) .workspace-heading {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1591,15 +1590,10 @@ time {
     border: 0;
     padding: 0;
   }
-  .app-shell:has(
-    .workspace-page:not([hidden]) [data-column] > .contacts-context
-  ) {
+  .app-shell:has(> .workspace[data-route='contacts']) {
     padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
   }
-  .app-shell:has(
-      .workspace-page:not([hidden]) [data-column] > .contacts-context
-    )
-    .workspace-heading {
+  .app-shell:has(> .workspace[data-route='contacts']) .workspace-heading {
     position: absolute;
     width: 1px;
     height: 1px;
