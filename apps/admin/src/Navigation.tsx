@@ -36,11 +36,6 @@ const links = [
     'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z',
   ],
   [
-    'calendar',
-    'Kalender',
-    'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM7 14h3m4 0h3m-10 3h3',
-  ],
-  [
     'resources',
     'Ressourcen',
     'M12 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM5 14a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm14 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM9.5 8 7 14m7.5-6 2.5 6M8 17h8',
@@ -107,6 +102,7 @@ const settingsGroups: readonly (
 ];
 export type WorkspaceRoute =
   | (typeof links)[number][0]
+  | 'calendar'
   | 'subscriptions'
   | 'telegram'
   | 'mail'
@@ -172,6 +168,7 @@ function readRoute(): WorkspaceRoute {
   // H034: locations are no longer a separate area; the old deep link leads to
   // the events overview instead of a blank or hidden master-data page.
   if (hash === 'locations') return 'events';
+  if (hash === 'calendar') return 'calendar';
   if (hash === 'resources') return 'resources';
   if (hash === 'products') return 'products';
   if (hash === 'settings-resources') return 'resource-settings';
@@ -319,12 +316,18 @@ export function Navigation({ account }: { account?: ReactNode }) {
     q = new URLSearchParams(search).get('q') ?? '';
   const route = useWorkspaceRoute();
   const settings = isSettingsRoute(route);
-  const activeRoute = settings ? 'settings' : route;
+  const activeRoute = settings
+    ? 'settings'
+    : route === 'calendar'
+      ? 'events'
+      : route;
   const hideResources = useHiddenResources();
   const title =
     route === 'search'
       ? 'Suchergebnisse'
-      : links.find(([id]) => id === activeRoute)![1];
+      : route === 'calendar'
+        ? 'Kalender'
+        : links.find(([id]) => id === activeRoute)![1];
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -458,7 +461,6 @@ export function Navigation({ account }: { account?: ReactNode }) {
     return (
       <>
         <p className="menu-caption">Dein Büro für Events</p>
-        <p className="menu-caption">Version {appVersionLabel}</p>
         <nav aria-label="Hauptnavigation">
           {links
             // RES-BKP-01: the switch hides the entry, never the open page.
@@ -494,6 +496,7 @@ export function Navigation({ account }: { account?: ReactNode }) {
         {showAccount && account && (
           <div className="menu-account">{account}</div>
         )}
+        <p className="sidebar-version">Version {appVersionLabel}</p>
       </>
     );
   }
@@ -573,7 +576,6 @@ export function Navigation({ account }: { account?: ReactNode }) {
             {title}
           </a>
         </h1>
-        <span className="desktop-version">Version {appVersionLabel}</span>
         <div className={'global-search-shell' + (searchOpen ? ' open' : '')}>
           {searchOpen ? (
             <form className="global-search" onSubmit={submitSearch}>

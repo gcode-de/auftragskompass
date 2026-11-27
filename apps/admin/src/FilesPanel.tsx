@@ -680,7 +680,7 @@ export function FilesPanel({
               strokeLinecap="round"
               aria-hidden="true"
             >
-              <path d="M6 6l12 12M18 6 6 18" />
+              <path d="M3 12a9 9 0 1 1 3 7M3 5v7h7" />
             </svg>
           </button>
         </div>

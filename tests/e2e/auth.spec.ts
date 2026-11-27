@@ -5166,7 +5166,11 @@ async function signInScenario(
     await assignment.screenshot({
       path: 'tests/test-results/resource-assignment.png',
     });
-    await navigate('Kalender');
+    await navigate('Events');
+    await page
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
+      .getByRole('link', { name: 'Kalender', exact: true })
+      .click();
     const calendar = page.getByRole('region', {
       name: 'Kalender',
       exact: true,
@@ -6856,7 +6860,9 @@ async function signInScenario(
       }),
     ).toBeVisible();
     await expect(
-      websiteRecord.getByText('Hauptkontakt: Fictional later contact'),
+      websiteRecord.getByRole('link', {
+        name: 'Details anzeigen: Fictional later contact',
+      }),
     ).toBeVisible();
     await expect(
       websiteRecord.getByText('Kontakt noch offen.', { exact: true }),
@@ -6892,7 +6898,7 @@ async function signInScenario(
       await page.evaluate(() => document.documentElement.dataset.fictionalH031),
     ).toBe('kept');
     await page
-      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
       .getByRole('link', { name: 'Kalender', exact: true })
       .click();
     await expect(page).toHaveURL(/#calendar$/);

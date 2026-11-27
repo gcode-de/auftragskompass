@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Snackbar } from './Snackbar.js';
 import { MailBodyEditor } from './MailBodyEditor.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
@@ -38,14 +39,12 @@ export function EventNotes({
   const [notes, setNotes] = useState<Note[] | null>(null),
     [loadFailed, setLoadFailed] = useState(false),
     [draft, setDraft] = useState(''),
-    [editorKey, setEditorKey] = useState(0),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
-    // UI-BKP-04: Bookitup opens the composer from the card's plus and edits
-    // one note in place.
-    [composing, setComposing] = useState(false),
+    [composerFocused, setComposerFocused] = useState(false),
     [editingId, setEditingId] = useState(''),
     [editDraft, setEditDraft] = useState('');
+  const expanded = composerFocused || Boolean(draft.trim());
   const draftRef = useRef(''),
     editRef = useRef('');
   draftRef.current = draft;
@@ -53,7 +52,7 @@ export function EventNotes({
   useEffect(
     () =>
       registerUnsavedChanges(
-        () => hasText(draftRef.current) || hasText(editRef.current),
+        () => Boolean(draftRef.current.trim()) || hasText(editRef.current),
         true,
       ),
     [],
@@ -115,17 +114,23 @@ export function EventNotes({
     }
   }
   async function add() {
+    const plain = draft.trim();
+    if (!plain || busy) return;
+    const escaped = plain
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('\n', '<br>');
     if (
       await write(
         '',
         'POST',
         'Notiz hinzugefügt.',
-        JSON.stringify({ bodyHtml: draft }),
+        JSON.stringify({ bodyHtml: '<p>' + escaped + '</p>' }),
       )
     ) {
       setDraft('');
-      setEditorKey((key) => key + 1);
-      setComposing(false);
+      setComposerFocused(false);
     }
   }
   async function saveEdit(id: string) {
@@ -146,45 +151,36 @@ export function EventNotes({
       aria-labelledby="event-panel-notes"
       tabIndex={-1}
     >
-      <div className="card-head">
-        <h4 id="event-panel-notes">Notizen</h4>
-        <button
-          type="button"
-          className="icon-action tier-quiet-icon"
-          aria-label="Notiz hinzufügen"
-          title="Notiz hinzufügen"
-          aria-expanded={composing}
-          disabled={busy}
-          onClick={() => setComposing((open) => !open)}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-      </div>
-      {composing && (
-        <div className="event-note-composer">
-          <MailBodyEditor
-            label="Neue Notiz"
-            value={draft}
-            onChange={setDraft}
-            replaceKey={editorKey}
-            withPlaceholderPicker={false}
-            disabled={busy}
-          />
+      <h4 id="event-panel-notes">Notizen</h4>
+      <form
+        className="event-note-composer"
+        onFocus={() => setComposerFocused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget))
+            setComposerFocused(false);
+        }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void add();
+        }}
+      >
+        <label className="sr-only" htmlFor="new-event-note">
+          Neue Notiz
+        </label>
+        <textarea
+          id="new-event-note"
+          placeholder="Neue Notiz"
+          rows={expanded ? 4 : 1}
+          value={draft}
+          readOnly={busy}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+        />
+        {expanded && (
           <div className="event-note-actions">
             <button
-              type="button"
+              type="submit"
               className="primary-action"
-              disabled={busy || !hasText(draft)}
-              onClick={() => void add()}
+              disabled={busy || !draft.trim()}
             >
               Notiz speichern
             </button>
@@ -193,17 +189,16 @@ export function EventNotes({
               className="tertiary-action"
               disabled={busy}
               onClick={() => {
-                setComposing(false);
                 setDraft('');
-                setEditorKey((key) => key + 1);
+                setComposerFocused(false);
               }}
             >
               Abbrechen
             </button>
           </div>
-        </div>
-      )}
-      <p role="status">{message}</p>
+        )}
+      </form>
+      <Snackbar message={message} />
       {loadFailed ? (
         <div role="alert">
           <p>Die Notizen konnten nicht geladen werden.</p>

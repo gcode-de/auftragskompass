@@ -5,6 +5,7 @@ import {
 } from '../../packages/core/src/events.js';
 import {
   localDateTime,
+  inputDateTime,
   fromInstant,
   resolveEventTime,
   resolveLocalTime,
@@ -155,6 +156,47 @@ test('unchanged event instants survive edits in repeated hours and keep seconds'
 
 test('oversized sanitized notes fail safely', () => {
   expect(() => sanitizeNotes('&'.repeat(20000))).toThrow('invalid_notes');
+});
+
+test('minute-only event controls preserve stored precision even in the repeated hour', () => {
+  const originalInstant = '2026-10-25T01:30:17.345Z';
+  const zone = 'Europe/Berlin';
+  const input = inputDateTime(originalInstant, zone);
+  expect(input).toBe('2026-10-25T02:30');
+  expect(savedAmbiguousChoice(input, zone, originalInstant, true)).toBe(
+    'later',
+  );
+  expect(
+    resolveEventTime(input, zone, { originalInstant, minutePrecision: true }),
+  ).toMatchObject({
+    kind: 'unique',
+    instant: originalInstant,
+    preserved: true,
+  });
+  expect(
+    resolveEventTime(input, zone, {
+      originalInstant,
+      minutePrecision: true,
+      choice: 'later',
+    }),
+  ).toMatchObject({
+    kind: 'unique',
+    instant: originalInstant,
+    preserved: true,
+  });
+  expect(
+    resolveEventTime(input, zone, {
+      originalInstant,
+      minutePrecision: true,
+      choice: 'earlier',
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-10-25T00:30:00Z' });
+  expect(
+    resolveEventTime('2026-10-25T03:30', zone, {
+      originalInstant,
+      minutePrecision: true,
+    }),
+  ).toEqual({ kind: 'unique', instant: '2026-10-25T02:30:00Z' });
 });
 
 test('an explicit ambiguous choice overrides the saved instant but keeps its seconds when unchanged', () => {

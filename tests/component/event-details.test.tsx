@@ -289,9 +289,7 @@ test('event details collect contacts, venue, notes and activities and save statu
   expect(editButton.textContent).toBe('');
   fireEvent.click(editButton);
   expect(edit).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }));
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Event-Details schließen' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
   expect(close).toHaveBeenCalledOnce();
 });
 test('a resource rejection keeps a status draft retryable without a server reload', async () => {
@@ -1265,10 +1263,10 @@ test('details name a date-only booking instead of inventing a start time', async
     name: 'Event: Synthetic detail event',
     level: 2,
   });
-  const term = screen.getByText('Beginn', { selector: 'dt' });
-  expect(term.nextElementSibling?.textContent).toBe(
-    'Tagesbuchung, ohne Uhrzeit',
-  );
+  expect(screen.getByText('Tagesbuchung, ohne Uhrzeit')).toBeTruthy();
+  const start = screen.getByLabelText('Terminbeginn');
+  expect(start.getAttribute('step')).toBe('60');
+  expect(screen.queryByRole('heading', { name: 'Zeitplan' })).toBeNull();
   expect(document.body.textContent).not.toContain('Noch offen Uhr');
 });
 
@@ -2009,11 +2007,15 @@ test('a confirmed primary contact change updates the contact overview without a 
   fireEvent.blur(screen.getByRole('group', { name: 'Hauptkontakt' }));
   await waitFor(() =>
     expect(
-      screen.getByText(/Hauptkontakt: Fictional new contact/),
+      screen.getByRole('link', {
+        name: 'Details anzeigen: Fictional new contact',
+      }),
     ).toBeTruthy(),
   );
   expect(screen.getByText(/Kontaktdaten noch nicht geladen/)).toBeTruthy();
-  expect(screen.queryByText(/Hauptkontakt: Fictional contact/)).toBeNull();
+  expect(
+    screen.queryByRole('link', { name: 'Details anzeigen: Fictional contact' }),
+  ).toBeNull();
 });
 
 test('contact reconciliation displays the actual details from the adopted server version', async () => {
@@ -2082,7 +2084,9 @@ test('contact reconciliation displays the actual details from the adopted server
   fireEvent.click(
     await screen.findByRole('button', { name: 'Serverstand übernehmen' }),
   );
-  await screen.findByText(/Hauptkontakt: Fictional remote/);
+  await screen.findByRole('link', {
+    name: 'Details anzeigen: Fictional remote',
+  });
   expect(
     screen.getByRole('link', { name: 'fictional@example.invalid' }),
   ).toBeTruthy();

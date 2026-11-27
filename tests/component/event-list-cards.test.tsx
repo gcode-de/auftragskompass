@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EventPanel } from '../../apps/admin/src/EventPanel.js';
 import { openRowMenu } from '../helpers/row-menu.js';
 afterEach(() => {
@@ -194,6 +194,25 @@ test('a card keeps date, status, type, title and place in that reading order', a
     'Fiktive Kontaktperson',
   );
 });
+test.each([
+  ['?doc=55555555-5555-4555-8555-555555555555&qd=keep', '?qd=keep'],
+  ['?mail=new', ''],
+])(
+  'an ordinary event link drops a stale area shortcut %s',
+  async (search, remaining) => {
+    window.history.replaceState(null, '', '/' + search + '#events');
+    vi.stubGlobal('fetch', fetcher());
+    render(<EventPanel csrfToken="csrf" />);
+    const link = await findRow();
+    expect(link.getAttribute('href')).toBe(
+      '/' + remaining + '#event-fictional-timed',
+    );
+    fireEvent.click(link, { button: 0 });
+    expect(window.location.hash).toBe('#event-fictional-timed');
+    expect(window.location.search).toBe(remaining);
+  },
+);
+
 test('a row has exactly one primary link and no nested button', async () => {
   vi.stubGlobal('fetch', fetcher());
   render(<EventPanel csrfToken="csrf" />);

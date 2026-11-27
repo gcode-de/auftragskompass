@@ -18,16 +18,16 @@
      the primary action and the active navigation; white cards on a near-white
      canvas, thin grey borders and soft shadows instead of nested frames. Small
      greys are darkened where the reference falls below WCAG AA. */
-  --surface: light-dark(#ffffff, #141517);
-  --canvas: light-dark(#fbfbfb, #0c0d0f);
+  --surface: light-dark(#ffffff, #1b1d21);
+  --canvas: light-dark(#fbfbfb, #0e0f12);
   --ink: light-dark(#282828, #d5d7e0);
   --muted: light-dark(#666666, #9a9db0);
   --accent: light-dark(#1d5191, #6ea8ec);
-  --border: light-dark(#e2e2e2, #2b2c3d);
+  --border: light-dark(#e2e2e2, #363944);
   --action-ink: light-dark(#ffffff, #ffffff);
   --action-hover: light-dark(#1a4983, #2a64ab);
   --hover-surface: light-dark(#f1f1f1, #1e1f24);
-  --field-surface: light-dark(#ffffff, #1a1b20);
+  --field-surface: light-dark(#ffffff, #22242a);
   --field-border: light-dark(#8c8c8c, #6b6e82);
   --filled-field: light-dark(#e2e2e2, #24252d);
   --focus: light-dark(#1d5191, #6ea8ec);
@@ -365,8 +365,8 @@ textarea:disabled {
   cursor: not-allowed;
 }
 :focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 3px;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 [role='status']:empty {
@@ -679,14 +679,20 @@ nav svg {
 .workspace-toolbar > .theme-toggle {
   align-self: center;
 }
-.desktop-version {
-  font-size: 0.8rem;
-  color: var(--muted);
+.sidebar-version {
+  color: var(--sidebar-muted);
+  font-size: 0.75rem;
+  margin: auto 0.75rem 0;
+  padding-top: 1rem;
 }
-@media (max-width: 900px) {
-  .desktop-version {
-    display: none;
-  }
+.menu-account + .sidebar-version {
+  margin-top: 0;
+}
+.desktop-sidebar.collapsed .sidebar-version {
+  margin-inline: 0;
+  font-size: 0.625rem;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .workspace-heading {
   margin: 0;
@@ -1780,7 +1786,7 @@ time {
   padding: 0;
   margin: 0;
 }
-/* UI-BKP-04: Bookitup's notes - the card head carries the plus, each note
+/* UI-BKP-04: a compact composer above the list. Each note
    shows its time and an edit pen, the text sits in a quiet grey box and the
    red "Event-Notiz löschen" link stands centred below it. */
 .card-head {
@@ -3156,7 +3162,7 @@ summary {
   border-color: var(--status-booked);
   background: var(--status-booked);
 }
-/* The status choice carries its coloured dot inside the field. */
+/* The status dot has its own column, including on native selects. */
 .event-status-field {
   --status-dot: var(--status-cancelled);
 }
@@ -3169,13 +3175,17 @@ summary {
 .event-status-field[data-status='booked'] {
   --status-dot: var(--status-booked);
 }
-.event-status-field > select {
-  padding-left: 2rem;
-  background-image: radial-gradient(
-    circle at 0.95rem 50%,
-    var(--status-dot) 0.3rem,
-    transparent 0.32rem
-  );
+.event-status-choice {
+  display: grid;
+  grid-template-columns: 0.6rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+}
+.event-status-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--status-dot);
 }
 .event-logbook time {
   color: var(--muted);
@@ -3348,7 +3358,7 @@ summary {
   }
   .event-record-side .record-navigation {
     display: grid;
-    gap: 0.15rem;
+    gap: 0.5rem;
     margin: 0;
     padding: 0 0 0.75rem;
   }
@@ -6089,4 +6099,115 @@ input[type='checkbox'].switch:disabled {
 }
 .link-picker-list label:hover {
   background: var(--hover-surface);
+}
+
+/* WORKSPACE-UX-01: adjacent controls leave room for their keyboard outline. */
+:is(
+  .global-search,
+  .files-filter-actions,
+  .event-view-choice,
+  .record-navigation
+) {
+  gap: 0.5rem;
+}
+.event-record {
+  scroll-margin-block-start: 0.75rem;
+}
+.event-record > .tertiary-action {
+  gap: 0.5rem;
+}
+.event-note-composer > textarea {
+  min-height: 44px;
+  resize: vertical;
+}
+.event-contact-edit {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+.event-contact-edit > summary {
+  cursor: pointer;
+  padding: 0.5rem 0;
+  color: var(--quiet-ink);
+}
+.event-contact-fields {
+  display: grid;
+  min-width: 0;
+  padding: 0.5rem 0 0;
+  gap: 0.75rem;
+  border: 0;
+}
+.event-aside-contact li > small {
+  color: var(--muted);
+}
+.event-aside-contact li > p {
+  margin: 0;
+}
+:is(#calendar, #events) > .event-view-choice {
+  display: flex;
+  flex-wrap: wrap;
+  margin-block-end: 0.75rem;
+}
+:is(#calendar, #events) > .event-view-choice::before,
+:is(#calendar, #events) > .event-view-choice a::before {
+  display: none;
+}
+:is(#calendar, #events) > .event-view-choice a {
+  border-radius: var(--radius-field);
+  padding-inline: 0.9rem;
+}
+:is(#calendar, #events) > .event-view-choice a[aria-current='page'] {
+  background: var(--selected-surface);
+  color: var(--selected-ink);
+}
+:root[data-theme='dark'] :is(.event-aside-contact, .event-aside-location) {
+  border-color: var(--border);
+}
+.snackbar {
+  position: fixed;
+  z-index: calc(var(--layer-sticky) + 1);
+  inset: auto max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 0.25rem 0.25rem 0.25rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-aside);
+}
+.snackbar[data-open='false'] {
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.snackbar > [role='status']:empty {
+  display: inline;
+}
+.snackbar > [role='status'] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.snackbar > button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  border-color: transparent;
+}
+.snackbar > button > svg {
+  width: 18px;
+  height: 18px;
+}
+@media (max-width: 600px) {
+  .event-record .snackbar {
+    bottom: calc(3.75rem + max(1rem, env(safe-area-inset-bottom)));
+  }
 }

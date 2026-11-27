@@ -39,10 +39,21 @@ export function localDateTime(value: string | null, timeZone: string) {
   return fromInstant(value, timeZone).value;
 }
 
+export function inputDateTime(value: string | null, timeZone: string) {
+  return localDateTime(value, timeZone).slice(0, 16);
+}
+
 // Browsers normalise `datetime-local` values (e.g. "18:00" instead of
 // "18:00:00"), so unchanged input is compared on the parsed wall clock.
 function wallClock(value: string) {
   return Temporal.PlainDateTime.from(value).toString();
+}
+
+function sameWallClock(saved: string, input: string, minutePrecision = false) {
+  // A minute-only editor must preserve any precision already on the record.
+  return minutePrecision && input.length === 16
+    ? saved.slice(0, 16) === input
+    : wallClock(saved) === wallClock(input);
 }
 
 function ambiguousOptions(
@@ -95,13 +106,14 @@ export function savedAmbiguousChoice(
   value: string,
   timeZone: string,
   originalInstant: string | null,
+  minutePrecision = false,
 ): AmbiguousTimeChoice | '' {
   if (!value || !originalInstant) return '';
   const resolution = resolveLocalTime(value, timeZone);
   if (resolution.kind !== 'ambiguous') return '';
   try {
     const original = fromInstant(originalInstant, timeZone);
-    if (wallClock(original.value) !== wallClock(value)) return '';
+    if (!sameWallClock(original.value, value, minutePrecision)) return '';
     return (
       resolution.options.find((option) => option.offset === original.offset)
         ?.choice ?? ''
@@ -116,6 +128,7 @@ export function resolveEventTime(
   timeZone: string,
   options: {
     originalInstant?: string | null;
+    minutePrecision?: boolean;
     choice?: AmbiguousTimeChoice | '';
   } = {},
 ): LocalTime {
@@ -124,8 +137,11 @@ export function resolveEventTime(
     if (!value || !options.originalInstant) return resolution;
     try {
       if (
-        wallClock(localDateTime(options.originalInstant, timeZone)) ===
-        wallClock(value)
+        sameWallClock(
+          localDateTime(options.originalInstant, timeZone),
+          value,
+          options.minutePrecision,
+        )
       )
         return {
           kind: 'unique',
@@ -148,7 +164,7 @@ export function resolveEventTime(
       try {
         const saved = fromInstant(original, timeZone);
         if (
-          wallClock(saved.value) === wallClock(value) &&
+          sameWallClock(saved.value, value, options.minutePrecision) &&
           saved.offset === picked.offset
         )
           return { kind: 'unique', instant: original, preserved: true };
@@ -161,8 +177,11 @@ export function resolveEventTime(
   if (!options.originalInstant) return resolution;
   try {
     if (
-      wallClock(localDateTime(options.originalInstant, timeZone)) ===
-      wallClock(value)
+      sameWallClock(
+        localDateTime(options.originalInstant, timeZone),
+        value,
+        options.minutePrecision,
+      )
     )
       return {
         kind: 'unique',

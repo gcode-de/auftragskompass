@@ -105,9 +105,7 @@ test('visible screens keep one page title and the detail uses Event language', a
   expect(
     within(details).getByRole('navigation', { name: 'Bereiche des Events' }),
   ).toBeTruthy();
-  expect(
-    within(details).getByRole('button', { name: 'Event-Details schließen' }),
-  ).toBeTruthy();
+  expect(within(details).getByRole('button', { name: 'Zurück' })).toBeTruthy();
   expect(document.body.textContent).not.toMatch(/Eventakte/);
   expect(
     Array.from(document.querySelectorAll('[aria-label]'))
@@ -115,9 +113,7 @@ test('visible screens keep one page title and the detail uses Event language', a
       .join(' '),
   ).not.toMatch(/Eventakte/);
 
-  fireEvent.click(
-    within(details).getByRole('button', { name: 'Event-Details schließen' }),
-  );
+  fireEvent.click(within(details).getByRole('button', { name: 'Zurück' }));
 
   await go('/#documents');
   expect(

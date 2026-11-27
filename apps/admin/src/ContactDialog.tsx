@@ -367,7 +367,7 @@ export function ContactDialog({
             disabled={busy}
             onClick={close}
           >
-            Kontakt abbrechen
+            Abbrechen
           </button>
           <button className="primary-action" disabled={busy}>
             {busy ? 'Wird gespeichert …' : 'Kontakt speichern'}
