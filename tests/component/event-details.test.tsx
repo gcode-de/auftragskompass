@@ -85,6 +85,36 @@ const detail = {
     },
   ],
 };
+test('keeps a removed historical contact readable without a dead record link', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({
+        ...detail,
+        contacts: detail.contacts.map((contact) => ({
+          ...contact,
+          removed: true,
+        })),
+      }),
+    ),
+  );
+  render(
+    <EventDetails
+      statuses={statuses}
+      id="synthetic-event"
+      csrfToken="csrf"
+      onChanged={vi.fn().mockResolvedValue(undefined)}
+      onEdit={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  await screen.findByText('Fictional contact · Entfernt');
+  expect(screen.queryByRole('link', { name: 'Fictional contact' })).toBeNull();
+  expect(
+    screen.getByRole('link', { name: 'detail@example.invalid' }),
+  ).toBeTruthy();
+});
+
 // QW2: a cancellation names its reason; the record head shows it.
 test('cancelling an event saves the chosen reason and shows it in the head', async () => {
   const fresh = structuredClone(detail);

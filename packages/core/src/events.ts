@@ -703,6 +703,7 @@ export function eventRepository(pool: Connection, tenantId: string) {
                   email: contacts.email,
                   phone: contacts.phone,
                   mobile: contacts.mobile,
+                  deletedAt: contacts.deletedAt,
                 })
                 .from(contacts)
                 .where(
@@ -760,8 +761,9 @@ export function eventRepository(pool: Connection, tenantId: string) {
           return {
             event,
             websiteInquiryAvailable: inquiry.length > 0,
-            contacts: people.map((person) => ({
+            contacts: people.map(({ deletedAt, ...person }) => ({
               ...person,
+              ...(deletedAt ? { removed: true } : {}),
               role:
                 person.id === event.primaryContactId ? 'primary' : 'additional',
             })),
@@ -1569,6 +1571,7 @@ export function registerEventRoutes(
       phone: { type: 'string' },
       mobile: { type: 'string' },
       role: { type: 'string', enum: ['primary', 'additional'] },
+      removed: { type: 'boolean' },
     },
   };
   const venue = {

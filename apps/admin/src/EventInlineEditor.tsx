@@ -133,6 +133,7 @@ export type ConfirmedContact = {
   phone: string;
   mobile: string;
   role: string;
+  removed?: boolean;
 };
 export type EventInlineHandle = {
   adoptExternal: (row: EventRow) => boolean;

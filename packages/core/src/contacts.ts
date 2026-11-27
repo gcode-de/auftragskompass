@@ -2,7 +2,7 @@ import { database, type Connection } from './database.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { and, asc, eq, or, ilike, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, or, ilike, inArray, ne, isNull, sql } from 'drizzle-orm';
 import { contacts } from './schema.js';
 import { AccessError, lockTenant, requireAdministrator } from './access.js';
 import { appendAudit } from './audit.js';
@@ -64,7 +64,7 @@ export function csv(rows: string[][]) {
 class ContactError extends Error {}
 export function contactRepository(pool: Connection, tenantId: string) {
   const db = database(pool),
-    scope = eq(contacts.tenantId, tenantId);
+    scope = and(eq(contacts.tenantId, tenantId), isNull(contacts.deletedAt));
   return {
     async get(id: string) {
       const [row] = await db
@@ -173,6 +173,27 @@ export function contactRepository(pool: Connection, tenantId: string) {
           row!.id,
         );
         return row!;
+      });
+    },
+    async remove(actorId: string, id: string, version: number) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const [row] = await tx
+          .select({ version: contacts.version })
+          .from(contacts)
+          .where(and(scope, eq(contacts.id, id)));
+        if (!row) throw new ContactError('not_found');
+        if (row.version !== version) throw new ContactError('conflict');
+        await tx
+          .update(contacts)
+          .set({
+            state: 'archived',
+            deletedAt: sql`now()`,
+            version: version + 1,
+          })
+          .where(and(scope, eq(contacts.id, id)));
+        await appendAudit(tx, tenantId, 'contact.deleted', actorId, id);
       });
     },
   };
@@ -366,6 +387,36 @@ export function registerContactRoutes(
           request.params.id,
           request.body.version,
         );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.delete<{ Params: { id: string }; Body: { version: number } }>(
+    '/api/v1/contacts/:id',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version'],
+          properties: { version },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await repo.remove(
+          request.authSession!.userId,
+          request.params.id,
+          request.body.version,
+        );
+        return reply.code(204).send();
       } catch (error) {
         return failure(error, reply);
       }

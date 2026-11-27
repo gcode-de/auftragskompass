@@ -75,6 +75,87 @@ function submitSave(dialog: HTMLElement) {
       .closest('form')!,
   );
 }
+test('deleting a contact requires confirmation and removes only the confirmed row', async () => {
+  let deleted = false;
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/v1/contacts/' + row.id && init?.method === 'DELETE') {
+      deleted = true;
+      return new Response(null, { status: 204 });
+    }
+    return Response.json(deleted ? [] : [row]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<ContactPanel csrfToken="csrf" />);
+  await openRowMenu(row.name);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Kontakt löschen: ' + row.name }),
+  );
+  const confirm = screen.getByRole('dialog', { name: 'Kontakt löschen?' });
+  expect(confirm.textContent).toContain(
+    'Bestehende Zuordnungen bleiben erhalten.',
+  );
+  fireEvent.click(within(confirm).getByRole('button', { name: 'Löschen' }));
+  await screen.findByText('Kontakt gelöscht.');
+  expect(screen.queryByRole('link', { name: row.name })).toBeNull();
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/contacts/' + row.id,
+    expect.objectContaining({
+      method: 'DELETE',
+      body: JSON.stringify({ version: row.version }),
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf' }),
+    }),
+  );
+});
+
+test.each([409, 500, 'offline', 404] as const)(
+  'handles an unsuccessful or obsolete deletion response %s',
+  async (status) => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== 'DELETE') return Response.json([row]);
+      if (status === 'offline') throw new Error('Synthetic offline');
+      return new Response(null, { status });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    render(<ContactPanel csrfToken="csrf" />);
+    async function ask() {
+      await openRowMenu(row.name);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Kontakt löschen: ' + row.name }),
+      );
+      return screen.getByRole('dialog', { name: 'Kontakt löschen?' });
+    }
+    fireEvent.click(
+      within(await ask()).getByRole('button', { name: 'Abbrechen' }),
+    );
+    expect(
+      fetcher.mock.calls.some(([, init]) => init?.method === 'DELETE'),
+    ).toBe(false);
+    fireEvent.click(
+      within(await ask()).getByRole('button', { name: 'Löschen' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    if (status === 404) {
+      await screen.findByText('Kontakt bereits entfernt.');
+      expect(screen.queryByRole('link', { name: row.name })).toBeNull();
+      return;
+    }
+    expect(screen.getByRole('link', { name: row.name })).toBeTruthy();
+    if (status === 409 || status === 'offline') {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Kontakte erneut laden' }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: 'Kontakte erneut laden' }),
+        ).toBeNull(),
+      );
+    } else {
+      await screen.findByText('Der Kontakt konnte nicht gelöscht werden.');
+    }
+    expect(await ask()).toBeTruthy();
+  },
+);
+
 test('fills a new company from an address suggestion and saves the edited address', async () => {
   const fetcher = vi.fn(async (url: string, init?: RequestInit) =>
     url === '/api/v1/address-suggestions'

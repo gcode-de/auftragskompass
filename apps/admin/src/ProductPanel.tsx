@@ -1000,7 +1000,7 @@ export function ProductPanel({ csrfToken }: { csrfToken: string }) {
           heading="Produkt löschen?"
           confirmLabel="Löschen"
           busy={busy}
-          message={`„${confirming.name}“ wird dauerhaft aus dem Produktkatalog entfernt. Verwendete Produkte lassen sich stattdessen archivieren.`}
+          message={`„${confirming.name}“ wird aus dem Produktkatalog entfernt. Bestehende Zuordnungen und Belege bleiben erhalten.`}
           onConfirm={() => void removeProduct()}
           onCancel={cancelDelete}
         />

@@ -53,6 +53,7 @@ function dateText(value: string): string {
 export function ContactDetails({
   contact,
   onEdit,
+  onRemove,
   onClose,
   csrfToken,
   onConfirmed,
@@ -62,6 +63,7 @@ export function ContactDetails({
 }: {
   contact: Contact;
   onEdit: () => void;
+  onRemove?: ((trigger: HTMLElement) => void) | undefined;
   onClose: () => void;
   csrfToken: string;
   onConfirmed: (row: Contact) => void;
@@ -305,6 +307,15 @@ export function ContactDetails({
           </ul>
         )}
       </section>
+      {onRemove && (
+        <button
+          type="button"
+          className="tertiary-action danger-link"
+          onClick={(event) => onRemove(event.currentTarget)}
+        >
+          Kontakt löschen
+        </button>
+      )}
     </section>
   );
 }

@@ -37,7 +37,7 @@ API bietet GET/POST `/api/v1/products` und PUT `/api/v1/products/:id`. Schreibfe
 `taxBasisPoints`, `position` (0–9999), `state` (`active`/`inactive`/`archived`). PUT
 verlangt zusätzlich die zuletzt gelesene `version`; Konflikte ergeben 409,
 unbekannte/fremde IDs 404 und ungültige Eingaben 400. GET sortiert nach Position/Name.
-Gleiche Namen sind für Varianten und Kopien erlaubt. Ein Löschendpunkt fehlt.
+Gleiche Namen sind für Varianten und Kopien erlaubt. `DELETE /api/v1/products/:id` mit `{version}` erfordert eine Administratorsitzung und CSRF. Der Katalog blendet das gelöschte Produkt aus. Bestehende Dokument- und Vorlagenpositionen behalten ihre Referenz und ihre gespeicherten Werte.
 
 Session, Origin, CSRF-Token und eine innerhalb der Transaktion erneut geprüfte
 Administratorfreigabe schützen Schreibzugriffe. Produktänderung und minimierter

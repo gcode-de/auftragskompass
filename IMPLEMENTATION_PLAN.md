@@ -53,9 +53,11 @@
       Dateibibliothek ausblenden, Zugriff und Versand auf die Event-Grenze prüfen.
       Abnahme mit Upload-Wiederholung, falschem Event, Vorlagen und unverändertem Bibliothekszugriff.
       Commit `fix: scope mail uploads to their event`.
-- [ ] **MASTER-DELETE-01 — Verwendete Kontakte und Produkte entfernen.**
+- [x] **MASTER-DELETE-01 — Verwendete Kontakte und Produkte entfernen.**
       Deaktivierte Stammdaten aus Auswahl und normalen Listen nehmen, historische
       Referenzen und unveränderliche Belege konsistent erhalten.
+      Abnahme mit referenzierten Datensätzen, Konflikten, Mandantengrenze und Neuverwendung.
+      Commit `feat: remove used contacts and products from master data`.
 - [ ] **MAIL-WORKSPACE-01 — Mail-Zentrale im Hauptmenü.**
       Eingang mit Website-Anfragen, Gesendet, Entwürfe, Geplant, Fehlgeschlagen
       und Papierkorb mit passenden Entwurfs-, Versand- und Wiederherstellungsaktionen.

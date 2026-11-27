@@ -33,6 +33,7 @@ type Detail = {
     mobile: string;
     role: string;
     detailsUnavailable?: boolean;
+    removed?: boolean;
   }[];
   location: {
     id: string;
@@ -346,6 +347,7 @@ export function EventDetails({
                   phone: existing?.phone ?? '',
                   mobile: existing?.mobile ?? '',
                   role: id === row.primaryContactId ? 'primary' : 'additional',
+                  removed: existing?.removed === true,
                   detailsUnavailable:
                     !existing ||
                     ('detailsUnavailable' in existing &&
@@ -1209,12 +1211,16 @@ export function EventDetails({
                                 ? 'Hauptkontakt'
                                 : 'Weiterer Kontakt'}
                             </small>
-                            <a
-                              href={'#contact-' + person.id}
-                              aria-label={'Details anzeigen: ' + person.name}
-                            >
-                              {person.name}
-                            </a>
+                            {person.removed ? (
+                              <p>{person.name} · Entfernt</p>
+                            ) : (
+                              <a
+                                href={'#contact-' + person.id}
+                                aria-label={'Details anzeigen: ' + person.name}
+                              >
+                                {person.name}
+                              </a>
+                            )}
                             {person.contactPerson && (
                               <p>{person.contactPerson}</p>
                             )}
