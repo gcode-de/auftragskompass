@@ -1170,7 +1170,7 @@ async function offerDraftScenario(browser: Browser) {
     }
 
     await page.reload();
-    await expect(page.locator('#event-' + event.id)).toBeVisible();
+    await expect(page.locator('#event-row-' + event.id)).toBeVisible();
     await page
       .getByRole('navigation', { name: 'Bereiche des Events' })
       .getByRole('button', { name: 'Dateien' })
@@ -1432,7 +1432,7 @@ async function offerDraftScenario(browser: Browser) {
     ).toHaveLength(0);
 
     await page.reload();
-    await expect(page.locator('#event-' + event.id)).toBeVisible();
+    await expect(page.locator('#event-row-' + event.id)).toBeVisible();
     await page
       .getByRole('navigation', { name: 'Bereiche des Events' })
       .getByRole('button', { name: 'Dateien' })
@@ -1786,7 +1786,7 @@ async function offerDraftScenario(browser: Browser) {
     expect(templateWrites).toEqual([]);
 
     await page.reload();
-    await expect(page.locator('#event-' + event.id)).toBeVisible();
+    await expect(page.locator('#event-row-' + event.id)).toBeVisible();
     await page
       .getByRole('navigation', { name: 'Bereiche des Events' })
       .getByRole('button', { name: 'Dateien' })

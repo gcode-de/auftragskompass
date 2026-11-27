@@ -1162,7 +1162,7 @@ async function signInScenario(
       /#event-33333333-3333-4333-8333-333333333333$/,
     );
     await expect(
-      page.locator('#event-33333333-3333-4333-8333-333333333333'),
+      page.locator('#event-row-33333333-3333-4333-8333-333333333333'),
     ).toBeVisible();
     // BKP019.0: the offer validity and status flow, seeded above before the
     // event details load, because the panel reads the event's primary contact.
