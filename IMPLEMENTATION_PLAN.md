@@ -58,10 +58,12 @@
       Referenzen und unveränderliche Belege konsistent erhalten.
       Abnahme mit referenzierten Datensätzen, Konflikten, Mandantengrenze und Neuverwendung.
       Commit `feat: remove used contacts and products from master data`.
-- [ ] **MAIL-WORKSPACE-01 — Mail-Zentrale im Hauptmenü.**
+- [x] **MAIL-WORKSPACE-01 — Mail-Zentrale im Hauptmenü.**
       Eingang mit Website-Anfragen, Gesendet, Entwürfe, Geplant, Fehlgeschlagen
       und Papierkorb mit passenden Entwurfs-, Versand- und Wiederherstellungsaktionen.
-      Teilabnahmen für Mailablage, Entwürfe und Auftragszustände.
+      Abnahme mit Website-Import, Versionsabgleich für Entwürfe,
+      versandsicherer Wiederholung und mobiler Ordnernavigation.
+      Commit `feat: add the mail workspace and draft lifecycle`.
 
 ## Priorisierte Dokumentarbeiten (Nutzauftrag 20.11.2026, verbindliche Reihenfolge)
 

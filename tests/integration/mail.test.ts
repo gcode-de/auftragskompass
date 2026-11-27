@@ -3218,3 +3218,184 @@ test('a planned document mail keeps its planned time', async () => {
   expect(sendAtOf(null)).toBeNull();
   expect(() => sendAtOf('not a time')).toThrow(MailError);
 });
+
+test('mail workspace saves, revises, plans, cancels and trashes the same draft safely', async () => {
+  const { headers, csrf } = await signedIn();
+  const write = { ...headers, ...csrf };
+  const post = (
+    path: string,
+    payload: object,
+    sendHeaders: typeof headers & { 'x-csrf-token'?: string } = write,
+  ) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/mail' + path,
+      headers: sendHeaders,
+      payload,
+    });
+  const requestId = randomUUID();
+  const initial = {
+    requestId,
+    accountId,
+    eventId,
+    to: '',
+    subject: '',
+    bodyHtml: '<p>Draft body</p>',
+    saveAsDraft: true,
+  };
+  expect((await post('/compose', initial, headers)).statusCode).toBe(403);
+  expect((await post('/compose', initial)).json()).toEqual({
+    messageId: requestId,
+  });
+  expect((await post('/compose', initial)).json()).toEqual({
+    messageId: requestId,
+  });
+  const path = '/messages/' + requestId;
+  const read = async () =>
+    (await app.inject({ url: '/api/v1/mail' + path, headers })).json();
+  const home = await read();
+  expect(home).toMatchObject({
+    to: '',
+    eventId,
+    sendState: 'none',
+    outbox: null,
+    bodyText: 'Draft body',
+  });
+  const content = {
+    to: 'draft-to@example.invalid',
+    subject: 'Draft revision',
+    bodyHtml: '<p>Revised</p><script>not part of the message</script>',
+    revision: home.revision,
+  };
+  const edit = (payload: typeof content) =>
+    app.inject({
+      method: 'PUT',
+      url: '/api/v1/mail' + path,
+      headers: write,
+      payload,
+    });
+  const changed = await edit(content);
+  expect(changed.statusCode).toBe(200);
+  expect(changed.json()).toMatchObject({
+    bodyText: 'Revised',
+    subject: 'Draft revision',
+  });
+  expect((await edit(content)).statusCode).toBe(409);
+
+  const sendAt = new Date(Date.now() + 86400000).toISOString();
+  const next = new Date(Date.now() + 2 * 86400000).toISOString();
+  const send = {
+    idempotencyKey: randomUUID(),
+    revision: changed.json().revision,
+    sendAt,
+  };
+  expect(
+    (await post(path + '/send', { ...send, revision: home.revision }))
+      .statusCode,
+  ).toBe(409);
+  const planned = await post(path + '/send', send);
+  expect(planned.statusCode).toBe(201);
+  expect((await post(path + '/reschedule', { sendAt: next })).statusCode).toBe(
+    204,
+  );
+  const shown = await app.inject({
+    url: '/api/v1/mail/messages?folder=drafts&stateGroup=planned',
+    headers,
+  });
+  expect(shown.json()).toContainEqual(
+    expect.objectContaining({ id: requestId, scheduledFor: next }),
+  );
+  expect((await post(path + '/trash', { restore: false })).statusCode).toBe(
+    409,
+  );
+  const stopped = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mail' + path + '/unschedule',
+    headers: write,
+  });
+  expect(stopped.statusCode).toBe(204);
+  expect((await post(path + '/send', send)).json()).toMatchObject({
+    id: planned.json().id,
+    state: 'cancelled',
+  });
+  expect((await post(path + '/reschedule', { sendAt: next })).statusCode).toBe(
+    409,
+  );
+  expect((await post(path + '/trash', { restore: false })).statusCode).toBe(
+    204,
+  );
+  expect((await read()).folder).toBe('trash');
+  expect((await post(path + '/trash', { restore: true })).statusCode).toBe(204);
+  expect((await read()).folder).toBe('drafts');
+});
+
+test('a failed outbox job can be superseded only before the worker claims it again', async () => {
+  await pool.query('DELETE FROM mail_outbox');
+  const repo = mailRepository(pool, tenantId, encryptionKey, {
+    store: mailStore,
+  });
+  const message = await repo.createMessage(actorId, draft());
+  const first = await repo.scheduleSend(actorId, message.id, randomUUID());
+  await runMailOutboxPass(pool);
+  const failed = await repo.get(message.id);
+  expect(failed.sendState).toBe('failed');
+  expect(
+    (await repo.list({ folder: 'drafts', stateGroup: 'failed' })).some(
+      (row) => row.id === message.id,
+    ),
+  ).toBe(true);
+  const edit = {
+    to: 'corrected@example.invalid',
+    subject: 'Corrected draft',
+    bodyHtml: '<p>Corrected</p>',
+    revision: failed.revision,
+  };
+  const revised = await repo.editDraft(actorId, message.id, edit);
+  expect(revised.sendState).toBe('none');
+  const next = await repo.scheduleSend(
+    actorId,
+    message.id,
+    randomUUID(),
+    new Date(Date.now() + 86400000).toISOString(),
+    revised.revision,
+  );
+  expect(next.job.id).not.toBe(first.job.id);
+  expect(
+    (await repo.scheduleSend(actorId, message.id, first.job.idempotencyKey)).job
+      .state,
+  ).toBe('cancelled');
+  await expect(repo.editDraft(actorId, message.id, edit)).rejects.toThrow(
+    MailError,
+  );
+});
+
+test('saving a document mail draft retains frozen attachments without an outbox job', async () => {
+  const { headers, csrf } = await signedIn();
+  const documentDraftId = randomUUID();
+  const write = { ...headers, ...csrf };
+  const save = () =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/mail/document-send',
+      headers: write,
+      payload: {
+        documentId: finalDocumentId,
+        requestId: documentDraftId,
+        saveAsDraft: true,
+        to: '',
+        accountId,
+      },
+    });
+  expect((await save()).statusCode).toBe(202);
+  expect((await save()).json()).toEqual({ messageId: documentDraftId });
+  const result = await pool.query(
+    `SELECT a.document_id, m.send_state, o.id AS outbox_id
+       FROM mail_messages m JOIN mail_attachments a ON a.tenant_id=m.tenant_id AND a.message_id=m.id
+       LEFT JOIN mail_outbox o ON o.tenant_id=m.tenant_id AND o.message_id=m.id
+       WHERE m.tenant_id=$1 AND m.id=$2`,
+    [tenantId, documentDraftId],
+  );
+  expect(result.rows).toEqual([
+    { document_id: finalDocumentId, send_state: 'none', outbox_id: null },
+  ]);
+});

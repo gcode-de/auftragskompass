@@ -610,3 +610,11 @@ die Kontextspalten `.event-context` (ab 1024 px) und `.files-context` (ab
 1280 px) stehen `position: fixed` mit 17,125rem Breite neben der Leiste, nur
 wenn ihre `.workspace-page` sichtbar ist; Spaltentitel `.context-title` ist
 rein visuell (`aria-hidden`), die h1 bleibt die einzige Seitenüberschrift.
+
+### Postfach
+
+Die Ordnernavigation steht auf breiten Bildschirmen links neben Liste und
+Lesebereich. Auf kleinen Bildschirmen öffnet die gewählte Nachricht einen
+eigenen Lesebereich. Über „Zurück“ gelangt der Tastaturfokus zum ausgelösten
+Listeneintrag. Die Ansicht nutzt die bestehenden Formular-, Fokus- und
+Snackbarmuster in beiden Farbschemata.

@@ -211,3 +211,28 @@ Migration `0081_mail_send_later.sql` ergänzt nur die Audit-Aktion
   Inhalt einmalig in den Entwurf (Details in [mail-templates.md](mail-templates.md)).
 - Listen sind eine Ebene tief; tiefere Verschachtelungen im Body-HTML bleiben
   deterministisch, sind aber nicht über die Werkzeugleiste erreichbar.
+
+## Postfach
+
+Der Hauptmenüpunkt **Mails** öffnet den Posteingang. Hier stehen tatsächliche
+eingegangene Nachrichten und Website-Anfragen. Schon als Option angelegte
+Anfragen verlinken auf ihr Event. Die Diagnose unter Einstellungen zeigt
+weiterhin die Eingänge, deren automatische Anlage noch aussteht.
+
+Neue Mails und Begleitmails zu Dokumenten können ohne Empfänger als Entwurf
+gespeichert werden. Der Entwurf lässt sich im Postfach weiterbearbeiten.
+Beim Speichern werden gewählte Anhänge und Kontextbezüge festgehalten.
+Der Versand erfordert Empfänger und Betreff und läuft über den Outbox-Worker.
+Geplante Aufträge können geändert oder aufgehoben werden, solange sie in der
+Zukunft liegen und noch kein Worker sie beansprucht hat. Aufgehobene Aufträge
+behalten ihren Wiederholschutz. Ein eindeutig fehlgeschlagener Versand kann
+durch einen bearbeiteten Entwurf ersetzt werden. Bei unklarem Ausgang bleibt
+die vorhandene Versandprüfung maßgeblich. Eingegangene, gesendete und
+unversandte Mails können in den Papierkorb verschoben und wiederhergestellt
+werden.
+
+Die Postfachliste verwendet `GET /api/v1/mail/messages` mit `folder`,
+`stateGroup` und `offset`. Website-Anfragen kommen über
+`GET /api/v1/website-inquiries?view=mail`. Entwürfe verwenden beim
+Bearbeiten die in der Detailantwort gelieferte Revision. Alle Änderungen
+benötigen eine Administratorsitzung und CSRF.

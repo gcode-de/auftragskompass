@@ -2652,7 +2652,7 @@ export function EventDocuments({
     setComposeRequestId(crypto.randomUUID());
     setComposeOpen(true);
   }
-  async function sendCompose() {
+  async function sendCompose(saveAsDraft = false) {
     if (!composeOpen || busy !== '') return;
     setBusy('compose');
     setMessage('');
@@ -2681,7 +2681,7 @@ export function EventDocuments({
           ...(mailSignatureId && mailSignatureId !== 'none'
             ? { signatureId: mailSignatureId }
             : {}),
-          ...sendAtPayload(),
+          ...(saveAsDraft ? { saveAsDraft } : sendAtPayload()),
         }),
       });
       if (!reply.ok) {
@@ -2690,7 +2690,13 @@ export function EventDocuments({
       }
       await reply.json();
       setComposeOpen(false);
-      setMessage(mailSendAt ? plannedMessage : queuedMessage);
+      setMessage(
+        saveAsDraft
+          ? 'Entwurf gespeichert.'
+          : mailSendAt
+            ? plannedMessage
+            : queuedMessage,
+      );
       onMailScheduled?.();
     } catch {
       // The request id makes a retry safe: it can only reach the same order.
@@ -2903,8 +2909,7 @@ export function EventDocuments({
       setMailPreviewState('error');
     }
   }
-  async function sendDocument(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function sendDocument(saveAsDraft = false) {
     if (
       !mailSendId ||
       !mailRequestId ||
@@ -2916,7 +2921,7 @@ export function EventDocuments({
     )
       return;
     const to = mailTo.trim();
-    if (!to) {
+    if (!to && !saveAsDraft) {
       setMessage('Bitte eine Empfängeradresse eingeben.');
       return;
     }
@@ -2948,7 +2953,7 @@ export function EventDocuments({
             : {}),
           forwardAccounting,
           ...(forwardUserIds.length ? { forwardUserIds } : {}),
-          ...sendAtPayload(),
+          ...(saveAsDraft ? { saveAsDraft } : sendAtPayload()),
         }),
       });
       if (!reply.ok) {
@@ -2958,7 +2963,13 @@ export function EventDocuments({
       await reply.json();
       setMailSendId('');
       setMailRequestId('');
-      setMessage(mailSendAt ? plannedMessage : queuedMessage);
+      setMessage(
+        saveAsDraft
+          ? 'Entwurf gespeichert.'
+          : mailSendAt
+            ? plannedMessage
+            : queuedMessage,
+      );
       onMailScheduled?.();
       try {
         await load();
@@ -4216,7 +4227,12 @@ export function EventDocuments({
                     ' – unverändert und nicht neu erzeugt.'}
                 </p>
                 {message && !mailUncertain && <p role="alert">{message}</p>}
-                <form onSubmit={(event) => void sendDocument(event)}>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void sendDocument();
+                  }}
+                >
                   <fieldset disabled={busy !== '' || mailUncertain}>
                     <label>
                       Empfänger
@@ -4333,6 +4349,14 @@ export function EventDocuments({
                       disabled={busy !== '' || mailUncertain}
                     >
                       {mailSendAt ? 'Senden planen' : 'Senden'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy !== '' || mailUncertain}
+                      onClick={() => void sendDocument(true)}
+                    >
+                      Als Entwurf speichern
                     </button>
                     <button
                       type="button"
@@ -4500,6 +4524,14 @@ export function EventDocuments({
                   disabled={busy !== '' || composeTo.trim() === ''}
                 >
                   {mailSendAt ? 'Senden planen' : 'Senden'}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={busy !== ''}
+                  onClick={() => void sendCompose(true)}
+                >
+                  Als Entwurf speichern
                 </button>
                 <button
                   type="button"

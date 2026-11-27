@@ -1221,6 +1221,22 @@ test('website inbox API paginates pending originals and requires CSRF for an exp
       (await app.inject({ url: '/api/v1/website-inquiries', headers })).json()
         .total,
     ).toBe(25);
+    const mailbox = async (offset: number) =>
+      (
+        await app.inject({
+          url: '/api/v1/website-inquiries?view=mail&offset=' + offset,
+          headers,
+        })
+      ).json();
+    const recent = await mailbox(0);
+    const older = await mailbox(25);
+    expect(recent.total).toBe(26);
+    expect([...recent.items, ...older.items]).toContainEqual(
+      expect.objectContaining({
+        id: value.id,
+        eventId: imported.json().eventId,
+      }),
+    );
     expect((await counts()).reservations).toBe(0);
     expect(
       (
