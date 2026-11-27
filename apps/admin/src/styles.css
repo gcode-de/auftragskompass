@@ -1303,11 +1303,10 @@ time {
     border: 0;
     padding: 0;
   }
-  .app-shell:has(.workspace-page:not([hidden]) > section#resources) {
+  main.app-shell:has(> .workspace[data-route='resources']) {
     padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
   }
-  .app-shell:has(.workspace-page:not([hidden]) > section#resources)
-    .workspace-heading {
+  main.app-shell:has(> .workspace[data-route='resources']) .workspace-heading {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1591,15 +1590,11 @@ time {
     border: 0;
     padding: 0;
   }
-  .app-shell:has(
-    .workspace-page:not([hidden]) [data-column] > .contacts-context
-  ) {
+  /* main. outranks the collapsed-rail padding rule of equal weight. */
+  main.app-shell:has(> .workspace[data-route='contacts']) {
     padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
   }
-  .app-shell:has(
-      .workspace-page:not([hidden]) [data-column] > .contacts-context
-    )
-    .workspace-heading {
+  main.app-shell:has(> .workspace[data-route='contacts']) .workspace-heading {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -5403,9 +5398,15 @@ a.offer-draft-preview {
   }
 }
 @media (min-width: 1024px) {
-  .app-shell:has(
-    .workspace-page:not([hidden]) .event-layout > .event-context:not([hidden])
-  ) {
+  /* PERF-MENU-02: child combinators only, so the browser never searches the
+     500 event cards below for the column. */
+  main.app-shell:has(
+      > .workspace
+        > .workspace-page:not([hidden])
+        > #events
+        > .event-layout
+        > .event-context:not([hidden])
+    ) {
     padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
   }
   .event-layout > .event-context:not([hidden]) {
@@ -5448,8 +5449,12 @@ a.offer-draft-preview {
   }
   /* The column names the page; the top bar keeps the h1 for assistive
      technology only. */
-  .app-shell:has(
-      .workspace-page:not([hidden]) .event-layout > .event-context:not([hidden])
+  main.app-shell:has(
+      > .workspace
+        > .workspace-page:not([hidden])
+        > #events
+        > .event-layout
+        > .event-context:not([hidden])
     )
     .workspace-heading {
     position: absolute;

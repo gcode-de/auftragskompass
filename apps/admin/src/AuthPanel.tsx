@@ -118,6 +118,9 @@ export function AuthPanel() {
     <section
       aria-label="Anmeldung"
       className={user ? 'workspace' : 'login-card'}
+      // PERF-MENU-02: the shell reads the page from this direct child instead
+      // of scanning every list below for the page's context column.
+      data-route={user ? route : undefined}
     >
       {!user && (
         <>
