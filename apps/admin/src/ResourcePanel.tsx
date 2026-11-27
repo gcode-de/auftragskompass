@@ -1,5 +1,5 @@
 import { ResourceBlocks } from './ResourceBlocks.js';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { ModalDialog } from './ModalDialog.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 
@@ -9,6 +9,7 @@ type Resource = {
   name: string;
   code: string;
   category: string;
+  kind: string;
   description: string;
   quantity: number;
   beforeDays: number;
@@ -21,6 +22,7 @@ type Draft = {
   name: string;
   code: string;
   category: string;
+  kind: string;
   description: string;
   quantity: string;
   beforeDays: string;
@@ -41,6 +43,26 @@ const numbers = [
   ['afterDays', 'Puffer nachher (Tage)', 2, 365],
   ['position', 'Sortierung', 0, 9999],
 ] as const;
+// RES-BKP-02: Bookitup's resource types and its explanations of them.
+const kinds = [
+  [
+    'item',
+    'Item',
+    'Eine einzelne Ressource, wie eine Fotobox oder ein Lautsprecher.',
+  ],
+  [
+    'set',
+    'Set',
+    'Eine logische Sammlung von Ressourcen, wie ein Hochzeitspaket.',
+  ],
+  [
+    'case',
+    'Case',
+    'Ressourcen, die nur zusammen genutzt werden, wie eine Fotobox mit verbauter Kamera.',
+  ],
+] as const;
+const kindLabel = (kind: string) =>
+  kinds.find(([value]) => value === kind)?.[1] ?? kind;
 const stateLabels: Record<string, string> = {
   active: 'Aktiv',
   inactive: 'Inaktiv',
@@ -56,6 +78,7 @@ function blankDraft(): Draft {
     name: '',
     code: '',
     category: '',
+    kind: 'item',
     description: '',
     quantity: String(numbers[0][2]),
     beforeDays: String(numbers[1][2]),
@@ -70,6 +93,7 @@ function resourceDraft(row: Resource): Draft {
     name: row.name,
     code: row.code,
     category: row.category,
+    kind: row.kind ?? 'item',
     description: row.description,
     quantity: String(row.quantity),
     beforeDays: String(row.beforeDays),
@@ -105,7 +129,9 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
     [baseline, setBaseline] = useState<Draft>(blankDraft),
     [search, setSearch] = useState(''),
     [category, setCategory] = useState(''),
-    [state, setState] = useState(''),
+    [kind, setKind] = useState(''),
+    [showArchived, setShowArchived] = useState(false),
+    [knownCategories, setKnownCategories] = useState<string[]>([]),
     [message, setMessage] = useState(''),
     [formError, setFormError] = useState(''),
     [errorFocus, setErrorFocus] = useState(0),
@@ -116,15 +142,18 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   const filterCount =
     Number(Boolean(search.trim())) +
     Number(Boolean(category)) +
-    Number(Boolean(state));
+    Number(Boolean(kind)) +
+    Number(showArchived);
   const dirty = open && JSON.stringify(values) !== JSON.stringify(baseline);
   const needle = search.trim().toLowerCase();
-  const categories = Array.from(new Set(rows.map((row) => row.category))).sort(
-    (left, right) => left.localeCompare(right, 'de'),
-  );
+  const categories = Array.from(
+    new Set([...knownCategories, ...rows.map((row) => row.category)]),
+  ).sort((left, right) => left.localeCompare(right, 'de'));
+  // Like Bookitup, archived resources only show on request.
   const filtered = rows.filter((row) => {
     if (category && row.category !== category) return false;
-    if (state && row.state !== state) return false;
+    if (kind && row.kind !== kind) return false;
+    if (!showArchived && row.state === 'archived') return false;
     if (!needle) return true;
     return [row.name, row.code, row.category].some((value) =>
       value.toLowerCase().includes(needle),
@@ -155,6 +184,29 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
   }
   useEffect(() => {
     void refresh().catch(() => setMessage(loadFailureMessage));
+  }, []);
+  // RES-BKP-02: the managed categories feed the filter and the suggestions;
+  // without them the list's own categories still work.
+  async function loadCategories() {
+    try {
+      const response = await fetch('/api/v1/resource-categories');
+      if (!response.ok) return;
+      const list = (await response.json()) as unknown;
+      // Only a real category list counts (name and parent per row).
+      if (
+        Array.isArray(list) &&
+        list.every(
+          (row) =>
+            typeof row?.name === 'string' && 'parentId' in (row as object),
+        )
+      )
+        setKnownCategories(list.map((row: { name: string }) => row.name));
+    } catch {
+      // The list's own categories remain.
+    }
+  }
+  useEffect(() => {
+    void loadCategories();
   }, []);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -254,6 +306,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
       name: values.name,
       code: values.code,
       category: values.category,
+      kind: values.kind,
       description: values.description,
       quantity: Number(values.quantity),
       beforeDays: Number(values.beforeDays),
@@ -392,31 +445,85 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
-            <label>
-              Kategorie filtern
-              <select
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-              >
-                <option value="">Alle Kategorien</option>
-                {categories.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {entry}
-                  </option>
+            <div
+              className="resource-filter-list"
+              role="group"
+              aria-labelledby="resource-kind-filter"
+            >
+              <span id="resource-kind-filter" className="resource-filter-label">
+                Typ
+              </span>
+              {[...kinds]
+                .sort(
+                  ([a], [b]) =>
+                    // Bookitup's order: Set, Case, Item.
+                    ['set', 'case', 'item'].indexOf(a) -
+                    ['set', 'case', 'item'].indexOf(b),
+                )
+                .map(([value, text]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className="tertiary-action"
+                    aria-pressed={kind === value}
+                    onClick={() =>
+                      setKind((current) => (current === value ? '' : value))
+                    }
+                  >
+                    {text}
+                  </button>
                 ))}
-              </select>
-            </label>
-            <label>
-              Zustand filtern
-              <select
-                value={state}
-                onChange={(event) => setState(event.target.value)}
+            </div>
+            <div
+              className="resource-filter-list"
+              role="group"
+              aria-labelledby="resource-category-filter"
+            >
+              <span
+                id="resource-category-filter"
+                className="resource-filter-label"
               >
-                <option value="">Alle Zustände</option>
-                <option value="active">Aktiv</option>
-                <option value="inactive">Inaktiv</option>
-                <option value="archived">Archiviert</option>
-              </select>
+                Kategorie
+                <a
+                  className="icon-action tier-quiet-icon"
+                  href="#settings-resources"
+                  aria-label="Kategorien bearbeiten"
+                  title="Kategorien bearbeiten"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </a>
+              </span>
+              {categories.map((entry) => (
+                <button
+                  key={entry}
+                  type="button"
+                  className="tertiary-action"
+                  aria-pressed={category === entry}
+                  onClick={() =>
+                    setCategory((current) => (current === entry ? '' : entry))
+                  }
+                >
+                  {entry}
+                </button>
+              ))}
+            </div>
+            <label className="resource-archive-filter">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(event) => setShowArchived(event.target.checked)}
+              />
+              Archivierte anzeigen
             </label>
           </div>
         </div>
@@ -440,7 +547,8 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
                 onClick={() => {
                   setSearch('');
                   setCategory('');
-                  setState('');
+                  setKind('');
+                  setShowArchived(false);
                 }}
               >
                 Filter zurücksetzen
@@ -449,6 +557,7 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           )}
           {filtered.length > 0 && (
             <div className="resource-list-head" aria-hidden="true">
+              <span>Typ</span>
               <span>Name</span>
               <span>Bestand</span>
               <span>Kategorie</span>
@@ -458,6 +567,10 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
           <ul className="resource-list">
             {filtered.map((row) => (
               <li key={row.id} className="resource-row">
+                <span className="resource-cell-kind">
+                  {kindLabel(row.kind ?? 'item')}
+                  <span className="sr-only">: </span>
+                </span>
                 <span className="resource-summary">
                   <strong>{row.name}</strong>
                   <span className="sr-only"> – </span>
@@ -558,17 +671,54 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
             <fieldset disabled={busy}>
               <legend className="sr-only">{title}</legend>
               {texts.map(([key, fieldLabel, max]) => (
-                <label key={key}>
-                  {fieldLabel}
-                  <input
-                    name={key}
-                    required={key !== 'description'}
-                    maxLength={max}
-                    value={values[key]}
-                    onChange={(event) => update(key, event.target.value)}
-                  />
-                </label>
+                <Fragment key={key}>
+                  <label>
+                    {fieldLabel}
+                    <input
+                      name={key}
+                      required={key !== 'description'}
+                      maxLength={max}
+                      value={values[key]}
+                      // RES-BKP-02: Bookitup suggests the known categories.
+                      {...(key === 'category'
+                        ? {
+                            list: 'resource-category-options',
+                            'aria-describedby': 'resource-category-hint',
+                          }
+                        : {})}
+                      onChange={(event) => update(key, event.target.value)}
+                    />
+                  </label>
+                  {key === 'category' && (
+                    <p id="resource-category-hint" className="field-hint">
+                      Eine neue Kategorie wird automatisch angelegt.
+                    </p>
+                  )}
+                </Fragment>
               ))}
+              <datalist id="resource-category-options">
+                {categories.map((entry) => (
+                  <option key={entry} value={entry} />
+                ))}
+              </datalist>
+              <label>
+                Typ
+                <select
+                  name="kind"
+                  value={values.kind}
+                  aria-describedby="resource-kind-hint"
+                  onChange={(event) => update('kind', event.target.value)}
+                >
+                  {kinds.map(([value, text]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p id="resource-kind-hint" className="field-hint">
+                {kinds.find(([value]) => value === values.kind)?.[2]}
+              </p>
               {numbers.map(([key, fieldLabel, , max]) => (
                 <label key={key}>
                   {fieldLabel}

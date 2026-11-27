@@ -288,3 +288,60 @@ test('the navigation switch is read by every session and changed by an administr
   });
   expect(invalid.statusCode).toBe(400);
 });
+
+// RES-BKP-02: every resource is an item, a set or a case.
+test('a resource keeps its type; older clients without it keep the stored one', async () => {
+  const base = {
+    name: 'Synthetic wedding package',
+    code: 'SYN-SET',
+    category: 'Pakete',
+    description: '',
+    quantity: 1,
+    beforeDays: 0,
+    afterDays: 0,
+    blocked: false,
+    state: 'active',
+    position: 10,
+  };
+  const listed = (
+    await app.inject({ url: '/api/v1/resources', headers })
+  ).json() as { code: string; kind: string }[];
+  expect(new Set(listed.map((row) => row.kind))).toEqual(new Set(['item']));
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/resources',
+    headers,
+    payload: { ...base, kind: 'set' },
+  });
+  expect(created.statusCode).toBe(201);
+  const row = created.json() as { id: string; kind: string; version: number };
+  expect(row.kind).toBe('set');
+  const kept = await app.inject({
+    method: 'PUT',
+    url: `/api/v1/resources/${row.id}`,
+    headers,
+    payload: { ...base, name: 'Synthetic package', version: row.version },
+  });
+  expect(kept.json()).toMatchObject({ kind: 'set', version: 2 });
+  const changed = await app.inject({
+    method: 'PUT',
+    url: `/api/v1/resources/${row.id}`,
+    headers,
+    payload: { ...base, kind: 'case', version: 2 },
+  });
+  expect(changed.json()).toMatchObject({ kind: 'case', version: 3 });
+  const plain = await app.inject({
+    method: 'POST',
+    url: '/api/v1/resources',
+    headers,
+    payload: { ...base, code: 'SYN-PLAIN' },
+  });
+  expect(plain.json()).toMatchObject({ kind: 'item' });
+  const invalid = await app.inject({
+    method: 'POST',
+    url: '/api/v1/resources',
+    headers,
+    payload: { ...base, code: 'SYN-BAD', kind: 'crate' },
+  });
+  expect(invalid.statusCode).toBe(400);
+});

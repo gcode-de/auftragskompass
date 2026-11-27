@@ -121,8 +121,10 @@ test('the resource page starts with the compact toolbar and the list, without an
   expect(
     search.closest('.resource-toolbar')!.nextElementSibling?.localName,
   ).not.toBe('form');
-  expect(screen.getByLabelText('Kategorie filtern')).toBeTruthy();
-  expect(screen.getByLabelText('Zustand filtern')).toBeTruthy();
+  // RES-BKP-02: Bookitup's filter lists and the archive checkbox.
+  expect(screen.getByRole('group', { name: 'Typ' })).toBeTruthy();
+  expect(screen.getByRole('group', { name: /^Kategorie/ })).toBeTruthy();
+  expect(screen.getByLabelText('Archivierte anzeigen')).toBeTruthy();
   const create = screen.getByRole('button', { name: 'Ressource anlegen' });
   expect(create.getAttribute('title')).toBe('Ressource anlegen');
   expect(create.textContent).toBe('');
@@ -144,6 +146,9 @@ test('the resource page starts with the compact toolbar and the list, without an
       summaryText('Synthetic spare – 2 Stück – Zubehör – Inaktiv'),
     ),
   ).toBeTruthy();
+  // Archived ones wait behind "Archivierte anzeigen" (RES-BKP-02).
+  expect(screen.queryByText(/Synthetic retired/)).toBeNull();
+  fireEvent.click(screen.getByLabelText('Archivierte anzeigen'));
   expect(
     screen.getByText(
       summaryText(
@@ -477,6 +482,7 @@ test('keeps entered values after conflict, duplicate code, in-use and connection
   });
   vi.stubGlobal('fetch', fetcher);
   render(<ResourcePanel csrfToken="csrf" />);
+  fireEvent.click(await screen.findByLabelText('Archivierte anzeigen'));
   await screen.findByText(
     summaryText(
       'Synthetic retired – 3 Stück – Fotobox – Archiviert – Gesperrt',
@@ -591,15 +597,24 @@ test('filters by name, code, category and state and keeps the filter state while
     summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
   );
   const search = screen.getByLabelText('Ressourcen suchen') as HTMLInputElement;
-  const category = screen.getByLabelText(
-    'Kategorie filtern',
-  ) as HTMLSelectElement;
-  const state = screen.getByLabelText('Zustand filtern') as HTMLSelectElement;
-  expect(category.value).toBe('');
-  expect(state.value).toBe('');
+  // RES-BKP-02: Typ and Kategorie are Bookitup's lists; archived resources
+  // only show with "Archivierte anzeigen".
+  const categories = screen.getByRole('group', { name: /^Kategorie/ });
+  const archived = screen.getByLabelText(
+    'Archivierte anzeigen',
+  ) as HTMLInputElement;
+  expect(archived.checked).toBe(false);
   expect(
-    Array.from(category.options).map((option) => option.textContent),
-  ).toEqual(['Alle Kategorien', 'Fotobox', 'Zubehör']);
+    within(categories)
+      .getAllByRole('button')
+      .map((button) => button.textContent),
+  ).toEqual(['Fotobox', 'Zubehör']);
+  expect(
+    within(categories)
+      .getByRole('link', { name: 'Kategorien bearbeiten' })
+      .getAttribute('href'),
+  ).toBe('#settings-resources');
+  expect(screen.queryByText(/Synthetic retired/)).toBeNull();
   fireEvent.change(search, { target: { value: 'SPARE' } });
   expect(screen.queryByText('Synthetic box')).toBeNull();
   expect(
@@ -620,6 +635,8 @@ test('filters by name, code, category and state and keeps the filter state while
   ).toBeTruthy();
   expect(screen.queryByText('Synthetic box')).toBeNull();
   fireEvent.change(search, { target: { value: 'retired' } });
+  expect(screen.queryByText(/Synthetic retired/)).toBeNull();
+  fireEvent.click(archived);
   expect(
     screen.getByText(
       summaryText(
@@ -630,11 +647,11 @@ test('filters by name, code, category and state and keeps the filter state while
   let dialog = await openEdit('Synthetic retired');
   fireEvent.keyDown(dialog, { key: 'Escape' });
   expect(search.value).toBe('retired');
-  expect(category.value).toBe('');
-  expect(state.value).toBe('');
+  expect(archived.checked).toBe(true);
   fireEvent.change(search, { target: { value: '' } });
-  fireEvent.change(category, { target: { value: 'Fotobox' } });
-  fireEvent.change(state, { target: { value: 'archived' } });
+  const fotobox = within(categories).getByRole('button', { name: 'Fotobox' });
+  fireEvent.click(fotobox);
+  expect(fotobox.getAttribute('aria-pressed')).toBe('true');
   expect(
     screen.getByText(
       summaryText(
@@ -643,6 +660,15 @@ test('filters by name, code, category and state and keeps the filter state while
     ),
   ).toBeTruthy();
   expect(screen.queryByText(/Synthetic spare/)).toBeNull();
+  // The type list narrows as well; a second click clears it again.
+  const set = within(screen.getByRole('group', { name: 'Typ' })).getByRole(
+    'button',
+    { name: 'Set' },
+  );
+  fireEvent.click(set);
+  expect(screen.queryByText(/Synthetic retired/)).toBeNull();
+  fireEvent.click(set);
+  expect(set.getAttribute('aria-pressed')).toBe('false');
   dialog = await openEdit('Synthetic retired');
   fireEvent.change(within(dialog).getByLabelText('Bezeichnung'), {
     target: { value: 'Synthetic retired renamed' },
@@ -650,8 +676,8 @@ test('filters by name, code, category and state and keeps the filter state while
   submitSave(dialog);
   await screen.findByText('Ressource gespeichert.');
   expect(search.value).toBe('');
-  expect(category.value).toBe('Fotobox');
-  expect(state.value).toBe('archived');
+  expect(fotobox.getAttribute('aria-pressed')).toBe('true');
+  expect(archived.checked).toBe(true);
   expect(
     screen.getByText(
       summaryText(
@@ -659,7 +685,7 @@ test('filters by name, code, category and state and keeps the filter state while
       ),
     ),
   ).toBeTruthy();
-  expect(screen.queryByText('Synthetic box')).toBeNull();
+  expect(screen.queryByText(/Synthetic spare/)).toBeNull();
 });
 
 test('separates an empty inventory from a filter without matches and offers a reset', async () => {
@@ -701,11 +727,12 @@ test('reports loading until the list is there and keeps a retry on load failures
   let finish: (response: Response) => void = () => {};
   vi.stubGlobal(
     'fetch',
-    vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          finish = resolve;
-        }),
+    vi.fn((url: string) =>
+      url === '/api/v1/resource-categories'
+        ? Promise.resolve(Response.json([]))
+        : new Promise<Response>((resolve) => {
+            finish = resolve;
+          }),
     ),
   );
   render(<ResourcePanel csrfToken="csrf" />);
@@ -779,6 +806,8 @@ test('resource create, edit, archive, cancel and loading failures', async () => 
     target: { value: 'archived' },
   });
   submitSave(dialog);
+  // Archived resources show on request only (RES-BKP-02).
+  fireEvent.click(screen.getByLabelText('Archivierte anzeigen'));
   await screen.findByText(
     summaryText('New synthetic – 1 Stück – Fotobox – Archiviert – Gesperrt'),
   );
@@ -824,4 +853,97 @@ test('resource failures preserve edits and permit reload', async () => {
     screen.getByRole('button', { name: 'Ressourcen aktualisieren' }),
   );
   await screen.findByText(/Ressourcen konnten nicht geladen/);
+});
+
+// RES-BKP-02: Bookitup's type and the managed categories in the dialog.
+test('the dialog chooses the type with its explanation and suggests the managed categories', async () => {
+  let categoriesAnswer: () => Promise<Response> = async () =>
+    Response.json([
+      { id: 'c1', name: 'Hintergründe', parentId: null, version: 1, usage: 0 },
+    ]);
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === '/api/v1/resource-categories') return categoriesAnswer();
+    if (options)
+      return Response.json({
+        ...row,
+        ...JSON.parse(String(options.body)),
+        id: 'created',
+      });
+    return Response.json([row]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<ResourcePanel csrfToken="csrf" />);
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
+  // The row names its type first.
+  expect(screen.getByText('Synthetic box').closest('li')!.textContent).toMatch(
+    /^Item: /,
+  );
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole('group', { name: /^Kategorie/ }))
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Fotobox', 'Hintergründe']),
+  );
+  const dialog = await openCreate();
+  const kind = within(dialog).getByLabelText('Typ') as HTMLSelectElement;
+  expect(kind.value).toBe('item');
+  expect(
+    document.getElementById(kind.getAttribute('aria-describedby')!)!
+      .textContent,
+  ).toMatch(/einzelne Ressource/);
+  fireEvent.change(kind, { target: { value: 'case' } });
+  expect(
+    document.getElementById(kind.getAttribute('aria-describedby')!)!
+      .textContent,
+  ).toMatch(/nur zusammen genutzt/);
+  const category = within(dialog).getByLabelText(
+    'Kategorie',
+  ) as HTMLInputElement;
+  expect(
+    Array.from(
+      document
+        .getElementById(category.getAttribute('list')!)!
+        .querySelectorAll('option'),
+    ).map((option) => option.getAttribute('value')),
+  ).toEqual(['Fotobox', 'Hintergründe']);
+  fireEvent.change(within(dialog).getByLabelText('Bezeichnung'), {
+    target: { value: 'Synthetic mirror' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('Interner Code'), {
+    target: { value: 'MIRROR' },
+  });
+  fireEvent.change(category, { target: { value: 'Spiegel' } });
+  submitSave(dialog);
+  await screen.findByText('Ressource gespeichert.');
+  const body = JSON.parse(
+    String(
+      fetcher.mock.calls.find(([, options]) => options?.method === 'POST')![1]!
+        .body,
+    ),
+  );
+  expect(body).toMatchObject({ kind: 'case', category: 'Spiegel' });
+  // Without the category list (failure or none) the list's own ones remain.
+  cleanup();
+  categoriesAnswer = async () => new Response(null, { status: 500 });
+  render(<ResourcePanel csrfToken="csrf" />);
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
+  expect(
+    within(screen.getByRole('group', { name: /^Kategorie/ }))
+      .getAllByRole('button')
+      .map((button) => button.textContent),
+  ).toEqual(['Fotobox']);
+  cleanup();
+  categoriesAnswer = async () => {
+    throw Error('offline');
+  };
+  render(<ResourcePanel csrfToken="csrf" />);
+  await screen.findByText(
+    summaryText('Synthetic box – 1 Stück – Fotobox – Aktiv'),
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
 });

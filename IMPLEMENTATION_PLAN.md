@@ -712,6 +712,18 @@ Gesamtrahmen bleiben vorerst aus.
       Version, Dublette, Zyklus, Löschregeln, CSRF, Schalter), Component
       (Baum, Schalter, Dialog, Fehler, Navigation), E2E (Seite hell/dunkel).
       Commit `feat: manage resource categories and the navigation switch`.
+- [x] **RES-BKP-02 — Ressourcentyp und Liste wie Bookitup:** Jede Ressource
+      ist ein Item, Set oder Case (Migration 0086, Vorgabe Item; ältere
+      Clients ohne Typ behalten den gespeicherten). Der Dialog wählt den Typ
+      mit Bookitups Erklärung und schlägt die verwalteten Kategorien vor
+      (eine neue wird angelegt). Die Kontextspalte zeigt wie Bookitup Typ
+      (Set/Case/Item) und Kategorie als Listen (Stift → Einstellungen) und
+      „Archivierte anzeigen“ statt der Zustandsauswahl; Archivierte sind
+      standardmäßig ausgeblendet. Die Tabelle beginnt mit dem Typ.
+      **Tests:** Integration (Typ, Beibehalten, ungültiger Typ), Component
+      (Listenfilter, Archiv, Typ-Hinweis, Kategorievorschläge, Ausfall der
+      Kategorieliste).
+      Commit `feat: type resources and filter them like bookitup`.
 
 - [x] **UI-BKP-14 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der
