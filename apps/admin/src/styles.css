@@ -5398,9 +5398,15 @@ a.offer-draft-preview {
   }
 }
 @media (min-width: 1024px) {
-  .app-shell:has(
-    .workspace-page:not([hidden]) .event-layout > .event-context:not([hidden])
-  ) {
+  /* PERF-MENU-02: child combinators only, so the browser never searches the
+     500 event cards below for the column. */
+  main.app-shell:has(
+      > .workspace
+        > .workspace-page:not([hidden])
+        > #events
+        > .event-layout
+        > .event-context:not([hidden])
+    ) {
     padding-left: calc(var(--rail-width) + 17.125rem + 2rem);
   }
   .event-layout > .event-context:not([hidden]) {
@@ -5443,8 +5449,12 @@ a.offer-draft-preview {
   }
   /* The column names the page; the top bar keeps the h1 for assistive
      technology only. */
-  .app-shell:has(
-      .workspace-page:not([hidden]) .event-layout > .event-context:not([hidden])
+  main.app-shell:has(
+      > .workspace
+        > .workspace-page:not([hidden])
+        > #events
+        > .event-layout
+        > .event-context:not([hidden])
     )
     .workspace-heading {
     position: absolute;

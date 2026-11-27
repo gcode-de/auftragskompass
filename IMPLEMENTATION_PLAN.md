@@ -690,7 +690,10 @@ Gesamtrahmen bleiben vorerst aus.
       `.app-shell:has(… .contacts-context)`-Regeln, die ab 1024 px bei jeder
       Änderung alle Listen (500 Events, 500 Kontakte) durchsuchen; die
       Event-Lastmessung lag in CI bei 1280 px knapp über 2 s. Die Arbeitsfläche
-      trägt jetzt `data-route`, die Regeln prüfen nur dieses direkte Kind.
+      trägt jetzt `data-route`, die Regeln prüfen nur dieses direkte Kind;
+      die Eventspalte prüft ihren Pfad nur über Kind-Kombinatoren
+      (`main.app-shell` überwiegt zudem die gleich gewichtete Regel der
+      eingeklappten Leiste).
       Lokal Events 1280 px 0,81 s (vorher 0,84–0,89). **Tests:** Component
       (Attribut), E2E-Lastmessung.
       Commit `perf: read the page column from the workspace route`.
