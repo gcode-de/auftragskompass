@@ -1162,7 +1162,7 @@ async function signInScenario(
       /#event-33333333-3333-4333-8333-333333333333$/,
     );
     await expect(
-      page.locator('#event-33333333-3333-4333-8333-333333333333'),
+      page.locator('#event-row-33333333-3333-4333-8333-333333333333'),
     ).toBeVisible();
     // BKP019.0: the offer validity and status flow, seeded above before the
     // event details load, because the panel reads the event's primary contact.
@@ -4607,7 +4607,7 @@ async function signInScenario(
       expect((await areaBar.boundingBox())!.height).toBeLessThan(100);
       const aside = narrowRecord.locator('details.event-aside');
       await expect(aside).not.toHaveAttribute('open', '');
-      await aside.locator('summary').click();
+      await aside.locator(':scope > summary').click();
       await expect(
         aside.getByRole('heading', { name: 'Ort / Adresse' }),
       ).toBeVisible();
@@ -4651,7 +4651,7 @@ async function signInScenario(
       .selectOption('option');
     await record.getByRole('button', { name: 'Status speichern' }).click();
     await expect(
-      events.getByText('Eventstatus gespeichert.', { exact: true }),
+      record.getByText('Status gespeichert.', { exact: true }),
     ).toBeVisible();
     await record.getByRole('button', { name: 'Details', exact: true }).click();
     await expect(
@@ -5166,7 +5166,11 @@ async function signInScenario(
     await assignment.screenshot({
       path: 'tests/test-results/resource-assignment.png',
     });
-    await navigate('Kalender');
+    await navigate('Events');
+    await page
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
+      .getByRole('link', { name: 'Kalender', exact: true })
+      .click();
     const calendar = page.getByRole('region', {
       name: 'Kalender',
       exact: true,
@@ -5435,18 +5439,19 @@ async function signInScenario(
           path: `tests/test-results/event-filter-drawer-${width}.png`,
           animations: 'disabled',
         });
-        // The modal keeps Tab inside the sheet: no focus escapes to the list.
-        for (let step = 0; step < 24; step += 1)
+        // Native dialog tabbing may briefly reach browser chrome, but it
+        // must never reach the underlying page.
+        for (let step = 0; step < 24; step += 1) {
           await page.keyboard.press('Tab');
-        expect(
-          await page.evaluate(() =>
-            Boolean(
-              document
-                .querySelector('dialog.event-filter-drawer')
-                ?.contains(document.activeElement),
+          expect(
+            await sheet.evaluate(
+              (element) =>
+                document.activeElement === document.body ||
+                element.contains(document.activeElement),
             ),
-          ),
-        ).toBe(true);
+          ).toBe(true);
+        }
+        await sheet.getByLabel('Events suchen').focus();
         // Escape closes the sheet and focuses the access again.
         await page.keyboard.press('Escape');
         await expect(sheet).toHaveCount(0);
@@ -5750,7 +5755,11 @@ async function signInScenario(
     await expect(
       imported.getByText('Fictional Future Event', { exact: true }).first(),
     ).toBeVisible();
-    await navigate('Kalender');
+    await navigate('Events');
+    await page
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
+      .getByRole('link', { name: 'Kalender', exact: true })
+      .click();
     await expect(calendar.getByRole('alert')).toContainText(
       '1 ungeprüfte Bestandszusagen',
     );
@@ -5819,7 +5828,11 @@ async function signInScenario(
     await expect(
       imported.getByText(/Keine ungeprüften Bestandszusagen vorhanden/),
     ).toBeVisible();
-    await navigate('Kalender');
+    await navigate('Events');
+    await page
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
+      .getByRole('link', { name: 'Kalender', exact: true })
+      .click();
     await expect(calendar.getByRole('alert')).toHaveCount(0);
     const importedEvent = (
       await pool.query(
@@ -6856,7 +6869,9 @@ async function signInScenario(
       }),
     ).toBeVisible();
     await expect(
-      websiteRecord.getByText('Hauptkontakt: Fictional later contact'),
+      websiteRecord.getByRole('link', {
+        name: 'Details anzeigen: Fictional later contact',
+      }),
     ).toBeVisible();
     await expect(
       websiteRecord.getByText('Kontakt noch offen.', { exact: true }),
@@ -6892,7 +6907,7 @@ async function signInScenario(
       await page.evaluate(() => document.documentElement.dataset.fictionalH031),
     ).toBe('kept');
     await page
-      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('navigation', { name: 'Ansicht', exact: true })
       .getByRole('link', { name: 'Kalender', exact: true })
       .click();
     await expect(page).toHaveURL(/#calendar$/);

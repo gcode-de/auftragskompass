@@ -293,6 +293,14 @@ Kontrollen: `0.4rem`; Navigationslinks der Seitenleiste: `0.5rem`; Feldgruppen: 
   „Anlegen und zuordnen“ als Primäraktion. Auf schmalen Fenstern ist der
   Einstieg unter „Kontakt und Ort“ erreichbar. Escape und „Abbrechen“ geben
   den Fokus ans Plus zurück. Bei Fehlern bleiben die Eingaben im Dialog.
+- **Arbeitsbereich und Eventakte (WORKSPACE-UX-01):** Kalender und Liste sind
+  zwei Ansichten unter Events. Die Versionskennung steht im Fuß der Navigation.
+  Die Eventliste öffnet die Akte oben in Details, spezifische Dokument- und
+  Mail-Links behalten ihre Zielansicht. Der Statuspunkt hat eine eigene Spalte
+  neben dem Auswahlfeld. Der Termin steht im Kopf und ist im Formular bis zur
+  Minute editierbar. Kontaktzuordnungen öffnet man bei den Kontaktdaten rechts.
+  Neue Notizen beginnen mit einer Zeile und wachsen bei Fokus oder Entwurf.
+  Kurze Rückmeldungen erscheinen am unteren Rand über der mobilen Aktenleiste.
 - **Adressvorschläge (LOC-BKP-02):** Beim Anlegen von Firmenkontakten oder
   Locations stehen Vorschläge direkt unter dem Namensfeld als Liste benannter
   Knöpfe mit Quellenangabe. Pfeil nach unten fokussiert den ersten Treffer,

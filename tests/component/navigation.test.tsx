@@ -529,10 +529,15 @@ test('brand and workspace title are real home links from both layouts without dr
   expect(confirm).not.toHaveBeenCalled();
 });
 
-test('shows the running version next to the brand without disturbing navigation', () => {
+test('shows the running version at the bottom of the sidebar and omits it from the toolbar', () => {
   render(<Navigation />);
   const sidebar = within(screen.getByLabelText('Arbeitsbereiche'));
-  expect(sidebar.getByText(/^Version /)).toBeTruthy();
+  expect(screen.getByLabelText('Arbeitsbereiche').lastElementChild).toBe(
+    sidebar.getByText(/^Version /),
+  );
+  expect(
+    document.querySelector('.workspace-toolbar')?.textContent,
+  ).not.toContain('Version');
   expect(sidebar.getByText(/^Version /).textContent).toBe(
     'Version Entwicklung',
   );

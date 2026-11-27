@@ -183,12 +183,12 @@ test('the event record reads like Bookitup in both themes', async ({
       .evaluate((el) => getComputedStyle(el, '::before').backgroundColor);
   expect(await marker(0)).toBe('rgb(78, 191, 70)');
   expect(await marker(1)).toBe('rgb(29, 81, 145)');
-  // The status choice shows its dot; the current area its 5px marker.
-  expect(
-    await record
-      .getByLabel('Status des Events')
-      .evaluate((el) => getComputedStyle(el).backgroundImage),
-  ).toContain('radial-gradient');
+  // The status marker gets its own column and cannot overlap native text.
+  const [dot, statusSelect] = await Promise.all([
+    record.locator('.event-status-dot').boundingBox(),
+    record.getByLabel('Status des Events').boundingBox(),
+  ]);
+  expect(dot!.x + dot!.width).toBeLessThan(statusSelect!.x);
   expect(
     await nav
       .getByRole('button', { name: 'Details', exact: true })
@@ -245,7 +245,7 @@ test('the location dialog is keyboard-accessible in both themes and widths', asy
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const aside = page.locator('details.event-aside');
-    if (width === 390) await aside.locator('summary').click();
+    if (width === 390) await aside.locator(':scope > summary').click();
     for (const theme of ['light', 'dark']) {
       if ((await page.locator('html').getAttribute('data-theme')) !== theme)
         await page.getByRole('button', { name: /modus aktivieren/i }).click();
@@ -298,7 +298,7 @@ test('company and location suggestions prefill editable addresses in Chromium', 
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const aside = page.locator('details.event-aside');
-    if (width === 390) await aside.locator('summary').click();
+    if (width === 390) await aside.locator(':scope > summary').click();
     for (const theme of ['light', 'dark']) {
       if ((await page.locator('html').getAttribute('data-theme')) !== theme)
         await page.getByRole('button', { name: /modus aktivieren/i }).click();
@@ -367,7 +367,7 @@ test.describe('address suggestions with touch input', () => {
       route.fulfill({ json: [suggestion] }),
     );
     const aside = page.locator('details.event-aside');
-    await aside.locator('summary').tap();
+    await aside.locator(':scope > summary').tap();
     await aside.getByRole('button', { name: 'Location anlegen' }).tap();
     const location = page.getByRole('dialog', { name: 'Location anlegen' });
     const name = location.getByLabel('Name', { exact: true });
@@ -403,6 +403,99 @@ test.describe('address suggestions with touch input', () => {
       suggestion.city,
     );
   });
+});
+
+test('the list clears old deep links and opens the top of a simpler mobile event record', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openRecord(page);
+  await page.goto(
+    '/?doc=55555555-5555-4555-8555-555555555555&unused=kept#events',
+  );
+  await page
+    .getByRole('link', { name: /Öffnen:.*Fiktive Sommerhochzeit/ })
+    .click();
+  await expect(page).not.toHaveURL(/doc=/);
+  await expect(page).toHaveURL(/unused=kept#event-/);
+  const record = page.getByRole('region', { name: 'Event-Details' });
+  const back = record.getByRole('button', { name: 'Zurück', exact: true });
+  await expect(back).toBeInViewport();
+  await expect(
+    record.getByRole('button', { name: 'Details', exact: true }),
+  ).toHaveAttribute('aria-current', 'location');
+  await expect(record.getByRole('heading', { name: 'Zeitplan' })).toHaveCount(
+    0,
+  );
+  await expect(record.getByLabel('Terminbeginn')).toHaveAttribute('step', '60');
+  await expect(record.getByLabel('Terminbeginn')).toHaveValue(
+    '2031-07-12T18:00',
+  );
+
+  const status = record.getByLabel('Status des Events');
+  const marker = record.locator('.event-status-dot');
+  expect(
+    (await marker.boundingBox())!.x + (await marker.boundingBox())!.width,
+  ).toBeLessThan((await status.boundingBox())!.x);
+
+  const aside = record.locator('details.event-aside');
+  await aside.locator(':scope > summary').click();
+  await aside.getByText('Kontakte bearbeiten', { exact: true }).click();
+  await expect(aside.getByLabel('Hauptkontakt suchen')).toBeVisible();
+  await expect(aside.getByLabel('Weitere Kontakte suchen')).toBeVisible();
+  await expect(
+    record.locator('.event-detail-main').getByLabel('Hauptkontakt suchen'),
+  ).toHaveCount(0);
+
+  await page.route('**/api/v1/events/*/notes', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'fictional-note',
+          bodyHtml: '<p>Fiktive Notiz</p>',
+          createdAt: '2031-07-12T12:00:00Z',
+          author: null,
+        },
+      ],
+      status: 201,
+    }),
+  );
+  const note = record.getByLabel('Neue Notiz');
+  await expect(note).toHaveAttribute('rows', '1');
+  await note.focus();
+  await expect(note).toHaveAttribute('rows', '4');
+  await note.fill('Fiktive Notiz');
+  await record.getByRole('button', { name: 'Notiz speichern' }).click();
+  const notice = record.getByText('Notiz hinzugefügt.');
+  await expect(notice).toBeInViewport();
+  expect(
+    await notice.locator('..').evaluate((el) => getComputedStyle(el).position),
+  ).toBe('fixed');
+  await expect(note).toHaveAttribute('rows', '1');
+  await record.getByRole('button', { name: 'Meldung schließen' }).click();
+  await expect(notice).toBeHidden();
+  await back.click();
+  await expect(page).toHaveURL(/#events$/);
+  const listView = page.getByRole('navigation', {
+    name: 'Ansicht',
+    exact: true,
+  });
+  await listView.getByRole('link', { name: 'Kalender' }).click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Kalender' })
+      .getByRole('link', { name: 'Kalender' }),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('button', { name: 'Menü öffnen' }).click();
+  const menu = page
+    .getByRole('dialog')
+    .getByRole('navigation', { name: 'Hauptnavigation' });
+  await expect(
+    menu.getByRole('link', { name: 'Kalender', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    menu.getByRole('link', { name: 'Events', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
 });
 
 test('the event mails read in two panes like Bookitup', async ({ page }) => {

@@ -554,7 +554,7 @@ test('contact list, record and dialog keep exactly one primary action', async ()
   expect(
     tier(within(dialog).getByRole('button', { name: 'Kontakt speichern' })),
   ).toBe('primary-action');
-  for (const name of ['Dubletten prüfen', 'Kontakt abbrechen']) {
+  for (const name of ['Dubletten prüfen', 'Abbrechen']) {
     expect(tier(within(dialog).getByRole('button', { name }))).toBe(
       'secondary-action',
     );
@@ -673,7 +673,7 @@ test('event list, editor and filter block share one primary action', async () =>
   expect(
     tier(
       within(editor as HTMLElement).getByRole('button', {
-        name: 'Event abbrechen',
+        name: 'Abbrechen',
       }),
     ),
   ).toBe('tertiary-action');
@@ -780,9 +780,7 @@ test('event details keep status save primary and quiet the rest', async () => {
   // Hidden record sections stay mounted (H025), so the loaded hierarchy is
   // counted on the open overview only. The offers section and the assignment
   // surface are asserted as their own surfaces in the next test.
-  const overview = Array.from(section.children).find(
-    (child) => child.localName === 'div' && !child.hasAttribute('hidden'),
-  )!;
+  const overview = section.querySelector('.event-record-layout')!;
   // Each open frame of the overview keeps one primary action; the offers
   // section below it is its own surface and is asserted separately.
   const frames = Array.from(overview.children).filter((child) =>
@@ -804,9 +802,9 @@ test('event details keep status save primary and quiet the rest', async () => {
   expect(tier(screen.getByRole('button', { name: 'Status speichern' }))).toBe(
     'primary-action',
   );
-  expect(
-    tier(screen.getByRole('button', { name: 'Event-Details schließen' })),
-  ).toBe('tertiary-action');
+  expect(tier(screen.getByRole('button', { name: 'Zurück' }))).toBe(
+    'tertiary-action',
+  );
 });
 
 test('resource assignment, blocks, documents and website inbox stay on one primary', async () => {
@@ -1710,8 +1708,8 @@ test('the action tiers are one shared token set with 44px targets and visible fo
   expect(icon).toContain('min-height: 44px');
 
   const focus = rule(':focus-visible');
-  expect(focus).toContain('outline: 3px solid var(--focus)');
-  expect(focus).toContain('outline-offset: 3px');
+  expect(focus).toContain('outline: 2px solid var(--focus)');
+  expect(focus).toContain('outline-offset: 2px');
 
   const disabled = rule(
     '.primary-action:disabled, .secondary-action:disabled, .tertiary-action:disabled, .icon-action:disabled',

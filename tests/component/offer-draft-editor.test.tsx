@@ -2219,7 +2219,7 @@ test('the document editor guards event removal, closing and browser navigation',
   );
   const subject = await screen.findByLabelText('Betreff');
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  const close = screen.getByRole('button', { name: 'Event-Details schließen' });
+  const close = screen.getByRole('button', { name: 'Zurück' });
   expect(remove).toHaveProperty('disabled', true);
   fireEvent.click(close);
   expect(onClose).toHaveBeenCalledTimes(1);

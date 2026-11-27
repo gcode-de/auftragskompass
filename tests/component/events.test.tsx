@@ -111,7 +111,7 @@ test('events create without date, retain formatted notes and edit/cancel with ve
       name: 'Event bearbeiten: Synthetic new event',
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
   await openRowMenu('Synthetic new event');
   fireEvent.click(
     screen.getByRole('button', {
@@ -261,7 +261,7 @@ test('event copies retain active references and require new choices for archived
     'fictional-option',
   );
   expect((screen.getByLabelText('Eventbeginn') as HTMLInputElement).value).toBe(
-    '2026-07-01T18:00:00.123',
+    '2026-07-01T18:00',
   );
   fireEvent.submit(
     screen.getByRole('button', { name: 'Event speichern' }).closest('form')!,
@@ -667,9 +667,7 @@ test('opening, closing and editing a record returns to the correct list and edit
     }),
   );
   await screen.findByRole('heading', { name: 'Event: Synthetic event' });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Event-Details schließen' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
   await vi.waitFor(() =>
     expect(
       screen.queryByRole('heading', { name: 'Event: Synthetic event' }),
@@ -755,7 +753,7 @@ test('event rows are direct links and their icon actions stay independent', asyn
   expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
     'Synthetic event',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
   for (const init of [
     { metaKey: true },
     { ctrlKey: true },
@@ -1926,9 +1924,7 @@ test('a confirmed resource save stays visible in the list when the parent refres
     await screen.findAllByText('Ressourcen und Termin gespeichert.'),
   ).not.toHaveLength(0);
   await screen.findByText(/Trefferliste wird danach aktualisiert/);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Event-Details schließen' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
   await screen.findByText(/Liste konnte nicht neu geladen werden/);
   expect(puts).toBe(1);
   expect(availability).toBe(2);
@@ -2059,7 +2055,7 @@ test('a cancelled editor is refreshed automatically on the next return', async (
   expect((screen.getByLabelText('Eventname') as HTMLInputElement).value).toBe(
     'Synthetic cancelled edit',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
   fireEvent(window, new Event('blur'));
   returnToApp();
   await vi.waitFor(() => expect(listLoads(fetcher)).toBe(before + 2));
@@ -3639,9 +3635,7 @@ test.each(['close', 'hash'])(
       ),
     );
     if (exit === 'close')
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Event-Details schließen' }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
     else {
       window.location.hash = 'events';
       fireEvent(window, new HashChangeEvent('hashchange'));
@@ -3686,9 +3680,7 @@ test('retries a filter refresh discarded while an event draft is active', async 
     expect(fetcher).toHaveBeenCalledWith('/api/v1/events?q=Absent'),
   );
   fireEvent.keyDown(name, { key: 'Escape' });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Event-Details schließen' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
   await screen.findByText('Keine Events gefunden.');
 });
 
@@ -3731,9 +3723,7 @@ test('a late autosave confirmation refreshes the current filter', async () => {
       expect.objectContaining({ method: 'PUT' }),
     ),
   );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Event-Details schließen' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
   act(() => updateUrlSearch({ q: 'Other' }));
   await screen.findByText('Keine Events gefunden.');
   await act(async () =>
@@ -4038,9 +4028,7 @@ test('a delayed PUT confirmation cannot replace a newer event from the list', as
     ).toBe(true),
   );
   newer = true;
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Event-Details schließen' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
   fireEvent(window, new Event('focus'));
   await screen.findByRole('link', { name: /Synthetic newer/ });
   await act(async () =>

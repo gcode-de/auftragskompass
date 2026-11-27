@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  inputDateTime,
   localDateTime,
   resolveEventTime,
   resolveLocalTime,
@@ -13,6 +14,7 @@ export function EventTimeField({
   timeZone,
   instant,
   error,
+  minutePrecision = false,
   idPrefix = 'event',
   onChange,
 }: {
@@ -21,23 +23,32 @@ export function EventTimeField({
   timeZone: string;
   instant: string | null;
   error?: string | undefined;
+  minutePrecision?: boolean;
   // Several forms can show the same field name at once; the prefix keeps each
   // error id unique so aria-describedby always resolves to its own message.
   idPrefix?: string;
   onChange?: (value: string) => void;
 }) {
-  const [value, setValue] = useState(localDateTime(instant, timeZone)),
+  const [value, setValue] = useState(
+      (minutePrecision ? inputDateTime : localDateTime)(instant, timeZone),
+    ),
     [picked, setPicked] = useState<{
       value: string;
       choice: AmbiguousTimeChoice;
     } | null>(null),
-    savedChoice = savedAmbiguousChoice(value, timeZone, instant),
+    savedChoice = savedAmbiguousChoice(
+      value,
+      timeZone,
+      instant,
+      minutePrecision,
+    ),
     choice = picked?.value === value ? picked.choice : savedChoice,
     local = resolveLocalTime(value, timeZone),
     options = local.kind === 'ambiguous' ? local.options : [],
     unresolved = local.kind === 'ambiguous' && choice === '',
     resolution = resolveEventTime(value, timeZone, {
       originalInstant: instant,
+      minutePrecision,
       choice,
     }),
     errorId = `${idPrefix}-${name}-error`,
@@ -53,7 +64,7 @@ export function EventTimeField({
         <input
           name={name}
           type="datetime-local"
-          step="0.001"
+          step={minutePrecision ? 60 : 0.001}
           value={value}
           aria-invalid={invalid}
           aria-describedby={invalid ? errorId : undefined}

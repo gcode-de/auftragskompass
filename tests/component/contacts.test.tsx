@@ -456,7 +456,7 @@ test('an untouched dialog is not dirty and a changed draft needs an explicit dis
     target: { value: 'Fictional unsaved' },
   });
   expect(hasUnsavedChanges()).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Kontakt abbrechen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
   expect(confirm).toHaveBeenCalledWith(
     'Ungespeicherte Eingaben verwerfen und den Kontaktdialog schließen?',
   );

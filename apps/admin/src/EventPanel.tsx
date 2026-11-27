@@ -1,3 +1,5 @@
+import { EventViewNavigation } from './EventViewNavigation.js';
+import { Snackbar } from './Snackbar.js';
 import {
   menuPanelProps,
   menuRendered,
@@ -200,10 +202,12 @@ export function EventPanel({
   csrfToken,
   revision = 0,
   showHeading = true,
+  showViewNavigation = true,
 }: {
   csrfToken: string;
   revision?: number;
   showHeading?: boolean;
+  showViewNavigation?: boolean;
 }) {
   const [now, setNow] = useState(() => new Date().toISOString());
   const wide = useWideFilterLayout();
@@ -596,7 +600,6 @@ export function EventPanel({
             eventDate: selected.eventDate,
           };
         setDetailId(id.slice(6));
-        document.getElementById(id)?.scrollIntoView?.();
       } else setDetailId(null);
     };
     changed();
@@ -731,10 +734,12 @@ export function EventPanel({
           : '';
     const [startTime, endTime] = [
       resolveEventTime(value('startsAt'), zone, {
+        minutePrecision: true,
         originalInstant: draft?.startsAt ?? null,
         choice: choice('startsAtChoice'),
       }),
       resolveEventTime(value('endsAt'), zone, {
+        minutePrecision: true,
         originalInstant: draft?.endsAt ?? null,
         choice: choice('endsAtChoice'),
       }),
@@ -922,6 +927,10 @@ export function EventPanel({
   }
   const MonthHeading = showHeading ? 'h3' : 'h2';
   const showingDetail = rows.some((row) => row.id === detailId);
+  const listSearch = new URLSearchParams(urlSearch);
+  const hasAreaShortcut = listSearch.has('doc') || listSearch.has('mail');
+  listSearch.delete('doc');
+  listSearch.delete('mail');
   // The undated sort is a view of the loaded list; dates and the other filters
   // already went to the server.
   const undatedOnly = filters.get('undated') === 'true',
@@ -1067,14 +1076,6 @@ export function EventPanel({
               }
             />
           </label>
-          {/* A view is only offered when its route really exists; the timeline
-              has no own target yet. */}
-          <nav className="event-view-choice" aria-label="Ansicht">
-            <a href="#events" aria-current="page">
-              Liste
-            </a>
-            <a href="#calendar">Kalender</a>
-          </nav>
           <fieldset className="event-sorting">
             <legend>Sortieren</legend>
             {[
@@ -1350,6 +1351,9 @@ export function EventPanel({
   return (
     <section id="events" aria-label="Events" aria-busy={loading}>
       {!wide && heading}
+      {!showingDetail && showViewNavigation && (
+        <EventViewNavigation view="events" />
+      )}
       <div className="event-layout">
         {wide ? (
           <aside
@@ -1544,6 +1548,7 @@ export function EventPanel({
                       </p>
                     )}
                     <EventTimeField
+                      minutePrecision
                       name="startsAt"
                       label="Eventbeginn"
                       timeZone={zone}
@@ -1559,6 +1564,7 @@ export function EventPanel({
                       }}
                     />
                     <EventTimeField
+                      minutePrecision
                       name="endsAt"
                       label="Eventende"
                       timeZone={zone}
@@ -1687,7 +1693,7 @@ export function EventPanel({
                         restoreEditorFocus();
                       }}
                     >
-                      Event abbrechen
+                      Abbrechen
                     </button>
                   )}
                 </fieldset>
@@ -1706,7 +1712,7 @@ export function EventPanel({
               )}
             </details>
           )}
-          <p role="status">{message}</p>
+          <Snackbar message={showingDetail ? '' : message} />
           {reloadWarning && (
             <div className="reload-warning">
               <p role="alert">
@@ -1808,7 +1814,7 @@ export function EventPanel({
                   {entries.map((row) => (
                     <li
                       key={row.id}
-                      id={'event-' + row.id}
+                      id={'event-row-' + row.id}
                       className="event-card"
                       data-status={row.status}
                       hidden={showingDetail && row.id !== detailId}
@@ -1816,7 +1822,16 @@ export function EventPanel({
                       <div className="event-row" hidden={showingDetail}>
                         <a
                           className="event-summary"
-                          href={'#event-' + row.id}
+                          href={
+                            (hasAreaShortcut
+                              ? window.location.pathname +
+                                (listSearch.size
+                                  ? '?' + listSearch.toString()
+                                  : '')
+                              : '') +
+                            '#event-' +
+                            row.id
+                          }
                           onClick={(event) => {
                             if (
                               event.button !== 0 ||
@@ -1829,6 +1844,13 @@ export function EventPanel({
                             if (window.getSelection?.()?.toString()) {
                               event.preventDefault();
                               return;
+                            }
+                            if (hasAreaShortcut) {
+                              event.preventDefault();
+                              updateUrlSearch(
+                                { doc: '', mail: '' },
+                                'event-' + row.id,
+                              );
                             }
                             setDetailId(row.id);
                           }}
@@ -2116,7 +2138,7 @@ export function EventPanel({
                               flushRecordList();
                               requestAnimationFrame(() =>
                                 document
-                                  .getElementById('event-' + row.id)
+                                  .getElementById('event-row-' + row.id)
                                   ?.querySelector<HTMLAnchorElement>(
                                     '.event-summary',
                                   )

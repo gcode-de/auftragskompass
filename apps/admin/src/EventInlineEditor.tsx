@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import {
   forwardRef,
   useEffect,
@@ -8,7 +9,7 @@ import {
 import { useRecordAutosave } from './useRecordAutosave.js';
 import { registerUnsavedChanges } from './unsaved-changes.js';
 import { EventTimeField } from './EventTimeField.js';
-import { localDateTime, resolveEventTime } from './event-time.js';
+import { inputDateTime, resolveEventTime } from './event-time.js';
 import {
   ContactPicker,
   contactHitLimit,
@@ -149,6 +150,7 @@ export const EventInlineEditor = forwardRef<
     packages: VenueChoice[];
     locations: VenueChoice[];
     contacts?: { id: string; name: string }[];
+    contactFieldsTarget?: HTMLElement | null;
     locked: boolean;
     canEdit: () => boolean;
     onDirtyChange: (dirty: boolean) => void;
@@ -167,6 +169,7 @@ export const EventInlineEditor = forwardRef<
     packages,
     locations,
     contacts = [],
+    contactFieldsTarget,
     locked,
     canEdit,
     onDirtyChange,
@@ -180,8 +183,8 @@ export const EventInlineEditor = forwardRef<
   const [invalid, setInvalid] = useState<string>('');
   const [schedule, setSchedule] = useState(() => ({
     eventDate: event.eventDate ?? '',
-    startsAt: localDateTime(event.startsAt, event.timeZone),
-    endsAt: localDateTime(event.endsAt, event.timeZone),
+    startsAt: inputDateTime(event.startsAt, event.timeZone),
+    endsAt: inputDateTime(event.endsAt, event.timeZone),
   }));
   const [scheduleKey, setScheduleKey] = useState(0);
   const [scheduleError, setScheduleError] = useState('');
@@ -322,13 +325,13 @@ export const EventInlineEditor = forwardRef<
       if (
         !scheduleDirty.current &&
         (schedule.eventDate !== (row.eventDate ?? '') ||
-          schedule.startsAt !== localDateTime(row.startsAt, row.timeZone) ||
-          schedule.endsAt !== localDateTime(row.endsAt, row.timeZone))
+          schedule.startsAt !== inputDateTime(row.startsAt, row.timeZone) ||
+          schedule.endsAt !== inputDateTime(row.endsAt, row.timeZone))
       ) {
         setSchedule({
           eventDate: row.eventDate ?? '',
-          startsAt: localDateTime(row.startsAt, row.timeZone),
-          endsAt: localDateTime(row.endsAt, row.timeZone),
+          startsAt: inputDateTime(row.startsAt, row.timeZone),
+          endsAt: inputDateTime(row.endsAt, row.timeZone),
         });
         setScheduleKey((value) => value + 1);
         setScheduleError('');
@@ -356,8 +359,8 @@ export const EventInlineEditor = forwardRef<
     save.useRemote();
     setSchedule({
       eventDate: row.eventDate ?? '',
-      startsAt: localDateTime(row.startsAt, row.timeZone),
-      endsAt: localDateTime(row.endsAt, row.timeZone),
+      startsAt: inputDateTime(row.startsAt, row.timeZone),
+      endsAt: inputDateTime(row.endsAt, row.timeZone),
     });
     setScheduleKey((value) => value + 1);
     setScheduleError('');
@@ -416,8 +419,8 @@ export const EventInlineEditor = forwardRef<
     const current = save.values;
     setSchedule({
       eventDate: current.eventDate ?? '',
-      startsAt: localDateTime(current.startsAt, event.timeZone),
-      endsAt: localDateTime(current.endsAt, event.timeZone),
+      startsAt: inputDateTime(current.startsAt, event.timeZone),
+      endsAt: inputDateTime(current.endsAt, event.timeZone),
     });
     setScheduleKey((value) => value + 1);
     setScheduleError('');
@@ -445,10 +448,12 @@ export const EventInlineEditor = forwardRef<
       return;
     }
     const start = resolveEventTime(startLocal, event.timeZone, {
+        minutePrecision: true,
         originalInstant: save.values.startsAt,
         choice: (startChoice?.value ?? '') as 'earlier' | 'later' | '',
       }),
       end = resolveEventTime(endLocal, event.timeZone, {
+        minutePrecision: true,
         originalInstant: save.values.endsAt,
         choice: (endChoice?.value ?? '') as 'earlier' | 'later' | '',
       });
@@ -629,9 +634,167 @@ export const EventInlineEditor = forwardRef<
       return choices.find((choice) => choice.id === value)?.name ?? value;
     return value === null || value === '' ? 'Leer' : String(value);
   }
+  const contactFields = (
+    <fieldset disabled={locked} className="event-contact-fields">
+      <legend className="sr-only">Kontakte zuordnen</legend>
+      <fieldset
+        aria-label="Hauptkontakt"
+        onBlur={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node | null))
+            return;
+          if (!canEdit()) return;
+          removedContact.current = null;
+          save.commitFields(['primaryContactId', 'additionalContactIds']);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+          event.preventDefault();
+          event.stopPropagation();
+          removedContact.current = null;
+          save.cancelFields(['primaryContactId', 'additionalContactIds']);
+          contactSearch.reset();
+        }}
+      >
+        <legend>Hauptkontakt</legend>
+        <ContactPicker
+          search={contactSearch}
+          idPrefix="event-inline"
+          label="Hauptkontakt suchen"
+          value={save.values.primaryContactId ?? ''}
+          selected={selectedContact}
+          hiddenName="primaryContactId"
+          onSelect={chooseContact}
+          onClear={() => chooseContact(null)}
+        />
+      </fieldset>
+      <fieldset
+        aria-label="Weitere Kontakte"
+        onBlur={(event) => {
+          if (
+            event.currentTarget.contains(event.relatedTarget as Node | null) ||
+            !canEdit()
+          )
+            return;
+          save.commitFields(['additionalContactIds']);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+          event.preventDefault();
+          event.stopPropagation();
+          save.cancelFields(['additionalContactIds']);
+          additionalSearch.reset();
+        }}
+      >
+        <legend>Weitere Kontakte</legend>
+        {save.values.additionalContactIds.length === 0 ? (
+          <p>Keine weiteren Kontakte zugeordnet.</p>
+        ) : (
+          <ul>
+            {save.values.additionalContactIds.map((id) => {
+              const name =
+                knownContacts.find((item) => item.id === id)?.name ??
+                contacts.find((item) => item.id === id)?.name ??
+                'Zugeordneter Kontakt';
+              return (
+                <li key={id}>
+                  {name}{' '}
+                  <button
+                    type="button"
+                    className="tertiary-action"
+                    aria-label={`${name} entfernen`}
+                    onClick={() => {
+                      if (!canEdit()) return;
+                      additionalInput.current?.focus();
+                      onDirtyChange(true);
+                      save.setField(
+                        'additionalContactIds',
+                        save.values.additionalContactIds.filter(
+                          (item) => item !== id,
+                        ),
+                      );
+                    }}
+                  >
+                    Entfernen
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <label>
+          Weitere Kontakte suchen
+          <input
+            ref={additionalInput}
+            type="search"
+            maxLength={200}
+            autoComplete="off"
+            value={additionalSearch.query}
+            onChange={(event) =>
+              additionalSearch.search(event.currentTarget.value)
+            }
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.preventDefault();
+            }}
+          />
+        </label>
+        {additionalSearch.state === 'loading' && (
+          <p role="status">Kontakte werden gesucht …</p>
+        )}
+        {additionalSearch.state === 'failed' && (
+          <p role="status">
+            Kontakte konnten nicht gesucht werden. Die bisherige Auswahl bleibt
+            bestehen.
+          </p>
+        )}
+        {additionalSearch.state === 'ready' &&
+          availableAdditional.length === 0 && (
+            <p role="status">Keine weiteren Kontakte gefunden.</p>
+          )}
+        {save.values.additionalContactIds.length >= 50 && (
+          <p role="status">Maximal 50 weitere Kontakte möglich.</p>
+        )}
+        <ul
+          className="contact-picker-hits"
+          aria-label="Weitere Kontakte gefunden"
+        >
+          {availableAdditional.slice(0, contactHitLimit).map((hit) => (
+            <li key={hit.id}>
+              <button
+                type="button"
+                className="contact-picker-hit"
+                disabled={
+                  hit.state !== 'active' ||
+                  save.values.additionalContactIds.length >= 50
+                }
+                onClick={() => {
+                  if (!canEdit()) return;
+                  additionalInput.current?.focus();
+                  onDirtyChange(true);
+                  setKnownContacts((current) => [
+                    ...current.filter((item) => item.id !== hit.id),
+                    hit,
+                  ]);
+                  save.setField('additionalContactIds', [
+                    ...save.values.additionalContactIds,
+                    hit.id,
+                  ]);
+                }}
+              >
+                <span className="contact-picker-name">{hit.name}</span>
+                <span className="contact-picker-detail">
+                  {contactLine(hit)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </fieldset>
+    </fieldset>
+  );
   return (
     <section aria-label="Eventstammdaten direkt bearbeiten">
       <h4>Eventstammdaten bearbeiten</h4>
+      {contactFieldsTarget && createPortal(contactFields, contactFieldsTarget)}
       <p>
         Änderungen werden beim Verlassen eines Feldes gespeichert. Escape
         verwirft die aktuelle Eingabe.
@@ -696,7 +859,7 @@ export const EventInlineEditor = forwardRef<
           }}
         >
           <legend>Termin</legend>
-          <label>
+          <label hidden={Boolean(schedule.startsAt)}>
             Eventdatum
             <input
               name="eventDate"
@@ -712,11 +875,8 @@ export const EventInlineEditor = forwardRef<
               }}
             />
           </label>
-          <p className="event-panel-hint">
-            Bei Beginn gilt das Startdatum. Ohne Uhrzeiten: Tagesbuchung oder
-            ohne Datum.
-          </p>
           <EventTimeField
+            minutePrecision
             key={'start:' + scheduleKey}
             name="startsAt"
             label="Terminbeginn"
@@ -734,6 +894,7 @@ export const EventInlineEditor = forwardRef<
             }}
           />
           <EventTimeField
+            minutePrecision
             key={'end:' + scheduleKey}
             name="endsAt"
             label="Terminende"
@@ -747,7 +908,7 @@ export const EventInlineEditor = forwardRef<
             }}
           />
           <p className="event-panel-hint">
-            Beginn und Ende gemeinsam oder gar nicht.
+            Für eine Tagesbuchung Beginn und Ende frei lassen.
           </p>
           {scheduleError && <p role="alert">{scheduleError}</p>}
         </fieldset>
@@ -761,162 +922,7 @@ export const EventInlineEditor = forwardRef<
             {...field(['name'], 'name')}
           />
         </label>
-        <fieldset
-          aria-label="Hauptkontakt"
-          onBlur={(event) => {
-            if (
-              event.currentTarget.contains(event.relatedTarget as Node | null)
-            )
-              return;
-            if (!canEdit()) return;
-            removedContact.current = null;
-            save.commitFields(['primaryContactId', 'additionalContactIds']);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
-            event.preventDefault();
-            event.stopPropagation();
-            removedContact.current = null;
-            save.cancelFields(['primaryContactId', 'additionalContactIds']);
-            contactSearch.reset();
-          }}
-        >
-          <legend>Hauptkontakt</legend>
-          <ContactPicker
-            search={contactSearch}
-            idPrefix="event-inline"
-            label="Hauptkontakt suchen"
-            value={save.values.primaryContactId ?? ''}
-            selected={selectedContact}
-            hiddenName="primaryContactId"
-            onSelect={chooseContact}
-            onClear={() => chooseContact(null)}
-          />
-        </fieldset>
-        <fieldset
-          aria-label="Weitere Kontakte"
-          onBlur={(event) => {
-            if (
-              event.currentTarget.contains(
-                event.relatedTarget as Node | null,
-              ) ||
-              !canEdit()
-            )
-              return;
-            save.commitFields(['additionalContactIds']);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
-            event.preventDefault();
-            event.stopPropagation();
-            save.cancelFields(['additionalContactIds']);
-            additionalSearch.reset();
-          }}
-        >
-          <legend>Weitere Kontakte</legend>
-          {save.values.additionalContactIds.length === 0 ? (
-            <p>Keine weiteren Kontakte zugeordnet.</p>
-          ) : (
-            <ul>
-              {save.values.additionalContactIds.map((id) => {
-                const name =
-                  knownContacts.find((item) => item.id === id)?.name ??
-                  contacts.find((item) => item.id === id)?.name ??
-                  'Zugeordneter Kontakt';
-                return (
-                  <li key={id}>
-                    {name}{' '}
-                    <button
-                      type="button"
-                      className="tertiary-action"
-                      aria-label={`${name} entfernen`}
-                      onClick={() => {
-                        if (!canEdit()) return;
-                        additionalInput.current?.focus();
-                        onDirtyChange(true);
-                        save.setField(
-                          'additionalContactIds',
-                          save.values.additionalContactIds.filter(
-                            (item) => item !== id,
-                          ),
-                        );
-                      }}
-                    >
-                      Entfernen
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <label>
-            Weitere Kontakte suchen
-            <input
-              ref={additionalInput}
-              type="search"
-              maxLength={200}
-              autoComplete="off"
-              value={additionalSearch.query}
-              onChange={(event) =>
-                additionalSearch.search(event.currentTarget.value)
-              }
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.preventDefault();
-              }}
-            />
-          </label>
-          {additionalSearch.state === 'loading' && (
-            <p role="status">Kontakte werden gesucht …</p>
-          )}
-          {additionalSearch.state === 'failed' && (
-            <p role="status">
-              Kontakte konnten nicht gesucht werden. Die bisherige Auswahl
-              bleibt bestehen.
-            </p>
-          )}
-          {additionalSearch.state === 'ready' &&
-            availableAdditional.length === 0 && (
-              <p role="status">Keine weiteren Kontakte gefunden.</p>
-            )}
-          {save.values.additionalContactIds.length >= 50 && (
-            <p role="status">Maximal 50 weitere Kontakte möglich.</p>
-          )}
-          <ul
-            className="contact-picker-hits"
-            aria-label="Weitere Kontakte gefunden"
-          >
-            {availableAdditional.slice(0, contactHitLimit).map((hit) => (
-              <li key={hit.id}>
-                <button
-                  type="button"
-                  className="contact-picker-hit"
-                  disabled={
-                    hit.state !== 'active' ||
-                    save.values.additionalContactIds.length >= 50
-                  }
-                  onClick={() => {
-                    if (!canEdit()) return;
-                    additionalInput.current?.focus();
-                    onDirtyChange(true);
-                    setKnownContacts((current) => [
-                      ...current.filter((item) => item.id !== hit.id),
-                      hit,
-                    ]);
-                    save.setField('additionalContactIds', [
-                      ...save.values.additionalContactIds,
-                      hit.id,
-                    ]);
-                  }}
-                >
-                  <span className="contact-picker-name">{hit.name}</span>
-                  <span className="contact-picker-detail">
-                    {contactLine(hit)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </fieldset>
+        {contactFieldsTarget === undefined && contactFields}
         <label>
           Eventart
           <select

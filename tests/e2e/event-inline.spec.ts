@@ -1,5 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+
+async function openContactEditor(page: Page) {
+  const aside = page.locator('.event-aside');
+  await expect(aside).toBeAttached();
+  const toggle = aside.locator(':scope > summary');
+  if (await toggle.isVisible()) await toggle.click();
+  const contact = aside.locator('.event-aside-contact');
+  await contact.getByText('Kontakte bearbeiten', { exact: true }).click();
+  return contact;
+}
 
 test('event details save fields on blur and Escape discards the current edit', async ({
   page,
@@ -103,21 +113,22 @@ test('event details save fields on blur and Escape discards the current edit', a
     status: 'inquiry',
   });
   expect(writes[0]).not.toHaveProperty('id');
-  const contactSearch = editor.getByLabel('Hauptkontakt suchen');
+  const contact = await openContactEditor(page);
+  const contactSearch = contact.getByLabel('Hauptkontakt suchen');
   await contactSearch.fill('Fictional');
-  await editor.getByRole('button', { name: /Fictional contact/ }).click();
+  await contact.getByRole('button', { name: /Fictional contact/ }).click();
   await contactSearch.press('Escape');
-  await expect(editor.getByText(/Kein Kunde ausgewählt/)).toBeVisible();
+  await expect(contact.getByText(/Kein Kunde ausgewählt/)).toBeVisible();
   await contactSearch.fill('Fictional');
-  await editor.getByRole('button', { name: /Fictional contact/ }).click();
+  await contact.getByRole('button', { name: /Fictional contact/ }).click();
   await editor.getByLabel('Eventart').focus();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1]).toMatchObject({
     primaryContactId: '22222222-2222-4222-8222-222222222222',
     version: 2,
   });
-  await editor.getByRole('button', { name: 'Kunde entfernen' }).focus();
-  await editor.getByRole('button', { name: 'Kunde entfernen' }).press('Enter');
+  await contact.getByRole('button', { name: 'Kunde entfernen' }).focus();
+  await contact.getByRole('button', { name: 'Kunde entfernen' }).press('Enter');
   await expect(contactSearch).toBeFocused();
   expect(writes).toHaveLength(2);
   await editor.getByLabel('Eventart').focus();
@@ -259,7 +270,8 @@ for (const width of [320, 1280]) {
     const editor = page.getByRole('region', {
       name: 'Eventstammdaten direkt bearbeiten',
     });
-    const group = editor.getByRole('group', { name: 'Weitere Kontakte' });
+    const contact = await openContactEditor(page);
+    const group = contact.getByRole('group', { name: 'Weitere Kontakte' });
     const search = group.getByLabel('Weitere Kontakte suchen');
     await search.fill('Fictional');
     await group.getByRole('button', { name: /Fictional first/ }).click();
@@ -420,7 +432,7 @@ test('event record edits a date-only schedule with Escape and versioned blur sav
 
 // QW3: dated notes - the shared rich editor writes a note, the list shows it
 // newest first with time and author, and a confirmed removal takes it out.
-test('event notes are added with formatting and removed after confirmation', async ({
+test('plain event notes are added and removed after confirmation', async ({
   page,
 }) => {
   const id = '88888888-8888-4888-8888-888888888888';
@@ -513,24 +525,19 @@ test('event notes are added with formatting and removed after confirmation', asy
     'existing',
   );
   await expect(region.getByText('Übernommen')).toBeVisible();
-  // UI-BKP-04: the card's plus opens the composer.
-  await region.getByRole('button', { name: 'Notiz hinzufügen' }).click();
   const editor = region.getByRole('textbox', { name: 'Neue Notiz' });
+  await expect(editor).toHaveAttribute('rows', '1');
   await editor.click();
-  await page.keyboard.type('Rückruf morgen');
-  await editor.press('ControlOrMeta+a');
-  await region.getByRole('button', { name: 'Fett' }).click();
-  await expect(region.getByRole('button', { name: 'Fett' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(editor).toHaveAttribute('rows', '4');
+  await editor.fill('Rückruf morgen');
   await region.getByRole('button', { name: 'Notiz speichern' }).click();
   await expect(region.getByText('Notiz hinzugefügt.')).toBeVisible();
-  expect(posted[0]).toContain('<strong>Rückruf morgen</strong>');
+  expect(posted[0]).toBe('<p>Rückruf morgen</p>');
   await expect(region.getByRole('listitem').first()).toContainText(
     'fictional@example.invalid',
   );
-  await expect(editor).toHaveCount(0);
+  await expect(editor).toHaveValue('');
+  await expect(editor).toHaveAttribute('rows', '1');
   for (const width of [320, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ['light', 'dark'] as const) {

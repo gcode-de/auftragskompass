@@ -1,3 +1,4 @@
+import { EventViewNavigation } from './EventViewNavigation.js';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   emptyEventFilters,
@@ -389,6 +390,7 @@ export function CalendarPanel() {
   const heading = data ? calendarHeading(data.from, data.to, loadedView) : null;
   return (
     <section id="calendar" aria-label="Kalender" aria-busy={loading}>
+      <EventViewNavigation view="calendar" />
       <h2>Event- und Ressourcenkalender</h2>
       {loadFailed && (
         <div className="reload-warning">

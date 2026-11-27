@@ -89,13 +89,15 @@ test('notes list newest first, a note is added and the composer empties', async 
   expect(await within(region).findByText('Notiz')).toBeTruthy();
   expect(within(region).getByText('Übernommen')).toBeTruthy();
 
-  // UI-BKP-04: the card's plus opens the composer, like Bookitup.
-  expect(screen.queryByLabelText('Neue Notiz')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Notiz hinzufügen' }));
+  const draft = screen.getByLabelText('Neue Notiz');
+  expect(draft.getAttribute('rows')).toBe('1');
+  expect(screen.queryByRole('button', { name: 'Notiz hinzufügen' })).toBeNull();
+  fireEvent.focus(draft);
+  expect(draft.getAttribute('rows')).toBe('4');
   const add = screen.getByRole('button', { name: 'Notiz speichern' });
   expect(add).toHaveProperty('disabled', true);
   fireEvent.change(screen.getByLabelText('Neue Notiz'), {
-    target: { value: '<p>Kunde ruft zurück</p>' },
+    target: { value: 'Kunde ruft zurück' + String.fromCharCode(10) + '<b>&' },
   });
   expect(hasUnsavedChanges()).toBe(true);
   fireEvent.click(add);
@@ -105,14 +107,16 @@ test('notes list newest first, a note is added and the composer empties', async 
     expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ 'x-csrf-token': 'csrf' }),
-      body: JSON.stringify({ bodyHtml: '<p>Kunde ruft zurück</p>' }),
+      body: JSON.stringify({
+        bodyHtml: '<p>Kunde ruft zurück<br>&lt;b&gt;&amp;</p>',
+      }),
     }),
   );
   const items = within(region).getAllByRole('listitem');
   expect(items[0]!.textContent).toContain('Kunde ruft zurück');
   expect(items[0]!.textContent).toContain('notes.owner@example.invalid');
-  // A saved note closes the composer again.
-  expect(screen.queryByLabelText('Neue Notiz')).toBeNull();
+  expect(draft).toHaveProperty('value', '');
+  expect(draft.getAttribute('rows')).toBe('1');
   expect(hasUnsavedChanges()).toBe(false);
 });
 
@@ -175,15 +179,15 @@ test('deleting asks first and a refused or failed write keeps the draft', async 
   );
   expect(screen.getAllByRole('listitem')).toHaveLength(1);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Notiz hinzufügen' }));
+  fireEvent.focus(screen.getByLabelText('Neue Notiz'));
   fireEvent.change(screen.getByLabelText('Neue Notiz'), {
-    target: { value: '<p>zu lang</p>' },
+    target: { value: 'zu lang' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Notiz speichern' }));
   await screen.findByText('Die Notiz ist zu lang.');
   expect(
     (screen.getByLabelText('Neue Notiz') as HTMLTextAreaElement).value,
-  ).toBe('<p>zu lang</p>');
+  ).toBe('zu lang');
 
   fetcher.mockRejectedValueOnce(new Error('offline'));
   fireEvent.click(screen.getByRole('button', { name: 'Notiz speichern' }));

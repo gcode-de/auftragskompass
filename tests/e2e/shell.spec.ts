@@ -584,8 +584,8 @@ test('both themes keep a neutral reference surface readable at 390 and 1280', as
       `${label}: the primary action keeps the brand accent`,
     ).toBeGreaterThanOrEqual(40);
     expect(measured.ring.style, `${label}: focus ring is drawn`).toBe('solid');
-    expect(measured.ring.width, `${label}: focus ring width`).toBe('3px');
-    expect(measured.ring.offset, `${label}: focus ring offset`).toBe('3px');
+    expect(measured.ring.width, `${label}: focus ring width`).toBe('2px');
+    expect(measured.ring.offset, `${label}: focus ring offset`).toBe('2px');
     expect(
       contrast(measured.ring.color, measured.panel.background),
       `${label}: focus ring contrast`,

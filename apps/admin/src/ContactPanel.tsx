@@ -1,3 +1,4 @@
+import { Snackbar } from './Snackbar.js';
 import { useEffect, useRef, useState } from 'react';
 import { ContactDetails, type ContactRecord } from './ContactDetails.js';
 import { ContactDialog } from './ContactDialog.js';
@@ -508,7 +509,7 @@ export function ContactPanel({
           </ul>
         </div>
       </div>
-      <p role="status">{message}</p>
+      <Snackbar message={message} />
       {reloadFailed && (
         <div className="reload-warning">
           <p role="status">{reloadFailureMessage}</p>

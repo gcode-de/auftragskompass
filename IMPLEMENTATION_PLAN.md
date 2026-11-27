@@ -39,6 +39,26 @@
       in Chromium und WebKit mit emulierter Touch-Eingabe geprüft.
       Commit `fix: accept address suggestions on touch`.
 
+## Bedienung, Datenpflege und Mail-Zentrale (27.11.2026)
+
+- [x] **WORKSPACE-UX-01 — Kleine Korrekturen an Eventakte und Arbeitsbereich.**
+      Fokusabstände, dezenter Dunkelkontrast, Snackbar für Rückmeldungen,
+      Statusmarke, kompakte Notiz, minutengenaue Zeitfelder und einfacher
+      Terminblock. Kontaktpflege rechts, Einstieg oben auf Details,
+      Zurück/Abbrechen, Filter-Reset, Build-Version im Fuß der Navigation und
+      Kalender als Events-Ansicht. Abnahme mit Komponenten- und Browsertests.
+      Commit `fix: streamline event workspace interactions`.
+- [ ] **MAIL-FILE-SCOPE-01 — Hochgeladene Mailanhänge dem Event zuordnen.**
+      Neue Anhänge aus Event-Mails atomar im Event speichern, in der allgemeinen
+      Dateibibliothek ausblenden, Zugriff und Versand auf die Event-Grenze prüfen.
+- [ ] **MASTER-DELETE-01 — Verwendete Kontakte und Produkte entfernen.**
+      Deaktivierte Stammdaten aus Auswahl und normalen Listen nehmen, historische
+      Referenzen und unveränderliche Belege konsistent erhalten.
+- [ ] **MAIL-WORKSPACE-01 — Mail-Zentrale im Hauptmenü.**
+      Eingang mit Website-Anfragen, Gesendet, Entwürfe, Geplant, Fehlgeschlagen
+      und Papierkorb mit passenden Entwurfs-, Versand- und Wiederherstellungsaktionen.
+      Teilabnahmen für Mailablage, Entwürfe und Auftragszustände.
+
 ## Priorisierte Dokumentarbeiten (Nutzauftrag 20.11.2026, verbindliche Reihenfolge)
 
 **Nachsteuerung 21.11.2026 (hat Vorrang, Nutzer-Feature-Wünsche):** zuerst

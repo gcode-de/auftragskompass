@@ -134,7 +134,6 @@ test('the filter groups form one context column left of the results', async () =
     .filter((child) => child.tagName !== 'LEGEND')
     .map((child) => {
       if (child.querySelector('input[name="q"]')) return 'suche';
-      if (child.tagName === 'NAV') return 'ansicht';
       if (child.classList.contains('event-sorting')) return 'sortieren';
       if (child.classList.contains('event-quick-filters')) return 'anfragen';
       if (child.classList.contains('date-presets')) return 'zeitraum';
@@ -144,9 +143,11 @@ test('the filter groups form one context column left of the results', async () =
       if (child.classList.contains('event-filter-actions')) return 'aktionen';
       return 'unbekannt';
     });
+  expect(
+    screen.getByRole('navigation', { name: 'Ansicht' }).closest('form'),
+  ).toBeNull();
   expect(groups).toEqual([
     'suche',
-    'ansicht',
     'sortieren',
     'anfragen',
     'zeitraum',
@@ -155,7 +156,7 @@ test('the filter groups form one context column left of the results', async () =
     'art',
     'aktionen',
   ]);
-  const views = within(context).getByRole('navigation', { name: 'Ansicht' });
+  const views = screen.getByRole('navigation', { name: 'Ansicht' });
   expect(
     within(views)
       .getAllByRole('link')

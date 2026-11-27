@@ -87,7 +87,7 @@ test('contact field Escape cancels and blur saves normalized values', async ({
   page.once('dialog', (dialog) => dialog.dismiss());
   await page
     .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Kalender', exact: true })
+    .getByRole('link', { name: 'Dokumente', exact: true })
     .click();
   await expect(page).toHaveURL(new RegExp('#contact-' + id));
   await expect(email).toHaveValue('invalid');

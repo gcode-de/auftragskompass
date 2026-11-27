@@ -178,6 +178,7 @@ export function AuthPanel() {
               csrfToken={user.csrfToken}
               revision={importRevision}
               showHeading={route === 'search'}
+              showViewNavigation={route === 'events'}
             />
           </div>
           <div className="workspace-page" hidden={route !== 'documents'}>

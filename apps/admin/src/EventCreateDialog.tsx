@@ -170,10 +170,12 @@ export function EventCreateDialog({
             : '';
     const [startTime, endTime] = [
       resolveEventTime(value('startsAt'), timeZone, {
+        minutePrecision: true,
         originalInstant: initial?.startsAt ?? null,
         choice: choice('startsAtChoice'),
       }),
       resolveEventTime(value('endsAt'), timeZone, {
+        minutePrecision: true,
         originalInstant: initial?.endsAt ?? null,
         choice: choice('endsAtChoice'),
       }),
@@ -491,6 +493,7 @@ export function EventCreateDialog({
                 </select>
               </label>
               <EventTimeField
+                minutePrecision
                 name="startsAt"
                 label="Eventbeginn"
                 timeZone={timeZone}
@@ -507,6 +510,7 @@ export function EventCreateDialog({
                 }}
               />
               <EventTimeField
+                minutePrecision
                 name="endsAt"
                 label="Eventende"
                 timeZone={timeZone}

@@ -466,7 +466,7 @@ test('an open edit draft blocks create and duplicate, then focus survives cancel
   const edit = screen.getByRole('button', {
     name: 'Event bearbeiten: Synthetic stored event',
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Event abbrechen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
   await waitFor(() => expect(document.activeElement).not.toBe(document.body));
   // UI-BKP-02: focus returns to the row menu that held the edit action.
   expect(document.activeElement).toBe(

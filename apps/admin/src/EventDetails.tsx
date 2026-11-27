@@ -1,3 +1,4 @@
+import { Snackbar } from './Snackbar.js';
 import { WebsiteInquiry } from './WebsiteInquiry.js';
 import { ResourceAssignments } from './ResourceAssignments.js';
 import { EventDocuments } from './EventDocuments.js';
@@ -223,6 +224,9 @@ export function EventDetails({
     );
     closeLocationDialog();
   }
+  const record = useRef<HTMLElement>(null);
+  const [contactFieldsTarget, setContactFieldsTarget] =
+    useState<HTMLDivElement | null>(null);
   const heading = useRef<HTMLHeadingElement>(null),
     detailsPanel = useRef<HTMLDivElement>(null),
     resourcesPanel = useRef<HTMLDivElement>(null),
@@ -522,7 +526,7 @@ export function EventDetails({
   }, [revision, loading, loadFailed]);
   useEffect(() => {
     if (data) {
-      heading.current?.scrollIntoView?.();
+      record.current?.scrollIntoView?.({ block: 'start' });
       heading.current?.focus({ preventScroll: true });
     }
   }, [data?.event.id]);
@@ -790,6 +794,7 @@ export function EventDetails({
         : undefined;
   return (
     <section
+      ref={record}
       className="event-record"
       aria-label="Event-Details"
       aria-busy={loading}
@@ -808,9 +813,24 @@ export function EventDetails({
           onClose();
         }}
       >
-        Event-Details schließen
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          aria-hidden="true"
+        >
+          <path
+            d="M19 12H5m7-7-7 7 7 7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Zurück
       </button>
-      <p role="status">{message}</p>
+      <Snackbar message={message} />
       {statusUncertain && (
         <button type="button" onClick={() => void reconcileStatus()}>
           Serverstand prüfen und Eingaben verwerfen
@@ -880,7 +900,7 @@ export function EventDetails({
                 <span className="event-record-date">
                   {data.event.eventDate
                     ? plainDateText(data.event.eventDate)
-                    : 'ohne Datum'}
+                    : 'Ohne Datum'}
                 </span>
                 {schedule && (
                   <span className="event-record-time">{schedule}</span>
@@ -1029,22 +1049,28 @@ export function EventDetails({
                           data-status={statusChoice ?? data.event.status}
                         >
                           Status des Events
-                          <select
-                            name="status"
-                            defaultValue={data.event.status}
-                            onChange={(event) => {
-                              setStatusResourceCorrection(false);
-                              setStatusChoice(event.currentTarget.value);
-                              dirty.current = true;
-                              legacyChanged();
-                            }}
-                          >
-                            {statuses.map((status) => (
-                              <option key={status.code} value={status.code}>
-                                {status.label}
-                              </option>
-                            ))}
-                          </select>
+                          <span className="event-status-choice">
+                            <span
+                              className="event-status-dot"
+                              aria-hidden="true"
+                            />
+                            <select
+                              name="status"
+                              defaultValue={data.event.status}
+                              onChange={(event) => {
+                                setStatusResourceCorrection(false);
+                                setStatusChoice(event.currentTarget.value);
+                                dirty.current = true;
+                                legacyChanged();
+                              }}
+                            >
+                              {statuses.map((status) => (
+                                <option key={status.code} value={status.code}>
+                                  {status.label}
+                                </option>
+                              ))}
+                            </select>
+                          </span>
                         </label>
                         {(statusChoice ?? data.event.status) ===
                           'cancelled' && (
@@ -1103,29 +1129,6 @@ export function EventDetails({
                     )}
                   </div>
                   <div className="event-detail-primary">
-                    <h4>Zeitplan</h4>
-                    <dl>
-                      <dt>Datum</dt>
-                      <dd>
-                        {data.event.eventDate
-                          ? data.event.eventDate.split('-').reverse().join('.')
-                          : 'Ohne Datum'}
-                      </dd>
-                      {/* H037: a date-only booking says so; a real midnight start
-                      keeps its genuine clock time from the stored timestamp. */}
-                      <dt>Beginn</dt>
-                      <dd>
-                        {data.event.startsAt
-                          ? time(data.event.startsAt)
-                          : 'Tagesbuchung, ohne Uhrzeit'}
-                      </dd>
-                      <dt>Ende</dt>
-                      <dd>
-                        {data.event.endsAt
-                          ? time(data.event.endsAt)
-                          : 'Ohne Uhrzeit'}
-                      </dd>
-                    </dl>
                     <EventInlineEditor
                       ref={inline}
                       key={'inline:' + data.event.id}
@@ -1135,6 +1138,7 @@ export function EventDetails({
                       packages={packages}
                       locations={availableLocations}
                       contacts={data.contacts}
+                      contactFieldsTarget={contactFieldsTarget}
                       locked={metaBlocked || loading}
                       canEdit={() =>
                         !dirty.current &&
@@ -1200,18 +1204,23 @@ export function EventDetails({
                       <ul>
                         {data.contacts.map((person) => (
                           <li key={person.id}>
-                            {person.role === 'primary'
-                              ? 'Hauptkontakt'
-                              : 'Weiterer Kontakt'}
-                            : {person.name} {person.contactPerson}
-                            {person.detailsUnavailable &&
-                              ' (Kontaktdaten noch nicht geladen)'}{' '}
+                            <small>
+                              {person.role === 'primary'
+                                ? 'Hauptkontakt'
+                                : 'Weiterer Kontakt'}
+                            </small>
                             <a
                               href={'#contact-' + person.id}
                               aria-label={'Details anzeigen: ' + person.name}
                             >
-                              Details anzeigen
-                            </a>{' '}
+                              {person.name}
+                            </a>
+                            {person.contactPerson && (
+                              <p>{person.contactPerson}</p>
+                            )}
+                            {person.detailsUnavailable && (
+                              <p>Kontaktdaten noch nicht geladen.</p>
+                            )}
                             {person.email && (
                               <a
                                 href={
@@ -1234,6 +1243,10 @@ export function EventDetails({
                           </li>
                         ))}
                       </ul>
+                      <details className="event-contact-edit">
+                        <summary>Kontakte bearbeiten</summary>
+                        <div ref={setContactFieldsTarget} />
+                      </details>
                     </section>
                     <section
                       className="event-aside-location"
