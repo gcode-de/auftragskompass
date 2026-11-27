@@ -4,15 +4,17 @@ import {
   OriginalInquiryContents,
   type OriginalInquiry,
 } from './WebsiteInquiry.js';
-type Item = { id: string; original: OriginalInquiry };
+type Item = { id: string; original: OriginalInquiry; eventId?: string | null };
 type Page = { items: Item[]; total: number; offset: number; limit: number };
 export function WebsiteInbox({
   csrfToken,
   timeZone,
+  mailbox = false,
   onImported,
 }: {
   csrfToken: string;
   timeZone?: string | undefined;
+  mailbox?: boolean;
   onImported: () => Promise<void>;
 }) {
   const sequence = useRef(0);
@@ -26,7 +28,9 @@ export function WebsiteInbox({
     setFailed(false);
     try {
       const response = await fetch(
-        '/api/v1/website-inquiries?offset=' + offset,
+        '/api/v1/website-inquiries?offset=' +
+          offset +
+          (mailbox ? '&view=mail' : ''),
       );
       if (!response.ok) throw new Error();
       const value = (await response.json()) as Page;
@@ -54,20 +58,22 @@ export function WebsiteInbox({
   }, []);
   return (
     <section
-      id="website-inbox"
+      id={mailbox ? undefined : 'website-inbox'}
       className="website-inbox"
-      aria-label="Website-Eingänge (Diagnose)"
+      aria-label={mailbox ? 'Website-Anfragen' : 'Website-Eingänge (Diagnose)'}
     >
-      <h2>Website-Eingänge (Diagnose)</h2>
-      <p>
-        Technische Diagnose: Hier stehen nur Eingänge, deren automatische
-        Übernahme als Option noch aussteht – etwa nach einem vorübergehenden
-        Zustell- oder Verarbeitungsfehler. Normale Eingänge werden ohne Klick
-        zur Option und erscheinen in der Eventliste. Die manuelle Übernahme
-        erzeugt eine Option und keine feste Buchung; ohne passenden Kontakt
-        bleibt der Vorgang bewusst ohne Kontaktzuordnung. Ein Rückstand ist ein
-        Betriebszustand, kein Pflichtschritt vor der Eventanlage.
-      </p>
+      <h2>{mailbox ? 'Website-Anfragen' : 'Website-Eingänge (Diagnose)'}</h2>
+      {!mailbox && (
+        <p>
+          Technische Diagnose: Hier stehen nur Eingänge, deren automatische
+          Übernahme als Option noch aussteht – etwa nach einem vorübergehenden
+          Zustell- oder Verarbeitungsfehler. Normale Eingänge werden ohne Klick
+          zur Option und erscheinen in der Eventliste. Die manuelle Übernahme
+          erzeugt eine Option und keine feste Buchung; ohne passenden Kontakt
+          bleibt der Vorgang bewusst ohne Kontaktzuordnung. Ein Rückstand ist
+          ein Betriebszustand, kein Pflichtschritt vor der Eventanlage.
+        </p>
+      )}
       <button
         type="button"
         className="tertiary-action"
@@ -88,53 +94,74 @@ export function WebsiteInbox({
         <>
           {page.total === 0 ? (
             <p>
-              Keine offenen Ausnahmen. Neue Website-Eingänge werden automatisch
-              als Option angelegt.
+              {mailbox
+                ? 'Keine Website-Anfragen.'
+                : 'Keine offenen Ausnahmen. Neue Website-Eingänge werden automatisch als Option angelegt.'}
             </p>
           ) : (
             <>
               <p>
                 {page.total}{' '}
-                {page.total === 1
-                  ? 'Eingang nicht automatisch angelegt'
-                  : 'Eingänge nicht automatisch angelegt'}{' '}
+                {mailbox
+                  ? 'Website-Anfragen'
+                  : page.total === 1
+                    ? 'Eingang nicht automatisch angelegt'
+                    : 'Eingänge nicht automatisch angelegt'}{' '}
                 · angezeigt {page.offset + 1}–
                 {Math.min(page.offset + page.items.length, page.total)}
               </p>
               <ul>
                 {page.items.map((item) => (
                   <li key={item.id}>
-                    <InboxEntry
-                      item={item}
-                      csrfToken={csrfToken}
-                      timeZone={timeZone}
-                      onSuccess={(contactId) => {
-                        setMessage(
-                          contactId === null
-                            ? 'Als Option übernommen. Kontakt noch offen – du kannst ihn später am Event zuordnen. Du findest den Vorgang in der Eventliste.'
-                            : 'Als Option übernommen. Du findest den Vorgang in der Eventliste.',
-                        );
-                        setPage((current) =>
-                          current
-                            ? {
-                                ...current,
-                                total: current.total - 1,
-                                items: current.items.filter(
-                                  (row) => row.id !== item.id,
-                                ),
-                              }
-                            : current,
-                        );
-                        void load();
-                        void onImported().catch(() =>
+                    {item.eventId !== undefined ? (
+                      <details className="website-inquiry">
+                        <summary>
+                          {item.original.fields
+                            .slice(0, 2)
+                            .map((field) => field.value)
+                            .join(' ')}
+                        </summary>
+                        {item.eventId && (
+                          <a href={'#event-' + item.eventId}>Zum Event</a>
+                        )}
+                        <OriginalInquiryContents
+                          original={item.original}
+                          timeZone={timeZone}
+                        />
+                      </details>
+                    ) : (
+                      <InboxEntry
+                        item={item}
+                        csrfToken={csrfToken}
+                        timeZone={timeZone}
+                        onSuccess={(contactId) => {
                           setMessage(
                             contactId === null
-                              ? 'Als Option übernommen. Kontakt noch offen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.'
-                              : 'Als Option übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
-                          ),
-                        );
-                      }}
-                    />
+                              ? 'Als Option übernommen. Kontakt noch offen – du kannst ihn später am Event zuordnen. Du findest den Vorgang in der Eventliste.'
+                              : 'Als Option übernommen. Du findest den Vorgang in der Eventliste.',
+                          );
+                          setPage((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  total: current.total - 1,
+                                  items: current.items.filter(
+                                    (row) => row.id !== item.id,
+                                  ),
+                                }
+                              : current,
+                          );
+                          void load();
+                          void onImported().catch(() =>
+                            setMessage(
+                              contactId === null
+                                ? 'Als Option übernommen. Kontakt noch offen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.'
+                                : 'Als Option übernommen. Die Eventliste konnte nicht neu geladen werden; sie wird bei der nächsten Rückkehr aktualisiert.',
+                            ),
+                          );
+                        }}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>

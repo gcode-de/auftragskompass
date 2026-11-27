@@ -35,6 +35,7 @@ const links = [
     'Events',
     'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z',
   ],
+  ['postfach', 'Mails', 'M3 5h18v14H3zM3 6l9 7 9-7'],
   [
     'resources',
     'Ressourcen',

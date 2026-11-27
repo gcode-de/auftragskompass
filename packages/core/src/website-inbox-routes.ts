@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import AjvCompiler from '@fastify/ajv-compiler';
-import { and, eq, notExists, count, asc } from 'drizzle-orm';
+import { and, eq, isNull, notExists, count, asc, desc } from 'drizzle-orm';
 import { database } from './database.js';
 import { AccessError, requireAdministrator } from './access.js';
-import { websiteInquiryDeliveries, websiteInquiries } from './schema.js';
+import {
+  events,
+  websiteInquiryDeliveries,
+  websiteInquiries,
+} from './schema.js';
 import {
   websiteInquiryView,
   websiteInquiryViewSchema,
@@ -26,7 +30,7 @@ export function registerWebsiteInboxRoutes(
   pool: Pool,
   tenantId: string,
 ) {
-  app.get<{ Querystring: { offset?: string } }>(
+  app.get<{ Querystring: { offset?: string; view?: 'mail' } }>(
     '/api/v1/website-inquiries',
     {
       validatorCompiler,
@@ -35,6 +39,7 @@ export function registerWebsiteInboxRoutes(
           type: 'object',
           additionalProperties: false,
           properties: {
+            view: { type: 'string', enum: ['mail'] },
             offset: {
               type: 'string',
               pattern: '^(0|[1-9][0-9]{0,5})$',
@@ -60,6 +65,12 @@ export function registerWebsiteInboxRoutes(
                   properties: {
                     id: { type: 'string', format: 'uuid' },
                     original: websiteInquiryViewSchema,
+                    eventId: {
+                      anyOf: [
+                        { type: 'string', format: 'uuid' },
+                        { type: 'null' },
+                      ],
+                    },
                   },
                 },
               },
@@ -80,19 +91,22 @@ export function registerWebsiteInboxRoutes(
               tenantId,
               request.authSession!.userId,
             );
+            const mail = request.query.view === 'mail';
             const pending = and(
               eq(websiteInquiryDeliveries.tenantId, tenantId),
-              notExists(
-                tx
-                  .select({ id: websiteInquiries.id })
-                  .from(websiteInquiries)
-                  .where(
-                    and(
-                      eq(websiteInquiries.tenantId, tenantId),
-                      eq(websiteInquiries.id, websiteInquiryDeliveries.id),
-                    ),
+              mail
+                ? undefined
+                : notExists(
+                    tx
+                      .select({ id: websiteInquiries.id })
+                      .from(websiteInquiries)
+                      .where(
+                        and(
+                          eq(websiteInquiries.tenantId, tenantId),
+                          eq(websiteInquiries.id, websiteInquiryDeliveries.id),
+                        ),
+                      ),
                   ),
-              ),
             );
             const [summary] = await tx
               .select({ total: count() })
@@ -103,12 +117,35 @@ export function registerWebsiteInboxRoutes(
               Math.floor(Math.max(0, summary!.total - 1) / 25) * 25,
             );
             const rows = await tx
-              .select()
+              .select({
+                id: websiteInquiryDeliveries.id,
+                payload: websiteInquiryDeliveries.payload,
+                eventId: events.id,
+                importedId: websiteInquiries.id,
+              })
               .from(websiteInquiryDeliveries)
+              .leftJoin(
+                websiteInquiries,
+                and(
+                  eq(
+                    websiteInquiries.tenantId,
+                    websiteInquiryDeliveries.tenantId,
+                  ),
+                  eq(websiteInquiries.id, websiteInquiryDeliveries.id),
+                ),
+              )
+              .leftJoin(
+                events,
+                and(
+                  eq(events.tenantId, websiteInquiries.tenantId),
+                  eq(events.id, websiteInquiries.eventId),
+                  isNull(events.deletedAt),
+                ),
+              )
               .where(pending)
               .orderBy(
-                asc(websiteInquiryDeliveries.stagedAt),
-                asc(websiteInquiryDeliveries.id),
+                (mail ? desc : asc)(websiteInquiryDeliveries.stagedAt),
+                (mail ? desc : asc)(websiteInquiryDeliveries.id),
               )
               .limit(25)
               .offset(offset);
@@ -120,7 +157,11 @@ export function registerWebsiteInboxRoutes(
                 const original = websiteInquiryView(row.payload);
                 if ((row.payload as { id: string }).id !== row.id)
                   throw new Error('Invalid stored inquiry');
-                return { id: row.id, original };
+                return {
+                  id: row.id,
+                  original,
+                  ...(row.importedId ? { eventId: row.eventId } : {}),
+                };
               }),
             };
           },

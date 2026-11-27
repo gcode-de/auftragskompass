@@ -43,7 +43,7 @@ export type MailEditState = 'open' | 'done';
 export type MailSendState =
   'none' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'uncertain';
 export type MailOutboxState =
-  'pending' | 'sending' | 'sent' | 'failed' | 'uncertain';
+  'pending' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'cancelled';
 export const mailDirections = ['in', 'out'] as const;
 export const mailFolders = ['inbox', 'drafts', 'sent', 'trash'] as const;
 export const mailEditStates = ['open', 'done'] as const;
@@ -61,6 +61,7 @@ export const mailOutboxStates = [
   'sent',
   'failed',
   'uncertain',
+  'cancelled',
 ] as const;
 
 export type MailErrorReason =
@@ -117,11 +118,12 @@ export class MailError extends Error {
 // `uncertain`; `failed` may be retried; `sent` and `uncertain` are terminal
 // (BKP021: an unclear provider outcome is never re-sent automatically).
 const outboxTransitions: Record<MailOutboxState, readonly MailOutboxState[]> = {
-  pending: ['sending'],
+  pending: ['sending', 'cancelled'],
   sending: ['sent', 'failed', 'uncertain'],
-  failed: ['sending'],
+  failed: ['sending', 'cancelled'],
   sent: [],
   uncertain: [],
+  cancelled: [],
 };
 export function canTransitionMailOutbox(
   from: MailOutboxState,
@@ -245,7 +247,16 @@ export type MailMessageSummary = {
   // QW5: when a planned order will be sent; null once it is due or sent.
   scheduledFor: string | null;
 };
+type MailDraftEdit = {
+  to: string;
+  subject: string;
+  bodyHtml: string;
+  revision: string;
+};
+type MailDraftReceipt = { messageId: string };
+
 export type MailMessageDetail = MailMessageSummary & {
+  revision: string;
   bodyText: string;
   bodyHtml: string | null;
   cc: string;
@@ -571,6 +582,7 @@ function libraryFileName(displayName: string, mediaType: string): string {
 const messageColumns = sql`m.id::text AS id, m.account_id::text AS account_id,
   m.direction, m.folder, m.edit_state, m.send_state, m.subject,
   m.body_text, m.body_html, m.from_address, m.to_addresses,
+  extract(epoch from m.updated_at)::text AS revision,
   m.cc_addresses, m.bcc_addresses, m.message_id, m.imap_uid::text AS imap_uid,
   m.thread_key, m.contact_id::text AS contact_id, m.event_id::text AS event_id,
   to_char(m.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
@@ -619,6 +631,7 @@ function toAccount(row: AccountQueryRow): MailAccountRow {
 }
 
 type MessageQueryRow = {
+  revision: string;
   id: string;
   account_id: string;
   direction: MailDirection;
@@ -687,6 +700,7 @@ function toDetail(
       Date.parse(outbox.nextAttemptAt) > Date.now()
         ? outbox.nextAttemptAt
         : null,
+    revision: row.revision,
     bodyText: row.body_text,
     bodyHtml: row.body_html,
     cc: row.cc_addresses,
@@ -736,6 +750,16 @@ export function mailRepository(
       rows: OutboxQueryRow[];
     };
     return result.rows[0] ? toOutbox(result.rows[0]) : null;
+  }
+
+  async function draftReceipt(connection: Connection, requestId: string) {
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(requestId))
+      throw new MailError('idempotency_conflict');
+    const result = await reviewed(connection).execute(sql`
+      SELECT id FROM mail_messages
+       WHERE tenant_id=${tenantId} AND id=${requestId}::uuid
+    `);
+    return Boolean((result as { rows: unknown[] }).rows[0]);
   }
 
   // One mail account takes the order. An explicit choice must be an enabled
@@ -1424,6 +1448,8 @@ export function mailRepository(
         contactId?: string;
         eventId?: string;
         accountId?: string;
+        stateGroup?: string;
+        offset?: number;
       } = {},
     ): Promise<MailMessageSummary[]> {
       const conditions = [sql`m.tenant_id=${tenantId}`];
@@ -1432,6 +1458,12 @@ export function mailRepository(
           throw new MailError('invalid_folder');
         conditions.push(sql`m.folder=${filter.folder}`);
       }
+      if (filter.stateGroup === 'draft')
+        conditions.push(sql`m.send_state='none'`);
+      if (filter.stateGroup === 'planned')
+        conditions.push(sql`m.send_state IN ('scheduled','sending')`);
+      if (filter.stateGroup === 'failed')
+        conditions.push(sql`m.send_state IN ('failed','uncertain')`);
       if (filter.contactId !== undefined)
         conditions.push(sql`m.contact_id=${filter.contactId}::uuid`);
       if (filter.eventId !== undefined)
@@ -1449,7 +1481,7 @@ export function mailRepository(
                  ORDER BY o.created_at DESC, o.id DESC LIMIT 1) AS scheduled_for
           FROM mail_messages m
          WHERE ${sql.join(conditions, sql` AND `)}
-         ORDER BY m.created_at DESC, m.id DESC LIMIT 100`)) as {
+         ORDER BY m.created_at DESC, m.id DESC LIMIT 100 OFFSET ${filter.offset ?? 0}`)) as {
         rows: MessageQueryRow[];
       };
       return result.rows.map(toSummary);
@@ -1461,6 +1493,8 @@ export function mailRepository(
       actorId: string,
       messageId: string,
       idempotencyKey: string,
+      sendAt?: string | null,
+      revision?: string,
     ): Promise<{ job: MailOutboxRow; created: boolean }> {
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
@@ -1471,8 +1505,12 @@ export function mailRepository(
           folder: MailFolder;
           send_state: MailSendState;
           to_addresses: string;
+          subject: string;
+          body_text: string;
+          revision: string;
         }>(
-          sql`SELECT direction, folder, send_state, to_addresses FROM mail_messages
+          sql`SELECT direction, folder, send_state, to_addresses, subject, body_text, extract(epoch from updated_at)::text AS revision
+               FROM mail_messages
                WHERE tenant_id=${tenantId} AND id=${messageId}::uuid FOR UPDATE`,
         );
         const found = message.rows[0];
@@ -1487,12 +1525,17 @@ export function mailRepository(
             throw new MailError('idempotency_conflict');
           return { job: toOutbox(existing.rows[0]), created: false };
         }
+        if (revision !== undefined && found.revision !== revision)
+          throw new MailError('not_sendable');
         if (found.direction !== 'out') throw new MailError('not_sendable');
         if (!['none', 'failed'].includes(found.send_state))
           throw new MailError('not_sendable');
         if (found.folder !== 'drafts') throw new MailError('not_sendable');
         if (!found.to_addresses.trim())
           throw new MailError('invalid_recipients');
+        if (!found.subject.trim()) throw new MailError('invalid_subject');
+        if (/{{\s*\w+\s*}}/.test(found.subject + '\n' + found.body_text))
+          throw new MailError('missing_placeholder');
         const open = await tx.execute<{ id: string }>(
           sql`SELECT id::text AS id FROM mail_outbox
                WHERE tenant_id=${tenantId} AND message_id=${messageId}::uuid
@@ -1500,8 +1543,9 @@ export function mailRepository(
         );
         if (open.rows[0]) throw new MailError('not_sendable');
         const inserted = (await reviewed(tx).execute(sql`
-          INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key)
-          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key})
+          INSERT INTO mail_outbox AS o (tenant_id,id,message_id,idempotency_key,next_attempt_at)
+          VALUES (${tenantId},${randomUUID()}::uuid,${messageId}::uuid,${key},
+                  coalesce(${sendAtOf(sendAt)}::timestamptz, now()))
           ON CONFLICT (tenant_id,idempotency_key) DO NOTHING
           RETURNING ${outboxColumns}`)) as { rows: OutboxQueryRow[] };
         const row = inserted.rows[0];
@@ -1533,7 +1577,7 @@ export function mailRepository(
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
         const removed = await tx.execute<{ id: string }>(
-          sql`DELETE FROM mail_outbox
+          sql`UPDATE mail_outbox SET state='cancelled', updated_at=now()
                WHERE tenant_id=${tenantId} AND message_id=${messageId}::uuid
                  AND state='pending' AND attempts=0
                  AND next_attempt_at > now()
@@ -1555,36 +1599,124 @@ export function mailRepository(
       });
     },
 
+    async reschedule(actorId: string, messageId: string, sendAt: string) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const next = sendAtOf(sendAt);
+        if (!next) throw new MailError('invalid_send_at');
+        const result = await tx.execute<{ id: string }>(sql`
+          UPDATE mail_outbox SET next_attempt_at=${next}::timestamptz, updated_at=now()
+           WHERE tenant_id=${tenantId} AND message_id=${messageId}::uuid
+             AND state='pending' AND attempts=0 AND next_attempt_at>now()
+           RETURNING id::text AS id
+        `);
+        const job = result.rows[0];
+        if (!job) throw new MailError('not_scheduled');
+        await appendAudit(
+          tx,
+          tenantId,
+          'mail.send_rescheduled',
+          actorId,
+          job.id,
+        );
+      });
+    },
+
+    async editDraft(actorId: string, messageId: string, input: MailDraftEdit) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const to = mailAddressList(input.to);
+        const subject = plainText(input.subject, 998, 'invalid_subject');
+        const html = sanitizeMailHtml(
+          htmlBody(input.bodyHtml, 200000, 'invalid_body'),
+        );
+        const text = mailBodyTextFromHtml(html);
+        // Use the same lock order as the worker. If the worker has claimed
+        // this failure, the draft update refuses and the transaction rolls back.
+        await tx.execute(sql`
+          UPDATE mail_outbox SET state='cancelled', last_error_code=NULL, updated_at=now()
+           WHERE tenant_id=${tenantId} AND message_id=${messageId}::uuid AND state='failed'
+        `);
+        const result = (await reviewed(tx).execute(sql`
+          UPDATE mail_messages AS m
+             SET to_addresses=${to}, subject=${subject},
+                 body_html=CASE WHEN coalesce(m.body_html,'')=${input.bodyHtml} THEN m.body_html ELSE ${html || null} END,
+                 body_text=CASE WHEN coalesce(m.body_html,'')=${input.bodyHtml} THEN m.body_text ELSE ${text} END,
+                 send_state='none', updated_at=now()
+           WHERE tenant_id=${tenantId} AND id=${messageId}::uuid
+             AND direction='out' AND folder='drafts' AND send_state IN ('none','failed')
+             AND extract(epoch from updated_at)::text=${input.revision}
+           RETURNING ${messageColumns}
+        `)) as { rows: MessageQueryRow[] };
+        const row = result.rows[0];
+        if (!row) throw new MailError('not_sendable');
+        await appendAudit(tx, tenantId, 'mail.message_edited', actorId, row.id);
+        return toDetail(row, null);
+      });
+    },
+
+    async moveTrash(actorId: string, messageId: string, restore: boolean) {
+      return db.transaction(async (tx) => {
+        await lockTenant(tx, tenantId);
+        await requireAdministrator(tx, tenantId, actorId);
+        const result = await tx.execute(sql`
+          UPDATE mail_messages SET updated_at=now(), folder=
+            CASE WHEN NOT ${restore} THEN 'trash' WHEN direction='in' THEN 'inbox'
+                 WHEN send_state='sent' THEN 'sent' ELSE 'drafts' END
+           WHERE tenant_id=${tenantId} AND id=${messageId}::uuid
+             AND (folder='trash')=${restore} AND send_state IN ('none','sent')
+        `);
+        if (!result.rowCount) throw new MailError('not_sendable');
+        await appendAudit(
+          tx,
+          tenantId,
+          'mail.message_moved',
+          actorId,
+          messageId,
+        );
+      });
+    },
+
     // MAIL-EVENT-01: a free mail is one explicit gesture like the document
     // send - the request id is the idempotency key, so a repeat or an
     // unclear answer can never become a second order. The body runs through
     // the same allowlist sanitizer and text derivation as the document
     // mail; subject and addresses go through the same plain-text and
     // address validation, so no header line can be split.
-    async scheduleCompose(
+    async scheduleCompose<Draft extends boolean = false>(
       actorId: string,
       input: MailComposeInput,
-    ): Promise<{ job: MailOutboxRow; created: boolean }> {
+      saveAsDraft?: Draft,
+    ): Promise<
+      Draft extends true
+        ? MailDraftReceipt
+        : { job: MailOutboxRow; created: boolean }
+    > {
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
-        const key = `mail-compose:${idempotencyKeyOf(input.requestId)}`;
+        const requestId = idempotencyKeyOf(input.requestId);
+        if (saveAsDraft && (await draftReceipt(tx, requestId)))
+          return { messageId: requestId };
+        const key = `mail-compose:${requestId}`;
         const existing = (await reviewed(tx).execute(sql`
           SELECT ${outboxColumns} FROM mail_outbox o
            WHERE o.tenant_id=${tenantId} AND o.idempotency_key=${key}`)) as {
           rows: OutboxQueryRow[];
         };
-        if (existing.rows[0])
+        if (!saveAsDraft && existing.rows[0])
           return { job: toOutbox(existing.rows[0]), created: false };
         const to = mailAddressList(input.to);
-        if (!to) throw new MailError('invalid_recipients');
+        if (!saveAsDraft && !to) throw new MailError('invalid_recipients');
         const rawSubject = plainText(
             input.subject ?? '',
             998,
             'invalid_subject',
           ),
           rawHtml = htmlBody(input.bodyHtml, 200000, 'invalid_body');
-        if (!rawSubject) throw new MailError('invalid_subject');
+        if (!saveAsDraft && !rawSubject) throw new MailError('invalid_subject');
         try {
           assertMailPlaceholders(rawHtml, rawSubject);
         } catch {
@@ -1626,7 +1758,10 @@ export function mailRepository(
               ]),
             ),
           );
-        if (resolvedSubject.missing.length || resolvedBody.missing.length)
+        if (
+          !saveAsDraft &&
+          (resolvedSubject.missing.length || resolvedBody.missing.length)
+        )
           throw new MailError('missing_placeholder');
         const subject = resolvedSubject.subject;
         if (subject.length > 998) throw new MailError('invalid_subject');
@@ -1653,7 +1788,7 @@ export function mailRepository(
           userIds: input.forwardUserIds,
         });
         const account = await usableAccount(tx, input.accountId),
-          messageId = randomUUID();
+          messageId = saveAsDraft ? requestId : randomUUID();
         await reviewed(tx).execute(sql`
           INSERT INTO mail_messages AS m
             (tenant_id,id,account_id,direction,folder,subject,body_text,
@@ -1662,7 +1797,7 @@ export function mailRepository(
           VALUES (${tenantId},${messageId}::uuid,${account}::uuid,'out','drafts',
                   ${subject},${text},${html || null},${to},${cc || ''},
                   ${input.contactId ?? null}::uuid,${input.eventId ?? null}::uuid,
-                  'scheduled')`);
+                  ${saveAsDraft ? 'none' : 'scheduled'})`);
         await insertAttachments(tx, messageId, documents, files);
         await insertInline(tx, messageId, signature?.inline);
         await appendAudit(
@@ -1672,6 +1807,7 @@ export function mailRepository(
           actorId,
           messageId,
         );
+        if (saveAsDraft) return { messageId };
         const job = (await reviewed(tx).execute(sql`
           INSERT INTO mail_outbox AS o
             (tenant_id,id,message_id,idempotency_key,next_attempt_at)
@@ -1690,7 +1826,11 @@ export function mailRepository(
           job.rows[0].id,
         );
         return { job: toOutbox(job.rows[0]), created: true };
-      });
+      }) as Promise<
+        Draft extends true
+          ? MailDraftReceipt
+          : { job: MailOutboxRow; created: boolean }
+      >;
     },
 
     // MAIL-DOC-01: a document send is one explicit gesture: a client request id
@@ -1700,15 +1840,18 @@ export function mailRepository(
     // here to prove they exist and to record their size, and again for every
     // attempt. Nothing is rendered, copied into the database or taken from a
     // user-provided path.
-    async scheduleDocumentSend(
+    async scheduleDocumentSend<Draft extends boolean = false>(
       actorId: string,
       input: MailDocumentSendInput,
-    ): Promise<MailDocumentSendResult> {
+      saveAsDraft?: Draft,
+    ): Promise<Draft extends true ? MailDraftReceipt : MailDocumentSendResult> {
       return db.transaction(async (tx) => {
         await lockTenant(tx, tenantId);
         await requireAdministrator(tx, tenantId, actorId);
         const requestId = idempotencyKeyOf(input.requestId),
           key = `document-send:${input.documentId}:${requestId}`;
+        if (saveAsDraft && (await draftReceipt(tx, requestId)))
+          return { messageId: requestId };
         // A replay answers the very same order, even if the document was
         // withdrawn in between: the job already exists and is not re-decided.
         const existing = (await reviewed(tx).execute(sql`
@@ -1716,7 +1859,7 @@ export function mailRepository(
            WHERE o.tenant_id=${tenantId} AND o.idempotency_key=${key}`)) as {
           rows: OutboxQueryRow[];
         };
-        if (existing.rows[0])
+        if (!saveAsDraft && existing.rows[0])
           return await documentSendOf(
             tx,
             toOutbox(existing.rows[0]),
@@ -1729,7 +1872,7 @@ export function mailRepository(
           html = htmlBody(input.bodyHtml, 200000, 'invalid_body');
         // At most one body kind: the formatted body wins nothing silently.
         if (html && text) throw new MailError('invalid_body');
-        if (!to) throw new MailError('invalid_recipients');
+        if (!saveAsDraft && !to) throw new MailError('invalid_recipients');
         const found = await tx.execute<{
           number: string | null;
           state: 'draft' | 'final' | 'withdrawn';
@@ -1776,7 +1919,7 @@ export function mailRepository(
           );
 
         const account = await usableAccount(tx, input.accountId),
-          messageId = randomUUID(),
+          messageId = saveAsDraft ? requestId : randomUUID(),
           filename = attachmentFileName(document.number),
           // MAIL-EDITOR-01/MAIL-TPL-01c: resolve subject and body, sanitize
           // and derive - on the server.
@@ -1823,6 +1966,16 @@ export function mailRepository(
                     ${bytes.byteLength})`);
         await insertAttachments(tx, messageId, extraDocuments, files);
         await insertInline(tx, messageId, signature?.inline);
+        if (saveAsDraft) {
+          await appendAudit(
+            tx,
+            tenantId,
+            'mail.message_created',
+            actorId,
+            messageId,
+          );
+          return { messageId };
+        }
         const job = (await reviewed(tx).execute(sql`
           INSERT INTO mail_outbox AS o
             (tenant_id,id,message_id,idempotency_key,next_attempt_at)
@@ -1866,7 +2019,9 @@ export function mailRepository(
           ),
           created: true,
         };
-      });
+      }) as Promise<
+        Draft extends true ? MailDraftReceipt : MailDocumentSendResult
+      >;
     },
 
     // MAIL-EDITOR-01: the read-only twin of the send above. The same document
@@ -2506,10 +2661,17 @@ const outboxSchema = {
     sentAt: nullableText,
   },
 } as const;
+const draftReceiptSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['messageId'],
+  properties: { messageId: { type: 'string', format: 'uuid' } },
+};
 const detailSchema = {
   ...summarySchema,
   required: [
     ...summarySchema.required,
+    'revision',
     'bodyText',
     'bodyHtml',
     'cc',
@@ -2520,6 +2682,7 @@ const detailSchema = {
   ],
   properties: {
     ...summarySchema.properties,
+    revision: { type: 'string' },
     bodyText: { type: 'string' },
     bodyHtml: nullableText,
     cc: { type: 'string' },
@@ -2740,7 +2903,16 @@ export function registerMailRoutes(
       }
     },
   );
-  app.get<{ Querystring: Record<string, string | undefined> }>(
+  app.get<{
+    Querystring: {
+      folder?: string;
+      contactId?: string;
+      eventId?: string;
+      accountId?: string;
+      stateGroup?: string;
+      offset?: number;
+    };
+  }>(
     '/api/v1/mail/messages',
     {
       schema: {
@@ -2749,6 +2921,11 @@ export function registerMailRoutes(
           additionalProperties: false,
           properties: {
             folder: { type: 'string', maxLength: 20 },
+            offset: { type: 'integer', minimum: 0, maximum: 100000 },
+            stateGroup: {
+              type: 'string',
+              enum: ['draft', 'planned', 'failed'],
+            },
             contactId: nullableUuidParam,
             eventId: nullableUuidParam,
             accountId: nullableUuidParam,
@@ -2779,9 +2956,95 @@ export function registerMailRoutes(
       }
     },
   );
+  app.put<{ Params: { id: string }; Body: MailDraftEdit }>(
+    '/api/v1/mail/messages/:id',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['to', 'subject', 'bodyHtml', 'revision'],
+          properties: {
+            to: { type: 'string', maxLength: 4000 },
+            subject: { type: 'string', maxLength: 998 },
+            bodyHtml: { type: 'string', maxLength: 200000 },
+            revision: { type: 'string', maxLength: 100 },
+          },
+        },
+        response: { 200: detailSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await repo.editDraft(
+          request.authSession!.userId,
+          request.params.id,
+          request.body,
+        );
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body: { sendAt: string } }>(
+    '/api/v1/mail/messages/:id/reschedule',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['sendAt'],
+          properties: { sendAt: { type: 'string', format: 'date-time' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await repo.reschedule(
+          request.authSession!.userId,
+          request.params.id,
+          request.body.sendAt,
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body: { restore: boolean } }>(
+    '/api/v1/mail/messages/:id/trash',
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['restore'],
+          properties: { restore: { type: 'boolean' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await repo.moveTrash(
+          request.authSession!.userId,
+          request.params.id,
+          request.body.restore,
+        );
+        return reply.code(204).send();
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
   // Only the durable send order: no SMTP call happens in a request, and a
   // repeat with the same key answers 200 with the very same job.
-  app.post<{ Params: { id: string }; Body: { idempotencyKey: string } }>(
+  app.post<{
+    Params: { id: string };
+    Body: { idempotencyKey: string; sendAt?: string | null; revision?: string };
+  }>(
     '/api/v1/mail/messages/:id/send',
     {
       schema: {
@@ -2792,6 +3055,8 @@ export function registerMailRoutes(
           required: ['idempotencyKey'],
           properties: {
             idempotencyKey: { type: 'string', minLength: 1, maxLength: 200 },
+            sendAt: sendAtSchema,
+            revision: { type: 'string', maxLength: 100 },
           },
         },
         response: { 200: outboxSchema, 201: outboxSchema },
@@ -2803,6 +3068,8 @@ export function registerMailRoutes(
           request.authSession!.userId,
           request.params.id,
           request.body.idempotencyKey,
+          request.body.sendAt,
+          request.body.revision,
         );
         return reply.code(created ? 201 : 200).send(job);
       } catch (error) {
@@ -2843,7 +3110,7 @@ export function registerMailRoutes(
   // durable order, the same refusal codes as the document send. The reply
   // is the outbox job; a repeat with the same request id answers the very
   // same job.
-  app.post<{ Body: MailComposeInput }>(
+  app.post<{ Body: MailComposeInput & { saveAsDraft?: boolean } }>(
     '/api/v1/mail/compose',
     {
       schema: {
@@ -2853,7 +3120,8 @@ export function registerMailRoutes(
           required: ['requestId', 'to'],
           properties: {
             requestId: { type: 'string', minLength: 1, maxLength: 200 },
-            to: { type: 'string', minLength: 3, maxLength: 4000 },
+            to: { type: 'string', maxLength: 4000 },
+            saveAsDraft: { type: 'boolean' },
             subject: { type: 'string', maxLength: 998 },
             bodyHtml: { type: 'string', maxLength: 200000 },
             contactId: nullableUuidParam,
@@ -2879,11 +3147,25 @@ export function registerMailRoutes(
             sendAt: sendAtSchema,
           },
         },
-        response: { 200: outboxSchema, 201: outboxSchema },
+        response: {
+          200: outboxSchema,
+          201: outboxSchema,
+          202: draftReceiptSchema,
+        },
       },
     },
     async (request, reply) => {
       try {
+        if (request.body.saveAsDraft)
+          return reply
+            .code(202)
+            .send(
+              await repo.scheduleCompose(
+                request.authSession!.userId,
+                request.body,
+                true,
+              ),
+            );
         const { job, created } = await repo.scheduleCompose(
           request.authSession!.userId,
           request.body,
@@ -2897,7 +3179,7 @@ export function registerMailRoutes(
   // MAIL-DOC-01: the only route that carries a document. It schedules the same
   // durable order as every other send and answers the same job for the same
   // request id, so an unclear answer can be repeated without a second mail.
-  app.post<{ Body: MailDocumentSendInput }>(
+  app.post<{ Body: MailDocumentSendInput & { saveAsDraft?: boolean } }>(
     '/api/v1/mail/document-send',
     {
       schema: {
@@ -2908,7 +3190,8 @@ export function registerMailRoutes(
           properties: {
             documentId: { type: 'string', format: 'uuid' },
             requestId: { type: 'string', minLength: 1, maxLength: 200 },
-            to: { type: 'string', minLength: 3, maxLength: 4000 },
+            to: { type: 'string', maxLength: 4000 },
+            saveAsDraft: { type: 'boolean' },
             subject: { type: 'string', maxLength: 998 },
             bodyText: { type: 'string', maxLength: 20000 },
             bodyHtml: { type: 'string', maxLength: 200000 },
@@ -2934,11 +3217,25 @@ export function registerMailRoutes(
             sendAt: sendAtSchema,
           },
         },
-        response: { 200: documentSendSchema, 201: documentSendSchema },
+        response: {
+          200: documentSendSchema,
+          201: documentSendSchema,
+          202: draftReceiptSchema,
+        },
       },
     },
     async (request, reply) => {
       try {
+        if (request.body.saveAsDraft)
+          return reply
+            .code(202)
+            .send(
+              await repo.scheduleDocumentSend(
+                request.authSession!.userId,
+                request.body,
+                true,
+              ),
+            );
         const result = await repo.scheduleDocumentSend(
           request.authSession!.userId,
           request.body,

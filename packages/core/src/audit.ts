@@ -49,6 +49,9 @@ export type AuditAction =
   // MAIL-021-A: the first durable mail row and the explicit send order are the
   // two events an operator must be able to trace later.
   | 'mail.message_created'
+  | 'mail.message_edited'
+  | 'mail.message_moved'
+  | 'mail.send_rescheduled'
   | 'mail.send_scheduled'
   // MAIL-021-B: an accepted message and the deliberate repetition of an unclear
   // attempt are separate, traceable events.

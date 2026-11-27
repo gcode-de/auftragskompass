@@ -24,6 +24,7 @@ import { DocumentNumbersPanel } from './DocumentNumbersPanel.js';
 import { DocumentLayoutPanel } from './DocumentLayoutPanel.js';
 import { ResourcePanel } from './ResourcePanel.js';
 import { ResourceSettingsPanel } from './ResourceSettingsPanel.js';
+import { MailWorkspace } from './MailWorkspace.js';
 import { WebsiteInbox } from './WebsiteInbox.js';
 import { UndeliveredMailNotice } from './EventMails.js';
 import { MailSignaturesPanel } from './MailSignaturesPanel.js';
@@ -181,6 +182,16 @@ export function AuthPanel() {
               showViewNavigation={route === 'events'}
             />
           </div>
+          {route === 'postfach' && (
+            <div className="workspace-page">
+              <MailWorkspace
+                csrfToken={user.csrfToken}
+                onInquiryImported={async () =>
+                  setImportRevision((value) => value + 1)
+                }
+              />
+            </div>
+          )}
           <div className="workspace-page" hidden={route !== 'documents'}>
             <FilesPanel active={route === 'documents'} documentsOnly />
           </div>

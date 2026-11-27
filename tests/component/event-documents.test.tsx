@@ -7627,3 +7627,33 @@ test('an unknown linked document changes nothing', async () => {
   ).toBeNull();
   expect(document.activeElement).toBe(document.body);
 });
+
+test.each(['compose', 'document-send'])(
+  'the %s form saves a draft without scheduling delivery',
+  async (form) => {
+    const { calls } = setup({ documents: [finalized] });
+    render(<EventDocuments {...props} contactEmail="" />);
+    let dialog: HTMLElement;
+    if (form === 'compose') {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Neue Mail schreiben' }),
+      );
+      dialog = await screen.findByRole('dialog', {
+        name: 'Neue Mail schreiben',
+      });
+    } else {
+      dialog = await openMailSend(
+        await screen.findByRole('button', {
+          name: 'Angebot AN-2030-0001 per E-Mail senden',
+        }),
+      );
+    }
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Als Entwurf speichern' }),
+    );
+    await screen.findByText('Entwurf gespeichert.');
+    expect(
+      calls.find((call) => call.url === '/api/v1/mail/' + form)?.body,
+    ).toMatchObject({ saveAsDraft: true });
+  },
+);
