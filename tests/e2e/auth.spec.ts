@@ -5444,9 +5444,10 @@ async function signInScenario(
         for (let step = 0; step < 24; step += 1) {
           await page.keyboard.press('Tab');
           expect(
-            await sheet.evaluate((element) =>
-              document.activeElement === document.body ||
-              element.contains(document.activeElement),
+            await sheet.evaluate(
+              (element) =>
+                document.activeElement === document.body ||
+                element.contains(document.activeElement),
             ),
           ).toBe(true);
         }
