@@ -430,7 +430,12 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
       ?.focus({ preventScroll: true });
   }, [recordId]);
   return (
-    <section id="resources" aria-label="Ressourcen" aria-busy={loading || busy}>
+    <section
+      id="resources"
+      aria-label="Ressourcen"
+      aria-busy={loading || busy}
+      data-record={record ? '' : undefined}
+    >
       {/* UI-BKP-14: like Bookitup the page title, the plus and the filters
           form the context column beside the rail; the list fills the canvas. */}
       <div className="resource-layout">
@@ -605,6 +610,8 @@ export function ResourcePanel({ csrfToken }: { csrfToken: string }) {
             <ResourceRecord
               resource={record}
               tab={recordTab}
+              candidates={rows}
+              csrfToken={csrfToken}
               onEdit={() => openEdit(record)}
               onClose={closeRecord}
             />

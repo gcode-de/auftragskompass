@@ -3336,6 +3336,59 @@ async function signInScenario(
             : el.setAttribute('data-theme', value),
         originalTheme,
       );
+    // RES-BKP-03/04: the name opens Bookitup's resource record with its
+    // context column, its tabs and the right-hand cards.
+    await resources.getByRole('link', { name: 'FB1', exact: true }).click();
+    await expect(page).toHaveURL(/#resource-/);
+    const resourceRecord = resources.getByRole('region', {
+      name: 'Ressourcen-Akte',
+    });
+    await expect(
+      resourceRecord.getByRole('heading', { name: 'Stammdaten' }),
+    ).toBeVisible();
+    await expect(
+      resourceRecord.getByRole('heading', { name: 'Zubehör' }),
+    ).toBeVisible();
+    const recordNav = resources.getByRole('navigation', {
+      name: 'Ressourcen-Akte',
+    });
+    for (const theme of ['light', 'dark']) {
+      await page
+        .locator('html')
+        .evaluate((el, value) => el.setAttribute('data-theme', value), theme);
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 800 });
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth + 1,
+          ),
+        ).toBe(true);
+        await page.screenshot({
+          path: `tests/test-results/resource-record-${mode}-${theme}-${width}.png`,
+          fullPage: true,
+        });
+      }
+    }
+    await page.setViewportSize(originalSize);
+    await recordNav.getByRole('link', { name: 'Planung' }).click();
+    await expect(
+      resourceRecord.getByText('Noch nichts eingeplant.'),
+    ).toBeVisible();
+    await page
+      .locator('html')
+      .evaluate(
+        (el, value) =>
+          value === null
+            ? el.removeAttribute('data-theme')
+            : el.setAttribute('data-theme', value),
+        originalTheme,
+      );
+    await resourceRecord
+      .getByRole('button', { name: 'Ressourcen – Akte schließen' })
+      .click();
+    await expect(
+      resources.getByRole('link', { name: 'FB1', exact: true }),
+    ).toBeFocused();
     await resources
       .getByRole('button', { name: 'Ressource bearbeiten: FB1', exact: true })
       .click();

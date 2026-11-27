@@ -738,6 +738,20 @@ Gesamtrahmen bleiben vorerst aus.
       Component (Öffnen, Kontextspalte, Stammdaten, Stift, Rückweg mit Fokus,
       Bestand, Planung, Fehler/Wiederholung, unbekannte Adresse).
       Commit `feat: open a resource record like bookitup`.
+- [x] **RES-BKP-04 — Verknüpfungen der Ressourcenakte wie Bookitup:** Rechts
+      neben dem Akteninhalt (schmal darunter) die Karten Zubehör, Alternativen,
+      Verknüpfte Produkte, bei Set/Case Bestandteile (eigene Auslegung: Bookitups
+      Bilder zeigen nur eine Item-Akte) sowie Verbaut in folgenden Cases und
+      Bestandteil folgender Sets (umgekehrt gelesen). Das Plus öffnet die Auswahl
+      wie „Zubehör hinzufügen“ (Suche, Typ, Kategorie, Häkchen, Speichern) und
+      ersetzt die Karte. Migration 0087 `resource_links` (accessory/alternative/
+      component, nie auf sich selbst) und `resource_products` (entfällt mit dem
+      Produkt); Bestandteile nur bei Set/Case, keine Zyklen. Verknüpfungen sind
+      Planungshinweise und reservieren nichts. **Tests:** Integration (ersetzen,
+      umgekehrt lesen, Set/Case-Regel, Zyklus, unbekanntes Ziel, Produkt
+      gelöscht, CSRF), Component (Karten, Auswahl, Filter, Fehler, Laden),
+      E2E (Akte hell/dunkel 1280/390).
+      Commit `feat: link resources and products like bookitup`.
 
 - [x] **UI-BKP-14 — Ressourcen wie Bookitup:** „Ressourcen“ ist eine eigene
       Seite statt eines Kastens im Einstellungsrahmen (alte Hashes und der

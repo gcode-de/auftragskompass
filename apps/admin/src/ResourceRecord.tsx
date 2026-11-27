@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { emptyEventFilters, updateUrlSearch } from './url-state.js';
+import { ResourceLinks, type Candidate } from './ResourceLinks.js';
 
 // RES-BKP-03: Bookitup's resource record (screens of 31.10.2026): the
 // context column names the resource and switches between Details, Bestand
@@ -69,11 +70,15 @@ function dateText(value: string) {
 export function ResourceRecord({
   resource,
   tab,
+  candidates,
+  csrfToken,
   onEdit,
   onClose,
 }: {
   resource: RecordResource;
   tab: RecordTab;
+  candidates: readonly Candidate[];
+  csrfToken: string;
   onEdit: (origin: HTMLElement) => void;
   onClose: () => void;
 }) {
@@ -167,123 +172,139 @@ export function ResourceRecord({
       <h2 ref={heading} tabIndex={-1} className="sr-only">
         {resource.name}
       </h2>
-      {tab === 'details' && (
-        <section className="record-card" aria-labelledby="resource-master">
-          <div className="card-head">
-            <h3 id="resource-master">Stammdaten</h3>
-            {editButton('Stammdaten bearbeiten')}
-          </div>
-          <dl className="record-facts">
-            <dt>Name</dt>
-            <dd>{resource.name}</dd>
-            <dt>Typ</dt>
-            <dd>{kindNames[resource.kind] ?? resource.kind}</dd>
-            <dt>Kategorie</dt>
-            <dd>{resource.category}</dd>
-            <dt>Beschreibung</dt>
-            <dd>{resource.description || 'Keine Beschreibung.'}</dd>
-            <dt>Interner Code</dt>
-            <dd>{resource.code}</dd>
-            <dt>Puffer</dt>
-            <dd>
-              {resource.beforeDays} Tage vorher, {resource.afterDays} Tage
-              nachher
-            </dd>
-            <dt>Zustand</dt>
-            <dd>
-              {stateNames[resource.state] ?? resource.state}
-              {resource.blocked ? ', gesperrt' : ''}
-            </dd>
-          </dl>
-        </section>
-      )}
-      {tab === 'stock' && (
-        <section className="record-card" aria-labelledby="resource-stock">
-          <div className="card-head">
-            <h3 id="resource-stock">Bestand</h3>
-            {editButton('Bestand bearbeiten')}
-          </div>
-          <p>
-            <strong>{resource.quantity} Stück</strong> im Bestand
-            {resource.state !== 'active' &&
-              ` – ${stateNames[resource.state] ?? resource.state}, nicht planbar`}
-          </p>
-          {failed && retry}
-          {planning && planning.units.length > 0 && (
-            <ul className="record-units">
-              {planning.units.map((unit) => (
-                <li key={unit.id}>
-                  {resource.name} · Einheit {unit.ordinal}
-                  <span className="muted">
-                    {unit.enabled ? ' – planbar' : ' – stillgelegt'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+      <div className="record-body">
+        <div className="record-main">
+          {tab === 'details' && (
+            <section className="record-card" aria-labelledby="resource-master">
+              <div className="card-head">
+                <h3 id="resource-master">Stammdaten</h3>
+                {editButton('Stammdaten bearbeiten')}
+              </div>
+              <dl className="record-facts">
+                <dt>Name</dt>
+                <dd>{resource.name}</dd>
+                <dt>Typ</dt>
+                <dd>{kindNames[resource.kind] ?? resource.kind}</dd>
+                <dt>Kategorie</dt>
+                <dd>{resource.category}</dd>
+                <dt>Beschreibung</dt>
+                <dd>{resource.description || 'Keine Beschreibung.'}</dd>
+                <dt>Interner Code</dt>
+                <dd>{resource.code}</dd>
+                <dt>Puffer</dt>
+                <dd>
+                  {resource.beforeDays} Tage vorher, {resource.afterDays} Tage
+                  nachher
+                </dd>
+                <dt>Zustand</dt>
+                <dd>
+                  {stateNames[resource.state] ?? resource.state}
+                  {resource.blocked ? ', gesperrt' : ''}
+                </dd>
+              </dl>
+            </section>
           )}
-          {planning && !planning.units.length && (
-            <p className="muted">Noch nichts hinzugefügt.</p>
+          {tab === 'stock' && (
+            <section className="record-card" aria-labelledby="resource-stock">
+              <div className="card-head">
+                <h3 id="resource-stock">Bestand</h3>
+                {editButton('Bestand bearbeiten')}
+              </div>
+              <p>
+                <strong>{resource.quantity} Stück</strong> im Bestand
+                {resource.state !== 'active' &&
+                  ` – ${stateNames[resource.state] ?? resource.state}, nicht planbar`}
+              </p>
+              {failed && retry}
+              {planning && planning.units.length > 0 && (
+                <ul className="record-units">
+                  {planning.units.map((unit) => (
+                    <li key={unit.id}>
+                      {resource.name} · Einheit {unit.ordinal}
+                      <span className="muted">
+                        {unit.enabled ? ' – planbar' : ' – stillgelegt'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {planning && !planning.units.length && (
+                <p className="muted">Noch nichts hinzugefügt.</p>
+              )}
+            </section>
           )}
-        </section>
-      )}
-      {tab === 'planning' && (
-        <section className="record-card" aria-labelledby="resource-planning">
-          <h3 id="resource-planning">Planung</h3>
-          {loading && <p role="status">Planung wird geladen …</p>}
-          {failed && retry}
-          {planning && !planning.plans.length && (
-            <p className="muted">Noch nichts eingeplant.</p>
+          {tab === 'planning' && (
+            <section
+              className="record-card"
+              aria-labelledby="resource-planning"
+            >
+              <h3 id="resource-planning">Planung</h3>
+              {loading && <p role="status">Planung wird geladen …</p>}
+              {failed && retry}
+              {planning && !planning.plans.length && (
+                <p className="muted">Noch nichts eingeplant.</p>
+              )}
+              {planning && planning.plans.length > 0 && (
+                <table className="record-planning">
+                  <thead>
+                    <tr>
+                      <th scope="col">
+                        <span className="sr-only">Bestätigt</span>
+                      </th>
+                      <th scope="col">Zeitraum</th>
+                      <th scope="col">Menge</th>
+                      <th scope="col">Ereignis</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {planning.plans.map((plan) => (
+                      <tr key={plan.eventId + plan.startsAt}>
+                        <td>
+                          <span
+                            className="plan-state"
+                            data-confirmed={plan.confirmed ? '' : undefined}
+                            role="img"
+                            aria-label={
+                              plan.confirmed ? 'Bestätigt' : 'Vorgemerkt'
+                            }
+                          />
+                        </td>
+                        <td>
+                          {time(plan.startsAt)} – {time(plan.endsAt)}
+                        </td>
+                        <td>{plan.quantity}</td>
+                        <td>
+                          <a
+                            className="plan-event"
+                            data-status={plan.eventStatus}
+                            href={'#event-' + plan.eventId}
+                            onClick={() => updateUrlSearch(emptyEventFilters)}
+                          >
+                            <span>{plan.eventName}</span>
+                            <span className="muted">
+                              {statusNames[plan.eventStatus] ??
+                                plan.eventStatus}
+                              {plan.eventDate
+                                ? ` · am ${dateText(plan.eventDate)}`
+                                : ''}
+                            </span>
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
           )}
-          {planning && planning.plans.length > 0 && (
-            <table className="record-planning">
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <span className="sr-only">Bestätigt</span>
-                  </th>
-                  <th scope="col">Zeitraum</th>
-                  <th scope="col">Menge</th>
-                  <th scope="col">Ereignis</th>
-                </tr>
-              </thead>
-              <tbody>
-                {planning.plans.map((plan) => (
-                  <tr key={plan.eventId + plan.startsAt}>
-                    <td>
-                      <span
-                        className="plan-state"
-                        data-confirmed={plan.confirmed ? '' : undefined}
-                        role="img"
-                        aria-label={plan.confirmed ? 'Bestätigt' : 'Vorgemerkt'}
-                      />
-                    </td>
-                    <td>
-                      {time(plan.startsAt)} – {time(plan.endsAt)}
-                    </td>
-                    <td>{plan.quantity}</td>
-                    <td>
-                      <a
-                        className="plan-event"
-                        data-status={plan.eventStatus}
-                        href={'#event-' + plan.eventId}
-                        onClick={() => updateUrlSearch(emptyEventFilters)}
-                      >
-                        <span>{plan.eventName}</span>
-                        <span className="muted">
-                          {statusNames[plan.eventStatus] ?? plan.eventStatus}
-                          {plan.eventDate
-                            ? ` · am ${dateText(plan.eventDate)}`
-                            : ''}
-                        </span>
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
+        </div>
+        {/* RES-BKP-04: Bookitup's right-hand cards of the record. */}
+        <ResourceLinks
+          resource={resource}
+          candidates={candidates}
+          csrfToken={csrfToken}
+        />
+      </div>
     </section>
   );
 }

@@ -32,6 +32,33 @@ const box = {
   state: 'active',
   blocked: true,
 };
+const others = [
+  {
+    ...box,
+    id: 'synthetic-lamp',
+    name: 'Synthetic lamp',
+    code: 'LAMP',
+    kind: 'item',
+    category: 'Licht',
+  },
+  {
+    ...box,
+    id: 'synthetic-set',
+    name: 'Synthetic package',
+    code: 'SET',
+    kind: 'set',
+    category: 'Pakete',
+  },
+  {
+    ...box,
+    id: 'synthetic-gone',
+    name: 'Synthetic gone',
+    code: 'GONE',
+    kind: 'item',
+    category: 'Licht',
+    state: 'archived',
+  },
+];
 const planning = {
   timeZone: 'Europe/Berlin',
   units: [
@@ -62,10 +89,29 @@ const planning = {
   ],
 };
 
-function server(answer = () => Response.json(planning)) {
-  const fetcher = vi.fn(async (url: string) => {
-    if (url === '/api/v1/resources') return Response.json([box]);
+const noLinks = {
+  accessories: [],
+  alternatives: [],
+  components: [],
+  inCases: [],
+  inSets: [],
+  products: [],
+};
+function server(
+  answer = () => Response.json(planning),
+  links: (url: string, init?: RequestInit) => Response = () =>
+    Response.json(noLinks),
+) {
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/v1/resources') return Response.json([box, ...others]);
     if (url === `/api/v1/resources/${box.id}/planning`) return answer();
+    if (url.startsWith(`/api/v1/resources/${box.id}/links`))
+      return links(url, init);
+    if (url === '/api/v1/products')
+      return Response.json([
+        { id: 'product-1', name: 'Fictional rental', state: 'active' },
+        { id: 'product-old', name: 'Fictional old', state: 'archived' },
+      ]);
     return Response.json([]);
   });
   vi.stubGlobal('fetch', fetcher);
@@ -207,7 +253,10 @@ test('an empty planning says so and a failed one retries', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
   expect(await screen.findByText('Noch nichts eingeplant.')).toBeTruthy();
   fireEvent.click(within(context).getByRole('link', { name: 'Bestand' }));
-  expect(screen.getByText('Noch nichts hinzugefügt.')).toBeTruthy();
+  const stock = screen
+    .getByRole('heading', { name: 'Bestand' })
+    .closest('section')!;
+  expect(within(stock).getByText('Noch nichts hinzugefügt.')).toBeTruthy();
 });
 
 test('an unknown resource in the address keeps the list', async () => {
@@ -216,4 +265,142 @@ test('an unknown resource in the address keeps the list', async () => {
   render(<ResourcePanel csrfToken="csrf" />);
   await screen.findByRole('link', { name: 'Synthetic box' });
   expect(screen.queryByRole('region', { name: 'Ressourcen-Akte' })).toBeNull();
+});
+
+// RES-BKP-04: the right-hand cards and their pickers.
+test('the side cards show the links and a picker replaces one card', async () => {
+  const puts: { url: string; body: unknown }[] = [];
+  let fail = '';
+  server(undefined, (url, init) => {
+    if (init?.method === 'PUT') {
+      puts.push({ url, body: JSON.parse(String(init.body)) });
+      if (fail) return Response.json({ error: fail }, { status: 409 });
+      return Response.json({
+        ...noLinks,
+        inSets: [
+          {
+            id: 'synthetic-set',
+            name: 'Synthetic package',
+            kind: 'set',
+            category: 'Pakete',
+          },
+        ],
+        accessories: [
+          {
+            id: 'synthetic-lamp',
+            name: 'Synthetic lamp',
+            kind: 'item',
+            category: 'Licht',
+          },
+        ],
+      });
+    }
+    return Response.json({
+      ...noLinks,
+      inSets: [
+        {
+          id: 'synthetic-set',
+          name: 'Synthetic package',
+          kind: 'set',
+          category: 'Pakete',
+        },
+      ],
+    });
+  });
+  window.history.replaceState(null, '', '/#resource-synthetic-box');
+  render(<ResourcePanel csrfToken="csrf" />);
+  const side = await screen.findByRole('complementary', {
+    name: 'Verknüpfungen',
+  });
+  // A case has components; every card names itself, empty ones say so.
+  await waitFor(() =>
+    expect(
+      within(side)
+        .getAllByRole('heading')
+        .map((heading) => heading.textContent),
+    ).toEqual([
+      'Zubehör',
+      'Alternativen',
+      'Verknüpfte Produkte',
+      'Bestandteile',
+      'Verbaut in folgenden Cases',
+      'Bestandteil folgender Sets',
+    ]),
+  );
+  expect(
+    within(side)
+      .getByRole('link', { name: 'Synthetic package' })
+      .getAttribute('href'),
+  ).toBe('#resource-synthetic-set');
+  expect(within(side).getAllByText('Noch nichts hinzugefügt.')).toHaveLength(5);
+  const plus = within(side).getByRole('button', { name: 'Zubehör hinzufügen' });
+  fireEvent.click(plus);
+  const dialog = screen.getByRole('dialog', { name: 'Zubehör hinzufügen' });
+  const save = within(dialog).getByRole('button', { name: 'Speichern' });
+  expect((save as HTMLButtonElement).disabled).toBe(true);
+  // The resource itself and archived ones are not offered.
+  expect(
+    within(dialog)
+      .getAllByRole('checkbox')
+      .map((box) => box.closest('label')!.textContent),
+  ).toEqual(['ItemSynthetic lampLicht', 'SetSynthetic packagePakete']);
+  fireEvent.change(within(dialog).getByLabelText('Typ'), {
+    target: { value: 'set' },
+  });
+  expect(within(dialog).getAllByRole('checkbox')).toHaveLength(1);
+  fireEvent.change(within(dialog).getByLabelText('Typ'), {
+    target: { value: '' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('Kategorie'), {
+    target: { value: 'Licht' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('Ressourcen durchsuchen'), {
+    target: { value: 'lamp' },
+  });
+  fireEvent.click(within(dialog).getByRole('checkbox'));
+  fail = 'component_cycle';
+  fireEvent.submit(save.closest('form')!);
+  expect((await within(dialog).findByRole('alert')).textContent).toMatch(
+    /enthält diese Ressource bereits/,
+  );
+  fail = '';
+  fireEvent.submit(save.closest('form')!);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(puts.at(-1)).toEqual({
+    url: '/api/v1/resources/synthetic-box/links/accessories',
+    body: { ids: ['synthetic-lamp'] },
+  });
+  expect(
+    within(side).getByRole('link', { name: 'Synthetic lamp' }),
+  ).toBeTruthy();
+  expect(document.activeElement).toBe(plus);
+  // Products come from the catalog; archived ones are left out.
+  fireEvent.click(
+    within(side).getByRole('button', { name: 'Produkte verknüpfen' }),
+  );
+  const products = screen.getByRole('dialog', { name: 'Produkte verknüpfen' });
+  expect(await within(products).findByText('Fictional rental')).toBeTruthy();
+  expect(within(products).queryByText('Fictional old')).toBeNull();
+  fireEvent.keyDown(products, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('links that cannot be read say so instead of empty cards', async () => {
+  server(undefined, () => new Response(null, { status: 500 }));
+  window.history.replaceState(null, '', '/#resource-synthetic-box');
+  render(<ResourcePanel csrfToken="csrf" />);
+  const side = await screen.findByRole('complementary', {
+    name: 'Verknüpfungen',
+  });
+  expect((await within(side).findByRole('alert')).textContent).toBe(
+    'Die Verknüpfungen konnten nicht geladen werden.',
+  );
+  expect(within(side).queryByText('Noch nichts hinzugefügt.')).toBeNull();
+  expect(
+    (
+      within(side).getByRole('button', {
+        name: 'Zubehör hinzufügen',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
 });

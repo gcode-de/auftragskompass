@@ -99,7 +99,7 @@ test('migrations serialize, restart safely and detect changed history', async ()
   // note into one note and widens the audit vocabulary by two actions.
   // QW5 (0081) widens the audit vocabulary by the withdrawn planned send.
   // UI-BKP-04 (0082) records note edits and widens the audit vocabulary.
-  expect(applied.at(-1)!.name).toBe('0086_resource_kinds.sql');
+  expect(applied.at(-1)!.name).toBe('0087_resource_links.sql');
   expect(
     (
       await pool.query<{ table_name: string }>(
