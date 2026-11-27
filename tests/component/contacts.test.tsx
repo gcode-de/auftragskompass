@@ -107,7 +107,7 @@ test('deleting a contact requires confirmation and removes only the confirmed ro
   );
 });
 
-test.each([409, 500, 'offline', 404])(
+test.each([409, 500, 'offline', 404] as const)(
   'handles an unsuccessful or obsolete deletion response %s',
   async (status) => {
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
